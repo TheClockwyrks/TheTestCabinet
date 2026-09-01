@@ -65,12 +65,27 @@ it("reads a stored-cyan Shard as magenta while an inversion runs", async () => {
   await h.advance(1);
   captureStill(h, "swapped");
 
-  const drone = droneOf(h.snapshot(), droneId);
+  const posed = h.snapshot();
+  assertEqual(
+    posed.inversionActive,
+    true,
+    `an inversion running over the posed drone after setInversion ` +
+      `(${INVERSION_TIME} s) — without one the swap below would be no swap ` +
+      "at all",
+  );
+
+  const drone = droneOf(posed, droneId);
+  assertEqual(
+    drone.band,
+    STORED_BAND,
+    "the Shard's STORED band, which specs/bands.md says an inversion never " +
+      "changes: it swaps how a band READS, not what is stored",
+  );
   assertEqual(
     drone.effectiveBand,
     SWAPPED_BAND,
     `the effective band of a Shard storing ${STORED_BAND} with an inversion ` +
-      `of ${INVERSION_TIME} s posed (it stores ${drone.band}) — ` +
+      `of ${INVERSION_TIME} s posed — ` +
       "specs/bands.md: while an inversion is active, every drone reads as the " +
       "opposite of its stored band",
   );

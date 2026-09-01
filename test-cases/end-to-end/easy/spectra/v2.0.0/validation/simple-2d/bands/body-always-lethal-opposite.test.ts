@@ -103,6 +103,20 @@ it("takes one life when a magenta Shard's body reaches a cyan ship", async () =>
   h.debug.setShipContact(true);
   h.debug.setShipBand(SHIP_BAND);
   h.debug.setLives(LIVES_BEFORE);
+  const posed = h.snapshot();
+  assertEqual(
+    posed.ship.band,
+    SHIP_BAND,
+    "the band the ship was posed on, which is what makes the body below a " +
+      "band OPPOSITE the ship's one",
+  );
+  assertEqual(
+    posed.lives,
+    LIVES_BEFORE,
+    "the lives the run was posed with, which is the number the reading below " +
+      "is measured against",
+  );
+
   const droneId = poseDrone(h, "shard", LANE_CENTER, SHIP_Y - APPROACH, {
     band: DRONE_BAND,
     phase: "diving",

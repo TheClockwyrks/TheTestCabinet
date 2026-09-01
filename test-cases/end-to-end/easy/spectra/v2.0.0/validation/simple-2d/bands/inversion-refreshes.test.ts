@@ -42,7 +42,7 @@ import {
   INVERSION_TIME,
   PRISM_INVERT_Y,
 } from "../../src/constants";
-import { assertBetween, assertTrue } from "../assert";
+import { assertBetween, assertEqual, assertTrue } from "../assert";
 import {
   LANE_CENTER,
   captureStill,
@@ -96,6 +96,22 @@ afterEach(() => {
 it("sets a running inversion back to INVERSION_TIME rather than adding to it", async () => {
   startPosed(h);
   h.debug.setInversion(POSED_REMAINING);
+
+  const posed = h.snapshot();
+  assertEqual(
+    posed.inversionActive,
+    true,
+    `an inversion already running after setInversion (${POSED_REMAINING} s) ` +
+      "— with none running there is nothing for the Prism's trigger to " +
+      "refresh, and the reading below would not tell adding from refreshing",
+  );
+  assertEqual(
+    posed.isChallenge,
+    false,
+    "a standard stage, which is the only kind a Prism dives on " +
+      "(specs/stages.md)",
+  );
+
   poseDrone(h, "prism", PRISM_X, PRISM_INVERT_Y - APPROACH, {
     phase: "diving",
     travel: true,

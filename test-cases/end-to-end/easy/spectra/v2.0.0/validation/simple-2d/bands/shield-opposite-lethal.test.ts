@@ -81,6 +81,20 @@ it("takes exactly one life when a magenta bullet reaches a cyan ship", async () 
   h.debug.setShipContact(true);
   h.debug.setShipBand(SHIP_BAND);
   h.debug.setLives(LIVES_BEFORE);
+  const posed = h.snapshot();
+  assertEqual(
+    posed.ship.band,
+    SHIP_BAND,
+    "the band the ship was posed on, which is what makes this reading about " +
+      "a bullet of the band OPPOSITE the ship's",
+  );
+  assertEqual(
+    posed.lives,
+    LIVES_BEFORE,
+    "the lives the run was posed with, which is the number the reading below " +
+      "is measured against",
+  );
+
   h.debug.addEnemyBullet(LANE_CENTER, SHIP_Y - DROP, BULLET_BAND);
 
   await h.advance(DRIVE_TICKS);

@@ -39,7 +39,7 @@ import {
   PLAYER_BULLET_SPEED,
   SHARD_HALF,
 } from "../../src/constants";
-import { assertNull } from "../assert";
+import { assertNull, assertTrue } from "../assert";
 import {
   LANE_CENTER,
   SHOT_GAP,
@@ -124,6 +124,13 @@ it("destroys a cyan Shard with a cyan shot", async () => {
     if (target === null) break;
   }
 
+  assertTrue(
+    captured,
+    `the ${MATCHING_BAND} Shard still standing with the shot closed to within ` +
+      `${CLOSING} units of it — a target that was never posed, or that left ` +
+      "the roster before the bullet arrived, would read as destroyed below " +
+      "without the contact this point is about ever happening",
+  );
   assertNull(
     findDrone(h.snapshot(), droneId),
     `the ${MATCHING_BAND} Shard is gone from the roster after one ` +

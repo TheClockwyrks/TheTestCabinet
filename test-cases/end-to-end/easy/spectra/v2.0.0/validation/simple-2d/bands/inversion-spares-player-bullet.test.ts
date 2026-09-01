@@ -61,13 +61,33 @@ it("keeps a player bullet's stored band while an inversion runs", async () => {
   await h.advance(1);
   captureStill(h, "kept");
 
-  const bullet = bulletOf(h.snapshot(), bulletId);
+  const posed = h.snapshot();
+  assertEqual(
+    posed.inversionActive,
+    true,
+    `an inversion running over the posed bullet after setInversion ` +
+      `(${INVERSION_TIME} s) — without one there is nothing for the player's ` +
+      "bullet to be spared from",
+  );
+
+  const bullet = bulletOf(posed, bulletId);
+  assertEqual(
+    bullet.friendly,
+    true,
+    "the bullet posed as the player's, which is what makes it one of the " +
+      "bullets specs/bands.md spares",
+  );
+  assertEqual(
+    bullet.band,
+    STORED_BAND,
+    "the bullet's stored band, which is the band the reading below has to " +
+      "equal for the sparing to mean anything",
+  );
   assertEqual(
     bullet.effectiveBand,
     STORED_BAND,
     `the effective band of one of the player's bullets storing ` +
-      `${STORED_BAND} with an inversion of ${INVERSION_TIME} s posed (it ` +
-      `stores ${bullet.band}, friendly ${String(bullet.friendly)}) — ` +
+      `${STORED_BAND} with an inversion of ${INVERSION_TIME} s posed — ` +
       "specs/bands.md: the player's bullets are never swapped, so a player " +
       "bullet's effective band always equals its stored band",
   );

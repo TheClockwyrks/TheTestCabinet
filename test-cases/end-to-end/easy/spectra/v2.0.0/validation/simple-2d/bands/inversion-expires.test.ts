@@ -53,6 +53,18 @@ const STORED_BAND = "cyan" as const;
 const MARGIN_TICKS = 1;
 const WAIT_TICKS = ticksFor(INVERSION_TIME) + MARGIN_TICKS;
 
+/**
+ * How far short of INVERSION_TIME the inversion is read while it is still
+ * running, in seconds.
+ *
+ * The reading below it is what makes this point about the STATED duration
+ * rather than about the inversion ending at all: a build whose inversion runs
+ * out early is still running nothing by the time the wait is over, and would
+ * pass the ended reading on its own.
+ */
+const SHORT_OF_END = 0.5;
+const RUNNING_TICKS = ticksFor(INVERSION_TIME - SHORT_OF_END);
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -70,7 +82,27 @@ it("ends the inversion and gives a stored-cyan Shard its band back", async () =>
     band: STORED_BAND,
   });
 
-  await h.advance(WAIT_TICKS);
+  const posed = h.snapshot();
+  assertEqual(
+    posed.inversionActive,
+    true,
+    `an inversion running after setInversion (${INVERSION_TIME} s) — an ` +
+      "inversion that never began would read as ended below for the wrong " +
+      "reason",
+  );
+
+  await h.advance(RUNNING_TICKS);
+  const midway = h.snapshot();
+  assertEqual(
+    midway.inversionActive,
+    true,
+    `whether the inversion is still running ${SHORT_OF_END} s short of ` +
+      `INVERSION_TIME ${INVERSION_TIME} s (it reports ${midway.inversion} s ` +
+      "left) — specs/bands.md: an inversion lasts INVERSION_TIME seconds, so " +
+      "one that has already ended here is short of its stated span",
+  );
+
+  await h.advance(WAIT_TICKS - RUNNING_TICKS);
   captureStill(h, "expired");
 
   const field = h.snapshot();

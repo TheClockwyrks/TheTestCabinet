@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { INVERSION_TIME, PRISM_HALF, SHARD_HALF } from "../../src/constants";
-import { assertNotNull, assertNull } from "../assert";
+import { assertEqual, assertNotNull, assertNull } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -77,6 +77,13 @@ it("destroys a stored-magenta Shard with a cyan shot and spares it from a magent
   captureStill(h, "outcome");
 
   const field = h.snapshot();
+  assertEqual(
+    field.inversionActive,
+    true,
+    `the inversion of ${INVERSION_TIME} s still running once both shots had ` +
+      "resolved — an inversion that had lapsed would make the outcomes below " +
+      "the ordinary match rule's rather than the swap's",
+  );
   assertNull(
     findDrone(field, matchedId),
     `the Shard storing ${STORED_BAND} at x ${MATCHED_X} is gone from the ` +

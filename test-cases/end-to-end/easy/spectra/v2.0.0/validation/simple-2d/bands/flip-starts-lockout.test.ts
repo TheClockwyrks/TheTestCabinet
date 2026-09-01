@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BINDINGS, FLIP_LOCKOUT } from "../../src/constants";
-import { assertBetween } from "../assert";
+import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -56,6 +56,20 @@ afterEach(() => {
 it("leaves FLIP_LOCKOUT seconds of lockout standing after a flip", async () => {
   startPosed(h);
   h.debug.setFireLockout(0);
+
+  const before = h.snapshot();
+  assertEqual(
+    before.screen,
+    "inWave",
+    "the screen the flip action is read on (specs/screens.md) — a flip " +
+      "delivered anywhere else would prove nothing about this rule",
+  );
+  assertEqual(
+    before.ship.lockout,
+    0,
+    "the lockout the ship was posed with, which is what makes the seconds " +
+      "read below the flip's doing and not a lockout already standing",
+  );
 
   await h.tap(FLIP_KEY);
   captureStill(h, "lockout");

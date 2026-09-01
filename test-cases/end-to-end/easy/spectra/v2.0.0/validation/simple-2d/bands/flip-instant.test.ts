@@ -55,6 +55,21 @@ it("holds the opposite band in the frame the flip is delivered", async () => {
   startPosed(h);
   h.debug.setShipBand(OPENING_BAND);
 
+  const before = h.snapshot();
+  assertEqual(
+    before.screen,
+    "inWave",
+    "the screen the flip action is read on (specs/screens.md) — a flip " +
+      "delivered anywhere else would prove nothing about this rule",
+  );
+  assertEqual(
+    before.ship.band,
+    OPENING_BAND,
+    `the band the ship was posed on, which is the band the flip below has to ` +
+      `move off; a ship already on ${FLIPPED_BAND} would read as flipped ` +
+      "without flipping",
+  );
+
   await h.tap(FLIP_KEY);
   captureStill(h, "flipped");
 

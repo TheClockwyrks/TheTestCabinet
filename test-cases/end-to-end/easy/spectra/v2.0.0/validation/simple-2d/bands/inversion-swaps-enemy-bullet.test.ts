@@ -60,13 +60,33 @@ it("reads a stored-cyan enemy bullet as magenta while an inversion runs", async 
   await h.advance(1);
   captureStill(h, "swapped");
 
-  const bullet = bulletOf(h.snapshot(), bulletId);
+  const posed = h.snapshot();
+  assertEqual(
+    posed.inversionActive,
+    true,
+    `an inversion running over the posed bullet after setInversion ` +
+      `(${INVERSION_TIME} s) — without one the swap below would be no swap ` +
+      "at all",
+  );
+
+  const bullet = bulletOf(posed, bulletId);
+  assertEqual(
+    bullet.friendly,
+    false,
+    "the bullet posed as an enemy's, which is what makes it one of the " +
+      "bullets specs/bands.md swaps",
+  );
+  assertEqual(
+    bullet.band,
+    STORED_BAND,
+    "the bullet's STORED band, which specs/bands.md says an inversion never " +
+      "changes: it swaps how a band READS, not what is stored",
+  );
   assertEqual(
     bullet.effectiveBand,
     SWAPPED_BAND,
     `the effective band of an enemy bullet storing ${STORED_BAND} with an ` +
-      `inversion of ${INVERSION_TIME} s posed (it stores ${bullet.band}, ` +
-      `friendly ${String(bullet.friendly)}) — specs/bands.md: while an ` +
+      `inversion of ${INVERSION_TIME} s posed — specs/bands.md: while an ` +
       "inversion is active, every enemy bullet reads as the opposite of its " +
       "stored band",
   );

@@ -79,13 +79,33 @@ it("leaves a broken-shell Prism reading its stored band under an inversion", asy
   await h.advance(1);
   captureStill(h, "cancelled");
 
-  const prism = droneOf(h.snapshot(), prismId);
+  const posed = h.snapshot();
+  assertEqual(
+    posed.inversionActive,
+    true,
+    `an inversion running over the broken-shelled Prism after setInversion ` +
+      `(${INVERSION_TIME} s) — with only one swap in play there would be ` +
+      "nothing for the second to cancel",
+  );
+
+  const prism = droneOf(posed, prismId);
+  assertEqual(
+    prism.shellAlive,
+    false,
+    "the broken shell the scenario posed, which is the second of the two " +
+      "swaps (specs/instrumentation.md)",
+  );
+  assertEqual(
+    prism.band,
+    STORED_BAND,
+    "the Prism's stored band, which neither the fallen shell nor the " +
+      "inversion changes (specs/bands.md)",
+  );
   assertEqual(
     prism.effectiveBand,
     STORED_BAND,
     `the effective band of a Prism storing ${STORED_BAND} whose shell has ` +
-      `been broken, with an inversion of ${INVERSION_TIME} s posed (it stores ` +
-      `${prism.band}, shellAlive ${String(prism.shellAlive)}) — ` +
+      `been broken, with an inversion of ${INVERSION_TIME} s posed — ` +
       "specs/bands.md: the swaps compose as toggles rather than additively, " +
       "so two of them cancel",
   );

@@ -100,6 +100,20 @@ it("costs no life and clears the roster when a cyan bullet reaches a cyan ship",
   h.debug.setShipContact(true);
   h.debug.setShipBand(SHIELDED_BAND);
   h.debug.setLives(LIVES_BEFORE);
+  const posed = h.snapshot();
+  assertEqual(
+    posed.ship.band,
+    SHIELDED_BAND,
+    "the band the ship was posed on, which is what makes this reading about " +
+      "a bullet of the ship's OWN band",
+  );
+  assertEqual(
+    posed.lives,
+    LIVES_BEFORE,
+    "the lives the run was posed with, which is the number the reading below " +
+      "is measured against",
+  );
+
   h.debug.addEnemyBullet(LANE_CENTER, SHIP_Y - DROP, SHIELDED_BAND);
   const bulletId = lastBullet(h.snapshot()).id;
 

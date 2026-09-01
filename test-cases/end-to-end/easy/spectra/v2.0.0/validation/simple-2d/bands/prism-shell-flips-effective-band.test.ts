@@ -70,14 +70,32 @@ it("reads a stored-cyan Prism whose shell is broken as magenta", async () => {
   await h.advance(1);
   captureStill(h, "exposed");
 
-  const prism = droneOf(h.snapshot(), prismId);
+  const posed = h.snapshot();
+  assertEqual(
+    posed.inversionActive,
+    false,
+    "no inversion running, so the broken shell is the only swap in play and " +
+      "the reading below is the shell rule's doing alone",
+  );
+
+  const prism = droneOf(posed, prismId);
+  assertEqual(
+    prism.shellAlive,
+    false,
+    "the broken shell the scenario posed (specs/instrumentation.md) — a " +
+      "Prism whose shell is still up is not the subject of this rule",
+  );
+  assertEqual(
+    prism.band,
+    SHELL_BAND,
+    "the Prism's stored band, which is its shell's and which specs/drones.md " +
+      "does not change when the shell falls",
+  );
   assertEqual(
     prism.effectiveBand,
     CORE_BAND,
     `the effective band of a Prism storing ${SHELL_BAND} whose shell has been ` +
-      `broken (it stores ${prism.band}, shellAlive ` +
-      `${String(prism.shellAlive)}, with no inversion running) — ` +
-      "specs/bands.md: a Prism whose shell has been broken reads its stored " +
-      "band taken as the opposite, which is the core now exposed",
+      "broken — specs/bands.md: a Prism whose shell has been broken reads its " +
+      "stored band taken as the opposite, which is the core now exposed",
   );
 });
