@@ -117,11 +117,14 @@ whole simulation ticks, because `specs/weapons.md` fixes the gun's gate in ticks
 
 ## Identity
 
+{{#if (eq variant.slug "warhead")}}
+Every rock, bullet, saucer bullet, and torpedo carries an `id`: a number, distinct
+among the entities live at any moment, reported by `snapshot` and taken by every
+per-entity operation.
+{{else}}
 Every rock, bullet, and saucer bullet carries an `id`: a number, distinct among the
 entities live at any moment, reported by `snapshot` and taken by every per-entity
 operation.
-{{#if (eq variant.slug "warhead")}}
-Every torpedo carries one on the same terms.
 {{/if}}
 
 Two rules make an id findable without an assignment scheme:

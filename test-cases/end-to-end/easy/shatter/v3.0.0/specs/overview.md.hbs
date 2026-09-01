@@ -2,36 +2,43 @@
 
 ## Overview
 
+{{#if (eq variant.slug "warhead")}}
 Shatter is a top-down space-rock shooter for the browser, played on one wrapping
 field of deep space. You pilot a small ship under pure momentum, turning and
-thrusting while jagged rocks drift and tumble around you.
-{{#if (eq variant.slug "warhead")}}
-The larger rocks are armored and hold together under several hits before they come
-apart, a Large into two smaller ones and each of those into smaller ones still,
-until the last fragments wink out. Against the ones that will not break in time
-the ship carries a single guided torpedo on a slow recharge, which destroys any
-rock outright. Clear the field and a denser, faster wave arrives, and an enemy
-saucer wanders in to hunt you on a cadence of its own.
+thrusting while jagged rocks drift and tumble around you. The larger rocks are
+armored and hold together under several hits before they come apart, a Large
+into two smaller ones and each of those into smaller ones still, until the last
+fragments wink out. Against the ones that will not break in time the ship
+carries a single guided torpedo on a slow recharge, which destroys any rock
+outright. Clear the field and a denser, faster wave arrives, and an enemy saucer
+wanders in to hunt you on a cadence of its own.
 {{else}}
-Firing splits a Large rock into two smaller ones, and each of those into smaller
-ones still, until the last fragments wink out. Clear the field and a denser,
-faster wave arrives, and an enemy saucer wanders in to hunt you on a cadence of
-its own.
+Shatter is a top-down space-rock shooter for the browser, played on one wrapping
+field of deep space. You pilot a small ship under pure momentum, turning and
+thrusting while jagged rocks drift and tumble around you. Firing splits a Large
+rock into two smaller ones, and each of those into smaller ones still, until the
+last fragments wink out. Clear the field and a denser, faster wave arrives, and
+an enemy saucer wanders in to hunt you on a cadence of its own.
 {{/if}}
 
+{{#if (eq variant.slug "warhead")}}
 Shatter's defining idea is the gravity well. A star fixed at the centre of the
 field pulls on everything that flies ballistically, which is every bullet, every
-saucer bullet and every rock.
-{{#if (eq variant.slug "warhead")}}
-The ship, the saucer, and the torpedo are powered craft the pull never touches, so
-the star never wrests the ship out of the player's hands.
+saucer bullet and every rock. The ship, the saucer, and the torpedo are powered
+craft the pull never touches, so the star never wrests the ship out of the
+player's hands. Instead it shapes the board: shots bend as they cross the
+centre, so a bullet can be curved around the star to strike a rock on its far
+side, and rocks travel on curved, wrapping paths that keep the whole field
+churning.
 {{else}}
-The ship and the saucer are powered craft the pull never touches, so the star
-never wrests the ship out of the player's hands.
+Shatter's defining idea is the gravity well. A star fixed at the centre of the
+field pulls on everything that flies ballistically, which is every bullet, every
+saucer bullet and every rock. The ship and the saucer are powered craft the pull
+never touches, so the star never wrests the ship out of the player's hands.
+Instead it shapes the board: shots bend as they cross the centre, so a bullet
+can be curved around the star to strike a rock on its far side, and rocks travel
+on curved, wrapping paths that keep the whole field churning.
 {{/if}}
-Instead it shapes the board: shots bend as they cross the centre, so a bullet can
-be curved around the star to strike a rock on its far side, and rocks travel on
-curved, wrapping paths that keep the whole field churning.
 
 The core of the star is solid. The ship slides along it rather than through it, a
 shot that reaches it is absorbed, and a rock the star swallows re-appears from the
