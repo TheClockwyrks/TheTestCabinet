@@ -94,9 +94,11 @@ import {
 import {
   BINDINGS,
   BUILD_PHASE_TIME,
+  DIFFICULTY_TABLE,
   FLOOR_X0,
   FLOOR_Y0,
   LAYOUT,
+  MODE_TABLE,
   STAGE_H,
   STAGE_W,
   TILE,
@@ -1244,6 +1246,19 @@ export function resetTo(h: Harness, seed?: number): void {
   h.debug.reset(seed === undefined ? undefined : { seed });
 }
 
+/** The money a run on this pair opens with (specs/modes.md). */
+export function startMoneyOf(
+  mode: ModeName,
+  difficulty: DifficultyName,
+): number {
+  return MODE_TABLE[mode].startMoney ?? DIFFICULTY_TABLE[difficulty].money;
+}
+
+/** The lives a run on this mode opens with (specs/modes.md). */
+export function startLivesOf(mode: ModeName): number {
+  return MODE_TABLE[mode].startLives;
+}
+
 /**
  * A run open on an EMPTY, QUIET floor, at wave 1 of its build phase, with the
  * run's figures at what the mode and difficulty give them.
@@ -1268,9 +1283,11 @@ export function resetTo(h: Harness, seed?: number): void {
  * check that finds itself needing the gate for any other reason has been
  * mis-posed.
  *
- * The money and lives are read back off the snapshot rather than restated here,
- * because `startMoney` and `startLives` are DERIVED from the mode and difficulty
- * and this helper fixes no figure of its own.
+ * The money and lives are computed from the case's own tables in
+ * `src/constants.ts`, never read back off the build's snapshot: whether a build
+ * reports the right `startMoney` is `modes.run-opens-with-its-figures`'s
+ * requirement, and a helper that seeded from the build's own reading would fail
+ * every scenario standing on that purse for a fault belonging to that one item.
  *
  * The generator is left as `reset` seeded it, so a check that wants a particular
  * seed calls {@link resetTo} first — this helper's own `reset` takes the default.
@@ -1293,9 +1310,8 @@ export function startRun(
   debug.setBuildTimer(BUILD_PHASE_TIME);
   debug.setWavePending(0);
   debug.setWaveSpawning(false);
-  const figures = debug.snapshot();
-  debug.setMoney(figures.startMoney);
-  debug.setLives(figures.startLives);
+  debug.setMoney(startMoneyOf(mode, difficulty));
+  debug.setLives(startLivesOf(mode));
   debug.setScore(0);
   debug.setSelected(null);
   debug.setHoverShop(null);
