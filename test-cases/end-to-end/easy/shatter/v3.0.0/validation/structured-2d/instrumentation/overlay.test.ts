@@ -14,27 +14,40 @@
 // WHAT IS ASSERTED IS THE VALUE, NEVER THE WORDING. A build names its sources
 // itself, so every reading below is of a NUMBER the game holds, posed to a
 // distinctive value and looked for among the lines the toggle ADDED to an
-// otherwise identical frame: the score is `8765` rather than a round figure, the
-// wave is `29`, the ship's centre is `(321, 654)` and the saucer's `(246, 135)`,
-// and the two counts are `12` rocks and `4` rounds. A build reporting the wrong
-// field, or a placeholder, produces a different number.
+// otherwise identical frame. Each figure is matched as a WHOLE RUN OF DIGITS
+// rather than as a substring, so the `4` of the bullet count is not answered by
+// the `4` inside `448`, and the field is posed so that no two of the asserted
+// figures collide. A build reporting the wrong field, or a placeholder, produces
+// a different number. This is the same fact list and the same reading the two
+// other engines' suites use: the case's review items do not differ by engine.
 //
-// A PAIR IS REQUIRED ON ONE LINE. A position is two figures, and the
-// specification asks for the position rather than for two loose numbers, so the
-// ship's line has to carry both `321` and `654` and the saucer's both `246` and
-// `135`. That is also what keeps the score's `8765` and the ship's `321` from
-// standing in for one another.
+// NOTHING ABOUT THE LAYOUT IS ASSERTED, and that is deliberate. A position is two
+// figures, but the specification asks a build to register the position and to
+// "keep each one short enough to read on a line" — it never says the two halves
+// must land on the same line, so requiring that would be demanding a presentation
+// the specification leaves to the build. Each figure is asked for on its own,
+// among the lines the panel added.
 //
-// FIVE OF THE LISTED FACTS ARE NOT READ HERE, and the reason is the same for all
-// five: the ship's velocity, its speed, its facing, its remaining respawn grace
-// and the accumulated simulation time have no build-independent token. A facing
-// may be shown in degrees or radians; a speed, a grace and a time to whatever
-// precision the build chooses; and a velocity at rest reads `0`, which every
-// other line on the panel also carries. Any pattern tight enough to identify one
-// of them would be demanding a presentation the specification deliberately
-// leaves to the build ("Keep each one short enough to read on a line"). The
-// eight facts above are the ones a distinctive value can be posed for, and they
-// are asked for exactly.
+// THE TWO VALUES WITH MORE THAN ONE HONEST WRITTEN FORM are accepted in any of
+// them. A facing may be shown in degrees or in radians, and a grace to whatever
+// precision the build chooses, so the ship is posed at a quarter turn — `90`
+// degrees or `1.571` radians, and nothing else here carries either figure — and
+// the grace at `2.5` seconds, accepted written out or rounded to the whole second
+// an integer formatter would produce. The velocity is posed off a 336-448-560
+// triangle so that neither component nor the speed built from them reads as the
+// `0` every other line on a quiet panel also carries.
+//
+// AND THE CLOCK IS DRIVEN TO A FIGURE OF ITS OWN FIRST. The accumulated
+// simulation time is one of the values the overlay owes, and a reading taken
+// moments after a reset is a `0` that half the panel could be showing anyway. So
+// the run is carried to twenty-three seconds of game time over an EMPTY field —
+// nothing to drift, nothing to spawn — and the crowd is posed onto it afterwards,
+// at rest, for the two frames that are read.
+//
+// THE FIELD IS POSED AND THEN PAUSED. `specs/ui.md` freezes the field behind the
+// pause menu — "No body moves, no timer runs down" — so the ship the velocity was
+// posed onto is still standing where the reading expects it when the panel is
+// drawn.
 //
 // THE READ-ONLY HALF IS ITS OWN LEG, over an EMPTY, QUIET, STILL field. On that
 // field a tick changes exactly one reported number — `simTime`, which
@@ -63,7 +76,9 @@ import {
   poseSaucer,
   seconds,
   startPlaying,
+  ticksFor,
   toggleOverlay,
+  torpedoesOf,
   type Harness,
 } from "../harness";
 
@@ -75,6 +90,35 @@ const POSED = {
   ship: { x: 321, y: 654 },
   saucer: { x: 246, y: 135 },
 } as const;
+
+/** The velocity the ship carries, and the speed built from it: a 336-448-560. */
+const SHIP_VELOCITY = { vx: 336, vy: -448 } as const;
+const SHIP_SPEED = 560;
+
+/**
+ * The ship's posed facing: a quarter turn, straight down in the field's
+ * coordinates, and the two forms a build may honestly draw it in.
+ */
+const SHIP_ANGLE = Math.PI / 2;
+const FACING_FORMS = /1\.57|\b90\b/;
+
+/** The ship's posed respawn grace, in seconds, and the forms it may be drawn in. */
+const INVULN = 2.5;
+const GRACE_FORMS = /2\.5|\b3\b/;
+
+/** The game time the run is carried to before the reading, in seconds. */
+const SIM_SECONDS = 23;
+
+/** The `warhead` charge posed, and the forms it may be drawn in. */
+const TORPEDO_CHARGE = 0.6;
+const CHARGE_FORMS = /0\.6|\b60\b/;
+
+/** The `warhead` torpedoes posed, above the star and clear of every body. */
+const TORPEDO_PLACES = [
+  { x: 420, y: 260 },
+  { x: 860, y: 260 },
+];
+const TORPEDO_HEADING = -Math.PI / 2;
 
 /** Where the twelve rocks stand: two rows along the top and bottom edges. */
 const ROCK_ROWS = [20, 690];
@@ -105,35 +149,54 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** Whether `line` carries `value` as a number in its own right. */
-function carries(line: string, value: number): boolean {
-  return new RegExp(`(?<!\\d)${value}(?!\\d)`).test(line);
+/** Every maximal run of digits the lines carry. */
+function digitRuns(lines: readonly string[]): string[] {
+  return lines.flatMap((line) => line.match(/\d+/g) ?? []);
 }
 
-/** Fail unless some line carries every one of `values` as a number. */
-function assertSomeLineCarries(
+/** Fail unless some line carries `value` as a whole figure. */
+function assertFigure(
   lines: readonly string[],
-  values: readonly number[],
+  value: number,
   requirement: string,
 ): void {
-  if (lines.some((line) => values.every((value) => carries(line, value)))) {
-    return;
-  }
+  if (digitRuns(lines).includes(String(value))) return;
   fail(
-    `an overlay line reporting ${values.join(" and ")} — ${requirement} ` +
+    `an overlay line reporting ${String(value)} — ${requirement} ` +
+      "(specs/instrumentation.md, Diagnostics)",
+    lines,
+  );
+}
+
+/** Fail unless some line matches `pattern`. */
+function assertForm(
+  lines: readonly string[],
+  pattern: RegExp,
+  requirement: string,
+): void {
+  if (lines.some((line) => pattern.test(line))) return;
+  fail(
+    `an overlay line reporting ${requirement} ` +
       "(specs/instrumentation.md, Diagnostics)",
     lines,
   );
 }
 
 it("draws the facts the specification lists, over a posed field", async () => {
+  // A quiet, empty run from a known zero, carried to the game time the panel has
+  // to report. Two of the twenty-three seconds' ticks are left for the baseline
+  // frame and the toggle's frame below, so the reading lands on the figure.
+  h.debug.reset();
   startPlaying(h);
+  await h.advance(ticksFor(SIM_SECONDS) - 2);
 
   h.debug.setScore(POSED.score);
   h.debug.setWave(POSED.wave);
   h.debug.setLives(POSED.lives);
   h.debug.setShipPosition(POSED.ship.x, POSED.ship.y);
-  h.debug.setShipVelocity(0, 0);
+  h.debug.setShipVelocity(SHIP_VELOCITY.vx, SHIP_VELOCITY.vy);
+  h.debug.setShipAngle(SHIP_ANGLE);
+  h.debug.setShipInvuln(INVULN);
 
   for (const y of ROCK_ROWS) {
     for (const x of ROCK_COLUMNS) poseRock(h, "small", x, y);
@@ -147,7 +210,27 @@ it("draws the facts the specification lists, over a posed field", async () => {
   h.debug.setSaucerGun(false);
   h.debug.setSaucerTravel(false);
 
-  // A baseline frame of the bare playing screen's own text.
+  const addTorpedo = h.debug.addTorpedo;
+  const warhead = typeof addTorpedo === "function";
+  if (warhead) {
+    for (const place of TORPEDO_PLACES) {
+      addTorpedo(place.x, place.y, TORPEDO_HEADING);
+    }
+    if (torpedoesOf(h.snapshot()).length !== TORPEDO_PLACES.length) {
+      fail(
+        "addTorpedo to append each torpedo to the roster " +
+          "(specs/instrumentation.md)",
+        torpedoesOf(h.snapshot()).length,
+      );
+    }
+    h.debug.setTorpedoCharge?.(TORPEDO_CHARGE);
+  }
+
+  // Frozen behind the pause menu, so the posed ship is still standing where the
+  // reading expects it and no timer runs down under the panel (specs/ui.md).
+  h.debug.setScreen("paused");
+
+  // A baseline frame of the bare paused screen's own text.
   clearCalls(h);
   await h.advance(1);
   const bare = new Set(drawnText(h.calls));
@@ -164,32 +247,45 @@ it("draws the facts the specification lists, over a posed field", async () => {
 
   assertGreaterThan(added.length, 0, "the toggle draws the overlay's lines");
 
-  const screenLine = added.find((line) =>
-    line.toLowerCase().includes("playing"),
+  assertForm(added, /paused/i, "the current screen, 'paused'");
+  assertFigure(added, POSED.score, "the score");
+  assertFigure(added, POSED.lives, "the lives");
+  assertFigure(added, POSED.wave, "the wave");
+
+  assertFigure(added, POSED.ship.x, "the x of the ship's position");
+  assertFigure(added, POSED.ship.y, "the y of the ship's position");
+  assertFigure(added, SHIP_VELOCITY.vx, "the x of the ship's velocity");
+  assertFigure(
+    added,
+    Math.abs(SHIP_VELOCITY.vy),
+    "the y of the ship's velocity",
   );
-  if (screenLine === undefined) {
-    fail(
-      'an overlay line reporting the current screen, which is "playing" ' +
-        "(specs/instrumentation.md, Diagnostics)",
+  assertFigure(added, SHIP_SPEED, "the ship's speed");
+  assertForm(added, FACING_FORMS, "the ship's facing, a quarter turn");
+  assertForm(added, GRACE_FORMS, "the ship's remaining respawn grace, 2.5 s");
+
+  assertFigure(added, ROCK_COUNT, "how many rocks are in play");
+  assertFigure(added, BULLET_COUNT, "how many bullets are in play");
+
+  assertFigure(added, POSED.saucer.x, "the x of the saucer that is up");
+  assertFigure(added, POSED.saucer.y, "the y of the saucer that is up");
+
+  assertFigure(
+    added,
+    SIM_SECONDS,
+    "the accumulated simulation time, in seconds",
+  );
+
+  // And the two the variant adds, demanded of a build whose surface carries the
+  // variant's operations.
+  if (warhead) {
+    assertForm(added, CHARGE_FORMS, "the torpedo charge, three fifths");
+    assertFigure(
       added,
+      TORPEDO_PLACES.length,
+      "how many torpedoes are in flight",
     );
   }
-
-  assertSomeLineCarries(added, [POSED.score], "the score");
-  assertSomeLineCarries(added, [POSED.lives], "the lives");
-  assertSomeLineCarries(added, [POSED.wave], "the wave");
-  assertSomeLineCarries(
-    added,
-    [POSED.ship.x, POSED.ship.y],
-    "the ship's position",
-  );
-  assertSomeLineCarries(added, [ROCK_COUNT], "how many rocks are in play");
-  assertSomeLineCarries(added, [BULLET_COUNT], "how many bullets are in play");
-  assertSomeLineCarries(
-    added,
-    [POSED.saucer.x, POSED.saucer.y],
-    "the saucer's position while one is up",
-  );
 });
 
 it("is read-only: the snapshot is identical across the toggle, but for the frame", async () => {
