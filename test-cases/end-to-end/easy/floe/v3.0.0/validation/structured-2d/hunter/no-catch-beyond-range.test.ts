@@ -2,16 +2,21 @@
 //
 // specs/hunter.md puts the catch at a straight-line distance between centres of
 // AT MOST `BEAR_CATCH_DIST` (`18`) stage units. This is the far side of that
-// figure: at `24` units the bear is out of reach, and three seconds of standing
-// there costs the critter nothing.
+// figure, ONE UNIT beyond it: at `BEAR_CATCH_DIST + 1` (`19`) units the bear is
+// out of reach, and three seconds of standing there costs the critter nothing.
+//
+// ONE UNIT, AND DERIVED FROM THE CONSTANT. `catches` poses the same diagonal one
+// unit INSIDE the figure, so the pair brackets `BEAR_CATCH_DIST` to a single unit
+// either side rather than leaving a build free to use any figure between the two
+// — and both are written from `BEAR_CATCH_DIST` itself, so a change to the
+// specification carries them with it.
 //
 // THE OFFSET IS DIAGONAL, so the wrong measures read as different numbers. The
-// straight line is `24` and outside the range; the larger of the two axes is
-// `16.97` and inside it, so a build that compared axes rather than the hypotenuse
-// takes a life here where none is owed. `catches` poses the same diagonal one unit
-// INSIDE the figure, and the pair pins the rule from both ends: a build that
-// catches at any distance passes there and fails here, and one that never catches
-// fails there and passes here.
+// straight line is `19` and outside the range; the larger of the two axes is
+// `13.44` and inside it, so a build that compared axes rather than the hypotenuse
+// takes a life here where none is owed. The pair pins the rule from both ends: a
+// build that catches at any distance passes `catches` and fails here, and one
+// that never catches fails there and passes here.
 //
 // The catch-test gate is on, because a check that a catch does NOT happen means
 // nothing with the gate that decides catches shut. The bear's travel is off, as
@@ -20,7 +25,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import { START_LIVES, colAt, rowAt, tileCX, tileCY } from "../../src/constants";
+import {
+  BEAR_CATCH_DIST,
+  START_LIVES,
+  colAt,
+  rowAt,
+  tileCX,
+  tileCY,
+} from "../../src/constants";
 import {
   captureReplay,
   createHarness,
@@ -35,8 +47,8 @@ import { requireBear } from "./harness";
 const COL = 20;
 const ROW = 15;
 
-/** The straight-line distance posed, in stage units, from the item. */
-const POSED_DISTANCE = 24;
+/** The straight-line distance posed: one unit past the rule's own figure. */
+const POSED_DISTANCE = BEAR_CATCH_DIST + 1;
 
 /** The offset on each axis that puts the two centres exactly that far apart. */
 const AXIS_OFFSET = POSED_DISTANCE / Math.SQRT2;

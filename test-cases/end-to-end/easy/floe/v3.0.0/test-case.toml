@@ -1700,7 +1700,7 @@ validation = { script = "hunter/catches.test.ts", outputs = [
 [[review.categories.items]]
 id = "no-catch-beyond-range"
 title = "A bear just out of reach catches nothing"
-description = "With the catch test on, a bear posed 24 units from the critter's centre with its travel off costs no life over three seconds."
+description = "With the catch test on, a bear posed BEAR_CATCH_DIST + 1 (19) units from the critter's centre with its travel off costs no life over three seconds."
 domains = ["hunter"]
 failure_cap = "passable"
 validation = { script = "hunter/no-catch-beyond-range.test.ts", outputs = [
