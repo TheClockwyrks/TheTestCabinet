@@ -23,8 +23,11 @@
 //   that is not slowable never carries a slow, WHATEVER HITS IT", which is a claim
 //   about a hit rather than about a field, and `setUnitSlow` poses the field
 //   directly and says nothing about the column. So a cold level-I Rime — the one
-//   emitter in the game that slows — fires one shot at the unit, and what the
-//   Core carries afterwards is the reading.
+//   emitter in the game that slows — fires one shot at the unit, and whether the
+//   unit carries a slow afterwards is the reading. The column is a BOOLEAN, so
+//   that is all this point reads: how deep a cold Rime's slow runs is
+//   `combat.rime-slows-when-cold`'s figure, and reading it here would fail six
+//   roster items for one wrong ceiling.
 //
 //   THE BOUNTY is paid "On the frame a unit's hp reaches `0`" and the LEAK is
 //   charged on the frame the unit reaches its exhaust (`specs/economy.md`,
@@ -45,7 +48,7 @@ import {
   assertGreaterThan,
   assertTrue,
 } from "../assert";
-import { RIME_SLOW_CEIL, SURGE_DEFS, TRIP_HEAT } from "../constants";
+import { SURGE_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -65,20 +68,11 @@ import {
 const ROW = SURGE_DEFS.core;
 
 /**
- * The slow a cold level-I Rime asks for: `slowCeil * (1 - H / 100)` at `H` `0`,
- * which is `RIME_SLOW_CEIL[0]` (`specs/combat.md`).
- *
- * The gun is pinned at heat `0`, so the factor cannot drift under the reading.
- */
-const OFFERED_SLOW = RIME_SLOW_CEIL[SLOW_GUN_LEVEL - 1] * (1 - 0 / TRIP_HEAT);
-
-/**
  * How close a figure read off the snapshot must come, as decimal places.
  *
- * Three places is `0.0005`. Every figure below is exact arithmetic on both
- * sides — a table lookup, or that lookup times `1 - slowFactor` — so a conformant
- * build reads it exactly and the bound admits nothing but the last bits of a
- * double. It is three orders under the closest two figures the table has to keep
+ * Three places is `0.0005`. Every figure below is a table lookup read straight
+ * back, so a conformant build reads it exactly and the bound admits nothing but
+ * the last bits of a double. It is three orders under the closest two figures the table has to keep
  * apart: the `60` and `70` of the Mote and the Swarm.
  */
 const DIGITS = 3;
@@ -107,10 +101,22 @@ it("carries the Core's hp, speed, flight, slowability, bounty and leak", async (
     "the maximum hp a Core entering on Wave 1 carries (specs/surge.md)",
   );
   assertCloseTo(
+    entered.hp,
+    entered.maxHp,
+    DIGITS,
+    "the hp a Core enters on, which is full (specs/surge.md)",
+  );
+  assertCloseTo(
     entered.baseSpeed,
     ROW.speed,
     DIGITS,
     "the Core's unslowed speed, in logical units per second (specs/surge.md)",
+  );
+  assertCloseTo(
+    entered.speed,
+    ROW.speed,
+    DIGITS,
+    "the Core's current speed as it entered, carrying no slow (specs/surge.md)",
   );
   assertEqual(
     entered.flying,
@@ -128,21 +134,10 @@ it("carries the Core's hp, speed, flight, slowability, bounty and leak", async (
   );
   assertEqual(
     slow.unit.slowed,
-    false,
-    "whether the Core, which specs/surge.md marks Slowable: no, carries a " +
-      "slow after the one emitter that applies one hit it",
-  );
-  assertEqual(
-    slow.unit.slowFactor,
-    0,
-    `the slow on the Core after a shot whose factor would have been ` +
-      `${OFFERED_SLOW} (specs/combat.md)`,
-  );
-  assertCloseTo(
-    slow.unit.speed,
-    ROW.speed,
-    DIGITS,
-    "the Core's speed after a Rime hit it: its own figure, unreduced",
+    ROW.slowable,
+    "whether the Core, which specs/surge.md marks Slowable: " +
+      `${ROW.slowable ? "yes" : "no"}, carries the slow the one emitter that ` +
+      "applies one left on it (specs/surge.md, specs/combat.md)",
   );
 
   // THE BOUNTY: what the death paid into the money.
