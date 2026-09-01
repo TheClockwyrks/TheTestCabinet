@@ -451,11 +451,11 @@ description = "The table's geometry, the four screens and the HUD, whether the p
 # relative importance of a failure is carried by `failure_cap`, not by arithmetic.
 #
 # A category carries no prose of its own; each item states in `description` the
-# claim its validator checks. The fourteen categories below hold 226 COMMON items,
+# claim its validator checks. The fourteen categories below hold 228 COMMON items,
 # applying to every run whatever its engine or variant. Each variant contributes
 # its own additive points to the common `stock` category — six on Draw One, ten on
-# Draw Three — so a Draw One run is rated on 232 points and a Draw Three run on
-# 236. The checklist is reporter-side material, never seeded into a run, so the
+# Draw Three — so a Draw One run is rated on 234 points and a Draw Three run on
+# 238. The checklist is reporter-side material, never seeded into a run, so the
 # model never sees it. Every item restates a requirement the seeded specification
 # already states, in the spec's own vocabulary and naming the spec's own constants,
 # and every threshold a validator asserts is derived from a figure or rule in the
@@ -1495,11 +1495,19 @@ validation = { script = "runs/full-run.test.ts", outputs = [
 # what is left of the set turned before it once a set is played off entirely.
 # `wasteVisibleCount` is a consequence of that rule rather than a counter reading.
 #
-# Four points here carry the rule directly (`turn-starts-a-set`,
-# `set-shrinks-on-play`, `cancelled-drag-returns-to-set` and
-# `recycle-clears-sets`), and each variant contributes the fallback point that
-# decides it, over a waste large enough that no wrong model is clamped into the
-# right answer by the size of the pile.
+# Six points here carry the rule directly (`turn-starts-a-set`,
+# `set-shrinks-on-play`, `cancelled-drag-returns-to-set`, `recycle-clears-sets`,
+# `no-sets-shows-nothing` and `no-sets-refuses-move`), and each variant contributes
+# the fallback point that decides it, over a waste large enough that no wrong model
+# is clamped into the right answer by the size of the pile.
+#
+# The last two of those six decide the END of the rule — the state a waste reaches
+# when its memory is empty and its cards are not. `clearWasteSets()` reaches it
+# directly (specs/instrumentation.md) and play reaches it by drawing three, playing
+# one, drawing three and playing all three, and the specification states both of its
+# consequences positively: such a waste SHOWS no card, and it OFFERS none to play.
+# Neither had a reading before, which left the same class of under-determination the
+# set memory exists to close.
 #
 # A common validator in this group NEVER hard-codes a turn count. Where a scenario
 # has to size itself to the deal mode it reads `snapshot().turnCount`, which
@@ -1633,6 +1641,24 @@ domains = ["rules"]
 failure_cap = "passable"
 validation = { script = "stock/recycle-clears-sets.test.ts", outputs = [
   { id = "recycled", name = "The waste with its set memory emptied", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-sets-shows-nothing"
+title = "A waste with no sets shows no card"
+description = "A waste holding cards whose set memory is empty draws its anchor exactly as an empty waste does, showing none of the cards it holds."
+domains = ["rules", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "stock/no-sets-shows-nothing.test.ts", outputs = [
+  { id = "hidden", name = "The waste holding cards and showing none", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-sets-refuses-move"
+title = "A waste with no sets offers no card to play"
+description = "A move naming a card on a waste whose set memory is empty is refused, and the board is unchanged."
+domains = ["rules"]
+failure_cap = "scuffed"
+validation = { script = "stock/no-sets-refuses-move.test.ts", outputs = [
+  { id = "refused", name = "The board, unchanged by the refused move", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "recycle-unlimited"
