@@ -29,11 +29,7 @@
 // `overload/overload-scores-nothing`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FORM_CENTER_X,
-  OVERLOAD_AT,
-  RESONANCE_MAX,
-} from "../../src/constants";
+import { FORM_CENTER_X, OVERLOAD_AT, RESONANCE_MAX } from "../../src/constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
