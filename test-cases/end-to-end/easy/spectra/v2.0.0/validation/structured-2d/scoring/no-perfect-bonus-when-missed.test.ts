@@ -24,9 +24,9 @@
 // `SCORE_STAGE_CLEAR` (`1000`) to `scoring.challenge-pays-no-stage-bonus` rather
 // than failing it twice.
 //
-// WHY THE WAVE'S ENTRY GATE STAYS OPEN. It is the one world gate {@link openWave}
-// can be asked to leave on, and this is the check that needs it: a drone is
-// released by the wave's own clock on the `ENTER_GROUP_GAP` schedule
+// WHY THE WAVE'S ENTRY GATE STAYS OPEN. {@link openWave} leaves it running for
+// every point that uses it, and this is the check that most plainly needs it: a
+// drone is released by the wave's own clock on the `ENTER_GROUP_GAP` schedule
 // (specs/swarm.md), and a drone that was never released has no sweep to fly. The
 // gate releases drones; it moves none, because every drone's travel gate is shut
 // until this check opens the survivor's.
@@ -103,7 +103,7 @@ afterEach(() => {
 it("pays no SCORE_PERFECT_BONUS when one challenge drone was never destroyed", async () => {
   // The wave's own entry runs, so every group — the survivor's included — is
   // released on the schedule specs/swarm.md states.
-  const opened = await openWave(h, CHALLENGE_STAGE, { waveEntry: true });
+  const opened = await openWave(h, CHALLENGE_STAGE);
 
   assertEqual(
     opened.isChallenge,

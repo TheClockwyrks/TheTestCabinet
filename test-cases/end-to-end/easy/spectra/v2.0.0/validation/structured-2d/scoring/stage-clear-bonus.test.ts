@@ -19,8 +19,9 @@
 //
 // THE WAVE IS THE GAME'S OWN, AND EVERY ONE OF ITS DRONES IS DESTROYED. A stage
 // clears on "the last drone of ITS wave", and a wave nothing built has no last
-// drone — so {@link openWave} runs stage 1 out of its intro and holds the wave the
-// build laid out still, and {@link destroyDrone} empties it one drone at a time.
+// drone — so {@link openWave} runs stage 1 out of its intro and holds every drone
+// of the wave the build laid out still, and {@link destroyDrone} empties it one
+// drone at a time.
 // Nothing is removed by the surface and nothing is left standing, so the two ways
 // a build can read "its wave" — the drones the stage built, or the drones on the
 // field — agree, and the clear this point reads is the build's own rule firing.

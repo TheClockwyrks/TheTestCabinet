@@ -25,9 +25,11 @@
 // The two readings are numerically the same rule here, so no scenario could tell
 // them apart, and this point does not pretend to.
 //
-// THE FLYOVER IS HELD STILL. {@link openWave} shuts the three world gates and
-// every drone's three faculties, so the other thirty-nine hold their starting
-// points and take no part while one is brought to the kill spot and shot. That
+// THE FLYOVER IS HELD STILL. {@link openWave} shuts every drone's three
+// faculties — and the dive and contact gates, though a challenge stage launches no
+// dive anyway — so the other thirty-nine hold their starting points and take no
+// part while one is brought to the kill spot and shot. The wave's own entry is
+// left running, for the reason `wave.ts` states. That
 // leaves thirty-nine drones on the field, so the stage does not end under this
 // kill and no bonus of any kind lands in the number this check reads —
 // `scoring.perfect-bonus` is where a whole flyover is paid for.

@@ -26,8 +26,10 @@
 //
 // THE FORTY ARE THE GAME'S OWN, AND THEY ARE DESTROYED ONE BY ONE. Only the game
 // can build a flyover, so {@link openWave} runs stage `CHALLENGE_EVERY` (`3`) out
-// of its intro and holds it still; {@link destroyDrone} then brings each drone to
-// one clear spot and shoots it. Every drone the stage built is destroyed, so
+// of its intro and holds every drone of it still — leaving the wave's own entry
+// running, for the reason `wave.ts` states, since a stage's end is the wave's own
+// event; {@link destroyDrone} then brings each drone to one clear spot and shoots
+// it. Every drone the stage built is destroyed, so
 // "every one of a challenge stage's CHALLENGE_TOTAL drones" is true under any
 // reading of the phrase, and the stage's end is reached by the build's own rule
 // rather than by anything this check posed.
