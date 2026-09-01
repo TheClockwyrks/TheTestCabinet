@@ -32,8 +32,8 @@ import {
   CARD_H,
   CARD_W,
   FOUNDATION_X,
-  STOCK_X,
   TOP_ROW_Y,
+  WASTE_X,
 } from "../../src/constants";
 import {
   ACE,
@@ -66,16 +66,22 @@ const SIZE_TOLERANCE = 2;
 const SAME_POSITION = 2 * ANCHOR_TOLERANCE;
 
 /**
- * The band the waste's cards are drawn in: right of the stock's card, left of the
- * first foundation (specs/table.md).
+ * The band the waste's cards are drawn in: a card's width left of the waste
+ * anchor, and left of the first foundation (specs/table.md).
  *
- * The bounds are the neighbours' own, not the fan's, because this reading counts
- * the waste's cards rather than placing them. Nothing else is on the table, so
- * the only other card-sized marks in the top row are the empty-slot marks the
- * stock and the four foundations draw at their own anchors, and both lie outside
- * this band.
+ * The bounds are wide, not tight, because this reading COUNTS the waste's cards
+ * rather than placing them — where each one lands is
+ * `draw-three/waste-fans-shown-set`. Nothing else is on the table, so the only
+ * other card-sized marks in the top row are the empty-slot marks the stock and
+ * the four foundations draw at their own
+ * anchors (specs/table.md). The left bound is `WASTE_X - CARD_W` (`246`) rather
+ * than the stock's own anchor, because a build is free to inset its empty-slot
+ * stroke by a unit and that mark is admitted by the same footprint and anchor
+ * tolerances this filter allows; twenty-two units of clearance keep the stock's
+ * mark out of the count whichever way it is drawn. The `none` and `simple-2d`
+ * suites read the same band.
  */
-const BAND_LEFT = STOCK_X + CARD_W;
+const BAND_LEFT = WASTE_X - CARD_W;
 const BAND_RIGHT = FOUNDATION_X[0];
 
 /**
@@ -111,7 +117,7 @@ function wastePositions(shapes: readonly DrawnShape[]): number {
         Math.abs(shape.w - CARD_W) <= SIZE_TOLERANCE &&
         Math.abs(shape.h - CARD_H) <= SIZE_TOLERANCE &&
         Math.abs(shape.y - TOP_ROW_Y) <= ANCHOR_TOLERANCE &&
-        shape.x > BAND_LEFT - CARD_W &&
+        shape.x >= BAND_LEFT &&
         shape.x < BAND_RIGHT,
     )
     .map((shape) => shape.x)
