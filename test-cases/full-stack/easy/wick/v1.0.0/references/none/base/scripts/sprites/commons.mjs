@@ -7,25 +7,26 @@
 // beetle is a domed shell on six legs, the wisp is a flame with a face, the
 // spider is eight legs about a small body, the crow is a beak and a spread
 // wing, the shade is a hooded robe with no legs, and the hound is a running
-// dog. The four frames are the poses up, mid, down, mid, so each cycle
-// wraps. Fliers face the camera and are symmetric; walkers face right and
-// are mirrored in code.
+// dog. The four frames are four phases of one cycle, up, falling, down, and
+// rising, each a picture of its own so the cycle wraps without repeating.
+// Fliers face the camera and are symmetric; walkers face right and are
+// mirrored in code.
 
 import { C } from "./palette.mjs";
 import { Raster, drawSheet } from "./raster.mjs";
 
-/** The pose each of the four frames shows: up, mid, down, mid. */
-const POSES = [0, 1, 2, 1];
+const FRAMES = 4;
 
 function walkCycle(tools, out, id, size, pose) {
-  drawSheet(tools, `${out}/sprites/enemies/${id}`, size, size, 4, (sheet) => {
-    POSES.forEach((p, i) => sheet.frame(i, pose(p)));
+  const sheetPath = `${out}/sprites/enemies/${id}`;
+  drawSheet(tools, sheetPath, size, size, FRAMES, (sheet) => {
+    for (let i = 0; i < FRAMES; i += 1) sheet.frame(i, pose(i));
   });
 }
 
-/** Lerp between the up, mid, and down values of a pose. */
-function at(pose, up, mid, down) {
-  return [up, mid, down][pose];
+/** The value the pose's frame carries, one per frame in cycle order. */
+function at(pose, up, falling, down, rising) {
+  return [up, falling, down, rising][pose];
 }
 
 /** Scale a polygon's `x` coordinates toward `axis` by `s`. */
@@ -37,7 +38,7 @@ function fold(points, axis, s) {
 
 function moth(pose) {
   const r = new Raster(20, 20);
-  const s = at(pose, 1, 0.72, 0.42);
+  const s = at(pose, 1, 0.72, 0.42, 0.86);
   const upper = fold(
     [
       [9, 7],
@@ -103,6 +104,14 @@ function bat(pose) {
       [6, 14],
       [8, 12],
     ],
+    [
+      [8, 8],
+      [1.5, 8],
+      [1.5, 12],
+      [3, 13],
+      [5, 12.5],
+      [8, 12],
+    ],
   ][pose];
   r.poly(wing, C.batWing);
   // The fingers through the membrane.
@@ -155,10 +164,15 @@ function rat(pose) {
       [1.5, 19],
       [4, 21],
     ],
+    [
+      [3, 14],
+      [0.5, 16],
+      [2, 19],
+    ],
   ][pose];
   r.polyline(tail, C.pink, 1.3);
   // Legs: the near pair swings with the pose, the far pair against it.
-  const swing = at(pose, 2, 0, -2);
+  const swing = at(pose, 2, 0, -2, 1);
   r.line(7, 17, 7 - swing, 21, C.furDark, 2);
   r.line(16, 17, 16 + swing, 21, C.furDark, 2);
   r.line(9, 17, 9 + swing, 21, C.fur, 2);
@@ -197,6 +211,7 @@ function gnat(pose) {
     [4, 7, 3.5, 1.3],
     [4.5, 8, 3, 1.9],
     [5, 9.5, 2.5, 1.6],
+    [4.2, 8.8, 3.2, 1.2],
   ][pose];
   r.ellipse(wx, wy, rx, ry, C.gnatWing);
   r.ellipse(16 - wx, wy, rx, ry, C.gnatWing);
@@ -207,7 +222,7 @@ function gnat(pose) {
 
 function beetle(pose) {
   const r = new Raster(28, 28);
-  const stride = at(pose, 2, 0, -2);
+  const stride = at(pose, 2, 0, -2, 1);
   const legs = [
     [
       [7, 10],
@@ -244,7 +259,7 @@ function beetle(pose) {
 
 function wisp(pose) {
   const r = new Raster(20, 20);
-  const tip = at(pose, 10, 13, 7);
+  const tip = at(pose, 10, 13, 7, 11.5);
   r.ring(10, 13, 8, 6, C.wispOuter);
   r.disc(10, 13, 5.5, C.wispOuter);
   r.poly(
@@ -351,6 +366,28 @@ function spider(pose) {
         [7, 27],
       ],
     ],
+    [
+      [
+        [12, 10],
+        [4.5, 4.5],
+        [1, 8],
+      ],
+      [
+        [12, 11],
+        [3, 10.5],
+        [0.5, 13],
+      ],
+      [
+        [12, 12],
+        [4, 17.5],
+        [1.5, 23.5],
+      ],
+      [
+        [12, 13],
+        [7, 21],
+        [5.5, 27],
+      ],
+    ],
   ][pose];
   for (const leg of legs) r.polyline(leg, C.spiderLeg, 1.6);
   r.mirror(14);
@@ -407,6 +444,12 @@ function crow(pose) {
       [11, 22],
       [15, 13],
     ],
+    [
+      [8, 12],
+      [2, 15],
+      [1, 18],
+      [15, 13],
+    ],
   ][pose];
   r.ellipse(11, 14, 6.5, 3.5, C.crow);
   r.poly(
@@ -438,8 +481,8 @@ function crow(pose) {
 
 function shade(pose) {
   const r = new Raster(32, 32);
-  const dy = at(pose, 0, -1, 0);
-  const sway = at(pose, -1, 0, 1);
+  const dy = at(pose, 0, -1, 0, 1);
+  const sway = at(pose, -1, 0, 1, 0);
   const hem = [];
   for (let x = 28, i = 0; x >= 4; x -= 3, i += 1) {
     hem.push([x + sway * (i % 2 === 0 ? 1 : -1), i % 2 === 0 ? 27 : 30.5]);
@@ -491,12 +534,18 @@ function hound(pose) {
       [9, 22, 13, 29],
       [11, 22, 16, 30],
     ],
+    [
+      [24, 22, 27, 30],
+      [22, 22, 24, 30],
+      [9, 22, 6, 30],
+      [11, 22, 10, 30],
+    ],
   ][pose];
   legs.forEach(([x0, y0, x1, y1], i) => {
     r.line(x0, y0, x1, y1, i % 2 === 0 ? C.houndDark : C.hound, 3);
     r.set(Math.round(x1), Math.round(y1), C.houndRim);
   });
-  const tailTip = at(pose, 7, 9, 11);
+  const tailTip = at(pose, 7, 9, 11, 8);
   r.polyline(
     [
       [6, 16],

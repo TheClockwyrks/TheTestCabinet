@@ -4,12 +4,13 @@
 // moth with eyespots on wings that fold toward its body, the Owl is a broad
 // round bird whose wings the sheet's layers swing at the shoulder, and the
 // Dark is a black mass of eyes whose tendrils the sheet's layers turn, one
-// fifth of a revolution across the four frames so the spin wraps.
+// fifth of a revolution across the four frames so the spin wraps. Each sheet's
+// four frames are four phases of one cycle, no two of them the same picture.
 
 import { C } from "./palette.mjs";
 import { Raster, drawSheet } from "./raster.mjs";
 
-const POSES = [0, 1, 2, 1];
+const FRAMES = 4;
 
 function fold(points, axis, s) {
   return points.map(([x, y]) => [axis - (axis - x) * s, y]);
@@ -19,7 +20,7 @@ function fold(points, axis, s) {
 
 function mothwing(pose) {
   const r = new Raster(56, 56);
-  const s = [1, 0.78, 0.55][pose];
+  const s = [1, 0.78, 0.55, 0.9][pose];
   const upper = fold(
     [
       [25, 18],
@@ -178,7 +179,7 @@ function owl(tools, out) {
     sheet.layer("wing-left", left, { x: 6, y: 4, z: 0 });
     sheet.layer("wing-right", right, { x: 22, y: 4, z: 0 });
     sheet.layer("body", owlBody(), { x: 0, y: 0, z: 1 });
-    const swing = [25, 0, -25, 0];
+    const swing = [25, 5, -25, -5];
     swing.forEach((deg, i) => {
       sheet.key("wing-left", "rotation", i, deg, "constant");
       sheet.key("wing-right", "rotation", i, -deg, "constant");
@@ -290,8 +291,9 @@ function dark(tools, out) {
 }
 
 export function produceElites(tools, out) {
-  drawSheet(tools, `${out}/sprites/enemies/mothwing`, 56, 56, 4, (sheet) => {
-    POSES.forEach((p, i) => sheet.frame(i, mothwing(p)));
+  const mothwingPath = `${out}/sprites/enemies/mothwing`;
+  drawSheet(tools, mothwingPath, 56, 56, FRAMES, (sheet) => {
+    for (let i = 0; i < FRAMES; i += 1) sheet.frame(i, mothwing(i));
   });
   owl(tools, out);
   dark(tools, out);

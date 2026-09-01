@@ -2,8 +2,9 @@
 //
 // The lamplighter is drawn facing right and mirrored in code; his lamp hangs
 // from a pole held out on the facing side, so the lamp always leads. The walk
-// sheet's six frames are two strides with a passing pose between, the body
-// dipping on the contact frames and the lamp swinging a pixel behind it.
+// sheet's six frames are two half-strides of three, a contact, a low, and a
+// passing pose, each half leading with the other leg, with the body dipping
+// through the low frames and the lamp swinging a pixel behind it.
 
 import { C } from "./palette.mjs";
 import { Raster, drawSheet, drawSprite } from "./raster.mjs";
@@ -100,11 +101,35 @@ const LEGS = {
     "...BBB..........BBB.....",
     "...BBBB.........BBBB....",
   ],
-  passing: [
+  lowA: [
+    ".......cc...CC..........",
+    ".......cc....CC.........",
+    "......cc......CC........",
+    "......cc......CC........",
+    ".....BBB......BBB.......",
+    ".....BBBB.....BBBB......",
+  ],
+  lowB: [
+    ".......CC...cc..........",
+    ".......CC....cc.........",
+    "......CC......cc........",
+    "......CC......cc........",
+    ".....BBB......BBB.......",
+    ".....BBBB.....BBBB......",
+  ],
+  passA: [
     ".......cc...CC..........",
     ".......cc..CC...........",
     "........ccCC............",
     "........cCCC............",
+    ".......BBBB.............",
+    ".......BBBBB............",
+  ],
+  passB: [
+    ".......CC...cc..........",
+    ".......CC..cc...........",
+    "........CCcc............",
+    "........Cccc............",
     ".......BBBB.............",
     ".......BBBBB............",
   ],
@@ -127,12 +152,12 @@ export function produceLamplighter(tools, out) {
     lamplighter("stand", 0, 0),
   );
   const frames = [
-    ["strideA", 1, 1],
-    ["passing", 0, 0],
-    ["stand", -1, -1],
-    ["strideB", 1, 1],
-    ["passing", 0, 0],
-    ["stand", -1, -1],
+    ["strideA", 0, 1],
+    ["lowA", 1, 1],
+    ["passA", -1, 0],
+    ["strideB", 0, 1],
+    ["lowB", 1, 1],
+    ["passB", -1, 0],
   ];
   drawSheet(tools, `${out}/sprites/lamplighter/walk`, 24, 32, 6, (sheet) => {
     frames.forEach(([legs, dy, lampDy], i) => {
