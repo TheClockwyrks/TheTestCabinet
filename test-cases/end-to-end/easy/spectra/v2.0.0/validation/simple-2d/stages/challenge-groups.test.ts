@@ -23,6 +23,22 @@
 // stage `CHALLENGE_EVERY`, and then the stage is left alone to fly. Nothing is
 // posed on the field: how many drones a challenge stage sends and when it lets
 // them go is the whole question.
+//
+// WHY THE FORTY ARE COUNTED OVER THE WHOLE SWEEP RATHER THAN AT THE OPENING FRAME.
+// specs/stages.md says a challenge stage HOLDS forty drones and says nothing about
+// when they come into being — the roster rule specs/swarm.md states ("the drone
+// roster holds every drone of the wave from that moment") is written for a
+// standard wave. A build that spawns each group as it is released is therefore
+// conformant, and it is exactly the build `stages/flyover.ts` is written to read,
+// so counting the roster on the opening frame would fail it. What is counted
+// instead is every distinct drone the sweep ever saw, which is the same forty on a
+// build that puts them all out at once and the honest count on a build that does
+// not.
+//
+// THE SWEEP IS NOT STOPPED AT FORTY RELEASES, for the other direction: a build
+// that sends a SIXTH group lets its fortieth drone go with that sixth group still
+// to come, so a sweep that stopped on the count would never see it. It runs its
+// whole span instead, and stops early only when the stage itself ends.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -73,12 +89,14 @@ const MOVED_EPSILON = 0.5;
 const GROUP_GAP_FRAMES = ticksFor(ENTER_GROUP_GAP / 4);
 
 /**
- * Frames the sweep may run before it gives up.
+ * Frames the sweep runs.
  *
  * Long enough for every group on the stated schedule to be let go — the last of
  * five is released `4 * ENTER_GROUP_GAP` = 2.4 s in — with four times that again
- * for a build whose schedule is slower. A build that has not released all forty by
- * then is reported for the groups it did release rather than hanging.
+ * for a build whose schedule is slower, and for the group after a fifth that a
+ * build sending too many would let go. The sweep runs the whole span unless the
+ * stage ends inside it, so a build that has not released all forty by then is
+ * reported for the drones it did send rather than hanging.
  */
 const SWEEP_FRAMES = ticksFor(ENTER_GROUP_GAP * (CHALLENGE_GROUPS - 1) * 5);
 
@@ -106,17 +124,14 @@ it("sends CHALLENGE_TOTAL drones as CHALLENGE_GROUPS groups of CHALLENGE_PER_GRO
       maxFrames: SWEEP_FRAMES,
       poll: SAMPLE_FRAMES,
       movedEpsilon: MOVED_EPSILON,
-      stopWhen: (watch) =>
-        watch.tracks.filter((track) => track.releasedAt !== null).length >=
-        CHALLENGE_TOTAL,
     }),
   );
 
   assertLength(
-    flown.opened.drones,
+    flown.tracks,
     CHALLENGE_TOTAL,
-    "the drones a challenge stage puts on the field, CHALLENGE_TOTAL " +
-      "(specs/stages.md)",
+    "the drones a challenge stage puts on the field over the whole flyover, " +
+      "CHALLENGE_TOTAL (specs/stages.md)",
   );
 
   const groups = releaseGroups(flown.tracks, GROUP_GAP_FRAMES);
