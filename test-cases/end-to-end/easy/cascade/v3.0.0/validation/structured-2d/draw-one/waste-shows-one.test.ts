@@ -38,7 +38,13 @@
 // `snapshot().turnCount`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W, FOUNDATION_X, TOP_ROW_Y, WASTE_X } from "../../src/constants";
+import {
+  CARD_H,
+  CARD_W,
+  FOUNDATION_X,
+  TOP_ROW_Y,
+  WASTE_X,
+} from "../../src/constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACE,
