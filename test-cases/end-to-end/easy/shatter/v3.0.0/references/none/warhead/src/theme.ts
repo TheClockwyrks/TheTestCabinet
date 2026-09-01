@@ -20,8 +20,16 @@ export const COLOR = {
   bg: "#05070e",
   /** A panel behind text that would otherwise sit on something bright. */
   panel: "rgba(4, 6, 14, 0.86)",
-  /** A scrim over the frozen field behind the pause menu. */
-  scrim: "rgba(4, 6, 14, 0.78)",
+  /**
+   * A scrim over the frozen field behind the pause and game-over menus.
+   *
+   * Deliberately light: `specs/ui.md` requires the field to stay VISIBLE behind
+   * the pause menu, and every piece of text a screen shows to be legible against
+   * whatever sits behind it — and the HUD is under this scrim too, so a heavier
+   * one takes the score's own contrast down with the field's. What makes the menu
+   * legible is the plate under it ({@link COLOR.panel}) rather than the scrim.
+   */
+  scrim: "rgba(4, 6, 14, 0.5)",
   /** The ship's hull. */
   ship: "#6cf0ff",
   /** The ship's hull while its respawn grace runs. */
