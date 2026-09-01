@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CODE_METRICS } from "@test-cabinet/run-record/code-metrics";
 import {
   codeFigureFamilies,
   codeMetric,
@@ -80,7 +81,9 @@ describe("lookupMetric", () => {
   // what an absent language block looks like: a pure-Rust tree carries no `typescript`
   // block, and "TypeScript files: 0" for it would be noise dressed as a measurement.
   it("treats an absent block and an explicit null alike", () => {
-    expect(lookupMetric({ typescript: null }, "typescript.files")).toBeUndefined();
+    expect(
+      lookupMetric({ typescript: null }, "typescript.files"),
+    ).toBeUndefined();
     expect(lookupMetric({}, "typescript.files")).toBeUndefined();
   });
 });
@@ -119,5 +122,32 @@ describe("codeFigureFamilies", () => {
   it("names a family the way the CLI report does, and passes an unknown one through", () => {
     expect(familyHeading("graph")).toBe("Module graph");
     expect(familyHeading("brand-new")).toBe("brand-new");
+  });
+});
+
+describe("familyHeading", () => {
+  // The walk's diagnostics — what it truncated, what it skipped, what it refused — were
+  // headed "Coverage", which they never were. The heading collided with the console's
+  // Coverage feature area and, now that the page carries executed figures, with real code
+  // coverage.
+  it("heads the walk's own diagnostics as analysis notes", () => {
+    expect(familyHeading("notes")).toBe("Analysis notes");
+  });
+
+  // The static counts under this family are how much test code the model WROTE. Nothing
+  // under it ran, and the executed suite has the better claim to the word "Tests".
+  it("heads the static test counts as authorship, not as tests", () => {
+    expect(familyHeading("tests")).toBe("Test authorship");
+  });
+
+  // The assertion that keeps the collision from creeping back on any family at all: with
+  // executed coverage on the same page, exactly one thing may be called "Coverage", and
+  // it is not in this table.
+  it("gives no catalog family a heading that reads as executed results", () => {
+    const headings = new Set(
+      CODE_METRICS.map((metric) => familyHeading(metric.family)),
+    );
+    expect([...headings]).not.toContain("Coverage");
+    expect([...headings]).not.toContain("Tests");
   });
 });

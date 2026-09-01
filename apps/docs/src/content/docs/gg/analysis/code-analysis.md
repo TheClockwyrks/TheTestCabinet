@@ -174,11 +174,16 @@ metric that catches a model copy-pasting the enemy AI five times.
 Changing the window length changes what duplication means, so it requires an
 analyzer version bump.
 
-### Tests
+### Test authorship
 
 Test files, test functions and test code lines are static counts of the test
 code the model chose to write, computed by parsing and executing nothing. They
 are an authorship signal and must never be presented as coverage.
+
+What those tests actually ran and covered is a different measurement entirely.
+It rides on the run record's toolchain block, read from the report files the
+case's test command produced, and is documented in [the manifest's TypeScript
+toolchain](/testing/end-to-end/manifests/#the-typescript-toolchain).
 
 ## Two tiers
 
