@@ -13,27 +13,47 @@
 // `specs/overview.md` leaves the palette to the build, so what is required is that
 // the core is painted something the field is not.
 //
-// WHY A MAJORITY RATHER THAN A COUNT. The ship, a rock and the saucer are each only
-// required to READ APART from what is behind them, and a build may draw any of them
-// as an outline — so those items ask for a mark rather than a fill. The core is
-// different: `specs/field.md` calls it solid and `specs/overview.md` calls it
-// bright, so the disc of its radius is drawn rather than outlined. A quarter of the
-// disc is left over all the same, which is room for a build that draws a darker
-// centre, a spot, or a rim detail inside its own core.
+// TWO READINGS, BECAUSE THE ITEM IS THE RADIUS.
+//   - THE DISC IS FILLED. The ship, a rock and the saucer are each only required to
+//     READ APART from what is behind them, and a build may draw any of them as an
+//     outline — so those items ask for a mark rather than a fill. The core is
+//     different: `specs/field.md` calls it solid and `specs/overview.md` calls it
+//     bright, so the disc of its radius is drawn rather than outlined. A quarter of
+//     the disc is left over all the same, which is room for a build that draws a
+//     darker centre, a spot, or a rim detail inside its own core.
+//   - AND IT IS THE CORE RATHER THAN THE HALO. The disc inside `CORE_R` is brighter
+//     than the ring just outside it by `CORE_ABOVE_HALO`. Without this half the item
+//     grades nothing at all: a star drawn as one undifferentiated glow paints every
+//     sample inside `CORE_R` too, and the first reading alone cannot tell it from a
+//     star with a core. `specs/overview.md` fixes which way round the two go — a
+//     bright core, a SOFTER halo — so the comparison is the specification's own.
+//
+// LUMINANCE FOR THE SECOND, DISTANCE FROM THE FIELD FOR THE FIRST, and each is the
+// reading its own sentence asks for: "drawn apart from what is behind it" is a
+// distance between two colours, and "bright" against "softer" is a brightness.
+// Neither fixes a colour; `specs/overview.md` leaves the palette to the build.
 //
 // THE POSE. An emptied, gated field with the ship parked in the far corner, so the
 // one body no scenario can remove is nowhere near the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CORE_R } from "../../src/constants";
-import { assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
   startPlaying,
   type Harness,
 } from "../harness";
-import { DISC_SAMPLES, markedCount, readDisc, readPainted } from "./ink";
+import {
+  DISC_SAMPLES,
+  markedCount,
+  meanLuminance,
+  readDisc,
+  readPainted,
+  readPoints,
+  ringPoints,
+} from "./ink";
 import { FAR_SHIP, sampleField, STAR } from "./scene";
 
 /** How far a sample must be from the field to be the star's, of 441. The item's figure. */
@@ -48,6 +68,23 @@ const APART = 60;
  */
 const MIN_FRACTION = 0.75;
 
+/** Where the halo is read: four units outside `CORE_R`, clear of the core's own edge. */
+const HALO_AT = CORE_R + 4;
+
+/** Samples around that ring: enough that one textured patch cannot move the mean. */
+const HALO_SPOKES = 48;
+
+/**
+ * How much brighter the core must read than the halo just outside it, out of 255.
+ *
+ * A tenth of full. `specs/overview.md` fixes the core as the BRIGHT part and the
+ * halo as the SOFTER one, so any star with a core at all clears this — and it is
+ * small enough that a build whose core is only moderately brighter than the glow
+ * around it still passes, while a star drawn as one even glow, whose core and halo
+ * read the same, does not.
+ */
+const CORE_ABOVE_HALO = 25;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -58,7 +95,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("paints the disc of CORE_R about the field's centre apart from the field", async () => {
+it("paints the disc of CORE_R apart from the field and brighter than the halo outside it", async () => {
   startPlaying(h);
   h.debug.setShipPosition(FAR_SHIP.x, FAR_SHIP.y);
   await h.advance(1);
@@ -66,11 +103,18 @@ it("paints the disc of CORE_R about the field's centre apart from the field", as
   const painted = readPainted(h);
   const field = sampleField(painted);
   const core = readDisc(painted, STAR, CORE_R);
+  const halo = readPoints(painted, ringPoints(STAR, HALO_AT, HALO_SPOKES));
   captureStill(h, "core");
 
   assertGreaterThanOrEqual(
     markedCount(core, field, APART),
     Math.round(MIN_FRACTION * DISC_SAMPLES),
     `of ${DISC_SAMPLES} samples inside CORE_R of (640, 360), how many are more than ${APART} of 441 from the field the build drew (specs/field.md)`,
+  );
+
+  assertGreaterThan(
+    meanLuminance(core) - meanLuminance(halo),
+    CORE_ABOVE_HALO,
+    `how much brighter, out of 255, the disc inside CORE_R reads than the halo at ${HALO_AT}, so the core is drawn at its radius rather than the star being one even glow (specs/overview.md)`,
   );
 });

@@ -285,6 +285,14 @@ export function meanDistance(look: readonly Rgb[], background: Rgb): number {
   return total / look.length;
 }
 
+/** The mean luminance of a set of readings, out of 255. */
+export function meanLuminance(look: readonly Rgb[]): number {
+  if (look.length === 0) return 0;
+  let total = 0;
+  for (const reading of look) total += luminance(reading);
+  return total / look.length;
+}
+
 /* -------------------------------------------------------------------------- */
 /* A rectangle of the canvas, reduced to cells                                */
 /* -------------------------------------------------------------------------- */
