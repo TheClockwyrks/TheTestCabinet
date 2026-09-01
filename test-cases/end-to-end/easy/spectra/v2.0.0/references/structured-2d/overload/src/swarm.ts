@@ -129,7 +129,15 @@ export function releaseTime(drone: DroneState): number {
 
 /** Whether the wave has released `drone` yet. */
 export function released(state: SpectraState, drone: DroneState): boolean {
-  return state.entryClock >= releaseTime(drone);
+  // A drone under way is under way: its own phase clock has started, and
+  // `specs/instrumentation.md` leaves such a drone flying its entrance as usual
+  // even once the wave's entry has been gated off.
+  if (drone.phaseClock > 0) return true;
+  // Otherwise the wave's own release is what puts it under way, and that release
+  // is exactly what `setWaveEntry(false)` gates — the first group at entry clock
+  // zero included, since with the gate shut the clock never leaves zero and no
+  // group's turn ever comes.
+  return state.waveEntry && state.entryClock >= releaseTime(drone);
 }
 
 /**
