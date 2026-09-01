@@ -197,6 +197,26 @@ impl ResolvedEngine {
     pub fn docs(&self) -> Option<&str> {
         self.manifest.docs.as_deref()
     }
+
+    /// Whether seeding copies this engine's documentation into the run repository at
+    /// [`ENGINE_DOCS_DIR`](crate::execution::ENGINE_DOCS_DIR).
+    ///
+    /// Both halves of
+    /// [`vendor_engine`](crate::seeding::FsRepoSeeder)'s condition, in one place a
+    /// reader downstream of seeding can ask: the engine must vendor a runtime at all,
+    /// and its manifest must name a docs directory inside that runtime's package.
+    ///
+    /// It exists because `engine/` at a run's tree ROOT means two different things
+    /// depending on the answer. When this is true the directory is the engine's
+    /// markdown, written there by the host and authored by nobody in the run; when it
+    /// is false — every [`NONE_SLUG`] run, and any case that seeds source of its own
+    /// there — the same path holds the model's work. The
+    /// [code analysis](crate::code_analysis)'s floor asks this rather than matching
+    /// the name, because matching the name deletes a model's submission from every
+    /// figure on the page.
+    pub fn seeds_docs(&self) -> bool {
+        self.provides_runtime() && self.manifest.docs.is_some()
+    }
 }
 
 /// Resolves an [`EngineSelection`] into a [`ResolvedEngine`].

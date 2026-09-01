@@ -35,6 +35,7 @@ use flate2::write::GzEncoder;
 use test_cabinet_core::post_run::{PostRunContext, PostRunReport, PostRunStage};
 use test_cabinet_core::{CODE_ANALYSIS_TREE_ARTIFACT, CodeAnalysisDocument, CodeTreeBasis, Result};
 
+use crate::walk::RootSeeding;
 use crate::{AnalysisRequest, analyze};
 
 /// The [post-run stage](test_cabinet_core::post_run) that statically analyses the code a
@@ -72,6 +73,20 @@ impl PostRunStage for StaticCodeAnalyzer {
         let root = context.artifacts.repo_path.clone();
         let seed_commit = context.seed_commit.to_string();
         let output = context.run_dir.join(CODE_ANALYSIS_TREE_ARTIFACT);
+        // Whether this run's engine copied its own documentation to the tree root. The
+        // engine is stamped on the tree's description at seed time, so this is a fact
+        // about the tree in hand rather than a guess made from a directory's name — and
+        // the walk's floor needs exactly that, because `engine/` at the root is the
+        // engine's markdown on one run and the whole of the model's submission on the
+        // next. A tree carrying no engine (a salvage path, an older record) answers
+        // `false`, which floors nothing.
+        let root_seeding = RootSeeding {
+            engine_docs: context
+                .artifacts
+                .engine
+                .as_ref()
+                .is_some_and(test_cabinet_core::ResolvedEngine::seeds_docs),
+        };
 
         // Off the runtime's worker threads. The pass is seconds of pure CPU (two
         // recursive-descent parsers over every authored file) plus a handful of
@@ -90,6 +105,7 @@ impl PostRunStage for StaticCodeAnalyzer {
                 // Asserted, not assumed: this stage is only ever reached before
                 // validation. See the module documentation.
                 tree_basis: CodeTreeBasis::PreValidation,
+                root_seeding,
             });
             write_document_gz(&output, &document).map(|bytes| (output, document, bytes))
         })

@@ -1798,6 +1798,17 @@ where
         // bytes that already exist and renders no verdict.
         let run_dir = self.output_dir.join(run_id);
         std::fs::create_dir_all(&run_dir)?;
+
+        // The engine the tree was built on, stamped on the tree's own description
+        // *before* anything reads it. The engine is vendored into the seeded tree, so
+        // which runtime a build was written against is a property of the tree rather
+        // than of the call that consumes it, and two readers ask: validation, to decide
+        // whether the case's validators run as a vitest project or its instrumentation
+        // is driven in a browser, and the code analysis, whose floor must know whether
+        // `engine/` at the tree root is the engine's own documentation or the model's
+        // work. The second is why the stamp is made here rather than after the seam.
+        artifacts.engine = Some(engine.clone());
+
         let post_run = post_run::run_stages(
             [
                 self.session_assembler.as_deref(),
@@ -1836,14 +1847,6 @@ where
         // recorded step is reported instead. The stamp is made here, on the value
         // about to be validated, so it can only ever describe the tree in hand.
         artifacts.prepared_install = post_run.prepared_install.clone();
-
-        // …and the engine the tree was built on, stamped on the same value for the
-        // same reason. The engine is vendored into the seeded tree, so which runtime a
-        // build was written against is a property of the tree rather than of the call
-        // that validates it, and validation reads it from here to decide whether the
-        // case's validators run as a vitest project or its instrumentation is driven
-        // in a browser.
-        artifacts.engine = Some(engine.clone());
 
         // The proof-of-implementation artifacts requested for this variant; the
         // validator records whether each turned up in the produced tree.

@@ -53,6 +53,26 @@ A hardcoded floor applies on top, and everything it removes is counted:
 dependency and vendored trees, the build-output directory names the validator
 looks for, minified and generated files, binaries, and files over 8 MiB.
 
+Two further names are floored only when they are the tree's own top-level
+directory. The anchoring is what makes the rule safe: a model's own
+`src/engine/` is exactly the directory a build writing its own frame loop
+creates, so the check tests the tree's first path segment rather than a name at
+any depth.
+
+`.tcab/` is floored on every tree and wholesale. It is a namespace the host owns
+outright, holding the vendored engine runtime, the case's vendored packages and
+its validation media, so a child added to it later stays out of the authored set
+without a second edit.
+
+`engine/` is floored only on a run whose engine seeded its documentation there.
+The same path means the opposite on every other run: an engineless run has
+nothing seeded at the root, and a case may seed a skeleton at `engine/src/lib.rs`
+and make filling it in the whole task, so the directory holds the model's entire
+submission. A seeded tree cannot answer the question for itself, because the seed
+commit is made after the documentation is copied. The analyzer therefore reads
+the answer from the engine the run resolved, and an analysis with no run behind
+it, such as `tcab analyze` over a checkout, floors nothing there.
+
 A file too large to parse is still counted for size. A 300 KB god-file is
 precisely the interesting case, and dropping it entirely would bias every size
 metric against the worst outcomes.
@@ -287,6 +307,13 @@ licenses improving the analyzer at all.
 Bump the generation when an existing metric's definition changes, or when any
 cap changes, since a cap change decides which files contribute. A purely
 additive metric needs no bump; older records simply lack it.
+
+The one exception is an empty corpus. The generation exists to make a mixed
+corpus visible, and this analyzer has never run on staging or on production, so
+there are no stored results for a bump to hold apart. A definition change made
+while that holds is exempt, which is how the root-anchored floor entries landed
+without a bump. The rule above applies again from the first analysed run recorded
+on a remote environment.
 
 Three ranking-relevant figures are lifted onto a run's public summary card: code
 lines, the size Gini and mean cognitive complexity. An ordering can then be

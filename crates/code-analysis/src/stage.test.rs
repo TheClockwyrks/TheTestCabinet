@@ -10,8 +10,9 @@ use std::path::Path;
 use test_cabinet_core::post_run::{PostRunContext, PostRunStage};
 use test_cabinet_core::test_case::{TestCaseVersion, Variant};
 use test_cabinet_core::{
-    ArtifactCollection, CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, EngineSelection,
-    HarnessSlug, OrchestratorSelection, RunRequest, TestCaseCatalog,
+    ArtifactCollection, CodeAnalysisDocument, CodeAuthoredBasis, CodeTreeBasis, EngineCatalog,
+    EngineSelection, HarnessSlug, OrchestratorSelection, ResolvedEngine, RunRequest,
+    TestCaseCatalog,
 };
 
 use super::*;
@@ -66,9 +67,29 @@ async fn stage_for(
     seed_commit: &str,
     canceled: bool,
 ) -> test_cabinet_core::post_run::PostRunReport {
+    stage_built_on(tree, run_dir, seed_commit, canceled, None).await
+}
+
+/// Resolve a built-in engine the way the run path does, without a package store: the
+/// version is tolerant of an absent one, and nothing here reads it.
+fn resolved(slug: &str) -> ResolvedEngine {
+    EngineCatalog::with_package_store("/nonexistent/package/store")
+        .resolve(&EngineSelection::new(slug))
+        .expect("a built-in engine slug")
+}
+
+/// As [`stage_for`], but stamps `engine` on the tree's description, exactly as the run
+/// path does before it reaches the seam.
+async fn stage_built_on(
+    tree: &Path,
+    run_dir: &Path,
+    seed_commit: &str,
+    canceled: bool,
+    engine: Option<ResolvedEngine>,
+) -> test_cabinet_core::post_run::PostRunReport {
     let (case, variant) = catalog_case();
     let request = request(&case, &variant);
-    let artifacts = ArtifactCollection::new(tree.to_path_buf());
+    let artifacts = ArtifactCollection::new(tree.to_path_buf()).built_on(engine);
     StaticCodeAnalyzer
         .run(&PostRunContext {
             run_id: "run-1",
@@ -226,4 +247,60 @@ async fn a_canceled_run_is_still_analysed() {
         run_dir.path().join(CODE_ANALYSIS_TREE_ARTIFACT).is_file(),
         "…and its document artifact, so the Code tab works for a killed run too",
     );
+}
+
+/// The floor's root-anchored `engine/` entry follows the ENGINE the tree was built on, not
+/// the directory's name.
+///
+/// An engine that seeds documentation writes markdown to `engine/` at the run root, and none
+/// of it is the model's. An engine that seeds none writes nothing there at all, so the same
+/// path on such a run holds only what the model put there — a build's own frame loop, or the
+/// whole submission of a case whose workspace seeds a skeleton at `engine/src/lib.rs` and
+/// tells the build to fill it in. Reading the name alone cannot tell the two apart, and
+/// getting it wrong in the second direction deletes a finished build from every figure on the
+/// page.
+#[tokio::test]
+async fn a_root_engine_directory_follows_the_engine_the_tree_was_built_on() {
+    let tree = tempfile::tempdir().expect("a produced tree");
+    std::fs::create_dir_all(tree.path().join("engine")).expect("an engine directory");
+    std::fs::write(tree.path().join("src.ts"), "export const a = 1;\n").expect("a root source");
+    std::fs::write(
+        tree.path().join("engine/loop.ts"),
+        "export const tick = (): void => {};\n",
+    )
+    .expect("what sits at `engine/`");
+
+    let seeded_run = tempfile::tempdir().expect("a run directory");
+    let seeded = stage_built_on(
+        tree.path(),
+        seeded_run.path(),
+        "not-a-real-commit",
+        false,
+        Some(resolved("simple-2d")),
+    )
+    .await
+    .code_analysis
+    .expect("a summary");
+    assert_eq!(
+        seeded.size.files, 1,
+        "the engine seeded its own documentation there, so `engine/` is not authored code",
+    );
+    assert_eq!(seeded.notes.files_skipped, 1, "…and the floor counts it");
+
+    let engineless_run = tempfile::tempdir().expect("a run directory");
+    let engineless = stage_built_on(
+        tree.path(),
+        engineless_run.path(),
+        "not-a-real-commit",
+        false,
+        Some(resolved(test_cabinet_core::engine::NONE_SLUG)),
+    )
+    .await
+    .code_analysis
+    .expect("a summary");
+    assert_eq!(
+        engineless.size.files, 2,
+        "this engine seeded nothing at the root, so `engine/loop.ts` is the model's work",
+    );
+    assert_eq!(engineless.notes.files_skipped, 0);
 }
