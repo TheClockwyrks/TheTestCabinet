@@ -200,7 +200,11 @@ export function differingPixels(
   }
   let differing = 0;
   for (let i = 0; i < a.length; i += 4) {
-    const away = Math.hypot(a[i] - b[i], a[i + 1] - b[i + 1], a[i + 2] - b[i + 2]);
+    const away = Math.hypot(
+      a[i] - b[i],
+      a[i + 1] - b[i + 1],
+      a[i + 2] - b[i + 2],
+    );
     if (away > minDistance) differing += 1;
   }
   return differing;
