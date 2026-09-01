@@ -78,9 +78,12 @@ of the code as possible.
 
 ### No Cross Links
 
-Do not link between specs. Models are expected to read all specs, so the full
-data is expected to be in the model's context. Cross-linking therefore has no
-benefit.
+Do not write Markdown links between specs. A seeded spec reaches a model as
+plain text, where a link's target is invisible and its syntax is noise.
+
+Referring to a sibling spec **by name** is correct and expected. A rule lives in
+exactly one file, and the files that need it name the file that states it, as
+`specs/field.md` rather than as `[the field](field.md)`.
 
 ### Critical Emphasis Only
 
