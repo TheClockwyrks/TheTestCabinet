@@ -20,7 +20,13 @@
 // `BULLET_LIFE` (`1.5` s), which is SHORTER than the pause, so on a build that keeps
 // stepping it is not merely moved but GONE, and the roster count says so. A WAVE
 // BANNER is the third reading, a timer that belongs to the run rather than to any
-// entity and that `specs/ui.md` names in the same sentence ("no wave arrives").
+// entity and that `specs/ui.md` names in the same sentence ("no wave arrives"). And
+// THE SHIP IS THE FOURTH, because it is the one body no scenario can remove and it
+// carries two timers of its own: it is posed with a drift, so a build that froze the
+// rosters and kept flying the ship is caught by its position, and with a respawn
+// grace and a fire gate part-way down, so a build that froze every body and kept
+// counting its timers is caught by those — which is the half of the sentence that
+// reads "no timer runs down".
 //
 // THE FIELD IS RUNNING BEFORE IT IS PAUSED. The scene is stepped for a fifth of a
 // second first, so what the pause stops is a game in motion rather than a scene that
@@ -76,6 +82,30 @@ const LIVE_TICKS = ticksFor(0.2);
 const PAUSED_SECONDS = 2.0;
 
 /**
+ * Where the ship is posed and the drift it carries.
+ *
+ * `(640, 560)` is the safe point a fresh ship stands at, and the drift runs along
+ * the row it stands on, so two live seconds would carry it clear across the field
+ * while the pause holds it where it was. It stays `200` units from the star's centre
+ * throughout, far outside the `CORE_R + SHIP_R` (`44`) at which the slide begins, so
+ * nothing but the freeze decides where it ends.
+ */
+const SHIP_AT = { x: 640, y: 560 };
+const SHIP_DRIFT = { vx: 120, vy: 0 };
+
+/**
+ * The respawn grace and the fire gate the ship is posed with.
+ *
+ * Both part-way down and both SHORTER than the pause, so a build that kept them
+ * running has let each reach zero rather than merely shortened it: the grace at
+ * `2.5` seconds is down to `2.3` by the pause and would be gone well inside the two
+ * seconds that follow, and the gun's gate of `60` whole ticks is down to `36` and
+ * would be gone inside a third of a second.
+ */
+const SHIP_INVULN = 2.5;
+const SHIP_COOLDOWN = 60;
+
+/**
  * How closely a frozen reading must hold, as {@link assertCloseTo} decimal places:
  * two, so within `0.005` of where it stood, in logical units or in seconds.
  *
@@ -127,6 +157,10 @@ it("holds every body and every timer where they stood while the pause runs, and 
     BULLET_DRIFT.vy,
   );
   await h.debug.setWaveBanner(BANNER_SECONDS);
+  await h.debug.setShipPosition(SHIP_AT.x, SHIP_AT.y);
+  await h.debug.setShipVelocity(SHIP_DRIFT.vx, SHIP_DRIFT.vy);
+  await h.debug.setShipInvuln(SHIP_INVULN);
+  await h.debug.setFireCooldown(SHIP_COOLDOWN);
 
   // A fifth of a second of real play, so the pause stops a field in motion.
   await h.advance(LIVE_TICKS);
@@ -217,6 +251,32 @@ it("holds every body and every timer where they stood while the pause runs, and 
     before.waveBanner,
     FROZEN_DIGITS,
     "the paused wave banner's remaining seconds (specs/ui.md)",
+  );
+
+  // The ship: a body that was drifting, and two timers of its own that were
+  // running. `specs/ui.md`: "No body moves, no timer runs down."
+  assertCloseTo(
+    after.ship.x,
+    before.ship.x,
+    FROZEN_DIGITS,
+    "the paused ship's x, posed with a drift of 120 units per second (specs/ui.md)",
+  );
+  assertCloseTo(
+    after.ship.y,
+    before.ship.y,
+    FROZEN_DIGITS,
+    "the paused ship's y (specs/ui.md)",
+  );
+  assertCloseTo(
+    after.ship.invuln,
+    before.ship.invuln,
+    FROZEN_DIGITS,
+    "the paused ship's remaining respawn grace, a timer that would have run out (specs/ui.md)",
+  );
+  assertEqual(
+    after.ship.fireCooldown,
+    before.ship.fireCooldown,
+    "the paused ship's fire gate, in whole ticks, which would have run out (specs/ui.md)",
   );
 
   assertLessThanOrEqual(
