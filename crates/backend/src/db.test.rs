@@ -4982,6 +4982,9 @@ fn record_with_code_analysis(id: &str) -> RunRecord {
             root: tree.path(),
             seed_commit: None,
             tree_basis: test_cabinet_core::CodeTreeBasis::PreValidation,
+            // A hand-built fixture tree with no run behind it, so nothing is known to
+            // have been seeded into its root.
+            root_seeding: test_cabinet_code_analysis::walk::RootSeeding::default(),
         })
         .summary,
     );

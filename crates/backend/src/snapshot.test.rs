@@ -2633,6 +2633,10 @@ fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
         root: tree.path(),
         seed_commit: None,
         tree_basis: test_cabinet_core::CodeTreeBasis::PreValidation,
+        // A hand-built fixture tree with no run behind it, so nothing is known to have
+        // been seeded into its root and the floor removes only what the host owns
+        // outright.
+        root_seeding: test_cabinet_code_analysis::walk::RootSeeding::default(),
     })
     .summary
 }

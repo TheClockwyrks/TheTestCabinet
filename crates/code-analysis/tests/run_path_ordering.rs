@@ -495,6 +495,9 @@ async fn the_analysis_measures_the_tree_the_model_wrote_not_the_one_validation_l
             root: &ran.collected,
             seed_commit: record.seed_commit.as_deref(),
             tree_basis: CodeTreeBasis::PostValidation,
+            // The same answer the run's own stage reached for this tree: the fixture case
+            // runs on the engineless engine, which seeds no documentation at the root.
+            root_seeding: test_cabinet_code_analysis::walk::RootSeeding::default(),
         });
     assert_eq!(
         after_validation.summary.notes.files_skipped,

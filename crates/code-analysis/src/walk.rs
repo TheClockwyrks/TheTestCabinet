@@ -26,6 +26,26 @@
 //! [`BUILD_OUTPUTS`](test_cabinet_core::validator::BUILD_OUTPUTS), so the two lists cannot
 //! diverge), minified and generated files, binaries, and files too large to read.
 //!
+//! Two of the floor's entries are matched **only at the tree root**, and one of those two is
+//! matched only when the caller says the host actually wrote it.
+//!
+//! `.tcab/` is the directory The Test Cabinet writes its own material into. The host owns
+//! that name outright, so it is floored at the root of every tree, unconditionally.
+//!
+//! `engine/` is not that. It is where an engine's documentation is seeded — but only on a run
+//! whose engine *has* documentation to seed, and the same path on any other run holds the
+//! model's own code: a `none`-engine build that organises its frame loop as `engine/loop.ts`,
+//! or a case whose workspace seeds a skeleton the model is told to fill in at
+//! `engine/src/lib.rs`. The tree cannot tell the two apart — the seed commit is made *after*
+//! the documentation is copied, so a seeded `engine/` and a case's own `engine/` are
+//! identical in it — so the walk does not guess. [`RootSeeding`] carries the answer from the
+//! caller, which resolved the engine, and `engine/` is floored only when that answer is yes.
+//! Getting this wrong in the other direction is not a rounding error: it deletes the whole of
+//! a model's submission from every figure on the page.
+//!
+//! Neither can be floored the way `node_modules` is, by name at any depth, because a model's
+//! own `src/engine/` is exactly the directory a build writing its own frame loop creates.
+//!
 //! One entry in that floor is reversed on purpose, and it lives in
 //! [`caps`](crate::caps) rather than here: a file too large to **parse** is still
 //! **counted for size**. A 300 KB god-file is precisely the interesting case; dropping it
@@ -120,6 +140,69 @@ const VENDOR_DIRS: [&str; 15] = [
     ".turbo",
 ];
 
+/// The first path segment of `path` — for a repo-relative path constant, its top-level
+/// directory.
+///
+/// `const` on purpose, so [`HOST_ROOT_DIR`] can be *derived* from the core crate's own path
+/// constants instead of restating them as literals. The constants name children —
+/// `.tcab/engine`, `.tcab/packages` — and what the floor wants is the parent they share.
+const fn root_segment(path: &str) -> &str {
+    let bytes = path.as_bytes();
+    let mut end = 0;
+    while end < bytes.len() && bytes[end] != b'/' {
+        end += 1;
+    }
+    let (first, _) = path.split_at(end);
+    first
+}
+
+/// The directory The Test Cabinet writes its own material into, removed **only when it is the
+/// tree's own top-level directory**.
+///
+/// `.tcab/` is a namespace the host owns end to end: the vendored engine runtime
+/// ([`TCAB_ENGINE_DIR`](test_cabinet_core::test_case::TCAB_ENGINE_DIR)), the case's vendored
+/// packages ([`TCAB_VENDOR_DIR`](test_cabinet_core::test_case::TCAB_VENDOR_DIR)) and the
+/// host-written validation media beside them. Counting any of it as authored code credits the
+/// model with lines it did not write. It is floored **wholesale** rather than child by child
+/// precisely because the namespace is the host's: a fourth child written into it later must
+/// not need a second edit here to stay out of the authored set. Derived from the core crate's
+/// own constants, so the name cannot be changed on one side only.
+///
+/// This also replaces an accident. Before the root-anchored floor existed the engine runtime
+/// was dropped only because it happens to ship under a directory called `dist`, which is in
+/// the validator's build-output names — a coincidence that would have stopped holding the
+/// moment an engine shipped its runtime anywhere else.
+///
+/// **The anchoring is the whole point and is not an optimisation.** [`VENDOR_DIRS`] matches a
+/// name at any depth, which is right for `node_modules` and wrong here: a `.tcab` below the
+/// root is not the host's, and only the tree's own first path segment is tested.
+const HOST_ROOT_DIR: &str = root_segment(test_cabinet_core::test_case::TCAB_ENGINE_DIR);
+
+/// What the host wrote into this tree's root, which the tree itself cannot say.
+///
+/// One question so far, and it is the one that decides whether a whole directory of a run
+/// counts as the model's work. Every field defaults to *the host wrote nothing*, because that
+/// is the only safe default: over-counting host-written markdown makes a size figure a little
+/// large and leaves the authored-set ladder to catch it, while over-flooring removes the
+/// model's own code from `files`, `codeLines`, the complexity figures, the symbol table and
+/// the treemap, and reports the remainder as if it were the whole build.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RootSeeding {
+    /// Whether this run's engine copied its own documentation to
+    /// [`ENGINE_DOCS_DIR`](test_cabinet_core::execution::ENGINE_DOCS_DIR) at the tree root —
+    /// [`ResolvedEngine::seeds_docs`](test_cabinet_core::ResolvedEngine::seeds_docs).
+    ///
+    /// True floors `engine/` at the root: the engine documents itself in markdown large
+    /// enough to move a size figure on its own, and no line of it was written in the run.
+    ///
+    /// False keeps it, and keeping it is not a concession. On a
+    /// [`NONE_SLUG`](test_cabinet_core::engine::NONE_SLUG) run nothing is seeded there at all,
+    /// so a root `engine/` is by construction the model's; and a case may seed its own
+    /// skeleton there and tell the build that filling it in is the whole task, in which case
+    /// flooring the name would report a finished submission as an empty tree.
+    pub engine_docs: bool,
+}
+
 /// File names removed outright: machine-written dependency resolutions, not authored code.
 const LOCKFILES: [&str; 5] = [
     "package-lock.json",
@@ -137,9 +220,13 @@ const BINARY_EXTENSIONS: [&str; 25] = [
 
 /// Walk `root`, honouring its ignore files, and return the kept files in sorted order.
 ///
+/// `seeding` says what the host wrote into the tree's own root, which the tree cannot say
+/// for itself; see [`RootSeeding`]. A caller that does not know passes
+/// [`RootSeeding::default`], which floors nothing it is unsure of.
+///
 /// Reading repository metadata is not "executing the produced code": nothing here runs a
 /// build, a script, or a package manager.
-pub fn walk(root: &Path) -> Walk {
+pub fn walk(root: &Path, seeding: RootSeeding) -> Walk {
     let mut kept = Vec::new();
     let mut walk = Walk::default();
 
@@ -183,7 +270,7 @@ pub fn walk(root: &Path) -> Walk {
         };
         let path = relative_path(relative);
         let bytes = entry.metadata().map(|meta| meta.len()).unwrap_or(0);
-        if floored(&path, bytes) {
+        if floored(&path, bytes, seeding) {
             walk.skipped_files += 1;
             walk.skipped_bytes += bytes;
             continue;
@@ -216,7 +303,19 @@ fn relative_path(relative: &Path) -> String {
 }
 
 /// Whether the hardcoded floor removes `path`.
-fn floored(path: &str, bytes: u64) -> bool {
+///
+/// Three directory tests, deliberately kept apart. [`VENDOR_DIRS`] and the validator's
+/// build-output names match a *segment at any depth*, because a `node_modules` is a
+/// `node_modules` wherever it sits. [`HOST_ROOT_DIR`] matches only the tree's own first
+/// segment, because `.tcab` means "written here by the host" at the root and means the
+/// model's own work anywhere else. And the engine documentation directory is matched at the
+/// root *and* only when `seeding` says this run's engine put it there — the one test on this
+/// floor that a name alone cannot answer.
+///
+/// Every path this returns `true` for is still counted into
+/// [`Walk::skipped_files`]/[`Walk::skipped_bytes`] by the caller, so the provenance strip
+/// keeps telling the truth about what was removed.
+fn floored(path: &str, bytes: u64, seeding: RootSeeding) -> bool {
     if bytes > MAX_READ_BYTES {
         return true;
     }
@@ -228,6 +327,19 @@ fn floored(path: &str, bytes: u64) -> bool {
         VENDOR_DIRS.contains(dir) || test_cabinet_core::validator::BUILD_OUTPUTS.contains(dir)
     }) {
         return true;
+    }
+    // Root-anchored: `dirs` holds every segment but the file name, so `dirs.first()` is the
+    // tree's own top-level directory — `None` for a root-level file, which is why `engine.ts`
+    // beside `src/` is kept. `.tcab/` is the host's name at the root of any tree;
+    // `engine/frame.md` is the host's only on a run that seeded engine documentation, and
+    // `src/engine/loop.ts` is the model's on every run.
+    if let Some(first) = dirs.first() {
+        if *first == HOST_ROOT_DIR {
+            return true;
+        }
+        if seeding.engine_docs && *first == test_cabinet_core::execution::ENGINE_DOCS_DIR {
+            return true;
+        }
     }
     if LOCKFILES.contains(name) {
         return true;

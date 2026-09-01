@@ -29,6 +29,7 @@ use std::time::{Duration, Instant};
 
 use anstyle::{AnsiColor, Color, Style};
 use serde_json::Value;
+use test_cabinet_code_analysis::walk::RootSeeding;
 use test_cabinet_code_analysis::{AnalysisRequest, analyze};
 use test_cabinet_core::{
     CODE_METRICS, CodeAnalysisDocument, CodeAuthoredBasis, CodeMetricUnit, CodeTreeBasis,
@@ -56,6 +57,13 @@ pub async fn execute(args: AnalyzeArgs) -> anyhow::Result<()> {
         root,
         seed_commit: args.seed_commit.as_deref(),
         tree_basis: args.tree_basis.into(),
+        // A checkout on disk carries no engine selection, so this command cannot know
+        // whether a root-level `engine/` is an engine's seeded documentation or the
+        // build's own code — and the default is to floor neither. Over-counting seeded
+        // markdown makes a size figure a little large; the run path, which does know,
+        // answers properly. With `--seed-commit`, the authored-set ladder removes seeded
+        // material the model never touched regardless.
+        root_seeding: RootSeeding::default(),
     });
     let elapsed = started.elapsed();
 

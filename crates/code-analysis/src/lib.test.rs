@@ -28,6 +28,10 @@ fn analyse(root: &Path) -> CodeAnalysisDocument {
         root,
         seed_commit: None,
         tree_basis: CodeTreeBasis::PreValidation,
+        // These fixtures are bare trees with no run behind them, which is exactly the
+        // caller the default answers for: nothing is known to have been seeded, so the
+        // root-anchored floor removes only the host's own `.tcab/`.
+        root_seeding: crate::walk::RootSeeding::default(),
     })
 }
 

@@ -30,6 +30,10 @@ fn analyse(
         root: root.path(),
         seed_commit,
         tree_basis: CodeTreeBasis::PostValidation,
+        // What the command itself passes: a checkout on disk carries no engine, so the
+        // root-anchored floor is told nothing was seeded and removes nothing it is
+        // unsure of.
+        root_seeding: RootSeeding::default(),
     });
     (root, document)
 }
@@ -346,6 +350,7 @@ fn this_crate_analyses_to_a_populated_report() {
         root,
         seed_commit: None,
         tree_basis: CodeTreeBasis::PostValidation,
+        root_seeding: RootSeeding::default(),
     });
     let rendered = render_report(
         "crates/cli",
