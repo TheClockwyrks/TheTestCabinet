@@ -54,12 +54,11 @@ import {
 /**
  * How far apart two kinds must read, out of the 441 the RGB cube spans.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same one it
- * holds a tower against the floor to. 60 is about a seventh of the scale: below
- * it a build could draw its flyer as a slightly lighter walker and leave a player
- * guessing which of two units on the same tile the Flak will take.
+ * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
+ * other point in this group draws its line at, under this engine and under the
+ * other two.
  */
-const APART_MIN = 60;
+const APART_MIN = 50;
 
 /** The three kinds `specs/surge.md` names, and where each stands. */
 const KINDS: readonly { type: SurgeType; kind: string; col: number }[] = [

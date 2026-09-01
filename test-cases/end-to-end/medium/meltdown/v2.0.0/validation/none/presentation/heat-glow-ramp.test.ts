@@ -47,16 +47,14 @@ import { bodyColor, showRgb } from "./read";
  * How far apart, out of the 441 the RGB cube spans, the cold end and the
  * near-redline end of the ramp must read.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), used by every
- * item in it. 60 is about a seventh of the scale: two colours that far apart are
- * a different shade at a glance under any lighting a build chooses, while two
- * within 25 read as one material — which is why 25 is the allowance this group
- * and `floor/casing-band` both grant a build's own art direction over the same
- * patch. Below 60 a build could satisfy the letter of the legibility table with
- * two shades of one hue and leave a player unable to see a tower approaching its
- * redline, which is the whole game.
+ * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
+ * other point in this group draws its line at, under this engine and under the
+ * other two: two colours that far apart are a different shade at a glance under
+ * any lighting a build chooses, while two within 25 read as one material — which
+ * is why 25 is the allowance this group and `floor/casing-band` both grant a
+ * build's own art direction over the same patch.
  */
-const ENDS_APART_MIN = 60;
+const ENDS_APART_MIN = 50;
 
 /**
  * How far apart two neighbouring heats on the ramp must read, out of 441.

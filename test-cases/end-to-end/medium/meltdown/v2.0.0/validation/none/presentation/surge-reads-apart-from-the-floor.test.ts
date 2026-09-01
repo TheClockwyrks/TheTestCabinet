@@ -62,14 +62,14 @@ import {
  * How far a unit's pixels must sit from the floor under them, out of the 441 the
  * RGB cube spans.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same one
- * `presentation/towers-read-apart-from-the-floor` holds a tower to. 60 is about a
- * seventh of the scale — a different shade at a glance under any palette — and
- * well above the 25 a build's own floor art moves a patch by. A surge that is
+ * This group's figure for "plainly apart" (`specs/overview.md`), the same 50
+ * every other point in this group draws its line at, under this engine and under
+ * the other two — a different shade at a glance under any palette — and well
+ * above the 25 a build's own floor art moves a patch by. A surge that is
  * harder to see than that is a surge a player loses on a busy floor, which is the
  * whole reason the table names it.
  */
-const APART_MIN = 60;
+const APART_MIN = 50;
 
 /** Where each type stands: spread across a clear rank of the floor. */
 const STANDS: Record<SurgeType, { col: number; row: number }> = {

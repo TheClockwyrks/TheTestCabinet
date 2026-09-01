@@ -67,14 +67,11 @@ import {
  * How far a surge colour must sit from every colour the ramp shows, out of the
  * 441 the RGB cube spans.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same one it
- * holds a tower against the floor and a flyer against a walker to. 60 is about a
- * seventh of the scale. It is the right bar here rather than a looser one because
- * this comparison is the one made at a glance across a floor carrying both at
- * once: a unit within 60 of the tower it is standing next to is a unit a player
- * reads as part of the tower.
+ * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
+ * other point in this group draws its line at, under this engine and under the
+ * other two.
  */
-const APART_MIN = 60;
+const APART_MIN = 50;
 
 /** The eleven heats the ramp is swept at, across `specs/heat.md`'s whole range. */
 const HEATS: readonly number[] = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];

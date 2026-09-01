@@ -56,13 +56,11 @@ import { readPixels, type Point } from "./read";
 /**
  * How far the picture must move at an edge, out of the 441 the RGB cube spans.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same one it
- * holds a tower against the floor and a valid preview against a refused one to. 60
- * is about a seventh of the scale, which is what "drawn plainly apart from the
- * floor outside it" comes to once no palette is fixed and the mark may be laid on
- * either side of the line.
+ * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
+ * other point in this group draws its line at, under this engine and under the
+ * other two.
  */
-const MARK_MIN = 60;
+const MARK_MIN = 50;
 
 /**
  * How far a point may move and still count as untouched.

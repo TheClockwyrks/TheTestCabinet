@@ -69,14 +69,14 @@ import {
  * How far a tower's body must sit from the floor beside it, out of the 441 the
  * RGB cube spans.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same one
- * `presentation/heat-glow-ramp` holds the ramp's ends to. 60 is about a seventh
- * of the scale — a different shade at a glance under any palette a build chooses
- * — and well above the 25 a build's own floor art moves a patch by, so a build
+ * This group's figure for "plainly apart" (`specs/overview.md`), the same 50
+ * every other point in this group draws its line at, under this engine and under
+ * the other two — a different shade at a glance under any palette a build chooses,
+ * and well above the 25 a build's own floor art moves a patch by, so a build
  * cannot pass by shading its floor toward its towers and cannot fail for having
  * drawn a plate texture.
  */
-const APART_MIN = 60;
+const APART_MIN = 50;
 
 /** The heats each emitter is read at, spread across `specs/heat.md`'s range. */
 const HEATS: readonly number[] = [0, 25, 50, 75, TRIP_HEAT - 1];

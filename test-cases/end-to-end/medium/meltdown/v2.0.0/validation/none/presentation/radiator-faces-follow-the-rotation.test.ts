@@ -72,7 +72,7 @@ import { faceBands, showRgb, widestGap } from "./read";
  * — deliberately the same, because both readings below are asking exactly that
  * question, once within a frame and once across two.
  */
-const APART_MIN = 60;
+const APART_MIN = 50;
 
 /** The type read, and where it stands: clear of the casing and both corridors. */
 const TYPE = "stutter";

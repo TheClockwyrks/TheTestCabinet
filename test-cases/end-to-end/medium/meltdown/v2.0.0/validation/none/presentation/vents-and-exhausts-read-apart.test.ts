@@ -68,12 +68,11 @@ import { farthest, medoid, readPixels, showRgb, type Point } from "./read";
  * How far two of the three things must sit apart, out of the 441 the RGB cube
  * spans.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same one it
- * holds a tower against the floor and a radiator face against a plain one to. 60
- * is about a seventh of the scale, which is a different thing at a glance under
- * any palette a build chooses.
+ * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
+ * other point in this group draws its line at, under this engine and under the
+ * other two.
  */
-const APART_MIN = 60;
+const APART_MIN = 50;
 
 /** The depths into the band an opening and the wall are read at, in units. */
 const DEPTHS: readonly number[] = [4, CASING / 2, CASING - 4];

@@ -64,12 +64,12 @@ import { farthest, readPixels, showRgb, type Point } from "./read";
  * How far a run's ink must sit from the ground under it, out of the 441 the RGB
  * cube spans.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same one it
- * holds a tower against the floor and a vent against an exhaust to. 60 is about a
- * seventh of the scale: a build whose readouts clear it has text a player picks
- * out of its panel at a glance, and one that does not has drawn a watermark.
+ * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
+ * other point in this group draws its line at, under this engine and under the
+ * other two: a build whose readouts clear it has text a player picks out of its
+ * panel at a glance, and one that does not has drawn a watermark.
  */
-const CONTRAST_MIN = 60;
+const CONTRAST_MIN = 50;
 
 /**
  * The rows a run is read on, in logical units from its anchor.

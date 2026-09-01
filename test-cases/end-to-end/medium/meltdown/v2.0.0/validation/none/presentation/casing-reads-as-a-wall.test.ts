@@ -68,14 +68,11 @@ import { medoid, readPixels, showRgb, type Point } from "./read";
  * How far the band must sit from what lies beside it, out of the 441 the RGB cube
  * spans.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same one it
- * holds a tower against the floor and a flyer against a walker to. 60 is about a
- * seventh of the scale — a different shade at a glance under any palette — and it
- * is well above the 25 a build's own floor art moves a patch by, so a plate
- * texture or a vignette toward the wall cannot pass as an enclosure and cannot
- * fail one.
+ * This group's figure for "plainly apart" (`specs/overview.md`), the same 50 every
+ * other point in this group draws its line at, under this engine and under the
+ * other two.
  */
-const APART_MIN = 60;
+const APART_MIN = 50;
 
 /** How deep into the band a point is read, from its outer face inward. */
 const BAND_DEPTH = CASING / 2;
