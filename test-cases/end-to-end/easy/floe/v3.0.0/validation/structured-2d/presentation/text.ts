@@ -42,6 +42,16 @@ export interface TextBox {
   right: number;
   top: number;
   bottom: number;
+  /**
+   * The run's own anchor, in stage units.
+   *
+   * Where the build ASKED for the run, rather than how far its glyphs reached:
+   * the reading that says which part of the stage a run belongs to.
+   * specs/ui.md puts the five readouts inside the HUD bar and specs/strait.md
+   * puts the bar at `y` in `[0, HUD_H]`, so a run anchored there is a readout and
+   * one anchored below is a screen's own text, whatever its descenders do.
+   */
+  anchor: number;
 }
 
 /** The text state a run was drawn under. */
@@ -162,6 +172,7 @@ export function textBoxes(h: Harness): TextBox[] {
       right: span.right,
       top: span.y - ascent * run.vertical,
       bottom: span.y + descent * run.vertical,
+      anchor: span.y,
     };
   });
 }

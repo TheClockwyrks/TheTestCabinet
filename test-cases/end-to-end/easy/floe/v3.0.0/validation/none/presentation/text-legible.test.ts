@@ -35,6 +35,16 @@
 // SIX SITUATIONS, AND EVERY RUN IN EACH. The HUD on a live crossing, and the five
 // screens that carry copy. A failure names the situation and the run, so a build
 // whose how-to screen is unreadable is told which screen and which line.
+//
+// THE HUD IS READ ON THE SITUATION WHERE IT IS A READOUT, WHICH IS THE LIVE
+// CROSSING. On every other screen the bar is BACKGROUND, and `specs/ui.md` says
+// so: the title carries "a dim slice of the strait ... behind it", and `paused`
+// shows "the strait, visible and frozen, behind a menu". A build that dims that
+// slice under a scrim has done exactly what the specification invites, and its
+// bar runs are then low-contrast on purpose — so a run whose baseline sits inside
+// the bar is read on the crossing and left to the scrim elsewhere. Every run
+// anchored OUTSIDE the bar is that screen's own text and is read on every one of
+// the six.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -42,7 +52,7 @@ import {
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { TOTAL_LEVELS } from "../constants";
+import { HUD_H, TOTAL_LEVELS } from "../constants";
 import {
   captureStill,
   colorDistance,
@@ -100,6 +110,8 @@ const BOX_MIN = 1;
 interface Situation {
   what: string;
   pose: () => Promise<void>;
+  /** Whether the HUD bar is a readout here, rather than the ground behind a menu. */
+  hudIsReadout?: boolean;
 }
 
 let h: Harness;
@@ -117,6 +129,7 @@ function situations(): Situation[] {
   return [
     {
       what: "the HUD on a live crossing",
+      hudIsReadout: true,
       pose: async () => {
         await startCrossing(h);
       },
@@ -206,7 +219,14 @@ it("draws every readout and every screen's text clear of the ground behind it", 
 
   for (const situation of situations()) {
     await situation.pose();
-    const boxes = await measuredTextBoxes(h, await h.frameCalls());
+    const boxes = (await measuredTextBoxes(h, await h.frameCalls())).filter(
+      // The bar's own readouts are read on the live crossing; elsewhere the bar
+      // is the dim slice `specs/ui.md` puts behind a screen.
+      (box) =>
+        situation.hudIsReadout === true ||
+        box.baseline < 0 ||
+        box.baseline > HUD_H,
+    );
     drawn.push({ what: situation.what, runs: boxes.length });
     for (const box of boxes) {
       const reading = await readRun(situation.what, box);

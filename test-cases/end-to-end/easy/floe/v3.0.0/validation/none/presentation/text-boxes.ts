@@ -22,6 +22,16 @@ export interface TextBox {
   y0: number;
   x1: number;
   y1: number;
+  /**
+   * The run's own anchor, mapped through the transform in force.
+   *
+   * Where the build ASKED for the run, rather than where its glyphs reached: the
+   * reading that says which part of the stage a run belongs to. `specs/ui.md`
+   * puts the five readouts inside the HUD bar and `specs/strait.md` puts the bar
+   * at `y` in `[0, HUD_H]`, so a run anchored there is a readout and one anchored
+   * below is a screen's own text, whatever its descenders do.
+   */
+  baseline: number;
 }
 
 /** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */
@@ -230,6 +240,7 @@ export async function measuredTextBoxes(
       y0: Math.min(...ys),
       x1: Math.max(...xs),
       y1: Math.max(...ys),
+      baseline: b * draw.x + d * draw.y + f,
     };
   });
 }
