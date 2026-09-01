@@ -64,7 +64,7 @@ const SUBJECTS: readonly {
   },
   {
     subject: "the bear that hunts the critter",
-    named: /\bBEARS?\b/,
+    named: /\bBEARS?\b|\bHUNTERS?\b|\bPREDATORS?\b/,
   },
   {
     subject: "the vehicles sliding along the ice band",
