@@ -30,12 +30,7 @@
 // reaches the ship is `bands`'.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLength,
-  assertUndefined,
-  fail,
-} from "../assert";
+import { assertEqual, assertLength, assertUndefined, fail } from "../assert";
 import { BANDS, DISCHARGE_MAX_R, DISCHARGE_TIME } from "../constants";
 import {
   bulletById,

@@ -23,11 +23,7 @@
 // span in its own file, and reads its own verdict.
 
 import { BINDINGS, RESONANCE_MAX, SHIP_Y } from "../constants";
-import {
-  distance,
-  type Harness,
-  type SpectraSnapshot,
-} from "../harness";
+import { distance, type Harness, type SpectraSnapshot } from "../harness";
 
 /** The one key `specs/controls.md` binds the `discharge` action to. */
 export const DISCHARGE_KEY = BINDINGS.discharge[0];

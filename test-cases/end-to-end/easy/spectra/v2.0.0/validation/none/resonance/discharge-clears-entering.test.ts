@@ -80,9 +80,11 @@ it("destroys every drone in phase entering", async () => {
   await poseBystander(h);
   const entering: number[] = [];
   for (const at of ENTERING_AT) {
-    entering.push(await poseDrone(h, "shard", at.x, at.y, {
-      phase: "entering",
-    }));
+    entering.push(
+      await poseDrone(h, "shard", at.x, at.y, {
+        phase: "entering",
+      }),
+    );
   }
 
   const posed = await h.snapshot();

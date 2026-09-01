@@ -24,12 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertUndefined } from "../assert";
-import {
-  DISCHARGE_MAX_R,
-  DISCHARGE_TIME,
-  slotX,
-  slotY,
-} from "../constants";
+import { DISCHARGE_MAX_R, DISCHARGE_TIME, slotX, slotY } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -84,11 +79,13 @@ it("destroys every drone in phase returning", async () => {
   await poseBystander(h);
   const returning: number[] = [];
   for (const at of RETURNING) {
-    returning.push(await poseDrone(h, "shard", at.x, at.y, {
-      phase: "returning",
-      slotX: slotX(at.col),
-      slotY: slotY(at.row),
-    }));
+    returning.push(
+      await poseDrone(h, "shard", at.x, at.y, {
+        phase: "returning",
+        slotX: slotX(at.col),
+        slotY: slotY(at.row),
+      }),
+    );
   }
 
   const posed = await h.snapshot();
