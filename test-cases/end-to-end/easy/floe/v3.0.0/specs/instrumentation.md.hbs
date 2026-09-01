@@ -190,7 +190,7 @@ Every bear carries an `id`. A bear added through the surface is appended to
 
 | Operation | Effect |
 | --- | --- |
-| `addBear(col, row)` | Adds one bear settled on tile `(col, row)`: its center on that tile's center, the tile it is travelling into equal to the tile it is on, its target equal to its own tile, facing `up`, and its three faculties all on. It is appended to `bears` and takes a fresh id. |
+| `addBear(col, row)` | Adds one bear settled on tile `(col, row)`: its center on that tile's center, the tile it is travelling into equal to the tile it is on, its target equal to its own tile, facing `up`, and its three faculties all on. It is appended to `bears` and takes a fresh id. It fills the first hunting slot standing empty, so the hunt's own emerging does not put a second bear behind the one that was placed; where the level's slots are all filled already it is simply an extra bear the hunt does not track. |
 | `removeBear(id)` | Removes the bear with that id. |
 | `clearBears()` | Removes every bear, leaving the lane items, the critter, the bays, and the bonus catch standing. |
 | `setBearTile(id, col, row)` | Settles the bear on tile `(col, row)`: its center becomes that tile's center and the tile it is travelling into becomes that tile, so it is no longer between tiles. Its target and its three faculties are untouched. |

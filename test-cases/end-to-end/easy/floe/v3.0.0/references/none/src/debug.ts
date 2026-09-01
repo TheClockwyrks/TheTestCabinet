@@ -38,6 +38,7 @@ import {
 } from "./constants";
 import {
   bearById,
+  claimSlot,
   dropAllBears,
   dropBear,
   makeBear,
@@ -314,7 +315,11 @@ export function createDebugApi(
     // ---- The bears ----
 
     addBear(col, row) {
-      state.bears.push(makeBear(state, col, row));
+      const bear = makeBear(state, col, row);
+      state.bears.push(bear);
+      // A bear put on the strait fills a hunting slot where one stands empty, so
+      // the run's own emerging does not put a second bear behind it.
+      claimSlot(state, bear.id);
     },
 
     removeBear(id) {

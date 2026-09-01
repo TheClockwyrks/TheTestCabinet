@@ -38,6 +38,7 @@ import {
 import type { Bear } from "./bodies";
 import { bearById, critterOf, floesOf, vehiclesOf } from "./bodies";
 import {
+  claimSlot,
   dropAllBears,
   dropBear,
   placeCenter,
@@ -299,7 +300,11 @@ export function createDebugApi(open: () => World): FloeDebugApi {
 
     addBear(col, row) {
       const world = open();
-      spawnBear(world, floeState(world), col, row);
+      const state = floeState(world);
+      const bear = spawnBear(world, state, col, row);
+      // A bear put on the strait fills a hunting slot where one stands empty, so
+      // the run's own emerging does not put a second bear behind it.
+      claimSlot(state, bear.id);
     },
 
     removeBear(id) {

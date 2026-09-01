@@ -130,6 +130,19 @@ export function dropBear(state: FloeState, bear: Bear): void {
   }
 }
 
+/**
+ * Record a bear put on the strait through the surface against the first slot
+ * standing empty (`specs/instrumentation.md`, `addBear`).
+ *
+ * A placed bear fills a hunting slot, so the hunt's own emerging does not put a
+ * second bear behind the one the caller placed. Where every slot the level has is
+ * already filled, the placed bear is simply an extra the hunt does not track.
+ */
+export function claimSlot(state: FloeState, id: number): void {
+  const slot = state.slots.find((entry) => entry.bearId === null);
+  if (slot !== undefined) slot.bearId = id;
+}
+
 /** Take every bear off the strait and empty every slot. */
 export function dropAllBears(world: World, state: FloeState): void {
   for (const bear of bearsOf(world)) bear.destroy();
