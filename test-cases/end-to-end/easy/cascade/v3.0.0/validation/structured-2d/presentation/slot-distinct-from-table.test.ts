@@ -41,16 +41,34 @@ import {
   openTable,
   type Harness,
 } from "../harness";
-import { markDistance, sampleGrid, showColor, tableColor } from "./reading";
+import {
+  markDistance,
+  sampleUnitGrid,
+  showColor,
+  tableColor,
+  unitGrid,
+} from "./reading";
 
 /** The pile read, and the anchor specs/table.md fixes for it. */
 const FOUNDATION = 0;
 const ANCHOR_X = FOUNDATION_X[FOUNDATION];
 const ANCHOR_Y = TOP_ROW_Y;
 
-/** How finely the slot's footprint is sampled: `COLS x ROWS` points over it. */
-const SLOT_COLS = 40;
-const SLOT_ROWS = 56;
+/**
+ * The footprint the mark is looked for in, sampled to the unit.
+ *
+ * specs/table.md fixes no weight for the mark, so it may be one unit wide — and
+ * one unit is one device pixel here. A grid coarser than the lattice would not
+ * merely measure such an outline badly, it would step over it in every row and
+ * report a hairline slot exactly as it reports no slot at all; `./reading.ts`
+ * sets that out at length under `unitGrid`.
+ */
+const FOOTPRINT = unitGrid({
+  x: ANCHOR_X,
+  y: ANCHOR_Y,
+  w: CARD_W,
+  h: CARD_H,
+});
 
 /**
  * How much of the footprint the mark must cover for its colour to be the slot's
@@ -60,8 +78,10 @@ const SLOT_ROWS = 56;
  * outline as well as for a fill. `1%` of the `100 x 140` footprint is about
  * `140` square units — a mark some `12 x 12` units across on a `1280 x 720`
  * stage, which is the floor below which nothing is visible at all, and well
- * under the `8%` a hairline rectangle around the footprint already covers. It is
- * a floor and not a target.
+ * under the `3.4%` a one-unit outline around the footprint already covers. It is
+ * a floor and not a target: a share of the cells is a share of the rectangle, so
+ * this figure is an AREA and does not move with how finely the footprint is
+ * sampled.
  */
 const MARK_SHARE = 0.01;
 
@@ -94,12 +114,7 @@ it("draws an empty pile's slot apart from the bare table", async () => {
   captureStill(h, "slot");
 
   const table = tableColor(h);
-  const slot = sampleGrid(
-    h,
-    { x: ANCHOR_X, y: ANCHOR_Y, w: CARD_W, h: CARD_H },
-    SLOT_COLS,
-    SLOT_ROWS,
-  );
+  const slot = sampleUnitGrid(h, FOOTPRINT);
 
   assertGreaterThanOrEqual(
     markDistance(slot, table, MARK_SHARE),

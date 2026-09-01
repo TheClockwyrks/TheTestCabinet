@@ -149,6 +149,68 @@ export function cardSamples(h: Harness, x: number, y: number): Rgb[] {
 }
 
 /**
+ * A lattice of one sample per whole logical unit of a rectangle.
+ *
+ * WHY SOME READINGS NEED THE UNIT PITCH. A grid of a few thousand cells over a
+ * card samples it every two or three units, which is fine for asking what colour
+ * a region comes to as a whole and wrong for asking whether a MARK is there: the
+ * specification fixes no line width, so a build may draw its empty-slot outline
+ * or its rank in strokes one unit wide — one device pixel at this window size —
+ * and a lattice coarser than the pixel does not merely measure such a stroke
+ * badly, it steps between its rows and reports a hairline mark exactly as it
+ * reports no mark at all. So every reading that looks for a mark, or for the
+ * difference between two marks, reads at unit pitch, which is the pitch the
+ * engineless suite reads at; the three suites then hold one physical figure.
+ *
+ * A share of the cells is a share of the rectangle either way, so a threshold
+ * stated as a share is an AREA and does not move with the pitch.
+ */
+export interface UnitGrid {
+  /** The rectangle to sample, shifted so the cells' middles land on whole units. */
+  rect: Rect;
+  cols: number;
+  rows: number;
+  /** How many cells it holds, which is what a share of it is taken over. */
+  cells: number;
+}
+
+/** The unit lattice covering `rect`: one cell per whole unit of it. */
+export function unitGrid(rect: Rect): UnitGrid {
+  const cols = Math.max(1, Math.round(rect.w));
+  const rows = Math.max(1, Math.round(rect.h));
+  return {
+    rect: { x: rect.x - 0.5, y: rect.y - 0.5, w: cols, h: rows },
+    cols,
+    rows,
+    cells: cols * rows,
+  };
+}
+
+/** The colours the cells of a unit lattice were painted in, row by row. */
+export function sampleUnitGrid(h: Harness, grid: UnitGrid): Rgb[] {
+  return sampleGrid(h, grid.rect, grid.cols, grid.rows);
+}
+
+/**
+ * A card's interior, at unit pitch, as the rank and suit points read it.
+ *
+ * Stated at the origin and shifted to the anchor by {@link cardFaceSamples}, so
+ * the cell count a share is taken over is one figure the checks can name.
+ */
+export const FACE = unitGrid(cardInterior(0, 0));
+
+/**
+ * The colours the card drawn at a top-left was painted in, at unit pitch.
+ *
+ * Comparable cell for cell with another reading taken at the same top-left, for
+ * the same reason `cardSamples` is: the lattice is a function of the top-left
+ * alone.
+ */
+export function cardFaceSamples(h: Harness, x: number, y: number): Rgb[] {
+  return sampleUnitGrid(h, unitGrid(cardInterior(x, y)));
+}
+
+/**
  * The colour a card drawn at a top-left reads as: the mean of its interior.
  *
  * The mean rather than a probe at one point, because what the legibility table
