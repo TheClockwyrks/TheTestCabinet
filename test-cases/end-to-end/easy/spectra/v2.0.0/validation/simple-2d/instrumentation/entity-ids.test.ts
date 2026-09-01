@@ -50,7 +50,12 @@
 // which `instrumentation/reset-restores-title` covers from the other side.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertLessThan, assertTrue } from "../assert";
+import {
+  assertEqual,
+  assertLength,
+  assertLessThan,
+  assertTrue,
+} from "../assert";
 import {
   bulletOf,
   captureStill,

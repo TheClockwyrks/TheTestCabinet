@@ -60,7 +60,12 @@
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import { afterEach, it } from "vitest";
 import { FLUX_SHIMMER, fluxHold, fluxWindow } from "../../src/constants";
-import { assertCloseTo, assertDeepEqual, assertNotEqual, fail } from "../assert";
+import {
+  assertCloseTo,
+  assertDeepEqual,
+  assertNotEqual,
+  fail,
+} from "../assert";
 import {
   captureStill,
   createHarness,

@@ -22,12 +22,7 @@
 // each kill pays `specs/scoring.md` and fills `specs/resonance.md` — so a
 // validator that reads either poses it after this returns.
 
-import {
-  fireAt,
-  lastBurst,
-  poseDrone,
-  type Harness,
-} from "../harness";
+import { fireAt, lastBurst, poseDrone, type Harness } from "../harness";
 
 /**
  * The lane the sacrificial drones stand on, in logical units.
@@ -53,7 +48,7 @@ const KEEPER_X = 1060;
 const KEEPER_Y = 200;
 
 /** The band both the targets and the shots carry: a match by specs/bands.md. */
-const MATCH: "cyan" = "cyan";
+const MATCH = "cyan" as const;
 
 /**
  * Put `count` live drone-bursts on the field and report their ids, newest last.
@@ -67,10 +62,7 @@ const MATCH: "cyan" = "cyan";
  * one shot — `SHOT_GAP` at `PLAYER_BULLET_SPEED`, under a tenth of a second — so
  * a caller has the rest of that window to pose the field it is really about.
  */
-export async function poseBursts(
-  h: Harness,
-  count: number,
-): Promise<number[]> {
+export async function poseBursts(h: Harness, count: number): Promise<number[]> {
   poseDrone(h, "shard", KEEPER_X, KEEPER_Y, { band: "magenta" });
 
   const ids: number[] = [];
