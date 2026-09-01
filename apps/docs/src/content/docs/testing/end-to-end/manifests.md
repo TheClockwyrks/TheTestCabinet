@@ -61,7 +61,7 @@ build = "npm run build"      # static-build command (required, non-empty)
 typecheck = "npx tsc --noEmit"     # required; a non-zero exit rates the run broken
 lint = "npx eslint ."              # optional; recorded
 format = "npx prettier --check ."  # optional; recorded
-test = "npx vitest run --coverage" # optional; recorded with its test count and coverage
+test = "npx vitest run --coverage" # optional; results read from the reports it writes
 
 # Common specs, seeded for EVERY variant. Each maps a `source` inside the version
 # folder to a `dest` in the run's workspace. A `.hbs` source is rendered; any other
@@ -505,7 +505,7 @@ test = "npx vitest run --coverage"
 | `typecheck` | Yes | Gating. A non-zero exit rates the run `broken` and scores it zero. |
 | `lint` | No | Recorded. |
 | `format` | No | Recorded. |
-| `test` | No | Recorded, with the test count and coverage it reports. |
+| `test` | No | Recorded, with the results and coverage read from the report files it writes. |
 
 Each declared command must be non-empty and runs from the implementation's
 repository root once the `[build]` install has completed, so the dependencies it
@@ -530,11 +530,39 @@ that never ran leaves the run ungated: a host that could not install dependencie
 has learned nothing about whether the code compiles. The other three commands are
 recorded and leave the run's rating and score to validation and the reviewer.
 
-`test` runs the produced implementation's own test suite. The number of tests
-that ran, the number that failed, and the coverage the command measured are read
-from what the command printed and recorded with the run, so a build that ships a
-tested implementation is distinguishable from one that ships none. A runner
-reporting no counts or no coverage records their absence.
+`test` runs the produced implementation's own test suite: the tests the model
+wrote, over the code the model wrote. Its figures are read from two report files
+the case's own build `vitest.config.ts` writes into the tree, never from what
+the command printed, so a runner restyling its terminal output cannot move a
+recorded number.
+
+The case's build config must write both files. `reporters: ["default", "json"]`
+with `outputFile: { json: "coverage/test-report.json" }` produces the run's
+results: the totals, a row per test file, and each failure with its message.
+Coverage declared as `provider: "istanbul"` with
+`reporter: ["text", "json-summary"]` produces `coverage/coverage-summary.json`,
+which carries istanbul's four metrics for the whole measured source and per
+file. `reportOnFailure: true` is what makes a failing suite write its coverage at
+all.
+
+Coverage is measured over the build's own `src/`, excluding its tests and any
+source the workspace seeded and forbade the build to edit, so the denominator is
+the code the model actually wrote. Both files land under `coverage/`, the one
+directory the seeded workspace ignores in both git and Prettier, which keeps a
+report out of the commit, out of the analyzer's authored set, and out of the
+`format` command's `prettier --check`.
+
+The toolchain stage reads both files after the command finishes and whatever it
+exited with, because a failing suite is the one whose coverage is most worth
+having. What is recorded is bounded: per-file rows are capped and flagged when
+they are cut, and every failure message has its stack frames stripped and its
+length capped, since frames carry host paths that mean nothing on a published
+record.
+
+A case whose configuration writes no report files records no figures. Absence
+means not reported, which a console renders as no widget rather than an empty
+one, while a recorded block of zeroes is the runner saying the build shipped no
+tests.
 
 The same pass builds the implementation and opens the built site in a headless
 browser as a smoke check, recording whether it booted, whether it painted a first
