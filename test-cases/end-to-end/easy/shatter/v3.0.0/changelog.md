@@ -43,9 +43,9 @@ apart from one where it is the other way round.
 
 ## Every review point is decided by a validator
 
-The checklist grew from 99 points to 254, and every one of them carries a Vitest
+The checklist grew from 99 points to 257, and every one of them carries a Vitest
 suite under `validation/<engine>/`, the domains its failure lowers, and how far it
-lowers them. A `base` run is rated on 207 points and a `warhead` run on 254.
+lowers them. A `base` run is rated on 207 points and a `warhead` run on 257.
 
 Nothing is left to a reviewer to decide from a screenshot. The six points that had
 been backed by a reference view or a proof capture rather than by a check are now
@@ -63,7 +63,7 @@ shown beside.
 ## The checklist asks one question at a time
 
 Each point now asserts one observable behavior, which is most of the growth from
-99 points to 254. Where a single point had asked that a wave clears, that the
+99 points to 257. Where a single point had asked that a wave clears, that the
 banner appears, that the number advances and that play continues underneath, four
 points ask those four things, so a build that raises the banner and forgets to
 increment the wave loses one point rather than all four, and a reviewer reading

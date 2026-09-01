@@ -44,22 +44,26 @@ none = "workspaces/none"
 "simple-2d" = "workspaces/warhead/simple-2d"
 "structured-2d" = "workspaces/warhead/structured-2d"
 
-# The warhead checklist: 47 points on top of the case's 207, so a warhead run is
-# rated on 254. The `format` is inherited from the case manifest
+# The warhead checklist: 50 points on top of the case's 207, so a warhead run is
+# rated on 257. The `format` is inherited from the case manifest
 # (`[review] format = 2`); a variant only adds `[[review.categories]]`. Every point
 # carries `domains` and `failure_cap` on the same scale the case manifest sets out
 # above its `[review]` table, and every point carries the validator that decides
 # it.
 #
-# FOUR categories are declared, and two of them REUSE a common category's id so
+# FIVE categories are declared, and three of them REUSE a common category's id so
 # their points fold into it (see `merge_review_items` in the core):
-#   - `instrumentation` — the three torpedo operations of the debug surface, which
+#   - `instrumentation` — the four torpedo operations of the debug surface, which
 #     belong beside the case's other per-operation instrumentation points. Their
 #     scripts live in the COMMON `instrumentation/` directory of each validator
 #     project; only a warhead checklist names them.
 #   - `rocks` — the thirteen Armor points, which are rules about a rock and belong
 #     beside the case's other rock points. Their scripts live in a directory of
 #     their own, `armor/`, which never loads against a base build.
+#   - `presentation` — the two things a warhead build draws that a base one does
+#     not, the torpedo itself and the HUD's charge readout, which belong beside the
+#     case's other legibility points. Their scripts live in the COMMON
+#     `presentation/` directory.
 #   - `torpedo` and `detonation` are NEW categories with headings of their own.
 #
 # Detonation is deliberately its own category rather than a second block with
@@ -70,11 +74,13 @@ none = "workspaces/none"
 # Detonation heading at all.
 
 # --- Instrumentation ---------------------------------------------------------
-# The three torpedo operations of the debug surface, folded into the case's common
+# The four torpedo operations of the debug surface, folded into the case's common
 # Instrumentation category by id-match. They exist because every other debug
 # operation is graded by an item of its own — the per-roster clears, the per-id
 # removals, the world gates, the saucer faculties, and (in Armor below)
-# setRockHealth — and the torpedo operations otherwise got nothing. The
+# setRockHealth — and the torpedo operations otherwise got nothing. setTorpedoHeading
+# is the fourth: the specification charges every warhead build for it, so an item
+# drives it rather than leaving it a requirement the case never reads. The
 # consequences are the ones an item count exists to prevent: clearTorpedoes sits
 # inside the harness's clearWorld, so a build that implements it wrongly
 # contaminates warhead scenarios across Homing torpedo, Detonation and Armor with
@@ -103,6 +109,15 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "instrumentation/remove-torpedo.test.ts", outputs = [
   { id = "removed", name = "The two torpedoes that outlived the one addressed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "torpedo-heading"
+title = "setTorpedoHeading turns a torpedo and its velocity with it"
+description = "setTorpedoHeading(id, radians) reads back on the snapshot's heading, and the torpedo's reported velocity turns onto that heading while its magnitude stays the TORPEDO_SPEED it was carrying."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/torpedo-heading.test.ts", outputs = [
+  { id = "turned", name = "The torpedo on the heading it was turned to", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "torpedo-homing-gate"
@@ -547,4 +562,37 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "detonation/harmless-to-the-ship.test.ts", outputs = [
   { id = "passthrough", name = "The torpedo passing through its own ship", kind = "image" },
+] }
+
+# --- Presentation ------------------------------------------------------------
+# The two things a warhead build draws that a base one does not, folded into the
+# case's common "Look and readouts" category by id-match. `specs/overview.md`'s
+# legibility table adds a row for the torpedo and `specs/ui.md`'s HUD table adds
+# the charge readout, and the base checklist grades every other row of both — so
+# without these two a warhead build that draws its torpedo exactly like a bullet
+# and ships no charge indicator loses nothing, while a base build that omits its
+# ships-in-reserve glyphs loses a point. Both are presence-and-distinguishability
+# checks, of the same kind as the base group's: no palette, no silhouette and no
+# placement is asserted anywhere, because `specs/overview.md` leaves all three to
+# the build.
+[[review.categories]]
+id = "presentation"
+title = "Look and readouts"
+[[review.categories.items]]
+id = "torpedo-is-drawn-and-distinct"
+title = "The torpedo reads apart from the bullets"
+description = "Pixels inside a posed torpedo differ from the background by more than 60 of 441, and the colour it was drawn in differs from a posed bullet's by more than 40."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/torpedo-is-drawn-and-distinct.test.ts", outputs = [
+  { id = "torpedo", name = "The torpedo beside a round, told apart", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-torpedo-charge-is-drawn"
+title = "The torpedo charge is drawn in the HUD"
+description = "With setTorpedoCharge posed at 1, 0.5 and 0, a torpedo readout is drawn in the upper portion of the field clear of the star, and the ink it carries falls with the charge: each of the two steps gives up at least a fifth of the whole full-to-empty swing."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/hud-torpedo-charge-is-drawn.test.ts", outputs = [
+  { id = "charge", name = "The torpedo readout at the last charge posed", kind = "image" },
 ] }

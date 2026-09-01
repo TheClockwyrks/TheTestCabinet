@@ -117,7 +117,7 @@ single game, rated on the same four domains, `gravity`, `flight`, `arcade` and
 - `warhead` — the same game with armored rocks, so a Large takes three hits, and
   a homing torpedo: one guided munition on a ten-second recharge that flies true
   through the well and destroys any rock outright, blasting its fragments outward
-  far harder than the gun does. It adds 47 points, so a warhead run is rated on 254.
+  far harder than the gun does. It adds 50 points, so a warhead run is rated on 257.
 
 Only the engine-backed project differs by variant, because its `src/constants.ts`
 carries the armor and torpedo figures and binds the torpedo key. The engineless
@@ -136,7 +136,7 @@ scenario still writes what it recorded.
 
 ## Validation
 
-This case is validator-rated: every one of the 254 checklist points carries a
+This case is validator-rated: every one of the 257 checklist points carries a
 Vitest suite, and the validators decide the functional rating through each point's
 failure cap. A reviewer rates the run's aesthetics through the four domains and
 may override a verdict.
@@ -180,11 +180,11 @@ lives and grace around it), `arcade` (the rocks, the waves, the saucer and the
 score) and `presentation` (the screens, the HUD, the legibility of what was drawn,
 and the audio) — and its overall rating is the worst of the four.
 
-The 207 common points sit in fifteen categories. The warhead ruleset adds 47
-across four blocks: two fold into the common `Instrumentation` and `The rocks`
-categories by id, and two are categories of its own, `Homing torpedo` and
-`Detonation`. Each point names the domains its failure lowers and how far it
-lowers them.
+The 207 common points sit in fifteen categories. The warhead ruleset adds 50
+across five blocks: three fold into the common `Instrumentation`, `The rocks` and
+`Look and readouts` categories by id, and two are categories of its own, `Homing
+torpedo` and `Detonation`. Each point names the domains its failure lowers and how
+far it lowers them.
 
 ## Versioning
 

@@ -486,7 +486,7 @@ validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
 [[review.categories.items]]
 id = "poses-read-back"
 title = "Every pose is reported by the snapshot"
-description = "Each pose's value is read back from the snapshot: the screen, the menu index, the score, the lives, the wave, the wave banner, the ship's position, velocity, angle, invulnerability and fire cooldown, a rock's velocity, the two world gates, the ship's contact gate, and the saucer's three faculties. Mute is not in the list: there is no setMuted."
+description = "Each pose's value is read back from the snapshot: the screen, the menu index, the score, the lives, the wave, the wave banner, the ship's position, velocity, angle, invulnerability and fire cooldown, a rock's velocity, the saucer's velocity, the two world gates, the ship's contact gate, and the saucer's three faculties. Mute is not in the list: there is no setMuted."
 domains = ["gravity", "flight", "arcade", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
