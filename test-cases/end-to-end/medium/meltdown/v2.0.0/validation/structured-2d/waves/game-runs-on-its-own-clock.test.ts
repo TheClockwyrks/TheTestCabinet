@@ -89,7 +89,7 @@ const MIN_ELAPSED_MS = WINDOW_MS * 0.8;
  * build that clamps a long frame's delta, and for a host that gave the loop a
  * fraction of the time it asked for.
  */
-const MIN_CLOCK_GAIN = 0.25;
+const MIN_CLOCK_GAIN = 0.5;
 
 /**
  * The least the Mote must travel: `20` logical units.

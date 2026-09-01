@@ -62,15 +62,16 @@ const WINDOW_SECONDS = 1.0;
 /**
  * How close each window's rate must come, as decimal places of heat per second.
  *
- * One place is `0.05` of a heat point a second, a quarter of one percent of the
- * `20` the specification states. The bleed is a per-frame subtraction of
+ * Two places is `0.005` of a heat point a second, a fortieth of one percent of
+ * the `20` the specification states, and it is the figure all three engines' copies
+ * of this point hold the rate to. The bleed is a per-frame subtraction of
  * `20 * dt` from a figure the case states exactly, so a conformant build has no
  * need of the room. What the bound excludes is every other reading of the rule:
  * a Stutter left on its air cooling sheds `37.6` a second at heat `100` and `7.5`
  * at heat `20`, a Lance `13.4` and `2.7`, and a tower that does not bleed at all
  * reads `0`.
  */
-const RATE_DIGITS = 1;
+const RATE_DIGITS = 2;
 
 let h: Harness;
 

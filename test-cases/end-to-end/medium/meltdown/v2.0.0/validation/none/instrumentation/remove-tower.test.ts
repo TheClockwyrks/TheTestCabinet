@@ -69,7 +69,7 @@ const TOP_WALLS = [
  * (`specs/instrumentation.md`), so recomputing the same route over the same floor
  * is the same sum and this is a float's representation and nothing else.
  */
-const ROUTE_DIGITS = 4;
+const ROUTE_DIGITS = 6;
 
 /** Money posed so the upgrades in the second reading land. A precondition. */
 const AMPLE_MONEY = 100_000;

@@ -61,7 +61,7 @@ const DEEP_WAVE = 20;
  * read `766.8`, and even a hundredth of that factor is thousands of times this
  * bound away.
  */
-const SPEED_DIGITS = 3;
+const SPEED_DIGITS = 6;
 
 let h: Harness;
 

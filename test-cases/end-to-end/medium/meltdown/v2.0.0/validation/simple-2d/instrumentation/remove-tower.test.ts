@@ -61,7 +61,7 @@ const SCORE = 90210;
  * to resolve — the detour the second wall segment was forcing — is more than two
  * whole tiles.
  */
-const ROUTE_DIGITS = 3;
+const ROUTE_DIGITS = 6;
 
 let h: Harness;
 

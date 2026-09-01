@@ -84,7 +84,7 @@ const EXPECTED_TOTAL = SHOTS * EXPECTED_PER_SHOT;
  * (`25.5`), four (`50.9`), the cold multiplier (`6.3`), the plateau (`63.0`), and
  * a linear reading of the curve (`48.8`).
  */
-const DAMAGE_DIGITS = 1;
+const DAMAGE_DIGITS = 3;
 
 /**
  * How close the pinned heat must stay, in decimal places: within `5e-5`.
@@ -93,7 +93,7 @@ const DAMAGE_DIGITS = 1;
  * (`10.3` for the Arc, `specs/towers.md`) to an unpinned tower, so a gate that let
  * go is out by twenty points here rather than by a rounding.
  */
-const PINNED_DIGITS = 4;
+const PINNED_DIGITS = 6;
 
 let h: Harness;
 

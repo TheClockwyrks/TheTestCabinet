@@ -76,7 +76,7 @@ const WALKERS = 3;
  * floor is the same sum, so this is a float's representation and nothing else. A
  * footprint left blocked adds tiles, not fractions.
  */
-const ROUTE_DIGITS = 4;
+const ROUTE_DIGITS = 6;
 
 /** How far each walker must travel in the second after the clear, in logical units. */
 const MIN_TRAVEL = 15;

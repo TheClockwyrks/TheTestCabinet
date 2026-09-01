@@ -63,7 +63,7 @@ const SPAN_SECONDS = 1;
  * whole points in a second — air cooling alone takes `60` down past `49` — so the
  * bound is four orders below anything a real flow produces.
  */
-const PINNED_DIGITS = 4;
+const PINNED_DIGITS = 6;
 
 /**
  * How far an unpinned heat must have moved for the contrast to have been read at

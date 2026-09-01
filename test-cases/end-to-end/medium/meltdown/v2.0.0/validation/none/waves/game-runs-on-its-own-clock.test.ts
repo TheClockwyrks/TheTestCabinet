@@ -35,7 +35,7 @@
 // the floor does not reads a gain with no travel.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan } from "../assert";
+import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import { SURGE_DEFS } from "../constants";
 import {
   captureStill,
@@ -67,6 +67,16 @@ const WINDOW_MS = 1500;
 const MIN_TRAVEL = 20;
 
 /**
+ * The least of the window that must really have elapsed: four fifths of it.
+ *
+ * A precondition on the HOST, not a bound on the build. `settle` schedules its own
+ * halt and a machine under load can overrun or under-deliver; what would make the
+ * readings below meaningless is a window that barely happened at all. It is the
+ * same precondition the other two engines' copies of this point carry.
+ */
+const MIN_ELAPSED_MS = WINDOW_MS * 0.8;
+
+/**
  * How much `simTime` must gain across the window: half a second.
  *
  * A third of the `1.5` seconds the window really spends, so the same third-pace
@@ -91,16 +101,23 @@ it("walks the floor and gains simulation time with nothing stepping it", async (
   const mote = await poseRunningFloor(h);
 
   await captureStill(h, "before");
+  const openedAt = Date.now();
   const legs = await h.withOwnClock(async (clock) => {
     const opened = await clock.read();
     await clock.settle(WINDOW_MS);
     return { opened, settled: await clock.read() };
   });
+  const elapsedMs = Date.now() - openedAt;
   await captureStill(h, "after");
 
   const at = (snapshot: typeof legs.opened) =>
     requireUnit(snapshot, mote, "the window on the build's own clock");
 
+  assertGreaterThanOrEqual(
+    elapsedMs,
+    MIN_ELAPSED_MS,
+    "precondition: the real window the build's own loop was given",
+  );
   assertGreaterThan(
     distance(at(legs.opened), at(legs.settled)),
     MIN_TRAVEL,

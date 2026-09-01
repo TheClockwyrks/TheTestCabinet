@@ -69,14 +69,15 @@ const WINDOW_SECONDS = 1.0;
 /**
  * How close each window's rate must come, as decimal places of heat per second.
  *
- * One place is `0.05` of a heat point a second, a quarter of one percent of the
- * `20` the specification states. The bleed is a per-frame subtraction of
+ * Two places is `0.005` of a heat point a second, a fortieth of one percent of
+ * the `20` the specification states, and it is the figure all three engines' copies
+ * of this point hold the rate to. The bleed is a per-frame subtraction of
  * `20 * dt`, so a conformant build has no need of the room; what the bound
  * excludes is a build that admits any of the three neighbours' flows, which the
  * head's arithmetic puts tens of heat points a second away and on the other side
  * of zero.
  */
-const RATE_DIGITS = 1;
+const RATE_DIGITS = 2;
 
 let h: Harness;
 

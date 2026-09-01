@@ -58,7 +58,7 @@ const BYSTANDERS = 3;
  * the representation of that sum; the difference this reading has to resolve — the
  * detour the wall forces — is more than two whole tiles.
  */
-const ROUTE_DIGITS = 3;
+const ROUTE_DIGITS = 6;
 
 let h: Harness;
 

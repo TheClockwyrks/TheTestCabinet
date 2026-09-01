@@ -90,7 +90,7 @@ const WALLS = [
 const WAVES = [1, 2] as const;
 
 /** The fewest left-vent arrivals the reading is taken across. */
-const MIN_ARRIVALS = 1;
+const MIN_ARRIVALS = 4;
 
 let h: Harness;
 

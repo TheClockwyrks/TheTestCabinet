@@ -75,7 +75,7 @@ const SPEED_DIGITS = 6;
  * figure. Four places is `5e-5`, many orders above that and many orders below the
  * `471.2` this precondition is separating from the base.
  */
-const HP_DIGITS = 4;
+const HP_DIGITS = 6;
 
 let h: Harness;
 

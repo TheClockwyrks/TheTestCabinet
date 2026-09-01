@@ -57,7 +57,7 @@ import {
  * of a double. It is not room for a different factor — the nearest wrong model,
  * the per-wave scaling of Wave 1, is five sixths of the figure away.
  */
-const HP_DIGITS = 4;
+const HP_DIGITS = 6;
 
 /**
  * How many units are left to release for the LATE reading, and how much game time

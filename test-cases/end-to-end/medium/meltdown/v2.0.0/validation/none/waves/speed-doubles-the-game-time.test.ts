@@ -78,6 +78,13 @@ const EXPECTED_RATIO = FAST / SLOW;
  * answer — the band runs from `1.6` to `2.4`, which excludes the `1` a dead toggle
  * reads, the `4` a doubly-applied one reads, and the `0.5` an inverted one reads,
  * by margins many times its own width.
+ *
+ * It is the one bound in this group WIDER than the other two engines' copies of this
+ * point, and the reason is the measurement rather than the requirement: under an
+ * engine the two legs are the same number of frames of the same fixed clock, so the
+ * ratio is exact and `0.05` is all the room a build needs, while here the legs are
+ * real windows a loaded machine can stretch. The rule being decided is the same one,
+ * and every wrong reading of it is excluded under all three.
  */
 const RATIO_TOLERANCE = 0.4;
 

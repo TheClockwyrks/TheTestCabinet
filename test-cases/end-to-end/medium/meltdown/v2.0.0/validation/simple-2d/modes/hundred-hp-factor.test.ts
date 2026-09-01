@@ -57,7 +57,7 @@ import { beginOnslaught, ONSLAUGHT_TICKS, watchOnslaught } from "./run";
  * Every figure the specification fixes here is a whole number of hit points, so
  * this covers the round-trip of a product through a float and admits nothing else.
  */
-const HP_DIGITS = 3;
+const HP_DIGITS = 6;
 
 let h: Harness;
 

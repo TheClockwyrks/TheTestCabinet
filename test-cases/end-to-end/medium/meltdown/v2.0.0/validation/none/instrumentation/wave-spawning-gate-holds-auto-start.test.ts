@@ -54,7 +54,7 @@ const DRIVE_SECONDS = 2;
  * excludes both a timer that stopped early and one that ran a further second into
  * the negative.
  */
-const TIMER_DIGITS = 1;
+const TIMER_DIGITS = 3;
 
 let h: Harness;
 

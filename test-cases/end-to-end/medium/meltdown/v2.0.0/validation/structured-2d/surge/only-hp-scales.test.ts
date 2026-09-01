@@ -87,7 +87,7 @@ const EXACT_DIGITS = 6;
  * which are `446.4` and `496.0`. What the exact figure is belongs to
  * `surge/hp-scales-with-the-wave`; here it only has to have moved.
  */
-const HP_DIGITS = 3;
+const HP_DIGITS = 6;
 
 let h: Harness;
 

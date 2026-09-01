@@ -75,7 +75,7 @@ const WAVE = 4;
  * should have released is `wave-size`; this is only the precondition that there was
  * a sequence at all.
  */
-const MIN_DRAWS = 2;
+const MIN_DRAWS = 8;
 
 let h: Harness;
 
