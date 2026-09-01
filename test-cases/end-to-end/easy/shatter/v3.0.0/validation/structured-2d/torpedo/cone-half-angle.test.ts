@@ -16,6 +16,15 @@
 // a build at `10` degrees fails the first reading, a build at `30` fails the
 // second, and the two readings name which.
 //
+// AND BOTH SIDES OF THE HEADING, because the rule quoted above says "on either
+// side". A cone measured off a SIGNED bearing rather than off its magnitude —
+// a build testing `0 <= bearing - heading <= TORPEDO_CONE` instead of
+// `|bearing - heading| <= TORPEDO_CONE` — reaches fifteen degrees one way and
+// nothing at all the other, and a check that probed one side alone would grade it
+// either wholly right or wholly wrong depending on which side it happened to
+// pick. So the pair above is flown twice, once with the rocks above the
+// torpedo's line and once with them below it: four scenarios in all.
+//
 // ONE DEGREE EITHER SIDE IS THE TIGHTEST HONEST PAIR. The bearing is set by the
 // pose, exactly, and neither body is anywhere the environment can move it far
 // before the question is settled: `specs/gravity.md` never pulls the torpedo, the
@@ -29,7 +38,10 @@
 // bearing is the opposite one. Posing both rocks `400` units out along a nearly
 // horizontal line keeps the separations at `388` across and `97` up, well inside
 // half the field on both axes, so the bearing the specification means is the
-// bearing this check posed.
+// bearing this check posed. Each side of the heading gets the lane that keeps its
+// rocks inside the field without wrapping: `y = 640` for the rocks posed ABOVE
+// the line and `y = 80` for the rocks posed below it. Both lanes stand `280`
+// units off the star's own row, so neither flight passes near the well.
 //
 // THE ACQUIRED ROCK IS READ AS DESTROYED rather than as turned toward, because
 // destruction is unambiguous: `specs/collision.md` has a torpedo destroy the rock
@@ -38,9 +50,9 @@
 // spared rock is read BY ID, because a torpedo that destroyed it would leave two
 // fragments with fresh ids in its place (`specs/rocks.md`).
 //
-// THE PAIR IS FLOWN AS TWO SCENARIOS, one after the other, each on ground
-// `startPlaying` lays fresh — an empty field with both world gates shut, so the
-// only rock in either is the one the check posed.
+// EACH SCENARIO IS FLOWN ON ITS OWN GROUND, one after the other, each laid fresh
+// by `startPlaying` — an empty field with both world gates shut, so the only rock
+// in any of them is the one the check posed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { DEG } from "../../src/constants";
@@ -56,16 +68,35 @@ import {
 } from "../harness";
 import { poseTorpedo, standTheShipClear } from "./scenario";
 
-/** Where the torpedo starts in both scenarios, and which way it is going. */
+/** Where the torpedo starts in every scenario, and which way it is going. */
 const TORPEDO_X = 100;
-const TORPEDO_Y = 640;
 const HEADING = 0;
 
-/** How far off the launch centre line each rock is posed, in radians. */
-const INSIDE_OFF = -14 * DEG;
-const OUTSIDE_OFF = -16 * DEG;
+/**
+ * The lane each side of the heading is flown down, in units.
+ *
+ * `ABOVE` is the lane the rocks posed above the torpedo's line are flown in and
+ * `BELOW` the one for the rocks posed below it, each chosen so its rock sits
+ * inside the field without the pose crossing a seam. Both stand `280` units off
+ * the star's row (`360`), so no flight goes near the well.
+ */
+const LANE = { above: 640, below: 80 } as const;
+
+/** How far off the launch centre line each rock is posed, in degrees. */
+const INSIDE_DEG = 14;
+const OUTSIDE_DEG = 16;
+
+/** The two sides of the heading the rule reaches, as signs on that offset. */
+const SIDES = [
+  { sign: -1, name: "above" as const },
+  { sign: 1, name: "below" as const },
+];
+
 /** How far out along that bearing, in units: short enough to cross no seam. */
 const RANGE = 400;
+
+/** Which of the two sides is the one the still is kept from. */
+const RECORDED = "above";
 
 /**
  * How long each scenario is flown for: `1.5` seconds.
@@ -83,11 +114,11 @@ const FLIGHT_TICKS = ticksFor(1.5);
 /** How long the fragments are let come apart before the still is kept. */
 const AFTERMATH_TICKS = ticksFor(0.2);
 
-/** Where a rock posed `off` radians off the launch line stands. */
-function rockAt(off: number): { x: number; y: number } {
+/** Where a rock posed `off` radians off the launch line in `lane` stands. */
+function rockAt(lane: number, off: number): { x: number; y: number } {
   return {
     x: TORPEDO_X + Math.cos(HEADING + off) * RANGE,
-    y: TORPEDO_Y + Math.sin(HEADING + off) * RANGE,
+    y: lane + Math.sin(HEADING + off) * RANGE,
   };
 }
 
@@ -101,47 +132,55 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("takes a rock 14 degrees off its heading and leaves one 16 degrees off", async () => {
-  // Inside the cone: acquired, and destroyed.
-  startPlaying(h);
-  standTheShipClear(h);
-  const inside = rockAt(INSIDE_OFF);
-  const insideId = poseRock(h, "large", inside.x, inside.y);
-  poseTorpedo(h, TORPEDO_X, TORPEDO_Y, HEADING);
+it.each(SIDES)(
+  `takes a rock ${String(INSIDE_DEG)} degrees off its heading $name the line ` +
+    `and leaves one ${String(OUTSIDE_DEG)} degrees off`,
+  async ({ sign, name }) => {
+    const lane = LANE[name];
 
-  const taken = await h.until((s) => rockById(s, insideId) === undefined, {
-    maxFrames: FLIGHT_TICKS,
-  });
-  // A fifth of a second of the fragments coming apart before the picture is
-  // kept: on the tick of the kill the two Mediums stand on top of each other at
-  // the destroyed rock's position (specs/rocks.md), so a still taken there shows
-  // one circle and says nothing. The reading above is already taken.
-  await h.advance(AFTERMATH_TICKS);
-  // The rock just inside the cone, taken.
-  captureStill(h, "cone");
+    // Inside the cone: acquired, and destroyed.
+    startPlaying(h);
+    standTheShipClear(h);
+    const inside = rockAt(lane, sign * INSIDE_DEG * DEG);
+    const insideId = poseRock(h, "large", inside.x, inside.y);
+    poseTorpedo(h, TORPEDO_X, lane, HEADING);
 
-  assertTrue(
-    taken.hit,
-    `the rock posed ${Math.abs(INSIDE_OFF / DEG).toFixed(0)} degrees off the ` +
-      "torpedo's heading — inside TORPEDO_CONE (15 degrees) — to be acquired " +
-      "and destroyed within 1.5 seconds of flight (specs/weapons.md, " +
-      `specs/collision.md); it was still on the field after ${FLIGHT_TICKS} ticks`,
-  );
+    const taken = await h.until((s) => rockById(s, insideId) === undefined, {
+      maxFrames: FLIGHT_TICKS,
+    });
+    // A fifth of a second of the fragments coming apart before the picture is
+    // kept: on the tick of the kill the two Mediums stand on top of each other at
+    // the destroyed rock's position (specs/rocks.md), so a still taken there shows
+    // one circle and says nothing. The reading above is already taken.
+    await h.advance(AFTERMATH_TICKS);
+    // The rock just inside the cone, taken. One side is filmed, the way the
+    // other swept items keep one representative frame rather than one per case.
+    if (name === RECORDED) captureStill(h, "cone");
 
-  // Outside the cone: never acquired, and left standing.
-  startPlaying(h);
-  standTheShipClear(h);
-  const outside = rockAt(OUTSIDE_OFF);
-  const outsideId = poseRock(h, "large", outside.x, outside.y);
-  poseTorpedo(h, TORPEDO_X, TORPEDO_Y, HEADING);
+    assertTrue(
+      taken.hit,
+      `the rock posed ${String(INSIDE_DEG)} degrees ${name} the torpedo's ` +
+        "heading — inside TORPEDO_CONE (15 degrees), which reaches that far " +
+        "on EITHER side — to be acquired and destroyed within 1.5 seconds of " +
+        "flight (specs/weapons.md, specs/collision.md); it was still on the " +
+        `field after ${String(FLIGHT_TICKS)} ticks`,
+    );
 
-  await h.advance(FLIGHT_TICKS);
+    // Outside the cone: never acquired, and left standing.
+    startPlaying(h);
+    standTheShipClear(h);
+    const outside = rockAt(lane, sign * OUTSIDE_DEG * DEG);
+    const outsideId = poseRock(h, "large", outside.x, outside.y);
+    poseTorpedo(h, TORPEDO_X, lane, HEADING);
 
-  assertTrue(
-    rockById(h.snapshot(), outsideId) !== undefined,
-    `the rock posed ${Math.abs(OUTSIDE_OFF / DEG).toFixed(0)} degrees off the ` +
-      "torpedo's heading — outside TORPEDO_CONE (15 degrees) — still on the " +
-      "field after 1.5 seconds: a body outside the cone is never a candidate, " +
-      "so nothing turns toward it (specs/weapons.md)",
-  );
-});
+    await h.advance(FLIGHT_TICKS);
+
+    assertTrue(
+      rockById(h.snapshot(), outsideId) !== undefined,
+      `the rock posed ${String(OUTSIDE_DEG)} degrees ${name} the torpedo's ` +
+        "heading — outside TORPEDO_CONE (15 degrees) — still on the field " +
+        "after 1.5 seconds: a body outside the cone is never a candidate, so " +
+        "nothing turns toward it (specs/weapons.md)",
+    );
+  },
+);
