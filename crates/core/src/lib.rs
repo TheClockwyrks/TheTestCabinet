@@ -62,6 +62,7 @@ pub mod seeding;
 pub mod test_case;
 pub mod test_case_group;
 pub mod toolchain;
+pub mod toolchain_report;
 pub mod toolchain_stage;
 pub mod validation;
 pub mod validator;
@@ -184,9 +185,13 @@ pub use test_case::{
 };
 pub use test_case_group::{TestCaseGroup, TestCaseGroupCatalog};
 pub use toolchain::{
-    TOOLCHAIN_OUTPUT_LIMIT, ToolchainCommandResult, ToolchainCommands, ToolchainSmokeResult,
-    ToolchainSummary, ToolchainTestRun,
+    CoverageFile, CoverageMetric, CoverageMetrics, TOOLCHAIN_COVERAGE_FILE_LIMIT,
+    TOOLCHAIN_COVERAGE_SUMMARY_PATH, TOOLCHAIN_FAILURE_MESSAGE_LIMIT, TOOLCHAIN_OUTPUT_LIMIT,
+    TOOLCHAIN_TEST_FAILURE_LIMIT, TOOLCHAIN_TEST_FILE_LIMIT, TOOLCHAIN_TEST_REPORT_PATH,
+    ToolchainCommandResult, ToolchainCommands, ToolchainCoverage, ToolchainSmokeResult,
+    ToolchainSummary, ToolchainTestFailure, ToolchainTestFile, ToolchainTestRun, ToolchainTests,
 };
+pub use toolchain_report::{read_coverage_summary, read_test_report};
 pub use toolchain_stage::ToolchainStage;
 pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,

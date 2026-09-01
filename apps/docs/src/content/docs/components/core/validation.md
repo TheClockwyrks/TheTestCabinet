@@ -331,6 +331,16 @@ are stored as written. Every
 other toolchain command is recorded and gates nothing, and a typecheck that
 never ran leaves the run ungated.
 
+The `test` command's results and coverage are read from the report files the
+case's own build vitest config writes into the tree, not from what the command
+printed; the [manifest's TypeScript
+toolchain](/testing/end-to-end/manifests/#the-typescript-toolchain) states which
+files those are and what a case configures to get them. They gate nothing
+either: a red suite and thin coverage are recorded as facts about the build and
+left to validation and the reviewer. They describe the tests the model wrote over
+the code the model wrote, and never the case's validators, whose own suite has
+coverage disabled.
+
 The run stays reviewable. A gated run is published with its results and the
 compiler output, and a reviewer may still play and score the build; the gate
 decides the badge the run carries, not whether it can be judged.

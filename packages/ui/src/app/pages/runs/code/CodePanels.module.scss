@@ -429,6 +429,174 @@
   white-space: nowrap;
 }
 
+// --- The executed tier: the model's own tests, and their coverage ------------
+//
+// Everything under this heading describes a suite that RAN, which is the one thing the
+// rest of the tab does not. The bands' own headings and lead lines say whose suite it is
+// — the model's, never the test case's validators' — and these styles only have to keep
+// the two tiers looking like they belong on one page: the same bands, the same tiles, the
+// same tables, the same em dash for a figure that was not measured.
+
+// A widget stack inside a band, like the explorer's: no surface of its own, it only
+// spaces the cards it holds.
+.toolchain {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  min-width: 0;
+}
+
+.toolchainCard {
+  @include s.panel(t.$space-md);
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// What the suite did, as a card with a tone stripe. The stripe reinforces the sentence
+// beside it and never replaces it — every state spells itself out in words, so the card
+// reads the same with no color perception at all.
+.toolchainStatus {
+  @include s.panel(t.$space-md);
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  border-left-width: 3px;
+  min-width: 0;
+
+  &[data-tone="ok"] {
+    border-left-color: t.$color-positive;
+  }
+
+  &[data-tone="caution"] {
+    border-left-color: t.$color-accent;
+  }
+
+  &[data-tone="degraded"] {
+    border-left-color: t.$color-negative;
+  }
+}
+
+// A file-level note in the per-file test table — the message a test file that failed to
+// load carries. The only cell on the page allowed to wrap, because it is a sentence
+// rather than a figure, and it is bounded so one long message cannot set the table's
+// width.
+.noteCell {
+  white-space: normal !important;
+  max-width: 32rem;
+  color: t.$color-text-muted;
+}
+
+.coverageMetrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: t.$space-sm;
+}
+
+.coverageMetric {
+  @include s.panel(t.$space-md);
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+// The percentage itself. Proportional figures, like the tiles above: it stands alone
+// rather than in a column, so it takes the display face rather than tabular digits.
+.coverageValue {
+  color: t.$color-text;
+  font-size: t.$font-lg;
+  font-weight: 600;
+}
+
+// The counts the percentage was computed from, kept beside it so the figure is never the
+// only statement of the measurement — "62.1%" over four lines and over four hundred are
+// very different claims.
+.coverageCounts {
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+// One cell of the per-file coverage table: the share on top, the counts it came from
+// under it. Both are on the page, so no figure here is reachable only by hovering.
+.covCell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+
+.covCounts {
+  color: t.$color-text-muted;
+  font-size: 0.68rem;
+}
+
+// The failing tests, as a list rather than a table: a name, where it lives, and a message
+// that is a block of its own.
+.failureList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+
+  li {
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-2xs;
+    min-width: 0;
+  }
+}
+
+.failureName {
+  margin: 0;
+  color: t.$color-text;
+  font-weight: 600;
+  font-size: t.$font-sm;
+}
+
+.failureWhere {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+}
+
+// Pre-formatted, because an assertion message is a diff and a reflowed diff is unreadable.
+// It scrolls inside its own box so the page body never scrolls sideways, and it is capped
+// in height so one enormous message cannot bury the rest of the list.
+.failureMessage {
+  margin: 0;
+  padding: t.$space-xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 45%, transparent);
+  background: color-mix(in srgb, t.$color-surface 60%, transparent);
+  color: t.$color-text-muted;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  max-height: 14rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+// The sentence directly under a band heading, saying what the band's figures are and —
+// for the two executed bands — whose tests they describe. It sits out on the backdrop
+// beside the heading rather than inside a card, so it wears the halo like the heading
+// does. Nothing on this page is loose, unhaloed text.
+.bandLead {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+  max-width: 62ch;
+  @include h.halo;
+}
+
 // --- Every figure ------------------------------------------------------------
 
 .figures {

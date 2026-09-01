@@ -554,6 +554,80 @@
       },
       "type": "object"
     },
+    "CoverageFile": {
+      "description": "One measured source file's coverage.",
+      "properties": {
+        "branches": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Branch arms: each side of an `if`, a ternary, a logical operator, a default\nparameter and a `switch` case."
+        },
+        "functions": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Function declarations, including methods and arrow functions."
+        },
+        "lines": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Executable lines."
+        },
+        "path": {
+          "description": "The file's path relative to the implementation's repository root, forward\nslashed. Istanbul keys its report by ABSOLUTE host path; storing that would\nleak the host's filesystem layout into a published record and would not join\nto the static analysis, whose `CodeFileEntry.path` is repo-relative. The\nrelativisation happens once, when the report is read.",
+          "type": "string"
+        },
+        "statements": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Statements, which a single line may hold several of."
+        }
+      },
+      "required": ["path", "lines", "statements", "functions", "branches"],
+      "type": "object"
+    },
+    "CoverageMetric": {
+      "description": "One istanbul coverage metric: how many of a thing there are and how many the tests\nreached.\n\n[`covered`](Self::covered) and [`total`](Self::total) are the authority and\n[`pct`](Self::pct) is what istanbul itself printed, carried so a stored figure and\nthe report it came from cannot disagree by a rounding rule. `pct` is an `Option`\nbecause istanbul does not always emit a number: a metric with a zero total is\nreported as the STRING `\"Unknown\"`, which is an absence, not a zero. A consumer\nthat wants a percentage for a metric whose `pct` is `None` derives it from\n`covered`/`total`, or renders nothing when `total` is zero.",
+      "properties": {
+        "covered": {
+          "description": "How many of this thing the tests reached.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pct": {
+          "description": "The percentage istanbul reported, when it reported one.",
+          "format": "double",
+          "type": ["number", "null"]
+        },
+        "total": {
+          "description": "How many of this thing there are in the measured source.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["covered", "total"],
+      "type": "object"
+    },
+    "CoverageMetrics": {
+      "description": "The four istanbul metrics, for one file or for the whole measured source.\n\nAll four are carried rather than one headline percentage, because branch and\nfunction coverage answer questions line coverage cannot: a suite that calls every\nfunction once and takes no `else` reads as well-covered on lines alone. Istanbul's\n`branchesTrue` extra is deliberately not carried — it is a diagnostic of\nistanbul's own branch bookkeeping, not a figure about the code.",
+      "properties": {
+        "branches": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Branch arms: each side of an `if`, a ternary, a logical operator, a default\nparameter and a `switch` case."
+        },
+        "functions": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Function declarations, including methods and arrow functions."
+        },
+        "lines": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Executable lines."
+        },
+        "statements": {
+          "$ref": "#/$defs/CoverageMetric",
+          "description": "Statements, which a single line may hold several of."
+        }
+      },
+      "required": ["lines", "statements", "functions", "branches"],
+      "type": "object"
+    },
     "DebugScriptOutput": {
       "description": "A single media artifact a [`DebugScriptResult`] declares and produces.\n\nThe *actual* media (from the model's build) is synthesized per run and recorded\nhere by presence. Its *baseline* counterpart — the same output driven from the\ncase's reference implementation — is a fixed property of the case *version*,\nsynthesized once at publish-reference time and served case-scoped (keyed by\nslug/version/variant/item/output), so it is **not** recorded per run: the reviewer\nUI resolves the baseline from the catalog, not the run tree. The actual bytes live\nin the collected implementation tree and are addressed through the run's\nvalidation-media route; this records only presence and the metadata a UI needs to\nlay the pair out.",
       "properties": {
@@ -2033,6 +2107,34 @@
       "required": ["command", "ran", "succeeded", "output", "truncated"],
       "type": "object"
     },
+    "ToolchainCoverage": {
+      "description": "What the coverage reporter measured, read from\n[`TOOLCHAIN_COVERAGE_SUMMARY_PATH`].\n\nThe presence of this whole block is the signal that coverage was reported at all.\nA case whose config writes no summary file, a command that never ran, and a runner\nthat produced an unreadable file all leave it absent — never present with zeroes\nin it.",
+      "properties": {
+        "files": {
+          "description": "Per-file rows, sorted by path, capped at [`TOOLCHAIN_COVERAGE_FILE_LIMIT`].",
+          "items": {
+            "$ref": "#/$defs/CoverageFile"
+          },
+          "type": "array"
+        },
+        "filesMeasured": {
+          "description": "How many files the report actually measured, before the cap.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesTruncated": {
+          "description": "Whether [`files`](Self::files) was cut short by the cap.",
+          "type": "boolean"
+        },
+        "totals": {
+          "$ref": "#/$defs/CoverageMetrics",
+          "description": "The `total` row: every measured file rolled up."
+        }
+      },
+      "required": ["totals", "files", "filesMeasured", "filesTruncated"],
+      "type": "object"
+    },
     "ToolchainSmokeResult": {
       "description": "The build smoke check: does the site the build produced actually boot?\n\nDistinct from — and weaker than — validation's load check, which decides review\npoints. This one answers a single question at the moment the toolchain ran: the\nbuilt site was served, opened in headless Chromium, and either painted a first\nframe with a clean console or it did not.",
       "properties": {
@@ -2122,38 +2224,170 @@
       "required": ["install", "typecheck"],
       "type": "object"
     },
-    "ToolchainTestRun": {
-      "description": "The optional `test` command's result, plus the figures its output reported.\n\nThe counts and the coverage are parsed **defensively** out of whatever the\ncommand printed: a runner that reports neither is not a failure, it is a runner\nthat reports neither, and every figure here is therefore an `Option` whose\nabsence means *not reported* rather than *zero*. A zero here is only ever a zero\nthe tool actually printed.",
+    "ToolchainTestFailure": {
+      "description": "One failing test, named and explained.",
       "properties": {
-        "coveragePercent": {
-          "description": "Line coverage as a percentage (`0.0..=100.0`), read from the coverage\nsummary table's `All files` row, when the command printed one.",
-          "format": "double",
-          "type": ["number", "null"]
+        "file": {
+          "description": "The test file's repo-relative path.",
+          "type": "string"
+        },
+        "message": {
+          "description": "Why it failed: the reporter's failure messages joined by a blank line, with\nevery stack frame dropped and the result capped at\n[`TOOLCHAIN_FAILURE_MESSAGE_LIMIT`] bytes. Frames carry host paths and line\nnumbers that mean nothing to a reader of a published record.",
+          "type": ["string", "null"]
+        },
+        "name": {
+          "description": "The test's full name — its `describe` chain and its own title, as the reporter\njoined them.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name"],
+      "type": "object"
+    },
+    "ToolchainTestFile": {
+      "description": "One test file the runner reported on.",
+      "properties": {
+        "failed": {
+          "description": "Tests in this file that failed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "description": "The file-level message, when the file failed to load and so ran no tests at\nall. Stack frames stripped and bounded, like every other message here.",
+          "type": ["string", "null"]
+        },
+        "passed": {
+          "description": "Tests in this file that passed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "description": "The file's path relative to the implementation's repository root, forward\nslashed. The reporter names it absolutely, for the same reason and with the\nsame fix as [`CoverageFile::path`].",
+          "type": "string"
+        },
+        "skipped": {
+          "description": "Tests in this file that were skipped, pending or todo — neither passed nor\nfailed, and counted separately so a suite that skipped half of itself cannot\nread as a suite that passed all of itself.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["path", "passed", "failed", "skipped"],
+      "type": "object"
+    },
+    "ToolchainTestRun": {
+      "description": "The optional `test` command's result, plus the figures its REPORT FILES carried.\n\nNothing here is read from what the command printed. The case's build vitest config\nwrites a JSON test report and an istanbul coverage summary into `coverage/`, and\nthese two blocks are those files, parsed and bounded. A figure that no longer\nmoves when a reporter changes its terminal layout is a figure that can be compared\nacross runs; a scraped one is not.\n\nBoth blocks are `Option` and **absence means not reported, never zero**. A case\nwhose config writes no report files — every case version predating this contract,\nand any case not on the v0.7.0 shape — leaves both absent, and every consumer is\nrequired to render nothing at all rather than an empty widget. A zero inside a\npresent block is only ever a zero the runner actually reported.",
+      "properties": {
+        "coverage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainCoverage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the coverage summary said, when one was written."
         },
         "result": {
           "$ref": "#/$defs/ToolchainCommandResult",
           "description": "The command, its exit status and its bounded output."
         },
-        "testsFailed": {
-          "description": "How many failed, when the output said.",
-          "format": "uint32",
-          "minimum": 0,
-          "type": ["integer", "null"]
-        },
-        "testsPassed": {
-          "description": "How many passed, when the output said.",
-          "format": "uint32",
-          "minimum": 0,
-          "type": ["integer", "null"]
-        },
-        "testsTotal": {
-          "description": "How many tests ran in total, when the output said.",
-          "format": "uint32",
-          "minimum": 0,
-          "type": ["integer", "null"]
+        "tests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolchainTests"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the runner's JSON report said, when it wrote one."
         }
       },
       "required": ["result"],
+      "type": "object"
+    },
+    "ToolchainTests": {
+      "description": "What the runner reported, read from [`TOOLCHAIN_TEST_REPORT_PATH`].\n\nPresent only when that file was written and parsed. A suite that ran and found no\ntests reports zeroes here — that is a figure the runner actually produced, and it\nis exactly the signal that a build shipped no tests. The difference between \"no\ntests\" and \"not reported\" is the difference between this block being present with\nzeroes and being absent.",
+      "properties": {
+        "failed": {
+          "description": "How many of them failed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failures": {
+          "description": "The first [`TOOLCHAIN_TEST_FAILURE_LIMIT`] failures, in the reporter's own\norder, so the list reads as \"what broke\" rather than an arbitrary sample.",
+          "items": {
+            "$ref": "#/$defs/ToolchainTestFailure"
+          },
+          "type": "array"
+        },
+        "failuresTruncated": {
+          "description": "Whether [`failures`](Self::failures) was cut short by the cap.\n[`failed`](Self::failed) is always the true count regardless.",
+          "type": "boolean"
+        },
+        "files": {
+          "description": "Per-file rows, sorted by path, capped at [`TOOLCHAIN_TEST_FILE_LIMIT`].",
+          "items": {
+            "$ref": "#/$defs/ToolchainTestFile"
+          },
+          "type": "array"
+        },
+        "filesFailed": {
+          "description": "How many of those files had a failure in them, counting a file that failed to\nload at all as one.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesRun": {
+          "description": "Test FILES the runner loaded.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filesTruncated": {
+          "description": "Whether [`files`](Self::files) was cut short by the cap.",
+          "type": "boolean"
+        },
+        "passed": {
+          "description": "How many of them passed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skipped": {
+          "description": "Skipped, pending and todo together.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "succeeded": {
+          "description": "Whether the runner called the whole invocation a success.",
+          "type": "boolean"
+        },
+        "total": {
+          "description": "Every test the runner ran, in every file.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total",
+        "passed",
+        "failed",
+        "skipped",
+        "filesRun",
+        "filesFailed",
+        "succeeded",
+        "files",
+        "filesTruncated",
+        "failures",
+        "failuresTruncated"
+      ],
       "type": "object"
     },
     "UiElementResult": {

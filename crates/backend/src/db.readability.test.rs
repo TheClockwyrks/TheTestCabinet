@@ -336,7 +336,7 @@ const RECORD_SCHEMA: &str = "../../apps/docs/public/schema/core/run-record.schem
 /// readability at the next boot.
 const RECORD_SHAPES: &[(u32, &str)] = &[(
     1,
-    "b3dc87092ddd17400dfeffb4b0e608a94accd2a7ffd03102b4f91ea99f924d4f",
+    "07dc39b4d7323a05a7e74707ee6f6f7e6ceea2d1919e147c4914672abb47449c",
 )];
 
 /// Render `value` canonically with its prose removed: object keys in sorted order,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { RunRecord } from "@test-cabinet/run-record";
 import { CODE_METRICS } from "@test-cabinet/run-record/code-metrics";
 import {
   codeFigureFamilies,
@@ -9,6 +10,8 @@ import {
   formatMetricValue,
   isApproximate,
   lookupMetric,
+  toolchainCoverage,
+  toolchainTests,
 } from "./codeFormat";
 
 describe("the metric catalog", () => {
@@ -149,5 +152,45 @@ describe("familyHeading", () => {
     );
     expect([...headings]).not.toContain("Coverage");
     expect([...headings]).not.toContain("Tests");
+  });
+});
+
+// The gate on the two executed bands. It tests whether file-derived data was actually
+// PARSED — never whether a manifest declared a `test` command — because a case that
+// declares one but whose vitest config still writes only a terminal table produces no
+// report file, and must show nothing at all rather than an empty widget.
+describe("the executed-tier gates", () => {
+  const run = (toolchain: unknown) => ({ toolchain }) as unknown as RunRecord;
+
+  it("reports nothing for a run with no toolchain block at all", () => {
+    expect(toolchainTests(run(undefined))).toBeNull();
+    expect(toolchainCoverage(run(undefined))).toBeNull();
+  });
+
+  // The shape every case version predating the report-file contract produces: the command
+  // ran, and wrote no file for either reader to parse.
+  it("reports nothing for a test command that wrote no report files", () => {
+    const ran = run({ test: { result: { ran: true, exitCode: 0 } } });
+    expect(toolchainTests(ran)).toBeNull();
+    expect(toolchainCoverage(ran)).toBeNull();
+  });
+
+  // Two files, two gates: a config can write the test report and no coverage summary.
+  it("gates the two independently", () => {
+    const partial = run({
+      test: { result: { ran: true }, tests: { total: 3, passed: 3 } },
+    });
+    expect(toolchainTests(partial)).toMatchObject({ total: 3 });
+    expect(toolchainCoverage(partial)).toBeNull();
+  });
+
+  // A present block of zeroes is the runner saying the build shipped no tests. That is a
+  // result, and it renders — unlike an absent block, which is not a measurement at all.
+  it("distinguishes a reported zero from nothing reported", () => {
+    const none = run({
+      test: { result: { ran: true }, tests: { total: 0, succeeded: true } },
+    });
+    expect(toolchainTests(none)).not.toBeNull();
+    expect(toolchainTests(none)?.total).toBe(0);
   });
 });

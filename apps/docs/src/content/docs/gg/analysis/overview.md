@@ -76,10 +76,11 @@ them says so.
 
 Code analysis counts `#[test]` functions and `*.test.*` files. Those are static
 counts of the test code the model chose to write, they are an authorship signal,
-and they are never presented as coverage. The
-[validator](/components/core/validation/) runs a case's install and build
-commands, so there is no suite run in the produced repo for anything here to
-measure.
+and they are never presented as coverage. Nothing here executes anything. Code
+coverage is a separate measurement, produced when the case's
+[`[toolchain]` test command](/testing/end-to-end/manifests/#the-typescript-toolchain)
+runs the build's own suite, and recorded on the run record's toolchain block
+rather than on any figure in this namespace.
 
 A run's own code-analysis document is served for every harness's runs, since
 analysing a directory involves no harness-specific work. The aggregate query

@@ -58,7 +58,7 @@ its cases to form a cell, the unit a [ladder](#ladder) enrolls as a
 
 ## Coverage
 
-Coverage carries two meanings in The Test Cabinet, and they are not the same
+Coverage carries three meanings in The Test Cabinet, and they are not the same
 thing:
 
 1. The measurement: how much of a declared matrix actually has runs. A coverage
@@ -72,11 +72,22 @@ thing:
    controls. This is the sense in which the console has a Coverage section and
    the backend a coverage API, and it takes in ladders, which are not plans and
    aim at no matrix at all.
+3. Code coverage: how much of a produced implementation's own `src/` the tests
+   the model wrote reached when they ran. It is measured by istanbul while the
+   case's [`[toolchain]` test
+   command](/testing/end-to-end/manifests/#the-typescript-toolchain) runs, and
+   recorded on the run record's `toolchain.test.coverage` block.
 
 So "a ladder is part of coverage" and "a ladder has no coverage target" are both
-true, in the two different senses. When it matters, say coverage plan for the
-first and the coverage surface for the second. Neither sense has anything to do
-with code coverage, which The Test Cabinet does not measure.
+true, in the first two senses. When it matters, say coverage plan for the first,
+the coverage surface for the second, and code coverage for the third.
+
+Code coverage shares only the word with the other two. It is a property of one
+run's produced tree, it measures the model's own code with the tests the model
+wrote, and the test case's validators contribute nothing to it because their own
+suite has coverage disabled. The static analyzer's walk diagnostics on a run's
+Code tab are headed Analysis notes rather than Coverage, since they describe the
+analysis and measure nothing about the code.
 
 ## Dispatcher
 
