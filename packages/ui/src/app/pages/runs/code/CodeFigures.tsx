@@ -4,7 +4,12 @@
 // for two reasons and would be worth keeping for either: it is the table-view twin every
 // chart on the page owes (no value is reachable only by hovering a rectangle), and it is
 // where a figure that has no chart — the type-discipline ratios, the Rust `unwrap`
-// density, the walk's own coverage notes — actually lives.
+// density, the walk's own analysis notes — actually lives.
+//
+// Two of the headings it renders are load-bearing here. "Test authorship" holds static
+// counts of the test code the model wrote — nothing under it ran, and the executed
+// figures live in their own bands above. "Analysis notes" holds the walk's diagnostics
+// about the analysis itself; it is not, and never was, code coverage.
 //
 // Nothing here is hand-listed. The rows, their order, their labels, their units and their
 // approximate markers all come from the generated catalog, so a metric added to the

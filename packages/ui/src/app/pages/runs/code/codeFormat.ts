@@ -123,6 +123,16 @@ export function formatMetricValue(
  * name it here. Mirrors the CLI's `family_heading` for the same reason the value
  * formatting mirrors its counterpart: two reports of one analysis should not disagree
  * about what a section is called.
+ *
+ * Two of the renames are corrections rather than tidying, and both exist because this
+ * page now also carries EXECUTED figures. `notes` was headed "Coverage", which it never
+ * was: its rows are the walk's own diagnostics (what it truncated, what it skipped, what
+ * it refused), and that heading collided with both the console's Coverage feature area
+ * and, now, with real code coverage. `tests` was headed "Tests", which is a heading the
+ * executed suite has a much better claim to — the rows under it are static counts of how
+ * much test code the model *wrote*, an authorship signal the analyzer's own contract says
+ * must never be presented as coverage. "Test authorship" says which of the two tiers a
+ * reader is looking at without having to know that one of them ran.
  */
 export function familyHeading(family: string): string {
   switch (family) {
@@ -139,11 +149,11 @@ export function familyHeading(family: string): string {
     case "complexity":
       return "Complexity";
     case "tests":
-      return "Tests";
+      return "Test authorship";
     case "duplication":
       return "Duplication";
     case "notes":
-      return "Coverage";
+      return "Analysis notes";
     case "provenance":
       return "Provenance";
     default:
