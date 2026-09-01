@@ -426,3 +426,29 @@ const FACE_WORDS: Record<string, string> = {
 export function saysFace(runs: readonly TextDraw[], side: string): boolean {
   return saysWord(runs, side) || saysWord(runs, FACE_WORDS[side] ?? side);
 }
+
+/**
+ * The words a targeting read may be written with.
+ *
+ * `specs/hud.md` requires the panel to read "what the tower fires on" and fixes
+ * no wording for it, so this is the case's own vocabulary rather than one
+ * spelling: ground, air, and the words a build may spell a flyer or a
+ * hits-everything read with. Which of the three readings a type is given is
+ * `hud/targeting-read`'s requirement, decided without any fixed word at all;
+ * what is asked here is only that a targeting read was drawn.
+ */
+const TARGETING_WORDS = [
+  "ground",
+  "air",
+  "flying",
+  "flier",
+  "fliers",
+  "flyer",
+  "flyers",
+  "everything",
+] as const;
+
+/** Whether the panel drew a targeting read at all, in any of those words. */
+export function saysTargeting(runs: readonly TextDraw[]): boolean {
+  return TARGETING_WORDS.some((word) => saysWord(runs, word));
+}

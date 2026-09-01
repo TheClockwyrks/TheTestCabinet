@@ -60,6 +60,7 @@ import {
   reads,
   runsReading,
   saysFace,
+  saysTargeting,
   saysWord,
   towerOf,
 } from "./panel";
@@ -170,8 +171,8 @@ it("draws the selected Lance's type, level, stats, live heat and tallies", async
     );
   }
   assertTrue(
-    saysWord(runs, "air"),
-    "the inspector to draw a targeting read, the Lance hitting ground and air",
+    saysTargeting(runs),
+    "the inspector to draw a targeting read (specs/hud.md, The targeting read)",
   );
   assertTrue(
     reads(runs, LIVE_DAMAGE, DAMAGE_ROUNDED),

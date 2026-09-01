@@ -21,7 +21,12 @@
 //   - a panel showing the live tower instead reads range `8.0`, damage `25.6`
 //     and rate `1.59`, every one of which is required ABSENT;
 //   - a panel showing the live tower's heat reads `70`, also required absent,
-//     which is the "no live heat bar" half of this point.
+//     which is the "no live heat bar" half of this point.//
+// AND THEN A SECOND ENTRY IS HOVERED, because the area shows THAT type's
+// information. One hover decides only that some tower's figures appeared; the
+// Stutter's entry, whose every figure differs from the Bloom's, separates a panel
+// that answers the hover from one that letters a single card once and leaves it.
+// The Bloom's range and rate must be GONE.
 //
 // THE DAMAGE READ IS ACCEPTED EITHER WAY, on purpose. specs/hud.md's damage read
 // "shows its live per-shot damage beside its live heat multiplier", and a hovered
@@ -35,9 +40,9 @@
 // and no colour-free reading tells a drawn zero from an absent field.
 // `hud/inspector-fields` decides that the inspector draws them, and this point
 // decides the half that can be measured — that the hover panel answers for the
-// type and not for the tower on the floor. The three-way targeting read is
-// `hud/targeting-read`'s; what is required here is only that a targeting read is
-// drawn at all.
+// type and not for the tower on the floor. Which of the three readings a type's
+// targeting is given is `hud/targeting-read`'s; what is required here is only
+// that a targeting read is drawn at all, in any of the case's own words.
 //
 // THE FOOTPRINT SIDE IS THE ONE WEAK READING HERE, and it is weak by the shop's
 // own doing: a panel is free to draw a type's footprint side in its shop entry
@@ -61,12 +66,22 @@ import {
   type Harness,
 } from "../harness";
 import { statsAt } from "./figures";
-import { emitterDef, readPanel, reads, saysFace, saysWord } from "./panel";
+import {
+  emitterDef,
+  readPanel,
+  reads,
+  saysFace,
+  saysTargeting,
+  saysWord,
+} from "./panel";
 import { FREE_SITE } from "./sites";
 
 /** The type hovered. Its figures at level I and level III are far apart. */
 const TYPE = "bloom" as const;
 const DEF = emitterDef(TYPE);
+
+/** The second entry hovered, whose every figure differs from the Bloom's. */
+const OTHER = "stutter" as const;
 
 /** The level the live tower on the floor is raised to, which must not be read. */
 const LIVE_LEVEL = 3;
@@ -161,8 +176,8 @@ it("shows the Bloom's level-I figures on a hover, not the level-III tower's", as
     );
   }
   assertTrue(
-    saysWord(runs, "air"),
-    "the hover panel to draw a targeting read, the Bloom hitting ground and air",
+    saysTargeting(runs),
+    "the hover panel to draw a targeting read (specs/hud.md, The targeting read)",
   );
 
   // At level I, which is what makes every figure above the TYPE's and not the
@@ -186,5 +201,21 @@ it("shows the Bloom's level-I figures on a hover, not the level-III tower's", as
     !reads(runs, LIVE_HEAT, ROUNDED),
     `the hover panel to carry no live heat read, and so not to draw the live ` +
       `tower's heat of ${LIVE_HEAT}`,
+  );
+
+  // And THAT type's information: the second entry replaces the first's figures.
+  h.debug.setHoverShop(OTHER);
+  const second = await readPanel(h);
+
+  assertTrue(
+    !reads(second, LEVEL_I.range, ROUNDED),
+    `no Bloom range of ${LEVEL_I.range} left in the panel once the ${OTHER} ` +
+      `is the hovered entry: the area shows THAT type's information ` +
+      `(specs/hud.md)`,
+  );
+  assertTrue(
+    !reads(second, LEVEL_I.fireRate, ROUNDED),
+    `no Bloom fire rate of ${LEVEL_I.fireRate} left in the panel once the ` +
+      `${OTHER} is the hovered entry (specs/hud.md)`,
   );
 });

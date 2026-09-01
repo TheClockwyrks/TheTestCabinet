@@ -35,7 +35,7 @@ consistent.
 A major bump. Three engines instead of one; a debug surface rewritten from
 nothing, with no operation carrying its old signature; a rewritten and re-split
 spec set; per-engine reference implementations; per-engine Vitest validator
-suites deciding all 343 review items; captured baseline media per engine; and a
+suites deciding all 344 review items; captured baseline media per engine; and a
 case showcase in place of the proof captures. `changelog.md` carries the full
 entry.
 
@@ -130,7 +130,7 @@ that, against an RGB distance and never a hex value.
 
 ## Validation
 
-This case is validator-rated: all 343 review items carry a Vitest suite, and the
+This case is validator-rated: all 344 review items carry a Vitest suite, and the
 validators decide the functional rating through each item's failure cap. A
 reviewer rates the run's aesthetics and may override a verdict.
 

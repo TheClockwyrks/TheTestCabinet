@@ -39,7 +39,7 @@ One area of the panel shows tower information. It has three contents:
 
 Both the hover panel and the inspector draw the tower's size, its range, its
 damage or its effect, its fire rate, its targeting, its mass, and its radiator
-faces.
+faces. Each also names the tower type it is drawn for.
 
 The inspector draws four things the hover panel does not: the tower's level, its
 live heat read, its kill tally, and its total damage dealt. It also offers two

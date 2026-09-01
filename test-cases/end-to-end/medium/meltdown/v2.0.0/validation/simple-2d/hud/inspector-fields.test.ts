@@ -9,7 +9,7 @@
 // "The inspector draws four things the hover panel does not: the tower's level,
 // its live heat read, its kill tally, and its total damage dealt."
 //
-// SEVEN READINGS, EACH POSED SO EVERY WRONG MODEL READS AS A DIFFERENT FIGURE.
+// ELEVEN READINGS, EACH POSED SO EVERY WRONG MODEL READS AS A DIFFERENT FIGURE.
 // The tower is a LANCE at LEVEL II carrying a heat of {@link PINNED_HEAT}, and
 // each of those choices does work:
 //
@@ -44,16 +44,21 @@
 //   this point about the PANEL: a build whose damage arithmetic is wrong is
 //   decided by `combat.*`, and here it must merely draw whatever it dealt.
 //
-// THE KILL TALLY IS THE ONE FIELD THIS POINT DOES NOT READ. The surface has no
-// pose for it either, and the only way to earn one is to kill a unit — which
-// would put the whole combat chain, and the wave-clear rule that fires when a
-// floor empties, inside a panel-drawing item. `combat.a-gun-tallies-what-it-did`
-// decides the tally itself.
+//   THE KILL TALLY is read as the `0` the snapshot reports. The target parked in
+//   range is unkillable, so the tower fires without ever killing, and the tally
+//   is therefore a figure this point knows exactly. What the tally COUNTS is
+//   `combat.a-gun-tallies-what-it-did`; that the inspector draws it is here.
 //
-// THE TARGETING READ and THE DAMAGE-OR-EFFECT READ are decided by
-// `hud.targeting-read` and `hud.inspector-damage-and-multiplier`, which read them
-// without this file having to fix words the specification leaves open, and the
-// radiator-face read likewise carries no fixed words.
+//   THE LIVE PER-SHOT DAMAGE is read as `baseDamage * heatMultiplier(H, R)` at
+//   the pinned heat, which specs/combat.md fixes and specs/hud.md requires the
+//   damage read to show. That the multiplier CLIMBS with the heat and holds flat
+//   past the redline is `hud.inspector-damage-and-multiplier`'s; that the field
+//   is drawn at all is here.
+//
+//   THE RADIATOR FACES are read as the letters specs/towers.md names them by,
+//   each accepted equally as its compass word, and THE TARGETING READ as any of
+//   the case's own targeting words. Which of the three readings a tower's
+//   targeting is given is `hud.targeting-read`'s; that a read is drawn is here.
 //
 // THE FIGURES CARRY NOTHING ELSE ON THE PANEL. The information area also holds
 // the money, the lives and the wave over its total, and the run below is posed so
@@ -63,8 +68,8 @@
 // reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, emitterStats } from "../../src/constants";
-import { assertTrue } from "../assert";
+import { TOWER_DEFS, emitterStats, heatMultiplier } from "../../src/constants";
+import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -75,12 +80,23 @@ import {
   towerOf,
   type Harness,
 } from "../harness";
-import { readPanel, readsNumber, readsText, textsOf } from "./read";
+import {
+  readPanel,
+  readsNumber,
+  readsText,
+  saysFace,
+  saysTargeting,
+  saysWord,
+  textsOf,
+} from "./read";
 
 /** The tower inspected, the name specs/towers.md gives it, and the level posed. */
 const TYPE = "lance";
 const NAME = "Lance";
 const LEVEL = 2;
+
+/** The same level in the Roman numerals specs/towers.md's Levels section uses. */
+const ROMAN = "II";
 
 /** A quiet anchor: no opening and no corridor within a 4x4 footprint of it. */
 const AT = { col: 4, row: 4 };
@@ -124,6 +140,28 @@ const ROUNDING = 0.05;
  * top for the float noise in a tally that is a sum of shots.
  */
 const RUNNING_ROUNDING = 0.55;
+
+/** The tower's live per-shot damage at that heat, as specs/combat.md states it. */
+const LIVE_DAMAGE = (() => {
+  const def = TOWER_DEFS[TYPE];
+  if (def.kind !== "emitter") {
+    throw new Error(`meltdown hud/inspector-fields: ${TYPE} is not an emitter`);
+  }
+  return (
+    emitterStats(def, LEVEL).baseDamage *
+    heatMultiplier(PINNED_HEAT, def.redline)
+  );
+})();
+
+/**
+ * How far the drawn per-shot damage may sit from that figure: six tenths.
+ *
+ * The figure is a product of two tabulated numbers and lands on a fraction, and a
+ * build may draw it to a tenth or round it to the whole, so half a unit for the
+ * whole plus a tenth for the tenth's own rounding carries both. It is far
+ * narrower than the gap to the same tower's level-I damage.
+ */
+const DAMAGE_ROUNDING = 0.6;
 
 /** The run the panel is read on, posed to carry none of the figures read. */
 const MODE = "containment";
@@ -175,9 +213,10 @@ it("draws the selected tower's type, level, figures, live heat and damage dealt"
       `The info panel and the inspector; specs/towers.md); the area drew ${drew}`,
   );
   assertTrue(
-    readsNumber(info, LEVEL, ROUNDING),
-    `the selected tower's level of ${LEVEL}, which the inspector draws and the ` +
-      `hover panel does not (specs/hud.md); the area drew ${drew}`,
+    readsNumber(info, LEVEL, ROUNDING) || saysWord(info, ROMAN),
+    `the selected tower's level of ${LEVEL}, drawn as the figure or as the ` +
+      `Roman ${ROMAN}, which the inspector draws and the hover panel does not ` +
+      `(specs/hud.md); the area drew ${drew}`,
   );
   assertTrue(
     readsNumber(info, def.size, ROUNDING),
@@ -205,6 +244,34 @@ it("draws the selected tower's type, level, figures, live heat and damage dealt"
     `the selected tower's live heat of ${tower.heat.toFixed(2)}, which the ` +
       `inspector draws and the hover panel does not (specs/hud.md); the area ` +
       `drew ${drew}`,
+  );
+  for (const face of def.radiators) {
+    assertTrue(
+      saysFace(info, face),
+      `the selected tower's ${face} radiator face, named by its letter or its ` +
+        `compass word (specs/hud.md; specs/towers.md); the area drew ${drew}`,
+    );
+  }
+  assertTrue(
+    saysTargeting(info),
+    `the selected tower's targeting read, in any of the case's own targeting ` +
+      `words (specs/hud.md, The targeting read); the area drew ${drew}`,
+  );
+  assertTrue(
+    readsNumber(info, LIVE_DAMAGE, DAMAGE_ROUNDING),
+    `the selected tower's live per-shot damage of ${LIVE_DAMAGE.toFixed(2)} at ` +
+      `heat ${PINNED_HEAT} (specs/hud.md, The damage read; specs/combat.md); ` +
+      `the area drew ${drew}`,
+  );
+  assertEqual(
+    tower.kills,
+    0,
+    "precondition: the parked target never dies, so the tower has killed nothing",
+  );
+  assertTrue(
+    readsNumber(info, 0, ROUNDING),
+    `the selected tower's kill tally of 0, which the inspector draws and the ` +
+      `hover panel does not (specs/hud.md); the area drew ${drew}`,
   );
   assertTrue(
     readsNumber(info, tower.damageDealt, RUNNING_ROUNDING),

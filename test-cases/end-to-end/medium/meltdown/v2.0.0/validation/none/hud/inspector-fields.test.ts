@@ -58,7 +58,14 @@ import {
   startRun,
   type Harness,
 } from "../harness";
-import { readPanel, reads, runsReading, saysFace, saysWord } from "./panel";
+import {
+  readPanel,
+  reads,
+  runsReading,
+  saysFace,
+  saysTargeting,
+  saysWord,
+} from "./panel";
 
 /** The tower selected. Its level-II figures are unlike every other panel number. */
 const TYPE = "lance" as const;
@@ -167,8 +174,8 @@ it("draws the selected Lance's type, level, stats, live heat and tallies", async
     );
   }
   assertTrue(
-    saysWord(runs, "air"),
-    "the inspector to draw a targeting read, the Lance hitting ground and air",
+    saysTargeting(runs),
+    "the inspector to draw a targeting read (specs/hud.md, The targeting read)",
   );
   assertTrue(
     reads(runs, LIVE_DAMAGE, DAMAGE_ROUNDED),

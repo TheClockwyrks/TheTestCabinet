@@ -88,6 +88,66 @@ export function readsText(spans: readonly TextSpan[], text: string): boolean {
 }
 
 /**
+ * Whether some run reads `word` as a WHOLE word, ignoring case.
+ *
+ * `readsText` above is a substring reading, which is right for a multi-letter
+ * label a build may frame however it likes; it is wrong for a one-letter word
+ * such as a radiator face, where "N" would be found inside any word carrying an
+ * "n". So the word is matched between non-alphanumeric boundaries.
+ */
+export function saysWord(spans: readonly TextSpan[], word: string): boolean {
+  const escaped = word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^A-Za-z0-9])${escaped}([^A-Za-z0-9]|$)`, "i");
+  return spans.some((span) => pattern.test(span.text));
+}
+
+/** The compass word each face letter may equally be spelled out as. */
+const FACE_WORDS: Record<string, string> = {
+  N: "NORTH",
+  E: "EAST",
+  S: "SOUTH",
+  W: "WEST",
+};
+
+/**
+ * Whether the panel names the face `side` among its radiator faces.
+ *
+ * specs/towers.md names the faces `N`, `E`, `S` and `W` and
+ * specs/instrumentation.md reports them that way, so the letter is the case's own
+ * vocabulary; the compass word is accepted beside it because spelling a letter
+ * out is a presentation choice no specification takes away.
+ */
+export function saysFace(spans: readonly TextSpan[], side: string): boolean {
+  return saysWord(spans, side) || saysWord(spans, FACE_WORDS[side] ?? side);
+}
+
+/**
+ * The words a targeting read may be written with.
+ *
+ * `specs/hud.md` requires the panel to read "what the tower fires on" and fixes
+ * no wording for it, so this is the case's own vocabulary rather than one
+ * spelling: ground, air, and the words a build may spell a flyer or a
+ * hits-everything read with. Which of the three readings a type is given is
+ * `hud/targeting-read`'s requirement, decided without any fixed word at all;
+ * what is asked here is only that a targeting read was drawn.
+ */
+const TARGETING_WORDS = [
+  "ground",
+  "air",
+  "flying",
+  "flier",
+  "fliers",
+  "flyer",
+  "flyers",
+  "everything",
+] as const;
+
+/** Whether the panel drew a targeting read at all, in any of those words. */
+export function saysTargeting(spans: readonly TextSpan[]): boolean {
+  return TARGETING_WORDS.some((word) => saysWord(spans, word));
+}
+
+/**
  * Every figure the runs carry, as numbers.
  *
  * A run is scanned for maximal runs of digits with an optional decimal part, so
