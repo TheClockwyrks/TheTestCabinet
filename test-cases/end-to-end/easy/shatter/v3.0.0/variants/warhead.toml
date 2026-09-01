@@ -506,7 +506,7 @@ validation = { script = "detonation/destroys-the-saucer.test.ts", outputs = [
 [[review.categories.items]]
 id = "harder-scatter"
 title = "A torpedo blasts fragments harder than the gun"
-description = "Half the magnitude of the difference between the two fragments' velocities is TORPEDO_SCATTER (240) within 10 percent, against SPLIT_KICK (90) for a gun kill on the same posed rock; both spreads are read at the instant of their own kill."
+description = "Half the magnitude of the difference between the two fragments' velocities is TORPEDO_SCATTER (240) within 10 percent, and more than twice the same reading taken from a gun kill on the same posed rock; both spreads are read at the instant of their own kill. The gun's own figure is rocks/fragment-kick-magnitude's to decide, not this item's."
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "detonation/harder-scatter.test.ts", outputs = [

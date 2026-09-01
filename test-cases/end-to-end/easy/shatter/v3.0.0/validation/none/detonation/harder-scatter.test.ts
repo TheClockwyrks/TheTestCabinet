@@ -7,9 +7,15 @@
 //   killed by a torpedo  TORPEDO_SCATTER (240), the two blasted to opposite sides
 //
 // So this item is a COMPARISON, and the gun kill is its control: a build that
-// throws every fragment at one figure reads the same number twice and fails,
-// whichever figure it picked, while a build that has simply scaled the torpedo's
-// fan wrongly fails on that half alone.
+// throws every fragment at one figure reads the same number twice, its ratio comes
+// out at one, and it fails whichever figure it picked.
+//
+// AND THE GUN'S OWN FIGURE IS NOT ASSERTED HERE. `rocks/fragment-kick-magnitude`
+// owns `SPLIT_KICK` and decides it at this same tenth on a base build and a warhead
+// one alike, so a second reading of it in this file would charge a build twice for
+// one defect. What the gun kill is used for is the RATIO — the reading that says
+// which of the two fans is the harder — and the only absolute figure this item
+// decides is the torpedo's.
 //
 // READ OFF THE PAIR, NEVER OFF ONE FRAGMENT. The difference between the two
 // fragments' velocities is twice the kick with the parent's own motion — and
@@ -31,7 +37,11 @@
 // `destroyRock` places one after another on the rock's doorstep.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual, assertTrue } from "../assert";
+import {
+  assertGreaterThan,
+  assertLessThanOrEqual,
+  assertTrue,
+} from "../assert";
 import { SPLIT_KICK, TORPEDO_SCATTER } from "../constants";
 import { magnitude } from "../geometry";
 import {
@@ -54,17 +64,33 @@ import {
 } from "./scenario";
 
 /**
- * How far either reading may sit from the figure specs/collision.md fixes: a tenth
- * of it, as the review item states.
+ * How far the torpedo's reading may sit from the figure `specs/collision.md` fixes:
+ * a tenth of it, as the review item states.
  *
  * It is room for a build's own arithmetic and for the order in which it applies a
- * tick's motion, NOT for the environment: the well's contribution to the parent —
- * about `26` units per second squared at this placement — is cancelled by reading
- * the difference of the pair, so it is not in either figure to be allowed for. The
- * two bounds do not meet: `240` less a tenth is `216`, `90` plus a tenth is `99`,
- * and a build that used one figure for both weapons fails one half or the other.
+ * tick's motion, NOT for the environment: the well's contribution to the parent is
+ * cancelled by reading the difference of the pair, so it is not in the figure to be
+ * allowed for.
  */
 const TOLERANCE = 0.1;
+
+/**
+ * How many times the gun's kick the torpedo's must be, at least.
+ *
+ * Twice, and it is the COMPARISON this item owns rather than a second reading of
+ * either figure. `specs/collision.md` puts the two at `240` against `90`, a ratio of
+ * `2.67`, and the loosest pair this case tolerates — `240` less a tenth over `90`
+ * plus a tenth — still reads `2.18`. A build that used ONE figure for both weapons,
+ * whichever it picked, reads exactly `1`. So the floor sits between the two, well
+ * clear of both.
+ *
+ * IT IS A RATIO AND NOT THE GUN'S OWN FIGURE, deliberately. `rocks/fragment-kick-
+ * magnitude` owns `SPLIT_KICK` and decides it at this same tenth, so asserting it
+ * again here would charge a build twice for one defect. What is read here is that
+ * the torpedo's fan is the harder of the two, which is what the item is named for.
+ */
+const HARDER_THAN_THE_GUN = 2;
+
 
 /** Frames of the fragments coming apart, recorded after the reading is taken. */
 const AFTERMATH_TICKS = ticksFor(1);
@@ -130,13 +156,13 @@ it("blasts the fragments apart at TORPEDO_SCATTER against the gun's SPLIT_KICK",
   const torpedoKick = magnitude(kickOf(torpedoA, torpedoB));
 
   assertLessThanOrEqual(
-    Math.abs(gunKick - SPLIT_KICK),
-    SPLIT_KICK * TOLERANCE,
-    `the gun's fragment kick, SPLIT_KICK (${SPLIT_KICK}), within a tenth (specs/collision.md)`,
-  );
-  assertLessThanOrEqual(
     Math.abs(torpedoKick - TORPEDO_SCATTER),
     TORPEDO_SCATTER * TOLERANCE,
     `the torpedo's fragment kick, TORPEDO_SCATTER (${TORPEDO_SCATTER}), within a tenth (specs/collision.md)`,
+  );
+  assertGreaterThan(
+    torpedoKick / gunKick,
+    HARDER_THAN_THE_GUN,
+    `how many times the gun's own fragment kick on the same posed Large the torpedo's is, against the ${TORPEDO_SCATTER} to ${SPLIT_KICK} specs/collision.md gives the two fans; the gun read ${gunKick.toFixed(1)} and the torpedo ${torpedoKick.toFixed(1)}`,
   );
 });
