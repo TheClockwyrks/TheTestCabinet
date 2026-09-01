@@ -719,9 +719,8 @@ export default defineConfig({
                 },
               ],
             },
-            // Specified in full ahead of their runtimes, in the same five sections
-            // as their 2D siblings, so the implementations are written to satisfy
-            // these pages.
+            // The 3D members of the Simple and Structured families, in the same
+            // five sections as their 2D siblings.
             {
               label: "Simple 3D",
               collapsed: true,

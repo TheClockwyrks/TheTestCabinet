@@ -13,11 +13,6 @@ with `three` as a peer dependency the build declares itself. Its source is
 `packages/structured-3d/`, and the documentation seeded into a run workspace is
 that package's own `docs/` directory.
 
-The engine is specified in full on these pages and awaiting its
-implementation, so it stays outside the set a run selects from until the
-package lands. The specification is what the implementation is written to
-satisfy.
-
 ## What each side owns
 
 The engine owns the frame loop, the
