@@ -14,9 +14,8 @@ That toolchain is the whole of what it supplies.
 What is missing is everything under `src/`, and that directory does not exist
 yet. Nothing here supplies a frame loop, a canvas fit, input, audio, an overlay,
 or a line of game code. `index.html` loads `/src/main.ts`, so that module is
-where your build starts: create it, and organize the rest of `src/` however suits
-you.
-{{else}}
+where your build starts.
+{{else if (eq engine.slug "simple-2d")}}
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
 away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints it,
@@ -27,8 +26,19 @@ What is missing is the game itself: `src/game.ts`. As seeded it is a stub whose
 `initialize`, `update`, and `render` throw `"not implemented"`, and whose
 `BACKGROUND` is a placeholder. The stub is written against the `OrreryState` and
 `OrreryDebugApi` types the specification asks `src/game.ts` to declare, so the
-project does not type-check until those declarations exist. That first `tsc`
-failure on a fresh checkout is expected; declaring the types clears it.
+project does not type-check until those declarations exist.
+{{else}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints it,
+Prettier formats it, and `src/main.ts` already stands the engine up over the
+page's canvas and runs the game.
+
+What is missing is the game itself: `src/game.ts`. As seeded it is a stub game
+definition whose instance's `initialize` throws `"not implemented"`, and whose
+`BACKGROUND` is a placeholder. The stub is written against the `OrreryState` and
+`OrreryDebugApi` types the specification asks `src/game.ts` to declare, so the
+project does not type-check until those declarations exist.
 {{/if}}
 
 {{#if (eq engine.slug "none")}}
@@ -37,20 +47,20 @@ failure on a fresh checkout is expected; declaring the types clears it.
 This build runs on no engine, so the layer beneath the game is yours as well:
 the frame loop and the delta time it hands each update, fitting the fixed logical
 stage onto the canvas, the pointer and the input actions the player drives the
-game with, the audio, and the on-screen debug overlay. The specification in
-`specs/` states what Orrery needs from that layer and fixes nothing else about
-it.
-{{else}}
+game with, the audio, loading the images and sounds you produce, and the
+on-screen debug overlay. The specification in `specs/` states what Orrery needs
+from that layer and fixes nothing else about it.
+{{else if (eq engine.slug "simple-2d")}}
 ## The {{engine.name}} engine
 
 This build runs on the **{{engine.name}}** engine, installed as a dependency of
 the project, so import it by its bare package name; there is nothing to add to
 `package.json` for it and nothing to install.
 
-The engine's own documentation is at `{{engine.docs}}`. Read all of it before you
-start. It is the authoritative description of the engine's API; the specification
-in `specs/` describes the game and does not restate the engine. The documentation
-also carries a complete worked example of unit-testing a game built on it.
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the game
+and does not restate the engine. The documentation also carries a complete worked
+example of unit-testing a game built on it.
 
 Build the game on the engine rather than beside it. The engine owns the frame
 loop and the delta time it hands your update, the input actions, the pointer,
@@ -60,25 +70,53 @@ and keeps what `update` returns as the next, so a frame builds the next state
 from the current one rather than writing into it. Register what the game needs
 with the engine and use what it gives back. What remains yours is the game
 itself: its simulation and everything it draws.
+{{else}}
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
+
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the game
+and does not restate the engine.
+
+Build the game inside the engine's framework rather than beside it. The engine
+owns the frame loop and the delta time it hands each tick, rendering and the
+camera, the input actions, the pointer, the audio, asset loading, and the
+on-screen debug overlay, and the game is written as subclasses of its classes: a
+game instance, a game mode, actors and their components, and the controllers
+that drive them. The engine constructs, ticks, and renders them in a fixed
+order. Register what the game needs with the engine and use what it gives back.
+What remains yours is the game itself: its rules, its state, and everything it
+draws through the engine's pipeline.
 {{/if}}
 
 ## What to read first
 
 The full specification is in the `specs/` directory at `{{workspace}}`, already
-present in your project. Read all of it before you start, and produce an
-implementation that matches the specification exactly. `specs/overview.md` states
-what you implement, which files stay as they are, the code quality the build is
-held to, and the commands that run over the finished repository.
+present in your project. Produce an implementation that matches the
+specification exactly. `specs/overview.md` states what you implement, which files
+stay as they are, the code quality the build is held to, and the commands that
+run over the finished repository.
 
 ## The build interface
 
 `npm ci` then `npm run build` must produce the static site, with no other manual
 step, into `dist/` at the project root, with an `index.html` at the root of that
-directory. Serving that directory as-is at the root of any static file server
-must run the game; it is deployed to static hosting exactly that way. The scripts
-that do this are already in `package.json`. Add a dependency only if you
-genuinely need one, and run `npm install` afterward so the committed
-`package-lock.json` matches.
+directory. Serving that directory as-is must run the game, both at the root of a
+static file server and mounted under a sub-path, so every URL the build emits or
+constructs at runtime is page-relative. The scripts that do this are already in
+`package.json`.
+
+## The assets the game plays
+
+Orrery ships no art and no sound, and this build makes both: the motes and
+filaments, the parts, the sigil engravings, the instruction glyphs, the
+apertures, the effects a running machine throws, and the game's cues.
+`specs/assets.md` states what to produce, which tool on this machine's `PATH`
+produces each file, where each lands under `assets/`, how it is loaded, and the
+bar each is held to. It also lists what stays drawn in code.
 
 ## Driving the game in a browser
 
@@ -108,4 +146,5 @@ published. When the build is complete, commit everything: run `git add -A` then
 `git commit`, and confirm `git status` reports a clean working tree with nothing
 uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
 build output, and coverage reports, so a clean tree means committing your source,
-your tests, your `package-lock.json`, and your `README.md`.
+your tests, your `package-lock.json`, your produced files under `assets/`, and
+your `README.md`.

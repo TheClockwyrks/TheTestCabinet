@@ -1,17 +1,11 @@
 # Orrery — The Extras challenges
 
-This file gives every challenge of the Extras: `EXTRA_COUNT` (`10`)
-challenges, numbered `1` through `10` in the order they are listed on the
-Extras select screen. It is authoritative for all of them. Build every
-challenge exactly as written here, in the challenge format `specs/formats.md`
-defines, with nothing substituted, renamed, or reworked. The mode itself is
-defined in `specs/modes/extras.md`.
-
-Every challenge's `target` is `CONSTELLATION_TARGET` (`6`).
+This file gives every challenge of the Extras, in order. It is authoritative
+for all of them. Build every challenge exactly as written here, in the
+challenge format `specs/formats.md` defines. The shelf itself is defined in
+`specs/modes/extras.md`.
 
 ## 1. First Light
-
-One mote, carried across the sky.
 
 ```json
 {
@@ -25,8 +19,6 @@ One mote, carried across the sky.
 
 ## 2. Twin Moons
 
-Two motes, joined.
-
 ```json
 {
   "name": "Twin Moons",
@@ -37,7 +29,7 @@ Two motes, joined.
         { "q": 0, "r": 0, "type": "luna" },
         { "q": 1, "r": 0, "type": "luna" }
       ],
-      "filaments": [{ "a": [0, 0], "b": [1, 0], "weight": 1 }]
+      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }]
     }
   ],
   "permitted": ["arm", "bind"],
@@ -46,8 +38,6 @@ Two motes, joined.
 ```
 
 ## 3. Waning Crescent
-
-An essence, dimmed to dust.
 
 ```json
 {
@@ -59,7 +49,7 @@ An essence, dimmed to dust.
         { "q": 0, "r": 0, "type": "dust" },
         { "q": 1, "r": 0, "type": "dust" }
       ],
-      "filaments": [{ "a": [0, 0], "b": [1, 0], "weight": 1 }]
+      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }]
     }
   ],
   "permitted": ["arm", "wane", "bind"],
@@ -68,8 +58,6 @@ An essence, dimmed to dust.
 ```
 
 ## 4. Mirrorwright
-
-Dust, written on by the wheel.
 
 ```json
 {
@@ -81,7 +69,7 @@ Dust, written on by the wheel.
         { "q": 0, "r": 0, "type": "nova" },
         { "q": 1, "r": 0, "type": "comet" }
       ],
-      "filaments": [{ "a": [0, 0], "b": [1, 0], "weight": 1 }]
+      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }]
     }
   ],
   "permitted": ["arm", "wheel", "mirror", "bind"],
@@ -90,8 +78,6 @@ Dust, written on by the wheel.
 ```
 
 ## 5. Ascendant
-
-Mercury spent to raise Saturn.
 
 ```json
 {
@@ -108,8 +94,6 @@ Mercury spent to raise Saturn.
 
 ## 6. Great Conjunction
 
-Two planets, made one.
-
 ```json
 {
   "name": "Great Conjunction",
@@ -122,8 +106,6 @@ Two planets, made one.
 
 ## 7. Syzygy
 
-Shadow and light, drawn from dust.
-
 ```json
 {
   "name": "Syzygy",
@@ -134,7 +116,7 @@ Shadow and light, drawn from dust.
         { "q": 0, "r": 0, "type": "umbra" },
         { "q": 1, "r": 0, "type": "lumen" }
       ],
-      "filaments": [{ "a": [0, 0], "b": [1, 0], "weight": 1 }]
+      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }]
     }
   ],
   "permitted": ["arm", "eclipse", "bind"],
@@ -143,8 +125,6 @@ Shadow and light, drawn from dust.
 ```
 
 ## 8. Aetherfall
-
-All four essences, brought together.
 
 ```json
 {
@@ -163,8 +143,6 @@ All four essences, brought together.
 
 ## 9. Trine
 
-Fire bound threefold.
-
 ```json
 {
   "name": "Trine",
@@ -175,7 +153,7 @@ Fire bound threefold.
         { "q": 0, "r": 0, "type": "nova" },
         { "q": 1, "r": 0, "type": "nova" }
       ],
-      "filaments": [{ "a": [0, 0], "b": [1, 0], "weight": 3 }]
+      "filaments": [{ "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 3 }]
     }
   ],
   "permitted": ["arm", "triune"],
@@ -185,8 +163,6 @@ Fire bound threefold.
 
 ## 10. Procession
 
-An unbroken chain of moons.
-
 ```json
 {
   "name": "Procession",
@@ -195,7 +171,10 @@ An unbroken chain of moons.
     {
       "motes": [{ "q": 0, "r": 0, "type": "luna" }],
       "filaments": [],
-      "repeat": { "vector": [1, 0], "link": { "a": [0, 0], "b": [1, 0], "weight": 1 } }
+      "repeat": {
+        "vector": { "q": 1, "r": 0 },
+        "link": { "a": { "q": 0, "r": 0 }, "b": { "q": 1, "r": 0 }, "weight": 1 }
+      }
     }
   ],
   "permitted": ["arm", "piston", "track", "bind"],

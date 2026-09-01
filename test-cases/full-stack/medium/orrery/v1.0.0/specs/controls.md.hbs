@@ -14,11 +14,19 @@ This game stands on no engine, so the pointer belongs to the runtime layer you
 write. What the game reads from that layer is a pointer position in the game's
 logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge,
 and a release edge. How the layer produces those three is yours to decide.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 The pointer belongs to the engine, which documents it in the `engine/`
 directory at the root of this repository. What the game reads from it is a
 pointer position in the game's logical units on the `STAGE_W x STAGE_H`
 (`1280 x 720`) stage, a press edge, and a release edge.
+{{else}}
+The pointer belongs to the engine, which documents it in the `engine/`
+directory at the root of this repository. What the game reads from it is a
+pointer position in the game's logical units on the `STAGE_W x STAGE_H`
+(`1280 x 720`) stage, a press edge, and a release edge, delivered as the
+ordered samples the player controller the game mode adds reads from the engine
+each frame, so a drag that crossed several hexes between two frames arrives as
+every position it visited rather than as the last one alone.
 {{/if}}
 
 The game acts on those three alone. Each pointer position is resolved on its
@@ -26,36 +34,38 @@ own, in the order the positions arrive, so a drag's ghost and a track being
 laid follow the pointer hex by hex. What a press, a move, and a release do in
 each region of the editor is defined in `specs/editor.md`; hexes are targeted
 by the rule in `specs/field.md`, and tray slots and tape cells by the
-rectangles `specs/editor.md` fixes. The pointer operates the editor alone,
-and never a menu.
+rectangles `specs/editor.md` fixes. The pointer operates the editor alone.
+
+`state.pointer` mirrors the pointer's position and press state every frame, as
+`specs/state.md` describes.
 
 ## Focus
 
 `state.editor.focus` is `field` or `tape`, and it routes the editing keys. A
-press inside the tape panel's extent, `x >= 224` and `y >= TAPE_Y0` (`560`),
-sets focus to `tape`; a press anywhere else on the editor screen sets it to
-`field`. Focus is `field` on entering the editor.
+press inside the tape panel's extent, `x >= TRAY_REGION_W` (`224`) and
+`y >= TAPE_Y0` (`560`) as `specs/editor.md` fixes them, sets focus to `tape`;
+a press anywhere else on the editor screen sets it to `field`. Focus is
+`field` on entering the editor.
 
-Two focus-routed actions may share a physical key. Each action below is
-registered on its own, the game reads the ones the current focus names, and a
-press of a shared key is therefore unambiguous.
+Two focus-routed actions share a physical key: `part-grow` and `ins-extend` on
+`KeyW`, and `part-shrink` and `ins-retract` on `KeyS`. Each is registered on
+its own, and the game reads the ones the current focus names.
 
 ## Actions and bindings
 
 `ACTIONS` holds every action the game registers, and `BINDINGS` maps each to
 the `KeyboardEvent.code` values that fire it. Each action is read as a press
-edge unless noted. The navigation and global actions apply as the screen
-dictates; the field and tape actions apply on the editor screen under their
-focus, and only while no run is active, except as `specs/editor.md` states.
+edge, once per press, on the screens the table under What each screen reads
+names.
 
 ### Navigation
 
 | Action | Keys | Effect |
 | --- | --- | --- |
-| `up` | `ArrowUp` | Menus and select lists: moves the highlight up. Tape focus: selects the previous arm's row. |
-| `down` | `ArrowDown` | The same, down, and the next arm's row. |
-| `left` | `ArrowLeft` | How-to: previous page. Tape focus: moves the cursor one cell left. |
-| `right` | `ArrowRight` | The same, next page, and one cell right. |
+| `up` | `ArrowUp` | Menus and select lists: moves the highlight up. Tape focus: moves the tape cursor to the previous row, as `specs/editor.md` states. |
+| `down` | `ArrowDown` | Menus and select lists: moves the highlight down. Tape focus: moves the tape cursor to the next row, as `specs/editor.md` states. |
+| `left` | `ArrowLeft` | How-to: previous page. Tape focus: moves the cursor one cell left, as `specs/editor.md` states. |
+| `right` | `ArrowRight` | How-to: next page. Tape focus: moves the cursor one cell right, as `specs/editor.md` states. |
 | `confirm` | `Enter` | Accepts the highlighted item. |
 | `back` | `Escape` | Leaves the current screen; during a run, stops it, as `specs/simulation.md` states. |
 
@@ -66,8 +76,8 @@ focus, and only while no run is active, except as `specs/editor.md` states.
 | `mute` | `KeyM` | Toggles sound, from any screen. |
 | `play` | `Space` | Editor: starts the run, or toggles running and paused. |
 | `step` | `KeyN` | Editor: steps the run one cycle, as `specs/editor.md` states. |
-| `speed-down` | `Comma` | Editor, during a run: the previous `SPEEDS` step. |
-| `speed-up` | `Period` | Editor, during a run: the next `SPEEDS` step. |
+| `speed-down` | `Comma` | Editor, during a run: the previous step of `SPEEDS`, as `specs/simulation.md` states. |
+| `speed-up` | `Period` | Editor, during a run: the next step of `SPEEDS`, as `specs/simulation.md` states. |
 | `undo` | `KeyU` | Editor, while editing: reverts the latest edit, as `specs/editor.md` defines. |
 | `redo` | `KeyI` | Editor, while editing: re-applies the latest undone edit. |
 
@@ -77,8 +87,8 @@ focus, and only while no run is active, except as `specs/editor.md` states.
 | --- | --- | --- |
 | `part-cw` | `KeyE` | Rotates the selected or dragged part one step clockwise. |
 | `part-ccw` | `KeyQ` | The same, counterclockwise. |
-| `part-grow` | `KeyW` | Lengthens the selected or dragged arm, to at most `ARM_MAX_LEN` (`3`). |
-| `part-shrink` | `KeyS` | The same, shorter, to at least `ARM_MIN_LEN` (`1`). |
+| `part-grow` | `KeyW` | Lengthens the selected or dragged arm within the bounds `specs/parts.md` fixes. |
+| `part-shrink` | `KeyS` | Shortens the selected or dragged arm within the same bounds. |
 | `part-delete` | `KeyX` | Removes the selected part. |
 
 ### Tape focus
@@ -95,10 +105,29 @@ focus, and only while no run is active, except as `specs/editor.md` states.
 | `ins-drop` | `KeyV` | `drop` |
 | `ins-advance` | `KeyT` | `advance` |
 | `ins-recede` | `KeyB` | `recede` |
-| `ins-blank` | `Delete` | A blank, without moving the cursor. |
-| `ins-erase` | `Backspace` | Nothing: blanks the cell before the cursor and moves the cursor back one. |
+| `ins-blank` | `Delete` | A blank. |
+| `ins-erase` | `Backspace` | Nothing. It blanks the cell before the cursor, as `specs/editor.md` states. |
 | `ins-reset` | `KeyR` | The `reset` macro of `specs/instructions.md`. |
 | `ins-repeat` | `KeyY` | The `repeat` macro of `specs/instructions.md`. |
 
 How writing at the cursor advances it, and how the tape panel scrolls to keep
 the cursor visible, are in `specs/editor.md`.
+
+## What each screen reads
+
+| Screen | Live |
+| --- | --- |
+| `title` | `up` and `down` move the highlight; `confirm` takes it; `mute`. |
+| `howto` | `left` and `right` turn the page; `confirm` and `back` return to `title`; `mute`. |
+| `select` | `up` and `down` move the highlight; `confirm` opens the highlighted challenge when the mode's progression allows; `back` returns to `title`; `mute`. |
+| `editor`, while editing | The pointer; the field-focus actions under `field` focus; the tape-focus actions and `up`, `down`, `left`, and `right` under `tape` focus; `undo`; `redo`; `play`; `step`; `back`; `mute`. |
+| `editor`, `running` or `paused` | `play`, `step`, `speed-up`, `speed-down`, `back`, `mute`. |
+| `editor`, `faulted` or `complete` | `back` and `mute`, and `up`, `down`, and `confirm` while the solved panel of `specs/ui.md` is up. |
+
+An action a row omits does nothing on that screen.
+
+## Out of scope
+
+- Gamepad input. The editor is driven by the pointer and the keyboard.
+- Rebinding. The bindings are fixed and the game offers no way to change
+  them.

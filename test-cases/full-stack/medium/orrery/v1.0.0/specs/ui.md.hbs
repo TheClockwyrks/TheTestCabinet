@@ -9,11 +9,13 @@ carries the name this specification gives it.
 
 ## Presentation
 
-Orrery fixes no palette, no font, no artwork, and no background. What it
-fixes about appearance is stated as legibility, in `specs/field.md`,
-`specs/parts.md`, and `specs/editor.md`. One requirement is this file's own:
-every piece of text a screen shows is legible against whatever sits behind it
-at the logical stage size `STAGE_W x STAGE_H` (`1280 x 720`).
+Orrery fixes no palette, no font, and no background. The sprites, effects,
+and sounds it ships are produced during this build, as `specs/assets.md`
+states. What else is fixed about appearance is stated as legibility, in
+`specs/field.md`, `specs/parts.md`, and `specs/editor.md`. One requirement is
+this file's own: every piece of text a screen shows is legible against
+whatever sits behind it at the logical stage size `STAGE_W x STAGE_H`
+(`1280 x 720`).
 
 ## Screens
 
@@ -31,10 +33,10 @@ The main menu, and where the game opens.
 | Tagline | `TAGLINE_TEXT` | `SET THE HEAVENS TURNING` |
 | Menu | `TITLE_ITEMS` | `CAMPAIGN`, `EXTRAS`, `HOW TO PLAY`, in that order |
 
-The menu's items are stacked under the title and tagline. The item at
-`state.menuIndex` is highlighted and drawn distinctly, `menuIndex` is `0` on
-arriving, `up` and `down` move the highlight and wrap at both ends, and
-`back` does nothing.
+The menu's items are stacked one above the next under the title and tagline.
+The item at `state.menuIndex` is highlighted and drawn distinctly from the
+others. `menuIndex` is `0` on arriving at the title. `up` and `down` move the
+highlight by one item and wrap at both ends. `back` does nothing.
 
 `confirm` takes the highlighted item:
 
@@ -44,16 +46,16 @@ arriving, `up` and `down` move the highlight and wrap at both ends, and
 | `EXTRAS` | Sets `state.mode` to `extras` and goes to `select`. |
 | `HOW TO PLAY` | Goes to `howto`, page `0`. |
 
-Progress, records, and per-challenge machines survive visits to the title:
-choosing a mode again finds the session exactly as it was left.
+Reaching `title` discards nothing: progress, records, and the per-challenge
+machines of `specs/editor.md` are unchanged by the visit.
 
 ### `howto`
 
 How to play, told in a player's words rather than as rules of a system, over
 `HOWTO_PAGES` (`5`) pages. `state.howtoPage` names the page shown, `0` on
 arriving; `left` and `right` move it by one, stopping at `0` and
-`HOWTO_PAGES - 1`, and the current page is indicated on screen. `back`
-returns to `title` with `menuIndex` `0`. The pages, in order:
+`HOWTO_PAGES - 1`, and the current page is indicated on screen. `confirm` and
+`back` both return to `title` with `menuIndex` `0`. The pages, in order:
 
 1. The sky: the hex field, motes and their classes, filaments,
    constellations, and that a challenge asks for products made from reagents.
@@ -75,7 +77,7 @@ and differ only in the list they show and the locking they apply.
 
 The machine screen `specs/editor.md` defines, hosting both editing and the
 run. The two panels below are drawn over it while a run is in the matching
-status, without hiding the field.
+status, and the field stays visible behind them.
 
 ## The solved panel
 
@@ -104,11 +106,12 @@ progress figure and record untouched.
 
 ## The fault display
 
-While `sim.status` is `faulted`, the field shows the machine frozen where the
-fault caught it, the parts and motes at fault visibly marked, and a banner
-names the fault by its `FAULTS` name from `specs/simulation.md` in words a
-player can act on. The wording is yours; the fault kind and the marking are
-not. `back` returns to editing.
+While `sim.status` is `faulted`, the field shows the machine frozen at the
+cycle the fault stopped, the parts and motes `specs/simulation.md` names in
+the fault drawn visibly distinct from the rest, and a banner naming which of
+the `FAULTS` of `specs/simulation.md` stopped the run. The banner's wording
+is the build's own. `back` returns to editing, as `specs/simulation.md`
+states.
 
 ## What advances on each screen
 
@@ -122,18 +125,27 @@ the screen, and input is read on every screen. Beyond that:
 
 ## Menu navigation
 
-Menus and select lists are keyboard only, through the registered actions:
-`up`, `down`, `left`, `right`, `confirm`, and `back`. The pointer operates
-the editor alone. `mute` is read on every screen.
+Menus and select lists are worked from the keyboard alone, through the
+registered actions of `specs/controls.md`: `up` and `down` move the
+highlight, `confirm` takes the highlighted item, and `back` leaves the
+screen. `left` and `right` turn the `howto` pages. `mute` is read on every
+screen.
 
 ## Audio
 
 {{#if (eq engine.slug "none")}}
-The audio layer is part of the runtime you write. Define and play exactly the
-six cues in `CUES`, under exactly these names, one per event:
+The audio layer is part of the runtime you write, and what it plays are the
+produced files `specs/assets.md` lists. Define and play exactly the seven
+cues in `CUES`, under exactly these names:
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the engine's cue bus, each cue bound with `api.audio.load`
+to the produced file `specs/assets.md` lists. Define and play exactly the
+seven cues in `CUES`, under exactly these names:
 {{else}}
-Audio plays through the engine's cue bus. Define and play exactly the six
-cues in `CUES`, under exactly these names, one per event:
+Audio plays through the engine's cue bus, each cue bound in the instance's
+`initialize` with `api.audio.load` to the produced file `specs/assets.md`
+lists, and played from a tick through `world.audio`. Define and play exactly
+the seven cues in `CUES`, under exactly these names:
 {{/if}}
 
 | Cue | Constant | Played when |
@@ -144,20 +156,47 @@ cues in `CUES`, under exactly these names, one per event:
 | `halt` | `CUES.halt` | A run faults. |
 | `constellation` | `CUES.constellation` | A set consumes one or more constellations. |
 | `complete` | `CUES.complete` | The run completes. |
+| `music` | `CUES.music` | Loops from the first frame, on every screen. |
 
-Each is a distinct short sound, played on the frame of its event and at most
-once on that frame, however many of the event fired within it. The cues are
-the same in both modes.
+The first six are one-shot cues.
+{{#if (eq engine.slug "none")}}
+Each is a distinct short sound, played on the frame its event happens, from
+`update`, and at most once on that frame, however many of the event fired
+within it.
+{{else if (eq engine.slug "simple-2d")}}
+Each is a distinct short sound, played on the frame its event happens, from
+`update`, and at most once on that frame, however many of the event fired
+within it.
+{{else}}
+Each is a distinct short sound, played on the frame its event happens, by the
+code that raised it, and at most once on that frame, however many of the
+event fired within it.
+{{/if}}
 
+`LOOPING_CUES` holds the one cue that loops until stopped rather than playing
+once. `music` is looping on every frame the game runs, on `title`, `howto`,
+`select`, and `editor` alike, in every sim status. The cues are the same in
+both modes.
+
+{{#if (eq engine.slug "none")}}
 Muting and the first-interaction unlock belong to the runtime. The game binds
 the `mute` action to the runtime's mute bit and toggles it from any screen,
 then mirrors that bit into `state.muted` every frame. The game stays fully
 playable with sound muted.
+{{else if (eq engine.slug "simple-2d")}}
+Muting and the first-gesture unlock belong to the engine. The game binds the
+`mute` action to `api.audio.setMuted` and toggles it from any screen, then
+mirrors `api.audio.muted()` into `state.muted` every frame. The game stays
+fully playable with sound muted.
+{{else}}
+Muting and the first-gesture unlock belong to the engine. The game binds the
+`mute` action to `world.audio.setMuted` and toggles it from any screen, then
+mirrors `world.audio.muted()` into `state.muted` every frame. The game stays
+fully playable with sound muted.
+{{/if}}
 
 ## Out of scope
 
 - Network or online play.
-- Touch and gamepad input. The editor is driven by the pointer and the
-  keyboard.
 - Persistence of progress, records, machines, or settings between sessions.
   Each session starts fresh.

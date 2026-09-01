@@ -22,47 +22,48 @@ numbered from `1`.
 
 Every challenge of the course satisfies all of the following:
 
-- It is well formed under `specs/formats.md`, with `target`
-  `CONSTELLATION_TARGET` (`6`), and carries an original name of its own.
+- It is well formed under `specs/formats.md` and carries a name of its own,
+  distinct from every other challenge's in the course.
 - It is solvable: the build ships a reference solution for it, in the
   solution format, that is legal, places every rise and set, and whose run
-  completes without faulting. The reference solutions are part of the build,
-  reachable through the surface `specs/instrumentation.md` defines, and are
-  never shown as part of play.
-- Difficulty rises across the course. Early challenges are solvable with a
-  handful of parts and short tapes; later ones ask for real machinery.
+  completes without faulting. The reference solutions are part of the build
+  and are reachable only through the surface `specs/instrumentation.md`
+  defines.
+- Difficulty rises across the course. The reference solution for challenge
+  `1` places at most `CAMPAIGN_OPENER_PARTS` (`3`) parts, the reference
+  solution for the last challenge places at least `CAMPAIGN_FINALE_PARTS`
+  (`8`) parts, and no challenge's reference solution places fewer parts than
+  the reference solution two challenges before it.
 
 Across the course as a whole, every part kind in `PARTS` appears in at least
 one challenge's tray, and every part kind is placed by at least one reference
-solution. The course, taken end to end, exercises the entire machine
-vocabulary: every sigil, every arm variant, the wheel, the piston, and track.
+solution.
 
-## A course worth playing
+## Course design
 
-A legal course is the floor, not the goal. The campaign is where a player
-learns this game, so its design is part of the work:
-
-- Introduce ideas one at a time, and put each new sigil or mechanism in a
-  challenge that is about that idea before it appears in crowds.
-- Make the player deduce. A challenge whose machine is dictated by the tray
-  teaches less than one with two shapes of answer.
-- Vary the pressure. Some challenges should be about reach and geometry, some
-  about timing several arms, some about transmutation chains.
-- Let products build on earlier ones, so the course reads as one ascent
-  rather than a list.
-- End with a challenge that earns the word finale.
+- A sigil or mechanism appears first in a challenge whose solution turns on
+  it, and appears beside others only in later challenges.
+- A challenge's tray admits at least two machines that complete it.
+- The course covers all three kinds of pressure across its challenges: reach
+  and geometry, timing several arms against one shared period, and chains of
+  transmutation.
+- A product delivered by an earlier challenge appears as a reagent or a
+  product of a later one.
+- The last challenge of the course asks for more parts and a longer tape than
+  any before it.
 
 ## Progression
 
 - Challenge `1` is unlocked from the start. Every other challenge begins
   locked.
-- Completing challenge `n` unlocks challenge `n + 1`. A challenge stays
-  unlocked, and stays marked solved, for the rest of the session.
+- Completing challenge `n` unlocks challenge `n + 1` when the course holds
+  one. A challenge stays unlocked, and stays marked solved, for the rest of
+  the session.
 - Completing a challenge again is a replay. Each challenge keeps its records:
-  the best `cost`, the best `cycles`, and the best `area` over the session's
-  completed runs of it, each metric independently.
+  the lowest `cost`, the lowest `cycles`, and the lowest `area` over the
+  session's completed runs of it, each metric independently.
 - Machines persist per challenge for the session, as `specs/editor.md`
-  states. Progress and records are not carried between sessions.
+  states.
 
 ## The select screen
 
@@ -77,15 +78,14 @@ hue alone:
 | unlocked | Reached and not yet solved. Can be entered. |
 | solved | Completed at least once. Can be entered again. |
 
-A solved row also shows its records. One row is highlighted, drawn distinctly
-from the rest. On arriving at the screen the highlight sits on the challenge
-most recently entered or solved, and on challenge `1` before any has been
-entered.
+A solved row also shows its three records, `cost`, `cycles`, and `area`, each
+labelled. An unsolved row shows none. One row is highlighted, drawn
+distinctly from the rest. On arriving at the screen the highlight sits on the
+challenge most recently entered or solved, and on challenge `1` before any
+has been entered.
 
 `up` and `down` move the highlight by one row, wrapping at both ends.
 `confirm` on an unlocked or solved challenge opens it in the editor;
 `confirm` on a locked one does nothing. `back` returns to the title.
 
-Completing a challenge shows the solved panel `specs/ui.md` defines, whose
-choices lead onward: the next challenge, the same machine again, or back to
-this screen.
+Completing a challenge shows the solved panel `specs/ui.md` defines.

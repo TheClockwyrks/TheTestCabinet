@@ -1,22 +1,20 @@
 # Orrery — Sigils
 
 This file defines every sigil's footprint and effect. A sigil is engraved on
-the field: it never moves, and once per cycle, in the sigil phase
-`specs/simulation.md` defines, it acts on the motes resting on its hexes.
-Footprints are written as relative hexes at rotation `0`; a placed sigil's
-hexes are its footprint rotated and translated as `specs/field.md` describes.
-The placement rules and costs are in `specs/parts.md`.
+the field at a fixed pose and acts at each boundary, the settle included, in
+the sigil phase `specs/simulation.md` defines, on the motes resting on its
+hexes. Footprints are written as relative hexes at rotation `0`; a placed
+sigil's hexes are its footprint rotated and translated as `specs/field.md`
+describes. The placement rules and costs are in `specs/parts.md`.
 
 Terms used below, for a mote at rest on a sigil hex:
 
 - unbonded: the mote carries no filament.
 - unheld: no gripper holds any mote of the mote's constellation.
-- vacant: the hex holds no mote at all.
-- Fixtures are ignored: a fixture never satisfies a condition, with the one
-  exception named under Mirroring, and a hex holding a fixture is not vacant.
+- vacant: the hex holds neither a mote nor a fixture.
+- A fixture satisfies one condition only, the `mirror` source below.
 
-A sigil whose condition does not hold this cycle does nothing this cycle.
-Waiting is not a fault.
+A sigil whose condition does not hold at a boundary waits.
 
 ## Binding sigils
 
@@ -29,8 +27,7 @@ Waiting is not a fault.
 
 When both hexes hold motes and no filament joins that pair, a filament of
 weight `1` is created between them. Held motes bind like any others, and
-binding two constellations merges them into one. A pair already joined, by
-either weight, is left as it is.
+binding two constellations merges them into one.
 
 ### `manifold`
 
@@ -43,8 +40,8 @@ either weight, is left as it is.
 
 When the center holds a mote, each reach hex that also holds a mote is bound
 to the center exactly as `bind` binds a pair: a weight `1` filament where none
-joins them yet. Up to three filaments are created in one cycle. An empty
-center means nothing happens.
+joins them yet. One filament is created for each reach hex holding a mote not
+already joined to the center.
 
 ### `triune`
 
@@ -54,8 +51,7 @@ center means nothing happens.
 | `(1, 0)` | second |
 
 When both hexes hold `nova` motes and no filament joins that pair, a filament
-of weight `3` is created between them. Any other pair of types, and any pair
-already joined, is left as it is.
+of weight `3` is created between them.
 
 ## Sundering
 
@@ -67,7 +63,7 @@ already joined, is left as it is.
 | `(1, 0)` | second |
 
 When a filament joins the motes on its two hexes, that filament is removed,
-whatever its weight. A constellation split by the removal becomes two.
+whatever its weight.
 
 ## Transmuting sigils
 
@@ -78,7 +74,7 @@ whatever its weight. A constellation split by the removal becomes two.
 | `(0, 0)` | seat |
 
 An essence mote on the seat becomes `dust`. Its filaments, its constellation,
-and any hold on it are untouched. Every other type is left as it is.
+and any hold on it are untouched.
 
 ### `mirror`
 
@@ -88,10 +84,8 @@ and any hold on it are untouched. Every other type is left as it is.
 | `(1, 0)` | target |
 
 When the source holds an essence and the target holds `dust`, the target
-becomes that essence. The source is the one condition in this game a fixture
-satisfies: a wheel's essence fixture on the source hex mirrors exactly as a
-loose essence does. The target must be a real mote; nothing is ever written
-onto a fixture.
+becomes that essence. A wheel's essence fixture on the source hex satisfies the
+source condition exactly as a loose essence does.
 
 ### `ascend`
 
@@ -102,8 +96,7 @@ onto a fixture.
 
 When the prime holds an unbonded, unheld `mercury` and the crown holds a
 planet below `sol`, the `mercury` is consumed and the planet rises one rung of
-`PLANETS`. The planet may be bonded and held. A `sol` on the crown leaves the
-`mercury` unspent.
+`PLANETS`. The planet may be bonded and held.
 
 ### `conjoin`
 
@@ -167,34 +160,32 @@ named crown, unbonded and unheld.
 | `(0, 0)` | maw |
 | all six neighbors of `(0, 0)` | rim |
 
-An unbonded, unheld mote on the maw is consumed. The rim consumes nothing; it
-exists so the void claims its clearing on the field through the placement
-rules in `specs/parts.md`.
+An unbonded, unheld mote on the maw is consumed. The maw is the only hex that
+consumes; the rim takes part in the placement rules of `specs/parts.md` alone.
 
 ## Rises and sets
 
 ### `rise`
 
-A rise's footprint is its reagent pattern placed at the rise's pose. When
-every footprint hex is vacant, the reagent appears: one new mote per pattern
-mote and one filament per pattern filament, at the placed pose, unheld. A rise
-whose footprint is even partly occupied waits.
+A rise's footprint is as `specs/parts.md` defines it. When every footprint hex
+is vacant, the reagent appears: one new mote per pattern mote and one filament
+per pattern filament, at the placed pose, unheld.
 
 ### `set`
 
-A set's footprint is its product pattern placed at the set's pose; when the
-product repeats, the footprint also includes the pattern translated once by
-the placed repeat vector. A set watches for its product:
+A set's footprint is as `specs/parts.md` defines it. A set watches for its
+product:
 
 - For a plain product, a constellation is accepted when it is unheld and is
   exactly the placed pattern: one mote of the pattern's type on each pattern
   hex, one filament of the pattern's weight for each pattern filament, and no
   further mote or filament in the constellation.
-- For a repeating product, a constellation is accepted when it is unheld and
-  is exactly `k` chained copies of the pattern, `k >= REPEAT_MIN` (`2`): copy
-  `i` is the pattern translated by `i` times the placed repeat vector for `i`
-  from `0` to `k - 1`, consecutive copies are joined by the placed link
-  filament and its translates, and the constellation holds nothing further.
+- For a repeating product, a constellation is accepted when it is unheld and is
+  exactly `k` chained copies of the placed pattern, `k >= REPEAT_MIN` (`2`):
+  copy `i` is the placed pattern translated by `i` times the placed repeat
+  vector for `i` from `0` to `k - 1`, consecutive copies are joined by the
+  placed link filament and its translates, and the constellation holds nothing
+  further.
 
 An accepted constellation is consumed whole, and the set's tally rises by `1`
 for a plain product and by `k` for a repeating one. The tallies decide
