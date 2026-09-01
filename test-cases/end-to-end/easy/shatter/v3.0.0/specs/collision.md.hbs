@@ -84,11 +84,14 @@ plus a kick that depends on what destroyed it.
 | Killed by | The kick each fragment takes |
 | --- | --- |
 | A bullet | `SPLIT_KICK` (`90`) perpendicular to the bullet's travel at the moment it landed, the two fragments kicked to opposite sides |
-| A torpedo | `TORPEDO_SCATTER` (`240`) directed radially outward from the destroyed rock's centre, the two fragments blasted to opposite sides |
+| A torpedo | `TORPEDO_SCATTER` (`240`) along the torpedo's direction of travel at the moment it landed, one fragment kicked forward along it and the other back along it |
 
-The perpendicular of a gun kill is taken from the bullet's own direction of
-travel, not from the rock's course, so the fan lies across the shot whatever the
-rock was doing. Both fragments then obey the well like any rock.
+Each fan is taken from the weapon's own direction of travel at the moment it
+landed, not from the rock's course, so it lies the same way whatever the rock was
+doing. Which way that is differs by weapon. The gun's fan lies across its shot,
+the two fragments thrown to either side of the bullet's line. The torpedo's lies
+along its own, one fragment driven on ahead down the torpedo's line and the other
+driven back up it. Both fragments then obey the well like any rock.
 {{else}}
 
 ## The fragment fan

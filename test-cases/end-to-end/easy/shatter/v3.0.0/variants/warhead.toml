@@ -513,13 +513,13 @@ validation = { script = "detonation/harder-scatter.test.ts", outputs = [
   { id = "scatter", name = "The fragments blasted apart by the detonation", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "scatter-is-radial"
-title = "The torpedo scatter blasts outward"
-description = "Each fragment's velocity, less the parent's, points away from the destroyed rock's centre within 10 degrees, rather than across the torpedo's travel."
+id = "scatter-runs-along-the-blast"
+title = "The torpedo scatter runs along the blast"
+description = "Each fragment's kick, less the parent's velocity, lies within 10 degrees of the torpedo's travel line, rather than across it."
 domains = ["arcade"]
 failure_cap = "passable"
-validation = { script = "detonation/scatter-is-radial.test.ts", outputs = [
-  { id = "scatter", name = "The fragments thrown radially outward", kind = "image" },
+validation = { script = "detonation/scatter-runs-along-the-blast.test.ts", outputs = [
+  { id = "scatter", name = "The fragments thrown along the torpedo's line", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "absorbed-by-the-core"

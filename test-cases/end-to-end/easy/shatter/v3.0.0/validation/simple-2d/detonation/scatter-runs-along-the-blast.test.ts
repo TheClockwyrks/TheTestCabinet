@@ -1,51 +1,50 @@
-// detonation/scatter-is-radial — the torpedo's fan lies ALONG the blast, not across it.
+// detonation/scatter-runs-along-the-blast — the torpedo's fan lies ALONG its own
+// line, not across it.
 //
 // `specs/collision.md` gives the two fans different directions as well as
 // different magnitudes. A gun kill throws its fragments "perpendicular to the
-// bullet's travel at the moment it landed", and the spec then spells the
-// convention out — "taken from the bullet's own direction of travel, not from the
-// rock's course, so the fan lies ACROSS the shot". A torpedo kill instead directs
-// its kick "radially outward from the destroyed rock's centre, the two fragments
-// blasted to opposite sides": away from the point the blast came from, along the
-// line the torpedo arrived on, rather than across it. The magnitude is
-// `harder-scatter`'s; this is the direction alone.
+// bullet's travel at the moment it landed"; a torpedo kill sends each fragment
+// "along the torpedo's direction of travel at the moment it landed, one fragment
+// kicked forward along it and the other back along it". The spec then draws the
+// contrast in as many words — "The gun's fan lies across its shot ... The
+// torpedo's lies along its own" — so the axis is stated rather than inferred. The
+// magnitude is `harder-scatter`'s; this is the direction alone.
 //
-// WHAT MAKES IT DECIDABLE: A HEAD-ON HIT ALONG A KNOWN LINE. Both fragments appear
-// at the destroyed rock's own position (`specs/rocks.md`), so there is no offset
-// between them to read a direction off — the direction has to come from the
-// geometry of the impact. So the torpedo is flown dead through the rock's centre
-// along `+x`, and the two candidate conventions then sit ninety degrees apart:
+// WHAT MAKES IT DECIDABLE: A SHOT ALONG A KNOWN LINE. Both fragments appear at the
+// destroyed rock's own position (`specs/rocks.md`), so there is no offset between
+// them to read a direction off — the direction is the weapon's, and the weapon's
+// line here is the one the torpedo is flown along. The torpedo is flown through
+// the rock along `+x`, and the two candidate conventions then sit ninety degrees
+// apart:
 //
-//   radially outward from the centre    the kick axis is HORIZONTAL
-//   across the torpedo's travel         the kick axis is VERTICAL
+//   along the torpedo's travel     the kick axis is HORIZONTAL
+//   across the torpedo's travel    the kick axis is VERTICAL
 //
 // and a build with the gun's rule wired to the torpedo reads ninety degrees off a
 // bound of ten.
 //
 // THE ROCK DRIFTS ALONG THE SHOT'S OWN LINE, at `ROCK_SPEED_MIN.large` (60), the
-// slowest drift `specs/rocks.md` gives a Large. Two things follow, and both are
-// the point. A build that kicks perpendicular to THE ROCK'S COURSE rather than to
-// the weapon's — the confusion `specs/collision.md` rules out in as many words,
-// and one two graded builds have shipped — reads vertical here too, so it fails
-// alongside the gun-convention build instead of hiding behind a rock at rest,
-// whose course is no direction at all. And because the drift lies along the
-// torpedo's line rather than across it, the torpedo still closes on the rock's
-// CENTRE: the approach stays head-on, and the radius through the point of impact
-// stays the same axis as the torpedo's own heading, so a build that reads either
-// of them passes and only a build that reads the perpendicular fails.
+// slowest drift `specs/rocks.md` gives a Large. A build that kicks perpendicular
+// to THE ROCK'S COURSE rather than to the weapon's — the confusion
+// `specs/collision.md` rules out in as many words, and one two graded builds have
+// shipped — reads vertical here too, so it fails alongside the gun-convention
+// build instead of hiding behind a rock at rest, whose course is no direction at
+// all. And because the drift lies along the torpedo's line rather than across it,
+// the closing stays head-on, so the reading is not confounded by a glancing hit.
 //
-// EACH FRAGMENT IS READ SEPARATELY, which is what the item states, against the
-// parent's velocity taken from the snapshot on the tick BEFORE the kill, so what
-// the well was doing to the parent is subtracted rather than measured.
+// EACH FRAGMENT IS READ SEPARATELY, against the parent's velocity taken from the
+// snapshot on the tick BEFORE the kill, so what the well was doing to the parent
+// is subtracted rather than measured.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ROCK_RADIUS, ROCK_SPEED_MIN } from "../../src/constants";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
+import { degrees } from "../geometry";
 import {
   captureStill,
   createHarness,
   poseRock,
-  requireRock,
+  rockById,
   startPlaying,
   ticksFor,
   type Harness,
@@ -53,7 +52,6 @@ import {
 import {
   QUIET_GROUND,
   axisOffsetOf,
-  degrees,
   driveTorpedo,
   fragmentPair,
   launchAt,
@@ -109,7 +107,7 @@ it("kicks both fragments along the torpedo's line rather than across it", async 
     PARENT_VX,
     PARENT_VY,
   );
-  const parent = requireRock(h.snapshot(), parentId, "the drifting Large");
+  const parent = rockById(h.snapshot(), parentId, "the drifting Large");
 
   const torpedo = launchAt(
     h,
@@ -128,12 +126,12 @@ it("kicks both fragments along the torpedo's line rather than across it", async 
 
   // The parent as it stood on the last tick it was still whole, so the drift the
   // well had added to it is subtracted rather than measured.
-  const struck = requireRock(
+  const struck = rockById(
     run.before,
     parentId,
     "the Large on the tick it broke",
   );
-  const [first, second] = fragmentPair(run.at, "medium", "scatter-is-radial");
+  const [first, second] = fragmentPair(run.at, "medium", "scatter-runs-along-the-blast");
 
   for (const [index, fragment] of [first, second].entries()) {
     const kick = {
@@ -143,8 +141,8 @@ it("kicks both fragments along the torpedo's line rather than across it", async 
     assertLessThanOrEqual(
       degrees(axisOffsetOf(kick, SHOT_HEADING)),
       TOLERANCE_DEGREES,
-      `fragment ${String(index + 1)}: its kick along the torpedo's line, in ` +
-        "degrees off it (specs/collision.md)",
+      `fragment ${index + 1}: its kick along the torpedo's line, in degrees off ` +
+        "it (specs/collision.md)",
     );
   }
 });
