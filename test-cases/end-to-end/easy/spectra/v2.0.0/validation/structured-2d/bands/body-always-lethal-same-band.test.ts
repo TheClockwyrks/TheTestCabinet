@@ -1,17 +1,98 @@
-// Spectra — bands/body-always-lethal-same-band: a same-band drone body still costs a life
+// bands/body-always-lethal-same-band — a body is never mistaken for a shield.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `bands.body-always-lethal-same-band` on the
-// `structured-2d` configuration, and captures the media `test-case.toml` declares
-// for it.
+// specs/bands.md, immediately after the shield table: "A drone's body is not
+// filtered by the shield. Contact between the ship and any drone's body, of either
+// band and whatever the ship is tuned to, hits the ship." specs/progression.md
+// prices it the same way: "Any drone's body reaches the ship, of either band | One
+// life."
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// THE BAND UNDER TEST IS THE SHIP'S OWN, which is the wrong-model case. A build
+// that runs a drone's body through the same filter its bullets go through absorbs
+// this contact and pays nothing, and that mistake is readable HERE and nowhere
+// else: it passes `bands.body-always-lethal-opposite` untouched. Reading the two
+// bands as two points is what makes a build that charges for one band only fail
+// the band it drops instead of averaging out.
+//
+// HOW THE BODY REACHES THE SHIP. The drone is posed with its centre on the ship's,
+// in phase `diving` — the phase a body reaches the ship in during play — with
+// every faculty off, so nothing but the build's own contact test decides what
+// follows. It is NOT flown there: specs/swarm.md lets a dive end "by turning back
+// above `FIELD_BOTTOM`", so a build whose dives turn back above `SHIP_Y` (`600`)
+// is conformant and would never deliver a body by flight. Posing the overlap
+// demands nothing a build does not owe and reaches the requirement directly.
+//
+// THE WORLD IS THE SHIP AND ONE DRONE. `startPosed` empties the rosters and shuts
+// the three world gates; only the ship's contact test is turned back on, because
+// it is this point's requirement. No bullet and no second drone is on the field,
+// so the life count can only move for the contact under test.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { READY_HOLD, SHIP_Y, START_LIVES } from "../../src/constants";
+import { assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  poseDrone,
+  startPosed,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-it("A same-band drone body still costs a life", () => {
-  throw new Error(
-    "Spectra: validation/structured-2d/bands/body-always-lethal-same-band.test.ts is a scaffold placeholder and has not been implemented",
+/** The band the ship holds, which `startPosed` poses, and the drone's with it. */
+const SHARED_BAND = "cyan" as const;
+
+/**
+ * Frames the contact is given to resolve.
+ *
+ * The overlap stands from the moment the drone is posed, so a build resolves it in
+ * the first frame it runs; four frames leave room for one that resolves contact
+ * after its motion step, and stop the sweep far inside `READY_HOLD` (`1.3` s,
+ * specs/progression.md) so the ready beat cannot end and expose the ship to a
+ * second charge.
+ */
+const CONTACT_TICKS = 4;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("costs a life when a drone of the ship's own band reaches it", async () => {
+  startPosed(h);
+  h.debug.setShipContact(true);
+
+  const posed = h.snapshot();
+  assertEqual(posed.ship.band, SHARED_BAND, "the band the ship was posed on");
+  assertEqual(posed.lives, START_LIVES, "the lives the run was posed with");
+
+  poseDrone(h, "shard", posed.ship.x, SHIP_Y, {
+    band: SHARED_BAND,
+    phase: "diving",
+  });
+
+  const struck = await h.until((s) => s.lives < START_LIVES, {
+    maxFrames: CONTACT_TICKS,
+  });
+  captureStill(h, "hit");
+
+  assertEqual(
+    struck.hit,
+    true,
+    `a ${SHARED_BAND} drone body standing on the ship of the same band costing ` +
+      `a life within ${CONTACT_TICKS} frames, a body being unfiltered by the ` +
+      `shield (specs/bands.md)`,
+  );
+  assertEqual(
+    struck.snapshot.lives,
+    START_LIVES - 1,
+    `the lives left after one same-band body reached the ship, which costs ` +
+      `exactly one (specs/progression.md); the ready beat is ` +
+      `${ticksFor(READY_HOLD)} frames long, so no second charge is possible ` +
+      `inside this sweep`,
   );
 });
