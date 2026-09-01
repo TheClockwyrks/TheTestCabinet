@@ -35,12 +35,6 @@ game the pointer's position already in logical stage units along with its press
 and release edges — read the engine's input documentation for the API.
 `specs/controls.md` states what Meltdown does with them.
 
-**The heat model resolves in two phases.** `specs/heat.md` states the rule: every
-flow a frame resolves is computed from the heats the frame _opened_ with, and
-only when every tower's change is known are the new heats written. That pass
-belongs at the end of `update`, once movement and firing have produced the
-frame's shot counts.
-
 The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as `initialize` handed it over, and that is how the game
 is driven from code, so it is present and exactly as

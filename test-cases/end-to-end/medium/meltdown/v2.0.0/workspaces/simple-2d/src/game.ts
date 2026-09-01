@@ -42,12 +42,6 @@
 // with its press and release edges — the engine's input documentation, seeded at
 // `engine/`, defines the API, and `specs/controls.md` states what Meltdown does
 // with them.
-//
-// THE HEAT MODEL RESOLVES IN TWO PHASES, and `specs/heat.md` states the rule:
-// every flow a frame resolves is computed from the heats the frame OPENED with,
-// and only when every tower's change is known are the new heats written. The
-// pass belongs at the end of `update`, once movement and firing have produced the
-// frame's shot counts.
 
 import type {
   Game,
@@ -94,12 +88,10 @@ export const game: Game<MeltdownState, MeltdownDebugApi> = {
    *
    * `dt` is the real elapsed SECONDS of this frame. Multiply it by the game
    * speed to get the game time this frame advances by, and accumulate that into
-   * `simTime`. Read the frame's actions and the pointer position and edges, run
-   * the wave spawner, the surge's movement along its routes, each emitter's fire
-   * clock and its shots, and then the two-phase heat pass specs/heat.md fixes.
-   * Play cues, and mirror the engine's mute bit into the returned state's
-   * `muted`. The value returned is what `render` draws and what the next
-   * `update` receives; `state` itself is read-only and stays as it was.
+   * `simTime`. Read input, advance the simulation, play cues, and mirror the
+   * engine's mute bit into the returned state's `muted`. The value returned is
+   * what `render` draws and what the next `update` receives; `state` itself is
+   * read-only and stays as it was.
    */
   update(
     _state: DeepReadonly<MeltdownState>,

@@ -14,18 +14,15 @@
 //
 // THE LOOK IS NOT HERE, AND THAT IS DELIBERATE. Meltdown fixes no palette, no
 // font, no tower artwork, no glow curve, no panel layout and no animation. There
-// is not a single color or type face in this file, and there is not meant to be
-// one. `specs/overview.md` states what a player has to be able to READ at a
-// glance — an emitter's heat along a ramp, a tripped tower apart from an online
-// one, radiator faces apart from plain ones — and how the reactor looks is the
-// build's to design. `BACKGROUND` is not here either: it is the build's own
-// export from `src/game.ts`.
+// is not a single color in this file, and there is not meant to be one.
+// `specs/overview.md` states what a player has to be able to read at a glance;
+// how the reactor looks is the build's to design. `BACKGROUND` is the build's
+// own export from `src/game.ts`.
 //
-// EVERY RATE HERE IS PER SECOND. Meltdown mandates no fixed timestep: the engine
-// hands the game the real elapsed seconds of each frame and imposes none of its
-// own, and every rate below is integrated against that delta. `state.simTime`
-// accumulates the game time the simulation advanced by, which is the frame's
-// delta multiplied by the game speed.
+// Every rate is PER SECOND and every duration is in SECONDS, because the engine
+// hands the game the real elapsed seconds of each frame and imposes no timestep
+// of its own. `state.simTime` accumulates the game time the simulation advanced
+// by, which is the frame's delta multiplied by the game speed.
 
 // ---- Stage and panel (specs/overview.md, specs/floor.md) -----------------
 
@@ -202,12 +199,8 @@ export interface MoverDef {
 export type TowerDef = EmitterDef | MoverDef;
 
 /**
- * The stat table, restated as prose in `specs/towers.md`. The Rime is an
- * ORDINARY EMITTER: base damage 4, redline 100, and a shot removes
- * `4 * heatMultiplier(H, 100)` exactly as every other emitter's does. Its slow is
- * an addition to that, not a replacement for it. Its redline sitting at the trip
- * means it never reaches a plateau and is at its weakest when cold, which is the
- * point of a tower whose slow is strongest cold.
+ * The stat table `specs/towers.md` fixes. The Rime is an ORDINARY EMITTER: base
+ * damage 4, redline 100.
  */
 export const TOWER_DEFS: Readonly<Record<TowerType, TowerDef>> = {
   arc: {
@@ -564,9 +557,9 @@ export interface ModeRow {
 }
 
 /**
- * The derived-figures table. `waveCount`, `startMoney`, `startLives`, `interest`
- * and `buildZone` follow the mode and difficulty and nothing else, which is why
- * the debug surface has no setter for any of them.
+ * The derived-figures table of `specs/modes.md`. `waveCount`, `startMoney`,
+ * `startLives`, `interest` and `buildZone` follow the mode and difficulty and
+ * nothing else.
  */
 export const MODE_TABLE: Readonly<Record<ModeName, ModeRow>> = {
   containment: {
@@ -674,11 +667,9 @@ export const ACTIONS = [
 export type ActionName = (typeof ACTIONS)[number];
 
 /**
- * The key each action is bound to, as `KeyboardEvent.code` values so a binding
- * is a physical key rather than a layout-dependent character. NO KEY DRIVES TWO
- * ACTIONS, so nothing is ever double-fired: `back` is Escape alone and carries
- * the precedence rule `specs/controls.md` states, `sell` is `KeyS` and is not
- * also a movement key, and `send` is Space and is not also a confirm.
+ * The key each action is bound to, from `specs/controls.md`, as
+ * `KeyboardEvent.code` values so a binding is a physical key rather than a
+ * layout-dependent character.
  */
 export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   up: ["ArrowUp"],

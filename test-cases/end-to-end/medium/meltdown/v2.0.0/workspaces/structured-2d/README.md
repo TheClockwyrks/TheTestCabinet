@@ -32,20 +32,6 @@ the debug surface.
 background `src/main.ts` hands the engine as the color the canvas is cleared to
 each frame, so the letterbox bars around the stage match the reactor itself.
 
-**The heat model resolves in two phases, and it belongs in the mode's tick.**
-`specs/heat.md` states the rule: every flow a frame resolves is computed from the
-heats the frame _opened_ with, and only when every tower's change is known are
-the new heats written. The engine runs the mode after every actor has ticked, so
-the mode sees a settled world and knows the frame's shot counts. A per-tower
-actor tick could not do it: an actor ticking in spawn order would read some
-neighbours' new heats and some neighbours' old ones, which is exactly what the
-rule forbids.
-
-**Meltdown attaches no colliders.** Range is a distance from a footprint centre,
-splash is a distance from an impact, and the maze is a set of blocked tiles. None
-of it is a collision query, so the collision pass reports nothing and the blocked
-tiles and the routes live on the world's game state.
-
 The debug surface is a required deliverable. The engine hands back from
 `engine.debug` exactly what `initialize` returned, and that is how the game is
 driven from code, so it is present and exactly as `specs/instrumentation.md`
