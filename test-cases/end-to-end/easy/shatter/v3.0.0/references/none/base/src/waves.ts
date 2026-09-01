@@ -27,37 +27,37 @@ import { spawnWave } from "./world";
  * On the tick a wave clears the wave number advances by one and the banner is
  * raised, naming the wave about to start. The banner runs for
  * `WAVE_BANNER_TIME`, no rock is on the field at any point while it shows, and
- * the rocks it announced are spawned as it ends.
+ * the rocks it announced are spawned as it ends. The banner is the whole of the
+ * arming: nothing is remembered beside it, so a banner posed through the debug
+ * surface runs down and puts up the wave it names exactly as an earned one does,
+ * which is what `specs/instrumentation.md` states of `setWaveBanner`.
  *
  * It is a breather rather than a pause: nothing else in the tick is held back, so
  * the ship keeps flying, every timer keeps running, and a saucer already on the
  * field keeps travelling, keeps firing and can still be shot down.
  */
 export function stepWaves(state: ShatterState): void {
-  if (
-    state.waveSpawning &&
-    !state.waitingToSpawn &&
-    state.waveBanner <= 0 &&
-    state.rockDestroyed &&
-    state.rocks.length === 0
-  ) {
-    state.wave += 1;
-    state.waveBanner = WAVE_BANNER_TIME;
-    state.waitingToSpawn = true;
-  }
-
-  if (state.waveBanner <= 0) {
+  // A banner already running runs down whatever else is true, and the wave it
+  // announces goes up as it ends — the banner is the whole of the arming, so a
+  // banner `setWaveBanner` posed behaves exactly like one a clear raised
+  // (`specs/instrumentation.md`).
+  if (state.waveBanner > 0) {
+    state.waveBanner -= TICK_DT;
+    // The epsilon is float slack, not slack on the rule: `WAVE_BANNER_TIME`
+    // (1.5 s) is 180 whole ticks of `TICK_DT`, and 180 subtractions of a binary
+    // approximation of a hundred-and-twentieth do not land exactly on zero.
+    if (state.waveBanner > 1e-9) return;
     state.waveBanner = 0;
+    // Gated even here: turning wave spawning off mid-banner lets the banner run
+    // down, as `specs/instrumentation.md` says it does, and puts nothing up.
+    if (state.waveSpawning) spawnWave(state, state.wave);
     return;
   }
 
-  state.waveBanner -= TICK_DT;
-  if (state.waveBanner > 0) return;
-
   state.waveBanner = 0;
-  if (!state.waitingToSpawn) return;
-  state.waitingToSpawn = false;
-  // Gated even here: turning wave spawning off mid-banner lets the banner run
-  // down, as `specs/instrumentation.md` says it does, and puts nothing up.
-  if (state.waveSpawning) spawnWave(state, state.wave);
+  if (!state.waveSpawning) return;
+  if (!state.rockDestroyed || state.rocks.length > 0) return;
+
+  state.wave += 1;
+  state.waveBanner = WAVE_BANNER_TIME;
 }

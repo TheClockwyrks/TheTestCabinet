@@ -67,7 +67,6 @@ export function createState(seedValue: number): ShatterState {
     rng: 1,
     nextId: 0,
     rockDestroyed: false,
-    waitingToSpawn: false,
     extraLifeShow: 0,
     cues: [],
   };
@@ -90,7 +89,6 @@ export function toTitle(state: ShatterState): void {
   state.lives = START_LIVES;
   state.wave = 0;
   state.waveBanner = 0;
-  state.waitingToSpawn = false;
   state.extraLifeShow = 0;
   state.bullets = [];
   state.rocks = [];
@@ -129,7 +127,6 @@ export function startNewGame(state: ShatterState): void {
   state.lives = START_LIVES;
   state.wave = 1;
   state.waveBanner = 0;
-  state.waitingToSpawn = false;
   state.extraLifeShow = 0;
   state.bullets = [];
   state.rocks = [];

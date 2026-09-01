@@ -215,6 +215,13 @@ canvas reflects it.
 `setScore` grants no extra ship, whatever multiple of `EXTRA_LIFE_STEP` it carries
 the score across.
 
+`setWaveBanner` sets the timer and nothing else. The banner is the whole of the
+arming: the game remembers no pending wave beside it, so a posed banner runs down
+and puts up the wave its number names exactly as one a clear raised does
+(`specs/progression.md`), and posing `0` takes the banner and the wave behind it
+away together. Spawning stays under `setWaveSpawning` below, so a posed banner over
+a shut gate runs out and puts up nothing.
+
 ### The world gates
 
 Two faculties belong to the game itself rather than to any one entity. Each has its

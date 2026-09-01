@@ -335,13 +335,14 @@ export function createDebugApi(
     /**
      * Set the seconds left on the banner; `0` clears it.
      *
-     * A precondition for a scenario about what happens WHILE a banner runs. It
-     * arms no wave behind the banner, so the banner simply runs out — a wave
-     * arriving is what a real clear produces.
+     * It sets the timer and nothing else. The banner is the whole of the arming
+     * (`src/waves.ts`), so a posed banner runs down and puts up the wave its
+     * number names exactly as an earned one does, and posing `0` takes the
+     * banner and the wave behind it away together — which is what
+     * `specs/instrumentation.md` states of the operation.
      */
     setWaveBanner(seconds) {
       state.waveBanner = Math.max(0, finite(seconds, 0));
-      state.waitingToSpawn = false;
     },
 
     setWaveSpawning(enabled) {

@@ -477,7 +477,9 @@ describe("the wave loop", () => {
     expect(cleared).toBe(true);
     expect(state.wave).toBe(2);
     expect(state.rocks).toHaveLength(0);
-    expect(state.waveBanner).toBeCloseTo(WAVE_BANNER_TIME - TICK_DT, 9);
+    // The banner is raised at its full length on the tick of the clear and runs
+    // down from the next one, which is the convention `src/waves.ts` uses.
+    expect(state.waveBanner).toBeCloseTo(WAVE_BANNER_TIME, 9);
 
     // No rock is on the field at any point while the banner runs, and the wave
     // it announced arrives as it ends.

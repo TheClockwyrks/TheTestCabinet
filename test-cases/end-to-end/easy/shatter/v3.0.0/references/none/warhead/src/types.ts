@@ -182,8 +182,6 @@ export interface ShatterState {
    * nothing is left. Raised by the destruction, lowered at the end of the tick.
    */
   rockDestroyed: boolean;
-  /** Whether a banner is running with a wave still to put up as it ends. */
-  waitingToSpawn: boolean;
   /** The seconds left on the awarded-ship announcement; `0` when none. */
   extraLifeShow: number;
   /** The cues raised on the tick being resolved, in the order they were raised. */

@@ -163,7 +163,6 @@ export function posed(seedValue: number = DEFAULT_SEED): Driven {
   state.score = 0;
   state.wave = 1;
   state.waveBanner = 0;
-  state.waitingToSpawn = false;
   state.rocks = [];
   state.bullets = [];
   state.enemyBullets = [];
