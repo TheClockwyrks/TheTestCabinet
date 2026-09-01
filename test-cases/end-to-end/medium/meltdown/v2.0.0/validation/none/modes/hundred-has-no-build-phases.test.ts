@@ -94,6 +94,11 @@ it("opens no build phase when the onslaught clears", async () => {
     "the last unit of the onslaught left the floor",
   );
   assertNotEqual(
+    cleared.snapshot.screen,
+    "playing",
+    "the screen a cleared onslaught leaves the run on: clearing it ends the run, so the run is off the playing screen whichever ending it opened",
+  );
+  assertNotEqual(
     cleared.snapshot.phase,
     "building",
     "the phase the cleared onslaught left the run in",

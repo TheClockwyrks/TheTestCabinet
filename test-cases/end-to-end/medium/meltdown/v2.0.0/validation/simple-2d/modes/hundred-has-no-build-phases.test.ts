@@ -27,17 +27,20 @@
 // the one this group can pose in two operations. The Hundred opens on twenty lives,
 // so a Mote's leak of `1` leaves nineteen and cannot end the run by itself.
 //
-// TWO READINGS, ONE CLAUSE. No build phase opened: the phase is not `building`. And
-// no countdown started: `buildTimer` is still `0`, where a build that opened the
-// phase would have set it to `BUILD_PHASE_TIME` (`15`). The timer is posed at `0`
-// going in, for the reason modes/run.ts gives — a wave phase carries no countdown,
-// and a reading taken off a timer the arrangement itself had wound up would be
-// measuring the arrangement. A build that opens a build phase fails the first; one
-// that starts the clock without changing the phase fails the second.
+// THREE READINGS, ONE CLAUSE. The run ENDED: the `playing` screen is gone. No
+// build phase opened: the phase is not `building`. And no countdown started:
+// `buildTimer` is still `0`, where a build that opened the phase would have set it
+// to `BUILD_PHASE_TIME` (`15`). The timer is posed at `0` going in, for the reason
+// modes/run.ts gives — a wave phase carries no countdown, and a reading taken off
+// a timer the arrangement itself had wound up would be measuring the arrangement.
+// A build that leaves the player on a live floor forever fails the first; one that
+// opens a build phase fails the second; one that starts the clock without changing
+// the phase fails the third.
 //
-// WHAT THIS POINT DOES NOT DECIDE. That the clear shows the victory screen is
-// `modes.hundred-victory`; that The Hundred pays no interest is
-// `modes.hundred-figures`. Interest is not read here at all.
+// WHAT THIS POINT DOES NOT DECIDE. WHICH ending a clear shows is
+// `modes.hundred-victory`, so a build that ends the run on the game-over screen
+// fails there and passes here, and the two grades stay separable. That The Hundred
+// pays no interest is `modes.hundred-figures`. Interest is not read here at all.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual, assertTrue } from "../assert";
@@ -79,6 +82,13 @@ it("opens no build phase when the onslaught's last unit goes", async () => {
   assertTrue(cleared, "precondition: the onslaught's last unit left the floor");
 
   const after = h.snapshot();
+  assertNotEqual(
+    after.screen,
+    "playing",
+    "the screen a cleared onslaught leaves the run on: clearing it ends the " +
+      "run rather than opening a build phase, so the run is off the playing " +
+      "screen whichever ending it opened (specs/modes.md, The Hundred)",
+  );
   assertNotEqual(
     after.phase,
     "building",
