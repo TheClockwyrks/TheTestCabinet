@@ -52,6 +52,20 @@ vi.mock("../../../client/auth", () => ({
 }));
 
 const createGgConfig = vi.fn().mockResolvedValue({ id: "c1" });
+const updateGgConfig = vi.fn().mockResolvedValue({ id: "cfg-1" });
+// What a confirmation was asked about, and how the operator answered it. A rename is
+// the one edit here whose cost lands outside this form, so the page has to ask.
+let confirmAnswer = true;
+const confirmed = vi.fn();
+vi.mock("../../components/ConfirmDialog", () => ({
+  useConfirm: () => ({
+    confirm: (options: { title: string; message: string }) => {
+      confirmed(options);
+      return Promise.resolve(confirmAnswer);
+    },
+    alert: async () => {},
+  }),
+}));
 const createGgAgent = vi.fn();
 // Whether `GET /gg/agents` answers. A library that fails to load leaves every imported
 // profile looking inline, which is the one state the page must refuse to save from.
@@ -103,13 +117,23 @@ const SAVED_REVIEWER = savedAgent("saved-1", "reviewer");
 // importing it lands on the slug that profile was minted with.
 const SAVED_ROOT = savedAgent("saved-root", "Root");
 
+// The one configuration the account has stored, which the edit route opens on.
+const STORED_CONFIG = {
+  id: "cfg-1",
+  name: "Duo",
+  description: "the two-agent arm",
+  capabilitySet: capabilitySetFromDraft(emptyDraft(), "Duo"),
+  agentSources: [],
+};
+
 function backendValue(): BackendContextValue {
   return {
     client: {
       listModels: vi.fn().mockResolvedValue([]),
-      listGgConfigs: vi.fn().mockResolvedValue([]),
+      listGgConfigs: vi.fn().mockResolvedValue([STORED_CONFIG]),
       listGgAgents,
       createGgConfig,
+      updateGgConfig,
       createGgAgent,
     },
     identity: null,
@@ -147,6 +171,10 @@ function renderPage(path = "/account/gg/new") {
       <BackendProvider value={backendValue()}>
         <Routes>
           <Route path="/account/gg/new" element={<GgConfigEditPage />} />
+          <Route
+            path="/account/gg/:configId/edit"
+            element={<GgConfigEditPage />}
+          />
           <Route path="/account/gg" element={<div>{CONFIG_LIST}</div>} />
         </Routes>
       </BackendProvider>
@@ -209,7 +237,12 @@ function saveAgent() {
 describe("GgConfigEditPage", () => {
   // The save spy is module-scoped, so its call log accumulates across tests unless
   // cleared — every "called once" assertion counts from a fresh slate.
-  beforeEach(() => createGgConfig.mockClear());
+  beforeEach(() => {
+    createGgConfig.mockClear();
+    updateGgConfig.mockClear();
+    confirmed.mockClear();
+    confirmAnswer = true;
+  });
 
   it("renders the configuration's three sections, capabilities behind an agent", async () => {
     renderPage();
@@ -1403,5 +1436,80 @@ describe("one saved agent imported twice", () => {
     expect(input.agentSources).toEqual([
       { profileId: agents[1].id, agentId: "saved-1", overrides: [] },
     ]);
+  });
+});
+
+// A gg coverage cell and a ladder climber are identified by the configuration's name,
+// because that is what a run records. Renaming therefore re-points every cell built on
+// the configuration: the recorded runs stay under the old name, the cells read as
+// empty, and the next top-up buys them again. The identity is deliberate; the cost has
+// to be visible before it is paid.
+describe("GgConfigEditPage renaming", () => {
+  beforeEach(() => {
+    createGgConfig.mockClear();
+    updateGgConfig.mockClear();
+    confirmed.mockClear();
+    confirmAnswer = true;
+  });
+
+  // Open the stored configuration and wait for its name to arrive in the field.
+  async function openStored() {
+    renderPage("/account/gg/cfg-1/edit");
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Configuration name") as HTMLInputElement).value,
+      ).toBe("Duo"),
+    );
+  }
+
+  function rename(next: string) {
+    fireEvent.change(screen.getByLabelText("Configuration name"), {
+      target: { value: next },
+    });
+  }
+
+  function save() {
+    fireEvent.click(screen.getByRole("button", { name: "Save configuration" }));
+  }
+
+  it("says what a rename costs while the name still differs", async () => {
+    await openStored();
+    expect(screen.queryByText(/re-points the coverage cells/)).toBeNull();
+    rename("Duo v2");
+    expect(screen.getByText(/re-points the coverage cells/)).toBeTruthy();
+    // Typing the stored name back is not a rename, so the warning goes with it.
+    rename("Duo");
+    expect(screen.queryByText(/re-points the coverage cells/)).toBeNull();
+  });
+
+  it("asks before saving a rename, naming both names and the cost", async () => {
+    await openStored();
+    rename("Duo v2");
+    save();
+    await waitFor(() => expect(updateGgConfig).toHaveBeenCalledTimes(1));
+    expect(confirmed).toHaveBeenCalledTimes(1);
+    const [options] = confirmed.mock.calls[0]!;
+    expect(options.message).toMatch(/“Duo” to “Duo v2”/);
+    expect(options.message).toMatch(/buys those runs again/);
+    expect(updateGgConfig.mock.calls[0]![1].name).toBe("Duo v2");
+  });
+
+  it("writes nothing when the rename is declined", async () => {
+    await openStored();
+    confirmAnswer = false;
+    rename("Duo v2");
+    save();
+    await waitFor(() => expect(confirmed).toHaveBeenCalledTimes(1));
+    expect(updateGgConfig).not.toHaveBeenCalled();
+  });
+
+  it("saves an edit that keeps the name without asking", async () => {
+    await openStored();
+    fireEvent.change(screen.getByLabelText("Description (optional)"), {
+      target: { value: "still the two-agent arm" },
+    });
+    save();
+    await waitFor(() => expect(updateGgConfig).toHaveBeenCalledTimes(1));
+    expect(confirmed).not.toHaveBeenCalled();
   });
 });

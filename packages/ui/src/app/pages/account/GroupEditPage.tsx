@@ -19,7 +19,7 @@ import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
 // The coverage group editor (`/account/groups/new` and `/account/groups/:groupId/
-// edit`): a group's name, kind (model combinations or cases — fixed once created),
+// edit`): a group's name, kind (combinations or cases — fixed once created),
 // and members. Save creates or updates and returns to the Groups tab. Console-only;
 // gated on a signed-in account.
 export function GroupEditPage() {
@@ -167,7 +167,7 @@ export function GroupEditPage() {
               disabled={editing}
               onClick={() => setKind("combo")}
             >
-              Model combinations
+              Combinations
             </button>
             <button
               type="button"

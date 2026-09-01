@@ -331,8 +331,8 @@ export function LadderEditPage() {
           </p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
-              No model groups yet. Create one on the Groups tab, or pin one-off
-              combinations below.
+              No combination groups yet. Create one on the Groups tab, or pin
+              one-off combinations below.
             </p>
           ) : (
             <div className={styles.groupPicks}>
@@ -356,9 +356,7 @@ export function LadderEditPage() {
             </div>
           )}
 
-          <p className={exec.sectionLabel}>
-            One-off harness / model combinations
-          </p>
+          <p className={exec.sectionLabel}>One-off combinations</p>
           <ComboPicker combos={combos} onChange={setCombos} models={models} />
 
           <SubmitNotice message={error} />

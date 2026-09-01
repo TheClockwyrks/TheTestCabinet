@@ -4,7 +4,7 @@ title: Coverage Plans
 
 A **coverage plan** is a reviewer's standing declaration of the runs they want to
 exist: a set of version-pinned [test cases](/testing/overview/) crossed with a set
-of harness+model combinations, plus a target number of runs for each
+of [combinations](#combinations), plus a target number of runs for each
 `case × combination` **cell**. The backend expands that declaration into a
 **matrix**, counts what already exists against it, and — when asked — enqueues
 the runs that are still missing.
@@ -27,9 +27,9 @@ This is the seam the whole feature is built on, and getting it backwards makes a
 plan either wasteful or unusable.
 
 **Run and job counts are global.** A cell's `completed` and `inFlight` counts every
-run of that exact `case@version/variant × harness/model` cell, whoever launched it
-and for whatever reason. A run someone else produced satisfies the target and is
-never re-requested. A plan does not own runs; it observes them.
+run of that exact cell, whoever launched it and for whatever reason. A run someone
+else produced satisfies the target and is never re-requested. A plan does not own
+runs; it observes them.
 
 **Judgement is per account.** "Unreviewed" means there is no
 [review](/components/core/results/#reviews) row for the *requesting* account, and
@@ -41,6 +41,51 @@ not theirs, or wall a climb they are not on.
 The practical consequence is that two reviewers pointed at the same cabinet share
 its runs and not each other's worklists. Neither re-runs work the other already
 paid for; neither is blocked by the other's backlog.
+
+## Combinations
+
+A combination is what a cell's runs are executed by, and it takes one of two shapes:
+
+- a **harness combination** — a harness, the model it runs, and a provider for a
+  provider-routed harness;
+- a **gg combination** — a [gg configuration](/gg/configurations/) the account has
+  saved, and a model for each [launch slot](/gg/configurations/#configuration-slots)
+  that configuration asks for.
+
+The two shapes sit side by side in one plan, in one ladder, and in one
+`kind = "combo"` group, and are crossed with the cases alike. One case under a
+third-party harness and the same case under a gg configuration are two cells, each
+counted on its own and each asking for `runsPerCell` runs.
+
+A gg combination is fed by the same top-up as everything else. The top-up resolves
+the configuration as the account saved it, binds its launch slots to the models the
+member names, and enqueues a gg run carrying that capability set, which is the run
+the [launch form](/gg/configurations/#launching-one) produces by hand.
+
+### What identifies a gg cell
+
+A harness cell is identified by `case@version/variant × harness/model`. A gg cell
+adds the **configuration's name** and the **models the bound set runs on**.
+
+The name is the identity because
+[counts are global](#counts-are-global-judgement-is-yours). A run records the name
+of the configuration it was launched from, and that name is what the run log, the
+[query language](/gg/analysis/query-language/), and a plan all slice by. Keying on
+the account-scoped configuration id would make a gg cell's count per-account
+instead, so two configurations meant to be different arms need different names.
+
+The bound models are part of the identity because a configuration can run several.
+Two members of one configuration that agree on the root agent's model and differ on
+a reviewer's are two arms of a study, and a cell reading only the root model would
+merge them.
+
+### A member that cannot be launched
+
+A gg member stops being launchable when the configuration it names has been deleted,
+when it leaves a launch slot unbound, or when it binds a model the catalog can
+resolve no context window for. The matrix reports the reason on the cell and a
+top-up skips it and says so, so one broken member leaves the rest of the plan being
+fed.
 
 ## The matrix
 
@@ -57,6 +102,7 @@ where it stands:
 | `unreviewed` | completed runs **you** have not reviewed |
 | `remaining` | `max(0, desired - (completed + inFlight))` |
 | `latestVersion` / `stale` | whether a newer version of the case has been ingested |
+| `unlaunchable` | why a top-up cannot launch this cell, or null |
 
 `pending` is a subset of `inFlight`, not an addition to it. It is surfaced
 separately because it is the answer to "my buffer is full but nothing is running":
@@ -155,15 +201,18 @@ The algorithm is the same for plans and ladders:
 
 1. Walk the cells in the plan's configured [outer-axis order](#emission-order-is-execution-order).
 2. Skip any cell already at its per-cell target, counted **globally**.
-3. Defer any cell whose harness is already at its
+3. Skip any cell whose combination [cannot be launched](#a-member-that-cannot-be-launched),
+   reporting the reason.
+4. Defer any cell whose harness is already at its
    [parallelism cap](#harness-parallelism-comes-first).
-4. Emit **whole** cells — all of a cell's missing repeats together — until
+5. Emit **whole** cells — all of a cell's missing repeats together — until
    `outstanding` reaches the buffer target.
-5. Walk the deferred cells, in the same order, until the buffer target is reached.
+6. Walk the deferred cells, in the same order, until the buffer target is reached.
 
 `POST /coverage-plans/{id}/topup` reports what it did in enough detail that an idle
 plan is never a mystery: the buffer target in force, the occupancy it observed, the
-cells it launched (in emission order) with their job ids, or a `skipped` reason. A
+cells it launched (in emission order) with their job ids, the cells it could not
+launch with why, or a `skipped` reason. A
 top-up that ran and enqueued nothing reports `skipped: null` with `enqueued: 0` —
 deliberately distinct from one that never ran because the plan was `paused` or
 because another top-up held the claim.
@@ -196,6 +245,9 @@ console calls and not a daemon: a plan holding only as many runs as can execute 
 once would stop dead the moment the reviewer stopped submitting reviews. A single-
 harness plan therefore enqueues exactly what it always did.
 
+gg is one lane like any other harness: every configuration's runs share the gg cap,
+because what a cap bounds is how many runs of a harness execute at once.
+
 Capacity is read **globally** and across every job state, not just the states that
 occupy a slot: a run merely queued for a harness consumes that harness's cap before
 anything enqueued after it, whoever queued it. The question being asked is "would one
@@ -203,7 +255,7 @@ more run start soon", not "is a slot free this instant".
 
 ### Why whole cells
 
-Step 4 overshoots the buffer target by up to one cell, on purpose.
+Step 5 overshoots the buffer target by up to one cell, on purpose.
 
 A cell's repeats are the **unit of judgement**. Five runs of one case on one model
 are reviewed against each other — that is how you tell a model that fails from a

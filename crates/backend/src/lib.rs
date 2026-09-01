@@ -139,6 +139,22 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping run code-analyzer-version backfill"),
     }
 
+    // The two segments of a gg run's coverage cell, lifted out of records (and out of the
+    // capability sets of the jobs still in flight) that were stored before the columns
+    // existed. Without it the whole gg backlog counts toward no gg cell, and every plan
+    // built on a configuration re-buys runs it already has. Same contract as the backfills
+    // above: idempotent, best-effort, never blocks startup.
+    match db.backfill_gg_models().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run gg cell identities"),
+        Err(err) => tracing::warn!(error = %err, "skipping run gg-cell backfill"),
+    }
+    match db.backfill_in_flight_gg_cells().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled in-flight gg cell identities"),
+        Err(err) => tracing::warn!(error = %err, "skipping in-flight gg-cell backfill"),
+    }
+
     // Reap probes orphaned by the last shutdown. A model probe runs inside this
     // process, so a restart always killed it; the row is failed rather than left
     // `running` forever (which would also block re-triggering). Idempotent,

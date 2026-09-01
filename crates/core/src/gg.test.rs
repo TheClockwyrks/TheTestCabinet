@@ -3605,3 +3605,334 @@ fn two_launch_inputs_at_one_name_are_refused() {
         "{defects:?}"
     );
 }
+
+/// A configuration held for authoring: a root whose own binding is deferred to a passthrough
+/// slot, a reviewer whose turns *and* whose compaction handoff are both filled by one
+/// configuration slot, and a judge the configuration pinned itself.
+///
+/// The three shapes a launch has to bind differently, in one document, so a binder that
+/// confused any two of them could not pass.
+fn deferred_configuration() -> GgCapabilitySet {
+    GgCapabilitySet {
+        preset: Some("critic-sweep".to_string()),
+        agents: vec![
+            GgAgentConfig {
+                id: Some("k-root".to_string()),
+                model_slot: Some("brain".to_string()),
+                model_slots: vec![GgModelSlot {
+                    name: "brain".to_string(),
+                    default_model_id: None,
+                    passthrough: true,
+                }],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: Some("k-reviewer".to_string()),
+                slug: "reviewer".to_string(),
+                name: "Reviewer".to_string(),
+                model_slot: Some("primary".to_string()),
+                capabilities: vec![
+                    GgCapabilityConfig {
+                        implementation: Some(COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string()),
+                        ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
+                    }
+                    .with_param(COMPACTION_PARAM_MODEL_SLOT, "summarizer"),
+                ],
+                model_slots: vec![
+                    GgModelSlot {
+                        name: "primary".to_string(),
+                        default_model_id: None,
+                        passthrough: false,
+                    },
+                    GgModelSlot {
+                        name: "summarizer".to_string(),
+                        default_model_id: None,
+                        passthrough: false,
+                    },
+                ],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                id: Some("k-judge".to_string()),
+                slug: "judge".to_string(),
+                name: "Judge".to_string(),
+                model_id: "openai/o-fixed".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        // One input for both of the reviewer's slots — the mapping only a configuration slot
+        // can express, and the reason a binder cannot simply read each agent's own slot.
+        model_slots: vec![GgConfigSlot {
+            name: "critic".to_string(),
+            default_model_id: None,
+            targets: vec![
+                GgSlotTarget {
+                    agent: "k-reviewer".to_string(),
+                    slot: "primary".to_string(),
+                },
+                GgSlotTarget {
+                    agent: "k-reviewer".to_string(),
+                    slot: "summarizer".to_string(),
+                },
+            ],
+        }],
+        ..GgCapabilitySet::default()
+    }
+}
+
+/// One agent's compaction params out of a set, or an empty object when it declares none.
+fn compaction_params(set: &GgCapabilitySet, slug: &str) -> Value {
+    set.agent(slug)
+        .and_then(|agent| agent.capability(CAPABILITY_COMPACTION))
+        .map(|capability| capability.params.clone())
+        .unwrap_or_else(|| json!({}))
+}
+
+/// Every deferred binding resolves through the launch input that fills its slot — the agent's
+/// own, and the compaction param the run actually reads — and what comes back is fully pinned.
+#[test]
+fn a_launch_binds_every_deferred_binding_through_its_input() {
+    let configured = deferred_configuration();
+    assert!(
+        configured.slot_defects().is_empty(),
+        "{:?}",
+        configured.slot_defects()
+    );
+
+    let launched = configured.bind_launch_slots(&BTreeMap::from([
+        ("root.brain".to_string(), "openai/gpt-5.6-sol".to_string()),
+        (
+            "critic".to_string(),
+            "anthropic/claude-haiku-4.5".to_string(),
+        ),
+    ]));
+
+    assert_eq!(
+        launched
+            .agents
+            .iter()
+            .map(|agent| (agent.slug.as_str(), agent.model_id.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            // Filled by the passthrough input, which is labelled by the slug and targeted by
+            // the internal id — so a binder that resolved it by either name alone would miss.
+            ("root", "openai/gpt-5.6-sol"),
+            ("reviewer", "anthropic/claude-haiku-4.5"),
+            // A binding the configuration pinned itself was decided when the configuration was
+            // written and is never asked about again.
+            ("judge", "openai/o-fixed"),
+        ],
+    );
+    // The handoff, resolved through the same input as the agent's own turns and rewritten to
+    // the `model` key gg reads. The catalog's other compaction params are still standing.
+    let params = compaction_params(&launched, "reviewer");
+    assert_eq!(
+        params[COMPACTION_PARAM_MODEL],
+        json!("anthropic/claude-haiku-4.5")
+    );
+    assert_eq!(params.get(COMPACTION_PARAM_MODEL_SLOT), None);
+    assert!(
+        params.as_object().is_some_and(|params| params.len() > 1),
+        "{params:?}"
+    );
+    // What runs is fully pinned: neither level declares a slot any more, so nothing downstream
+    // of the launch has a deferral left to resolve…
+    assert!(launched.model_slots.is_empty());
+    assert!(
+        launched
+            .agents
+            .iter()
+            .all(|agent| agent.model_slot.is_none() && agent.model_slots.is_empty())
+    );
+    assert!(launched.unresolved_agents().is_empty());
+    // …and everything the binding has no business touching is carried through untouched.
+    assert_eq!(launched.preset.as_deref(), Some("critic-sweep"));
+    assert_eq!(launched.limits, configured.limits);
+    assert_eq!(launched.agents[1].name, "Reviewer");
+}
+
+/// An input the launcher left blank binds *nothing* rather than a model id of `""`.
+///
+/// The agent stays unresolved, which is the launch refusal it should be, and the handoff param
+/// goes back to being absent, which is the documented arm where the agent condenses on its own
+/// model. Both are settings a caller can read; a model called `""` is neither.
+#[test]
+fn an_unfilled_launch_input_leaves_its_bindings_unresolved() {
+    let launched = deferred_configuration().bind_launch_slots(&BTreeMap::from([(
+        "root.brain".to_string(),
+        "openai/gpt-5.6-sol".to_string(),
+    )]));
+
+    assert_eq!(launched.root().model_id, "openai/gpt-5.6-sol");
+    assert_eq!(
+        launched.agent("reviewer").map(|a| a.model_id.as_str()),
+        Some("")
+    );
+    assert_eq!(launched.unresolved_agents(), vec!["Reviewer"]);
+    // The unfilled handoff is absent rather than empty, and the rest of the params object is
+    // untouched — the arm it names is "condense on the agent's own model".
+    let params = compaction_params(&launched, "reviewer");
+    assert_eq!(params.get(COMPACTION_PARAM_MODEL), None);
+    assert_eq!(params.get(COMPACTION_PARAM_MODEL_SLOT), None);
+    // The set the run would record is still fully pinned in shape; it is the *bindings* that
+    // are outstanding, and `unresolved_agents` is what says so.
+    assert!(launched.model_slots.is_empty());
+    assert!(
+        launched
+            .agents
+            .iter()
+            .all(|agent| agent.model_slot.is_none())
+    );
+}
+
+/// A model the configuration pinned itself is never overwritten by a launch input, at either
+/// level: the agent's own binding, and a handoff naming a model rather than a slot.
+#[test]
+fn a_launch_leaves_a_pinned_binding_alone() {
+    let pinned = GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            id: Some("k-root".to_string()),
+            model_id: "openai/o-fixed".to_string(),
+            capabilities: vec![
+                GgCapabilityConfig {
+                    implementation: Some(COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string()),
+                    ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
+                }
+                .with_param(COMPACTION_PARAM_MODEL, "vendor/pinned"),
+            ],
+            ..GgAgentConfig::root()
+        }],
+        ..GgCapabilitySet::default()
+    };
+
+    // A set that declares no slot asks for no input, so a launcher offering one is answering a
+    // question this configuration never posed.
+    assert!(pinned.launch_slots().is_empty());
+    let launched = pinned.bind_launch_slots(&BTreeMap::from([
+        ("root.brain".to_string(), "vendor/ignored".to_string()),
+        ("critic".to_string(), "vendor/ignored".to_string()),
+    ]));
+
+    assert_eq!(launched.root().model_id, "openai/o-fixed");
+    assert_eq!(
+        compaction_params(&launched, ROOT_PROFILE_ID)[COMPACTION_PARAM_MODEL],
+        json!("vendor/pinned")
+    );
+}
+
+/// The gg half of a coverage cell's identity: which agent runs which model, sorted and
+/// de-duplicated, so a set recorded by a run and the same set lifted onto a queued job compare
+/// equal whatever order their agents are declared in.
+#[test]
+fn the_bound_model_key_is_order_free_and_counts_the_handoff() {
+    let launched = deferred_configuration().bind_launch_slots(&BTreeMap::from([
+        ("root.brain".to_string(), "openai/gpt-5.6-sol".to_string()),
+        (
+            "critic".to_string(),
+            "anthropic/claude-haiku-4.5".to_string(),
+        ),
+    ]));
+
+    // Agent order is root, reviewer, judge; the key is alphabetical, and the reviewer's handoff
+    // model is the same id its turns run on, so it is named once rather than twice.
+    assert_eq!(
+        launched.bound_model_ids(),
+        vec![
+            "openai/gpt-5.6-sol",
+            "anthropic/claude-haiku-4.5",
+            "openai/o-fixed",
+        ]
+    );
+    assert_eq!(
+        launched.bound_model_key(),
+        "judge=openai/o-fixed,\
+         reviewer:compaction=anthropic/claude-haiku-4.5,\
+         reviewer=anthropic/claude-haiku-4.5,\
+         root=openai/gpt-5.6-sol"
+    );
+
+    // Two members of one configuration differing only on the reviewer's model are two arms, and
+    // the key is what keeps their cells apart.
+    let other = deferred_configuration().bind_launch_slots(&BTreeMap::from([
+        ("root.brain".to_string(), "openai/gpt-5.6-sol".to_string()),
+        ("critic".to_string(), "vendor/second-opinion".to_string()),
+    ]));
+    assert_ne!(other.bound_model_key(), launched.bound_model_key());
+
+    // A set with nothing bound at all names nothing, rather than a key of one empty segment.
+    assert_eq!(GgCapabilitySet::default().bound_model_key(), "");
+}
+
+/// Two members that swap one configuration's models between its two launch slots bind the same
+/// models to different agents. They are the two arms of a study, so their keys — and therefore
+/// their coverage cells — have to differ.
+#[test]
+fn the_bound_model_key_separates_two_arms_that_swap_their_models() {
+    let bind = |first: &str, second: &str| {
+        two_slot_configuration()
+            .bind_launch_slots(&BTreeMap::from([
+                ("reviewer".to_string(), first.to_string()),
+                ("tester".to_string(), second.to_string()),
+            ]))
+            .bound_model_key()
+    };
+
+    assert_eq!(
+        bind("anthropic/opus", "anthropic/haiku"),
+        "reviewer=anthropic/opus,root=openai/o-fixed,tester=anthropic/haiku"
+    );
+    assert_ne!(
+        bind("anthropic/opus", "anthropic/haiku"),
+        bind("anthropic/haiku", "anthropic/opus"),
+        "swapping the two models between the two slots is the other arm, not the same cell",
+    );
+}
+
+/// A configuration whose root pins its own model and whose two subagents each take one launch
+/// slot — the shape a two-arm study is written in.
+fn two_slot_configuration() -> GgCapabilitySet {
+    let subagent = |slug: &str| GgAgentConfig {
+        id: Some(format!("k-{slug}")),
+        slug: slug.to_string(),
+        name: slug.to_string(),
+        model_id: String::new(),
+        model_slot: Some("primary".to_string()),
+        model_slots: vec![GgModelSlot {
+            name: "primary".to_string(),
+            default_model_id: None,
+            passthrough: false,
+        }],
+        ..GgAgentConfig::root()
+    };
+    GgCapabilitySet {
+        preset: Some("panel".to_string()),
+        agents: vec![
+            GgAgentConfig {
+                id: Some("k-root".to_string()),
+                model_id: "openai/o-fixed".to_string(),
+                ..GgAgentConfig::root()
+            },
+            subagent("reviewer"),
+            subagent("tester"),
+        ],
+        model_slots: vec![
+            GgConfigSlot {
+                name: "reviewer".to_string(),
+                default_model_id: None,
+                targets: vec![GgSlotTarget {
+                    agent: "k-reviewer".to_string(),
+                    slot: "primary".to_string(),
+                }],
+            },
+            GgConfigSlot {
+                name: "tester".to_string(),
+                default_model_id: None,
+                targets: vec![GgSlotTarget {
+                    agent: "k-tester".to_string(),
+                    slot: "primary".to_string(),
+                }],
+            },
+        ],
+        ..GgCapabilitySet::default()
+    }
+}

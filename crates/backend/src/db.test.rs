@@ -1,4 +1,6 @@
 use super::*;
+use std::collections::BTreeMap;
+
 use crate::store::CaseNames;
 use test_cabinet_core::metrics::RunMetrics;
 use test_cabinet_core::review::{AestheticRating, DomainRating, Rating};
@@ -894,6 +896,8 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         harness_slug: "claude".to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
         gg_config_json: None,
+        gg_preset: None,
+        gg_models: None,
         job_token: format!("token-{id}"),
         attempt: 0,
         // Unattributed by default — the shape of a job enqueued before attribution
@@ -947,6 +951,8 @@ async fn enqueue_jobs_batch_inserts_all_as_queued_and_claimable() {
         "base".to_string(),
         "claude".to_string(),
         "claude-sonnet-4-5".to_string(),
+        String::new(),
+        String::new(),
     );
     assert_eq!(
         db.count_in_flight_jobs_by_cell(&["pong".to_string()])
@@ -2649,6 +2655,133 @@ async fn repush_refreshes_the_lifted_gg_configuration_name() {
     );
 }
 
+/// A gg run of `preset` whose capability set binds one agent per entry in `models` —
+/// the shape a configuration with several launch slots produces once they are bound.
+fn gg_record_binding(id: &str, preset: Option<&str>, models: &[&str]) -> RunRecord {
+    use test_cabinet_core::gg::GgAgentConfig;
+
+    let mut record = gg_record(id);
+    let set = record.subject.gg_capability_set.as_mut().unwrap();
+    set.preset = preset.map(str::to_string);
+    // One agent per model, each with a slug of its own: the lifted key names which agent runs
+    // which model, so a fixture whose agents all shared the root's slug would collapse.
+    set.agents = models
+        .iter()
+        .enumerate()
+        .map(|(index, model)| GgAgentConfig {
+            slug: if index == 0 {
+                "root".to_string()
+            } else {
+                format!("agent-{index}")
+            },
+            model_id: (*model).to_string(),
+            ..GgAgentConfig::root()
+        })
+        .collect();
+    record
+}
+
+#[tokio::test]
+async fn push_lifts_the_gg_bound_models_as_one_sorted_comparable_string() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // Declaration order is not identity: the column is compared against the same key
+    // lifted onto a queued job, so it is sorted before it is stored.
+    db.push(
+        &gg_record_binding("two", Some("planning-A"), &["mock/echo", "anthropic/opus"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        lifted(&db, "two").await.gg_models.as_deref(),
+        Some("agent-1=anthropic/opus,root=mock/echo"),
+    );
+
+    // The same two models on the other two agents are a different cell: which agent runs
+    // which is exactly what separates two arms of one configuration.
+    db.push(
+        &gg_record_binding(
+            "swapped",
+            Some("planning-A"),
+            &["anthropic/opus", "mock/echo"],
+        ),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        lifted(&db, "swapped").await.gg_models.as_deref(),
+        Some("agent-1=mock/echo,root=anthropic/opus"),
+        "the two models bound to the other two agents are the other arm, not the same cell",
+    );
+
+    // One configuration running one model is still a bound set, so the column is
+    // written rather than left to the run's `model_id`.
+    db.push(
+        &gg_record_binding("one", Some("planning-A"), &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        lifted(&db, "one").await.gg_models.as_deref(),
+        Some("root=mock/echo")
+    );
+}
+
+#[tokio::test]
+async fn the_lifted_gg_models_are_gated_on_the_harness_like_the_configuration_name() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // A third-party-harness run binds no set at all.
+    db.push(&record_with_metrics("r1"), &links(), None, None)
+        .await
+        .unwrap();
+    assert_eq!(lifted(&db, "r1").await.gg_models, None);
+
+    // Nor does a non-gg run that somehow carries one: the pair is written and absent
+    // together, so a consumer that has tested `gg_preset` need not re-derive this.
+    let mut impostor = gg_record_binding("impostor", Some("planning-A"), &["mock/echo"]);
+    impostor.subject.harness_slug = HarnessSlug::Claude;
+    db.push(&impostor, &links(), None, None).await.unwrap();
+    let row = lifted(&db, "impostor").await;
+    assert_eq!(row.gg_preset, None);
+    assert_eq!(row.gg_models, None);
+}
+
+#[tokio::test]
+async fn repush_refreshes_the_lifted_gg_bound_models() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(
+        &gg_record_binding("r1", Some("planning-A"), &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &gg_record_binding("r1", Some("planning-A"), &["mock/echo", "anthropic/opus"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        lifted(&db, "r1").await.gg_models.as_deref(),
+        Some("agent-1=anthropic/opus,root=mock/echo"),
+        "a re-pushed record rewrites the cell it belongs to",
+    );
+}
+
 #[tokio::test]
 async fn add_review_maintains_the_lifted_rating_and_count() {
     let db = Db::connect_in_memory().await.unwrap();
@@ -4336,6 +4469,9 @@ fn sample_combo() -> crate::api::ReviewPlanCombo {
         harness: HarnessSlug::Claude,
         model: "claude-sonnet-4-5".to_string(),
         provider: None,
+        gg_config_id: None,
+        gg_slot_models: BTreeMap::new(),
+        gg_config_name: None,
     }
 }
 
@@ -4518,7 +4654,7 @@ async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
     let slugs = vec!["pong".to_string()];
     let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
     let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
-    // A cell key `(slug, version, variant, harness, model)`.
+    // A harness cell key: the five identity segments plus the empty gg pair.
     let cell = |version: &str, model: &str| {
         (
             "pong".to_string(),
@@ -4526,6 +4662,8 @@ async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
             "base".to_string(),
             "claude".to_string(),
             model.to_string(),
+            String::new(),
+            String::new(),
         )
     };
 
@@ -4559,6 +4697,8 @@ async fn a_claimed_job_no_longer_counts_toward_a_cell() {
         "base".to_string(),
         "claude".to_string(),
         "claude-sonnet-4-5".to_string(),
+        String::new(),
+        String::new(),
     );
     assert_eq!(
         db.count_in_flight_jobs_by_cell(&slugs)
@@ -4631,6 +4771,8 @@ async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
             "base".to_string(),
             "opencode".to_string(),
             model.to_string(),
+            String::new(),
+            String::new(),
         )
     };
 
@@ -5113,7 +5255,8 @@ fn record_loaded(id: &str, loaded: bool) -> RunRecord {
     record
 }
 
-/// The cell key `record`/`new_job` produce: pong v1.0.0 base on claude/sonnet.
+/// The cell key `record`/`new_job` produce: pong v1.0.0 base on claude/sonnet, with
+/// the empty gg pair every harness cell carries.
 fn sample_cell() -> CellKey {
     (
         "pong".to_string(),
@@ -5121,6 +5264,8 @@ fn sample_cell() -> CellKey {
         "base".to_string(),
         "claude".to_string(),
         "claude-sonnet-4-5".to_string(),
+        String::new(),
+        String::new(),
     )
 }
 
@@ -6032,6 +6177,273 @@ async fn ladder_climbers_hold_steering_only_and_are_optional() {
     assert_eq!(climbers[0].updated_at, "2026-08-15T02:00:00Z");
 }
 
+/// A gg cell key for the `record` case: pong v1.0.0 base on the gg harness, with the
+/// configuration name and bound-model string that separate one gg arm from another.
+fn gg_cell(preset: &str, models: &str) -> CellKey {
+    (
+        "pong".to_string(),
+        "v1.0.0".to_string(),
+        "base".to_string(),
+        "gg".to_string(),
+        "mock/echo".to_string(),
+        preset.to_string(),
+        models.to_string(),
+    )
+}
+
+/// A queued gg job of the `new_job` case, lifted into the cell `preset`/`models` names.
+fn new_gg_job(id: &str, preset: &str, models: &str) -> NewJob {
+    NewJob {
+        harness_slug: "gg".to_string(),
+        model_id: "mock/echo".to_string(),
+        gg_preset: Some(preset.to_string()),
+        gg_models: Some(models.to_string()),
+        ..new_job(id, "2026-06-23T00:00:00Z")
+    }
+}
+
+#[tokio::test]
+async fn a_gg_cell_is_counted_by_its_configuration_and_the_models_it_binds() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Three gg runs of one case on one root model, differing only in the two segments
+    // that make a gg cell: the configuration's name, and the set of models it binds.
+    for (id, preset, models) in [
+        ("a-echo", "planning-A", vec!["mock/echo"]),
+        ("a-both", "planning-A", vec!["mock/echo", "anthropic/opus"]),
+        ("b-echo", "planning-B", vec!["mock/echo"]),
+    ] {
+        db.push(
+            &gg_record_binding(id, Some(preset), &models),
+            &links(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+    // Plus a third-party-harness run of the same case, which must not join any of them.
+    db.push(&record("harness"), &links(), None, None)
+        .await
+        .unwrap();
+
+    let slugs = vec!["pong".to_string()];
+    let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
+    assert_eq!(
+        completed
+            .get(&gg_cell("planning-A", "root=mock/echo"))
+            .copied(),
+        Some(1),
+    );
+    assert_eq!(
+        completed
+            .get(&gg_cell(
+                "planning-A",
+                "agent-1=anthropic/opus,root=mock/echo"
+            ))
+            .copied(),
+        Some(1),
+        "one configuration binding a second model is a second arm, not the same cell",
+    );
+    assert_eq!(
+        completed
+            .get(&gg_cell("planning-B", "root=mock/echo"))
+            .copied(),
+        Some(1),
+        "two configurations are two cells however alike their bindings",
+    );
+    assert_eq!(
+        completed.get(&sample_cell()).copied(),
+        Some(1),
+        "the harness run keeps its own cell, whose gg segments are empty",
+    );
+
+    // A queued gg job is attributed to its cell from the columns lifted at enqueue,
+    // so an in-flight run counts toward the same target its finished record will.
+    db.enqueue_job(new_gg_job("j1", "planning-A", "root=mock/echo"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_gg_job("j2", "planning-B", "root=mock/echo"))
+        .await
+        .unwrap();
+    let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
+    assert_eq!(
+        in_flight
+            .get(&gg_cell("planning-A", "root=mock/echo"))
+            .copied(),
+        Some(1),
+    );
+    assert_eq!(
+        in_flight
+            .get(&gg_cell("planning-B", "root=mock/echo"))
+            .copied(),
+        Some(1),
+    );
+}
+
+#[tokio::test]
+async fn unreviewed_gg_cell_counts_split_on_the_configuration_too() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(
+        &gg_record_binding("a", Some("planning-A"), &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &gg_record_binding("b", Some("planning-B"), &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    db.add_review("a", &review_by("u1", Rating::Great), None, None)
+        .await
+        .unwrap();
+
+    let unreviewed = db
+        .count_unreviewed_runs_by_cell(&["pong".to_string()], "u1", false)
+        .await
+        .unwrap();
+    assert_eq!(
+        unreviewed.get(&gg_cell("planning-A", "root=mock/echo")),
+        None
+    );
+    assert_eq!(
+        unreviewed
+            .get(&gg_cell("planning-B", "root=mock/echo"))
+            .copied(),
+        Some(1),
+        "reviewing one configuration's run says nothing about another's",
+    );
+}
+
+#[tokio::test]
+async fn cell_run_ratings_read_the_evidence_of_one_gg_configuration_only() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(
+        &gg_record_binding("a", Some("planning-A"), &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &gg_record_binding("b", Some("planning-B"), &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(&record("harness"), &links(), None, None)
+        .await
+        .unwrap();
+
+    // A gate reads the runs of the configuration its climber names — not every gg run
+    // of the case, which would let one arm's failures wall another's climb.
+    let a = db
+        .cell_run_ratings(&gg_cell("planning-A", "root=mock/echo"), "u1")
+        .await
+        .unwrap();
+    assert_eq!(
+        a.iter().map(|run| run.run_id.as_str()).collect::<Vec<_>>(),
+        vec!["a"],
+    );
+
+    // And the harness cell's empty pair selects the runs that carry no configuration,
+    // rather than matching nothing at all.
+    let harness = db.cell_run_ratings(&sample_cell(), "u1").await.unwrap();
+    assert_eq!(
+        harness
+            .iter()
+            .map(|run| run.run_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["harness"],
+    );
+}
+
+/// A gg member: the configuration `config` with `slots` bound.
+fn gg_combo(config: &str, slots: &[(&str, &str)]) -> crate::api::ReviewPlanCombo {
+    crate::api::ReviewPlanCombo {
+        harness: HarnessSlug::Gg,
+        model: String::new(),
+        provider: None,
+        gg_config_id: Some(config.to_string()),
+        gg_slot_models: slots
+            .iter()
+            .map(|(slot, model)| ((*slot).to_string(), (*model).to_string()))
+            .collect(),
+        gg_config_name: None,
+    }
+}
+
+#[test]
+fn a_gg_combination_key_carries_the_configuration_and_every_slot_it_binds() {
+    assert_eq!(
+        combination_key(&gg_combo(
+            "saved:cfg1",
+            &[("reviewer", "anthropic/opus"), ("root", "mock/echo")],
+        )),
+        "gg:cfg1|reviewer=anthropic/opus,root=mock/echo",
+    );
+
+    // Two climbers on one configuration differing only on a subagent's model are the
+    // two arms a ladder exists to separate, so they are two keys.
+    assert_ne!(
+        combination_key(&gg_combo("saved:cfg1", &[("reviewer", "anthropic/opus")])),
+        combination_key(&gg_combo("saved:cfg1", &[("reviewer", "mock/echo")])),
+    );
+    // As are two that bind the same two models to swapped slots.
+    assert_ne!(
+        combination_key(&gg_combo(
+            "saved:cfg1",
+            &[("reviewer", "anthropic/opus"), ("root", "mock/echo")],
+        )),
+        combination_key(&gg_combo(
+            "saved:cfg1",
+            &[("reviewer", "mock/echo"), ("root", "anthropic/opus")],
+        )),
+    );
+
+    // The picker's `saved:<id>` value and the bare id name one configuration, so they
+    // must key as one climber however the member was written.
+    assert_eq!(
+        combination_key(&gg_combo("saved:cfg1", &[("root", "mock/echo")])),
+        combination_key(&gg_combo("cfg1", &[("root", "mock/echo")])),
+    );
+}
+
+#[test]
+fn a_gg_combination_key_cannot_collide_with_a_harness_one() {
+    // The harness form's first segment is a harness slug, so no harness key can begin
+    // `gg:` — not even the degenerate one whose harness *is* gg and whose model and
+    // provider are empty, which is exactly the shape a gg member has in storage.
+    let stored_gg_shape = crate::api::ReviewPlanCombo {
+        harness: HarnessSlug::Gg,
+        model: String::new(),
+        ..sample_combo()
+    };
+    assert_eq!(combination_key(&stored_gg_shape), "gg||");
+    assert_ne!(
+        combination_key(&stored_gg_shape),
+        combination_key(&gg_combo("saved:cfg1", &[])),
+    );
+
+    // A member whose configuration id is blank names no configuration at all, so it
+    // keys as the harness member it is rather than as a nameless gg cell.
+    assert_eq!(
+        combination_key(&crate::api::ReviewPlanCombo {
+            gg_config_id: Some("   ".to_string()),
+            ..sample_combo()
+        }),
+        combination_key(&sample_combo()),
+    );
+}
+
 #[test]
 fn a_combination_key_separates_on_a_character_a_model_id_cannot_contain() {
     // Model ids routinely carry `/`, so the key separates on `|`; the provider
@@ -6041,6 +6453,7 @@ fn a_combination_key_separates_on_a_character_a_model_id_cannot_contain() {
             harness: HarnessSlug::Opencode,
             model: "anthropic/claude-opus-4.8".to_string(),
             provider: Some("openrouter".to_string()),
+            ..sample_combo()
         }),
         "opencode|anthropic/claude-opus-4.8|openrouter",
     );

@@ -2,8 +2,9 @@
 title: Ladders
 ---
 
-A **ladder** is an ordered series of test cases that harness+model combinations
-climb one step at a time, stopping at the first step they cannot clear. Where a
+A **ladder** is an ordered series of test cases that
+[combinations](/components/backend/coverage/#combinations) climb one step at a
+time, stopping at the first step they cannot clear. Where a
 [coverage plan](/components/backend/coverage/) asks *"have I run this yet?"* and
 treats its cells as an unordered set, a ladder asks *"how far does this model
 get?"* and treats its steps as a sequence with a meaning: rung three is harder
@@ -66,9 +67,18 @@ reports that far better than an author-time check can.
 The combinations that climb are called **climbers**, and they are referenced
 through the same `kind = "combo"` coverage groups a plan uses, plus any one-off
 combinations pinned on the ladder. One saved set of models therefore drives both a
-plan and a ladder, and editing the group reshapes both.
+plan and a ladder, and editing the group reshapes both. A climber is either shape a
+[combination](/components/backend/coverage/#combinations) takes, so a
+[gg configuration](/gg/configurations/) climbs beside a third-party harness and is
+measured against the same gate.
 
-**Progress is stored per combination, never as one ladder-wide pointer.** This is
+Every climber carries a **key**, the canonical text a ladder stores its steering and
+its verdicts against. A harness climber's key is its `harness|model|provider`
+triple; a gg climber's is the configuration it names and the models it binds. The
+key has to distinguish two gg climbers running one configuration on different
+models, since those are the two arms a ladder exists to separate.
+
+**Progress is stored per climber, never as one ladder-wide pointer.** This is
 not a storage detail; it is what makes a ladder a standing object rather than a
 one-shot sweep. Add a model to a ladder that has been running for a month and it
 starts at rung one while everyone else carries on from where they were. A single
@@ -106,6 +116,12 @@ act on:
 `awaitingReview` is the state a full review buffer is made of, and separating it
 from `climbing` is what lets a dashboard say "nothing will move until you look"
 instead of leaving an idle ladder looking broken.
+
+A climber whose combination
+[cannot be launched](/components/backend/coverage/#a-member-that-cannot-be-launched)
+carries that reason on the board. Such a climber stands where it is with the gate
+undecided, which is the shape of a climber waiting on capacity, so the reason travels
+with the climber rather than only with the top-up that skipped it.
 
 The board is a **read**: verdicts the gate has resolved but nobody has written down
 yet are computed live and flagged `recorded: false`. They are persisted by the next

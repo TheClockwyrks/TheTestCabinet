@@ -47,7 +47,7 @@
 //! This is console-only reviewer tooling: the public static site never reaches it
 //! (it carries no bearer token and never mounts this transport).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -56,18 +56,20 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::run_record::HarnessSlug;
 
 use crate::auth::AuthUser;
 use crate::coverage::schedule::{CellDemand, HarnessCapacity, outstanding_across, top_up};
 use crate::db::{
     CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, CellKey, JobCancelFilter, JobOrigin,
-    SortDir, SummaryFilter, SummarySort, SummaryState,
+    SortDir, SummaryFilter, SummarySort, SummaryState, combination_key,
 };
 use crate::error::ApiError;
 use crate::store::CaseNames;
 
 use super::AppState;
+use super::GgConfig;
 
 /// The largest target a plan may set for its runs-per-cell count. A guard against
 /// a fat-fingered value fanning out into thousands of queued runs; well above any
@@ -118,21 +120,113 @@ pub struct ReviewPlanCase {
     pub variant: String,
 }
 
-/// One harness+model combination in a plan or a combo group. The optional provider
-/// mirrors the new-run form's per-combination provider for provider-routed
-/// harnesses.
+/// One **combination** in a plan, a ladder, or a combo group: what a cell's runs are
+/// executed by.
+///
+/// One type carrying two shapes, exactly as
+/// [`ComparisonArm`](test_cabinet_core::comparison::ComparisonArm) already does. A
+/// member naming a [`gg_config_id`](Self::gg_config_id) is a **gg combination** — a
+/// saved [gg configuration](https://docs.testcabinet.ai/gg/configurations/) plus a model
+/// for each launch slot it declares — and one without it is a **harness combination**:
+/// a harness, the model it runs, and a provider for a provider-routed harness. They are
+/// unioned into one list rather than split across two, so a plan crossing both against
+/// its cases needs no second axis.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ReviewPlanCombo {
-    /// The agent harness to drive.
+    /// The agent harness to drive — `gg` on a gg member.
     pub harness: HarnessSlug,
-    /// The opaque model id passed to the harness.
+    /// The opaque model id passed to the harness. Empty in storage on a gg member,
+    /// which binds a model per agent instead; a read fills it with the model the bound
+    /// set's root agent runs on, so a client with no configuration in hand still has
+    /// something to show.
+    #[serde(default)]
     pub model: String,
     /// The provider for a provider-routed harness, or null.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub provider: Option<String>,
+    /// The launcher's key for the gg configuration this member runs (`saved:<id>`), or
+    /// null on a harness member. This is what makes a member a gg member.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_id: Option<String>,
+    /// A model per [launch slot](https://docs.testcabinet.ai/gg/configurations/) the
+    /// configuration declares, keyed by slot name. Empty on a harness member.
+    ///
+    /// Ordered (a `BTreeMap`) because it is compared and keyed, not merely read: two
+    /// members binding the same slots must produce the same
+    /// [`combination_key`] whatever order they arrived in.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gg_slot_models: BTreeMap<String, String>,
+    /// The configuration's current display name, filled on read and **never stored**.
+    ///
+    /// A configuration is renamed in one place, and a member that had stored the name it
+    /// bore at the time would go on showing the old one forever.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_name: Option<String>,
+}
+
+impl ReviewPlanCombo {
+    /// The bare id of the gg configuration this member names, or `None` on a harness
+    /// member.
+    ///
+    /// The console's picker values a configuration as `saved:<id>` and an API caller may
+    /// just as reasonably send the id alone; both name the same configuration, so both
+    /// must resolve — and key — identically. The stored value is whatever arrived, so
+    /// the normalization lives here, on every read, rather than being written into the
+    /// row.
+    ///
+    /// A blank id is no id: it names no configuration, and reading it as a gg member
+    /// would key every such member into one nameless cell.
+    pub fn gg_config_ref(&self) -> Option<&str> {
+        let id = self.gg_config_id.as_deref()?.trim();
+        let id = id.strip_prefix("saved:").unwrap_or(id);
+        (!id.is_empty()).then_some(id)
+    }
+
+    /// This member's slot bindings in **canonical** form: every slot name and every model id
+    /// trimmed.
+    ///
+    /// The bindings are not merely read, they are compared: two members are the same member
+    /// when they bind the same models, and this is the one form that comparison is made in —
+    /// by the de-dupe [key](combination_key), by the launch that binds them, and by the check
+    /// that every declared slot is filled. Surrounding space in a pasted model id would
+    /// otherwise make one written-down decision look like two: two members, two cells' worth
+    /// of runs enqueued, and one cell to count them in.
+    pub fn gg_bindings(&self) -> BTreeMap<String, String> {
+        self.gg_slot_models
+            .iter()
+            .map(|(slot, model)| (slot.trim().to_string(), model.trim().to_string()))
+            .collect()
+    }
+
+    /// This member as it is **stored**: unchanged for a harness member, and for a gg member
+    /// stripped of every value a read derives — its `model`, its `provider`, and the
+    /// configuration name — with its harness forced to [`Gg`](HarnessSlug::Gg).
+    ///
+    /// What a gg member *is* is the configuration it names and the models it binds to that
+    /// configuration's launch slots; everything else about it is re-derived from the
+    /// configuration on every read. Without this normalization a console that reads a plan
+    /// and saves it back would store the name and the root model as they stood at that
+    /// moment, and the member would go on reporting them after the configuration had been
+    /// renamed or re-bound — a stale value nothing would ever correct, because nothing else
+    /// writes those fields.
+    pub fn for_storage(&self) -> ReviewPlanCombo {
+        if self.gg_config_ref().is_none() {
+            return self.clone();
+        }
+        ReviewPlanCombo {
+            harness: HarnessSlug::Gg,
+            model: String::new(),
+            provider: None,
+            gg_config_id: self.gg_config_id.clone(),
+            gg_slot_models: self.gg_bindings(),
+            gg_config_name: None,
+        }
+    }
 }
 
 /// Which kind of members a coverage group holds: harness+model combinations or
@@ -407,14 +501,37 @@ pub struct CoverageCell {
     pub version: String,
     /// The variant.
     pub variant: String,
-    /// The harness.
+    /// The harness — `gg` on a gg cell.
     pub harness: HarnessSlug,
-    /// The model id.
+    /// The model id: the one a harness cell's runs are launched with, and on a gg cell the
+    /// one its bound set's root agent runs.
     pub model: String,
     /// The provider for a provider-routed harness, or null.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub provider: Option<String>,
+    /// The gg configuration this cell's runs are launched from, as the member names it, or
+    /// null on a harness cell.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_id: Option<String>,
+    /// That configuration's current display name — what the cell is labelled by, and the
+    /// first gg segment of its [identity](crate::db::CellKey). Null on a harness cell, and
+    /// on a gg cell whose configuration no longer exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_name: Option<String>,
+    /// The model bound to each of the configuration's launch slots. Empty on a harness cell.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gg_slot_models: BTreeMap<String, String>,
+    /// Why a top-up cannot launch this cell, or null when it can.
+    ///
+    /// A cell whose member cannot be resolved is still counted and still reported — it keeps
+    /// its place in the matrix carrying the reason — because a plan that silently got
+    /// smaller is a plan whose missing runs nobody can explain.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub unlaunchable: Option<String>,
     /// The target run count (the plan's `runs_per_cell`).
     pub desired: u32,
     /// Completed runs for this cell, counted globally.
@@ -573,12 +690,71 @@ pub struct TopUpLaunch {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub provider: Option<String>,
+    /// The gg configuration the launched member names, or null on a harness member.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_id: Option<String>,
+    /// That configuration's current display name, when it still exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_name: Option<String>,
+    /// The model bound to each of the configuration's launch slots. Empty on a harness member.
+    ///
+    /// Reported for the same reason the blocked list reports it: `gg` and a root model are not
+    /// a name — two configurations, or two arms of one, read identically without it, and a
+    /// report of what a top-up just launched that cannot tell them apart is not a report.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gg_slot_models: BTreeMap<String, String>,
     /// How many runs were enqueued for this cell — always the cell's whole shortfall,
     /// never a partial cell.
     pub runs: u32,
     /// The enqueued jobs' ids, in queue order, so a console can follow them straight
     /// into its in-progress list.
     pub job_ids: Vec<String>,
+}
+
+/// One cell a top-up **could not** launch, and why.
+///
+/// Reported per cell rather than per member, and beside the launches rather than instead of
+/// them, because the two answer different halves of "why is this plan idle": a top-up that
+/// enqueued four cells and skipped two broken ones is working, and a reviewer needs to see
+/// both numbers to know that.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct TopUpBlocked {
+    /// The ladder rung this cell belongs to, or null for a coverage plan.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub rung_id: Option<String>,
+    /// The test-case slug.
+    pub slug: String,
+    /// The pinned version.
+    pub version: String,
+    /// The variant.
+    pub variant: String,
+    /// The harness — `gg` on a gg member.
+    pub harness: HarnessSlug,
+    /// The combination's model id, empty when the member could not be resolved far enough
+    /// to have one.
+    pub model: String,
+    /// The provider for a provider-routed harness, or null.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub provider: Option<String>,
+    /// The gg configuration the member names, or null on a harness member.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_id: Option<String>,
+    /// That configuration's current display name, when it still exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_name: Option<String>,
+    /// The model bound to each of the configuration's launch slots. Empty on a harness member.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gg_slot_models: BTreeMap<String, String>,
+    /// Why the cell could not be launched, in the words a reviewer has to act on.
+    pub reason: String,
 }
 
 /// What a top-up did, reported in enough detail that an idle plan is never a
@@ -607,6 +783,13 @@ pub struct TopUpResult {
     /// The cells that were launched, in the order they were emitted — which is the
     /// order they will execute and therefore be reviewed in.
     pub cells: Vec<TopUpLaunch>,
+    /// The cells the top-up wanted to launch and could not, each with its reason — a
+    /// configuration that has been deleted, a launch slot nothing is bound to, or a model
+    /// the catalog can resolve no context window for.
+    ///
+    /// One broken member never stops the rest of the plan being fed, so this list and
+    /// [`Self::cells`] are routinely both non-empty.
+    pub unlaunchable: Vec<TopUpBlocked>,
 }
 
 /// One run in a scoped review queue: a completed run of this plan (or ladder) the
@@ -631,6 +814,23 @@ pub struct CoverageQueueEntry {
     pub harness: HarnessSlug,
     /// The model id the run was launched with.
     pub model: String,
+    /// The gg configuration the run's cell names, or null on a harness cell.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_id: Option<String>,
+    /// That configuration's current display name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_config_name: Option<String>,
+    /// The model bound to each of the configuration's launch slots. Empty on a harness cell.
+    ///
+    /// The queue carries the member's whole identity rather than the run's harness and model,
+    /// because on a gg cell those two are `gg` and a root model — the same two values for every
+    /// configuration the plan crosses and for every arm of each. A worklist whose rows cannot
+    /// be told apart is a worklist a reviewer cannot open in an informed order, and telling
+    /// exactly those arms apart is what the plan was built for.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gg_slot_models: BTreeMap<String, String>,
     /// RFC 3339 of when the run finished.
     pub finished_at: String,
 }
@@ -687,39 +887,66 @@ pub async fn list_groups(
     State(state): State<AppState>,
     user: AuthUser,
 ) -> Result<Json<Vec<CoverageGroup>>, ApiError> {
-    let groups = state
+    let mut groups = state
         .db
         .list_coverage_groups(&user.0.id)
         .await
         .map_err(ApiError::from)?;
+    let library = read_gg_library(
+        &state,
+        &user.0.id,
+        groups.iter().flat_map(|group| group.combos.iter()),
+    )
+    .await?;
+    for group in &mut groups {
+        group.combos = for_read(&group.combos, &library);
+    }
     Ok(Json(groups))
 }
 
 /// `POST /coverage-groups` — create a group. Only the members matching `kind` are
 /// kept, so a `combo` group never carries stray cases and vice versa.
+///
+/// `400` for a gg member naming a configuration the account does not own or leaving one of
+/// its launch slots unbound — a member that could never produce a run, refused where the
+/// reviewer wrote it.
 pub async fn create_group(
     State(state): State<AppState>,
     user: AuthUser,
     Json(input): Json<CoverageGroupInput>,
 ) -> Result<Json<CoverageGroup>, ApiError> {
-    let group = group_from_input(new_id(), input, &now()?);
+    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &[]).await?;
+    let mut group = group_from_input(new_id(), input, &now()?);
     state
         .db
         .insert_coverage_group(&user.0.id, &group)
         .await
         .map_err(ApiError::from)?;
+    // Stored as the pointer, answered as the read shape — the same thing a later `GET`
+    // returns, so a console that keeps the response never holds a different object.
+    group.combos = for_read(&group.combos, &library);
     Ok(Json(group))
 }
 
 /// `PUT /coverage-groups/{id}` — update a group in place. 404 when the id is not the
-/// caller's.
+/// caller's, and `400` for an unstorable gg member (see [`create_group`]).
 pub async fn update_group(
     State(state): State<AppState>,
     user: AuthUser,
     Path(id): Path<String>,
     Json(input): Json<CoverageGroupInput>,
 ) -> Result<Json<CoverageGroup>, ApiError> {
-    let group = group_from_input(id, input, &now()?);
+    // What the group already holds, so a member that was valid when it was written is not
+    // re-judged now that the configuration under it has moved on.
+    let stored = state
+        .db
+        .get_coverage_group(&user.0.id, &id)
+        .await
+        .map_err(ApiError::from)?
+        .map(|group| group.combos)
+        .unwrap_or_default();
+    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &stored).await?;
+    let mut group = group_from_input(id, input, &now()?);
     let updated = state
         .db
         .update_coverage_group(&user.0.id, &group)
@@ -728,6 +955,7 @@ pub async fn update_group(
     if !updated {
         return Err(ApiError::not_found("coverage group not found"));
     }
+    group.combos = for_read(&group.combos, &library);
     Ok(Json(group))
 }
 
@@ -763,9 +991,16 @@ pub async fn list_plans(
         .list_coverage_plans(&user.0.id)
         .await
         .map_err(ApiError::from)?;
+    let library = read_gg_library(
+        &state,
+        &user.0.id,
+        plans.iter().flat_map(|plan| plan.combos.iter()),
+    )
+    .await?;
     let mut out = Vec::with_capacity(plans.len());
-    for plan in plans {
+    for mut plan in plans {
         let schedule = plan_schedule_of(&state, &user.0.id, &plan.id).await?;
+        plan.combos = for_read(&plan.combos, &library);
         out.push(CoveragePlanOut { plan, schedule });
     }
     Ok(Json(out))
@@ -775,18 +1010,22 @@ pub async fn list_plans(
 /// sane maximum so a mistyped value cannot fan out into thousands of queued runs, and
 /// an absent schedule starts the plan on [`CoverageSchedule::default`] — indis-
 /// tinguishable from the plans that existed before a plan could be scheduled at all.
+///
+/// `400` for a one-off gg member the account cannot launch (see [`create_group`]).
 pub async fn create_plan(
     State(state): State<AppState>,
     user: AuthUser,
     Json(input): Json<CoveragePlanInput>,
 ) -> Result<Json<CoveragePlanOut>, ApiError> {
-    let (plan, schedule) = plan_from_input(new_id(), input, &now()?);
+    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &[]).await?;
+    let (mut plan, schedule) = plan_from_input(new_id(), input, &now()?);
     let schedule = schedule.unwrap_or_default();
     state
         .db
         .insert_coverage_plan(&user.0.id, &plan, &schedule.to_db())
         .await
         .map_err(ApiError::from)?;
+    plan.combos = for_read(&plan.combos, &library);
     Ok(Json(CoveragePlanOut { plan, schedule }))
 }
 
@@ -802,7 +1041,17 @@ pub async fn update_plan(
     Path(id): Path<String>,
     Json(input): Json<CoveragePlanInput>,
 ) -> Result<Json<CoveragePlanOut>, ApiError> {
-    let (plan, schedule) = plan_from_input(id, input, &now()?);
+    // The members already on the plan, exempt from re-judgement — see
+    // [`reject_unstorable_members`].
+    let stored = state
+        .db
+        .get_coverage_plan(&user.0.id, &id)
+        .await
+        .map_err(ApiError::from)?
+        .map(|plan| plan.combos)
+        .unwrap_or_default();
+    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &stored).await?;
+    let (mut plan, schedule) = plan_from_input(id, input, &now()?);
     let updated = state
         .db
         .update_coverage_plan(&user.0.id, &plan)
@@ -822,6 +1071,7 @@ pub async fn update_plan(
         }
         None => plan_schedule_of(&state, &user.0.id, &plan.id).await?,
     };
+    plan.combos = for_read(&plan.combos, &library);
     Ok(Json(CoveragePlanOut { plan, schedule }))
 }
 
@@ -862,11 +1112,12 @@ pub async fn plans_summary(
         .await
         .map_err(ApiError::from)?;
     let groups = group_index(&state, &user.0.id).await?;
+    let library = gg_library(&state, &user.0.id).await?;
 
-    let resolved: Vec<(&CoveragePlan, Vec<ReviewPlanCombo>, Vec<ReviewPlanCase>)> = plans
+    let resolved: Vec<(&CoveragePlan, Vec<PlanMember>, Vec<ReviewPlanCase>)> = plans
         .iter()
         .map(|plan| {
-            let (combos, cases) = resolve_members(plan, &groups);
+            let (combos, cases) = resolve_members(plan, &groups, &library);
             (plan, combos, cases)
         })
         .collect();
@@ -906,7 +1157,8 @@ pub async fn plan_coverage(
     let plan = load_plan(&state, &user.0.id, &id).await?;
     let schedule = plan_schedule_of(&state, &user.0.id, &id).await?;
     let groups = group_index(&state, &user.0.id).await?;
-    let (combos, cases) = resolve_members(&plan, &groups);
+    let library = gg_library(&state, &user.0.id).await?;
+    let (combos, cases) = resolve_members(&plan, &groups, &library);
 
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
     let ctx = MatrixCtx::load(&state, slugs, &user.0.id, false).await?;
@@ -1051,7 +1303,12 @@ async fn plan_top_up_locked(
     buffer_target: u32,
 ) -> Result<TopUpResult, ApiError> {
     let groups = group_index(state, &user.0.id).await?;
-    let (combos, cases) = resolve_members(plan, &groups);
+    let library = gg_library(state, &user.0.id).await?;
+    let (mut combos, cases) = resolve_members(plan, &groups, &library);
+    // Before the scheduler decides anything: a gg member whose models the catalog cannot
+    // answer for has to be unlaunchable *now*, or it spends buffer and capacity on runs that
+    // are never enqueued and starves the members that could have used them.
+    resolve_gg_launch_facts(state, &mut combos).await;
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
     // A coverage plan has no gate, so a run whose build never loaded still wants a
     // human to look at it and still occupies a buffer slot. Only a ladder, which can
@@ -1059,33 +1316,44 @@ async fn plan_top_up_locked(
     let ctx = MatrixCtx::load(state, slugs, &user.0.id, false).await?;
 
     let ordered = cells_in_order(axis, &combos, &cases);
-    let demands: Vec<CellDemand> = ordered
-        .iter()
-        .map(|(case, combo)| ctx.demand(plan.runs_per_cell, case, combo))
-        .collect();
+    let mut demands: Vec<CellDemand> = Vec::with_capacity(ordered.len());
+    let mut unlaunchable: Vec<TopUpBlocked> = Vec::new();
+    for (case, member) in &ordered {
+        let demand = ctx.demand(plan.runs_per_cell, case, member);
+        // Reported only when the cell actually wanted runs: a cell already at its target is
+        // skipped before the reason it could not be launched ever matters.
+        if let Some(reason) = &member.unlaunchable
+            && demand.missing() > 0
+        {
+            unlaunchable.push(blocked_cell(None, case, member, reason.clone()));
+        }
+        demands.push(launchable_demand(demand, member));
+    }
     let outstanding = outstanding_across(&demands);
     let launches = top_up(&demands, ctx.harness_capacity(), buffer_target, outstanding);
 
     let cells: Vec<TopUpCell<'_>> = launches
         .iter()
         .map(|launch| {
-            let (case, combo) = ordered[launch.cell];
+            let (case, member) = ordered[launch.cell];
             TopUpCell {
                 rung_id: None,
                 case,
-                combo,
+                member,
                 runs: launch.runs,
             }
         })
         .collect();
-    let launched = enqueue_top_up(state, user, &JobOrigin::Plan(plan.id.clone()), &cells).await?;
+    let enqueued = enqueue_top_up(state, user, &JobOrigin::Plan(plan.id.clone()), &cells).await?;
+    unlaunchable.extend(enqueued.blocked);
 
     Ok(TopUpResult {
         skipped: None,
         buffer_target,
         outstanding: Some(outstanding),
-        enqueued: launched.iter().map(|cell| cell.runs).sum(),
-        cells: launched,
+        enqueued: enqueued.launched.iter().map(|cell| cell.runs).sum(),
+        cells: enqueued.launched,
+        unlaunchable,
     })
 }
 
@@ -1106,17 +1374,18 @@ pub async fn plan_queue(
     let plan = load_plan(&state, &user.0.id, &id).await?;
     let schedule = plan_schedule_of(&state, &user.0.id, &id).await?;
     let groups = group_index(&state, &user.0.id).await?;
-    let (combos, cases) = resolve_members(&plan, &groups);
+    let library = gg_library(&state, &user.0.id).await?;
+    let (combos, cases) = resolve_members(&plan, &groups, &library);
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
     let ctx = MatrixCtx::load(&state, slugs, &user.0.id, false).await?;
 
     let cells: Vec<QueueCell<'_>> = cells_in_order(schedule.outer_axis, &combos, &cases)
         .into_iter()
-        .map(|(case, combo)| QueueCell {
+        .map(|(case, member)| QueueCell {
             rung_id: None,
             case,
-            combo,
-            unreviewed: ctx.unreviewed_for(case, combo),
+            member,
+            unreviewed: ctx.unreviewed_for(case, member),
         })
         .collect();
     Ok(Json(collect_queue(&state, &user.0.id, &cells).await?))
@@ -1300,14 +1569,365 @@ pub(super) async fn group_index(
     Ok(groups.into_iter().map(|g| (g.id.clone(), g)).collect())
 }
 
-/// Resolve referenced combination groups and one-off combinations into the de-duped
-/// combination list a matrix (or a ladder's climber board) is built from.
+/// One **resolved** member of a plan, a group, or a ladder: the combination as a reader
+/// sees it, plus everything resolving it produced that the matrix, the top-up, and the
+/// queue need.
 ///
-/// Group members come first, in reference order, then the one-offs; a combination is
-/// identified by `(harness, model, provider)`, so the same member declared in two
-/// groups — or in a group and as a one-off — appears exactly once. A referenced id
-/// that no longer names a group is silently skipped: deleting a group is not an error
-/// in the plans that pointed at it.
+/// A member is resolved once, at the top of a request, and the same resolution is threaded
+/// through every cell it takes part in. That is what keeps a gg configuration from being
+/// looked up, bound, and validated once per cell — and, more importantly, what makes it
+/// impossible for two cells of one member to disagree about which configuration it names or
+/// what models it runs.
+#[derive(Debug, Clone)]
+pub(super) struct PlanMember {
+    /// The member as it is **read**: a gg member's `model` and `gg_config_name` filled in
+    /// from the configuration it names, so a client holding no configuration still has
+    /// something to show. This is never what is stored — see
+    /// [`ReviewPlanCombo::for_storage`].
+    pub combo: ReviewPlanCombo,
+    /// The model id a run of this member is **launched** with, and therefore the model
+    /// segment of its [cell key](CellKey): the
+    /// [launch model](test_cabinet_core::model_id::launch_model_id) for a harness member,
+    /// and the model the bound set's root agent runs for a gg member. Empty when the member
+    /// could not be resolved at all, which is the identity no run can ever carry.
+    pub launch_model: String,
+    /// What resolving a gg member produced — `None` on a harness member, and on a gg member
+    /// that could not be resolved.
+    pub gg: Option<ResolvedGg>,
+    /// Why a top-up cannot launch this member, or `None` when it can.
+    ///
+    /// A member that cannot be launched is **not dropped**: it keeps its place in the plan's
+    /// order, its cells are still counted, and the reason travels with them — because a plan
+    /// that silently got smaller is a plan whose missing runs nobody can explain.
+    pub unlaunchable: Option<String>,
+}
+
+/// The part of a [`CellKey`] a member contributes: its harness, the model its runs are
+/// launched with, and its two gg segments (both empty on a harness member).
+///
+/// Named because it is compared on its own as well as crossed with a case: two members with
+/// the same identity produce the same cell for *every* case, which is a question about the
+/// members alone.
+type MemberCellIdentity = (String, String, String, String);
+
+impl PlanMember {
+    /// This member's [share](MemberCellIdentity) of the cell key it forms with any case.
+    pub(super) fn cell_identity(&self) -> MemberCellIdentity {
+        let (preset, models) = match &self.gg {
+            Some(gg) => (gg.preset.clone(), gg.models.clone()),
+            None => (String::new(), String::new()),
+        };
+        (
+            self.combo.harness.as_str().to_string(),
+            self.launch_model.clone(),
+            preset,
+            models,
+        )
+    }
+}
+
+/// What resolving a **gg** member against the account's saved configurations produced: the
+/// two halves of its [cell identity](CellKey) and the capability set a run of it carries.
+#[derive(Debug, Clone)]
+pub(super) struct ResolvedGg {
+    /// The configuration's current display name — the first gg segment of the cell key, and
+    /// the name the launched set records for itself.
+    pub preset: String,
+    /// The models the bound set runs on, as
+    /// [`bound_model_key`](GgCapabilitySet::bound_model_key) writes them — the second gg
+    /// segment of the cell key. Asked of the contract rather than assembled here, because
+    /// the run lift and the job lift write the same string and a cell only counts while all
+    /// three agree to the byte.
+    pub models: String,
+    /// The set a run of this member is launched with: the configuration's own, with its
+    /// launch slots bound to the member's models and its agent keys resolved — the exact
+    /// shape `POST /gg/runs` sends downstream.
+    pub capability_set: GgCapabilitySet,
+    /// The catalog facts every model the set binds is launched with — resolved only on the
+    /// paths that are about to **launch** the member, and `None` on a read.
+    ///
+    /// They are resolved once per member rather than once per cell, and *before* the
+    /// scheduler chooses what to emit, because the resolution can fail: a model the catalog
+    /// can resolve no context window for cannot be launched at all, and a cell discovered to
+    /// be unlaunchable only at enqueue has by then already spent the review-buffer slots and
+    /// the harness capacity the scheduler handed it — leaving the plan permanently
+    /// under-filled by one broken member. A read does not resolve them because it does not
+    /// launch, and the resolution can reach out to OpenRouter for a model the catalog has
+    /// never seen.
+    pub model_facts: Option<super::jobs::GgModelFacts>,
+}
+
+/// The account's gg library, as everything that resolves a member reads it: its saved
+/// configurations by id, and the saved agents those configurations import by id.
+///
+/// The two travel together because a configuration is not fully described by its own row. A
+/// configuration that [imports](super::GgAgentSource) a saved agent follows that agent live,
+/// and the stored capability set is only the resolution as it stood the last time the
+/// configuration was saved — so judging whether a member can be launched at all needs the
+/// library beside the configuration. Loaded once per request, whatever the plan's shape.
+#[derive(Debug, Default, Clone)]
+pub(super) struct GgLibrary {
+    /// The account's saved configurations, by [id](GgConfig::id).
+    configs: HashMap<String, GgConfig>,
+    /// The account's saved agents, by [id](super::GgSavedAgent::id) — the id an
+    /// [import](super::GgAgentSource::agent_id) names.
+    agents: HashMap<String, super::GgSavedAgent>,
+}
+
+impl GgLibrary {
+    /// A library over lists already in hand, indexed by the ids everything looks them up by.
+    /// The one place either map is built, so a caller cannot key one of them by the wrong id.
+    pub(super) fn from_parts(configs: Vec<GgConfig>, agents: Vec<super::GgSavedAgent>) -> Self {
+        Self {
+            configs: configs.into_iter().map(|c| (c.id.clone(), c)).collect(),
+            agents: agents.into_iter().map(|a| (a.id.clone(), a)).collect(),
+        }
+    }
+
+    /// The configuration `id` names, or `None` when the account no longer owns it.
+    pub(super) fn config(&self, id: &str) -> Option<&GgConfig> {
+        self.configs.get(id)
+    }
+
+    /// The saved agent an import that `config` declares has been edited since `config` was
+    /// last saved, or `None` when every import is still the one the stored set holds.
+    ///
+    /// This is what keeps a **scheduled** gg run honest. An import is a live reference the
+    /// console re-resolves on every read, so the set the launch form would send is the saved
+    /// agent as it stands now; the set stored on the configuration is the resolution as of its
+    /// last save. While the two agree — which is exactly while no imported agent has been
+    /// touched since — a plan's top-up and a launch by hand produce the same run. Once they
+    /// diverge, the member is reported as unlaunchable rather than quietly launching the older
+    /// arm into a cell the console's own launches would miss.
+    ///
+    /// It compares save times rather than the sets themselves because the merge that resolves
+    /// an import lives in the console, not here; a timestamp cannot say *what* changed, but it
+    /// can say — without ever answering "unchanged" for a set that did change — that something
+    /// did.
+    fn stale_import(&self, config: &GgConfig) -> Option<&super::GgSavedAgent> {
+        config.agent_sources.iter().find_map(|source| {
+            let saved = self.agents.get(&source.agent_id)?;
+            (saved.updated_at > config.updated_at).then_some(saved)
+        })
+    }
+}
+
+/// Load the account's [gg library](GgLibrary). The gg-side twin of [`group_index`].
+pub(super) async fn gg_library(state: &AppState, user_id: &str) -> Result<GgLibrary, ApiError> {
+    let configs = state
+        .db
+        .list_gg_configs(user_id)
+        .await
+        .map_err(ApiError::from)?;
+    let agents = state
+        .db
+        .list_gg_agents(user_id)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(GgLibrary::from_parts(configs, agents))
+}
+
+/// The first launch slot `set` declares that `models` binds nothing to, or `None` when every
+/// one is filled.
+///
+/// A slot's own default is deliberately not consulted. A member is a written-down decision
+/// about which models run, and quietly falling back to whatever default the configuration
+/// happened to carry would make a plan's cells change under it the next time the
+/// configuration was edited.
+fn unbound_launch_slot(set: &GgCapabilitySet, models: &BTreeMap<String, String>) -> Option<String> {
+    set.launch_slots().into_iter().find_map(|slot| {
+        let bound = models.get(&slot.name).map(|m| m.trim()).unwrap_or_default();
+        bound.is_empty().then_some(slot.name)
+    })
+}
+
+/// The reason a gg member cannot be **launched** even though its configuration is present and
+/// every launch slot is bound, or `None`.
+///
+/// Split from [`gg_member_defect`] because these are not the author's mistakes: a member that
+/// was written correctly develops this fault later, when something it points at moves. It is
+/// therefore reported on the member — on its cells, and by a top-up that skips it — and never
+/// refused at the moment the member is saved.
+fn gg_member_drift(config: &GgConfig, library: &GgLibrary) -> Option<String> {
+    let saved = library.stale_import(config)?;
+    Some(format!(
+        "the `{}` gg configuration imports the saved agent `{}`, which has been edited since \
+         the configuration was last saved; open `{}` and save it so a scheduled run carries \
+         the same agents a launch by hand would",
+        config.name, saved.name, config.name
+    ))
+}
+
+/// The reason a gg member cannot be **stored**, or `None` when it can (a harness member
+/// always can).
+///
+/// Two of the three ways a gg member goes bad are the author's to fix at the moment they
+/// write it: a configuration the account does not own, and a launch slot left with no model.
+/// Both are refused by the create/update surfaces rather than reported later on a cell,
+/// which is why they are named here once and read by both the validation and the resolver —
+/// a member a plan accepts and a member the resolver can launch must not be two different
+/// sets. Visible to the [ladder transport](super::ladders) for the same reason
+/// [`reject_unstorable_members`] is: a climber is a member, and there is one rule for both.
+pub(super) fn gg_member_defect(combo: &ReviewPlanCombo, library: &GgLibrary) -> Option<String> {
+    let id = combo.gg_config_ref()?;
+    let Some(config) = library.config(id) else {
+        return Some(format!(
+            "no gg configuration `{id}` on this account; a member names a configuration the \
+             account owns"
+        ));
+    };
+    let slot = unbound_launch_slot(&config.capability_set, &combo.gg_bindings())?;
+    Some(format!(
+        "the `{slot}` launch slot of the `{}` gg configuration has no model bound; a member \
+         binds a model to every slot its configuration declares",
+        config.name
+    ))
+}
+
+/// Refuse (`400`) a member list carrying a **newly written** gg member that could never be
+/// launched, naming the configuration and — for an unbound slot — the slot; hand back the
+/// [library](GgLibrary) that was loaded to judge it, which is what the response's read shape is
+/// filled from.
+///
+/// Checked when a group, a plan, or a ladder is **saved** rather than only when it is
+/// expanded, because these two faults are typos in what the reviewer just wrote: reporting
+/// them on a cell, runs later, is reporting them somewhere the reviewer is no longer
+/// looking. The read is skipped entirely for a member list with no gg member in it.
+///
+/// `stored` is what the object already holds, and a member already in it is **not** re-judged.
+/// A member is written once and read for months, and the configuration under it moves in the
+/// meantime: gaining a launch slot makes every member that predates the slot unbound. Judging
+/// those again on every save would make an unrelated edit — a renamed plan, a bumped
+/// runs-per-cell — impossible to save at all, with no way to repair the offending member
+/// except to delete it. The read path is built to describe exactly that state (the matrix
+/// reports the reason on the cell), so the write path tolerates it.
+///
+/// Shared with the [ladder transport](super::ladders), whose climbers are the same members
+/// under another name: a climber a ladder would accept and a member a plan would accept must
+/// not be two different sets.
+pub(super) async fn reject_unstorable_members(
+    state: &AppState,
+    user_id: &str,
+    combos: &[ReviewPlanCombo],
+    stored: &[ReviewPlanCombo],
+) -> Result<GgLibrary, ApiError> {
+    let library = read_gg_library(state, user_id, combos).await?;
+    match unstorable_member(combos, stored, &library) {
+        Some(defect) => Err(ApiError::bad_request(defect)),
+        None => Ok(library),
+    }
+}
+
+/// The reason the first newly-written unstorable member in `combos` cannot be stored, or
+/// `None` when every member either can be or was already there. The decision
+/// [`reject_unstorable_members`] makes, with the load lifted out of it.
+pub(super) fn unstorable_member(
+    combos: &[ReviewPlanCombo],
+    stored: &[ReviewPlanCombo],
+    library: &GgLibrary,
+) -> Option<String> {
+    let already: HashSet<String> = stored.iter().map(combination_key).collect();
+    combos
+        .iter()
+        .filter(|combo| !already.contains(&combination_key(combo)))
+        .find_map(|combo| gg_member_defect(combo, library))
+}
+
+/// Resolve one stored member against the account's gg configurations.
+///
+/// A harness member resolves to itself. A gg member is looked up, its launch slots bound to
+/// the models it names, and the result validated exactly as `POST /gg/runs` validates a
+/// launch — so a member a plan will launch is a member that endpoint would have accepted.
+/// Every way that can fail produces a member carrying its reason rather than no member at
+/// all.
+pub(super) fn resolve_member(combo: &ReviewPlanCombo, library: &GgLibrary) -> PlanMember {
+    let Some(id) = combo.gg_config_ref() else {
+        return PlanMember {
+            launch_model: test_cabinet_core::model_id::launch_model_id(
+                &combo.model,
+                combo.harness,
+                combo.provider.as_deref(),
+            ),
+            combo: combo.clone(),
+            gg: None,
+            unlaunchable: None,
+        };
+    };
+    // Start from the stored shape: whatever a row (or a client echoing a read) says about a
+    // gg member's harness, model, and provider, the member runs gg and its model is the one
+    // the configuration binds. The read fills those back in below, from the configuration.
+    let mut read = combo.for_storage();
+    let blocked = |combo: ReviewPlanCombo, reason: String| PlanMember {
+        combo,
+        launch_model: String::new(),
+        gg: None,
+        unlaunchable: Some(reason),
+    };
+    let Some(config) = library.config(id) else {
+        return blocked(
+            read,
+            format!("the gg configuration `{id}` is no longer on this account"),
+        );
+    };
+    read.gg_config_name = Some(config.name.clone());
+    if let Some(defect) = gg_member_defect(combo, library) {
+        return blocked(read, defect);
+    }
+    if let Some(drift) = gg_member_drift(config, library) {
+        return blocked(read, drift);
+    }
+    let mut bound = config
+        .capability_set
+        .bind_launch_slots(&combo.gg_bindings());
+    // The name a run records is the configuration's name **now**, not the one its stored set
+    // happened to carry. Counts are global and a gg cell is keyed by that name, so the cell
+    // a top-up files runs into has to be the cell the matrix labelled with the same name.
+    bound.preset = Some(config.name.clone());
+    match super::gg::gg_launch_identity(&bound) {
+        Ok(identity) => {
+            let super::gg::GgLaunchIdentity {
+                capability_set,
+                model,
+            } = identity;
+            read.model = model.clone();
+            PlanMember {
+                launch_model: model,
+                gg: Some(ResolvedGg {
+                    preset: config.name.clone(),
+                    models: capability_set.bound_model_key(),
+                    capability_set,
+                    model_facts: None,
+                }),
+                combo: read,
+                unlaunchable: None,
+            }
+        }
+        Err(reason) => blocked(read, reason),
+    }
+}
+
+/// Resolve referenced combination groups and one-off combinations into the de-duped
+/// member list a matrix (or a ladder's climber board) is built from.
+///
+/// Group members come first, in reference order, then the one-offs; a member is identified
+/// by its [`combination_key`], which is `(harness, model, provider)` for a harness member
+/// and the configuration plus its slot bindings for a gg one — so the same member declared
+/// in two groups, or in a group and as a one-off, appears exactly once, and two gg members
+/// of one configuration that bind different models stay two members. A referenced id that no
+/// longer names a group is silently skipped: deleting a group is not an error in the plans
+/// that pointed at it.
+///
+/// `library` is the account's [gg library](GgLibrary); a gg member whose configuration is not
+/// in it keeps its place carrying the reason.
+///
+/// **Two members that resolve to one cell are one cell.** The de-dupe key above is what a
+/// reviewer *wrote*, and two different declarations can still name the same runs — two
+/// configurations that share a name and bind the same agents to the same models, or two
+/// bindings that differ only where the configuration ignores them. The later of the pair keeps
+/// its place carrying a reason rather than being dropped or launched: launching it would
+/// enqueue one cell's runs twice (each member reading the same global counts and each seeing
+/// its own target unmet), and dropping it would make a member the reviewer can see in the
+/// editor vanish from the matrix with nothing said.
 ///
 /// Factored out of [`resolve_members`] so a ladder, whose climbers are the same
 /// `kind = "combo"` group pointers, resolves them through this and not a copy.
@@ -1315,18 +1935,25 @@ pub(super) fn resolve_combos(
     group_ids: &[String],
     one_offs: &[ReviewPlanCombo],
     groups: &HashMap<String, CoverageGroup>,
-) -> Vec<ReviewPlanCombo> {
-    let mut combos = Vec::new();
-    let mut seen: HashSet<(String, String, String)> = HashSet::new();
-    let mut push = |c: &ReviewPlanCombo, combos: &mut Vec<ReviewPlanCombo>| {
-        let key = (
-            c.harness.as_str().to_string(),
-            c.model.clone(),
-            c.provider.clone().unwrap_or_default(),
-        );
-        if seen.insert(key) {
-            combos.push(c.clone());
+    library: &GgLibrary,
+) -> Vec<PlanMember> {
+    let mut combos: Vec<PlanMember> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut cells: HashSet<MemberCellIdentity> = HashSet::new();
+    let mut push = |c: &ReviewPlanCombo, combos: &mut Vec<PlanMember>| {
+        if !seen.insert(combination_key(c)) {
+            return;
         }
+        let mut member = resolve_member(c, library);
+        if member.unlaunchable.is_none() && !cells.insert(member.cell_identity()) {
+            member.unlaunchable = Some(
+                "another member of this plan already asks for exactly these runs — same case, \
+                 same launch model, and (for a gg member) the same configuration name bound to \
+                 the same agents"
+                    .to_string(),
+            );
+        }
+        combos.push(member);
     };
     for id in group_ids {
         if let Some(group) = groups.get(id) {
@@ -1371,13 +1998,14 @@ pub(super) fn resolve_cases(
 }
 
 /// Resolve a plan's referenced groups and one-off members into the de-duped
-/// combinations and cases the matrix crosses.
+/// members and cases the matrix crosses.
 fn resolve_members(
     plan: &CoveragePlan,
     groups: &HashMap<String, CoverageGroup>,
-) -> (Vec<ReviewPlanCombo>, Vec<ReviewPlanCase>) {
+    library: &GgLibrary,
+) -> (Vec<PlanMember>, Vec<ReviewPlanCase>) {
     (
-        resolve_combos(&plan.combo_group_ids, &plan.combos, groups),
+        resolve_combos(&plan.combo_group_ids, &plan.combos, groups, library),
         resolve_cases(&plan.case_group_ids, &plan.cases, groups),
     )
 }
@@ -1392,9 +2020,9 @@ fn resolve_members(
 /// or what order they are in.
 pub(super) fn cells_in_order<'a>(
     axis: CoverageAxis,
-    combos: &'a [ReviewPlanCombo],
+    combos: &'a [PlanMember],
     cases: &'a [ReviewPlanCase],
-) -> Vec<(&'a ReviewPlanCase, &'a ReviewPlanCombo)> {
+) -> Vec<(&'a ReviewPlanCase, &'a PlanMember)> {
     let mut cells = Vec::with_capacity(cases.len() * combos.len());
     match axis {
         CoverageAxis::Case => {
@@ -1413,6 +2041,73 @@ pub(super) fn cells_in_order<'a>(
         }
     }
     cells
+}
+
+/// Resolve every launchable gg member's [per-model catalog facts](super::jobs::GgModelFacts),
+/// marking a member whose bound models the catalog cannot answer for as unlaunchable.
+///
+/// Run by the two paths that are about to **launch** — a plan's top-up and a ladder's — and
+/// before either asks the scheduler what to emit. That ordering is the point. The scheduler
+/// spends a fixed review buffer and a fixed per-harness capacity, and it spends both at the
+/// moment it emits a cell; a cell that then turns out to be unlaunchable at enqueue has
+/// consumed a share of each and enqueued nothing, so every pass leaves the plan short by that
+/// member's whole target — forever, and silently. Resolving first turns that into what the
+/// design says it is: a member whose demand is zero, skipped and reported, with the rest of the
+/// plan fed as normal.
+///
+/// The facts are kept on the member so the enqueue does not resolve them again per cell: one
+/// member launched across eight cases is one resolution, not eight.
+pub(super) async fn resolve_gg_launch_facts(state: &AppState, members: &mut [PlanMember]) {
+    for member in members {
+        if member.unlaunchable.is_some() {
+            continue;
+        }
+        let launch_model = member.launch_model.clone();
+        let Some(gg) = member.gg.as_mut() else {
+            continue;
+        };
+        // Price the models the set binds before resolving their windows, exactly as the gg
+        // launch endpoint does and in the same order: the seeding usually puts the window on
+        // record, so the resolution below finds it without a second fetch.
+        let models: Vec<(String, HarnessSlug)> = gg
+            .capability_set
+            .bound_model_ids()
+            .into_iter()
+            .chain(std::iter::once(launch_model.as_str()))
+            .filter(|id| !id.trim().is_empty())
+            .map(|id| (id.to_string(), HarnessSlug::Gg))
+            .collect();
+        crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &models).await;
+        match super::jobs::gg_model_facts(
+            &state.db,
+            &state.prices,
+            &gg.capability_set,
+            &launch_model,
+            HarnessSlug::Gg,
+        )
+        .await
+        {
+            Ok(facts) => gg.model_facts = Some(facts),
+            Err(reason) => member.unlaunchable = Some(reason),
+        }
+    }
+}
+
+/// One cell's demand as the top-up walk must see it: its own, unless nothing can launch its
+/// member — in which case it wants nothing.
+///
+/// The cell is not dropped and its occupancy is not zeroed. A member that broke after its
+/// runs were launched has not un-launched them, so those runs still hold the review-buffer
+/// slots they always held; what changes is only that the walk stops trying to add to them and
+/// spends the rest of the buffer on the members that can still run.
+pub(super) fn launchable_demand(demand: CellDemand, member: &PlanMember) -> CellDemand {
+    match member.unlaunchable {
+        Some(_) => CellDemand {
+            target: 0,
+            ..demand
+        },
+        None => demand,
+    }
 }
 
 /// A roll-up of a plan's cells without the per-cell detail.
@@ -1508,7 +2203,7 @@ impl MatrixCtx {
         runs_per_cell: u32,
         axis: CoverageAxis,
         buffer_target: u32,
-        combos: &[ReviewPlanCombo],
+        combos: &[PlanMember],
         cases: &[ReviewPlanCase],
     ) -> CoverageMatrix {
         let ordered = cells_in_order(axis, combos, cases);
@@ -1518,8 +2213,8 @@ impl MatrixCtx {
         let mut runs_pending = 0u32;
         let mut runs_unreviewed = 0u32;
         let mut runs_outstanding = 0u32;
-        for (case, combo) in ordered {
-            let cell = self.cell(runs_per_cell, case, combo);
+        for (case, member) in ordered {
+            let cell = self.cell(runs_per_cell, case, member);
             if cell.remaining == 0 {
                 cells_satisfied += 1;
             }
@@ -1551,15 +2246,15 @@ impl MatrixCtx {
         &self,
         runs_per_cell: u32,
         axis: CoverageAxis,
-        combos: &[ReviewPlanCombo],
+        combos: &[PlanMember],
         cases: &[ReviewPlanCase],
     ) -> MatrixRollup {
         let ordered = cells_in_order(axis, combos, cases);
         let mut cells_satisfied = 0u32;
         let mut runs_missing = 0u32;
         let mut runs_unreviewed = 0u32;
-        for (case, combo) in &ordered {
-            let demand = self.demand(runs_per_cell, case, combo);
+        for (case, member) in &ordered {
+            let demand = self.demand(runs_per_cell, case, member);
             let missing = demand.missing();
             if missing == 0 {
                 cells_satisfied += 1;
@@ -1580,10 +2275,10 @@ impl MatrixCtx {
         &self,
         desired: u32,
         case: &ReviewPlanCase,
-        combo: &ReviewPlanCombo,
+        member: &PlanMember,
     ) -> CoverageCell {
-        let key = cell_key(case, combo);
-        let demand = self.demand(desired, case, combo);
+        let key = cell_key(case, member);
+        let demand = self.demand(desired, case, member);
         let latest_version = self
             .latest_by_slug
             .get(&case.slug)
@@ -1593,9 +2288,13 @@ impl MatrixCtx {
             slug: case.slug.clone(),
             version: case.version.clone(),
             variant: case.variant.clone(),
-            harness: combo.harness,
-            model: combo.model.clone(),
-            provider: combo.provider.clone(),
+            harness: member.combo.harness,
+            model: member.combo.model.clone(),
+            provider: member.combo.provider.clone(),
+            gg_config_id: member.combo.gg_config_id.clone(),
+            gg_config_name: member.combo.gg_config_name.clone(),
+            gg_slot_models: member.combo.gg_slot_models.clone(),
+            unlaunchable: member.unlaunchable.clone(),
             desired,
             completed: demand.completed,
             in_flight: demand.in_flight,
@@ -1618,15 +2317,15 @@ impl MatrixCtx {
         &self,
         target: u32,
         case: &ReviewPlanCase,
-        combo: &ReviewPlanCombo,
+        member: &PlanMember,
     ) -> CellDemand {
-        let key = cell_key(case, combo);
+        let key = cell_key(case, member);
         CellDemand {
             target,
             completed: self.completed.get(&key).copied().unwrap_or(0),
             in_flight: self.in_flight.get(&key).copied().unwrap_or(0),
             unreviewed: self.unreviewed.get(&key).copied().unwrap_or(0),
-            harness: harness_lane(combo.harness),
+            harness: harness_lane(member.combo.harness),
         }
     }
 
@@ -1644,27 +2343,32 @@ impl MatrixCtx {
     }
 
     /// How many of one cell's completed runs the requesting account has not reviewed.
-    pub(super) fn unreviewed_for(&self, case: &ReviewPlanCase, combo: &ReviewPlanCombo) -> u32 {
+    pub(super) fn unreviewed_for(&self, case: &ReviewPlanCase, member: &PlanMember) -> u32 {
         self.unreviewed
-            .get(&cell_key(case, combo))
+            .get(&cell_key(case, member))
             .copied()
             .unwrap_or(0)
     }
 }
 
-/// The `(slug, version, variant, harness, launched model)` identity every grouped
-/// coverage count is keyed by, and the identity a gate's evidence query takes.
-pub(super) fn cell_key(case: &ReviewPlanCase, combo: &ReviewPlanCombo) -> CellKey {
+/// The [`CellKey`] a case and a resolved member cross to: the case's three segments, the
+/// harness, the model as it is **launched**, and the two gg segments — the configuration's
+/// name and the models its bound set runs, both empty on a harness cell.
+///
+/// Every segment comes off the resolved member rather than the stored combination, which is
+/// the point of resolving one: a gg member's launch model is the model its bound set's root
+/// agent runs, and neither that nor the two gg segments can be read off the row a reviewer
+/// saved.
+pub(super) fn cell_key(case: &ReviewPlanCase, member: &PlanMember) -> CellKey {
+    let (harness, model, preset, models) = member.cell_identity();
     (
         case.slug.clone(),
         case.version.clone(),
         case.variant.clone(),
-        combo.harness.as_str().to_string(),
-        test_cabinet_core::model_id::launch_model_id(
-            &combo.model,
-            combo.harness,
-            combo.provider.as_deref(),
-        ),
+        harness,
+        model,
+        preset,
+        models,
     )
 }
 
@@ -1699,6 +2403,8 @@ async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
         if job.state != "pending" {
             continue;
         }
+        // The job's own lifted gg columns complete the cell, read exactly as the
+        // grouped counts read them: absent is the empty segment a harness cell carries.
         *pending
             .entry((
                 job.test_case_slug,
@@ -1706,6 +2412,8 @@ async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
                 job.variant,
                 job.harness_slug,
                 job.model_id,
+                job.gg_preset.unwrap_or_default(),
+                job.gg_models.unwrap_or_default(),
             ))
             .or_insert(0) += 1;
     }
@@ -1733,7 +2441,7 @@ async fn harness_capacity(
         .into_iter()
         .map(|row| (row.harness_slug, row.max_parallelism))
         .collect();
-    Ok(HarnessSlug::ALL
+    Ok(HarnessSlug::RUNNABLE
         .iter()
         .map(|slug| HarnessCapacity {
             in_flight: in_flight.get(slug.as_str()).copied().unwrap_or(0),
@@ -1748,14 +2456,16 @@ async fn harness_capacity(
 
 /// The lane a harness occupies in the capacity slice the top-up scheduler walks.
 ///
-/// [`HarnessSlug::ALL`] is exhaustive, so the position always resolves; the fallback
-/// only keeps the lookup total, and lands past the end of the slice — which the
+/// [`HarnessSlug::RUNNABLE`] rather than the CLI catalog, because what a lane bounds is how
+/// many runs of a harness the queue will start at once and gg's runs occupy the queue like
+/// any other — today they are most of it. It is exhaustive, so the position always resolves;
+/// the fallback only keeps the lookup total, and lands past the end of the slice — which the
 /// scheduler reads as an uncapped harness rather than as some other harness's lane.
 fn harness_lane(harness: HarnessSlug) -> usize {
-    HarnessSlug::ALL
+    HarnessSlug::RUNNABLE
         .iter()
         .position(|slug| *slug == harness)
-        .unwrap_or(HarnessSlug::ALL.len())
+        .unwrap_or(HarnessSlug::RUNNABLE.len())
 }
 
 // ---- Shared top-up enqueue + queue assembly --------------------------------
@@ -1767,10 +2477,48 @@ pub(super) struct TopUpCell<'a> {
     pub rung_id: Option<String>,
     /// The case, at its pinned version.
     pub case: &'a ReviewPlanCase,
-    /// The combination to run it on.
-    pub combo: &'a ReviewPlanCombo,
+    /// The resolved member to run it on.
+    pub member: &'a PlanMember,
     /// How many runs to enqueue — the cell's whole shortfall.
     pub runs: u32,
+}
+
+/// What one call to [`enqueue_top_up`] did: the cells it turned into jobs, and the cells it
+/// could not.
+///
+/// The two come back together because a top-up routinely does both, and a caller assembling
+/// its report needs them in the same emission order it handed the cells over in.
+pub(super) struct TopUpEnqueued {
+    /// The cells that became jobs, in emission order.
+    pub launched: Vec<TopUpLaunch>,
+    /// The cells that could not, each with its reason.
+    pub blocked: Vec<TopUpBlocked>,
+}
+
+/// One cell reported as unlaunchable: the case, the member, and why.
+///
+/// Shared by the two places a cell is found to be unlaunchable — when its member failed to
+/// resolve at all, and when its models could not be resolved at enqueue — so both name the
+/// member the same way.
+pub(super) fn blocked_cell(
+    rung_id: Option<String>,
+    case: &ReviewPlanCase,
+    member: &PlanMember,
+    reason: String,
+) -> TopUpBlocked {
+    TopUpBlocked {
+        rung_id,
+        slug: case.slug.clone(),
+        version: case.version.clone(),
+        variant: case.variant.clone(),
+        harness: member.combo.harness,
+        model: member.combo.model.clone(),
+        provider: member.combo.provider.clone(),
+        gg_config_id: member.combo.gg_config_id.clone(),
+        gg_config_name: member.combo.gg_config_name.clone(),
+        gg_slot_models: member.combo.gg_slot_models.clone(),
+        reason,
+    }
 }
 
 /// Enqueue a top-up's decided cells, attributing every job to the launching account
@@ -1782,6 +2530,14 @@ pub(super) struct TopUpCell<'a> {
 /// and therefore finish — together, which is what makes them reviewable against each
 /// other.
 ///
+/// A **gg** cell is lowered through the very code `POST /gg/runs` lowers a launch form's
+/// submission with ([`super::gg::gg_launch_body`]) and priced and resolved the same way, so
+/// a run a plan schedules from a configuration and a run an operator launches from the same
+/// configuration and the same models are the same run. A model whose context window the
+/// catalog cannot resolve makes that one cell unlaunchable and is reported: gg assumes no
+/// default window, and refusing the whole top-up would let one bad binding stop a plan being
+/// fed.
+///
 /// `origin` is what a later scoped [`halt_jobs`] cancels by; without it a halt could
 /// not tell this plan's queued runs from a run someone kicked off by hand.
 pub(super) async fn enqueue_top_up(
@@ -1789,55 +2545,92 @@ pub(super) async fn enqueue_top_up(
     user: &AuthUser,
     origin: &JobOrigin,
     cells: &[TopUpCell<'_>],
-) -> Result<Vec<TopUpLaunch>, ApiError> {
+) -> Result<TopUpEnqueued, ApiError> {
     let now = now()?;
+    let attribution = super::jobs::JobAttribution::scheduled(&user.0.id, origin);
     let mut jobs: Vec<crate::db::NewJob> = Vec::new();
     let mut launched: Vec<TopUpLaunch> = Vec::with_capacity(cells.len());
-    // Every model the top-up binds, so their prices can be seeded at enqueue exactly
-    // as `POST /jobs` seeds a by-hand launch's.
+    let mut blocked: Vec<TopUpBlocked> = Vec::new();
+    // Every model the harness cells bind, so their prices can be seeded at enqueue exactly
+    // as `POST /jobs` seeds a by-hand launch's — once for the batch, below. A gg cell's are
+    // seeded as it is lowered instead, because its window resolution needs them on record
+    // first.
     let mut models: Vec<(String, HarnessSlug)> = Vec::new();
     for cell in cells {
         if cell.runs == 0 {
             continue;
         }
-        let launch_model = test_cabinet_core::model_id::launch_model_id(
-            &cell.combo.model,
-            cell.combo.harness,
-            cell.combo.provider.as_deref(),
-        );
-        if !models
-            .iter()
-            .any(|(known, harness)| *known == launch_model && *harness == cell.combo.harness)
-        {
-            models.push((launch_model.clone(), cell.combo.harness));
+        if let Some(reason) = &cell.member.unlaunchable {
+            // The scheduler is handed a demand of zero for a member nothing can launch, so
+            // this is only reached by a caller that assembled its cells some other way — and
+            // a job enqueued for a member that never resolved is worse than a report of it.
+            blocked.push(cell.blocked(reason.clone()));
+            continue;
         }
-        // A plan pins no orchestrator, runtime, or auth mode, so the request is the
-        // console's default new-run shape: the one-shot orchestrator and the
-        // backend's default retry policy.
-        let body = test_cabinet_core::LaunchBody {
-            test_case: cell.case.slug.clone(),
-            version: cell.case.version.clone(),
-            variant: cell.case.variant.clone(),
-            harness: cell.combo.harness,
-            model: launch_model.clone(),
-            orchestrator: None,
-            // A plan pins no engine either, so the run gets the `none` default —
-            // the engineless build every plan scheduled before engines existed.
-            engine: None,
-            max_runtime_seconds: None,
-            auth_mode: None,
-            retry_count: None,
-            // A plan schedules conventional third-party-harness runs. A gg run is
-            // configured by a capability set submitted through gg's own surface
-            // (`POST /gg/runs`), which no top-up goes through, so the gg fields are
-            // left exactly as a non-gg launch leaves them: no set, and none of the
-            // per-model catalog facts a set's bindings would need resolving.
-            gg_capability_set: None,
-            gg_model_windows: Default::default(),
-            gg_model_modalities: Default::default(),
+        let mut body = match &cell.member.gg {
+            Some(gg) => super::gg::gg_launch_body(
+                super::gg::GgLaunchSubject {
+                    test_case: cell.case.slug.clone(),
+                    version: cell.case.version.clone(),
+                    variant: cell.case.variant.clone(),
+                    // A plan pins no engine, no runtime ceiling, and no retry policy, so a
+                    // scheduled gg run takes exactly the defaults its harness runs take.
+                    engine: None,
+                    max_runtime_seconds: None,
+                    retry_count: None,
+                },
+                super::gg::GgLaunchIdentity {
+                    capability_set: gg.capability_set.clone(),
+                    model: cell.member.launch_model.clone(),
+                },
+            ),
+            // A plan pins no orchestrator, runtime, or auth mode, so the request is the
+            // console's default new-run shape: the one-shot orchestrator and the
+            // backend's default retry policy.
+            None => test_cabinet_core::LaunchBody {
+                test_case: cell.case.slug.clone(),
+                version: cell.case.version.clone(),
+                variant: cell.case.variant.clone(),
+                harness: cell.member.combo.harness,
+                model: cell.member.launch_model.clone(),
+                orchestrator: None,
+                // A plan pins no engine either, so the run gets the `none` default —
+                // the engineless build every plan scheduled before engines existed.
+                engine: None,
+                max_runtime_seconds: None,
+                auth_mode: None,
+                retry_count: None,
+                // A harness member configures no capability set, and none of the
+                // per-model catalog facts a set's bindings would need resolving.
+                gg_capability_set: None,
+                gg_model_windows: Default::default(),
+                gg_model_modalities: Default::default(),
+            },
         };
-        let request_json = serde_json::to_string(&body)
-            .map_err(|e| ApiError::internal(format!("serializing launch request: {e}")))?;
+        match cell.member.gg.as_ref().map(|gg| gg.model_facts.clone()) {
+            // The facts a caller about to launch resolved for this member up front (see
+            // [`resolve_gg_launch_facts`]) — the same figures a second resolution would
+            // produce, minus a round-trip per cell.
+            Some(Some(facts)) => facts.apply(&mut body),
+            // A gg cell whose member was never put through that pass: resolve here rather
+            // than enqueue a run with no windows on it, which gg would have no way to
+            // measure. It blocks its own cell and never the whole top-up.
+            Some(None) => {
+                crate::bootstrap::seed_launch_prices(
+                    &state.db,
+                    &state.prices,
+                    &super::jobs::launch_models(&body),
+                )
+                .await;
+                if let Err(reason) =
+                    super::jobs::resolve_gg_model_facts(&state.db, &state.prices, &mut body).await
+                {
+                    blocked.push(cell.blocked(reason));
+                    continue;
+                }
+            }
+            None => {}
+        }
         // The case's type is lifted onto the job so the queue can serialize the run
         // types that must not overlap (a game jam per model). A version that is not
         // ingested falls back to the default type rather than failing the top-up:
@@ -1849,53 +2642,65 @@ pub(super) async fn enqueue_top_up(
             .map(|manifest| manifest.test_type)
             .unwrap_or_default();
 
-        let mut job_ids = Vec::with_capacity(cell.runs as usize);
+        // Built through the very same builder `POST /jobs` and `POST /gg/runs` mint their
+        // jobs with, so a scheduled run and a hand-launched one are validated identically
+        // and lift the same columns — the gg cell identity included. A body it refuses
+        // blocks its own cell rather than the whole top-up.
+        let mut cell_jobs: Vec<crate::db::NewJob> = Vec::with_capacity(cell.runs as usize);
+        let mut defect: Option<String> = None;
         for _ in 0..cell.runs {
-            let id = new_id();
-            job_ids.push(id.clone());
-            jobs.push(crate::db::NewJob {
-                id,
-                request_json: request_json.clone(),
-                test_case_slug: cell.case.slug.clone(),
-                test_case_version: cell.case.version.clone(),
-                variant: cell.case.variant.clone(),
-                test_type: test_type.as_str().to_string(),
-                harness_slug: cell.combo.harness.as_str().to_string(),
-                model_id: launch_model.clone(),
-                // The launch body above binds no capability set, so there is no gg
-                // configuration to lift into its own column — `NULL`, as it is for
-                // every third-party-harness job.
-                gg_config_json: None,
-                job_token: new_id(),
-                // A top-up's runs are initial attempts; the backend re-enqueues its
-                // own automatic retries with an incremented `attempt`.
-                attempt: 0,
-                user_id: Some(user.0.id.clone()),
-                origin: Some(origin.clone()),
-                created_at: now.clone(),
-            });
+            match super::jobs::build_new_job(&body, test_type, &now, &attribution) {
+                Ok(job) => cell_jobs.push(job),
+                Err(reason) => {
+                    defect = Some(reason);
+                    break;
+                }
+            }
         }
+        if let Some(reason) = defect {
+            blocked.push(cell.blocked(reason));
+            continue;
+        }
+        if cell.member.gg.is_none() {
+            for model in super::jobs::launch_models(&body) {
+                if !models.contains(&model) {
+                    models.push(model);
+                }
+            }
+        }
+        let job_ids: Vec<String> = cell_jobs.iter().map(|job| job.id.clone()).collect();
+        jobs.extend(cell_jobs);
         launched.push(TopUpLaunch {
             rung_id: cell.rung_id.clone(),
             slug: cell.case.slug.clone(),
             version: cell.case.version.clone(),
             variant: cell.case.variant.clone(),
-            harness: cell.combo.harness,
-            model: cell.combo.model.clone(),
-            provider: cell.combo.provider.clone(),
+            harness: cell.member.combo.harness,
+            model: cell.member.combo.model.clone(),
+            provider: cell.member.combo.provider.clone(),
+            gg_config_id: cell.member.combo.gg_config_id.clone(),
+            gg_config_name: cell.member.combo.gg_config_name.clone(),
+            gg_slot_models: cell.member.combo.gg_slot_models.clone(),
             runs: cell.runs,
             job_ids,
         });
     }
     if jobs.is_empty() {
-        return Ok(launched);
+        return Ok(TopUpEnqueued { launched, blocked });
     }
-    // Price the batch's models before the runs exist. Missing-only and best-effort:
+    // Price the harness cells' models before the runs exist. Missing-only and best-effort:
     // a model already on record costs nothing, and an unpriced model costs a cost
     // split, never the top-up.
     crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &models).await;
     state.db.enqueue_jobs(jobs).await.map_err(ApiError::from)?;
-    Ok(launched)
+    Ok(TopUpEnqueued { launched, blocked })
+}
+
+impl TopUpCell<'_> {
+    /// This cell, reported as one the top-up could not launch.
+    fn blocked(&self, reason: String) -> TopUpBlocked {
+        blocked_cell(self.rung_id.clone(), self.case, self.member, reason)
+    }
 }
 
 /// One cell of a scoped review queue, with the authoritative count of how many of its
@@ -1905,8 +2710,8 @@ pub(super) struct QueueCell<'a> {
     pub rung_id: Option<String>,
     /// The case, at its pinned version.
     pub case: &'a ReviewPlanCase,
-    /// The combination.
-    pub combo: &'a ReviewPlanCombo,
+    /// The resolved member.
+    pub member: &'a PlanMember,
     /// How many of the cell's completed runs the requester has not reviewed.
     pub unreviewed: u32,
 }
@@ -1938,16 +2743,11 @@ pub(super) async fn collect_queue(
             truncated = true;
             break;
         }
-        let launch_model = test_cabinet_core::model_id::launch_model_id(
-            &cell.combo.model,
-            cell.combo.harness,
-            cell.combo.provider.as_deref(),
-        );
         let filter = SummaryFilter {
             state: SummaryState::Review,
             test_case: Some(cell.case.slug.clone()),
-            model: Some(launch_model),
-            harness: Some(cell.combo.harness.as_str().to_string()),
+            model: Some(cell.member.launch_model.clone()),
+            harness: Some(cell.member.combo.harness.as_str().to_string()),
             variant: Some(cell.case.variant.clone()),
             version: Some(cell.case.version.clone()),
             ..SummaryFilter::default()
@@ -1966,6 +2766,12 @@ pub(super) async fn collect_queue(
             .map_err(ApiError::from)?;
         let mut mine: Vec<CoverageQueueEntry> = found
             .into_iter()
+            // The listing filters on the columns it has — case, version, variant, harness,
+            // and launched model — which for a gg cell is every gg run of that root model,
+            // configuration and subagent models included. The remaining two segments of the
+            // cell are read off each run's own capability set, so one configuration's runs
+            // never appear in another's queue.
+            .filter(|run| in_gg_cell(&run.record, cell.member))
             .filter(|run| {
                 !run.reviews
                     .iter()
@@ -1979,6 +2785,12 @@ pub(super) async fn collect_queue(
                 variant: run.record.subject.variant.clone(),
                 harness: run.record.subject.harness_slug,
                 model: run.record.subject.model_id.clone(),
+                // Off the member rather than off the run: the run records the set it ran,
+                // which is the same cell by construction (`in_gg_cell` has just proved it),
+                // and the member is the thing the rest of the page labels.
+                gg_config_id: cell.member.combo.gg_config_id.clone(),
+                gg_config_name: cell.member.combo.gg_config_name.clone(),
+                gg_slot_models: cell.member.combo.gg_slot_models.clone(),
                 finished_at: run.record.finished_at.clone(),
             })
             .collect();
@@ -1992,6 +2804,21 @@ pub(super) async fn collect_queue(
         }
     }
     Ok(CoverageQueue { runs, truncated })
+}
+
+/// Whether one completed run belongs to a member's cell on the two segments a run listing
+/// cannot filter on: the gg configuration's name and the models its set bound.
+///
+/// Trivially true for a harness member, whose cell those segments are empty for — and true
+/// for nothing at all on a member that never resolved, which has no cell for a run to be in.
+fn in_gg_cell(record: &test_cabinet_core::RunRecord, member: &PlanMember) -> bool {
+    let Some(gg) = &member.gg else {
+        return member.unlaunchable.is_none();
+    };
+    let Some(set) = record.subject.gg_capability_set.as_ref() else {
+        return false;
+    };
+    set.preset.as_deref() == Some(gg.preset.as_str()) && set.bound_model_key() == gg.models
 }
 
 // ---- Small constructors ---------------------------------------------------
@@ -2023,11 +2850,47 @@ pub(super) fn clamp_buffer_target(target: u32) -> u32 {
     target.min(MAX_BUFFER_TARGET)
 }
 
+/// The members as they are **stored** — every gg member stripped of the values a read
+/// derives (see [`ReviewPlanCombo::for_storage`]).
+///
+/// Applied at each of the three places a member list is persisted, rather than in the store,
+/// so that what a handler hands the store is already the row: a normalization the store
+/// performed would be one the handler's own response never showed.
+pub(super) fn for_storage(combos: Vec<ReviewPlanCombo>) -> Vec<ReviewPlanCombo> {
+    combos.iter().map(ReviewPlanCombo::for_storage).collect()
+}
+
+/// The members as a **read** returns them: a gg member's `model` and `gg_config_name` filled
+/// in from the configuration it names.
+///
+/// The pointer is what is stored, so every read of a member list resolves it — which is what
+/// makes a renamed configuration show its new name everywhere at once, and a client that has
+/// never fetched `/gg/configs` still able to render a member.
+pub(super) fn for_read(combos: &[ReviewPlanCombo], library: &GgLibrary) -> Vec<ReviewPlanCombo> {
+    combos
+        .iter()
+        .map(|combo| resolve_member(combo, library).combo)
+        .collect()
+}
+
+/// The [library](GgLibrary) a read needs to fill in [`for_read`], or an empty one when the
+/// members hold no gg member at all — the common case, which must not pay for the load.
+pub(super) async fn read_gg_library<'a>(
+    state: &AppState,
+    user_id: &str,
+    combos: impl IntoIterator<Item = &'a ReviewPlanCombo>,
+) -> Result<GgLibrary, ApiError> {
+    if !combos.into_iter().any(|c| c.gg_config_ref().is_some()) {
+        return Ok(GgLibrary::default());
+    }
+    gg_library(state, user_id).await
+}
+
 /// Build a stored group from a create/update body, keeping only the members that
 /// match the declared kind.
 fn group_from_input(id: String, input: CoverageGroupInput, updated_at: &str) -> CoverageGroup {
     let (combos, cases) = match input.kind {
-        CoverageGroupKind::Combo => (input.combos, Vec::new()),
+        CoverageGroupKind::Combo => (for_storage(input.combos), Vec::new()),
         CoverageGroupKind::Case => (Vec::new(), input.cases),
     };
     CoverageGroup {
@@ -2055,7 +2918,7 @@ fn plan_from_input(
             runs_per_cell: clamp_runs_per_cell(input.runs_per_cell),
             combo_group_ids: input.combo_group_ids,
             case_group_ids: input.case_group_ids,
-            combos: input.combos,
+            combos: for_storage(input.combos),
             cases: input.cases,
             updated_at: updated_at.to_string(),
         },
@@ -2073,6 +2936,7 @@ impl TopUpResult {
             outstanding: None,
             enqueued: 0,
             cells: Vec::new(),
+            unlaunchable: Vec::new(),
         }
     }
 }
@@ -2080,3 +2944,7 @@ impl TopUpResult {
 #[cfg(test)]
 #[path = "coverage.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "coverage.gg.test.rs"]
+mod gg_tests;

@@ -48,6 +48,27 @@ pub struct Model {
     /// to `model_id` wherever this column is consulted.
     #[sea_orm(nullable)]
     pub gg_preset: Option<String>,
+    /// The models the run's gg capability set binds, sorted, de-duplicated, and
+    /// comma-joined, lifted from `record.subject.gg_capability_set` beside
+    /// [`gg_preset`](Self::gg_preset).
+    ///
+    /// It is the second half of a gg run's cell identity. The configuration's name
+    /// says *what* was run and this says *on what*: one configuration can bind a
+    /// different model to every agent, so two runs of one configuration that differ
+    /// only on a subagent's model are two arms, and a cell reading `model_id` alone
+    /// — the representative primary-slot binding — would merge them. It names which
+    /// agent runs which model rather than the bare set, because two arms that swap
+    /// two models between two agents bind the same set. Stored as one sorted, joined
+    /// string so the coverage counts can group on it in SQL and so the order the set
+    /// happened to list its agents in cannot split a cell.
+    ///
+    /// `NULL` for every non-gg run, which reads as the empty segment — the harness
+    /// form of the cell key. A gg row written before the column existed is filled by
+    /// its own startup backfill (`Db::backfill_gg_models`) and **not** by the one that
+    /// maintains the other lifted sort columns: that pass only claims rows whose
+    /// `test_type` is still empty, which no gg row has ever been.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub gg_models: Option<String>,
     /// The run's test type, lifted from `record.subject.test_type` as its
     /// kebab-case wire token (`end-to-end`, `asset-generation`, …). Lets the
     /// console listing filter/sort by category without parsing the record blob.

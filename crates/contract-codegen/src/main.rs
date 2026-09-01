@@ -632,7 +632,7 @@ fn main() -> Result<()> {
                 bapi::CoveragePlanSummary,
                 bapi::CoverageCell, bapi::CoverageMatrix,
                 bapi::CoverageSettings, bapi::CoverageSettingsInput,
-                bapi::TopUpSkipped, bapi::TopUpLaunch, bapi::TopUpResult,
+                bapi::TopUpSkipped, bapi::TopUpLaunch, bapi::TopUpBlocked, bapi::TopUpResult,
                 bapi::CoverageQueueEntry, bapi::CoverageQueue,
                 bapi::PauseInput, bapi::HaltResult,
             ],

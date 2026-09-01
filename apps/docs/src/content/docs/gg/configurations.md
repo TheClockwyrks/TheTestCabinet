@@ -36,6 +36,19 @@ test.
 A configuration names no test case, and it does not have to name the models it
 runs on.
 
+### Renaming one
+
+A configuration's name identifies its
+[coverage cells](/components/backend/coverage/#what-identifies-a-gg-cell) and its
+ladder climbers, because the name is what a run records. Renaming one therefore
+re-points every cell built on it: the runs recorded so far stay under the old
+name, the cells and climbers read as empty, and the next top-up buys those runs
+again.
+
+Rename a configuration when its recorded history belongs to the old name, such as
+an arm being retired or a typo caught before the first run. The console confirms a
+rename before saving it and says what it costs.
+
 ### Run limits
 
 The Configuration tab carries the [execution ceilings](/gg/execution-limits/)
@@ -438,6 +451,11 @@ mode:
   pinned itself never appears here.
 - The submission goes to gg's own enqueue endpoint (`POST /gg/runs`) with the
   resolved capability set rather than the flat launch body.
+
+A configuration is also launched on a schedule rather than by hand. A
+[coverage plan or ladder](/components/backend/coverage/#combinations) takes a
+configuration and a model per launch slot as one of its members, and its top-up
+enqueues the same run this form does.
 
 A launch refuses a capability set carrying any value gg cannot honour exactly as
 written, and names every one of them at once, so a single pass over the

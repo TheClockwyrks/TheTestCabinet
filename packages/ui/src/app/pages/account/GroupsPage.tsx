@@ -13,10 +13,11 @@ import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
-// The Groups tab (`/account/groups`): the reusable model groups (sets of harness/
-// model combinations) and case groups (sets of version-pinned cases) that coverage
-// plans reference as pointers. Editing a group reshapes every plan that references
-// it. Console-only; gated on a signed-in account.
+// The Groups tab (`/account/groups`): the reusable combination groups (sets of
+// combinations, each a harness and its model or a gg configuration and the models it
+// binds) and case groups (sets of version-pinned cases) that coverage plans reference
+// as pointers. Editing a group reshapes every plan that references it. Console-only;
+// gated on a signed-in account.
 export function GroupsPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
@@ -89,7 +90,7 @@ export function GroupsPage() {
       <PageLayout>
         <PromptHeader
           command="--groups"
-          comment={<>// reusable model &amp; case groups</>}
+          comment={<>// reusable combination &amp; case groups</>}
         />
         <AccountTabs active="groups" />
         <p className={`${exec.notice} ${exec.warn}`}>
@@ -99,7 +100,7 @@ export function GroupsPage() {
     );
   }
 
-  const modelGroups = groups?.filter((g) => g.kind === "combo") ?? [];
+  const comboGroups = groups?.filter((g) => g.kind === "combo") ?? [];
   const caseGroups = groups?.filter((g) => g.kind === "case") ?? [];
 
   const renderGroup = (group: CoverageGroup) => {
@@ -137,7 +138,7 @@ export function GroupsPage() {
     <PageLayout>
       <PromptHeader
         command="--groups"
-        comment={<>// reusable model &amp; case groups</>}
+        comment={<>// reusable combination &amp; case groups</>}
         titleActions={
           <Link className={exec.primary} to={routes.accountGroupNew()}>
             + New group
@@ -153,9 +154,10 @@ export function GroupsPage() {
       ) : (groups?.length ?? 0) === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.empty}>
-            You have no groups yet. Create a model group (a reusable set of
-            harness/model combinations) or a case group (a reusable set of
-            version-pinned cases), then reference them from your coverage plans.
+            You have no groups yet. Create a combination group (a reusable set
+            of harnesses with their models and gg configurations with the models
+            they bind) or a case group (a reusable set of version-pinned cases),
+            then reference them from your coverage plans.
           </p>
           <Link className={exec.primary} to={routes.accountGroupNew()}>
             Create your first group
@@ -163,11 +165,11 @@ export function GroupsPage() {
         </div>
       ) : (
         <>
-          <p className={exec.sectionLabel}>Model groups</p>
-          {modelGroups.length === 0 ? (
-            <p className={styles.empty}>No model groups yet.</p>
+          <p className={exec.sectionLabel}>Combination groups</p>
+          {comboGroups.length === 0 ? (
+            <p className={styles.empty}>No combination groups yet.</p>
           ) : (
-            <div className={styles.list}>{modelGroups.map(renderGroup)}</div>
+            <div className={styles.list}>{comboGroups.map(renderGroup)}</div>
           )}
 
           <p className={exec.sectionLabel}>Case groups</p>

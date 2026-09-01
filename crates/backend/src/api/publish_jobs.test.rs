@@ -131,6 +131,7 @@ fn run_summary_lifts_the_runs_display_identity() {
         harness_version: None,
         model_id: "claude-opus-4".to_string(),
         gg_preset: None,
+        gg_models: None,
         test_type: "end-to-end".to_string(),
         run_state: "completed".to_string(),
         run_time_seconds: 12.0,

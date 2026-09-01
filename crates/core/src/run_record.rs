@@ -71,11 +71,12 @@ impl HarnessSlug {
     /// These are the harnesses that ship a `harnesses/<slug>/harness.toml`
     /// manifest, install a CLI into the run container, and are shelled out to. It
     /// is what the registry, the `harnesses/` directory guard, the `tcab
-    /// harnesses` listing, desktop harness-auth, and the harness-config API all
-    /// enumerate. [`Gg`](HarnessSlug::Gg) is **not** here on purpose — it is the
+    /// harnesses` listing, and desktop harness-auth all enumerate. [`Gg`](HarnessSlug::Gg) is **not** here on purpose — it is the
     /// first-party in-container executor, invoked directly and registered on its
     /// own path (see [`crate::harness_registry`]); a wire slug that must resolve to
-    /// *any* variant, gg included, goes through [`from_wire`](HarnessSlug::from_wire).
+    /// *any* variant, gg included, goes through [`from_wire`](HarnessSlug::from_wire),
+    /// and a surface that enumerates every harness a *run* can be queued for takes
+    /// [`RUNNABLE`](HarnessSlug::RUNNABLE).
     pub const ALL: [HarnessSlug; 8] = [
         HarnessSlug::Claude,
         HarnessSlug::Codex,
@@ -87,17 +88,40 @@ impl HarnessSlug {
         HarnessSlug::Pi,
     ];
 
+    /// Every harness a run can be **queued for**: the [CLI catalog](HarnessSlug::ALL)
+    /// in catalog order, then [`Gg`](HarnessSlug::Gg).
+    ///
+    /// The distinction from `ALL` is *ships a CLI* versus *occupies the queue*. gg ships
+    /// no manifest and installs no CLI, so it is rightly absent from the catalog — but its
+    /// runs take a queue slot exactly as a third-party harness's do, and today they are
+    /// most of the queue. So the surfaces that reason about runs in flight rather than
+    /// about installed CLIs enumerate this list instead: the queue's per-harness
+    /// parallelism caps and the coverage scheduler's capacity lanes, both of which would
+    /// leave the majority of the queue untunable if they stopped at the catalog.
+    ///
+    /// Derived from `ALL` rather than written out again, so a harness added to the catalog
+    /// becomes queue-tunable without a second edit.
+    pub const RUNNABLE: [HarnessSlug; HarnessSlug::ALL.len() + 1] = {
+        let mut out = [HarnessSlug::Gg; HarnessSlug::ALL.len() + 1];
+        let mut i = 0;
+        while i < HarnessSlug::ALL.len() {
+            out[i] = HarnessSlug::ALL[i];
+            i += 1;
+        }
+        out
+    };
+
     /// Resolve a wire slug into a [`HarnessSlug`], across **every** variant —
-    /// [`ALL`](HarnessSlug::ALL) plus [`Gg`](HarnessSlug::Gg), which ALL omits.
+    /// [`RUNNABLE`](HarnessSlug::RUNNABLE), which is [`ALL`](HarnessSlug::ALL) plus
+    /// [`Gg`](HarnessSlug::Gg).
     ///
     /// Use this wherever a stored or received slug string must round-trip back to
     /// its variant regardless of run mode (for example the backend's model-price
     /// canonicalization); an `ALL`-only lookup would silently misread a `gg` slug.
     /// Returns `None` for an unrecognized value.
     pub fn from_wire(slug: &str) -> Option<HarnessSlug> {
-        HarnessSlug::ALL
+        HarnessSlug::RUNNABLE
             .into_iter()
-            .chain(std::iter::once(HarnessSlug::Gg))
             .find(|h| h.as_str() == slug)
     }
 

@@ -547,6 +547,7 @@ impl Db {
             run::Column::HarnessVersion,
             run::Column::ModelId,
             run::Column::GgPreset,
+            run::Column::GgModels,
             run::Column::TestType,
             run::Column::RunState,
             run::Column::RunTimeSeconds,
@@ -579,6 +580,7 @@ impl Db {
             harness_version: Set(record.subject.harness_version.clone()),
             model_id: Set(record.subject.model_id.clone()),
             gg_preset: Set(lifted.gg_preset),
+            gg_models: Set(lifted.gg_models),
             test_type: Set(lifted.test_type),
             run_state: Set(run_state_str(record.status.state).to_string()),
             run_time_seconds: Set(lifted.run_time_seconds),
@@ -2162,6 +2164,9 @@ struct LiftedRunMetrics {
     /// The gg configuration name the run was launched from, or `None` for a non-gg
     /// run or a gg run assembled without one (see [`lifted_gg_preset`]).
     gg_preset: Option<String>,
+    /// The models the run's gg capability set binds, as one comparable string, or
+    /// `None` for a non-gg run (see [`lifted_gg_models`]).
+    gg_models: Option<String>,
     /// End-to-end wall-clock time in seconds (`record.metrics.run_time_seconds`).
     run_time_seconds: f64,
     /// Total token count across every class — the same sum the UI's `totalTokens`
@@ -2181,6 +2186,7 @@ fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
     LiftedRunMetrics {
         test_type: record.subject.test_type.as_str().to_string(),
         gg_preset: lifted_gg_preset(record),
+        gg_models: lifted_gg_models(record),
         run_time_seconds: record.metrics.run_time_seconds,
         total_tokens: record.metrics.tokens.total().unwrap_or(0) as i64,
         cost_comparable: record.metrics.cost.comparable,
@@ -2224,6 +2230,28 @@ fn lifted_gg_preset(record: &RunRecord) -> Option<String> {
         .gg_capability_set
         .as_ref()
         .and_then(|set| set.preset.clone())
+}
+
+/// The lifted `run.gg_models` column value: the models the run's capability set binds,
+/// sorted, de-duplicated and comma-joined, or `None`.
+///
+/// The other half of a gg run's [cell identity](CellKey), and gated on the **harness**
+/// exactly as [`lifted_gg_preset`] is, so the pair is written and absent together and a
+/// consumer that has tested one need not re-derive the other.
+///
+/// The string is asked of the contract
+/// ([`bound_model_key`](test_cabinet_core::gg::GgCapabilitySet::bound_model_key)) rather
+/// than assembled here, because the enqueue lift writes the same value onto the job and
+/// a cell only counts while a queued run and the run it becomes agree to the byte.
+fn lifted_gg_models(record: &RunRecord) -> Option<String> {
+    if record.subject.harness_slug != HarnessSlug::Gg {
+        return None;
+    }
+    record
+        .subject
+        .gg_capability_set
+        .as_ref()
+        .map(|set| set.bound_model_key())
 }
 
 /// A **legacy** run's functional rating: the aggregate review rating — the worst
@@ -3240,10 +3268,10 @@ impl Db {
     }
 
     /// Count the **completed** runs for every coverage cell whose case slug is in
-    /// `slugs`, in a single grouped query. The result is keyed by cell identity
-    /// `(slug, version, variant, harness, model)`; a cell with no completed runs
-    /// is simply absent. Only evaluable `completed` runs count toward a cell's
-    /// target; the failure tiers do not.
+    /// `slugs`, in a single grouped query. The result is keyed by the cell's
+    /// [`CellKey`] identity; a cell with no completed runs is simply absent. Only
+    /// evaluable `completed` runs count toward a cell's target; the failure tiers do
+    /// not.
     ///
     /// This computes the whole coverage matrix's completed counts at once, so the
     /// `coverage` handler does not fan out into a per-cell `COUNT(*)` — two queries
@@ -3252,13 +3280,15 @@ impl Db {
         if slugs.is_empty() {
             return Ok(CellCounts::new());
         }
-        let rows: Vec<(String, String, String, String, String, i64)> = run::Entity::find()
+        let rows: Vec<CellCountRow> = run::Entity::find()
             .select_only()
             .column(run::Column::TestCaseSlug)
             .column(run::Column::TestCaseVersion)
             .column(run::Column::Variant)
             .column(run::Column::HarnessSlug)
             .column(run::Column::ModelId)
+            .column(run::Column::GgPreset)
+            .column(run::Column::GgModels)
             .column_as(run::Column::Id.count(), "cnt")
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
@@ -3267,6 +3297,8 @@ impl Db {
             .group_by(run::Column::Variant)
             .group_by(run::Column::HarnessSlug)
             .group_by(run::Column::ModelId)
+            .group_by(run::Column::GgPreset)
+            .group_by(run::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
             .await?;
@@ -3284,13 +3316,15 @@ impl Db {
         if slugs.is_empty() {
             return Ok(CellCounts::new());
         }
-        let rows: Vec<(String, String, String, String, String, i64)> = job::Entity::find()
+        let rows: Vec<CellCountRow> = job::Entity::find()
             .select_only()
             .column(job::Column::TestCaseSlug)
             .column(job::Column::TestCaseVersion)
             .column(job::Column::Variant)
             .column(job::Column::HarnessSlug)
             .column(job::Column::ModelId)
+            .column(job::Column::GgPreset)
+            .column(job::Column::GgModels)
             .column_as(job::Column::Id.count(), "cnt")
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
             .filter(job::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
@@ -3299,6 +3333,8 @@ impl Db {
             .group_by(job::Column::Variant)
             .group_by(job::Column::HarnessSlug)
             .group_by(job::Column::ModelId)
+            .group_by(job::Column::GgPreset)
+            .group_by(job::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
             .await?;
@@ -3340,6 +3376,8 @@ impl Db {
             .column(run::Column::Variant)
             .column(run::Column::HarnessSlug)
             .column(run::Column::ModelId)
+            .column(run::Column::GgPreset)
+            .column(run::Column::GgModels)
             .column_as(run::Column::Id.count(), "cnt")
             // Left-join *this account's* review and keep the rows that found none.
             // Narrowing on the join rather than in the `WHERE` is what makes it "no
@@ -3363,12 +3401,14 @@ impl Db {
         if exclude_unloaded {
             query = query.filter(run::Column::Loaded.eq(true));
         }
-        let rows: Vec<(String, String, String, String, String, i64)> = query
+        let rows: Vec<CellCountRow> = query
             .group_by(run::Column::TestCaseSlug)
             .group_by(run::Column::TestCaseVersion)
             .group_by(run::Column::Variant)
             .group_by(run::Column::HarnessSlug)
             .group_by(run::Column::ModelId)
+            .group_by(run::Column::GgPreset)
+            .group_by(run::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
             .await?;
@@ -3378,11 +3418,15 @@ impl Db {
     /// The requesting account's own verdict on every completed run of one cell, oldest
     /// first — the evidence a ladder's rung gate is evaluated from.
     ///
-    /// `cell` is the same `(slug, version, variant, harness, launched model)` identity
-    /// the grouped counts are keyed by, so a caller builds it exactly as it builds the
-    /// key it looks a count up with. The model segment is the id the run was
-    /// **launched** with (a provider-routed harness carries an `openrouter/` prefix the
-    /// plan's canonical model omits); matching on anything else silently reads zero.
+    /// `cell` is the same [`CellKey`] the grouped counts are keyed by, so a caller
+    /// builds it exactly as it builds the key it looks a count up with. The model
+    /// segment is the id the run was **launched** with (a provider-routed harness
+    /// carries an `openrouter/` prefix the plan's canonical model omits); matching on
+    /// anything else silently reads zero. The two gg segments are matched through the
+    /// same `COALESCE` the counts collapse with (`cell_gg_segment`), so a harness
+    /// cell's empty pair selects exactly the rows that carry no configuration — a gate
+    /// therefore reads the evidence of the one configuration its climber names, not of
+    /// every gg run of the case.
     ///
     /// Only `completed` runs are returned. A failed or canceled job is an
     /// infrastructure problem that retries (`job.attempt`) and must never be mistaken
@@ -3395,7 +3439,7 @@ impl Db {
         cell: &CellKey,
         reviewer_user_id: &str,
     ) -> Result<Vec<CellRunRating>> {
-        let (slug, version, variant, harness, model) = cell;
+        let (slug, version, variant, harness, model, gg_preset, gg_models) = cell;
         let rows: Vec<(String, bool, Option<String>)> = run::Entity::find()
             .select_only()
             .column(run::Column::Id)
@@ -3421,6 +3465,8 @@ impl Db {
             .filter(run::Column::Variant.eq(variant))
             .filter(run::Column::HarnessSlug.eq(harness))
             .filter(run::Column::ModelId.eq(model))
+            .filter(Expr::expr(cell_gg_segment(run::Column::GgPreset)).eq(gg_preset.as_str()))
+            .filter(Expr::expr(cell_gg_segment(run::Column::GgModels)).eq(gg_models.as_str()))
             .order_by_asc(run::Column::FinishedAt)
             .order_by_asc(run::Column::Id)
             .into_tuple()
@@ -3543,25 +3589,77 @@ fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
     now - held > TOP_UP_LEASE
 }
 
-/// A coverage cell's identity: `(slug, version, variant, harness, model)` — the
-/// key both grouped-count queries return their tallies under.
-pub type CellKey = (String, String, String, String, String);
+/// A coverage cell's identity:
+/// `(slug, version, variant, harness, launch model, gg preset, gg models)` — the key
+/// every grouped-count query returns its tallies under, and the identity a gate reads
+/// its evidence by.
+///
+/// The first five segments identify a **harness** cell, and its last two are empty. A
+/// gg run has no such identity to be counted by: it is launched from a saved
+/// configuration and binds a model per agent, so every gg run of one plan would
+/// otherwise pile into a single `gg/<root model>` cell. The two extra segments are what
+/// separate them:
+///
+/// - the configuration's **name**, because
+///   [counts are global](https://docs.testcabinet.ai/components/backend/coverage/): a run
+///   records the name it was launched from, and keying on the account-scoped id of the
+///   configuration behind it would make a gg cell's count per-account instead;
+/// - the **models the bound set runs on**, because one configuration can run several.
+///   Two members that agree on the root agent's model and differ on a reviewer's are two
+///   arms of a study, and a cell reading only the root model would merge them.
+pub type CellKey = (String, String, String, String, String, String, String);
 
 /// Per-cell counts from a grouped coverage query, keyed by [`CellKey`].
 pub type CellCounts = HashMap<CellKey, u32>;
 
-/// Fold the `(slug, version, variant, harness, model, count)` rows a grouped
-/// coverage query returns into a [`CellCounts`] map. The count is a SQL
-/// `COUNT(*)` so it is non-negative; the clamp is defensive.
-fn cell_counts(rows: Vec<(String, String, String, String, String, i64)>) -> CellCounts {
-    rows.into_iter()
-        .map(|(slug, version, variant, harness, model, count)| {
-            (
-                (slug, version, variant, harness, model),
-                count.max(0) as u32,
-            )
-        })
-        .collect()
+/// Fold the `(slug, version, variant, harness, model, gg preset, gg models, count)`
+/// rows a grouped coverage query returns into a [`CellCounts`] map, reading the two
+/// nullable gg columns as the empty string a harness cell carries.
+///
+/// Tallies are **summed** into the entry rather than assigned to it, because that
+/// collapse is not injective: SQL groups `NULL` and `''` as different values and both
+/// arrive here as the harness form, so a store holding one row of each would otherwise
+/// report only whichever came last. The count is a SQL `COUNT(*)` so it is
+/// non-negative; the clamp is defensive.
+fn cell_counts(rows: Vec<CellCountRow>) -> CellCounts {
+    let mut counts = CellCounts::new();
+    for (slug, version, variant, harness, model, gg_preset, gg_models, count) in rows {
+        *counts
+            .entry((
+                slug,
+                version,
+                variant,
+                harness,
+                model,
+                gg_preset.unwrap_or_default(),
+                gg_models.unwrap_or_default(),
+            ))
+            .or_insert(0) += count.max(0) as u32;
+    }
+    counts
+}
+
+/// One row of a grouped coverage count: a [`CellKey`]'s seven segments (the two gg ones
+/// still nullable, as the columns are) followed by the tally. Named because all three
+/// grouped queries select it and the tuple is otherwise spelled out four times.
+type CellCountRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    i64,
+);
+
+/// One of the nullable gg identity columns as its [`CellKey`] segment:
+/// `COALESCE(col, '')`. Filtering through it makes an equality test on a cell segment
+/// agree with the grouped counts, which collapse the same `NULL` to the same empty
+/// string — a filter written against the bare column would instead match nothing for
+/// every harness cell in the store.
+fn cell_gg_segment(column: run::Column) -> SimpleExpr {
+    Func::coalesce([column.into_expr().into(), Expr::val("").into()]).into()
 }
 
 /// A legacy single-per-account coverage plan awaiting backfill into `coverage_plan`
@@ -3735,26 +3833,53 @@ fn comparison_from_row(row: comparison::Model) -> Result<StoredComparison> {
 
 // ---- Ladders --------------------------------------------------------------
 
-/// The canonical key a ladder identifies one harness+model combination by:
-/// `harness|model|provider`, with an empty trailing segment when the harness is not
-/// provider-routed.
+/// The canonical key a ladder identifies one **climber** by — the text its steering
+/// rows and its recorded verdicts are stored against — in one of two forms, one per
+/// shape a [combination](crate::api::ReviewPlanCombo) takes.
 ///
-/// It encodes exactly the `(harness, model, provider)` triple the coverage resolver
-/// de-dupes members on, so a key built here and a member resolved there are the same
-/// combination by construction. `|` separates because a model id routinely contains
-/// `/` (`anthropic/claude-opus-4.8`) and a separator that can appear inside a segment
-/// is not a separator.
+/// A harness climber is `harness|model|provider`, with an empty trailing segment when
+/// the harness is not provider-routed. That encodes exactly the
+/// `(harness, model, provider)` triple the coverage resolver de-dupes members on, so a
+/// key built here and a member resolved there are the same combination by construction.
+/// `|` separates because a model id routinely contains `/`
+/// (`anthropic/claude-opus-4.8`) and a separator that can appear inside a segment is not
+/// a separator.
 ///
-/// The **canonical** model is used, not the launched one: this key names a member of
-/// the ladder, not a row in the `run` table, and the two differ for provider-routed
-/// harnesses (see [`Db::cell_run_ratings`], which does want the launched id).
+/// A gg climber is `gg:<configuration id>|<slot>=<model>,…`, its bindings in slot order and
+/// in their [canonical](crate::api::ReviewPlanCombo::gg_bindings) form, so a pasted model id
+/// carrying surrounding space is the same climber as the same id typed by hand.
+/// The configuration alone would not do: two climbers running one configuration on
+/// different models are the two arms a ladder exists to separate, so the bindings are
+/// part of the key. They are keyed **per slot** rather than as a bare model list,
+/// because binding the same two models to swapped slots is a different arm again.
+///
+/// **The two forms cannot collide.** The harness form's first segment is a
+/// [`HarnessSlug`], a closed set of lowercase kebab tokens, so no harness climber's key
+/// can begin `gg:` — not even one whose harness *is* gg, which keys as `gg||`.
+///
+/// Nothing parses either form. The key is written, stored, and compared whole, which is
+/// what lets it carry a slot map without a grammar to defend.
+///
+/// The **canonical** model is used in the harness form, not the launched one: this key
+/// names a member of the ladder, not a row in the `run` table, and the two differ for
+/// provider-routed harnesses (see [`Db::cell_run_ratings`], which does want the launched
+/// id).
 pub fn combination_key(combo: &crate::api::ReviewPlanCombo) -> String {
-    format!(
-        "{}|{}|{}",
-        combo.harness.as_str(),
-        combo.model,
-        combo.provider.as_deref().unwrap_or_default()
-    )
+    let Some(config) = combo.gg_config_ref() else {
+        return format!(
+            "{}|{}|{}",
+            combo.harness.as_str(),
+            combo.model,
+            combo.provider.as_deref().unwrap_or_default()
+        );
+    };
+    let bindings = combo
+        .gg_bindings()
+        .iter()
+        .map(|(slot, model)| format!("{slot}={model}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("gg:{config}|{bindings}")
 }
 
 /// A reviewer's ladder as stored: an ordered climb through a series of test cases,
@@ -5192,6 +5317,19 @@ pub struct NewJob {
     /// The **gg** run's capability set serialized to JSON, lifted from the launch
     /// request at enqueue. `None` for every third-party-harness job.
     pub gg_config_json: Option<String>,
+    /// The **gg** run's configuration name, lifted from that same capability set — the
+    /// first half of a queued gg run's [cell identity](CellKey). `None` for every
+    /// third-party-harness job, and for a gg run assembled without a configuration.
+    pub gg_preset: Option<String>,
+    /// The models the **gg** run's capability set binds, as one comparable string — the
+    /// second half of a queued gg run's [cell identity](CellKey). `None` for every
+    /// third-party-harness job.
+    ///
+    /// Lifted into its own column rather than derived per row from `gg_config_json`,
+    /// for the reason `harness_slug` and `model_id` already are: the queue counts a
+    /// cell's in-flight runs in SQL, and a count that must first deserialize a
+    /// capability set per row is not a count the database can do.
+    pub gg_models: Option<String>,
     /// The per-job bearer token the driver authenticates its streaming with.
     pub job_token: String,
     /// Which attempt this job is: `0` for a console launch, `n > 0` for the backend's
@@ -5246,6 +5384,8 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         harness_slug: Set(new.harness_slug),
         model_id: Set(new.model_id),
         gg_config_json: Set(new.gg_config_json),
+        gg_preset: Set(new.gg_preset),
+        gg_models: Set(new.gg_models),
         job_token: Set(new.job_token),
         record_id: Set(None),
         detail: Set(None),
@@ -5303,7 +5443,7 @@ impl Db {
         if jobs.is_empty() {
             return Ok(());
         }
-        // Each row binds ~16 columns; a 1000-row chunk is ~16k parameters, well
+        // Each row binds ~18 columns; a 1000-row chunk is ~18k parameters, well
         // under both SQLite's (32766) and Postgres's (65535) per-statement limits.
         const CHUNK: usize = 1000;
         let txn = self.conn().begin().await?;
@@ -6345,7 +6485,7 @@ impl Db {
 
     /// Backfill the sort/filter columns lifted onto the `run` row after rows
     /// already existed (`test_type`, `run_time_seconds`, `total_tokens`,
-    /// `cost_comparable`, `rating`, `review_count`, `gg_preset`): parse each
+    /// `cost_comparable`, `rating`, `review_count`, `gg_preset`, `gg_models`): parse each
     /// un-backfilled row's record for the record-derived columns and compute
     /// `rating` / `review_count` from its reviews.
     ///
@@ -6353,6 +6493,11 @@ impl Db {
     /// string the migration's default stamped — a value no real run carries, since
     /// every write sets a kebab-case token. A second boot (or a store whose rows
     /// were all written with the columns already populated) therefore does no work.
+    ///
+    /// That candidate rule is also why this is **not** what fills a gg row's cell identity: a
+    /// gg run has always carried a `test_type`, so no gg row is ever a candidate here. The
+    /// pair is filled for those rows by [`Self::backfill_gg_models`] instead; the two columns
+    /// are written here as well only so a row this pass does claim is left complete.
     /// Best-effort per row: a legacy record that no longer deserializes is left for
     /// a later boot (exactly as [`Self::normalize_free_model_ids`] and
     /// `assemble` tolerate such rows). Returns how many rows were filled.
@@ -6405,6 +6550,7 @@ impl Db {
             active.aesthetic = Set(aesthetic);
             active.review_count = Set(review_count);
             active.gg_preset = Set(lifted.gg_preset);
+            active.gg_models = Set(lifted.gg_models);
             active.update(&self.conn()).await?;
             touch_run(&self.conn(), &id).await?;
             backfilled += 1;
@@ -6521,6 +6667,113 @@ impl Db {
                 touch_run(&self.conn(), &id).await?;
                 backfilled += 1;
             }
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the second half of a gg run's [cell identity](CellKey) — `run.gg_models` — for
+    /// the gg rows stored before the column existed, by re-deriving it from each row's own
+    /// recorded capability set.
+    ///
+    /// **This is not covered by [`Self::backfill_sort_columns`]**, and the difference matters
+    /// enough to say twice. That pass selects rows whose `test_type` is still the empty string
+    /// the migration's default stamped, which is how it identifies a row written before *that*
+    /// column existed. Every gg run in a live store was written long after `test_type` shipped,
+    /// so no gg row is ever a candidate there and none would ever be filled.
+    ///
+    /// Left unfilled, the column reads as `NULL`, which every grouped coverage query coalesces
+    /// to the empty string — the **harness** form of the cell key. So the entire gg backlog
+    /// would count toward no gg cell at all: a plan's cells would read zero however many runs
+    /// stood behind them, its top-up would re-buy work that already exists, and a ladder rung
+    /// gated on a configuration would find no evidence in its own history. Coverage counts are
+    /// global precisely so that a run someone already paid for is never re-requested, and that
+    /// promise is only kept if the runs that predate the column are keyed like the ones after
+    /// it.
+    ///
+    /// Idempotent and best-effort per row, exactly as the backfills above are: a gg row whose
+    /// record no longer deserializes, or which records no capability set at all (a run
+    /// assembled by hand), keeps its `NULL` and is simply revisited by a later boot — a bounded
+    /// residue, since a set is what a gg run is launched from. Paged by an `id` cursor for the
+    /// same reason [`Self::backfill_engine_slug`] is: the first boot after the migration visits
+    /// every gg run in the store, each carrying its multi-KB blobs.
+    pub async fn backfill_gg_models(&self) -> Result<usize> {
+        const BATCH: u64 = 256;
+        let mut backfilled = 0usize;
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut query = run::Entity::find()
+                .filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+                .filter(run::Column::GgModels.is_null());
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows = query
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .all(&self.conn())
+                .await?;
+            let Some(last) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.id.clone());
+
+            for row in rows {
+                let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                    continue;
+                };
+                // Asked of the same lift a push writes, so a backfilled row and a freshly
+                // pushed one land in one cell rather than in two that differ by a comma.
+                let Some(models) = lifted_gg_models(&record) else {
+                    continue;
+                };
+                let id = row.id.clone();
+                let mut active = row.into_active_model();
+                active.gg_models = Set(Some(models));
+                // The configuration's name is lifted from the same set and gated on the same
+                // harness, so a row missing one is missing both; fill the pair together rather
+                // than leaving half a cell identity behind.
+                active.gg_preset = Set(lifted_gg_preset(&record));
+                active.update(&self.conn()).await?;
+                touch_run(&self.conn(), &id).await?;
+                backfilled += 1;
+            }
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the same two segments on the gg **jobs still in flight** at the moment the
+    /// columns arrived, re-deriving them from the capability set the job was enqueued with.
+    ///
+    /// A queued gg job with no lifted pair counts toward the harness-shaped cell rather than
+    /// its own, which is the one case where the missing identity does not merely under-count
+    /// but actively over-spends: a plan sees zero runs coming for a cell that already has
+    /// several on the way and enqueues a second set on top of them.
+    ///
+    /// Bounded to the non-terminal states on purpose. A finished job's counts come from the
+    /// `run` row it produced, so rewriting the whole job history would be a large write for a
+    /// number nothing reads; what is left in flight across a deploy is at most the queue's
+    /// depth.
+    pub async fn backfill_in_flight_gg_cells(&self) -> Result<usize> {
+        let rows = job::Entity::find()
+            .filter(job::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+            .filter(job::Column::GgModels.is_null())
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .all(&self.conn())
+            .await?;
+        let mut backfilled = 0usize;
+        for row in rows {
+            let Some(json) = row.gg_config_json.as_deref() else {
+                continue;
+            };
+            let Ok(set) = serde_json::from_str::<test_cabinet_core::gg::GgCapabilitySet>(json)
+            else {
+                continue;
+            };
+            let mut active = row.into_active_model();
+            active.gg_models = Set(Some(set.bound_model_key()));
+            active.gg_preset = Set(set.preset.clone());
+            active.update(&self.conn()).await?;
+            backfilled += 1;
         }
         Ok(backfilled)
     }

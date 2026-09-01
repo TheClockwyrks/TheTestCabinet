@@ -60,8 +60,8 @@ pub use coverage::{
     CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,
     CoverageMatrix, CoveragePlan, CoveragePlanInput, CoveragePlanOut, CoveragePlanSummary,
     CoverageQueue, CoverageQueueEntry, CoverageSchedule, CoverageSettings, CoverageSettingsInput,
-    HaltResult, PauseInput, ReviewPlanCase, ReviewPlanCombo, TopUpLaunch, TopUpResult,
-    TopUpSkipped,
+    HaltResult, PauseInput, ReviewPlanCase, ReviewPlanCombo, TopUpBlocked, TopUpLaunch,
+    TopUpResult, TopUpSkipped,
 };
 pub use gg::GgRunRequest;
 pub use gg_agent::{GgSavedAgent, GgSavedAgentInput};

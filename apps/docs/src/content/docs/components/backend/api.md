@@ -815,13 +815,34 @@ plan's or ladder's *declaration* and its *schedule* (`outerAxis`, `paused`,
 being written separately — an absent `schedule` on a `PUT` means "leave it alone",
 so saving an edited model list can never un-pause a running plan.
 
+### Combinations
+
+Every member list on this surface — a `kind: "combo"` group, a plan's or ladder's
+one-off members, and the body of `POST /ladders/{id}/climbers` — carries the same
+`ReviewPlanCombo`, which takes one of two shapes:
+
+| shape | fields |
+| --- | --- |
+| harness | `harness`, `model`, optional `provider` |
+| gg | `ggConfigId` (`saved:<id>`), `ggSlotModels` (a model per launch slot) |
+
+A member naming a `ggConfigId` is a [gg
+combination](/components/backend/coverage/#combinations) and runs the `gg` harness;
+one without it is a harness combination. The two shapes are unioned into one list
+rather than split across two fields, so a plan crossing both against its cases needs
+no second axis.
+
+Reads add the resolved facts a client would otherwise recompute: the gg
+configuration's current `ggConfigName`, and the `model` its root agent binds to.
+
 ### Groups and plans
 
 - `GET|POST /coverage-groups`, `PUT|DELETE /coverage-groups/{id}` — reusable member
-  groups, each holding either harness+model combinations (`kind: "combo"`) or
-  version-pinned cases (`kind: "case"`). Plans and ladders reference them by id, so
-  editing a group reshapes everything that points at it. A plan that references a
-  deleted group ignores the dangling id at coverage time; there is no cascade.
+  groups, each holding either combinations (`kind: "combo"`) or version-pinned cases
+  (`kind: "case"`). Plans and ladders reference them by id, so editing a group
+  reshapes everything that points at it. A plan that references a deleted group
+  ignores the dangling id at coverage time; there is no cascade. A `combo` member
+  naming a gg configuration the account does not own is refused with `400`.
 - `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
   themselves. Reads return `CoveragePlanOut` (declaration + schedule flattened).
   `runsPerCell` is clamped server-side, because a mistyped target is a mistyped
@@ -833,7 +854,8 @@ so saving an edited model list can never un-pause a running plan.
 - `GET /coverage-plans/{id}/coverage` — the full matrix: one cell per
   `case × combination` **in the plan's own emission order**, with the `outerAxis`
   echoed so a reader knows what that order means, and the `runsPending` /
-  `runsUnreviewed` / `runsOutstanding` / `bufferTarget` roll-ups. Schemas:
+  `runsUnreviewed` / `runsOutstanding` / `bufferTarget` roll-ups. A cell whose
+  combination cannot be launched carries the reason in `unlaunchable`. Schemas:
   [`coverage/coverage-plan.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-plan.schema.json),
   [`coverage/coverage-matrix.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-matrix.schema.json),
   [`coverage/coverage-group.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-group.schema.json).
@@ -857,8 +879,8 @@ running", which is otherwise indistinguishable from a wedged queue.
   the ones already at target (counted **globally**), and enqueue **whole cells**
   until the requester has `bufferTarget` runs outstanding. There is no background
   daemon; this endpoint is what enqueues. It answers with the buffer target in
-  force, the occupancy it observed, and every cell it launched with its job ids, in
-  emission order.
+  force, the occupancy it observed, every cell it launched with its job ids in
+  emission order, and every cell it could not launch with why.
 
   It is **serialized per plan** by a claim on the plan row — two console tabs, or
   one fast double review-submit, would otherwise both observe the same shortfall and
@@ -900,9 +922,9 @@ before calling it and must never make it the default.
 
 A [ladder](/components/backend/ladders/) is a sibling of the coverage plan, not a
 mode of it: an ordered list of **rungs** (one version-pinned case each, addressed by
-a stable opaque id) that harness+model **climbers** ascend until a **gate** stops
-them. It reuses the plan's `kind: "combo"` groups, buffer, top-up, queue, and
-halting verbatim, so only its own endpoints are listed here.
+a stable opaque id) that **climbers** ascend until a **gate** stops them. It reuses
+the plan's `kind: "combo"` groups, buffer, top-up, queue, and halting verbatim, so
+only its own endpoints are listed here.
 
 - `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the declaration: rungs,
   climbers, `runsPerCell`, and the single parameterised `gate` (`floor`,
@@ -922,7 +944,8 @@ halting verbatim, so only its own endpoints are listed here.
   stands on with the gate tally behind that answer, and its verdicts. A **read**:
   verdicts the gate has resolved but nobody has recorded are computed live and
   flagged `recorded: false`, then persisted by the next top-up — a `GET` never
-  advances a climber. Schema:
+  advances a climber. A climber whose combination cannot be launched carries the
+  reason in `unlaunchable`. Schema:
   [`coverage/ladder-progress.schema.json`](https://docs.testcabinet.ai/schema/coverage/ladder-progress.schema.json).
 - `POST /ladders/{id}/rungs/order` — reorder the climb by rung id. The body must be
   a permutation of the ladder's current rungs; adding or dropping one is an edit and
