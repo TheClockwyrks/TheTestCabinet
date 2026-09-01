@@ -458,6 +458,17 @@
   white-space: nowrap;
 }
 
+// Why a cell can never be launched — a gg configuration that has been deleted, a launch
+// slot nothing is bound to, a model with no resolvable context window. It spans the
+// whole row rather than trailing the count: it is a sentence a reviewer has to act on,
+// and the count's notes are sized for two words and clipped.
+.cellBlocked {
+  grid-column: 1 / -1;
+  color: t.$color-negative;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+}
+
 // The cell's "Runs" link: a quiet text control into the runs listing narrowed to
 // this cell — half of the review loop (see the run, review it, come back).
 .cellLink {
@@ -638,6 +649,35 @@
 
   &:focus-visible {
     outline: none;
+  }
+}
+
+// The gg half of the add-row. A gg combination is a configuration plus a model for
+// every launch slot it declares, and a configuration declares as many as it likes —
+// laid out inline they would squeeze each model id below the width it is legible at,
+// and the row would reflow differently for every configuration. So the fields stack.
+.ggAdd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-md;
+  max-width: 32rem;
+  width: 100%;
+}
+
+// The first slot's field: the model picker with its "stage another" button beside it,
+// so the two read as one control over a list rather than as two unrelated inputs.
+.modelStage {
+  display: flex;
+  align-items: stretch;
+  gap: t.$space-sm;
+  width: 100%;
+
+  // The combobox owns the remaining width; the button keeps its own.
+  > :first-child {
+    flex: 1;
+    min-width: 0;
   }
 }
 

@@ -447,6 +447,28 @@ fn gg_is_a_first_class_subject_excluded_from_the_cli_catalog() {
     assert_eq!(HarnessSlug::from_wire("nope"), None);
 }
 
+/// What the queue's per-harness caps and the coverage scheduler's capacity lanes
+/// enumerate: the CLI catalog and gg, which ships no CLI and yet occupies the queue.
+#[test]
+fn the_runnable_harnesses_are_the_catalog_plus_gg() {
+    // Derived from `ALL`, so a harness added to the catalog is queue-tunable without a
+    // second edit — this is what says the derivation actually held.
+    assert_eq!(
+        HarnessSlug::RUNNABLE.to_vec(),
+        HarnessSlug::ALL
+            .into_iter()
+            .chain(std::iter::once(HarnessSlug::Gg))
+            .collect::<Vec<_>>(),
+        "RUNNABLE is the CLI catalog in catalog order, then gg",
+    );
+    // Every variant is queueable: a harness a run can be recorded under but not capped
+    // would be a lane the scheduler could never see.
+    for slug in HarnessSlug::RUNNABLE {
+        assert_eq!(HarnessSlug::from_wire(slug.as_str()), Some(slug));
+    }
+    assert!(HarnessSlug::RUNNABLE.contains(&HarnessSlug::Gg));
+}
+
 #[test]
 fn gg_routes_through_openrouter_consistently() {
     // For Phase 0 gg reaches its model through OpenRouter, so its family and

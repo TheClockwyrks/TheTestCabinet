@@ -102,6 +102,12 @@ The only knob is maximum parallelism: the largest number of runs of a harness
 the Test Cabinet drives at once, or `null` for unlimited. It exists because
 running many instances of some harnesses in parallel is unreliable.
 
+[gg](/gg/overview/) carries the knob too, even though it ships no manifest and
+installs no CLI. Its runs occupy the queue exactly as a third-party harness's do,
+and a [coverage plan](/components/backend/coverage/#harness-parallelism-comes-first)
+reads the cap to decide what to launch first, so leaving gg off the surface would
+leave the majority of the queue untunable.
+
 The backend's queue enforces the limit at claim time. It hands a dispatcher only
 a job whose harness has fewer runs already occupying a slot (`dispatched`,
 `starting`, or `running`) than its limit. A surplus run of that harness is held

@@ -7,29 +7,47 @@
 //! reads plus a latest-version map. The reads themselves are covered in the db
 //! layer's tests; what matters here is that the transport keys into them correctly
 //! and orders the result the way the plan asked for.
+//!
+//! The gg half of a member — resolving a configuration, binding its launch slots, and
+//! what that does to a cell's identity — lives beside this in `coverage.gg.test.rs`.
 
 use super::*;
 
 use crate::coverage::schedule::{HarnessCapacity, top_up};
 
-fn combo(model: &str) -> ReviewPlanCombo {
-    ReviewPlanCombo {
-        harness: HarnessSlug::Claude,
-        model: model.to_string(),
-        provider: None,
-    }
+pub(super) fn combo(model: &str) -> ReviewPlanCombo {
+    combo_on(HarnessSlug::Claude, model)
 }
 
 /// The same, on an explicit harness rather than the default Claude Code.
-fn combo_on(harness: HarnessSlug, model: &str) -> ReviewPlanCombo {
+pub(super) fn combo_on(harness: HarnessSlug, model: &str) -> ReviewPlanCombo {
     ReviewPlanCombo {
         harness,
         model: model.to_string(),
         provider: None,
+        gg_config_id: None,
+        gg_slot_models: BTreeMap::new(),
+        gg_config_name: None,
     }
 }
 
-fn case(slug: &str) -> ReviewPlanCase {
+/// An account with no saved gg configurations — every member in this file is a harness
+/// member, which resolves without consulting them at all.
+pub(super) fn no_configs() -> GgLibrary {
+    GgLibrary::default()
+}
+
+/// One combination resolved into the member the matrix and the top-up actually walk.
+pub(super) fn member(combo: ReviewPlanCombo) -> PlanMember {
+    resolve_member(&combo, &no_configs())
+}
+
+/// The same for a whole list, which is the shape every cell-ordering assertion needs.
+pub(super) fn members(combos: Vec<ReviewPlanCombo>) -> Vec<PlanMember> {
+    combos.into_iter().map(member).collect()
+}
+
+pub(super) fn case(slug: &str) -> ReviewPlanCase {
     ReviewPlanCase {
         slug: slug.to_string(),
         version: "v1.0.0".to_string(),
@@ -37,7 +55,7 @@ fn case(slug: &str) -> ReviewPlanCase {
     }
 }
 
-fn combo_group(id: &str, combos: Vec<ReviewPlanCombo>) -> CoverageGroup {
+pub(super) fn combo_group(id: &str, combos: Vec<ReviewPlanCombo>) -> CoverageGroup {
     CoverageGroup {
         id: id.to_string(),
         name: id.to_string(),
@@ -78,7 +96,7 @@ fn plan(
 }
 
 /// A context whose counts are all empty — every cell reads zero of everything.
-fn empty_ctx() -> MatrixCtx {
+pub(super) fn empty_ctx() -> MatrixCtx {
     MatrixCtx {
         completed: crate::db::CellCounts::new(),
         in_flight: crate::db::CellCounts::new(),
@@ -86,17 +104,25 @@ fn empty_ctx() -> MatrixCtx {
         unreviewed: crate::db::CellCounts::new(),
         // Every harness idle and unthrottled, which is the default deployment and
         // the state in which the top-up walks its cells in plain order.
-        harness_capacity: vec![HarnessCapacity::UNLIMITED; HarnessSlug::ALL.len()],
+        harness_capacity: vec![HarnessCapacity::UNLIMITED; HarnessSlug::RUNNABLE.len()],
         latest_by_slug: HashMap::new(),
     }
 }
 
-/// The cell ordering, rendered as `slug/model` strings so an assertion reads as the
-/// order a reviewer would see.
-fn order(cells: &[(&ReviewPlanCase, &ReviewPlanCombo)]) -> Vec<String> {
+/// The cell ordering, rendered as `slug/member` strings so an assertion reads as the
+/// order a reviewer would see. A gg member reads as its configuration's name, which is
+/// what identifies it — its model is shared with every other member on that model.
+pub(super) fn order(cells: &[(&ReviewPlanCase, &PlanMember)]) -> Vec<String> {
     cells
         .iter()
-        .map(|(case, combo)| format!("{}/{}", case.slug, combo.model))
+        .map(|(case, member)| {
+            let label = member
+                .combo
+                .gg_config_name
+                .clone()
+                .unwrap_or_else(|| member.combo.model.clone());
+            format!("{}/{label}", case.slug)
+        })
         .collect()
 }
 
@@ -113,10 +139,13 @@ fn resolve_dedupes_a_member_shared_by_two_groups() {
     .collect();
     let p = plan(vec!["g1", "g2"], vec!["c1", "c2"], vec![], vec![]);
 
-    let (combos, cases) = resolve_members(&p, &groups);
+    let (combos, cases) = resolve_members(&p, &groups, &no_configs());
     // `sonnet` is in both combo groups; `pong` in both case groups — each once.
     assert_eq!(
-        combos.iter().map(|c| c.model.as_str()).collect::<Vec<_>>(),
+        combos
+            .iter()
+            .map(|c| c.combo.model.as_str())
+            .collect::<Vec<_>>(),
         vec!["opus", "sonnet", "haiku"]
     );
     assert_eq!(
@@ -139,9 +168,12 @@ fn resolve_dedupes_a_one_off_that_repeats_a_group_member() {
         vec![],
     );
 
-    let (combos, _) = resolve_members(&p, &groups);
+    let (combos, _) = resolve_members(&p, &groups, &no_configs());
     assert_eq!(
-        combos.iter().map(|c| c.model.as_str()).collect::<Vec<_>>(),
+        combos
+            .iter()
+            .map(|c| c.combo.model.as_str())
+            .collect::<Vec<_>>(),
         vec!["opus", "sonnet"]
     );
 }
@@ -155,9 +187,9 @@ fn resolve_skips_a_dangling_group_reference() {
     // `gX` no longer names a group (deleted); it is silently skipped, not an error.
     let p = plan(vec!["g1", "gX"], vec!["cX"], vec![], vec![case("pong")]);
 
-    let (combos, cases) = resolve_members(&p, &groups);
+    let (combos, cases) = resolve_members(&p, &groups, &no_configs());
     assert_eq!(combos.len(), 1);
-    assert_eq!(combos[0].model, "opus");
+    assert_eq!(combos[0].combo.model, "opus");
     // The dangling case group contributes nothing; only the one-off case remains.
     assert_eq!(cases.len(), 1);
     assert_eq!(cases[0].slug, "pong");
@@ -166,17 +198,12 @@ fn resolve_skips_a_dangling_group_reference() {
 #[test]
 fn provider_distinguishes_two_otherwise_identical_combos() {
     let with_provider = ReviewPlanCombo {
-        harness: HarnessSlug::Opencode,
-        model: "anthropic/claude-opus-4.8".to_string(),
         provider: Some("openrouter".to_string()),
+        ..combo_on(HarnessSlug::Opencode, "anthropic/claude-opus-4.8")
     };
-    let no_provider = ReviewPlanCombo {
-        harness: HarnessSlug::Opencode,
-        model: "anthropic/claude-opus-4.8".to_string(),
-        provider: None,
-    };
+    let no_provider = combo_on(HarnessSlug::Opencode, "anthropic/claude-opus-4.8");
     let p = plan(vec![], vec![], vec![with_provider, no_provider], vec![]);
-    let (combos, _) = resolve_members(&p, &HashMap::new());
+    let (combos, _) = resolve_members(&p, &HashMap::new(), &no_configs());
     // Same harness+model but different provider → two distinct combinations.
     assert_eq!(combos.len(), 2);
 }
@@ -195,9 +222,13 @@ fn a_ladders_climbers_resolve_through_the_same_combo_resolver() {
         &["g1".to_string()],
         &[combo("sonnet"), combo("haiku")],
         &groups,
+        &no_configs(),
     );
     assert_eq!(
-        combos.iter().map(|c| c.model.as_str()).collect::<Vec<_>>(),
+        combos
+            .iter()
+            .map(|c| c.combo.model.as_str())
+            .collect::<Vec<_>>(),
         vec!["opus", "sonnet", "haiku"]
     );
 }
@@ -205,7 +236,7 @@ fn a_ladders_climbers_resolve_through_the_same_combo_resolver() {
 #[test]
 fn the_case_axis_keeps_one_cases_combinations_adjacent() {
     let cases = vec![case("pong"), case("carom")];
-    let combos = vec![combo("opus"), combo("sonnet")];
+    let combos = members(vec![combo("opus"), combo("sonnet")]);
     let cells = cells_in_order(CoverageAxis::Case, &combos, &cases);
     assert_eq!(
         order(&cells),
@@ -216,7 +247,7 @@ fn the_case_axis_keeps_one_cases_combinations_adjacent() {
 #[test]
 fn the_combination_axis_keeps_one_models_cases_adjacent() {
     let cases = vec![case("pong"), case("carom")];
-    let combos = vec![combo("opus"), combo("sonnet")];
+    let combos = members(vec![combo("opus"), combo("sonnet")]);
     let cells = cells_in_order(CoverageAxis::Combination, &combos, &cases);
     // The same four cells, re-nested: one model is taken all the way through the
     // plan before the next one starts.
@@ -246,22 +277,21 @@ fn a_cell_is_keyed_by_the_model_the_run_was_launched_with() {
     // recorded under the prefixed id — the key has to match that, not the plan's
     // canonical model, or the cell reads zero forever.
     let routed = ReviewPlanCombo {
-        harness: HarnessSlug::Opencode,
-        model: "anthropic/claude-opus-4.8".to_string(),
         provider: Some("openrouter".to_string()),
+        ..combo_on(HarnessSlug::Opencode, "anthropic/claude-opus-4.8")
     };
     assert_eq!(
-        cell_key(&c, &routed).4,
+        cell_key(&c, &member(routed)).4,
         "openrouter/anthropic/claude-opus-4.8"
     );
     // A harness that is not provider-routed launches its id verbatim.
-    assert_eq!(cell_key(&c, &combo("opus")).4, "opus");
+    assert_eq!(cell_key(&c, &member(combo("opus"))).4, "opus");
 }
 
 #[test]
 fn a_cell_reports_the_requesters_unreviewed_runs_alongside_the_global_counts() {
     let c = case("pong");
-    let m = combo("opus");
+    let m = member(combo("opus"));
     let key = cell_key(&c, &m);
     let mut ctx = empty_ctx();
     ctx.completed.insert(key.clone(), 5);
@@ -283,7 +313,7 @@ fn a_cell_reports_the_requesters_unreviewed_runs_alongside_the_global_counts() {
 #[test]
 fn the_matrix_rollups_sum_the_per_account_and_global_numbers_separately() {
     let cases = vec![case("pong"), case("carom")];
-    let combos = vec![combo("opus")];
+    let combos = members(vec![combo("opus")]);
     let mut ctx = empty_ctx();
     ctx.completed.insert(cell_key(&cases[0], &combos[0]), 5);
     ctx.unreviewed.insert(cell_key(&cases[0], &combos[0]), 2);
@@ -305,7 +335,7 @@ fn the_matrix_rollups_sum_the_per_account_and_global_numbers_separately() {
 #[test]
 fn a_stale_pin_is_flagged_against_the_newest_ingested_version() {
     let c = case("pong");
-    let m = combo("opus");
+    let m = member(combo("opus"));
     let mut ctx = empty_ctx();
     ctx.latest_by_slug
         .insert("pong".to_string(), "v2.0.0".to_string());
@@ -322,7 +352,7 @@ fn a_stale_pin_is_flagged_against_the_newest_ingested_version() {
 #[test]
 fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
     let cases = vec![case("pong"), case("carom")];
-    let combos = vec![combo("opus"), combo("sonnet")];
+    let combos = members(vec![combo("opus"), combo("sonnet")]);
     let ctx = empty_ctx();
 
     // One case at a time, buffer 5, five runs per cell: the first cell alone
@@ -331,7 +361,7 @@ fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
     let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
     let demands: Vec<_> = ordered
         .iter()
-        .map(|(case, combo)| ctx.demand(5, case, combo))
+        .map(|(case, member)| ctx.demand(5, case, member))
         .collect();
     let launches = top_up(&demands, ctx.harness_capacity(), 5, 0);
     assert_eq!(launches.len(), 1);
@@ -343,7 +373,7 @@ fn the_top_up_walks_the_configured_axis_and_emits_whole_cells() {
     let ordered = cells_in_order(CoverageAxis::Combination, &combos, &cases);
     let demands: Vec<_> = ordered
         .iter()
-        .map(|(case, combo)| ctx.demand(5, case, combo))
+        .map(|(case, member)| ctx.demand(5, case, member))
         .collect();
     let launches = top_up(&demands, ctx.harness_capacity(), 10, 0);
     assert_eq!(
@@ -361,10 +391,10 @@ fn a_throttled_harness_does_not_starve_the_rest_of_the_plan() {
     // spends the whole buffer on a harness capped at two and leaves Codex — which
     // could start immediately — idle. The scheduler reads the cap and interleaves.
     let cases = vec![case("pong"), case("carom")];
-    let combos = vec![
+    let combos = members(vec![
         combo_on(HarnessSlug::Claude, "opus"),
         combo_on(HarnessSlug::Codex, "gpt"),
-    ];
+    ]);
     let mut ctx = empty_ctx();
     ctx.harness_capacity[harness_lane(HarnessSlug::Claude)] = HarnessCapacity {
         in_flight: 0,
@@ -374,7 +404,7 @@ fn a_throttled_harness_does_not_starve_the_rest_of_the_plan() {
     let ordered = cells_in_order(CoverageAxis::Combination, &combos, &cases);
     let demands: Vec<_> = ordered
         .iter()
-        .map(|(case, combo)| ctx.demand(2, case, combo))
+        .map(|(case, member)| ctx.demand(2, case, member))
         .collect();
     let launches = top_up(&demands, ctx.harness_capacity(), 8, 0);
     // Claude's first cell fills its two slots, so its second is deferred behind both
@@ -393,10 +423,10 @@ fn a_harness_already_at_its_cap_yields_the_buffer_to_one_that_is_not() {
     // The steady state: Claude's earlier runs are still working through the queue,
     // so nothing more of it can start until they do.
     let cases = vec![case("pong")];
-    let combos = vec![
+    let combos = members(vec![
         combo_on(HarnessSlug::Claude, "opus"),
         combo_on(HarnessSlug::Codex, "gpt"),
-    ];
+    ]);
     let mut ctx = empty_ctx();
     ctx.harness_capacity[harness_lane(HarnessSlug::Claude)] = HarnessCapacity {
         in_flight: 6,
@@ -406,7 +436,7 @@ fn a_harness_already_at_its_cap_yields_the_buffer_to_one_that_is_not() {
     let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
     let demands: Vec<_> = ordered
         .iter()
-        .map(|(case, combo)| ctx.demand(3, case, combo))
+        .map(|(case, member)| ctx.demand(3, case, member))
         .collect();
     let launches = top_up(&demands, ctx.harness_capacity(), 3, 0);
     // Only three buffer slots, and the runnable harness gets them.
@@ -420,29 +450,35 @@ fn a_harness_already_at_its_cap_yields_the_buffer_to_one_that_is_not() {
 }
 
 #[test]
-fn every_harness_slug_has_its_own_capacity_lane() {
+fn every_runnable_harness_has_its_own_capacity_lane() {
     // The lanes must be distinct and must all land inside the slice `empty_ctx`
-    // sizes from `HarnessSlug::ALL`, or a cell would borrow another harness's
-    // throttle — or silently read as unlimited.
-    let lanes: Vec<usize> = HarnessSlug::ALL.iter().copied().map(harness_lane).collect();
+    // sizes from `HarnessSlug::RUNNABLE`, or a cell would borrow another harness's
+    // throttle — or silently read as unlimited. gg is in that list precisely so its
+    // runs are throttled by their own cap rather than by nothing.
+    let lanes: Vec<usize> = HarnessSlug::RUNNABLE
+        .iter()
+        .copied()
+        .map(harness_lane)
+        .collect();
     let mut unique = lanes.clone();
     unique.sort_unstable();
     unique.dedup();
-    assert_eq!(unique.len(), HarnessSlug::ALL.len());
-    assert!(lanes.iter().all(|lane| *lane < HarnessSlug::ALL.len()));
+    assert_eq!(unique.len(), HarnessSlug::RUNNABLE.len());
+    assert!(lanes.iter().all(|lane| *lane < HarnessSlug::RUNNABLE.len()));
+    assert!(harness_lane(HarnessSlug::Gg) < HarnessSlug::RUNNABLE.len());
 }
 
 #[test]
 fn a_satisfied_cell_is_skipped_rather_than_stopping_the_walk() {
     let cases = vec![case("pong"), case("carom")];
-    let combos = vec![combo("opus")];
+    let combos = members(vec![combo("opus")]);
     let mut ctx = empty_ctx();
     ctx.completed.insert(cell_key(&cases[0], &combos[0]), 5);
 
     let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
     let demands: Vec<_> = ordered
         .iter()
-        .map(|(case, combo)| ctx.demand(5, case, combo))
+        .map(|(case, member)| ctx.demand(5, case, member))
         .collect();
     let launches = top_up(&demands, ctx.harness_capacity(), 10, 0);
     // `pong` is done and costs nothing; the walk continues to `carom` rather than
@@ -454,7 +490,7 @@ fn a_satisfied_cell_is_skipped_rather_than_stopping_the_walk() {
 #[test]
 fn unreviewed_runs_hold_the_buffer_closed_even_when_nothing_is_in_flight() {
     let cases = vec![case("pong")];
-    let combos = vec![combo("opus")];
+    let combos = members(vec![combo("opus")]);
     let mut ctx = empty_ctx();
     // Ten finished runs of another cell that this reviewer has not looked at is a
     // full buffer: the plan is not idle because it is done, it is idle because the
@@ -465,7 +501,7 @@ fn unreviewed_runs_hold_the_buffer_closed_even_when_nothing_is_in_flight() {
     let ordered = cells_in_order(CoverageAxis::Case, &combos, &cases);
     let demands: Vec<_> = ordered
         .iter()
-        .map(|(case, combo)| ctx.demand(15, case, combo))
+        .map(|(case, member)| ctx.demand(15, case, member))
         .collect();
     assert_eq!(demands[0].outstanding(), 10);
     assert!(top_up(&demands, ctx.harness_capacity(), 10, 10).is_empty());

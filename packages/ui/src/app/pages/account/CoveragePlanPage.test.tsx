@@ -1,14 +1,24 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CoverageCell,
   CoverageMatrix,
   CoveragePlanSummary,
   CoverageQueue,
+  TopUpBlocked,
   TopUpResult,
 } from "@test-cabinet/run-record/coverage";
-import type { BackendClient } from "../../../client/clients";
+import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
+import type { BackendClient, WorkerClient } from "../../../client/clients";
+import {
+  BackendProvider,
+  WorkersProvider,
+  type BackendContextValue,
+  type WorkersContextValue,
+} from "../../../client/context";
+import type { GgConfigOption } from "../runs/gg/useGgConfigs";
 import {
   sectionReturnLabel,
   sectionReturnTo,
@@ -19,15 +29,55 @@ import {
   type GalleryDataInput,
 } from "../../data/galleryContext";
 import {
+  CoveragePlanPage,
   MatrixSection,
   ReviewQueue,
   buildGroups,
+  cellKey,
   describeHalt,
   describeTopUp,
+  ggTriggerReadiness,
+  itemsForCells,
+  launchGgCells,
+  planGgLaunches,
   planStatusNote,
   topUpAfterReview,
+  unresolvedGgProblem,
   type MatrixGroup,
 } from "./CoveragePlanPage";
+
+// The page's app chrome reads contexts (gallery data, notifications) that none of
+// these tests are about; stub it as the other account page tests do.
+vi.mock("../../components/PageLayout", () => ({
+  PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+// A signed-in operator: a coverage plan and the gg configurations behind its cells
+// both belong to an account.
+vi.mock("../../../client/auth", () => ({
+  useAuth: () => ({ token: "t0" }),
+}));
+// The account's gg configurations and, crucially, whether they have arrived — the
+// distinction between "you have none", "not yet" and "the request failed", which the
+// page has to keep apart because the three resolve a gg cell identically.
+let ggState: {
+  options: GgConfigOption[];
+  loading: boolean;
+  error: string | null;
+} = { options: [], loading: false, error: null };
+vi.mock("../runs/gg/useGgConfigs", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../runs/gg/useGgConfigs")>();
+  return {
+    ...actual,
+    useGgConfigs: () => ({
+      options: ggState.options,
+      saved: [],
+      loading: ggState.loading,
+      error: ggState.error,
+      reload: async () => {},
+    }),
+  };
+});
 
 function galleryValue(): GalleryDataInput {
   return {
@@ -80,6 +130,62 @@ function matrix(
     bufferTarget: 10,
     ...over,
   };
+}
+
+// A gg cell: the same case, executed by a saved configuration with a model bound to
+// each launch slot it declares, rather than by a harness and a model id.
+function ggCell(over: Partial<CoverageCell> = {}): CoverageCell {
+  return cell({
+    harness: "gg",
+    model: "opus",
+    ggConfigId: "saved:cfg-1",
+    ggConfigName: "reviewer",
+    ggSlotModels: { primary: "opus", critic: "haiku" },
+    ...over,
+  });
+}
+
+// The two-slot configuration the gg cells above name: a root agent and a critic, each
+// deferring its model to a configuration-level launch slot. Enough of a set for
+// `bindModelSlots` to have something real to bind.
+const REVIEWER_SET: GgCapabilitySet = {
+  preset: "reviewer",
+  modelSlots: [
+    { name: "primary", targets: [{ agent: "a-root", slot: "own" }] },
+    { name: "critic", targets: [{ agent: "a-critic", slot: "own" }] },
+  ],
+  agents: [
+    {
+      id: "a-root",
+      slug: "root",
+      name: "Root",
+      capabilities: [],
+      modelId: "",
+      modelSlot: "own",
+      modelSlots: [{ name: "own" }],
+      openingTurn: { modules: [], functions: [] },
+    },
+    {
+      id: "a-critic",
+      slug: "critic",
+      name: "Critic",
+      capabilities: [],
+      modelId: "",
+      modelSlot: "own",
+      modelSlots: [{ name: "own" }],
+      openingTurn: { modules: [], functions: [] },
+    },
+  ],
+};
+
+function ggOption(over: Partial<GgConfigOption> = {}): GgConfigOption {
+  return {
+    key: "saved:cfg-1",
+    name: "reviewer",
+    description: "",
+    capabilitySet: REVIEWER_SET,
+    ...over,
+  } as GgConfigOption;
 }
 
 // The display name resolver a group build is handed; the tests care about grouping
@@ -156,6 +262,54 @@ describe("MatrixSection collapse", () => {
     expect(params.get("latest")).toBe("0");
   });
 
+  it("labels a gg cell by its configuration and the models it binds", () => {
+    renderSection({ cells: [ggCell()] });
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    // Not "gg · opus": the configuration is what the reviewer chose, and the models
+    // are what tells two arms of it apart.
+    expect(screen.getByText("reviewer · haiku, opus")).toBeTruthy();
+  });
+
+  it("narrows a gg cell's runs link by the configuration's name", () => {
+    renderSection({ cells: [ggCell()] });
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    const href = screen
+      .getByRole("link", { name: "Runs" })
+      .getAttribute("href");
+    const params = new URLSearchParams(href!.slice(href!.indexOf("?")));
+    expect(params.get("harness")).toBe("gg");
+    expect(params.get("q")).toBe("reviewer");
+  });
+
+  it("shows why a blocked cell cannot be launched, and refuses to trigger it", () => {
+    const onTrigger = vi.fn();
+    render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <MatrixSection
+            group={group({
+              cells: [
+                ggCell({
+                  unlaunchable: "launch slot `critic` is unbound",
+                }),
+              ],
+            })}
+            axis="case"
+            busy={false}
+            canTrigger
+            onTrigger={onTrigger}
+          />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText("launch slot `critic` is unbound")).toBeTruthy();
+    const trigger = screen.getByRole("button", { name: "Blocked" });
+    expect((trigger as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(trigger);
+    expect(onTrigger).not.toHaveBeenCalled();
+  });
+
   it("says how much of a cell is pending and how much awaits review", () => {
     renderSection({
       cells: [cell({ inFlight: 2, pending: 2, unreviewed: 1, remaining: 0 })],
@@ -200,6 +354,24 @@ describe("buildGroups", () => {
     expect(groups[0]!.cells.map((c) => c.slug)).toEqual(["alpha", "zeta"]);
   });
 
+  it("keeps two gg configurations apart even when their root model agrees", () => {
+    const cells = [
+      ggCell({ slug: "alpha", ggConfigId: "saved:a", ggConfigName: "solo" }),
+      ggCell({ slug: "alpha", ggConfigId: "saved:b", ggConfigName: "duo" }),
+    ];
+    const groups = buildGroups(
+      matrix(cells, { outerAxis: "combination" }),
+      nameOf,
+    );
+    expect(groups).toHaveLength(2);
+    // A gg block is titled by its configuration and the models it binds, never by
+    // "gg · <root model>" — which is the same string for both of these.
+    expect(groups.map((g) => g.title)).toEqual([
+      "solo · haiku, opus",
+      "duo · haiku, opus",
+    ]);
+  });
+
   it("rolls up the counts that explain an idle block", () => {
     const groups = buildGroups(
       matrix([
@@ -223,11 +395,177 @@ describe("buildGroups", () => {
   });
 });
 
+// A gg cell is identified by its configuration and the models it binds, never by the
+// root model alone — one configuration run against three models is three cells whose
+// case, harness, and root model all agree.
+describe("cellKey", () => {
+  it("keeps a harness cell's key free of any gg segment", () => {
+    expect(cellKey(cell())).toBe(
+      "pong@v1.0.0@base::claude::claude-sonnet-4-5::",
+    );
+  });
+
+  it("separates two gg cells of one configuration that bind different models", () => {
+    const a = ggCell({ ggSlotModels: { primary: "opus", critic: "haiku" } });
+    const b = ggCell({ ggSlotModels: { primary: "opus", critic: "sonnet" } });
+    expect(cellKey(a)).not.toBe(cellKey(b));
+  });
+
+  it("separates two configurations whose runs share a root model", () => {
+    const a = ggCell({ ggConfigId: "saved:a", ggConfigName: "solo" });
+    const b = ggCell({ ggConfigId: "saved:b", ggConfigName: "duo" });
+    expect(cellKey(a)).not.toBe(cellKey(b));
+  });
+
+  it("does not depend on the order the slot bindings arrived in", () => {
+    const a = ggCell({ ggSlotModels: { primary: "opus", critic: "haiku" } });
+    const b = ggCell({ ggSlotModels: { critic: "haiku", primary: "opus" } });
+    expect(cellKey(a)).toBe(cellKey(b));
+  });
+});
+
+// The two shapes a combination takes go out on two different endpoints, so the split
+// has to happen before either is called — and a cell nothing can launch goes on
+// neither.
+describe("itemsForCells", () => {
+  it("builds one launch per missing run, and leaves gg cells alone", () => {
+    const items = itemsForCells([cell({ remaining: 2 }), ggCell()]);
+    expect(items).toHaveLength(2);
+    expect(items.every((i) => i.config.harness === "claude")).toBe(true);
+  });
+
+  it("skips a cell the matrix said cannot be launched", () => {
+    expect(
+      itemsForCells([
+        cell({ unlaunchable: "no context window for that model" }),
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe("planGgLaunches", () => {
+  it("binds the cell's models onto the configuration's launch slots", () => {
+    const { launches } = planGgLaunches(
+      [ggCell({ remaining: 1 })],
+      [ggOption()],
+    );
+    expect(launches).toHaveLength(1);
+    const agents = launches[0]!.capabilitySet.agents;
+    expect(agents.map((a) => a.modelId)).toEqual(["opus", "haiku"]);
+    // The declarations are consumed by the binding: what runs pins models and names
+    // no slot at either level.
+    expect(agents.every((a) => !a.modelSlot && !a.modelSlots)).toBe(true);
+    expect(launches[0]!.capabilitySet.modelSlots).toBeUndefined();
+  });
+
+  it("emits a cell's repeats together, so they arrive adjacent", () => {
+    const { launches } = planGgLaunches(
+      [ggCell({ remaining: 3 })],
+      [ggOption()],
+    );
+    expect(launches).toHaveLength(3);
+    expect(launches.every((l) => l.cell.slug === "pong")).toBe(true);
+  });
+
+  it("resolves a member that stored the bare id rather than the saved key", () => {
+    const { launches, unresolved } = planGgLaunches(
+      [ggCell({ ggConfigId: "cfg-1", remaining: 1 })],
+      [ggOption()],
+    );
+    expect(unresolved).toEqual([]);
+    expect(launches).toHaveLength(1);
+  });
+
+  it("reports a configuration it cannot resolve rather than quietly launching fewer", () => {
+    const { launches, unresolved } = planGgLaunches(
+      [ggCell({ ggConfigId: "saved:gone" })],
+      [ggOption()],
+    );
+    expect(launches).toEqual([]);
+    expect(unresolved).toHaveLength(1);
+  });
+
+  it("skips a cell the matrix already said cannot be launched, and every harness cell", () => {
+    const { launches, unresolved } = planGgLaunches(
+      [cell(), ggCell({ unlaunchable: "launch slot `critic` is unbound" })],
+      [ggOption()],
+    );
+    expect(launches).toEqual([]);
+    expect(unresolved).toEqual([]);
+  });
+});
+
+// gg has no batch endpoint, so the fan-out is one request per run — and one refused
+// configuration must not take the rest of the trigger with it.
+describe("launchGgCells", () => {
+  function worker(launchGgRun: WorkerClient["launchGgRun"]) {
+    return { client: { launchGgRun } as unknown as WorkerClient };
+  }
+
+  it("enqueues one run per launch and tracks each as queued", async () => {
+    const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-1" });
+    const track = vi.fn();
+    const { launches } = planGgLaunches(
+      [ggCell({ remaining: 2 })],
+      [ggOption()],
+    );
+    const failed = await launchGgCells(
+      worker(launchGgRun),
+      "token",
+      track,
+      launches,
+    );
+    expect(failed).toEqual([]);
+    expect(launchGgRun).toHaveBeenCalledTimes(2);
+    const request = launchGgRun.mock.calls[0]![0];
+    expect(request.testCase).toBe("pong");
+    expect(request.version).toBe("v1.0.0");
+    expect(request.variant).toBe("base");
+    expect(track).toHaveBeenCalledTimes(2);
+    // Tracked under the identity the backend will lift back out of the job: gg, the
+    // root agent's bound model, and the configuration's name.
+    expect(track.mock.calls[0]![0]).toMatchObject({
+      harnessSlug: "gg",
+      modelId: "opus",
+      ggPreset: "reviewer",
+      runId: "job-1",
+      state: "queued",
+    });
+  });
+
+  it("isolates a failure so the rest of the trigger still goes out", async () => {
+    const launchGgRun = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("nope"))
+      .mockResolvedValue({ jobId: "job-2" });
+    const track = vi.fn();
+    const { launches } = planGgLaunches(
+      [ggCell({ remaining: 2 })],
+      [ggOption()],
+    );
+    const failed = await launchGgCells(
+      worker(launchGgRun),
+      "token",
+      track,
+      launches,
+    );
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.error).toBe("nope");
+    expect(track).toHaveBeenCalledTimes(1);
+  });
+});
+
 // Every top-up outcome has to read differently: the reviewer's next move is
 // "resume", "nothing", "review some", or "raise the target" respectively.
 describe("describeTopUp", () => {
   function result(over: Partial<TopUpResult> = {}): TopUpResult {
-    return { bufferTarget: 5, enqueued: 0, cells: [], ...over };
+    return {
+      bufferTarget: 5,
+      enqueued: 0,
+      cells: [],
+      unlaunchable: [],
+      ...over,
+    };
   }
 
   it("names a paused plan as paused rather than as idle", () => {
@@ -248,6 +586,38 @@ describe("describeTopUp", () => {
     );
     expect(message).toMatch(/6 runs/);
     expect(message).toMatch(/2 cells/);
+  });
+
+  it("reports the cells it could not launch beside the ones it did", () => {
+    const blocked = [
+      { reason: "gg configuration `reviewer` no longer exists" },
+      { reason: "launch slot `critic` is unbound" },
+    ] as TopUpBlocked[];
+    const message = describeTopUp(
+      result({
+        enqueued: 3,
+        cells: [{ runs: 3 }] as TopUpResult["cells"],
+        unlaunchable: blocked,
+      }),
+    );
+    // Both halves: one broken member never stops the rest of a plan being fed.
+    expect(message).toMatch(/Enqueued 3 runs/);
+    expect(message).toMatch(/2 cells could not be launched/);
+    expect(message).toMatch(/no longer exists/);
+  });
+
+  it("does not call a plan satisfied when its shortfall is unlaunchable", () => {
+    const message = describeTopUp(
+      result({
+        outstanding: 1,
+        bufferTarget: 5,
+        unlaunchable: [
+          { reason: "launch slot `critic` is unbound" },
+        ] as TopUpBlocked[],
+      }),
+    );
+    expect(message).not.toMatch(/every cell is at its target/i);
+    expect(message).toMatch(/1 cell could not be launched/);
   });
 
   it("tells a full buffer apart from a satisfied plan", () => {
@@ -313,6 +683,19 @@ describe("planStatusNote", () => {
     );
     expect(note).toMatch(/held back by the queue/i);
     expect(note).toMatch(/not stuck/i);
+  });
+
+  it("names the cells nothing can launch, which no other count explains", () => {
+    const note = planStatusNote(
+      matrix([
+        cell(),
+        ggCell({
+          unlaunchable: "gg configuration `reviewer` no longer exists",
+        }),
+      ]),
+      false,
+    );
+    expect(note).toMatch(/1 cell cannot be launched at all/);
   });
 
   it("stays quiet when there is nothing to explain", () => {
@@ -448,7 +831,12 @@ describe("topUpAfterReview", () => {
       getCoveragePlansSummary: async () => plans,
       topUpCoveragePlan: async (id: string) => {
         topUp(id);
-        return { bufferTarget: 5, enqueued: 2, cells: [] } as TopUpResult;
+        return {
+          bufferTarget: 5,
+          enqueued: 2,
+          cells: [],
+          unlaunchable: [],
+        } as TopUpResult;
       },
     } as unknown as BackendClient;
   }
@@ -483,5 +871,184 @@ describe("topUpAfterReview", () => {
         "token",
       ),
     ).resolves.toBe(0);
+  });
+});
+
+// Triggering a gg cell by hand needs the capability set behind its configuration, so
+// the state of that load is part of whether the controls can be pressed at all — and
+// "we could not fetch them" must never be reported as "you do not have them".
+describe("ggTriggerReadiness", () => {
+  it("holds the controls back until the configurations are in hand", () => {
+    expect(ggTriggerReadiness(true, null).ready).toBe(false);
+    expect(ggTriggerReadiness(false, null).ready).toBe(true);
+  });
+
+  it("says a load failure out loud, and names it as a load failure", () => {
+    const { notice } = ggTriggerReadiness(false, "Error: 503");
+    expect(notice).toMatch(/could not be loaded/i);
+    expect(notice).toMatch(/503/);
+    // Never a claim about what the account holds.
+    expect(notice).not.toMatch(/no saved|none saved|have no/i);
+  });
+
+  it("leaves the harness half of a plan launchable when the load failed", () => {
+    // The failure is in one lookup, not in the worker or the plan: a plan of harness
+    // cells has nothing to wait for.
+    expect(ggTriggerReadiness(false, "Error: 503").ready).toBe(true);
+  });
+
+  it("stays quiet when there is nothing wrong", () => {
+    expect(ggTriggerReadiness(false, null).notice).toBeNull();
+    // Loading is transient and gates the press by itself; a notice for it would flash
+    // on every visit.
+    expect(ggTriggerReadiness(true, null).notice).toBeNull();
+  });
+});
+
+// The sentence an operator is likeliest to believe about their own data, so it has to
+// be earned: a configuration is "gone" only when the list it is missing from actually
+// arrived.
+describe("unresolvedGgProblem", () => {
+  it("reports a deletion only when the configurations were loaded", () => {
+    expect(unresolvedGgProblem(ggCell(), null)).toMatch(
+      /no longer on your account/,
+    );
+  });
+
+  it("blames the load, not the operator, when the list never arrived", () => {
+    const said = unresolvedGgProblem(ggCell(), "Error: 503");
+    expect(said).toMatch(/could not be loaded/i);
+    expect(said).not.toMatch(/no longer on your account/);
+    // Still names which cell, or a mixed trigger's report cannot be acted on.
+    expect(said).toMatch(/reviewer/);
+  });
+});
+
+// The dashboard mounted for real, which is what the whole-page tests below need: a
+// signed-in account, one worker, and a plan whose matrix is whatever the test hands in.
+const worker = {
+  id: "w1",
+  local: true,
+  client: { launchJobs: vi.fn() } as unknown as WorkerClient,
+};
+
+function backendValue(cells: CoverageCell[]): BackendContextValue {
+  return {
+    client: {
+      getCoveragePlanCoverage: async () => matrix(cells),
+      getCoveragePlanQueue: async () =>
+        ({ runs: [], truncated: false }) as CoverageQueue,
+      listCoveragePlans: async () => [
+        {
+          id: "p1",
+          name: "plan",
+          runsPerCell: 3,
+          comboGroupIds: [],
+          caseGroupIds: [],
+          combos: [],
+          cases: [],
+          updatedAt: "2026-08-15T00:00:00Z",
+          outerAxis: "case",
+          paused: false,
+          autoTopUp: false,
+        },
+      ],
+      topUpCoveragePlan: async () =>
+        ({
+          bufferTarget: 10,
+          enqueued: 0,
+          cells: [],
+          unlaunchable: [],
+        }) as TopUpResult,
+    } as unknown as BackendClient,
+    identity: null,
+    status: "ready",
+    error: null,
+    url: "http://backend",
+    setUrl: vi.fn(),
+  };
+}
+
+function workersValue(): WorkersContextValue {
+  return {
+    workers: [worker],
+    activeId: "w1",
+    active: worker,
+    setActive: vi.fn(),
+    addWorker: vi.fn(),
+    removeWorker: vi.fn(),
+  } as unknown as WorkersContextValue;
+}
+
+function renderPlanPage(cells: CoverageCell[]) {
+  render(
+    <MemoryRouter initialEntries={["/account/coverage/p1"]}>
+      <BackendProvider value={backendValue(cells)}>
+        <WorkersProvider value={workersValue()}>
+          <GalleryDataProvider value={galleryValue()}>
+            <Routes>
+              <Route
+                path="/account/coverage/:planId"
+                element={<CoveragePlanPage />}
+              />
+            </Routes>
+          </GalleryDataProvider>
+        </WorkersProvider>
+      </BackendProvider>
+    </MemoryRouter>,
+  );
+}
+
+// The dashboard's one decision about its controls: which are live, given a worker and
+// the state of the account's gg configurations.
+describe("CoveragePlanPage triggers", () => {
+  async function renderPage() {
+    renderPlanPage([cell(), ggCell()]);
+    return await screen.findByRole("button", { name: "Trigger all missing" });
+  }
+
+  beforeEach(() => {
+    ggState = { options: [ggOption()], loading: false, error: null };
+  });
+
+  it("refuses to trigger until the gg configurations have loaded", async () => {
+    ggState = { options: [], loading: true, error: null };
+    const trigger = await renderPage();
+    // Pressed a moment earlier, every gg cell resolves to nothing and is reported as
+    // deleted — while the harness cells of the same press launch normally.
+    expect((trigger as HTMLButtonElement).disabled).toBe(true);
+    // And not because of the worker: that has its own notice, and claiming one is
+    // missing would send the operator to fix something that is already fine.
+    expect(screen.queryByText(/No worker connected/)).toBeNull();
+  });
+
+  it("lets the trigger through once they have", async () => {
+    const trigger = await renderPage();
+    expect((trigger as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("says the configurations could not be loaded rather than showing nothing", async () => {
+    ggState = { options: [], loading: false, error: "Error: 503" };
+    await renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/could not be loaded/i)).toBeTruthy(),
+    );
+  });
+});
+
+// A plan with nothing in it is where an operator is told what a plan holds, and it is
+// the last screen before the picker that offers gg. The Plans list and the Groups tab
+// say both shapes; a dashboard that still said harness+model would contradict them at
+// the point the operator acts.
+describe("CoveragePlanPage empty state", () => {
+  beforeEach(() => {
+    ggState = { options: [ggOption()], loading: false, error: null };
+  });
+
+  it("names both shapes a combination takes, not harness and model alone", async () => {
+    renderPlanPage([]);
+    const said = (await screen.findByText(/This plan is empty/)).textContent;
+    expect(said).toMatch(/gg configuration/);
+    expect(said).not.toMatch(/harness\/model/);
   });
 });

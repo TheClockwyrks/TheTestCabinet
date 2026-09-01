@@ -24,7 +24,7 @@
 mod tests;
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
@@ -104,113 +104,185 @@ impl GgRunRequest {
     }
 
     /// Lower this gg-native request onto the canonical [`LaunchBody`] the enqueue
-    /// substrate speaks: the harness fixed to [`HarnessSlug::Gg`], the capability set
-    /// carried through, and the [root agent](GgCapabilitySet::root)'s model lifted into
-    /// [`LaunchBody::model`] so a gg run still has a representative model identity for
-    /// the existing per-model listings and the active-run summary.
+    /// substrate speaks, by way of the two halves every gg launch shares:
+    /// [`gg_launch_identity`] validates the capability set and lifts the model the run
+    /// is recorded against, and [`gg_launch_body`] assembles the body around it.
     ///
-    /// Returns the human-readable reason when the capability set does not bind a
-    /// model to its root agent — the one gg-specific precondition the flat
-    /// [`build_new_job`] validation cannot express.
+    /// Returns the human-readable reason when the capability set cannot be launched —
+    /// the gg-specific preconditions the flat [`build_new_job`] validation cannot
+    /// express.
     fn into_launch_body(self) -> Result<LaunchBody, String> {
-        // The identity half first, on the set as the console authored it: the internal ids are
-        // still here, so this is the last place a reference can be judged against the ids it names.
-        if let Some(defect) = super::gg_config::authored_capability_set_defect(&self.capability_set)
-        {
-            return Err(format!(
-                "the gg capability set cannot be launched: {defect}"
-            ));
-        }
-        // Then the resolution itself. Every reference is rewritten to the profile's slug and the
-        // ids are dropped, so what is stored, what the container reads and what the run records
-        // name a profile by the one name the operator wrote and the model was shown.
-        let capability_set = self.capability_set.resolve_agent_keys();
-        if let Some(defect) = super::gg_config::launched_capability_set_defect(&capability_set) {
-            return Err(format!(
-                "the gg capability set cannot be launched: {defect}"
-            ));
-        }
-        // Every [model slot](test_cabinet_core::gg::GgModelSlot) a configuration declares
-        // is filled in by the launch form, so a set arriving here with an agent still
-        // deferred was launched incompletely — reject it now, by name, rather than letting
-        // the run reach a container and fail its check there.
-        let unresolved = capability_set.unresolved_agents();
-        if !unresolved.is_empty() {
-            return Err(format!(
-                "the gg capability set leaves the {} agent(s) without a model; \
-                 bind a model to every declared model slot before launching",
-                unresolved
-                    .iter()
-                    .map(|agent| format!("`{agent}`"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        // The root is the *first* profile a set declares, whatever it is named — a configuration
-        // may rename it or promote another profile to it — so an empty set is what "there is no
-        // root" looks like, and the model is lifted off whichever profile is first.
-        if capability_set.agents.is_empty() {
-            return Err(
-                "the gg capability set declares no agent profiles; it must declare at least one"
-                    .to_string(),
-            );
-        }
-        // A root that is an [FSM shell](GgAgentConfig::is_fsm_shell) has no model of its own — a
-        // machine takes no turns — so the run's model is the one its entry state runs, which is
-        // the model the session's very first turn is actually charged to.
-        //
-        // A machine that cannot say which agent it enters is refused here by the name that is
-        // actually missing, never resolved back to the shell: the shell is the one profile in the
-        // set that is *supposed* to carry no model, so reporting it would name the only agent whose
-        // empty binding is correct — and a shell left holding a stray `modelId` would sail through
-        // and record the whole run against a model nothing asked it to run.
-        let root = capability_set.root();
-        let runner = capability_set
-            .dispatched_agent(&root.slug)
-            .map_err(|err| format!("the gg capability set cannot be launched: {err}"))?;
-        let model = runner
-            .resolved_model_id()
-            .ok_or_else(|| {
-                if runner.id == root.id {
-                    format!(
-                        "the gg capability set must bind a model to its root agent (`{}`)",
-                        root.slug
-                    )
-                } else {
-                    // The root is a machine, so the agent needing the binding is the one its
-                    // entry state runs — named alongside the machine, because an operator
-                    // reading this is looking at a root profile with no model field at all.
-                    format!(
-                        "the gg capability set must bind a model to the `{}` agent, which its \
-                         root agent (`{}`) enters first",
-                        runner.slug, root.slug
-                    )
-                }
-            })?
-            .to_string();
+        let identity = gg_launch_identity(&self.capability_set)?;
         let variant = self.resolved_variant();
-        Ok(LaunchBody {
-            test_case: self.test_case,
-            version: self.version,
-            variant,
-            harness: HarnessSlug::Gg,
-            model,
-            // gg is its own executor; the orchestrator dimension does not apply. The
-            // engine takes the gg branch and never conducts an orchestrator.
-            orchestrator: None,
-            // The engine dimension does apply: a gg run seeds and builds a
-            // workspace like any other run, so it selects the runtime that
-            // workspace is written against.
-            engine: self.engine,
-            max_runtime_seconds: self.max_runtime_seconds,
-            auth_mode: None,
-            retry_count: self.retry_count,
-            gg_capability_set: Some(capability_set),
-            // Resolved from the model catalog by the handler, which has the database
-            // this lowering does not; never taken from the request.
-            gg_model_windows: Default::default(),
-            gg_model_modalities: Default::default(),
-        })
+        Ok(gg_launch_body(
+            GgLaunchSubject {
+                test_case: self.test_case,
+                version: self.version,
+                variant,
+                engine: self.engine,
+                max_runtime_seconds: self.max_runtime_seconds,
+                retry_count: self.retry_count,
+            },
+            identity,
+        ))
+    }
+}
+
+/// Everything a gg run needs that its [capability set](GgCapabilitySet) does not carry:
+/// what it is run **on**, and the per-run overrides.
+///
+/// A launch is exactly this plus a [`GgLaunchIdentity`], which is what lets a run
+/// launched by hand through [`launch_gg`] and one a coverage plan's top-up enqueues
+/// ([`super::coverage::enqueue_top_up`]) be assembled by the same code rather than by two
+/// copies that drift.
+pub(super) struct GgLaunchSubject {
+    /// Test-case slug to run.
+    pub test_case: String,
+    /// Exact, immutable test-case version.
+    pub version: String,
+    /// The resolved variant — never the request's `Option`, because a launch runs one.
+    pub variant: String,
+    /// The [engine](test_cabinet_core::engine) slug the produced build is written
+    /// against, or `None` for the `none` default.
+    pub engine: Option<String>,
+    /// Override for the maximum harness runtime, in seconds.
+    pub max_runtime_seconds: Option<u64>,
+    /// How many automatic retries the run may take, or `None` for the backend default.
+    pub retry_count: Option<u32>,
+}
+
+/// A capability set lowered to the form a run is **launched and recorded** in: every
+/// reference resolved to a profile slug, and the model the run's identity is taken from.
+///
+/// The two travel together because they are decided together: the model is lifted off the
+/// resolved set's root (or, for a machine root, the agent it enters first), so a caller
+/// holding one without the other could pair a set with a model nothing in it runs.
+pub(super) struct GgLaunchIdentity {
+    /// The set as the run records it — [agent keys resolved](GgCapabilitySet::resolve_agent_keys),
+    /// slot declarations gone, every binding pinned.
+    pub capability_set: GgCapabilitySet,
+    /// The model the run is attributed to: the one its very first turn is charged to.
+    pub model: String,
+}
+
+/// Validate a gg capability set for launch and lift the model the run is recorded
+/// against, or say why it cannot be launched.
+///
+/// This is the whole of gg's launch-time judgement, in one place because two callers make
+/// that judgement — the by-hand [`launch_gg`] and a coverage plan's or ladder's top-up —
+/// and a member a plan accepts must be a member `POST /gg/runs` would accept. It reads
+/// the set as the console **authored** it: the internal ids are still on the document, so
+/// this is the last place a reference can be judged against the ids it names.
+pub(super) fn gg_launch_identity(set: &GgCapabilitySet) -> Result<GgLaunchIdentity, String> {
+    // The identity half first, on the set as the console authored it: the internal ids are
+    // still here, so this is the last place a reference can be judged against the ids it names.
+    if let Some(defect) = super::gg_config::authored_capability_set_defect(set) {
+        return Err(format!(
+            "the gg capability set cannot be launched: {defect}"
+        ));
+    }
+    // Then the resolution itself. Every reference is rewritten to the profile's slug and the
+    // ids are dropped, so what is stored, what the container reads and what the run records
+    // name a profile by the one name the operator wrote and the model was shown.
+    let capability_set = set.resolve_agent_keys();
+    if let Some(defect) = super::gg_config::launched_capability_set_defect(&capability_set) {
+        return Err(format!(
+            "the gg capability set cannot be launched: {defect}"
+        ));
+    }
+    // Every [model slot](test_cabinet_core::gg::GgModelSlot) a configuration declares
+    // is filled in by the launch form, so a set arriving here with an agent still
+    // deferred was launched incompletely — reject it now, by name, rather than letting
+    // the run reach a container and fail its check there.
+    let unresolved = capability_set.unresolved_agents();
+    if !unresolved.is_empty() {
+        return Err(format!(
+            "the gg capability set leaves the {} agent(s) without a model; \
+             bind a model to every declared model slot before launching",
+            unresolved
+                .iter()
+                .map(|agent| format!("`{agent}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    // The root is the *first* profile a set declares, whatever it is named — a configuration
+    // may rename it or promote another profile to it — so an empty set is what "there is no
+    // root" looks like, and the model is lifted off whichever profile is first.
+    if capability_set.agents.is_empty() {
+        return Err(
+            "the gg capability set declares no agent profiles; it must declare at least one"
+                .to_string(),
+        );
+    }
+    // A root that is an [FSM shell](GgAgentConfig::is_fsm_shell) has no model of its own — a
+    // machine takes no turns — so the run's model is the one its entry state runs, which is
+    // the model the session's very first turn is actually charged to.
+    //
+    // A machine that cannot say which agent it enters is refused here by the name that is
+    // actually missing, never resolved back to the shell: the shell is the one profile in the
+    // set that is *supposed* to carry no model, so reporting it would name the only agent whose
+    // empty binding is correct — and a shell left holding a stray `modelId` would sail through
+    // and record the whole run against a model nothing asked it to run.
+    let root = capability_set.root();
+    let runner = capability_set
+        .dispatched_agent(&root.slug)
+        .map_err(|err| format!("the gg capability set cannot be launched: {err}"))?;
+    let model = runner
+        .resolved_model_id()
+        .ok_or_else(|| {
+            if runner.id == root.id {
+                format!(
+                    "the gg capability set must bind a model to its root agent (`{}`)",
+                    root.slug
+                )
+            } else {
+                // The root is a machine, so the agent needing the binding is the one its
+                // entry state runs — named alongside the machine, because an operator
+                // reading this is looking at a root profile with no model field at all.
+                format!(
+                    "the gg capability set must bind a model to the `{}` agent, which its \
+                     root agent (`{}`) enters first",
+                    runner.slug, root.slug
+                )
+            }
+        })?
+        .to_string();
+    Ok(GgLaunchIdentity {
+        capability_set,
+        model,
+    })
+}
+
+/// Assemble the canonical [`LaunchBody`] for a gg run: the harness fixed to
+/// [`HarnessSlug::Gg`], the resolved capability set carried through, and its
+/// [identity](GgLaunchIdentity) model lifted into [`LaunchBody::model`] so a gg run still
+/// has a representative model for the per-model listings and the active-run summary.
+///
+/// Takes an identity rather than a raw set so it cannot be reached without the validation
+/// [`gg_launch_identity`] performs: assembling a body is not where a bad set is caught.
+pub(super) fn gg_launch_body(subject: GgLaunchSubject, identity: GgLaunchIdentity) -> LaunchBody {
+    LaunchBody {
+        test_case: subject.test_case,
+        version: subject.version,
+        variant: subject.variant,
+        harness: HarnessSlug::Gg,
+        model: identity.model,
+        // gg is its own executor; the orchestrator dimension does not apply. The
+        // engine takes the gg branch and never conducts an orchestrator.
+        orchestrator: None,
+        // The engine dimension does apply: a gg run seeds and builds a
+        // workspace like any other run, so it selects the runtime that
+        // workspace is written against.
+        engine: subject.engine,
+        max_runtime_seconds: subject.max_runtime_seconds,
+        auth_mode: None,
+        retry_count: subject.retry_count,
+        gg_capability_set: Some(identity.capability_set),
+        // Resolved from the model catalog by the handler, which has the database
+        // this lowering does not; never taken from the request.
+        gg_model_windows: Default::default(),
+        gg_model_modalities: Default::default(),
     }
 }
 
@@ -225,12 +297,13 @@ impl GgRunRequest {
 /// [`LaunchAck`] a conventional launch does, so the console watches a gg run through
 /// the existing `GET /jobs/{id}` status and `GET /jobs/{id}/live` monitor unchanged.
 ///
-/// The run is **attributed** to the token's account (`job.user_id`) and to no
-/// [origin](super::jobs::LaunchQuery::origin): a gg run is always launched by hand
-/// through this endpoint, so — exactly like a launch from the console's conventional
-/// run form — it is never swept up by a coverage plan's or ladder's scoped halt. A
-/// plan's top-up mints its own jobs (see [`super::coverage::enqueue_top_up`]) and
-/// never reaches this handler, so there is no scheduling origin for it to carry.
+/// The run is **attributed** to the token's account (`job.user_id`) and to the
+/// [origin](super::jobs::LaunchQuery::origin) the query names, exactly as `POST /jobs` is.
+/// Absent — a launch from the new-run form — it leaves `job.origin` null and the run stays
+/// out of every scoped halt, which is what a launch by hand should do. Present, it is what a
+/// coverage plan's or ladder's dashboard sends when a reviewer triggers one of *its* cells by
+/// hand: those runs were asked for by that plan, and a plan whose Halt could not reach the
+/// runs its own buttons produced is a plan that visibly refuses to stop.
 #[tracing::instrument(
     name = "gg.launch",
     skip(state, user, body),
@@ -240,6 +313,7 @@ impl GgRunRequest {
 pub async fn launch_gg(
     State(state): State<AppState>,
     user: AuthUser,
+    Query(query): Query<LaunchQuery>,
     Json(body): Json<GgRunRequest>,
 ) -> Result<Response, ApiError> {
     let variant = body.resolved_variant();
@@ -283,10 +357,10 @@ pub async fn launch_gg(
         .await
         .map_err(ApiError::bad_request)?;
     let now = now_rfc3339()?;
-    // The launching account, and deliberately no origin: this endpoint is the by-hand
-    // launch path, and it takes no `origin` query the way `POST /jobs` does because
-    // nothing schedules a gg run through it.
-    let attribution = attribution(&user, &LaunchQuery::default())?;
+    // The launching account, and whatever asked for the run: nothing for the new-run form,
+    // and the plan or ladder for a cell triggered from its dashboard. Parsed by the same
+    // function `POST /jobs` uses, so an origin this endpoint accepts is one a halt can sweep.
+    let attribution = attribution(&user, &query)?;
     // The type comes from the manifest already read above, so a gg run's job row
     // carries the same test type a conventional launch's does — which is what the
     // queue serializes the must-not-overlap run types on.

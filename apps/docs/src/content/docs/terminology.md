@@ -45,14 +45,16 @@ the thing that actually does the climbing. Each climber's progress is tracked
 separately, so a model added to a standing ladder starts at [rung](#rung) one
 while the others carry on from wherever they had reached. A climber is climbing,
 awaiting review, [walled](#wall), held (stopped by hand), or [topped
-out](#topped-out). Climber and combination name the same harness and model pair:
-the first is the role it plays on a ladder, the second is what it is.
+out](#topped-out). Climber and combination name the same thing: the first is the
+role it plays on a ladder, the second is what it is.
 
 ## Combination
 
-A combination is one harness and model pair, plus a provider for a
-provider-routed harness: the thing a run is executed by, as opposed to the test
-case it is executed on. It is the unit a [coverage](#coverage) plan crosses with
+A combination is the thing a run is executed by, as opposed to the test case it
+is executed on. It takes one of two shapes: a harness and model pair, plus a
+provider for a provider-routed harness; or a
+[gg configuration](/gg/configurations/) and a model for each launch slot that
+configuration asks for. It is the unit a [coverage](#coverage) plan crosses with
 its cases to form a cell, the unit a [ladder](#ladder) enrolls as a
 [climber](#climber), and the unit a reusable coverage group holds.
 

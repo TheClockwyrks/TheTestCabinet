@@ -1,7 +1,10 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import type { TopUpResult } from "@test-cabinet/run-record/coverage";
+import type {
+  TopUpBlocked,
+  TopUpResult,
+} from "@test-cabinet/run-record/coverage";
 import type {
   LadderCell,
   LadderClimber,
@@ -24,6 +27,7 @@ import {
 import {
   ClimberRow,
   buildRungViews,
+  climberCombo,
   climberStatusLabel,
   describeLadderHalt,
   describeLadderTopUp,
@@ -162,6 +166,22 @@ function climber(over: Partial<LadderClimber> = {}): LadderClimber {
   } as LadderClimber;
 }
 
+// A gg climber: the same ladder, climbed by a saved configuration with a model bound
+// to each launch slot rather than by a harness and a model id. Its key names both,
+// because two climbers of one configuration on different models are the two arms a
+// ladder exists to separate.
+function ggClimber(over: Partial<LadderClimber> = {}): LadderClimber {
+  return climber({
+    key: "gg|saved:cfg-1|critic=haiku,primary=opus",
+    harness: "gg",
+    model: "opus",
+    ggConfigId: "saved:cfg-1",
+    ggConfigName: "reviewer",
+    ggSlotModels: { primary: "opus", critic: "haiku" },
+    ...over,
+  });
+}
+
 function progress(over: Partial<LadderProgress> = {}): LadderProgress {
   return {
     ladderId: "l1",
@@ -272,12 +292,46 @@ describe("describeTally", () => {
   });
 });
 
+// Steering and overrides address a climber by the combination itself, so the fields
+// that make a gg climber a gg climber have to survive the round trip — otherwise a
+// hold lands on whichever climber happened to share the root model, or on none.
+describe("climberCombo", () => {
+  it("keeps a harness climber's combination to the three fields it has", () => {
+    expect(climberCombo(climber({ provider: "openrouter" }))).toEqual({
+      harness: "claude",
+      model: "opus",
+      provider: "openrouter",
+    });
+  });
+
+  it("carries a gg climber's configuration and slot models through", () => {
+    expect(climberCombo(ggClimber())).toEqual({
+      harness: "gg",
+      model: "opus",
+      ggConfigId: "saved:cfg-1",
+      ggConfigName: "reviewer",
+      ggSlotModels: { primary: "opus", critic: "haiku" },
+    });
+  });
+
+  it("leaves the gg fields off a harness climber entirely", () => {
+    expect(climberCombo(climber())).not.toHaveProperty("ggConfigId");
+    expect(climberCombo(climber())).not.toHaveProperty("ggSlotModels");
+  });
+});
+
 // Every top-up outcome has to read differently, and a ladder has one a plan does not:
 // nothing to enqueue because every climber has stopped, which is an answer rather than
 // a satisfied target.
 describe("describeLadderTopUp", () => {
   function result(over: Partial<TopUpResult> = {}): TopUpResult {
-    return { bufferTarget: 5, enqueued: 0, cells: [], ...over };
+    return {
+      bufferTarget: 5,
+      enqueued: 0,
+      cells: [],
+      unlaunchable: [],
+      ...over,
+    };
   }
 
   it("names a disabled ladder as disabled rather than as idle", () => {
@@ -311,6 +365,34 @@ describe("describeLadderTopUp", () => {
     expect(
       describeLadderTopUp(result({ outstanding: 1, bufferTarget: 5 })),
     ).toMatch(/walled, held, or topped out/i);
+  });
+
+  it("reports the climbers it could not launch beside the ones it did", () => {
+    const message = describeLadderTopUp(
+      result({
+        enqueued: 3,
+        cells: [{ runs: 3 }] as TopUpResult["cells"],
+        unlaunchable: [
+          { reason: "gg configuration `reviewer` no longer exists" },
+        ] as TopUpBlocked[],
+      }),
+    );
+    expect(message).toMatch(/Enqueued 3 runs/);
+    expect(message).toMatch(/1 cell could not be launched/);
+  });
+
+  it("does not call a ladder finished when its shortfall is unlaunchable", () => {
+    const message = describeLadderTopUp(
+      result({
+        outstanding: 1,
+        bufferTarget: 5,
+        unlaunchable: [
+          { reason: "launch slot `critic` is unbound" },
+        ] as TopUpBlocked[],
+      }),
+    );
+    expect(message).not.toMatch(/walled, held, or topped out/i);
+    expect(message).toMatch(/unlaunchable/i);
   });
 });
 
@@ -370,6 +452,44 @@ describe("ladderStatusNote", () => {
   it("stays quiet when the ladder is simply climbing", () => {
     expect(ladderStatusNote(progress(), false)).toBeNull();
   });
+
+  // A climber whose configuration was deleted keeps its rung and its "climbing"
+  // status for as long as anybody leaves it there — nothing about the ladder's own
+  // counts ever changes — so the board is silent about the one arm that will never
+  // move again unless the note says so.
+  it("counts the climbers nothing can launch on an otherwise busy ladder", () => {
+    const note = ladderStatusNote(
+      progress({
+        climbers: [
+          climber(),
+          ggClimber({
+            key: "gg|saved:gone|primary=opus",
+            unlaunchable: "that gg configuration is no longer on your account",
+          }),
+        ],
+      }),
+      false,
+    );
+    expect(note).toMatch(/1 climber cannot be launched at all/);
+    expect(note).toMatch(/reason is on each row/i);
+  });
+
+  it("adds the blocked count to whatever else the ladder is doing, never instead of it", () => {
+    const note = ladderStatusNote(
+      progress({
+        climbers: [
+          ggClimber({ unlaunchable: "launch slot `critic` is unbound" }),
+          ggClimber({
+            key: "gg|saved:cfg-2|primary=opus",
+            unlaunchable: "launch slot `critic` is unbound",
+          }),
+        ],
+      }),
+      true,
+    );
+    expect(note).toMatch(/disabled/i);
+    expect(note).toMatch(/2 climbers cannot be launched at all/);
+  });
 });
 
 // The board's row is the feature: collapsed it must already answer "where is the wall
@@ -406,6 +526,54 @@ describe("ClimberRow", () => {
     expect(screen.getByText("1/3 rungs")).toBeTruthy();
     // The per-rung detail is what expanding adds.
     expect(screen.queryByText(/1 of 2 judged/)).toBeNull();
+  });
+
+  it("heads a gg climber with its configuration and the models it binds", () => {
+    renderRow(ggClimber());
+    // Not "gg · opus": two climbers of two configurations can share a root model, and
+    // the board exists to tell them apart at a glance.
+    expect(screen.getByText("reviewer · haiku, opus")).toBeTruthy();
+    // The steering controls name the same thing, so a screen reader is never offered
+    // two identical buttons.
+    expect(
+      screen.getByRole("button", { name: /^Watch reviewer · haiku, opus$/ }),
+    ).toBeTruthy();
+  });
+
+  // The state this row is worst at showing: a climber that cannot enqueue looks
+  // exactly like one waiting on capacity, and it will keep looking like one forever.
+  it("says why a blocked climber will never move, without being expanded", () => {
+    renderRow(
+      ggClimber({
+        unlaunchable: "that gg configuration is no longer on your account",
+      }),
+    );
+    // The status is still "climbing" — which is why the treatment is keyed off the
+    // reason and not off the status.
+    expect(screen.getByText("Blocked")).toBeTruthy();
+    expect(
+      screen.getByText("that gg configuration is no longer on your account"),
+    ).toBeTruthy();
+  });
+
+  it("keeps the reason on a climber that has no current rung to hang it on", () => {
+    renderRow(
+      ggClimber({
+        status: "toppedOut",
+        currentRung: undefined,
+        unlaunchable: "launch slot `critic` is unbound",
+      }),
+    );
+    expect(screen.getByText("Blocked")).toBeTruthy();
+    expect(screen.getByText("launch slot `critic` is unbound")).toBeTruthy();
+    // And the state it is actually in is still said, because being blocked is a
+    // fault in the membership rather than a sixth thing the climb can be doing.
+    expect(screen.getByText(/Topped out/)).toBeTruthy();
+  });
+
+  it("says nothing about blocking on a climber that can launch", () => {
+    renderRow();
+    expect(screen.queryByText("Blocked")).toBeNull();
   });
 
   it("expands to the per-rung verdicts and their evidence", () => {
@@ -531,7 +699,9 @@ describe("ClimberRow", () => {
 
   it("toggles the focus flag from the star", () => {
     const { onSteer } = renderRow();
-    fireEvent.click(screen.getByRole("button", { name: /^Watch opus$/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Watch claude · opus$/ }),
+    );
     expect(onSteer).toHaveBeenCalledWith(expect.anything(), { focused: true });
   });
 
@@ -616,7 +786,12 @@ describe("topUpLaddersAfterReview", () => {
       listLadders: async () => ladders,
       topUpLadder: async (id: string) => {
         topUp(id);
-        return { bufferTarget: 5, enqueued: 2, cells: [] } as TopUpResult;
+        return {
+          bufferTarget: 5,
+          enqueued: 2,
+          cells: [],
+          unlaunchable: [],
+        } as TopUpResult;
       },
     } as unknown as BackendClient;
   }

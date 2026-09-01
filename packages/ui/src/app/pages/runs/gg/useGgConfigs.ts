@@ -33,6 +33,30 @@ export function savedKey(id: string): string {
 }
 
 /**
+ * The offered configuration a stored reference names, or undefined when the account no
+ * longer holds it.
+ *
+ * A stored reference keeps whatever arrived — a picker's `saved:<id>` key, or the bare
+ * id a client built by hand — so both spellings resolve. The exact key wins over the
+ * prefixed one, so an option is never matched by a spelling the list also holds
+ * literally.
+ *
+ * One lookup for every surface that resolves a reference back to a configuration (a
+ * coverage cell's trigger, the combination picker's slots), because a surface that
+ * resolved a reference its neighbour could not would report the operator's own
+ * configuration as deleted on one screen and offer it on the next.
+ */
+export function findGgConfig(
+  options: GgConfigOption[],
+  reference: string,
+): GgConfigOption | undefined {
+  return (
+    options.find((o) => o.key === reference) ??
+    options.find((o) => o.key === savedKey(reference))
+  );
+}
+
+/**
  * The gg configurations available to the signed-in operator — whatever the account has
  * registered (`GET /gg/configs`).
  *

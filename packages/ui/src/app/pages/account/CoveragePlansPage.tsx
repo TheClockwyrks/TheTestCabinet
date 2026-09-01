@@ -147,8 +147,9 @@ export function CoveragePlansPage() {
         <div className={styles.emptyState}>
           <p className={styles.empty}>
             You have no coverage plans yet. Create one to declare the cases and
-            harness/model combinations you want covered. Reference reusable
-            groups from the Groups tab, or pin one-off entries directly.
+            the combinations you want covered — a harness with its model, or a
+            gg configuration with the models it binds. Reference reusable groups
+            from the Groups tab, or pin one-off entries directly.
           </p>
           <Link className={exec.primary} to={routes.accountCoveragePlanNew()}>
             Create your first plan

@@ -2160,6 +2160,98 @@ impl GgCapabilitySet {
         out
     }
 
+    /// This set with every deferred binding resolved to the model the launcher collected for
+    /// the [launch input](Self::launch_slots) that fills its slot, and every slot declaration
+    /// dropped — the **launched** form of a configuration's model bindings.
+    ///
+    /// `models` is the launcher's answer to [`launch_slots`](Self::launch_slots), keyed by input
+    /// name. Three things move: an agent whose binding is
+    /// [deferred](GgAgentConfig::model_slot) takes the model its slot was filled with,
+    /// [compaction](COMPACTION_PARAM_MODEL_SLOT)'s handoff param is rewritten to the
+    /// [`model`](COMPACTION_PARAM_MODEL) key gg actually reads, and both levels of
+    /// [declaration](GgModelSlot) go. What comes back is a fully pinned set, which is the only
+    /// shape a run records: nothing downstream of a launch has a deferral left to resolve.
+    ///
+    /// A binding the configuration **pinned itself** is untouched — it was decided when the
+    /// configuration was written and is never asked about again — and an input the launcher left
+    /// blank binds *nothing* rather than a model id of `""`: the agent stays
+    /// [unresolved](GgCapabilitySet::unresolved_agents), which is the launch refusal it should be,
+    /// and an unfilled handoff param goes back to being absent, which is the documented arm where
+    /// the agent condenses on its own model. Deciding which of those two an empty answer means is
+    /// the caller's, not this function's.
+    ///
+    /// Mirrors the console's `bindModelSlots`, so a run the scheduler enqueues and a run an
+    /// operator launches from the same configuration and the same models are the same run.
+    pub fn bind_launch_slots(&self, models: &BTreeMap<String, String>) -> GgCapabilitySet {
+        // Which model fills each agent slot, resolved through the one set of inputs the launcher
+        // was asked for, so a slot reached by a configuration slot and one reached on its own are
+        // bound by exactly the same rule.
+        let mut model_for: BTreeMap<(&str, &str), &str> = BTreeMap::new();
+        let slots = self.launch_slots();
+        for input in &slots {
+            let model = models
+                .get(&input.name)
+                .map(|model| model.trim())
+                .unwrap_or_default();
+            for target in &input.targets {
+                model_for.insert((target.agent.as_str(), target.slot.trim()), model);
+            }
+        }
+        let agents = self
+            .agents
+            .iter()
+            .map(|agent| {
+                // A target names the profile's internal id, falling back to the slug for a set
+                // that carries none — the same key a passthrough input is filled by.
+                let key = agent.id.as_deref().unwrap_or(&agent.slug);
+                let model_of = |slot: &str| {
+                    model_for
+                        .get(&(key, slot.trim()))
+                        .copied()
+                        .unwrap_or_default()
+                        .to_string()
+                };
+                let mut bound = agent.clone();
+                for capability in &mut bound.capabilities {
+                    if capability.id != CAPABILITY_COMPACTION {
+                        continue;
+                    }
+                    let Some(params) = capability.params.as_object_mut() else {
+                        continue;
+                    };
+                    let slot = params
+                        .get(COMPACTION_PARAM_MODEL_SLOT)
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .unwrap_or_default()
+                        .to_string();
+                    if slot.is_empty() {
+                        continue;
+                    }
+                    params.remove(COMPACTION_PARAM_MODEL_SLOT);
+                    let model = model_of(&slot);
+                    if model.is_empty() {
+                        params.remove(COMPACTION_PARAM_MODEL);
+                    } else {
+                        params.insert(COMPACTION_PARAM_MODEL.to_string(), Value::String(model));
+                    }
+                }
+                if let Some(slot) = bound.model_slot.take()
+                    && !slot.trim().is_empty()
+                {
+                    bound.model_id = model_of(&slot);
+                }
+                bound.model_slots = Vec::new();
+                bound
+            })
+            .collect();
+        GgCapabilitySet {
+            agents,
+            model_slots: Vec::new(),
+            ..self.clone()
+        }
+    }
+
     /// Every profile [slug](GgAgentConfig::slug) this set declares more than once, in
     /// declaration order and each named once.
     ///
@@ -2411,6 +2503,43 @@ impl GgCapabilitySet {
             }
         }
         ids
+    }
+
+    /// The models this set binds, as one comparable string: every binding written as
+    /// `<agent slug>=<model id>` — with a [handoff](GgAgentConfig::handoff_model_id) written as
+    /// `<agent slug>:compaction=<model id>` — sorted, de-duplicated and joined with commas.
+    ///
+    /// This is the gg half of a [coverage cell](https://docs.testcabinet.ai)'s identity. A
+    /// configuration can run several models at once, so two members of one configuration that
+    /// agree on the root agent's model and differ on a reviewer's are two arms of a study, and a
+    /// cell keyed on the root model alone would merge them.
+    ///
+    /// It names **which agent runs which model** rather than the bare set of models, because the
+    /// bare set does not separate every pair of arms it is asked to: two members that swap one
+    /// configuration's two models between its two launch slots bind the same models and are
+    /// exactly the A/B a study is made of. A key that collapsed them would have one arm's runs
+    /// satisfy the other's target, and the comparison would quietly run half.
+    ///
+    /// **Sorted** because it is compared, not read: the set a run recorded and the set a queued
+    /// job was lifted from must produce the same string whatever order their agents happen to be
+    /// declared in. Nothing parses it, so a slug carrying a character the grammar did not expect
+    /// costs a possible collision with another such set and never a misreading.
+    ///
+    /// It exists here, on the contract, rather than at either end, because the run lift and the job
+    /// lift both write it and a cell only counts while the two agree.
+    pub fn bound_model_key(&self) -> String {
+        let mut bindings: Vec<String> = Vec::new();
+        for agent in &self.agents {
+            if let Some(model) = agent.resolved_model_id() {
+                bindings.push(format!("{}={model}", agent.slug));
+            }
+            if let Some(model) = agent.handoff_model_id() {
+                bindings.push(format!("{}:compaction={model}", agent.slug));
+            }
+        }
+        bindings.sort_unstable();
+        bindings.dedup();
+        bindings.join(",")
     }
 
     /// The agents whose model binding is still [deferred](GgAgentConfig::model_slot) to a

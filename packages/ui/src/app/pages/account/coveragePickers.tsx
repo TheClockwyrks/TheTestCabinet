@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import type {
   CoverageAxis,
   ReviewPlanCase,
   ReviewPlanCombo,
 } from "@test-cabinet/run-record/coverage";
+import { useAuth } from "../../../client/auth";
 import type { Model } from "../../../client/types";
-import { harnesses } from "../../data/harnesses";
+import { harnesses, recordedHarnesses } from "../../data/harnesses";
 import { familyOf, modelForHarness } from "../../data/families";
 import {
   OPENROUTER_PROVIDER,
@@ -23,15 +25,24 @@ import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { ModelCombobox } from "../../components/ModelCombobox";
 import { SettingRow } from "../../components/SettingRow";
+import { routes } from "../../routes";
+import { launchModelSlots } from "../runs/gg/ggConfigDraft";
+import { findGgConfig, useGgConfigs } from "../runs/gg/useGgConfigs";
+import {
+  comboDetail,
+  comboModels,
+  ggConfigLabel,
+  isGgCombo,
+} from "./comboLabels";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
-// The harness/model-combination and version-pinned-case pickers, shared by the
-// coverage plan editor (its one-off members) and the group editor (a group's
-// members). Each is a self-contained editor over an array: it renders the current
-// entries as pills grouped by section and an add-a-row control, and reports the new
-// array back through `onChange`. Lifted out of the old single-plan config page so
-// the plan editor and group editor stay byte-for-byte identical.
+// The combination and version-pinned-case pickers, shared by the coverage plan editor
+// (its one-off members) and the group editor (a group's members). Each is a
+// self-contained editor over an array: it renders the current entries as pills grouped
+// by section and an add-a-row control, and reports the new array back through
+// `onChange`. Lifted out of the old single-plan config page so the plan editor and
+// group editor stay byte-for-byte identical.
 //
 // It also holds the small controls over a plan's *schedule* (the ordering axis and
 // the review-buffer override), which the editor renders and the dashboard has to be
@@ -174,32 +185,137 @@ export function BufferTargetField({
   );
 }
 
-/** Combination pills grouped under their harness, each carrying its original index
- *  so removal targets the right entry after grouping/sorting (from the old config
- *  page). Empty harnesses drop out; an unknown harness slug keeps its own group. */
-function useComboGroups(combos: ReviewPlanCombo[]) {
-  return useMemo(() => {
-    const indexed = combos.map((combo, i) => ({ combo, i }));
-    const known = harnesses.map((h) => h.slug);
-    const extra = indexed
-      .map(({ combo }) => combo.harness)
-      .filter((slug) => !known.includes(slug));
-    const order = [...new Set([...known, ...extra])];
-    return order
-      .map((slug) => ({
-        slug,
-        items: indexed
-          .filter(({ combo }) => combo.harness === slug)
-          .sort(
-            (a, b) =>
-              a.combo.model.localeCompare(b.combo.model) ||
-              (a.combo.provider ?? "").localeCompare(b.combo.provider ?? ""),
-          ),
-      }))
-      .filter((group) => group.items.length > 0);
-  }, [combos]);
+/** gg is not in the launchable harness catalog, so a group heading for it comes from
+ *  the wider list of harnesses a *recorded* run can name. */
+function harnessName(slug: string): string {
+  return recordedHarnesses.find((h) => h.slug === slug)?.displayName ?? slug;
 }
 
+/** The configuration a gg member names, in the one form the groups key on. The wire
+ *  contract accepts a bare id and stores what arrived, while the picker writes the
+ *  launcher's `saved:<id>`, so two members of one configuration can carry either. */
+function ggGroupKey(configId: string): string {
+  return configId.replace(/^saved:/, "");
+}
+
+/** One block of member pills: the axis its pills vary within, named, over the members
+ *  that vary within it. Each item keeps its original index in the member list so
+ *  removal targets the right entry after grouping and sorting. */
+interface ComboGroup {
+  key: string;
+  /** The heading — the harness, or the gg configuration, the pills vary within. */
+  title: string;
+  items: { combo: ReviewPlanCombo; i: number; label: string }[];
+}
+
+/**
+ * Member pills grouped under the axis they vary within.
+ *
+ * A harness member varies by the model it runs, so its block is its harness and its
+ * pill is the model. A gg member varies by the models it binds within one
+ * configuration, so its block is the configuration and its pill is those models. One
+ * block per configuration is what makes the heading name a real axis and the block's
+ * Clear all mean "drop this configuration's arm" rather than "drop every gg member".
+ */
+function useComboGroups(
+  combos: ReviewPlanCombo[],
+  /** The current name of each configuration, keyed by {@link ggGroupKey}. */
+  ggNames: ReadonlyMap<string, string>,
+): ComboGroup[] {
+  return useMemo(() => {
+    const indexed = combos.map((combo, i) => ({ combo, i }));
+    const harnessMembers = indexed.filter(({ combo }) => !isGgCombo(combo));
+    const known = harnesses.map((h) => h.slug);
+    const extra = harnessMembers
+      .map(({ combo }) => combo.harness)
+      .filter((slug) => !known.includes(slug));
+    const groups: ComboGroup[] = [];
+    for (const slug of new Set([...known, ...extra])) {
+      const items = harnessMembers
+        .filter(({ combo }) => combo.harness === slug)
+        .map(({ combo, i }) => ({ combo, i, label: comboDetail(combo) }));
+      if (items.length > 0) {
+        groups.push({
+          key: `harness:${slug}`,
+          title: harnessName(slug),
+          items,
+        });
+      }
+    }
+    // One block per configuration, headed by the name it carries *now*: a stored member
+    // carries whatever name the server resolved when it read it, so preferring the
+    // option in hand renames the block along with the configuration.
+    const byConfig = new Map<string, ComboGroup>();
+    for (const { combo, i } of indexed) {
+      if (!isGgCombo(combo)) continue;
+      const key = ggGroupKey(combo.ggConfigId ?? "");
+      let group = byConfig.get(key);
+      if (!group) {
+        group = {
+          key: `gg:${key}`,
+          title: ggNames.get(key) ?? ggConfigLabel(combo),
+          items: [],
+        };
+        byConfig.set(key, group);
+      }
+      // The configuration is already the heading, so the pill is only what varies under
+      // it. A configuration that pins every model itself binds none, and says so rather
+      // than reading as an empty pill.
+      group.items.push({
+        combo,
+        i,
+        label: comboModels(combo) || "pinned models",
+      });
+    }
+    groups.push(
+      ...[...byConfig.values()].sort((a, b) => a.title.localeCompare(b.title)),
+    );
+    // Sorted on what the pill actually reads, not on the model alone: a gg member's
+    // model is empty until a read fills it, so sorting on that field would leave every
+    // gg pill in an arbitrary order.
+    for (const group of groups) {
+      group.items.sort((a, b) => a.label.localeCompare(b.label));
+    }
+    return groups;
+  }, [combos, ggNames]);
+}
+
+/** The two shapes the add-row can produce, in the order it offers them. */
+type AddMode = "harness" | "gg";
+
+/** How each shape is named on the add-row's mode switch. */
+const ADD_MODES: Readonly<Record<AddMode, string>> = {
+  harness: "Harness",
+  gg: "gg configuration",
+};
+
+/**
+ * What makes two members the same member, so adding one twice is a no-op.
+ *
+ * Derived facts are deliberately absent: a gg member's identity is the configuration
+ * it names and the models it binds, never the configuration's current name or the root
+ * model a read filled in, because those change without the member changing at all.
+ */
+function comboIdentity(combo: ReviewPlanCombo): string {
+  if (combo.ggConfigId) {
+    const slots = Object.entries(combo.ggSlotModels ?? {})
+      .map(([slot, model]) => `${slot}=${model}`)
+      .sort();
+    return ["gg", combo.ggConfigId, ...slots].join("\u0000");
+  }
+  return [combo.harness, combo.model, combo.provider ?? ""].join("\u0000");
+}
+
+/**
+ * The member editor shared by the group, plan and ladder editors: the combinations
+ * already chosen, as removable pills grouped by harness, over an add-row that builds
+ * the next one.
+ *
+ * The add-row has two modes because a combination has two shapes — a harness and the
+ * model it runs, or a saved [gg configuration](../runs/gg/useGgConfigs) and a model for
+ * every launch slot it declares. They land in one list rather than in two pickers, so a
+ * plan that crosses both against its cases needs no second axis.
+ */
 export function ComboPicker({
   combos,
   onChange,
@@ -209,11 +325,74 @@ export function ComboPicker({
   onChange: (next: ReviewPlanCombo[]) => void;
   models: Model[];
 }) {
+  const { token } = useAuth();
+  const {
+    options: ggOptions,
+    loading: ggLoading,
+    error: ggError,
+  } = useGgConfigs();
+  const [addMode, setAddMode] = useState<AddMode>("harness");
   const [addHarness, setAddHarness] = useState(harnesses[0]?.slug ?? "");
   const [addModel, setAddModel] = useState("");
   const [addProvider, setAddProvider] = useState(OPENROUTER_PROVIDER);
+  // The gg add-row: the configuration it points at, the model each of that
+  // configuration's launch slots is bound to, which slot the row fans out across, and
+  // the extra models staged against that slot (see `fanOutModels`).
+  const [addGgConfig, setAddGgConfig] = useState("");
+  const [addSlotModels, setAddSlotModels] = useState<Record<string, string>>(
+    {},
+  );
+  const [addFanSlot, setAddFanSlot] = useState("");
+  const [addGgModels, setAddGgModels] = useState<string[]>([]);
+  const fanSlotId = useId();
 
-  const comboGroups = useComboGroups(combos);
+  const ggNames = useMemo(
+    () => new Map(ggOptions.map((o) => [ggGroupKey(o.key), o.name] as const)),
+    [ggOptions],
+  );
+  const comboGroups = useComboGroups(combos, ggNames);
+
+  // The launch inputs each configuration asks for — its own configuration slots, then
+  // its agents' passthrough slots — memoized per configuration so the add-row does not
+  // re-derive them on every keystroke.
+  const ggSlotsByKey = useMemo(
+    () =>
+      new Map(
+        ggOptions.map(
+          (o) => [o.key, launchModelSlots(o.capabilitySet)] as const,
+        ),
+      ),
+    [ggOptions],
+  );
+  // Tolerant of both forms a stored member can carry: the picker writes the launcher's
+  // `saved:<id>` key, but the wire contract accepts a bare id and stores what arrived.
+  const ggOptionFor = (key: string) => findGgConfig(ggOptions, key);
+  const ggSlotsFor = (key: string) => ggSlotsByKey.get(key) ?? [];
+  const ggSlots = ggSlotsFor(addGgConfig);
+  // The slot the row fans out across, which is the operator's to choose: the slots come
+  // out in declaration order, and a sweep is as often over a reviewer's model as over
+  // the root's. It defaults to the first so a row nobody touches behaves as before.
+  const fanSlot =
+    ggSlots.find((slot) => slot.name === addFanSlot) ?? ggSlots[0];
+  const boundSlots = ggSlots.filter((slot) => slot !== fanSlot);
+  const slotModel = (slot: string) => (addSlotModels[slot] ?? "").trim();
+
+  // Point the gg add-row at the first configuration once they load, with that
+  // configuration's declared defaults already filled in, so the row opens ready to add
+  // rather than as a blank picker.
+  useEffect(() => {
+    if (addGgConfig || ggOptions.length === 0) return;
+    const first = ggOptions[0]!;
+    setAddGgConfig(first.key);
+    setAddSlotModels(
+      Object.fromEntries(
+        launchModelSlots(first.capabilitySet).map((slot) => [
+          slot.name,
+          slot.defaultModelId ?? "",
+        ]),
+      ),
+    );
+  }, [ggOptions, addGgConfig]);
 
   // Models already paired with the harness/provider the add-row is pointed at.
   // Adding one again is a no-op (the entry would be de-duped below), so the
@@ -225,68 +404,187 @@ export function ComboPicker({
       combos
         .filter(
           (c) =>
-            c.harness === addHarness && (c.provider ?? "") === addProviderKey,
+            !c.ggConfigId &&
+            c.harness === addHarness &&
+            (c.provider ?? "") === addProviderKey,
         )
         .map((c) => c.model),
     [combos, addHarness, addProviderKey],
   );
 
-  const harnessName = (slug: string) =>
-    harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
+  // Append the members that are not already in the list, and report the whole list
+  // back. Adding an exact duplicate is silently a no-op rather than an error: the two
+  // entries would be the same cell.
+  function appendCombos(next: ReviewPlanCombo[]) {
+    const seen = new Set(combos.map(comboIdentity));
+    const added: ReviewPlanCombo[] = [];
+    for (const combo of next) {
+      const key = comboIdentity(combo);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      added.push(combo);
+    }
+    if (added.length > 0) onChange([...combos, ...added]);
+  }
 
   function addCombination() {
     if (!addHarness || !addModel) return;
-    const combo: ReviewPlanCombo = {
-      harness: addHarness as ReviewPlanCombo["harness"],
-      model: addModel,
-      ...(harnessUsesProvider(addHarness) ? { provider: addProvider } : {}),
-    };
-    // Skip an exact duplicate so the same combination is not added twice.
-    if (
-      combos.some(
-        (c) =>
-          c.harness === combo.harness &&
-          c.model === combo.model &&
-          (c.provider ?? "") === (combo.provider ?? ""),
-      )
-    ) {
-      setAddModel("");
-      return;
-    }
-    onChange([...combos, combo]);
+    appendCombos([
+      {
+        harness: addHarness as ReviewPlanCombo["harness"],
+        model: addModel,
+        ...(harnessUsesProvider(addHarness) ? { provider: addProvider } : {}),
+      },
+    ]);
     setAddModel("");
   }
+
+  // Switching the configuration re-seeds the slot models and drops the staged ones:
+  // the launch inputs a configuration asks for are its own, so carrying the previous
+  // one's picks over would bind models to inputs that no longer exist.
+  function setGgConfig(key: string) {
+    setAddGgConfig(key);
+    setAddSlotModels(
+      Object.fromEntries(
+        ggSlotsFor(key).map((slot) => [slot.name, slot.defaultModelId ?? ""]),
+      ),
+    );
+    setAddFanSlot("");
+    setAddGgModels([]);
+  }
+
+  // Moving the fan-out drops the staged models: they were staged against the slot that
+  // was fanning out, and they are not what the new one is being swept over.
+  function setFanSlot(name: string) {
+    setAddFanSlot(name);
+    setAddGgModels([]);
+  }
+
+  function setSlotModel(slot: string, modelId: string) {
+    setAddSlotModels((prev) => ({ ...prev, [slot]: modelId }));
+  }
+
+  // Stage another model against the fan-out slot and clear the field for the next one.
+  function stageModel(modelId: string) {
+    const id = modelId.trim();
+    if (!id || !fanSlot) return;
+    setAddGgModels((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setSlotModel(fanSlot.name, "");
+  }
+
+  // Every model the fan-out slot will be swept over: the staged ones plus whatever is
+  // still in the field, so a reviewer who picked one model and pressed Add never has
+  // to have staged it first.
+  const fanOutModels = fanSlot
+    ? [...new Set([...addGgModels, slotModel(fanSlot.name)].filter(Boolean))]
+    : [];
+
+  // The member this row would file for one model of the fan-out slot, or null when it
+  // points at no configuration. One builder, so what the dropdown offers and what the
+  // press adds are decided from the same member.
+  function ggComboFor(head: string): ReviewPlanCombo | null {
+    const option = ggOptionFor(addGgConfig);
+    if (!option) return null;
+    return {
+      harness: "gg" as ReviewPlanCombo["harness"],
+      // Empty because a gg member binds a model per slot instead; the server fills
+      // this on read with the model the bound set's root agent runs.
+      model: "",
+      ggConfigId: option.key,
+      ggConfigName: option.name,
+      ggSlotModels: Object.fromEntries(
+        ggSlots.map((slot) => [
+          slot.name,
+          slot === fanSlot ? head : slotModel(slot.name),
+        ]),
+      ),
+    };
+  }
+
+  // Models the fan-out slot is already bound to in a member this row would rebuild
+  // exactly. Adding one again is a no-op (the entry is de-duped in `appendCombos`), so
+  // the dropdown leaves them out rather than letting "+ Add 3" file one member and say
+  // nothing about the other two. Scoped to what is on screen, because a member that
+  // differs on another slot is a different member and is still addable.
+  const ggAlreadyAdded = (() => {
+    if (!fanSlot) return [];
+    const existing = new Set(combos.map(comboIdentity));
+    const out: string[] = [];
+    for (const combo of combos) {
+      const head = (combo.ggSlotModels?.[fanSlot.name] ?? "").trim();
+      if (!head || out.includes(head)) continue;
+      const candidate = ggComboFor(head);
+      if (candidate && existing.has(comboIdentity(candidate))) out.push(head);
+    }
+    return out;
+  })();
+
+  // A configuration that pins every model itself asks for nothing and adds exactly one
+  // member; otherwise every slot but the fan-out one needs a model, and the fan-out
+  // slot needs at least one.
+  const ggAddReady =
+    Boolean(ggOptionFor(addGgConfig)) &&
+    (!fanSlot || fanOutModels.length > 0) &&
+    boundSlots.every((slot) => slotModel(slot.name));
+
+  // One member per model the fan-out slot names, every other slot taking the model on
+  // screen. Adding gg members one at a time is the tedium that would make planning gg
+  // runs not worth doing, and a fan-out across the models of one configuration is the
+  // reason a reviewer opens this row at all.
+  function addGgCombinations() {
+    if (!ggAddReady) return;
+    const heads = fanSlot ? fanOutModels : [""];
+    const built = heads
+      .map(ggComboFor)
+      .filter((combo): combo is ReviewPlanCombo => combo !== null);
+    if (built.length === 0) return;
+    appendCombos(built);
+    setAddGgModels([]);
+    if (fanSlot) setSlotModel(fanSlot.name, "");
+  }
+
+  // Why the gg mode has nothing to offer, or null when it does. Each reason is its own
+  // answer, because they are not the same fact about the account: signed out there is
+  // nothing to list, a failed read knows nothing either way, and "you have none" is a
+  // claim about the operator's own data that only a successful read can make.
+  const ggUnavailable = !token
+    ? "Sign in to plan runs for a gg configuration — a configuration belongs to your account."
+    : ggLoading
+      ? "Loading your gg configurations…"
+      : ggError
+        ? `Your gg configurations could not be loaded, so none can be offered: ${ggError}`
+        : ggOptions.length === 0
+          ? "You have no saved gg configurations yet."
+          : null;
 
   return (
     <>
       {comboGroups.length > 0 && (
         <div className={styles.chipGroups}>
           {comboGroups.map((group) => (
-            <div key={group.slug} className={styles.chipGroup}>
+            <div key={group.key} className={styles.chipGroup}>
               <div className={styles.chipGroupHead}>
-                <span className={styles.chipGroupTitle}>
-                  {harnessName(group.slug)}
-                </span>
+                <span className={styles.chipGroupTitle}>{group.title}</span>
                 <button
                   type="button"
                   className={styles.chipGroupClear}
-                  onClick={() =>
-                    onChange(combos.filter((c) => c.harness !== group.slug))
-                  }
+                  // Scoped by the indices the block actually holds, so clearing a
+                  // configuration's arm leaves every other configuration's alone.
+                  onClick={() => {
+                    const dropped = new Set(group.items.map((item) => item.i));
+                    onChange(combos.filter((_, j) => !dropped.has(j)));
+                  }}
                 >
                   Clear all
                 </button>
               </div>
               <ul className={styles.chipList}>
-                {group.items.map(({ combo, i }) => (
+                {group.items.map(({ combo, i, label }) => (
                   <li
-                    key={`${combo.harness}:${combo.model}:${i}`}
+                    key={`${comboIdentity(combo)}:${i}`}
                     className={styles.chip}
                   >
-                    <span>
-                      {combo.model}
-                      {combo.provider ? ` · ${combo.provider}` : ""}
-                    </span>
+                    <span>{label}</span>
                     <button
                       type="button"
                       className={styles.chipRemove}
@@ -302,62 +600,222 @@ export function ComboPicker({
           ))}
         </div>
       )}
-      <div className={styles.inputRow}>
-        <label className={`${exec.field} ${exec.comboField}`}>
-          <span className={exec.fieldLabel}>Harness</span>
-          <select
-            className={exec.select}
-            value={addHarness}
-            onChange={(e) => {
-              const next = e.target.value;
-              setAddModel((m) => modelForHarness(models, m, next));
-              setAddHarness(next);
-            }}
+      <div
+        className={styles.kindRow}
+        role="radiogroup"
+        aria-label="Combination kind"
+      >
+        {(Object.keys(ADD_MODES) as AddMode[]).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            role="radio"
+            aria-checked={addMode === mode}
+            className={`${styles.groupPick} ${
+              addMode === mode ? styles.groupPickOn : ""
+            }`}
+            onClick={() => setAddMode(mode)}
           >
-            {harnesses.map((h) => (
-              <option key={h.slug} value={h.slug}>
-                {h.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={`${exec.field} ${exec.comboFieldWide}`}>
-          <span className={exec.fieldLabel}>Model</span>
-          <ModelCombobox
-            value={addModel}
-            onChange={setAddModel}
-            models={models}
-            harnessFamily={familyOf(addHarness)}
-            excludeIds={alreadyAdded}
-            inputClassName={exec.input}
-            placeholder="model id (e.g. claude-opus-4-8)"
-          />
-        </label>
-        {harnessUsesProvider(addHarness) && (
+            {ADD_MODES[mode]}
+          </button>
+        ))}
+      </div>
+      {addMode === "harness" ? (
+        <div className={styles.inputRow}>
           <label className={`${exec.field} ${exec.comboField}`}>
-            <span className={exec.fieldLabel}>Provider</span>
+            <span className={exec.fieldLabel}>Harness</span>
             <select
               className={exec.select}
-              value={addProvider}
-              onChange={(e) => setAddProvider(e.target.value)}
+              value={addHarness}
+              onChange={(e) => {
+                const next = e.target.value;
+                setAddModel((m) => modelForHarness(models, m, next));
+                setAddHarness(next);
+              }}
             >
-              {PROVIDERS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
+              {harnesses.map((h) => (
+                <option key={h.slug} value={h.slug}>
+                  {h.displayName}
                 </option>
               ))}
             </select>
           </label>
-        )}
-        <button
-          type="button"
-          className={exec.secondary}
-          onClick={addCombination}
-          disabled={!addHarness || !addModel}
-        >
-          + Add
-        </button>
-      </div>
+          <label className={`${exec.field} ${exec.comboFieldWide}`}>
+            <span className={exec.fieldLabel}>Model</span>
+            <ModelCombobox
+              value={addModel}
+              onChange={setAddModel}
+              models={models}
+              harnessFamily={familyOf(addHarness)}
+              excludeIds={alreadyAdded}
+              inputClassName={exec.input}
+              placeholder="model id (e.g. claude-opus-4-8)"
+            />
+          </label>
+          {harnessUsesProvider(addHarness) && (
+            <label className={`${exec.field} ${exec.comboField}`}>
+              <span className={exec.fieldLabel}>Provider</span>
+              <select
+                className={exec.select}
+                value={addProvider}
+                onChange={(e) => setAddProvider(e.target.value)}
+              >
+                {PROVIDERS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button
+            type="button"
+            className={exec.secondary}
+            onClick={addCombination}
+            disabled={!addHarness || !addModel}
+          >
+            + Add
+          </button>
+        </div>
+      ) : ggUnavailable ? (
+        <p className={`${exec.notice} ${exec.muted}`}>
+          {ggUnavailable}{" "}
+          {/* Offered only where authoring one is the answer. A read that failed says
+              nothing about whether the account already has twenty. */}
+          {token && !ggLoading && !ggError && (
+            <Link to={routes.accountGgConfigs()}>Save one</Link>
+          )}
+        </p>
+      ) : (
+        // A gg row is a stack rather than a line: a configuration declares as many
+        // launch slots as it likes, and laid out beside each other they squeeze every
+        // one below the width a model id is legible in.
+        <div className={styles.ggAdd}>
+          <label className={`${exec.field} ${exec.comboFieldWide}`}>
+            <span className={exec.fieldLabel}>gg configuration</span>
+            <select
+              className={exec.select}
+              value={addGgConfig}
+              onChange={(e) => setGgConfig(e.target.value)}
+              title={ggOptionFor(addGgConfig)?.description}
+            >
+              {ggOptions.map((o) => (
+                <option key={o.key} value={o.key} title={o.description}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {ggSlots.length === 0 && (
+            <p className={styles.fieldHint}>
+              This configuration pins every model itself, so it asks for none.
+            </p>
+          )}
+          {ggSlots.length > 1 && (
+            <label className={`${exec.field} ${exec.comboFieldWide}`}>
+              <span className={exec.fieldLabel}>Fan out across</span>
+              <select
+                className={exec.select}
+                value={fanSlot?.name ?? ""}
+                onChange={(e) => setFanSlot(e.target.value)}
+              >
+                {ggSlots.map((slot) => (
+                  <option key={slot.name} value={slot.name}>
+                    {slot.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {/* In declaration order, so the slots read as the configuration declares
+              them however the fan-out is pointed. */}
+          {ggSlots.map((slot) =>
+            slot === fanSlot ? (
+              <div
+                key={slot.name}
+                className={`${exec.field} ${exec.comboSlotField}`}
+              >
+                <label className={exec.fieldLabel} htmlFor={fanSlotId}>
+                  {slot.name}
+                </label>
+                <div className={styles.modelStage}>
+                  <ModelCombobox
+                    id={fanSlotId}
+                    value={addSlotModels[slot.name] ?? ""}
+                    onChange={(v) => setSlotModel(slot.name, v)}
+                    onCommit={stageModel}
+                    models={models}
+                    harnessFamily={familyOf("gg")}
+                    excludeIds={[...addGgModels, ...ggAlreadyAdded]}
+                    inputClassName={exec.input}
+                    placeholder="model id (e.g. anthropic/claude-opus-4.8)"
+                  />
+                  <button
+                    type="button"
+                    className={exec.secondary}
+                    onClick={() => stageModel(addSlotModels[slot.name] ?? "")}
+                    disabled={!slotModel(slot.name)}
+                  >
+                    + Model
+                  </button>
+                </div>
+                <p className={styles.fieldHint}>
+                  Pick as many models as you like — one combination is added per
+                  model, and the other slots take the models on screen.
+                </p>
+                {addGgModels.length > 0 && (
+                  <ul className={styles.chipList}>
+                    {addGgModels.map((id) => (
+                      <li key={id} className={styles.chip}>
+                        <span>{id}</span>
+                        <button
+                          type="button"
+                          className={styles.chipRemove}
+                          aria-label={`Remove ${id}`}
+                          onClick={() =>
+                            setAddGgModels((prev) =>
+                              prev.filter((m) => m !== id),
+                            )
+                          }
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <label
+                key={slot.name}
+                className={`${exec.field} ${exec.comboSlotField}`}
+              >
+                <span className={exec.fieldLabel}>{slot.name}</span>
+                <ModelCombobox
+                  value={addSlotModels[slot.name] ?? ""}
+                  onChange={(v) => setSlotModel(slot.name, v)}
+                  models={models}
+                  harnessFamily={familyOf("gg")}
+                  inputClassName={exec.input}
+                  placeholder="model id (e.g. anthropic/claude-opus-4.8)"
+                />
+              </label>
+            ),
+          )}
+          <div className={styles.inputRow}>
+            <button
+              type="button"
+              className={exec.secondary}
+              onClick={addGgCombinations}
+              disabled={!ggAddReady}
+            >
+              {fanOutModels.length > 1
+                ? `+ Add ${fanOutModels.length}`
+                : "+ Add"}
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

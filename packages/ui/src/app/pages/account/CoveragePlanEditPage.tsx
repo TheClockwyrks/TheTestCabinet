@@ -275,11 +275,11 @@ export function CoveragePlanEditPage() {
             plan&rsquo;s dashboard.
           </p>
 
-          <p className={exec.sectionLabel}>Model groups</p>
+          <p className={exec.sectionLabel}>Combination groups</p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
-              No model groups yet. Create some on the Groups tab, or pin one-off
-              combinations below.
+              No combination groups yet. Create some on the Groups tab, or pin
+              one-off combinations below.
             </p>
           ) : (
             <div className={styles.groupPicks}>
@@ -333,9 +333,7 @@ export function CoveragePlanEditPage() {
             </div>
           )}
 
-          <p className={exec.sectionLabel}>
-            One-off harness / model combinations
-          </p>
+          <p className={exec.sectionLabel}>One-off combinations</p>
           <ComboPicker combos={combos} onChange={setCombos} models={models} />
 
           <p className={exec.sectionLabel}>One-off test cases</p>

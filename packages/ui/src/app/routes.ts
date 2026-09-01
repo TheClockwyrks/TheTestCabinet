@@ -121,7 +121,7 @@ export const routes = {
   accountCoveragePlanEdit: (planId: string): string =>
     `/account/coverage/${planId}/edit`,
   // The account section's ladders tab (consoles only): the reviewer's ladders — an
-  // ordered climb of version-pinned cases each harness/model combination advances
+  // ordered climb of version-pinned cases each combination advances
   // through on its own, gated on that account's own reviews. A sibling of coverage,
   // not a mode of it, so it gets its own routes rather than a query parameter.
   accountLadders: (): string => "/account/ladders",
