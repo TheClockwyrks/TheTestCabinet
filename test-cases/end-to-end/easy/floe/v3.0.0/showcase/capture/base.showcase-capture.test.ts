@@ -28,7 +28,7 @@
 // and it never poses.
 //
 // Run from the reference workspace root:
-//   TCAB_VALIDATION_MEDIA_DIR=<out> TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1500 \
+//   TCAB_VALIDATION_MEDIA_DIR=<out> TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1650 \
 //     npx vitest run --config validation/vitest.config.ts \
 //     validation/showcase-capture.test.ts
 
