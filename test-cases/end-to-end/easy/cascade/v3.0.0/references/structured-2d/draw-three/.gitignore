@@ -18,3 +18,7 @@ playwright-report/
 
 # Scratch that `tcab validate --implementation` writes beside the build.
 .tcab/
+
+# The case's validator project, staged in by hand to run the suite or a
+# showcase capture against this build (see showcase/capture/README.md).
+validation/

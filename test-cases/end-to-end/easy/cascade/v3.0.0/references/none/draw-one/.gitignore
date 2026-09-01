@@ -15,3 +15,7 @@ playwright-report/
 
 # Logs.
 *.log
+
+# The case's validator project, staged in by hand to run the suite or a
+# showcase capture against this build (see showcase/capture/README.md).
+validation/
