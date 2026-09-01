@@ -38,9 +38,14 @@ const BAY = 1;
 /** The tenth of a second the review item allows, in seconds. */
 const TOLERANCE = 0.1;
 
-/** How far into the linger the departure is looked for, and the window it is found in. */
-const LINGER_EARLY_TICKS = ticksFor(FISH_LINGER - TOLERANCE);
-const LINGER_WINDOW_TICKS = ticksFor(2 * TOLERANCE);
+/**
+ * How far the posed catch's departure is swept for: half again `FISH_LINGER`.
+ *
+ * Generous on purpose. What the linger is worth is `bays/fish-lingers`'s
+ * requirement, so this point accepts a departure wherever it falls and measures
+ * the gap from there.
+ */
+const LINGER_WAIT_TICKS = ticksFor(FISH_LINGER * 1.5);
 
 /** The interval, less the tolerance: no catch may have arrived yet here. */
 const EARLY_TICKS = ticksFor(FISH_INTERVAL - TOLERANCE);
@@ -63,17 +68,17 @@ it("brings the next bonus catch eight seconds after the last one left", async ()
   await h.debug.setFishCadence(true);
   await h.debug.setFishBay(BAY);
 
-  // Run the posed catch's linger out and stop on the very tick it leaves, which
-  // is the instant the interval is measured from.
-  await h.advance(LINGER_EARLY_TICKS);
+  // Stop on the very tick the posed catch leaves, which is the instant the
+  // interval is measured from. Where it falls inside that sweep is
+  // `bays/fish-lingers`'s requirement, not this one's.
   const left = await h.until((s) => s.fishBay === null, {
-    maxTicks: LINGER_WINDOW_TICKS,
+    maxTicks: LINGER_WAIT_TICKS,
     poll: 1,
   });
   assertEqual(
     left.hit,
     true,
-    `the posed catch gone by ${FISH_LINGER + TOLERANCE} s (specs/bays.md)`,
+    `the posed catch gone within ${FISH_LINGER * 1.5} s (specs/bays.md)`,
   );
 
   // Both ends of the window are READ before either is asserted, so the picture
