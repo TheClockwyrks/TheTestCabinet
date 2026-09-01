@@ -90,8 +90,16 @@ it("puts the shot on the ship's centre x, above SHIP_Y", async () => {
   startPosed(h);
   h.debug.setShipX(SPAWN_X);
   const before = h.snapshot();
-  assertEqual(before.screen, "inWave", "the wave the key is pressed in is live");
-  assertEqual(before.ship.x, SPAWN_X, "the ship is parked off the lane's centre");
+  assertEqual(
+    before.screen,
+    "inWave",
+    "the wave the key is pressed in is live",
+  );
+  assertEqual(
+    before.ship.x,
+    SPAWN_X,
+    "the ship is parked off the lane's centre",
+  );
   assertLength(
     playerBullets(before),
     0,

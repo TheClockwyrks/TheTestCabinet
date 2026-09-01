@@ -66,7 +66,11 @@ afterEach(() => {
 it("adds exactly one friendly bullet for one press of fire", async () => {
   startPosed(h);
   const before = h.snapshot();
-  assertEqual(before.screen, "inWave", "the wave the key is pressed in is live");
+  assertEqual(
+    before.screen,
+    "inWave",
+    "the wave the key is pressed in is live",
+  );
   assertEqual(
     before.phase,
     "live",

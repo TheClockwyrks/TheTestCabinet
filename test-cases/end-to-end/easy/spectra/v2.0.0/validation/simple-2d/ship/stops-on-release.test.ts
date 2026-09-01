@@ -84,7 +84,11 @@ afterEach(() => {
 it("leaves the ship where the release left it, after either direction", async () => {
   startPosed(h);
   const opening = h.snapshot();
-  assertEqual(opening.screen, "inWave", "the wave the keys are held in is live");
+  assertEqual(
+    opening.screen,
+    "inWave",
+    "the wave the keys are held in is live",
+  );
   assertEqual(
     opening.phase,
     "live",
