@@ -112,6 +112,15 @@ makes is a pure function of the debug snapshot, so a seed and a phase replay the
 identical game. That is what lets a take be auditioned with the recorder off and
 then re-run under it exactly.
 
+One caveat, and it is weaker than identity of the game: a recorded frame carries
+the engine's own frame number and running clock, and both count from when the
+harness was created rather than from when the recorder was armed. Re-recording a
+committed take with `TCAB_SHOWCASE_TAKE` therefore writes the same game with a
+different time origin — byte-identical stills, and a replay whose frames and
+operations match one for one — while a re-run of the whole audition reproduces
+the file exactly. Playback is unaffected either way, because a player paces
+itself off the per-frame deltas.
+
 ## The committed media
 
 | Variant | Take | Cap | What it turned out to be |
