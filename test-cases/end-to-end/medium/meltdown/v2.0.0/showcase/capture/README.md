@@ -51,16 +51,21 @@ length.
 ## What was committed
 
 `showcase/base/gameplay.json.gz`, `mid-wave.png` and `inspector.png` were
-captured from `references/structured-2d` at **seed 6**, with the default
-`1,2,3,4,5,6` audition and a `2600`-frame cap. That take ran 36.4 s of game time
-at the suite's 120 Hz clock, and the thinner kept every second frame: 2202
-frames at exactly 60 fps, 414 KiB gzipped. It cleared Waves 1 and 2 with no
-leak, tripped four guns, took the Sink, and finished on 20 towers with the next
-wave's card up on the panel.
+captured from `references/structured-2d` by exactly the command above — the
+default `1,2,3,4,5,6` audition, a `2600`-frame cap — which picked **seed 6**.
+That take ran 36.4 s of game time on the suite's 120 Hz clock, and the thinner
+kept every second frame: 2187 frames at exactly 60 fps, 414 KiB gzipped. It
+cleared Waves 1 and 2 with no leak, tripped four guns, dropped the Sink against
+the first one to go, and finished on 20 towers with the next wave's card up on
+the panel.
 
-The capture is deterministic — the same seed replays the identical run, which is
-what lets a take be auditioned with the recorder off and then re-run with it
-on — so re-running the command above reproduces those bytes.
+Re-running that command reproduces all three files byte for byte. Change the
+audition, though, and the replay's bytes change even when the same seed wins:
+the recorder stamps each frame with the engine's own absolute frame count and
+clock, which have run further by the time a longer audition reaches the take.
+The pictures are unaffected, and so is what the replay shows — but if the
+committed `gameplay.json.gz` is to be reproduced rather than merely re-captured,
+run the audition as it is written above.
 
 ## Judging a take
 
