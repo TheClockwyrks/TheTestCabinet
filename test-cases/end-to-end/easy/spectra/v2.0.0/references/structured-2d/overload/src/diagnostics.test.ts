@@ -43,7 +43,7 @@ describe("the overlay's sources", () => {
     expect(String(sources.get("ship")?.())).toContain("magenta");
     const drones = String(sources.get("drones")?.());
     expect(drones).toContain(`#${flux.id}`);
-    expect(drones).toContain("~");
+    expect(drones).toContain("shimmer");
     expect(drones).toContain("+2");
     expect(drones).toContain(`#${prism.id}`);
     expect(drones).toContain("core");

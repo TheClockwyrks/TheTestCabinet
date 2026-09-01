@@ -17,9 +17,16 @@ import { RESONANCE_MAX, fluxHold, isChallengeStage } from "./constants";
 import { droneEffectiveBand, shimmering } from "./bands";
 import { spectraState, type SpectraState } from "./game";
 
-/** A band as one letter, so a roster of drones fits on one line. */
-function band(value: string): string {
-  return value === "cyan" ? "C" : "M";
+/**
+ * A drone's stored band, and the band it READS as when the two differ.
+ *
+ * Spelled out rather than lettered. specs/instrumentation.md asks for both bands
+ * per drone and asks the line to stay short; the words are what make the line
+ * readable at a glance, and what let anything reading the panel tell `cyan` from
+ * `magenta` without knowing this file's abbreviations.
+ */
+function bands(stored: string, effective: string): string {
+  return stored === effective ? stored : `${stored}>${effective}`;
 }
 
 /**
@@ -77,20 +84,21 @@ export function diagnosticSources(
         if (state.drones.length === 0) return "-";
         return state.drones
           .map((drone) => {
-            const stored = band(drone.band);
-            const effective = band(droneEffectiveBand(drone, state));
             const marks = [
               drone.kind === "flux" && shimmering(drone, state.stage)
-                ? "~"
+                ? "shimmer"
                 : "",
-              drone.kind === "prism" && !drone.shellAlive ? "core" : "",
+              drone.kind === "prism"
+                ? drone.shellAlive
+                  ? "shell"
+                  : "core"
+                : "",
               drone.charge > 0 ? `+${drone.charge}` : "",
-            ]
-              .filter(Boolean)
-              .join("");
-            return `#${drone.id} ${drone.kind[0]}${stored}/${effective} ${drone.x.toFixed(0)},${drone.y.toFixed(0)} ${drone.phase[0]}${marks}`;
+            ].filter(Boolean);
+            const tail = marks.length > 0 ? ` ${marks.join(" ")}` : "";
+            return `#${drone.id} ${drone.kind} ${bands(drone.band, droneEffectiveBand(drone, state))} ${drone.phase} ${drone.x.toFixed(0)},${drone.y.toFixed(0)}${tail}`;
           })
-          .join("  ");
+          .join(" | ");
       },
     ],
     [
