@@ -42,19 +42,6 @@ before mass divides it. An upgrade moves four of these figures and no others,
 under Levels below: range, fire rate, base damage, and `heatPerShot`. Those four
 are given at level I. Size, cost, redline, and mass are the same at every level.
 
-Each emitter has a stance the figures give it:
-
-- The Arc is the cheap workhorse, the tower a maze is laid out in numbers of.
-- The Stutter pours on heat fastest and has the lowest mass and the lowest
-  redline, so it spikes hard and reaches full power early.
-- The Rime slows what it hits, hardest when it is cold, and its redline sits at
-  the trip, so it never reaches a plateau. Its shots deal ordinary damage, which
-  `specs/combat.md` states.
-- The Flak targets flyers alone.
-- The Bloom splashes its shot around its target.
-- The Lance hits hardest at the longest range, heats slowly for its bulk, and has
-  the highest redline, so it wants feeding.
-
 ## The Forge and the Sink
 
 Both are 2x2, cost `20`, never fire, carry no heat, and have no radiator faces at

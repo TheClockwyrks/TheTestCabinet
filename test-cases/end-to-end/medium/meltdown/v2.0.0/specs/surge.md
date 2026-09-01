@@ -20,12 +20,6 @@ is the unit's base speed, in logical units per second; its current speed is that
 base reduced by any live slow, as `specs/combat.md` states. Bounty is the money a
 kill pays and leak is the lives a leak costs.
 
-The Mote is the baseline. The Sprint runs at double a Mote's speed on half its
-hp. The Hulk is slow and heavy and costs two lives if it escapes. The Swarm is
-tiny and arrives in dense counts. The Drift is the flyer, and it ignores the maze
-entirely. The Core is the boss: an enormous hp pool, immune to slowing, and worth
-five lives if it escapes.
-
 ## Entering the floor
 
 A unit enters at one of the two vents. Its centre appears on the centre of an
