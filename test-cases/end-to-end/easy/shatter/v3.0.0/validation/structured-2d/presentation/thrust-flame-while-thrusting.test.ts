@@ -20,19 +20,31 @@
 // `20` and `34` behind it and a flame trailing FROM that tail lies inside the wedge
 // whatever length a build gives it.
 //
-// AND WHAT IS COMPARED. Not the ink in the wedge, but the CHANGE in it against a
-// frame of the same ship in the same place not thrusting. The wedge holds the back
-// of the hull as well as the flame, and how the hull is drawn is the build's, so a
-// difference is what isolates the flame from everything else in the wedge. Nothing
-// here reads a colour, a size or a shape: `specs/overview.md` leaves the look to the
-// build, and what is required is that something is painted there while the burn runs
-// and nothing while it does not.
+// AND WHAT IS COMPARED. HOW MANY square units of the wedge are painted — read as
+// units standing further than `INKED` from the field the build itself drew — against
+// the same count on a frame of the same ship in the same place not thrusting. The
+// wedge holds the back of the hull as well as the flame, and how the hull is drawn
+// is the build's, so the RISE in the count is what isolates the flame from
+// everything else in the wedge. Nothing here reads a colour, a size or a shape:
+// `specs/overview.md` leaves the look to the build, and what is required is that
+// something is painted there while the burn runs and nothing while it does not.
 //
-// THE SHIP IS PUT BACK BEFORE EACH READING. Thrust accelerates the ship
-// (`SHIP_THRUST`, `specs/ship.md`), so a burn moves it, and a moved hull would change
-// the wedge on its own. `setShipPosition` and `setShipVelocity` return it to the same
-// place at rest before each of the three frames, so the three readings differ in one
-// thing only: whether the thrust key is down.
+// WHY THE COUNT RATHER THAN THE CELLS THAT CHANGED. A tick of thrust ACCELERATES the
+// ship (`SHIP_THRUST`, `specs/ship.md`) and the tick's motion is applied before the
+// frame is drawn, so the burning frame's hull stands a hundredth of a unit from
+// where the quiet frame's did however carefully the pose is repeated — and a
+// hundredth of a unit is enough to move the anti-aliased edge of the hull's own
+// outline across a whole row of square units. Counting the units that CHANGED reads
+// those edges: on this case's own reference, a build with its flame taken out still
+// moved 26 of them, which is more than a flame's own floor. Counting the units that
+// are PAINTED does not: an outline that shifts by a hair paints the same number of
+// units, while a flame paints scores more. The same reference reads 58 painted units
+// quiet and 110 burning, and 56 burning with the flame removed — so the rise is 52
+// where the rule is met and below nothing where it is not.
+//
+// THE SHIP IS PUT BACK BEFORE EACH READING all the same, with `setShipPosition` and
+// `setShipVelocity`, so the hull is drawn in the same place to within that hundredth
+// of a unit and the wedge sits over the same part of it in all three frames.
 //
 // THE POSE. An emptied, gated field with the ship at `SHIP_SPOT` facing `FACE_UP`,
 // `376` from the star's centre, so the wedge — which reaches `48` below the ship —
@@ -53,7 +65,7 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
-import { changedCells, readInk, readPainted, type InkGrid } from "./ink";
+import { inkedCells, readInk, readPainted, type InkGrid } from "./ink";
 import { SHIP_SPOT, sampleField } from "./scene";
 
 /** The side of a square unit the frame is read in, in logical units. */
@@ -80,33 +92,34 @@ const WEDGE_FAR = 48;
 const WEDGE_HALF_ANGLE = Math.PI / 4;
 
 /**
- * How much a square unit's reading must move between two frames to count as changed,
+ * How far a square unit's reading must stand from the field to count as painted,
  * of 441.
  *
- * Half the `60` a unit must sit from the field by to be called drawn at all, so a
- * flame drawn faint enough to be only just visible still registers, and a build's
- * own dithering between two frames of the same picture does not.
+ * The same `60` every presentation item in this suite calls a body drawn at, so a
+ * flame drawn faint enough to be only just visible still registers and the field's
+ * own gradient does not.
  */
-const CHANGE = 30;
+const INKED = 60;
 
 /**
- * How many square units of the wedge must change when the burn starts.
+ * How many more square units of the wedge must be painted when the burn starts.
  *
  * `specs/ship.md` gives the tail a width of `26`, so a flame trailing from it covers
  * scores of square units however short a build draws it. Twenty is a floor far under
- * that and far above the handful a build's anti-aliasing moves.
+ * the 52 this case's own reference adds, and far above the handful an outline
+ * shifted by a hair between two frames moves either way.
  */
 const MIN_FLAME = 20;
 
 /**
- * How many square units of the wedge may still differ a frame after the key is let
- * up.
+ * How many more square units of the wedge may still be painted a frame after the key
+ * is let up.
  *
  * Six. The rule is that the flame is ABSENT, so this is an allowance for measurement
  * rather than for a residue: the ship is put back at rest before the reading but
- * still travels a fraction of a unit inside the frame that draws it, which can move
- * a unit or two along the hull's own outline. A flame that is still being drawn is
- * scores of units, not six.
+ * still travels a fraction of a unit inside the frame that draws it, which can add
+ * or drop a unit or two along the hull's own outline. A flame that is still being
+ * drawn is scores of units, not six.
  */
 const MAX_RESIDUE = 6;
 
@@ -171,20 +184,25 @@ it("paints the wedge behind the tail while thrust is held and clears it when it 
   const released = read();
 
   const key = keysFor("up")[0];
+  const painted = (grid: InkGrid): number =>
+    inkedCells(grid, INKED, behindTheTail).length;
+  const quietly = painted(still);
 
   assertGreaterThanOrEqual(
-    changedCells(still, burning, CHANGE, behindTheTail).length,
+    painted(burning) - quietly,
     MIN_FLAME,
-    `holding ${key}: how many square units of the wedge behind the ship's ` +
-      "tail the build painted that it had not painted a frame earlier, where " +
-      "a flame must be drawn while thrust is applied (specs/ship.md)",
+    `holding ${key}: how many MORE square units of the wedge behind the ` +
+      `ship's tail the build paints than it paints with the same ship in the ` +
+      `same place not thrusting (${String(quietly)} of them), where a flame ` +
+      "must be drawn while thrust is applied (specs/ship.md)",
   );
 
   assertLessThanOrEqual(
-    changedCells(still, released, CHANGE, behindTheTail).length,
+    painted(released) - quietly,
     MAX_RESIDUE,
-    `a frame after ${key} came up: how many square units of the wedge behind ` +
-      "the ship's tail still differ from the frame before the burn, where the " +
-      "flame must be absent whenever thrust is not applied (specs/ship.md)",
+    `a frame after ${key} came up: how many more square units of the wedge ` +
+      `behind the ship's tail are painted than the ${String(quietly)} the ` +
+      "frame before the burn painted, where the flame must be absent whenever " +
+      "thrust is not applied (specs/ship.md)",
   );
 });
