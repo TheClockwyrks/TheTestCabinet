@@ -1,17 +1,123 @@
-// Spectra — ship/stops-on-release: the ship stops promptly
+// Spectra — ship/stops-on-release: the ship stops in the frame the direction is
+// released.
 //
-// SCAFFOLD PLACEHOLDER — NOT THE VALIDATOR. The validator stage replaces this
-// file with the suite that decides the point `ship.stops-on-release` on the
-// `simple-2d` configuration, and captures the media `test-case.toml` declares
-// for it.
+// THE RULE. `specs/ship.md`: the ship "stops in the frame the direction is
+// released, with no drift and no inertia". The review item states the reading:
+// releasing the direction leaves the ship within one unit of where it stood a
+// tenth of a second later.
 //
-// It THROWS rather than passing, on purpose: a point whose suite was never
-// written must fail loudly instead of silently scoring.
+// WHY BOTH DIRECTIONS ARE RELEASED. It is one requirement — that a released
+// direction leaves NO residual motion — and a build carries its residue in a
+// velocity, an easing or a smoothed input that a single direction cannot pin down:
+// a ship that keeps a signed velocity drifts on after a left hold and on after a
+// right one, while a ship that eases only toward a target x may look still after
+// one and drift after the other. Both legs assert the same thing, and each names
+// its own direction, so the failure says which release drifted.
+//
+// WHAT ONE UNIT IS, AND WHY IT IS THE RIGHT BOUND. `SHIP_SPEED` is 360 units a
+// second, so the tenth of a second measured here covers 36 units of travel at
+// speed. A build with real inertia — even a tenth of the ship's speed bled off
+// over that window — moves several units; a build that stops dead moves none. One
+// unit sits between the two by a wide margin in both directions, and it is the
+// review item's own figure.
+//
+// THE MEASUREMENT TAKES NOTHING FROM THE HOLD. The reading is taken from where the
+// ship stood at the RELEASE, not from where the hold started, so how far the hold
+// carried it is `ship/move-left`'s and `ship/move-right`'s point and not this
+// one's. The holds are short and start mid-lane, so neither leg reaches
+// `SHIP_X_MIN` or `SHIP_X_MAX` and the clamp — which would stop a drifting ship
+// for the wrong reason — never enters the scenario.
+//
+// THE WORLD IS EMPTY. `startPosed` clears the four rosters and shuts the wave's
+// three gates, so nothing but the keys can move the ship, and nothing can drop it
+// into the `ready` phase, where `specs/progression.md` re-centres it.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { BINDINGS, SHIP_SPEED } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  holdFor,
+  LANE_CENTER,
+  startPosed,
+  ticksFor,
+  type Harness,
+} from "../harness";
 
-it("The ship stops promptly", () => {
-  throw new Error(
-    "Spectra: validation/simple-2d/ship/stops-on-release.test.ts is a scaffold placeholder and has not been implemented",
+/** The keys the two holds are delivered on: the first of each of the build's. */
+const LEFT_KEY = BINDINGS.left[0];
+const RIGHT_KEY = BINDINGS.right[0];
+
+/**
+ * How long each direction is held before it is released.
+ *
+ * Long enough that a build carrying inertia has reached its full speed — 0.3 s is
+ * 108 units of travel at `SHIP_SPEED` — and short enough that both legs stay well
+ * inside `[SHIP_X_MIN, SHIP_X_MAX]` from the centre of the lane.
+ */
+const HOLD_TICKS = ticksFor(0.3);
+
+/** The tenth of a second the review item measures the drift over. */
+const SETTLE_SECONDS = 0.1;
+const SETTLE_TICKS = ticksFor(SETTLE_SECONDS);
+
+/**
+ * The review item's bound on that drift: one unit.
+ *
+ * A thirty-sixth of the 36 units `SHIP_SPEED` covers in the same tenth of a
+ * second, so it admits the floating-point residue of an integration that really
+ * did stop and nothing that is still moving.
+ */
+const DRIFT_MAX = 1;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("leaves the ship where the release left it, after either direction", async () => {
+  startPosed(h);
+  const opening = h.snapshot();
+  assertEqual(opening.screen, "inWave", "the wave the keys are held in is live");
+  assertEqual(
+    opening.phase,
+    "live",
+    "and the ship is flying rather than respawning",
+  );
+  assertEqual(opening.ship.x, LANE_CENTER, "the ship starts mid-lane");
+
+  await holdFor(h, LEFT_KEY, HOLD_TICKS);
+  const leftReleased = h.snapshot().ship.x;
+  await h.advance(SETTLE_TICKS);
+  const leftSettled = h.snapshot().ship.x;
+
+  assertLessThanOrEqual(
+    Math.abs(leftSettled - leftReleased),
+    DRIFT_MAX,
+    `the units the ship drifted in the ${String(SETTLE_SECONDS)}s after LEFT ` +
+      `was released, where holding it covers ${String(SHIP_SPEED)} units a ` +
+      "second (specs/ship.md)",
+  );
+
+  await holdFor(h, RIGHT_KEY, HOLD_TICKS);
+  const rightReleased = h.snapshot().ship.x;
+  await h.advance(SETTLE_TICKS);
+  // Before the assertion, so a check that fails still leaves the picture of where
+  // the release left the ship.
+  captureStill(h, "stopped");
+  const rightSettled = h.snapshot().ship.x;
+
+  assertLessThanOrEqual(
+    Math.abs(rightSettled - rightReleased),
+    DRIFT_MAX,
+    `the units the ship drifted in the ${String(SETTLE_SECONDS)}s after RIGHT ` +
+      `was released, where holding it covers ${String(SHIP_SPEED)} units a ` +
+      "second (specs/ship.md)",
   );
 });
