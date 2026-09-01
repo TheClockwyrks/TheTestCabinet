@@ -19,9 +19,13 @@
 // rebuilt an untouched pile out of fresh cards fails as well
 // (specs/instrumentation.md, Identity).
 //
-// A COLUMN IS THE PILE CLEARED. The waste is deliberately not the subject: on
-// the waste `clearPile` also empties the set memory, which is a second effect
-// and belongs to a reading of its own.
+// BOTH HALVES OF THE RULE ARE READ HERE. specs/instrumentation.md adds that "on
+// the waste it also empties the waste's set memory", so the operation has two
+// effects and this is the point that quotes both: a COLUMN is cleared first and
+// the waste's memory must be untouched, and then the WASTE is cleared and its
+// memory must go with its cards. No other point calls `clearPile` on the waste —
+// `stock/recycle-clears-sets` decides the recycle, which is a different operation
+// — so both halves are read here or nowhere.
 //
 // WHAT IT DOES NOT DECIDE. That `clearTable` empties all thirteen is
 // `instrumentation/clear-table`.
@@ -156,4 +160,53 @@ it("empties the named pile and leaves the other twelve holding what they held", 
     "the waste's set memory after a COLUMN was cleared: the waste is one of " +
       "the twelve piles left standing (specs/instrumentation.md)",
   );
+});
+
+it("empties the waste's set memory with the waste, and leaves the twelve", async () => {
+  openTable(h);
+  poseStock(h, STOCK_CARDS);
+  poseWaste(h, WASTE_CARDS, WASTE_SETS);
+  poseFoundation(h, 0, "spades", ACE);
+  poseFoundation(h, 1, "hearts", ACE);
+  poseFoundation(h, 2, "diamonds", ACE);
+  poseFoundation(h, 3, "clubs", ACE);
+  for (const column of COLUMNS) poseColumn(h, column, [COLUMN_CARDS[column]]);
+
+  const before = h.snapshot();
+  assertLength(
+    before.wasteSets,
+    WASTE_SETS.length,
+    "the sets on the waste before the clear: an empty memory would say " +
+      "nothing about emptying it",
+  );
+
+  h.debug.clearPile("waste", 0);
+  const after = h.snapshot();
+
+  await h.advance(1);
+  captureStill(h, "board");
+
+  assertLength(
+    pileOf(after, "waste", 0),
+    0,
+    "cards left on the waste, the pile clearPile named: it removes every " +
+      "card from it (specs/instrumentation.md)",
+  );
+  assertLength(
+    after.wasteSets,
+    0,
+    "the sets left in the waste's memory: on the waste clearPile also " +
+      "empties the set memory (specs/instrumentation.md)",
+  );
+
+  for (const { pile, index } of PILES) {
+    if (pile === "waste") continue;
+    assertDeepEqual(
+      pileIdentity(after, pile, index),
+      pileIdentity(before, pile, index),
+      `the ${pile} pile ${index} after clearPile emptied the waste: ` +
+        "clearPile leaves the other twelve piles standing " +
+        "(specs/instrumentation.md)",
+    );
+  }
 });

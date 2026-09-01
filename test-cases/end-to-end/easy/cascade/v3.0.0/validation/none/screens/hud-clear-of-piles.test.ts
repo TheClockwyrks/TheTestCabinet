@@ -55,7 +55,7 @@ import {
 import {
   card,
   captureStill,
-  columnCardsDrawn,
+  columnRowTops,
   createHarness,
   faceDown,
   openTable,
@@ -91,8 +91,18 @@ const CONTROLS: readonly { name: string; rect: Rect }[] = [
   { name: "HUD_SOUND", rect: HUD_SOUND },
 ];
 
-/** A column that drew nothing would make the sweep below decide nothing. */
-const MIN_CARDS_DRAWN = 1;
+/**
+ * How many cards each posed column must actually have been drawn as.
+ *
+ * The whole column, not one card of it. What is read below is the bottom edge of
+ * a column's LOWEST drawn card, so a build that drew the top card of each column
+ * and clipped the rest — which is exactly the fault that leaves a player unable to
+ * see the cards this rule is about — would have a "lowest" card high on the table
+ * and pass a floor of one. Requiring the posed count makes the lowest drawn card
+ * really be the column's lowest card before its foot is held against the strip.
+ * Both engine suites require the whole column the same way.
+ */
+const POSED_ROWS = BURIED.length + RUN.length;
 
 let h: Harness;
 
@@ -137,15 +147,15 @@ it("keeps the deepest columns out of the HUD strip", async () => {
   await captureStill(h, "strip");
 
   for (let col = 0; col < TABLEAU_COLUMNS; col += 1) {
-    const drawn = columnCardsDrawn(calls, col, READ_TOLERANCE);
+    const rows = columnRowTops(calls, col, READ_TOLERANCE);
     assertGreaterThanOrEqual(
-      drawn.length,
-      MIN_CARDS_DRAWN,
-      `the card-sized shapes drawn in column ${col}`,
+      rows.length,
+      POSED_ROWS,
+      `the rows column ${col} drew a card on, against the ${POSED_ROWS} cards posed on it — every one of them is drawn, so the lowest below really is the column's lowest card (specs/table.md)`,
     );
-    const lowest = drawn[drawn.length - 1];
+    const lowest = rows[rows.length - 1];
     assertLessThanOrEqual(
-      lowest.y + CARD_H,
+      lowest + CARD_H,
       STRIP.y,
       `the bottom edge of column ${col}'s lowest drawn card against the top of the HUD strip (specs/table.md)`,
     );

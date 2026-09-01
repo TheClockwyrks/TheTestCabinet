@@ -21,11 +21,16 @@
 // THE PILE CLEARED IS A COLUMN IN THE MIDDLE OF THE SEVEN, so a build indexing
 // its columns from the wrong end empties column 3's mirror rather than column 3.
 //
-// THE WASTE'S SETS ARE READ TOO. `specs/stock.md` makes the memory what decides
-// which cards the waste shows, so a waste left holding its cards with its memory
-// emptied is a waste that shows nothing — the clear must leave both alone when
-// the pile it names is not the waste. Clearing the waste ITSELF empties the
-// memory with it, which `stock/*` decides rather than this point.
+// THE WASTE'S SETS ARE READ TOO, BOTH WAYS ROUND, because the rule has two halves
+// and this is the point that quotes both. `specs/stock.md` makes the memory what
+// decides which cards the waste shows, so a waste left holding its cards with its
+// memory emptied is a waste that shows nothing: clearing a COLUMN must leave the
+// memory exactly as it was, which the first reading below takes. And
+// `specs/instrumentation.md` adds that "on the waste it also empties the waste's
+// set memory", so clearing the WASTE must empty both, which the second reading
+// takes. No other point calls `clearPile` on the waste — `stock/recycle-clears-sets`
+// decides the recycle, which is a different operation — so both halves are read
+// here or nowhere.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -160,4 +165,58 @@ it("empties the named pile and leaves the other twelve standing", async () => {
       `pile named, and a waste left holding cards with an emptied memory ` +
       `shows nothing (specs/stock.md)`,
   );
+});
+
+it("empties the waste's set memory with the waste, and nothing else", async () => {
+  await openTable(h);
+  await poseStock(h, faceDown(...STOCK));
+  await poseWaste(h, cards(...WASTE), [...WASTE_SETS]);
+  for (const [index, suit] of SUITS.entries()) {
+    await poseFoundation(h, index, suit, index + 1);
+  }
+  for (const [index, column] of COLUMNS.entries()) {
+    await poseColumn(h, index, [card(column[0], false), card(column[1])]);
+  }
+
+  const before = await h.snapshot();
+  const standing = board(before);
+  assertEqual(
+    before.wasteSets.length,
+    WASTE_SETS.length,
+    `the sets on the waste before the clear — an empty memory would say ` +
+      `nothing about emptying it`,
+  );
+
+  await h.debug.clearPile("waste", 0);
+
+  const after = await h.snapshot();
+  const left = board(after);
+
+  await h.advance(1);
+  // Before the assertions, so a clear that reached too far still leaves the
+  // picture of the board it left.
+  await captureStill(h, "board");
+
+  assertEqual(
+    left["the waste"],
+    "(empty)",
+    `the waste after clearPile("waste", 0)`,
+  );
+  assertEqual(
+    after.wasteSets.length,
+    0,
+    `the sets left in the waste's memory after clearPile("waste", 0) — on the ` +
+      `waste the clear also empties the set memory (specs/instrumentation.md)`,
+  );
+
+  for (const place of PILES) {
+    if (place.pile === "waste") continue;
+    assertEqual(
+      left[place.key],
+      standing[place.key],
+      `${place.key} after clearPile("waste", 0), against what it held before ` +
+        `it — the clear leaves the other twelve piles standing ` +
+        `(specs/instrumentation.md)`,
+    );
+  }
 });
