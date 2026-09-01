@@ -18,25 +18,29 @@
 // `waves.resume-runs-the-floor-again`, both measured over windows of the build's
 // own clock. This item is the state either side of one press.
 //
-// THE TOLERANCE ON A UNIT'S POSITION, AND WHY IT IS NOT ZERO. The walker is under
-// its own power, and the frame that resolves the press is a frame of the game: a
-// build may legally resume and then advance within it, and may legally resolve the
-// press on its next frame instead. `POSITION_TOLERANCE` is what that costs and no
-// more — it is nowhere near the distance a restarted or re-spawned unit would move.
+// THE FLOOR IS POSED WITH ONLY THE FACULTIES THE READING NEEDS. Both towers' guns
+// and their thermal models are held off and the unit's motion is off
+// (specs/instrumentation.md), so nothing on the floor can move of its own accord
+// across the frames the press takes. That is what lets the position, the hp and the
+// heat be read back EXACTLY rather than through a tolerance: a build may legally
+// resolve an injected key on the frame after the one it arrived in, and with every
+// faculty held that extra frame moves nothing. Their values are posed to figures
+// nothing in the game would land on by accident, so a build that rebuilt the floor
+// from scratch reads different numbers rather than the same ones.
 //
 // THE PAUSE SCREEN IS POSED, NOT PRESSED FOR. How a player gets to it is
 // `controls.esc-pauses` and `controls.pause-key`; `setScreen` runs no entry effect
 // (specs/instrumentation.md), so what is graded here is the RESUME row alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, PAUSE_ITEMS, SURGE_DEFS } from "../../src/constants";
-import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
+import { BINDINGS, PAUSE_ITEMS } from "../../src/constants";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { tileCentre } from "../geometry";
 import {
   captureStill,
   createHarness,
+  poseTarget,
   poseTower,
-  poseWalker,
-  seconds,
   unitOf,
   type Harness,
 } from "../harness";
@@ -54,16 +58,12 @@ const TOWERS: readonly { type: "arc" | "sink"; col: number; row: number }[] = [
   { type: "sink", col: 12, row: 16 },
 ];
 
-/**
- * How far, in logical units, a walker may have moved across the press.
- *
- * A Mote covers `60` logical units a second (specs/surge.md), which is half a unit
- * in a frame of the suite's `120` Hz clock. Four frames of that is `2` units: the
- * frame the press is delivered on, the frame a build may resolve it on instead,
- * and two spare. A build that restarted the run or re-released the wave would
- * report the unit at its vent, hundreds of units away.
- */
-const POSITION_TOLERANCE = 4 * seconds(1) * SURGE_DEFS.mote.speed;
+/** Where the posed unit stands, and the hp it carries: neither a starting figure. */
+const UNIT_TILE = { col: 8, row: 5 } as const;
+const UNIT_HP = 37;
+
+/** The heat the posed Arc carries across the round trip, its thermal model held. */
+const TOWER_HEAT = 43;
 
 let h: Harness;
 
@@ -82,8 +82,13 @@ it("returns to the match with the floor as it was left", async () => {
     "posing: the row this item is about (specs/screens.md, PAUSE_ITEMS)",
   );
   poseMenu(h, "paused", RESUME_ROW);
-  for (const tower of TOWERS) poseTower(h, tower.type, tower.col, tower.row);
-  poseWalker(h, "mote", "left");
+  for (const tower of TOWERS) {
+    const id = poseTower(h, tower.type, tower.col, tower.row);
+    h.debug.setTowerFiring(id, false);
+    h.debug.setTowerThermal(id, false);
+    if (tower.type === "arc") h.debug.setTowerHeat(id, TOWER_HEAT);
+  }
+  poseTarget(h, "mote", UNIT_TILE.col, UNIT_TILE.row, UNIT_HP);
   await h.advance(1);
 
   const before = h.snapshot();
@@ -135,6 +140,7 @@ it("returns to the match with the floor as it was left", async () => {
       col: tower.col,
       row: tower.row,
       level: tower.level,
+      heat: tower.heat,
     })),
     before.towers.map((tower) => ({
       id: tower.id,
@@ -142,6 +148,7 @@ it("returns to the match with the floor as it was left", async () => {
       col: tower.col,
       row: tower.row,
       level: tower.level,
+      heat: tower.heat,
     })),
     "the towers standing on the floor the match was left with " +
       "(specs/screens.md)",
@@ -151,13 +158,25 @@ it("returns to the match with the floor as it was left", async () => {
     before.surge.map((unit) => ({ id: unit.id, type: unit.type })),
     "the surge on the floor the match was left with (specs/screens.md)",
   );
+  const posed = tileCentre(UNIT_TILE.col, UNIT_TILE.row);
   for (const unit of before.surge) {
     const now = unitOf(after, unit.id);
-    assertLessThanOrEqual(
-      Math.hypot(now.x - unit.x, now.y - unit.y),
-      POSITION_TOLERANCE,
-      `how far unit ${unit.id} moved across the press, in logical units: ` +
-        `the floor comes back exactly as it was left (specs/screens.md)`,
+    assertEqual(
+      now.x,
+      posed.x,
+      `the x unit ${unit.id} was standing at, its motion held off across the ` +
+        `press (specs/screens.md)`,
+    );
+    assertEqual(
+      now.y,
+      posed.y,
+      `the y unit ${unit.id} was standing at, its motion held off across the ` +
+        `press (specs/screens.md)`,
+    );
+    assertEqual(
+      now.hp,
+      unit.hp,
+      `the hp unit ${unit.id} was carrying across the press (specs/screens.md)`,
     );
   }
 });
