@@ -503,7 +503,7 @@ description = "What the game looks and sounds like: the screens and their menus,
 # `overload` in `variants/overload.toml` — because the two modes genuinely disagree
 # about what a mismatched shot does, and a claim that is true under one and false
 # under the other cannot be stated commonly. A base run's checklist is therefore
-# 264 points and an overload run's is 282. The whole of it is reporter-side
+# 269 points and an overload run's is 287. The whole of it is reporter-side
 # material — never seeded into a run, so the model never sees it. Every item
 # restates a requirement the seeded specification already states, in the spec's own
 # vocabulary and naming the spec's own constants, and every threshold a validator
@@ -1065,6 +1065,19 @@ failure_cap = "scuffed"
 validation = { script = "ship/lockout-expires.test.ts", outputs = [
   { id = "fired", name = "The shot the expired lockout allowed", kind = "image" },
 ] }
+# The movement edge case specs/ship.md writes out because the speed rule above does
+# not decide it: with both directions held, a build that adds the two requests, that
+# takes the first pressed, or that takes the last reported is each a consistent
+# reading. Nothing else on the checklist presses two opposing keys at once.
+[[review.categories.items]]
+id = "opposing-keys-hold"
+title = "Both directions at once holds the ship still"
+description = "With the ship posed well inside its lane and both direction actions held for a second, its centre never moves from where it stood."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "ship/opposing-keys-hold.test.ts", outputs = [
+  { id = "still", name = "The ship standing still under both directions", kind = "image" },
+] }
 
 # --- The two bands ---------------------------------------------------------
 # Spectra's signature, from specs/bands.md: a band decides what a shot destroys,
@@ -1167,6 +1180,18 @@ domains = ["polarity"]
 failure_cap = "scuffed"
 validation = { script = "bands/flip-starts-lockout.test.ts", outputs = [
   { id = "lockout", name = "The lockout standing after the flip", kind = "image" },
+] }
+# The boundary the rule above does not settle: what a SECOND flip does to a lockout
+# the first one started. specs/bands.md writes it out because "the flip starts a
+# lockout" admits a reading on which a standing one is left alone.
+[[review.categories.items]]
+id = "flip-restarts-lockout"
+title = "A flip restarts a standing lockout"
+description = "A flip taken two thirds of the way through a standing FLIP_LOCKOUT puts the lockout back to the full FLIP_LOCKOUT, within 10%, rather than leaving the remainder."
+domains = ["polarity"]
+failure_cap = "passable"
+validation = { script = "bands/flip-restarts-lockout.test.ts", outputs = [
+  { id = "restarted", name = "The lockout the second flip put back", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "inversion-swaps-drone"
@@ -1740,6 +1765,31 @@ failure_cap = "passable"
 validation = { script = "drones/flux-fires-held-band.test.ts", outputs = [
   { id = "band", name = "The bullet carrying the Flux's held band", kind = "image" },
 ] }
+# The Flux's counterpart to `shard-fires-one` and `prism-fires-two-bands`. The item
+# above reads the BAND of the bullet and says so; without this one a build whose
+# diving Flux sprays loses no point.
+[[review.categories.items]]
+id = "flux-fires-one"
+title = "A diving Flux fires one shot"
+description = "A Flux held on a band through its whole dive puts exactly one enemy bullet on the field."
+domains = ["swarm"]
+failure_cap = "passable"
+validation = { script = "drones/flux-fires-one.test.ts", outputs = [
+  { id = "one", name = "The one bullet a held Flux's dive leaves", kind = "image" },
+] }
+# The deferred shot, which is the half of specs/drones.md's shimmer sentence the two
+# items above deliberately never reach: one pins the drone mid-shimmer so it never
+# settles, the other freezes the clock in the held part so the crossing is never made
+# in shimmer. This is the only point that lets the window elapse under a diving Flux.
+[[review.categories.items]]
+id = "flux-defers-shot"
+title = "A shimmering Flux takes its shot when it settles"
+description = "A Flux that crosses DIVE_FIRE_Y while shimmering fires nothing until the shimmer ends, then takes its one shot within a frame or two of settling, still diving."
+domains = ["polarity", "swarm"]
+failure_cap = "passable"
+validation = { script = "drones/flux-defers-shot.test.ts", outputs = [
+  { id = "deferred", name = "The shot the settled Flux finally took", kind = "image" },
+] }
 [[review.categories.items]]
 id = "prism-shell-breaks-to-shell-band"
 title = "The shell falls to the shell's band"
@@ -1863,7 +1913,7 @@ validation = { script = "stages/clears-on-last-drone.test.ts", outputs = [
 # The other half of that fix, and the reason it is a point in its own right:
 # specs/stages.md states that a stage clears on the MOMENT its last drone is
 # destroyed, so a wave that never held a drone is playing rather than cleared. That
-# stated rule is what makes the shared harness's empty posed wave safe for all 261
+# stated rule is what makes the shared harness's empty posed wave safe for all 266
 # common points, so a build that breaks it breaks the whole checklist's premise.
 [[review.categories.items]]
 id = "empty-wave-does-not-clear"
@@ -2116,6 +2166,18 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "progression/respawn-centres-ship.test.ts", outputs = [
   { id = "centred", name = "The ship back at the centre of its lane", kind = "image" },
+] }
+# The other half of the same sentence. The item above reads the x and says outright
+# that the band is not its reading; which band the ship comes back on decides what it
+# can destroy and what it can absorb on the first frame back, so it is graded here.
+[[review.categories.items]]
+id = "respawn-keeps-band"
+title = "The ship returns holding its band"
+description = "A ship tuned to magenta before it is hit is still holding magenta on the first frame after the ready hold, which reset's cyan title value would not give it."
+domains = ["polarity", "arcade"]
+failure_cap = "passable"
+validation = { script = "progression/respawn-keeps-band.test.ts", outputs = [
+  { id = "band", name = "The band the returned ship still holds", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "wave-persists"

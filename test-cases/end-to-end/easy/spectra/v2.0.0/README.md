@@ -186,7 +186,7 @@ discharge and the inversion), `swarm` (the entrances, the formation, the dives
 and the three drones), `arcade` (the ship, the stages, the lives, the scoring and
 the screens) and `presentation` (the screens, the HUD, the art and the audio) —
 and its overall functional rating is the worst of the four. The checklist is
-`264` points on a base run and `282` on an overload run: fifteen categories common
+`269` points on a base run and `287` on an overload run: fifteen categories common
 to both, plus one category the variant declares. Each point names the domains its
 failure lowers and how far it lowers them.
 
