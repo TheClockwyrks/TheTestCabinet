@@ -84,7 +84,11 @@ it("adds exactly SCORE_FLUX_FORM when a formation Flux is destroyed", async () =
 
   const before = h.snapshot();
   assertEqual(before.score, 0, "precondition: the run opens with a score of 0");
-  const posed = requireDrone(before, target, "the Flux the shot destroys, as posed");
+  const posed = requireDrone(
+    before,
+    target,
+    "the Flux the shot destroys, as posed",
+  );
   assertEqual(
     posed.phase,
     "formation",

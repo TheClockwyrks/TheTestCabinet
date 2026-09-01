@@ -82,7 +82,11 @@ it("adds exactly SCORE_PRISM_CORE when a Prism's exposed core is destroyed", asy
 
   const before = h.snapshot();
   assertEqual(before.score, 0, "precondition: the run opens with a score of 0");
-  const posed = requireDrone(before, target, "the Prism the shot destroys, as posed");
+  const posed = requireDrone(
+    before,
+    target,
+    "the Prism the shot destroys, as posed",
+  );
   assertEqual(
     posed.shellAlive,
     false,
