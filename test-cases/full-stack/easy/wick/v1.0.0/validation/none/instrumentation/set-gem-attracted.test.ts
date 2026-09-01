@@ -47,7 +47,11 @@ it("flips a gem's attraction, and it flies on the next tick", async () => {
 
   await h.debug.setGemAttracted(gem.id, true);
   const attracted = gemById(await h.snapshot(), gem.id);
-  assertEqual(attracted?.attracted, true, "the gem's attraction after the pose");
+  assertEqual(
+    attracted?.attracted,
+    true,
+    "the gem's attraction after the pose",
+  );
 
   const first = await captureReplay(h, "attracted", async () => {
     const stepped = await h.step(1);
@@ -55,6 +59,16 @@ it("flips a gem's attraction, and it flies on the next tick", async () => {
     return stepped;
   });
   const flown = gemById(first, gem.id);
-  assertNear(flown?.x ?? NaN, AT.x - GEM_STEP, POSITION_TOL, "the gem's x after one tick of flight");
-  assertNear(flown?.y ?? NaN, AT.y, POSITION_TOL, "the gem's y after one tick of flight");
+  assertNear(
+    flown?.x ?? NaN,
+    AT.x - GEM_STEP,
+    POSITION_TOL,
+    "the gem's x after one tick of flight",
+  );
+  assertNear(
+    flown?.y ?? NaN,
+    AT.y,
+    POSITION_TOL,
+    "the gem's y after one tick of flight",
+  );
 });

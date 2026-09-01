@@ -16,12 +16,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear } from "../assert";
 import { TICK_DT, TIMER_TOL } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 const TAPER_TIMER = 1.0;
 const COUNTED_TICKS = 30;
@@ -43,9 +38,17 @@ it("keeps the timer when only the level changes, and it counts on from there", a
   await h.debug.setWeapon(0, "taper", 5);
   const leveled = await h.snapshot();
   await captureStill(h, "kept");
-  assertEqual(leveled.run.weapons[0]?.id, "taper", "the weapon in slot 0 after the level pose");
+  assertEqual(
+    leveled.run.weapons[0]?.id,
+    "taper",
+    "the weapon in slot 0 after the level pose",
+  );
   assertEqual(leveled.run.weapons[0]?.level, 5, "the level after the pose");
-  assertEqual(leveled.run.weapons[0]?.cooldown, TAPER_TIMER, "the timer kept across the level pose");
+  assertEqual(
+    leveled.run.weapons[0]?.cooldown,
+    TAPER_TIMER,
+    "the timer kept across the level pose",
+  );
 
   await h.debug.setWeaponFire(true);
   const counted = await h.step(COUNTED_TICKS);

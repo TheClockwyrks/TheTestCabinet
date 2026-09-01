@@ -58,15 +58,35 @@ it("takes its figures from the weapon's row and the multipliers in force", async
 
   const held = await placeProjectile(h, "ember", 100, 0, 400, 0, 0);
   const top = weaponRow("ember", MAX_WEAPON_LEVEL);
-  assertNear(held.radius, top.radius! * areaMul(LEVELS), FLOAT_TOL, "radius with Ember 8 held");
-  assertNear(held.damage, top.damage * damageMul(LEVELS), FLOAT_TOL, "damage with Ember 8 held");
+  assertNear(
+    held.radius,
+    top.radius! * areaMul(LEVELS),
+    FLOAT_TOL,
+    "radius with Ember 8 held",
+  );
+  assertNear(
+    held.damage,
+    top.damage * damageMul(LEVELS),
+    FLOAT_TOL,
+    "damage with Ember 8 held",
+  );
   assertNear(held.ttl, top.duration!, FLOAT_TOL, "ttl with Ember 8 held");
 
   await h.debug.removeWeapon(slot);
   const unheld = await placeProjectile(h, "ember", -100, 0, -400, 0, 0);
   await captureStill(h, "figures");
   const first = weaponRow("ember", 1);
-  assertNear(unheld.radius, first.radius! * areaMul(LEVELS), FLOAT_TOL, "radius with Ember not held");
-  assertNear(unheld.damage, first.damage * damageMul(LEVELS), FLOAT_TOL, "damage with Ember not held");
+  assertNear(
+    unheld.radius,
+    first.radius! * areaMul(LEVELS),
+    FLOAT_TOL,
+    "radius with Ember not held",
+  );
+  assertNear(
+    unheld.damage,
+    first.damage * damageMul(LEVELS),
+    FLOAT_TOL,
+    "damage with Ember not held",
+  );
   assertNear(unheld.ttl, first.duration!, FLOAT_TOL, "ttl with Ember not held");
 });

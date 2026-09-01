@@ -54,7 +54,11 @@ it("holds the run's clock off real time, keeps the menu live, and gives the cloc
   await h.page.waitForTimeout(FROZEN_MS);
   const held = await h.snapshot();
   assertEqual(held.autoStep, false, "autoStep while held");
-  assertEqual(held.run.tick, 0, "the run clock after real time with nothing stepped");
+  assertEqual(
+    held.run.tick,
+    0,
+    "the run clock after real time with nothing stepped",
+  );
 
   // And the build's own loop still runs frames that read the keys: a menu
   // answers a press with no harness frame driven at all.
@@ -65,7 +69,11 @@ it("holds the run's clock off real time, keeps the menu live, and gives the cloc
   const menu = await h.snapshot();
   await captureStill(h, "held");
   assertEqual(menu.screen, "title", "the screen the menu press was read on");
-  assertEqual(menu.menuIndex, 1, "menuIndex after a press read by the build's own loop");
+  assertEqual(
+    menu.menuIndex,
+    1,
+    "menuIndex after a press read by the build's own loop",
+  );
   assertEqual(menu.run.tick, 0, "the run clock, still held, after the press");
 
   // Given back: the run advances on its own.

@@ -44,18 +44,50 @@ it("leaves rngState and simTime as they are across a fresh run", async () => {
   assertNotEqual(before.simTime, 0, "simTime before the fresh run");
 
   const first = await bracket(h, "setScreen", ["playing"]);
-  assertEqual(first.before.screen, "title", "the screen the first call is made on");
-  assertEqual(first.after.screen, "playing", "the screen after setScreen('playing')");
-  assertEqual(first.after.rngState, first.before.rngState, "rngState across the fresh run from title");
-  assertEqual(first.after.simTime, first.before.simTime, "simTime across the fresh run from title");
+  assertEqual(
+    first.before.screen,
+    "title",
+    "the screen the first call is made on",
+  );
+  assertEqual(
+    first.after.screen,
+    "playing",
+    "the screen after setScreen('playing')",
+  );
+  assertEqual(
+    first.after.rngState,
+    first.before.rngState,
+    "rngState across the fresh run from title",
+  );
+  assertEqual(
+    first.after.simTime,
+    first.before.simTime,
+    "simTime across the fresh run from title",
+  );
 
   // And from an end screen, after the run has drawn from the generator.
   await h.step(TITLE_FRAMES);
   await poseScreen(h, "fallen");
   const second = await bracket(h, "setScreen", ["playing"]);
   await captureStill(h, "kept");
-  assertEqual(second.before.screen, "fallen", "the screen the second call is made on");
-  assertEqual(second.after.screen, "playing", "the screen after the second setScreen('playing')");
-  assertEqual(second.after.rngState, second.before.rngState, "rngState across the fresh run from fallen");
-  assertEqual(second.after.simTime, second.before.simTime, "simTime across the fresh run from fallen");
+  assertEqual(
+    second.before.screen,
+    "fallen",
+    "the screen the second call is made on",
+  );
+  assertEqual(
+    second.after.screen,
+    "playing",
+    "the screen after the second setScreen('playing')",
+  );
+  assertEqual(
+    second.after.rngState,
+    second.before.rngState,
+    "rngState across the fresh run from fallen",
+  );
+  assertEqual(
+    second.after.simTime,
+    second.before.simTime,
+    "simTime across the fresh run from fallen",
+  );
 });

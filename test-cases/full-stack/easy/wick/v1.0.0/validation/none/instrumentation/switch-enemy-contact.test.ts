@@ -48,7 +48,11 @@ it("holds every hit while off, the cooldowns still counting", async () => {
   const held = await h.step(HELD_TICKS);
   await captureStill(h, "held");
 
-  assertEqual(held.run.player.hp, BASE_MAX_HP, `hp after ${HELD_TICKS} ticks with enemyContact off`);
+  assertEqual(
+    held.run.player.hp,
+    BASE_MAX_HP,
+    `hp after ${HELD_TICKS} ticks with enemyContact off`,
+  );
   assertEqual(
     mustEnemy(held, moth.id).contactCooldown,
     0,

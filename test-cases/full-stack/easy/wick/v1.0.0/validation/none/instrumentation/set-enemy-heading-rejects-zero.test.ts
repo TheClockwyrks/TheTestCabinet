@@ -33,8 +33,15 @@ it("throws on a zero vector and leaves the heading as it was", async () => {
   await isolate(h);
   const gnat = await placeEnemy(h, "gnat", 300, 400);
 
-  await assertRejects(() => h.debug.setEnemyHeading(gnat.id, 0, 0), "setEnemyHeading(id, 0, 0)");
+  await assertRejects(
+    () => h.debug.setEnemyHeading(gnat.id, 0, 0),
+    "setEnemyHeading(id, 0, 0)",
+  );
   const after = mustEnemy(await h.snapshot(), gnat.id);
   await captureStill(h, "refused");
-  assertDeepEqual(after.heading, gnat.heading, "the heading after the refused call");
+  assertDeepEqual(
+    after.heading,
+    gnat.heading,
+    "the heading after the refused call",
+  );
 });

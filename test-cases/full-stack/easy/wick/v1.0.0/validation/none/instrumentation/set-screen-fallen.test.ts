@@ -45,7 +45,11 @@ async function endFallenFrom(from: "playing" | "paused"): Promise<void> {
   await h.debug.setKills(KILLS);
   if (from === "paused") await poseScreen(h, "paused");
   const fallen = await poseScreen(h, "fallen");
-  assertEqual(fallen.screen, "fallen", `the screen after setScreen('fallen') from ${from}`);
+  assertEqual(
+    fallen.screen,
+    "fallen",
+    `the screen after setScreen('fallen') from ${from}`,
+  );
   assertEqual(fallen.menuIndex, 0, `menuIndex on fallen from ${from}`);
   assertEqual(fallen.run.tick, TICK, `the ended run's tick from ${from}`);
   assertEqual(fallen.run.level, LEVEL, `the ended run's level from ${from}`);

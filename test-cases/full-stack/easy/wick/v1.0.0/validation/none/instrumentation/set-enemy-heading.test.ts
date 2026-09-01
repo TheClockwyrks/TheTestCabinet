@@ -59,6 +59,16 @@ it("poses a drifter's heading, and it advances along it", async () => {
   });
   const moved = mustEnemy(stepped, gnat.id);
   const step = ENEMIES.gnat.speed * TICK_DT;
-  assertNear(moved.x, headed.x + UNIT.x * step, POSITION_TOL, "the gnat's x after one tick along the heading");
-  assertNear(moved.y, headed.y + UNIT.y * step, POSITION_TOL, "the gnat's y after one tick along the heading");
+  assertNear(
+    moved.x,
+    headed.x + UNIT.x * step,
+    POSITION_TOL,
+    "the gnat's x after one tick along the heading",
+  );
+  assertNear(
+    moved.y,
+    headed.y + UNIT.y * step,
+    POSITION_TOL,
+    "the gnat's y after one tick along the heading",
+  );
 });

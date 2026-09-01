@@ -41,11 +41,20 @@ it("throws on an id that names no live enemy, leaving the state as it was", asyn
   const unknown = before.run.nextId + 1000;
 
   const calls: { name: string; run: () => Promise<void> }[] = [
-    { name: "setEnemyPosition", run: () => h.debug.setEnemyPosition(unknown, 0, 0) },
+    {
+      name: "setEnemyPosition",
+      run: () => h.debug.setEnemyPosition(unknown, 0, 0),
+    },
     { name: "setEnemyHp", run: () => h.debug.setEnemyHp(unknown, 1) },
-    { name: "setEnemyHeading", run: () => h.debug.setEnemyHeading(unknown, 1, 0) },
+    {
+      name: "setEnemyHeading",
+      run: () => h.debug.setEnemyHeading(unknown, 1, 0),
+    },
     { name: "setEnemyAge", run: () => h.debug.setEnemyAge(unknown, 1) },
-    { name: "setEnemyContactCooldown", run: () => h.debug.setEnemyContactCooldown(unknown, 1) },
+    {
+      name: "setEnemyContactCooldown",
+      run: () => h.debug.setEnemyContactCooldown(unknown, 1),
+    },
     { name: "removeEnemy", run: () => h.debug.removeEnemy(unknown) },
   ];
   for (const { name, run } of calls) {

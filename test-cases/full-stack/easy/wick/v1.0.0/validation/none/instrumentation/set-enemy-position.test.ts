@@ -49,7 +49,11 @@ it("moves the enemy and nothing else about it", async () => {
 
   assertNear(after.x, TO.x, POSITION_TOL, "the enemy's x after the move");
   assertNear(after.y, TO.y, POSITION_TOL, "the enemy's y after the move");
-  assertDeepEqual(after.heading, before.heading, "the enemy's heading across the move");
+  assertDeepEqual(
+    after.heading,
+    before.heading,
+    "the enemy's heading across the move",
+  );
   assertEqual(after.age, before.age, "the enemy's age across the move");
   assertEqual(after.hp, before.hp, "the enemy's hp across the move");
   assertEqual(after.maxHp, before.maxHp, "the enemy's maxHp across the move");

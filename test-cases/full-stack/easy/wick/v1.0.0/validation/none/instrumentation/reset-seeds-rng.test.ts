@@ -47,7 +47,11 @@ afterEach(async () => {
 
 it("seeds rngState from the seed, defaults it, and replays the same spawns", async () => {
   await h.debug.reset({ seed: SEED });
-  assertEqual((await h.snapshot()).rngState, SEED, "rngState after reset({ seed })");
+  assertEqual(
+    (await h.snapshot()).rngState,
+    SEED,
+    "rngState after reset({ seed })",
+  );
 
   await h.debug.reset();
   assertEqual(
@@ -62,8 +66,16 @@ it("seeds rngState from the seed, defaults it, and replays the same spawns", asy
   const second = await h.step(RUN_TICKS);
   await captureStill(h, "seeded");
 
-  assertGreaterThan(first.run.enemies.length, 0, "enemies the director spawned");
-  assertEqual(second.rngState, first.rngState, "rngState after two seeded runs");
+  assertGreaterThan(
+    first.run.enemies.length,
+    0,
+    "enemies the director spawned",
+  );
+  assertEqual(
+    second.rngState,
+    first.rngState,
+    "rngState after two seeded runs",
+  );
   assertDeepEqual(
     documentedRun(second.run),
     documentedRun(first.run),

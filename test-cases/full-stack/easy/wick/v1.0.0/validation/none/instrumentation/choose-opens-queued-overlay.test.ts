@@ -46,13 +46,21 @@ it("opens the next queued overlay with a fresh pool", async () => {
   await isolate(h);
   const first = await openLevelUp(h, 2);
   assertEqual(first.screen, "levelup", "the screen the call is made on");
-  assertEqual(first.run.pendingLevelUps, 2, "pendingLevelUps on the first overlay");
+  assertEqual(
+    first.run.pendingLevelUps,
+    2,
+    "pendingLevelUps on the first overlay",
+  );
 
   await h.debug.choose(0);
   const second = await h.snapshot();
   await captureStill(h, "queued");
 
-  assertEqual(second.screen, "levelup", "the screen after choose with one more queued");
+  assertEqual(
+    second.screen,
+    "levelup",
+    "the screen after choose with one more queued",
+  );
   assertEqual(second.menuIndex, 0, "menuIndex on the next overlay");
   assertEqual(second.run.pendingLevelUps, 1, "pendingLevelUps after choose");
   assertEqual(
@@ -65,6 +73,14 @@ it("opens the next queued overlay with a fresh pool", async () => {
     candidatePool(second),
     "the pool computed from the slots the acceptance left",
   );
-  assertLength(second.run.offers, OFFER_COUNT, "the offers on the next overlay");
-  assertEachIn(second.run.offers, second.run.pool, "each offer in the fresh pool");
+  assertLength(
+    second.run.offers,
+    OFFER_COUNT,
+    "the offers on the next overlay",
+  );
+  assertEachIn(
+    second.run.offers,
+    second.run.pool,
+    "each offer in the fresh pool",
+  );
 });

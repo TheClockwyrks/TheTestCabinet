@@ -11,12 +11,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertRejects } from "../assert";
 import { INFINITE_PIERCE } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -36,5 +31,9 @@ it("throws on a sconce with zero velocity and adds nothing", async () => {
   );
   const after = await h.snapshot();
   await captureStill(h, "refused");
-  assertLength(after.run.projectiles, 0, "the projectiles after the refused call");
+  assertLength(
+    after.run.projectiles,
+    0,
+    "the projectiles after the refused call",
+  );
 });

@@ -41,7 +41,11 @@ it("poses the facing direction, and a dart fires that way", async () => {
 
   await h.debug.setFacing("left");
   const faced = await h.snapshot();
-  assertEqual(faced.run.player.facing, "left", "facing after setFacing('left')");
+  assertEqual(
+    faced.run.player.facing,
+    "left",
+    "facing after setFacing('left')",
+  );
 
   await h.debug.setEffectMotion(true);
   const firing = await captureReplay(h, "faced", async () => {
@@ -49,7 +53,11 @@ it("poses the facing direction, and a dart fires that way", async () => {
     await h.step(FLIGHT_FRAMES);
     return fired;
   });
-  assertGreaterThan(firing.projectiles.length, 0, "darts the firing tick created");
+  assertGreaterThan(
+    firing.projectiles.length,
+    0,
+    "darts the firing tick created",
+  );
   for (const dart of firing.projectiles) {
     assertLessThan(dart.vx, 0, "a dart's vx, toward -x");
     assertEqual(dart.vy, 0, "a dart's vy, horizontal");

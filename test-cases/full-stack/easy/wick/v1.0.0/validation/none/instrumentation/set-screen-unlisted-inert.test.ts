@@ -42,7 +42,11 @@ async function requireInert(name: ScreenName): Promise<void> {
     // A refusal leaves the state as it was too; what is read is the state.
   }
   const after = await h.snapshot();
-  assertEqual(after.screen, before.screen, `the screen after setScreen('${name}') from ${before.screen}`);
+  assertEqual(
+    after.screen,
+    before.screen,
+    `the screen after setScreen('${name}') from ${before.screen}`,
+  );
   assertDeepEqual(
     posedState(after),
     posedState(before),

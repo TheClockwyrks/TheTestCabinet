@@ -40,7 +40,11 @@ it("changes nothing on levelup", async () => {
   const after = await h.snapshot();
   await captureStill(h, "inert");
 
-  assertEqual(after.screen, "levelup", "the screen after setScreen('playing') on levelup");
+  assertEqual(
+    after.screen,
+    "levelup",
+    "the screen after setScreen('playing') on levelup",
+  );
   assertDeepEqual(
     posedState(after),
     posedState(overlay),

@@ -43,13 +43,21 @@ it("removes every pickup without collecting any", async () => {
   await placePickup(h, "chest", 200, 0);
   await placePickup(h, "bread", -200, 0);
   await placePickup(h, "draft", 0, 200);
-  assertLength((await h.snapshot()).run.pickups, 3, "the pickups before the clear");
+  assertLength(
+    (await h.snapshot()).run.pickups,
+    3,
+    "the pickups before the clear",
+  );
 
   await h.debug.clearPickups();
   const after = await h.snapshot();
   await captureStill(h, "cleared");
   assertLength(after.run.pickups, 0, "the pickups after clearPickups()");
   assertEqual(after.run.player.hp, POSED_HP, "hp across the clear");
-  assertEqual(gemById(after, gem.id)?.attracted, false, "the gem's attraction across the clear");
+  assertEqual(
+    gemById(after, gem.id)?.attracted,
+    false,
+    "the gem's attraction across the clear",
+  );
   assertEqual(after.screen, "playing", "the screen across the clear");
 });

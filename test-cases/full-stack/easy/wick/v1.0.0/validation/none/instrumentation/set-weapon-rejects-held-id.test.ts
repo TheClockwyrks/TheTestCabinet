@@ -13,12 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertRejects } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -35,8 +30,15 @@ it("throws on an id held in another slot and leaves the loadout as it was", asyn
   await h.debug.setWeapon(1, "ember", 1);
   const before = await h.snapshot();
 
-  await assertRejects(() => h.debug.setWeapon(1, "taper", 1), "setWeapon(1, 'taper', 1) with Taper in slot 0");
+  await assertRejects(
+    () => h.debug.setWeapon(1, "taper", 1),
+    "setWeapon(1, 'taper', 1) with Taper in slot 0",
+  );
   const after = await h.snapshot();
   await captureStill(h, "refused");
-  assertDeepEqual(after.run.weapons, before.run.weapons, "the weapons after the refused call");
+  assertDeepEqual(
+    after.run.weapons,
+    before.run.weapons,
+    "the weapons after the refused call",
+  );
 });

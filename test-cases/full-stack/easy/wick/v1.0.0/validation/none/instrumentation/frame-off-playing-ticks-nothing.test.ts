@@ -23,12 +23,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear } from "../assert";
 import { TICK_DT, TIMER_TOL } from "../constants";
-import {
-  bracket,
-  captureStill,
-  createHarness,
-  type Harness,
-} from "../harness";
+import { bracket, captureStill, createHarness, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -42,13 +37,19 @@ afterEach(async () => {
 
 it("runs a title frame that reads the press edge and ticks nothing", async () => {
   // A tap: the key down, exactly one frame, the key up.
-  const { before, after } = await bracket(h, "step", [1], { hold: "ArrowDown" });
+  const { before, after } = await bracket(h, "step", [1], {
+    hold: "ArrowDown",
+  });
   await captureStill(h, "title");
 
   assertEqual(before.screen, "title", "the screen the frame runs on");
   assertEqual(before.menuIndex, 0, "menuIndex before the press");
 
-  assertEqual(after.menuIndex, 1, "menuIndex after one frame with ArrowDown held");
+  assertEqual(
+    after.menuIndex,
+    1,
+    "menuIndex after one frame with ArrowDown held",
+  );
   assertNear(
     after.simTime - before.simTime,
     TICK_DT,

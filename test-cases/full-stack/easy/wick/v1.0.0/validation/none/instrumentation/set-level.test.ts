@@ -13,12 +13,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { xpToNext } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 const POSED_LEVEL = 4;
 const POSED_XP = 3.5;
@@ -42,6 +37,10 @@ it("poses the level alone", async () => {
   await captureStill(h, "posed");
 
   assertEqual(posed.run.level, POSED_LEVEL, "level after setLevel(4)");
-  assertEqual(posed.run.xpToNext, xpToNext(POSED_LEVEL), "xpToNext at the posed level");
+  assertEqual(
+    posed.run.xpToNext,
+    xpToNext(POSED_LEVEL),
+    "xpToNext at the posed level",
+  );
   assertEqual(posed.run.xp, POSED_XP, "xp across setLevel");
 });

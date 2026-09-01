@@ -46,8 +46,16 @@ it("removes every zone and leaves the projectiles", async () => {
   await enable(h, "weaponFire");
   const fired = await h.step(1);
   await h.debug.setWeaponFire(false);
-  assertGreaterThan(zonesOfKind(fired, "lantern").length, 0, "lanterns the firing tick created");
-  assertGreaterThan(zonesOfKind(fired, "slash").length, 0, "slashes the firing tick created");
+  assertGreaterThan(
+    zonesOfKind(fired, "lantern").length,
+    0,
+    "lanterns the firing tick created",
+  );
+  assertGreaterThan(
+    zonesOfKind(fired, "slash").length,
+    0,
+    "slashes the firing tick created",
+  );
   assertLength(zonesOfKind(fired, "puddle"), 2, "the posed puddles");
   await placeProjectile(h, "ember", 100, 0, 400, 0, 0);
   const before = await h.snapshot();
@@ -56,5 +64,9 @@ it("removes every zone and leaves the projectiles", async () => {
   const after = await h.snapshot();
   await captureStill(h, "cleared");
   assertLength(after.run.zones, 0, "the zones after clearZones()");
-  assertDeepEqual(after.run.projectiles, before.run.projectiles, "the projectiles across the clear");
+  assertDeepEqual(
+    after.run.projectiles,
+    before.run.projectiles,
+    "the projectiles across the clear",
+  );
 });

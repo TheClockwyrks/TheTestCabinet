@@ -44,6 +44,14 @@ it("removes every projectile and leaves the zones", async () => {
   await h.debug.clearProjectiles();
   const after = await h.snapshot();
   await captureStill(h, "cleared");
-  assertLength(after.run.projectiles, 0, "the projectiles after clearProjectiles()");
-  assertDeepEqual(after.run.zones, before.run.zones, "the zones across the clear");
+  assertLength(
+    after.run.projectiles,
+    0,
+    "the projectiles after clearProjectiles()",
+  );
+  assertDeepEqual(
+    after.run.zones,
+    before.run.zones,
+    "the zones across the clear",
+  );
 });

@@ -47,9 +47,15 @@ it("lands one spawn when the held timer is due, and does not catch up", async ()
   assertLength(held.run.enemies, 0, `spawns over ${HELD_TICKS} held ticks`);
 
   await h.debug.setSpawning(true);
-  const seen = await captureReplay(h, "resumed", () => h.stepWatching(INTERVAL_TICKS));
+  const seen = await captureReplay(h, "resumed", () =>
+    h.stepWatching(INTERVAL_TICKS),
+  );
 
-  assertLength(seen[0]!.run.enemies, 1, "spawns on the first tick with the switch back on");
+  assertLength(
+    seen[0]!.run.enemies,
+    1,
+    "spawns on the first tick with the switch back on",
+  );
   for (let frame = 2; frame <= INTERVAL_TICKS; frame += 1) {
     assertLength(
       seen[frame - 1]!.run.enemies,

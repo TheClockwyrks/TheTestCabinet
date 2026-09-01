@@ -45,14 +45,26 @@ it("holds the scripted events while off, and never fires the missed one", async 
   await h.debug.setTick(SWARM.tick - TICKS_BEFORE);
 
   const held = await h.step(HELD_TICKS);
-  assertEqual(held.run.tick > SWARM.tick, true, "the clock carried past the swarm's tick");
+  assertEqual(
+    held.run.tick > SWARM.tick,
+    true,
+    "the clock carried past the swarm's tick",
+  );
   assertLength(enemiesOf(held, "gnat"), 0, "gnats while the switch is off");
-  assertEqual(held.run.firedEvents.includes(SWARM.seconds), false, `${SWARM.seconds} in firedEvents while off`);
+  assertEqual(
+    held.run.firedEvents.includes(SWARM.seconds),
+    false,
+    `${SWARM.seconds} in firedEvents while off`,
+  );
 
   await h.debug.setEvents(true);
   const resumed = await h.step(RESUMED_TICKS);
   await captureStill(h, "held");
-  assertLength(enemiesOf(resumed, "gnat"), 0, "gnats once the switch is back on");
+  assertLength(
+    enemiesOf(resumed, "gnat"),
+    0,
+    "gnats once the switch is back on",
+  );
   assertEqual(
     resumed.run.firedEvents.includes(SWARM.seconds),
     false,

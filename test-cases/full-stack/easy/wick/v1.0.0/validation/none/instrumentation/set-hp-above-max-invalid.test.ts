@@ -14,12 +14,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertRejects } from "../assert";
 import { BASE_MAX_HP } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 let h: Harness;
 

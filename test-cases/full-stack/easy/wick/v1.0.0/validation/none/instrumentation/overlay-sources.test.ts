@@ -114,7 +114,10 @@ it("shows the registered diagnostics with their live values", async () => {
     ["the held weapon's cooldown", String(POSED.cooldown)],
     ["the held passive", "bellows"],
     ["pendingLevelUps", String(POSED.pending)],
-    ...SWITCH_NAMES.map((name): [string, string] => [`the ${name} switch`, name]),
+    ...SWITCH_NAMES.map((name): [string, string] => [
+      `the ${name} switch`,
+      name,
+    ]),
   ];
   for (const [what, value] of facts) {
     assertTrue(

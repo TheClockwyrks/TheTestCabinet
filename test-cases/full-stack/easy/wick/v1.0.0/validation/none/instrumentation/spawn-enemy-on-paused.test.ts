@@ -53,5 +53,9 @@ it("applies on paused, and the spawn first moves on the resumed tick", async () 
   await h.debug.setEnemyMotion(true);
   const moved = await h.step(1);
   const now = mustEnemy(moved, moth.id);
-  assertNotEqual(`${now.x},${now.y}`, `${moth.x},${moth.y}`, "the spawn's position after the resumed tick");
+  assertNotEqual(
+    `${now.x},${now.y}`,
+    `${moth.x},${moth.y}`,
+    "the spawn's position after the resumed tick",
+  );
 });

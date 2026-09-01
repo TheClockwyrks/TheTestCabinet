@@ -34,8 +34,22 @@ import {
   type Harness,
 } from "../harness";
 
-const WEAPONS: BaseWeaponId[] = ["taper", "ember", "pin", "lantern", "halo", "oil-splash"];
-const PASSIVE_IDS_HELD: PassiveId[] = ["wick", "oil", "glass", "brass", "mirror", "bellows"];
+const WEAPONS: BaseWeaponId[] = [
+  "taper",
+  "ember",
+  "pin",
+  "lantern",
+  "halo",
+  "oil-splash",
+];
+const PASSIVE_IDS_HELD: PassiveId[] = [
+  "wick",
+  "oil",
+  "glass",
+  "brass",
+  "mirror",
+  "bellows",
+];
 
 let h: Harness;
 
@@ -50,14 +64,27 @@ afterEach(async () => {
 it("accepts lamp-oil alone over an empty pool and presents it", async () => {
   await isolate(h);
   for (const id of WEAPONS) await holdWeapon(h, id, MAX_WEAPON_LEVEL);
-  for (const id of PASSIVE_IDS_HELD) await holdPassive(h, id, PASSIVES[id].maxLevel);
+  for (const id of PASSIVE_IDS_HELD)
+    await holdPassive(h, id, PASSIVES[id].maxLevel);
   await h.debug.setNextOffers([LAMP_OIL_ID]);
   const posed = await h.snapshot();
-  assertDeepEqual(posed.run.nextOffers, [LAMP_OIL_ID], "nextOffers after the pose");
+  assertDeepEqual(
+    posed.run.nextOffers,
+    [LAMP_OIL_ID],
+    "nextOffers after the pose",
+  );
 
   const overlay = await openLevelUp(h);
   await captureStill(h, "oil");
-  assertEqual(overlay.screen, "levelup", "the screen the queued level-up opened");
+  assertEqual(
+    overlay.screen,
+    "levelup",
+    "the screen the queued level-up opened",
+  );
   assertLength(overlay.run.pool, 0, "the pool over a full, maxed loadout");
-  assertDeepEqual(overlay.run.offers, [LAMP_OIL_ID], "the offers the overlay presents");
+  assertDeepEqual(
+    overlay.run.offers,
+    [LAMP_OIL_ID],
+    "the offers the overlay presents",
+  );
 });

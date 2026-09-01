@@ -33,11 +33,7 @@
 
 import { it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
-import {
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-  fail,
-} from "../assert";
+import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";
 import { BINDINGS, HANDLE } from "../constants";
 import type { WickSnapshot } from "../harness";
 import { writeImageBytes } from "./media-out";
@@ -93,9 +89,9 @@ async function distinctColors(png: Buffer): Promise<number> {
 function snapshot(site: Site): Promise<WickSnapshot> {
   return site.page.evaluate(
     (handle) =>
-      (
-        window as unknown as Record<string, { snapshot(): WickSnapshot }>
-      )[handle]!.snapshot(),
+      (window as unknown as Record<string, { snapshot(): WickSnapshot }>)[
+        handle
+      ]!.snapshot(),
     HANDLE,
   );
 }

@@ -37,7 +37,16 @@ it("takes the facing direction for a spawn at the lamplighter's center", async (
   const posed = await h.snapshot();
   assertEqual(posed.run.player.facing, "left", "facing before the spawn");
 
-  const gnat = await placeEnemy(h, "gnat", posed.run.player.x, posed.run.player.y);
+  const gnat = await placeEnemy(
+    h,
+    "gnat",
+    posed.run.player.x,
+    posed.run.player.y,
+  );
   await captureStill(h, "centered");
-  assertDeepEqual(gnat.heading, facingVector("left"), "the coincident spawn's heading");
+  assertDeepEqual(
+    gnat.heading,
+    facingVector("left"),
+    "the coincident spawn's heading",
+  );
 });

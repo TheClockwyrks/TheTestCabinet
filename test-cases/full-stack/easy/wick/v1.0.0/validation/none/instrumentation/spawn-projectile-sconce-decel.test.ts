@@ -14,7 +14,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear } from "../assert";
-import { FLOAT_TOL, INFINITE_PIERCE, PROJECTILE_WEAPONS, SCONCE_DECEL } from "../constants";
+import {
+  FLOAT_TOL,
+  INFINITE_PIERCE,
+  PROJECTILE_WEAPONS,
+  SCONCE_DECEL,
+} from "../constants";
 import {
   captureStill,
   createHarness,
@@ -35,7 +40,15 @@ afterEach(async () => {
 
 it("gives a posed sconce its deceleration, and every other weapon none", async () => {
   await isolate(h);
-  const sconce = await placeProjectile(h, "sconce", 0, 0, 0, 600, INFINITE_PIERCE);
+  const sconce = await placeProjectile(
+    h,
+    "sconce",
+    0,
+    0,
+    0,
+    600,
+    INFINITE_PIERCE,
+  );
   assertNear(sconce.ax, 0, FLOAT_TOL, "the sconce's ax");
   assertNear(sconce.ay, -SCONCE_DECEL, FLOAT_TOL, "the sconce's ay");
 

@@ -12,12 +12,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertRejects } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -34,8 +29,15 @@ it("throws on an id held in another slot and leaves the passives as they were", 
   await h.debug.setPassive(0, "bellows", 1);
   const before = await h.snapshot();
 
-  await assertRejects(() => h.debug.setPassive(1, "bellows", 1), "setPassive(1, 'bellows', 1) with Bellows in slot 0");
+  await assertRejects(
+    () => h.debug.setPassive(1, "bellows", 1),
+    "setPassive(1, 'bellows', 1) with Bellows in slot 0",
+  );
   const after = await h.snapshot();
   await captureStill(h, "refused");
-  assertDeepEqual(after.run.passives, before.run.passives, "the passives after the refused call");
+  assertDeepEqual(
+    after.run.passives,
+    before.run.passives,
+    "the passives after the refused call",
+  );
 });

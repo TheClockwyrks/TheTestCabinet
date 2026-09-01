@@ -19,11 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, type Harness } from "../harness";
 
 /**
  * Real time allowed to pass with the game off the wall clock: long enough that
@@ -42,11 +38,19 @@ afterEach(async () => {
 });
 
 it("leaves autoStep false across a reset, so the run stays held", async () => {
-  assertEqual((await h.snapshot()).autoStep, false, "autoStep before the reset");
+  assertEqual(
+    (await h.snapshot()).autoStep,
+    false,
+    "autoStep before the reset",
+  );
 
   await h.debug.reset();
   const reset = await h.snapshot();
-  assertEqual(reset.autoStep, false, "autoStep after a reset issued while false");
+  assertEqual(
+    reset.autoStep,
+    false,
+    "autoStep after a reset issued while false",
+  );
 
   await h.debug.setScreen("playing");
   await h.page.waitForTimeout(FROZEN_MS);

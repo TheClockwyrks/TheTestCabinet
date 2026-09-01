@@ -16,12 +16,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { OFFER_COUNT } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 const QUEUED = 2;
 
@@ -39,13 +34,29 @@ it("queues level-ups, and the next tick opens the overlay", async () => {
   await isolate(h);
   await h.debug.setPendingLevelUps(QUEUED);
   const posed = await h.snapshot();
-  assertEqual(posed.run.pendingLevelUps, QUEUED, "pendingLevelUps after the pose");
-  assertEqual(posed.screen, "playing", "the screen at the pose, before the tick");
+  assertEqual(
+    posed.run.pendingLevelUps,
+    QUEUED,
+    "pendingLevelUps after the pose",
+  );
+  assertEqual(
+    posed.screen,
+    "playing",
+    "the screen at the pose, before the tick",
+  );
 
   const opened = await h.step(1);
   await captureStill(h, "queued");
-  assertEqual(opened.screen, "levelup", "the screen after the next playing tick");
+  assertEqual(
+    opened.screen,
+    "levelup",
+    "the screen after the next playing tick",
+  );
   assertEqual(opened.menuIndex, 0, "menuIndex on the opened overlay");
-  assertEqual(opened.run.pendingLevelUps, QUEUED, "pendingLevelUps on the open overlay");
+  assertEqual(
+    opened.run.pendingLevelUps,
+    QUEUED,
+    "pendingLevelUps on the open overlay",
+  );
   assertLength(opened.run.offers, OFFER_COUNT, "the offers the overlay drew");
 });

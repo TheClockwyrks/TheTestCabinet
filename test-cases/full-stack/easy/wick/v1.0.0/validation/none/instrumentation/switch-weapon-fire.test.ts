@@ -54,10 +54,26 @@ it("holds the timers and the firing while off, and counts from there once on", a
 
   const held = await h.step(HELD_TICKS);
   await captureStill(h, "held");
-  assertEqual(held.run.weapons[taper]?.cooldown, POSED_COOLDOWN, `Taper's timer after ${HELD_TICKS} held ticks`);
-  assertLength(zonesOfKind(held, "slash"), 0, `slashes over ${HELD_TICKS} held ticks`);
-  assertLength(zonesOfKind(held, "aura"), 1, "the Halo aura, placed whatever the switch");
-  assertEqual(mustEnemy(held, moth.id).hp, moth.hp, "the moth's hp with the aura pulsing nothing");
+  assertEqual(
+    held.run.weapons[taper]?.cooldown,
+    POSED_COOLDOWN,
+    `Taper's timer after ${HELD_TICKS} held ticks`,
+  );
+  assertLength(
+    zonesOfKind(held, "slash"),
+    0,
+    `slashes over ${HELD_TICKS} held ticks`,
+  );
+  assertLength(
+    zonesOfKind(held, "aura"),
+    1,
+    "the Halo aura, placed whatever the switch",
+  );
+  assertEqual(
+    mustEnemy(held, moth.id).hp,
+    moth.hp,
+    "the moth's hp with the aura pulsing nothing",
+  );
 
   await h.debug.setWeaponFire(true);
   const resumed = await h.step(RESUMED_TICKS);

@@ -15,12 +15,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertLength, assertNear } from "../assert";
 import { FLOAT_TOL, moveSpeedOf } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 const LEVEL = 2;
 
@@ -41,7 +36,11 @@ it("poses a passive, and the derived stat follows on the next read", async () =>
   await h.debug.setPassive(0, "bellows", LEVEL);
   const after = await h.snapshot();
   await captureStill(h, "posed");
-  assertDeepEqual(after.run.passives, [{ id: "bellows", level: LEVEL }], "the passives after the pose");
+  assertDeepEqual(
+    after.run.passives,
+    [{ id: "bellows", level: LEVEL }],
+    "the passives after the pose",
+  );
   assertNear(
     after.run.moveSpeed,
     moveSpeedOf({ bellows: LEVEL }),

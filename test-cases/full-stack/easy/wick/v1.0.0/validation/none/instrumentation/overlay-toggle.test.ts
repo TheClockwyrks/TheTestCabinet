@@ -45,9 +45,17 @@ it("shows the overlay on Backquote and hides it on the next", async () => {
   await pressOverlayToggle(h);
   const shown = await readout(h);
   await captureStill(h, "shown");
-  assertGreaterThan(addedText(hidden, shown).length, 0, "text the overlay added when shown");
+  assertGreaterThan(
+    addedText(hidden, shown).length,
+    0,
+    "text the overlay added when shown",
+  );
 
   await pressOverlayToggle(h);
   const again = await readout(h);
-  assertEqual(sameReadout(again, hidden), true, "the readout back to the hidden one after the second press");
+  assertEqual(
+    sameReadout(again, hidden),
+    true,
+    "the readout back to the hidden one after the second press",
+  );
 });

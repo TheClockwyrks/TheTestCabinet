@@ -52,7 +52,19 @@ it("removes the aura on the next tick and leaves the other shapes", async () => 
 
   const after = await h.step(1);
   await captureStill(h, "dropped");
-  assertLength(zonesOfKind(after, "aura"), 0, "the aura after the next playing tick");
-  assertEqual(zoneById(after, puddle.id) !== undefined, true, "the puddle, still there");
-  assertEqual(projectileById(after, bolt.id) !== undefined, true, "the bolt, still there");
+  assertLength(
+    zonesOfKind(after, "aura"),
+    0,
+    "the aura after the next playing tick",
+  );
+  assertEqual(
+    zoneById(after, puddle.id) !== undefined,
+    true,
+    "the puddle, still there",
+  );
+  assertEqual(
+    projectileById(after, bolt.id) !== undefined,
+    true,
+    "the bolt, still there",
+  );
 });

@@ -2026,7 +2026,11 @@ export function idleRun(weapons: readonly WeaponSlotView[] = []): RunView {
 }
 
 /** The weapon slot a fresh run starts with: "Taper at level `1` and cooldown `0`". */
-export const FRESH_TAPER: WeaponSlotView = { id: "taper", level: 1, cooldown: 0 };
+export const FRESH_TAPER: WeaponSlotView = {
+  id: "taper",
+  level: 1,
+  cooldown: 0,
+};
 
 /**
  * The candidate pool `specs/progression.md` computes "from the slots as they

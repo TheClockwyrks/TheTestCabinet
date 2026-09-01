@@ -45,7 +45,11 @@ async function endDawnFrom(from: "playing" | "paused"): Promise<void> {
   await h.debug.setKills(KILLS);
   if (from === "paused") await poseScreen(h, "paused");
   const dawn = await poseScreen(h, "dawn");
-  assertEqual(dawn.screen, "dawn", `the screen after setScreen('dawn') from ${from}`);
+  assertEqual(
+    dawn.screen,
+    "dawn",
+    `the screen after setScreen('dawn') from ${from}`,
+  );
   assertEqual(dawn.menuIndex, 0, `menuIndex on dawn from ${from}`);
   assertEqual(dawn.run.tick, TICK, `the ended run's tick from ${from}`);
   assertEqual(dawn.run.level, LEVEL, `the ended run's level from ${from}`);

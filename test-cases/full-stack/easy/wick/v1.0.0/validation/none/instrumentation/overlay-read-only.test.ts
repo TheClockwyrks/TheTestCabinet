@@ -43,17 +43,33 @@ afterEach(async () => {
 it("reads the game without changing it", async () => {
   await startRun(h, SEED);
   const unwatched = await h.step(RUN_TICKS);
-  assertGreaterThan(unwatched.run.enemies.length, 0, "enemies the unwatched run spawned");
+  assertGreaterThan(
+    unwatched.run.enemies.length,
+    0,
+    "enemies the unwatched run spawned",
+  );
 
   await startRun(h, SEED);
-  const watched = await captureReplay(h, "watched", async (): Promise<WickSnapshot> => {
-    await pressOverlayToggle(h);
-    await h.step(RUN_TICKS - 2);
-    return pressOverlayToggle(h);
-  });
+  const watched = await captureReplay(
+    h,
+    "watched",
+    async (): Promise<WickSnapshot> => {
+      await pressOverlayToggle(h);
+      await h.step(RUN_TICKS - 2);
+      return pressOverlayToggle(h);
+    },
+  );
 
-  assertEqual(watched.run.tick, unwatched.run.tick, "the ticks the two runs covered");
-  assertEqual(watched.rngState, unwatched.rngState, "rngState after the watched run");
+  assertEqual(
+    watched.run.tick,
+    unwatched.run.tick,
+    "the ticks the two runs covered",
+  );
+  assertEqual(
+    watched.rngState,
+    unwatched.rngState,
+    "rngState after the watched run",
+  );
   assertDeepEqual(
     documentedRun(watched.run),
     documentedRun(unwatched.run),

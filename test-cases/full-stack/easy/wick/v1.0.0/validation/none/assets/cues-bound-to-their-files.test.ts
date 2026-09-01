@@ -181,7 +181,9 @@ it("plays each of the fifteen cues from the file of its own name", async () => {
           heard.length === 0
             ? "nothing at all"
             : `nothing named ${cue}; the run heard ${[
-                ...new Set(heard.map((sound) => sound.name ?? "an unnamed sound")),
+                ...new Set(
+                  heard.map((sound) => sound.name ?? "an unnamed sound"),
+                ),
               ].join(", ")}`
         }`,
       );

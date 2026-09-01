@@ -51,7 +51,9 @@ it("poses an enemy's contact cooldown, and its hit lands when it is due", async 
   );
   await h.debug.setEnemyContact(true);
 
-  const seen = await captureReplay(h, "cooled", () => h.stepWatching(DUE_TICK + 1));
+  const seen = await captureReplay(h, "cooled", () =>
+    h.stepWatching(DUE_TICK + 1),
+  );
 
   for (let frame = 1; frame < DUE_TICK; frame += 1) {
     assertEqual(

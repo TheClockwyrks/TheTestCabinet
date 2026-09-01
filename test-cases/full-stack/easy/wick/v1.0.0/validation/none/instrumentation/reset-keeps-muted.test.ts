@@ -37,7 +37,11 @@ it("leaves muted as it was, unmuted and muted alike", async () => {
   assertEqual(unmuted.muted, false, "muted before the first reset");
   await h.debug.reset();
   await h.step(1);
-  assertEqual((await h.snapshot()).muted, false, "muted after a reset while unmuted");
+  assertEqual(
+    (await h.snapshot()).muted,
+    false,
+    "muted after a reset while unmuted",
+  );
 
   const muted = await pressMute(h);
   assertEqual(muted.muted, true, "muted after the mute key");

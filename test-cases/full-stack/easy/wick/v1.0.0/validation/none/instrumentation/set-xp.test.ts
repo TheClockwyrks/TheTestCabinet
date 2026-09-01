@@ -31,7 +31,11 @@ const SMALL_XP = 4.5;
 const LARGE_XP = 100;
 
 /** The level, xp, and queued level-ups the rule leaves after a gain to `total` from level 1. */
-function afterGain(total: number): { level: number; xp: number; queued: number } {
+function afterGain(total: number): {
+  level: number;
+  xp: number;
+  queued: number;
+} {
   let level = 1;
   let xp = total;
   let queued = 0;

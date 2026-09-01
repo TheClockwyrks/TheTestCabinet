@@ -86,15 +86,27 @@ it("restores every declared field to its title-screen value", async () => {
   await h.debug.setNextOffers(["pin"]);
   await h.debug.setSpawnTimer(0.7);
   const disturbed = await h.snapshot();
-  assertNotEqual(disturbed.run.firedEvents.length, 0, "events fired before the reset");
-  assertNotEqual(disturbed.run.pendingLevelUps, 0, "level-ups queued before the reset");
+  assertNotEqual(
+    disturbed.run.firedEvents.length,
+    0,
+    "events fired before the reset",
+  );
+  assertNotEqual(
+    disturbed.run.pendingLevelUps,
+    0,
+    "level-ups queued before the reset",
+  );
 
   const { after: title } = await bracket(h, "reset");
   await captureStill(h, "reset");
 
   assertEqual(title.screen, "title", "the screen a reset leaves");
   assertEqual(title.menuIndex, 0, "menuIndex after a reset");
-  assertDeepEqual(documentedRun(title.run), idleRun(), "the run a reset leaves");
+  assertDeepEqual(
+    documentedRun(title.run),
+    idleRun(),
+    "the run a reset leaves",
+  );
   assertEqual(title.accumulator, 0, "the accumulator a reset leaves");
   assertEqual(title.simTime, 0, "simTime a reset leaves");
 });

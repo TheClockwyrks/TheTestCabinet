@@ -60,13 +60,19 @@ it("leaves the state as it was when called off a run screen", async () => {
   const title = await h.snapshot();
   assertEqual(title.screen, "title", "the screen the calls are made on");
   await requireInert(title, "setHp(10)", () => h.debug.setHp(10));
-  await requireInert(title, "spawnEnemy('moth', 0, 0)", () => h.debug.spawnEnemy("moth", 0, 0));
+  await requireInert(title, "spawnEnemy('moth', 0, 0)", () =>
+    h.debug.spawnEnemy("moth", 0, 0),
+  );
   await requireInert(title, "setTick(100)", () => h.debug.setTick(100));
-  await requireInert(title, "setWeapon(0, 'pin', 1)", () => h.debug.setWeapon(0, "pin", 1));
+  await requireInert(title, "setWeapon(0, 'pin', 1)", () =>
+    h.debug.setWeapon(0, "pin", 1),
+  );
 
   await isolate(h);
   const overlay = await openLevelUp(h);
   assertEqual(overlay.screen, "levelup", "the screen the last call is made on");
-  await requireInert(overlay, "setPlayerPosition(5, 5)", () => h.debug.setPlayerPosition(5, 5));
+  await requireInert(overlay, "setPlayerPosition(5, 5)", () =>
+    h.debug.setPlayerPosition(5, 5),
+  );
   await captureStill(h, "inert");
 });

@@ -43,5 +43,9 @@ it("poses an enemy's health, leaving its maximum", async () => {
   const after = mustEnemy(await h.snapshot(), hound.id);
   await captureStill(h, "posed");
   assertEqual(after.hp, POSED_HP, "the hound's hp after the pose");
-  assertEqual(after.maxHp, ENEMIES.hound.hp, "the hound's maxHp across the pose");
+  assertEqual(
+    after.maxHp,
+    ENEMIES.hound.hp,
+    "the hound's maxHp across the pose",
+  );
 });

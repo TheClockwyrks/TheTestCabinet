@@ -42,8 +42,16 @@ afterEach(async () => {
 /** `setScreen("playing")` from the screen the game stands on, read as a fresh run. */
 async function requireFreshRun(from: string): Promise<void> {
   const fresh = await poseScreen(h, "playing");
-  assertEqual(fresh.screen, "playing", `the screen after setScreen('playing') from ${from}`);
-  assertEqual(fresh.menuIndex, 0, `menuIndex after setScreen('playing') from ${from}`);
+  assertEqual(
+    fresh.screen,
+    "playing",
+    `the screen after setScreen('playing') from ${from}`,
+  );
+  assertEqual(
+    fresh.menuIndex,
+    0,
+    `menuIndex after setScreen('playing') from ${from}`,
+  );
   assertDeepEqual(
     documentedRun(fresh.run),
     idleRun([FRESH_TAPER]),

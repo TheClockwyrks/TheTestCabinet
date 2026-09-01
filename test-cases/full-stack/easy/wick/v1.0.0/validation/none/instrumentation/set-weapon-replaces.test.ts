@@ -34,7 +34,11 @@ afterEach(async () => {
 
 it("replaces the weapon in a held slot", async () => {
   const posed = await isolate(h, { keepTaper: true });
-  assertDeepEqual(posed.run.weapons, [FRESH_TAPER], "the weapons before the pose");
+  assertDeepEqual(
+    posed.run.weapons,
+    [FRESH_TAPER],
+    "the weapons before the pose",
+  );
 
   await h.debug.setWeapon(0, "pin", 2);
   const after = await h.snapshot();

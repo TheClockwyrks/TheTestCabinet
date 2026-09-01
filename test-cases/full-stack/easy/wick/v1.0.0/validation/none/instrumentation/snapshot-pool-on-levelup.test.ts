@@ -25,7 +25,12 @@
 // real path, a queued level-up and the tick that opens it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEachIn, assertEqual, assertLength } from "../assert";
+import {
+  assertDeepEqual,
+  assertEachIn,
+  assertEqual,
+  assertLength,
+} from "../assert";
 import { OFFER_COUNT, type OfferId } from "../constants";
 import {
   candidatePool,
@@ -85,7 +90,11 @@ it("reports the candidate pool on levelup, in order, with offers drawn from it",
 
   const overlay = await openLevelUp(h);
   await captureStill(h, "pool");
-  assertEqual(overlay.screen, "levelup", "the screen the queued level-up opened");
+  assertEqual(
+    overlay.screen,
+    "levelup",
+    "the screen the queued level-up opened",
+  );
   assertDeepEqual(overlay.run.pool, EXPECTED_POOL, "the pool on levelup");
   assertLength(overlay.run.offers, OFFER_COUNT, "the offers drawn");
   assertEachIn(overlay.run.offers, overlay.run.pool, "each offer in the pool");

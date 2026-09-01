@@ -51,7 +51,11 @@ it("ticks nothing on paused and leaves the accumulator at 0", async () => {
   await captureStill(h, "paused");
 
   assertEqual(after.screen, "paused", "the screen after the frame");
-  assertEqual(after.run.tick, before.run.tick, "the run clock after a paused frame");
+  assertEqual(
+    after.run.tick,
+    before.run.tick,
+    "the run clock after a paused frame",
+  );
   assertEqual(after.accumulator, 0, "the accumulator after a paused frame");
   assertNear(
     after.simTime - before.simTime,

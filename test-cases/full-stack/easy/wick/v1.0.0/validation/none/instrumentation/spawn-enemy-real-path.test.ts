@@ -54,6 +54,11 @@ it("spawns through the real path, scaled by the run clock", async () => {
   assertEqual(moth.age, 0, "the spawn's age");
   assertEqual(moth.contactCooldown, 0, "the spawn's contact cooldown");
   const scaled = ENEMIES.moth.hp * hpMul(POSED_TICK / TICK_HZ);
-  assertNear(moth.maxHp, scaled, FLOAT_TOL, "the spawn's maxHp, scaled by the clock");
+  assertNear(
+    moth.maxHp,
+    scaled,
+    FLOAT_TOL,
+    "the spawn's maxHp, scaled by the clock",
+  );
   assertNear(moth.hp, scaled, FLOAT_TOL, "the spawn's hp, at its maxHp");
 });

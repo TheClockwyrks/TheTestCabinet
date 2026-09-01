@@ -46,7 +46,15 @@ it("adds a posed projectile with the next id, which first moves on the next tick
   await isolate(h);
   const before = await h.snapshot();
 
-  const bolt = await placeProjectile(h, "ember", BOLT.x, BOLT.y, BOLT.vx, BOLT.vy, BOLT.pierce);
+  const bolt = await placeProjectile(
+    h,
+    "ember",
+    BOLT.x,
+    BOLT.y,
+    BOLT.vx,
+    BOLT.vy,
+    BOLT.pierce,
+  );
   assertEqual(bolt.id, before.run.nextId, "the bolt's id, the next id");
   assertEqual(bolt.weapon, "ember", "the bolt's weapon");
   assertNear(bolt.x, BOLT.x, POSITION_TOL, "the bolt's x at the pose");
@@ -65,6 +73,16 @@ it("adds a posed projectile with the next id, which first moves on the next tick
     return stepped;
   });
   const moved = mustProjectile(first, bolt.id);
-  assertNear(moved.x, BOLT.x + BOLT.vx * TICK_DT, POSITION_TOL, "the bolt's x after its first tick");
-  assertNear(moved.y, BOLT.y + BOLT.vy * TICK_DT, POSITION_TOL, "the bolt's y after its first tick");
+  assertNear(
+    moved.x,
+    BOLT.x + BOLT.vx * TICK_DT,
+    POSITION_TOL,
+    "the bolt's x after its first tick",
+  );
+  assertNear(
+    moved.y,
+    BOLT.y + BOLT.vy * TICK_DT,
+    POSITION_TOL,
+    "the bolt's y after its first tick",
+  );
 });

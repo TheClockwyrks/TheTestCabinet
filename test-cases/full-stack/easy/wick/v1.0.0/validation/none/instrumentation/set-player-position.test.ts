@@ -19,12 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertTrue } from "../assert";
-import {
-  BLIT_TOL,
-  LAMPLIGHTER_SIZE,
-  STAGE_CX,
-  STAGE_CY,
-} from "../constants";
+import { BLIT_TOL, LAMPLIGHTER_SIZE, STAGE_CX, STAGE_CY } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -56,7 +56,11 @@ it("resumes the paused run untouched", async () => {
   const resumed = await poseScreen(h, "playing");
   await captureStill(h, "resumed");
 
-  assertEqual(resumed.screen, "playing", "the screen after setScreen('playing')");
+  assertEqual(
+    resumed.screen,
+    "playing",
+    "the screen after setScreen('playing')",
+  );
   assertEqual(resumed.menuIndex, 0, "menuIndex after resuming");
   assertDeepEqual(
     documentedRun(resumed.run),

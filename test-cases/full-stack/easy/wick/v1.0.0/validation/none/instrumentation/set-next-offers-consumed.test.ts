@@ -14,7 +14,12 @@
 // the second overlay's draw must be three.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertLength, assertNull } from "../assert";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertLength,
+  assertNull,
+} from "../assert";
 import { OFFER_COUNT, type OfferId } from "../constants";
 import {
   captureStill,
@@ -46,12 +51,27 @@ it("is consumed by one overlay, and the next draws at random", async () => {
 
   await h.debug.choose(0);
   const between = await h.snapshot();
-  assertEqual(between.screen, "playing", "the screen after the first overlay closed");
+  assertEqual(
+    between.screen,
+    "playing",
+    "the screen after the first overlay closed",
+  );
   assertNull(between.run.nextOffers, "nextOffers between the overlays");
 
   const second = await openLevelUp(h);
   await captureStill(h, "consumed");
-  assertEqual(second.screen, "levelup", "the screen the second level-up opened");
-  assertLength(second.run.offers, OFFER_COUNT, "the second overlay's offers, drawn at random");
-  assertNull(second.run.nextOffers, "nextOffers once the second overlay opened");
+  assertEqual(
+    second.screen,
+    "levelup",
+    "the screen the second level-up opened",
+  );
+  assertLength(
+    second.run.offers,
+    OFFER_COUNT,
+    "the second overlay's offers, drawn at random",
+  );
+  assertNull(
+    second.run.nextOffers,
+    "nextOffers once the second overlay opened",
+  );
 });

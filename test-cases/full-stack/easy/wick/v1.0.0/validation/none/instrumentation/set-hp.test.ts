@@ -14,12 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 const POSED_HP = 40;
 
@@ -43,8 +38,16 @@ it("poses health, and a posed 0 ends the run on the next tick", async () => {
   await h.debug.setHp(0);
   const zeroed = await h.snapshot();
   assertEqual(zeroed.run.player.hp, 0, "hp after setHp(0)");
-  assertEqual(zeroed.screen, "playing", "the screen at the pose, before the tick");
+  assertEqual(
+    zeroed.screen,
+    "playing",
+    "the screen at the pose, before the tick",
+  );
 
   const ended = await h.step(1);
-  assertEqual(ended.screen, "fallen", "the screen after one playing tick at hp 0");
+  assertEqual(
+    ended.screen,
+    "fallen",
+    "the screen after one playing tick at hp 0",
+  );
 });

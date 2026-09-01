@@ -49,10 +49,18 @@ it("applies the offer at the index and returns to playing", async () => {
   const chosen = await h.snapshot();
   await captureStill(h, "chosen");
 
-  assertEqual(chosen.screen, "playing", "the screen after the last queued level-up");
+  assertEqual(
+    chosen.screen,
+    "playing",
+    "the screen after the last queued level-up",
+  );
   assertEqual(chosen.run.pendingLevelUps, 0, "pendingLevelUps after choose");
   if (isPassiveId(offer)) {
-    assertDeepEqual(chosen.run.passives, [{ id: offer, level: 1 }], "the passive held");
+    assertDeepEqual(
+      chosen.run.passives,
+      [{ id: offer, level: 1 }],
+      "the passive held",
+    );
     assertLength(chosen.run.weapons, 0, "the weapons held");
   } else {
     assertLength(chosen.run.weapons, 1, "the weapons held");

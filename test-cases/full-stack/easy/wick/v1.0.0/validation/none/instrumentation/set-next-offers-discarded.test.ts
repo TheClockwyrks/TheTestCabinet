@@ -46,10 +46,30 @@ it("discards a list naming a non-candidate, whole, and draws at random", async (
 
   const overlay = await openLevelUp(h);
   await captureStill(h, "discarded");
-  assertEqual(overlay.screen, "levelup", "the screen the queued level-up opened");
+  assertEqual(
+    overlay.screen,
+    "levelup",
+    "the screen the queued level-up opened",
+  );
   assertNull(overlay.run.nextOffers, "nextOffers once the overlay opened");
-  assertEqual(overlay.run.pool.includes("spark"), false, "Spark at max in the pool");
-  assertLength(overlay.run.offers, OFFER_COUNT, "the offers drawn in place of the list");
-  assertEachIn(overlay.run.offers, overlay.run.pool, "each drawn offer in the pool");
-  assertEqual(overlay.run.offers.includes("spark"), false, "the stray id among the offers");
+  assertEqual(
+    overlay.run.pool.includes("spark"),
+    false,
+    "Spark at max in the pool",
+  );
+  assertLength(
+    overlay.run.offers,
+    OFFER_COUNT,
+    "the offers drawn in place of the list",
+  );
+  assertEachIn(
+    overlay.run.offers,
+    overlay.run.pool,
+    "each drawn offer in the pool",
+  );
+  assertEqual(
+    overlay.run.offers.includes("spark"),
+    false,
+    "the stray id among the offers",
+  );
 });

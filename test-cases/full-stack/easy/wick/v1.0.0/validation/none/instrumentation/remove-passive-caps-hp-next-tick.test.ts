@@ -15,12 +15,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { BASE_MAX_HP, maxHpOf } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 const LEVEL = 2;
 
@@ -39,7 +34,11 @@ it("caps hp at the new maxHp on the next tick, not at the call", async () => {
   await h.debug.setPassive(0, "tallow", LEVEL);
   const raised = maxHpOf({ tallow: LEVEL });
   await h.debug.setHp(raised);
-  assertEqual((await h.snapshot()).run.player.hp, raised, "hp at the raised maximum");
+  assertEqual(
+    (await h.snapshot()).run.player.hp,
+    raised,
+    "hp at the raised maximum",
+  );
 
   await h.debug.removePassive(0);
   const removed = await h.snapshot();
@@ -48,5 +47,9 @@ it("caps hp at the new maxHp on the next tick, not at the call", async () => {
 
   const ticked = await h.step(1);
   await captureStill(h, "capped");
-  assertEqual(ticked.run.player.hp, BASE_MAX_HP, "hp after the next playing tick");
+  assertEqual(
+    ticked.run.player.hp,
+    BASE_MAX_HP,
+    "hp after the next playing tick",
+  );
 });

@@ -39,9 +39,16 @@ it("throws at 0 and above maxHp, leaving hp as it was", async () => {
   assertEqual(hound.maxHp, ENEMIES.hound.hp, "the hound's maxHp");
 
   for (const posed of [0, hound.maxHp + 1]) {
-    await assertRejects(() => h.debug.setEnemyHp(hound.id, posed), `setEnemyHp(id, ${posed})`);
+    await assertRejects(
+      () => h.debug.setEnemyHp(hound.id, posed),
+      `setEnemyHp(id, ${posed})`,
+    );
     const after = mustEnemy(await h.snapshot(), hound.id);
-    assertEqual(after.hp, hound.hp, `the hound's hp after the refused setEnemyHp(id, ${posed})`);
+    assertEqual(
+      after.hp,
+      hound.hp,
+      `the hound's hp after the refused setEnemyHp(id, ${posed})`,
+    );
   }
   await captureStill(h, "refused");
 });

@@ -44,10 +44,16 @@ it("poses a weapon's timer, and the weapon fires when it is due", async () => {
   const slot = await holdWeapon(h, "pin", 1);
   await h.debug.setWeaponCooldown(slot, POSED_SECONDS);
   const posed = await h.snapshot();
-  assertEqual(posed.run.weapons[slot]?.cooldown, POSED_SECONDS, "the timer after the pose");
+  assertEqual(
+    posed.run.weapons[slot]?.cooldown,
+    POSED_SECONDS,
+    "the timer after the pose",
+  );
   await h.debug.setWeaponFire(true);
 
-  const seen = await captureReplay(h, "timed", () => h.stepWatching(DUE_TICK + 1));
+  const seen = await captureReplay(h, "timed", () =>
+    h.stepWatching(DUE_TICK + 1),
+  );
 
   for (let frame = 1; frame < DUE_TICK; frame += 1) {
     assertLength(

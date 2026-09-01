@@ -44,11 +44,19 @@ it("fixes the queued overlay when posed on levelup", async () => {
 
   await h.debug.setNextOffers(QUEUED);
   const posed = await h.snapshot();
-  assertDeepEqual(posed.run.nextOffers, QUEUED, "nextOffers after the pose on levelup");
+  assertDeepEqual(
+    posed.run.nextOffers,
+    QUEUED,
+    "nextOffers after the pose on levelup",
+  );
 
   await h.debug.choose(0);
   const second = await h.snapshot();
   await captureStill(h, "queued");
-  assertEqual(second.screen, "levelup", "the screen after choose with one more queued");
+  assertEqual(
+    second.screen,
+    "levelup",
+    "the screen after choose with one more queued",
+  );
   assertDeepEqual(second.run.offers, QUEUED, "the queued overlay's offers");
 });

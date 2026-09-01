@@ -50,8 +50,16 @@ it("places and re-centers the aura with weaponFire and effectMotion off", async 
   const auras = zonesOfKind(placed, "aura");
   assertLength(auras, 1, "the aura on the tick after Halo is held");
   assertEqual(auras[0]?.weapon, "halo", "the aura's weapon");
-  assertEqual(auras[0]?.x, placed.run.player.x, "the aura's x on the lamplighter");
-  assertEqual(auras[0]?.y, placed.run.player.y, "the aura's y on the lamplighter");
+  assertEqual(
+    auras[0]?.x,
+    placed.run.player.x,
+    "the aura's x on the lamplighter",
+  );
+  assertEqual(
+    auras[0]?.y,
+    placed.run.player.y,
+    "the aura's y on the lamplighter",
+  );
 
   await h.debug.setPlayerPosition(MOVED_TO.x, MOVED_TO.y);
   const moved = await h.step(1);

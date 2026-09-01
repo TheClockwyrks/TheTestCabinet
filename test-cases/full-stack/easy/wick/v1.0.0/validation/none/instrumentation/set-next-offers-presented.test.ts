@@ -45,6 +45,14 @@ it("presents a queued list of candidates as given", async () => {
 
   const overlay = await openLevelUp(h);
   await captureStill(h, "presented");
-  assertEqual(overlay.screen, "levelup", "the screen the queued level-up opened");
-  assertDeepEqual(overlay.run.offers, QUEUED, "the offers the overlay presents");
+  assertEqual(
+    overlay.screen,
+    "levelup",
+    "the screen the queued level-up opened",
+  );
+  assertDeepEqual(
+    overlay.run.offers,
+    QUEUED,
+    "the offers the overlay presents",
+  );
 });

@@ -48,7 +48,11 @@ it("removes one enemy with no outcome", async () => {
   await captureStill(h, "removed");
 
   assertEqual(enemyById(after, removed.id), undefined, "the removed moth");
-  assertEqual(enemyById(after, kept.id) !== undefined, true, "the other moth, still present");
+  assertEqual(
+    enemyById(after, kept.id) !== undefined,
+    true,
+    "the other moth, still present",
+  );
   assertLength(after.run.enemies, 1, "the enemies after the removal");
   assertEqual(after.run.kills, POSED_KILLS, "kills across the removal");
   assertLength(after.run.gems, 0, "gems dropped by the removal");

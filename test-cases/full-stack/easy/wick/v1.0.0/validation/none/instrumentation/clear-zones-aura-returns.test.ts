@@ -52,5 +52,9 @@ it("removes the aura, and the next tick creates it again with a fresh id", async
   const back = zonesOfKind(returned, "aura");
   assertLength(back, 1, "the aura after the next playing tick");
   assertEqual(back[0]?.weapon, "halo", "the returned aura's weapon");
-  assertGreaterThan(back[0]?.id ?? NaN, cleared.id, "the returned aura's id, fresh");
+  assertGreaterThan(
+    back[0]?.id ?? NaN,
+    cleared.id,
+    "the returned aura's id, fresh",
+  );
 });

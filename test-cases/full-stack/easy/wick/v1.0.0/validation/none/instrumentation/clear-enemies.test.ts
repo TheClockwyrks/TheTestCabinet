@@ -41,7 +41,11 @@ it("removes every enemy with no outcome", async () => {
   await placeEnemy(h, "moth", -200, 0);
   await placeEnemy(h, "mothwing", 0, 300);
   await placeEnemy(h, "dark", 0, -400);
-  assertLength((await h.snapshot()).run.enemies, 4, "the enemies before the clear");
+  assertLength(
+    (await h.snapshot()).run.enemies,
+    4,
+    "the enemies before the clear",
+  );
 
   await h.debug.clearEnemies();
   const after = await h.snapshot();

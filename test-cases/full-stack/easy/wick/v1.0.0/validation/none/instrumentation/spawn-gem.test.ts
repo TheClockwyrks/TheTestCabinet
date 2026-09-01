@@ -54,7 +54,21 @@ it("places an unattracted gem with the next id, which stays put", async () => {
   const later = await h.step(HELD_TICKS);
   await captureStill(h, "placed");
   const still = gemById(later, gem.id);
-  assertNear(still?.x ?? NaN, AT.x, POSITION_TOL, `the gem's x after ${HELD_TICKS} ticks`);
-  assertNear(still?.y ?? NaN, AT.y, POSITION_TOL, `the gem's y after ${HELD_TICKS} ticks`);
-  assertEqual(still?.attracted, false, `the gem's attraction after ${HELD_TICKS} ticks`);
+  assertNear(
+    still?.x ?? NaN,
+    AT.x,
+    POSITION_TOL,
+    `the gem's x after ${HELD_TICKS} ticks`,
+  );
+  assertNear(
+    still?.y ?? NaN,
+    AT.y,
+    POSITION_TOL,
+    `the gem's y after ${HELD_TICKS} ticks`,
+  );
+  assertEqual(
+    still?.attracted,
+    false,
+    `the gem's attraction after ${HELD_TICKS} ticks`,
+  );
 });

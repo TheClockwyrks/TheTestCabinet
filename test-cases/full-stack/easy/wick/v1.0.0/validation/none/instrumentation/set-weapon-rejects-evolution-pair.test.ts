@@ -14,12 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertRejects } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -35,7 +30,10 @@ it("throws on a base whose evolution is held, and on an evolution whose base is 
   await isolate(h);
   await h.debug.setWeapon(0, "pyre", 1);
   const withPyre = await h.snapshot();
-  await assertRejects(() => h.debug.setWeapon(1, "taper", 1), "setWeapon(1, 'taper', 1) with Pyre held");
+  await assertRejects(
+    () => h.debug.setWeapon(1, "taper", 1),
+    "setWeapon(1, 'taper', 1) with Pyre held",
+  );
   assertDeepEqual(
     (await h.snapshot()).run.weapons,
     withPyre.run.weapons,
@@ -45,8 +43,15 @@ it("throws on a base whose evolution is held, and on an evolution whose base is 
   await isolate(h);
   await h.debug.setWeapon(0, "taper", 1);
   const withTaper = await h.snapshot();
-  await assertRejects(() => h.debug.setWeapon(1, "pyre", 1), "setWeapon(1, 'pyre', 1) with Taper held");
+  await assertRejects(
+    () => h.debug.setWeapon(1, "pyre", 1),
+    "setWeapon(1, 'pyre', 1) with Taper held",
+  );
   const after = await h.snapshot();
   await captureStill(h, "refused");
-  assertDeepEqual(after.run.weapons, withTaper.run.weapons, "the weapons after the refused Pyre");
+  assertDeepEqual(
+    after.run.weapons,
+    withTaper.run.weapons,
+    "the weapons after the refused Pyre",
+  );
 });

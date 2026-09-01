@@ -169,8 +169,7 @@
   /* ---- Every image --------------------------------------------------------- */
 
   const image = window.HTMLImageElement?.prototype;
-  const src =
-    image && Object.getOwnPropertyDescriptor(image, "src");
+  const src = image && Object.getOwnPropertyDescriptor(image, "src");
   if (src && typeof src.set === "function") {
     Object.defineProperty(image, "src", {
       ...src,

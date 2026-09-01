@@ -21,7 +21,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNear } from "../assert";
-import { dueTicks, FLOAT_TOL, OIL_PULSE, POSITION_TOL, weaponRow } from "../constants";
+import {
+  dueTicks,
+  FLOAT_TOL,
+  OIL_PULSE,
+  POSITION_TOL,
+  weaponRow,
+} from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -60,9 +66,16 @@ it("adds a posed puddle with the row's figures, pulsing on its interval", async 
   assertEqual(puddle.ttl, row.duration, "the puddle's ttl");
   assertDeepEqual(puddle.hits, [], "the puddle's hits");
 
-  const seen = await captureReplay(h, "puddle", () => h.stepWatching(PULSE_TICKS + 1));
+  const seen = await captureReplay(h, "puddle", () =>
+    h.stepWatching(PULSE_TICKS + 1),
+  );
   const oncePulsed = hound.hp - row.damage;
-  assertNear(mustEnemy(seen[0]!, hound.id).hp, oncePulsed, FLOAT_TOL, "the hound's hp after the first pulse, on the next tick");
+  assertNear(
+    mustEnemy(seen[0]!, hound.id).hp,
+    oncePulsed,
+    FLOAT_TOL,
+    "the hound's hp after the first pulse, on the next tick",
+  );
   for (let frame = 2; frame <= PULSE_TICKS; frame += 1) {
     assertNear(
       mustEnemy(seen[frame - 1]!, hound.id).hp,

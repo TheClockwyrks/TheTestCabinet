@@ -239,7 +239,8 @@ export function readWav(file: string): WavRead {
     };
   }
 
-  const stride = format.blockAlign > 0 ? format.blockAlign : width * format.channels;
+  const stride =
+    format.blockAlign > 0 ? format.blockAlign : width * format.channels;
   const frames = Math.floor(data.size / stride);
   const channels = Array.from(
     { length: format.channels },
@@ -397,7 +398,10 @@ export function paintWaveform(
     }
   }
   if (markSeconds !== undefined) {
-    const x = 16 + (Math.min(markSeconds, wav.duration) / Math.max(wav.duration, 1e-6)) * 928;
+    const x =
+      16 +
+      (Math.min(markSeconds, wav.duration) / Math.max(wav.duration, 1e-6)) *
+        928;
     ctx.fillStyle = MARK;
     ctx.fillRect(x, 54, 2, 176);
     ctx.fillText(`${markSeconds}s`, x + 6, 66);

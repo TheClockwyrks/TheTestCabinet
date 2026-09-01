@@ -59,11 +59,27 @@ it("plays no cue at a pose, and reconciles the loops on the next frame", async (
   await h.debug.reset();
   await requireSilent("setScreen('playing')", "setScreen", "playing");
   await requireSilent("setHp(1)", "setHp", 1);
-  await requireSilent("spawnEnemy('moth', 300, 0)", "spawnEnemy", "moth", 300, 0);
-  await requireSilent("spawnPickup('chest', 0, 0)", "spawnPickup", "chest", 0, 0);
+  await requireSilent(
+    "spawnEnemy('moth', 300, 0)",
+    "spawnEnemy",
+    "moth",
+    300,
+    0,
+  );
+  await requireSilent(
+    "spawnPickup('chest', 0, 0)",
+    "spawnPickup",
+    "chest",
+    0,
+    0,
+  );
   await h.debug.setPendingLevelUps(1);
   await requireSilent("setScreen('levelup')", "setScreen", "levelup");
-  assertEqual((await h.snapshot()).screen, "levelup", "the overlay choose is made on");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "levelup",
+    "the overlay choose is made on",
+  );
   await requireSilent("choose(0)", "choose", 0);
 
   // The posed route: music is looping one frame after `setScreen("playing")`.
@@ -73,9 +89,17 @@ it("plays no cue at a pose, and reconciles the loops on the next frame", async (
   await h.debug.setScreen("playing");
   await h.step(1);
   await captureStill(h, "silent");
-  assertEqual(await isLooping(h, "music"), true, "music one frame after setScreen('playing')");
+  assertEqual(
+    await isLooping(h, "music"),
+    true,
+    "music one frame after setScreen('playing')",
+  );
 
   // The played route: the same one frame later.
   await startRunFromTitle(h);
-  assertEqual(await isLooping(h, "music"), true, "music one frame after LIGHT THE LAMP");
+  assertEqual(
+    await isLooping(h, "music"),
+    true,
+    "music one frame after LIGHT THE LAMP",
+  );
 });

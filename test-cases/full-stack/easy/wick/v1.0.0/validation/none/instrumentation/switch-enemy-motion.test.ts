@@ -17,7 +17,12 @@
 // counting is visible. Contact and every other faculty are held.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertNear, assertNotEqual } from "../assert";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertNear,
+  assertNotEqual,
+} from "../assert";
 import { TICK_DT, TIMER_TOL } from "../constants";
 import {
   captureReplay,
@@ -54,7 +59,11 @@ it("holds every enemy still while off, timers counting, and moves them once on",
     const now = mustEnemy(held, posed.id);
     assertEqual(now.x, was.x, `${posed.type} x after ${HELD_TICKS} held ticks`);
     assertEqual(now.y, was.y, `${posed.type} y after ${HELD_TICKS} held ticks`);
-    assertDeepEqual(now.heading, was.heading, `${posed.type} heading after ${HELD_TICKS} held ticks`);
+    assertDeepEqual(
+      now.heading,
+      was.heading,
+      `${posed.type} heading after ${HELD_TICKS} held ticks`,
+    );
     assertNear(
       now.age - was.age,
       HELD_TICKS * TICK_DT,

@@ -39,6 +39,14 @@ it("draws no overlay until the key first shows it", async () => {
 
   await pressOverlayToggle(h);
   const shown = await readout(h);
-  assertEqual(addedText(shown, fresh).length, 0, "text the first press took away");
-  assertGreaterThan(addedText(fresh, shown).length, 0, "text the first press added");
+  assertEqual(
+    addedText(shown, fresh).length,
+    0,
+    "text the first press took away",
+  );
+  assertGreaterThan(
+    addedText(fresh, shown).length,
+    0,
+    "text the first press added",
+  );
 });

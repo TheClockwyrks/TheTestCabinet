@@ -15,12 +15,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertRejects } from "../assert";
 import { type OfferId } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 const QUEUED: OfferId[] = ["pin"];
 

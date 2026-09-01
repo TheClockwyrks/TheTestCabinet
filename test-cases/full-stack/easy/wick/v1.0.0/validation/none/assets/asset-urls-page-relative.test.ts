@@ -83,8 +83,7 @@ it("runs unchanged mounted under a sub-path", async () => {
         `requests failed to resolve: ${unresolved
           .slice(0, LISTED)
           .map(
-            (request) =>
-              `${request.path} (${request.status ?? "no response"})`,
+            (request) => `${request.path} (${request.status ?? "no response"})`,
           )
           .join(", ")}`,
       );

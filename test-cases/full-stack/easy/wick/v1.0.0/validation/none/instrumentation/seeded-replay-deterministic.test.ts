@@ -45,7 +45,10 @@ afterEach(async () => {
 });
 
 /** One seeded run: play, level up, accept the first offer, play on. */
-async function playSeeded(): Promise<{ overlay: WickSnapshot; end: WickSnapshot }> {
+async function playSeeded(): Promise<{
+  overlay: WickSnapshot;
+  end: WickSnapshot;
+}> {
   await startRun(h, SEED);
   await h.step(BEFORE_TICKS);
   await h.debug.setPendingLevelUps(1);
@@ -59,8 +62,16 @@ it("replays a seeded run to identical snapshots", async () => {
   const first = await playSeeded();
   const second = await captureReplay(h, "seeded", () => playSeeded());
 
-  assertEqual(first.overlay.screen, "levelup", "the overlay the first run opened");
-  assertGreaterThan(first.end.run.enemies.length, 0, "enemies the first run spawned");
+  assertEqual(
+    first.overlay.screen,
+    "levelup",
+    "the overlay the first run opened",
+  );
+  assertGreaterThan(
+    first.end.run.enemies.length,
+    0,
+    "enemies the first run spawned",
+  );
   assertDeepEqual(
     second.overlay.run.offers,
     first.overlay.run.offers,

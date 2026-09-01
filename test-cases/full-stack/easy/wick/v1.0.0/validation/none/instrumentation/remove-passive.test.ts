@@ -15,12 +15,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { armorOf } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -37,7 +32,11 @@ it("closes the gap a removal leaves, the derived stat following", async () => {
   await h.debug.setPassive(0, "bellows", 1);
   await h.debug.setPassive(1, "brass", 1);
   await h.debug.setPassive(2, "lure", 1);
-  assertEqual((await h.snapshot()).run.armor, armorOf({ brass: 1 }), "armor with Brass held");
+  assertEqual(
+    (await h.snapshot()).run.armor,
+    armorOf({ brass: 1 }),
+    "armor with Brass held",
+  );
 
   await h.debug.removePassive(1);
   const after = await h.snapshot();

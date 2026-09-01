@@ -13,12 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 const PIN_LEVEL = 3;
 const PIN_TIMER = 0.7;

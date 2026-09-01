@@ -50,7 +50,11 @@ it("opens the level-up overlay with a computed pool and drawn offers", async () 
   const overlay = await poseScreen(h, "levelup");
   await captureStill(h, "overlay");
 
-  assertEqual(overlay.screen, "levelup", "the screen after setScreen('levelup')");
+  assertEqual(
+    overlay.screen,
+    "levelup",
+    "the screen after setScreen('levelup')",
+  );
   assertEqual(overlay.menuIndex, 0, "menuIndex on the opened overlay");
   assertEqual(overlay.run.tick, posed.run.tick, "the run clock, no tick run");
   assertEqual(overlay.run.pendingLevelUps, 1, "pendingLevelUps, still queued");

@@ -38,16 +38,34 @@ afterEach(async () => {
 it("zeroes the timer when the slot's id changes, so the new weapon fires next tick", async () => {
   await isolate(h, { keepTaper: true });
   await h.debug.setWeaponCooldown(0, TAPER_TIMER);
-  assertEqual((await h.snapshot()).run.weapons[0]?.cooldown, TAPER_TIMER, "Taper's timer before the change");
+  assertEqual(
+    (await h.snapshot()).run.weapons[0]?.cooldown,
+    TAPER_TIMER,
+    "Taper's timer before the change",
+  );
 
   await h.debug.setWeapon(0, "pin", 1);
   const changed = await h.snapshot();
   await captureStill(h, "zeroed");
-  assertEqual(changed.run.weapons[0]?.id, "pin", "the weapon in slot 0 after the change");
-  assertEqual(changed.run.weapons[0]?.cooldown, 0, "the timer after the id changed");
+  assertEqual(
+    changed.run.weapons[0]?.id,
+    "pin",
+    "the weapon in slot 0 after the change",
+  );
+  assertEqual(
+    changed.run.weapons[0]?.cooldown,
+    0,
+    "the timer after the id changed",
+  );
 
   await h.debug.setWeaponFire(true);
   const fired = await h.step(1);
-  const darts = newProjectiles(changed, fired).filter((shape) => shape.weapon === "pin");
-  assertGreaterThan(darts.length, 0, "Pin darts fired on the next playing tick");
+  const darts = newProjectiles(changed, fired).filter(
+    (shape) => shape.weapon === "pin",
+  );
+  assertGreaterThan(
+    darts.length,
+    0,
+    "Pin darts fired on the next playing tick",
+  );
 });

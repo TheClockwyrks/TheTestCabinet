@@ -95,7 +95,15 @@ it("reports the whole documented shape, with the posed values", async () => {
   await holdWeapon(h, "ember", 3);
   await holdPassive(h, "bellows", 2);
   await placeEnemy(h, "moth", MOTH_AT.x, MOTH_AT.y);
-  await placeProjectile(h, "ember", BOLT.x, BOLT.y, BOLT.vx, BOLT.vy, BOLT.pierce);
+  await placeProjectile(
+    h,
+    "ember",
+    BOLT.x,
+    BOLT.y,
+    BOLT.vx,
+    BOLT.vy,
+    BOLT.pierce,
+  );
   await placePuddle(h, "oil-splash", PUDDLE_AT.x, PUDDLE_AT.y);
   await placeGem(h, "medium", GEM_AT.x, GEM_AT.y);
   await placePickup(h, "bread", BREAD_AT.x, BREAD_AT.y);
@@ -171,10 +179,18 @@ it("reports the whole documented shape, with the posed values", async () => {
     { id: "ember", level: 3 },
     "the posed weapon",
   );
-  assertEqual(typeof run.weapons[0]?.cooldown, "number", "run.weapons[0].cooldown");
+  assertEqual(
+    typeof run.weapons[0]?.cooldown,
+    "number",
+    "run.weapons[0].cooldown",
+  );
   assertLength(run.passives, 1, "the passives held");
   requireFields(run.passives[0], PASSIVE_SLOT_FIELDS, "run.passives[0]");
-  assertDeepEqual(run.passives[0], { id: "bellows", level: 2 }, "the posed passive");
+  assertDeepEqual(
+    run.passives[0],
+    { id: "bellows", level: 2 },
+    "the posed passive",
+  );
 
   // The enemy, as posed.
   assertLength(run.enemies, 1, "the enemies alive");
@@ -183,7 +199,13 @@ it("reports the whole documented shape, with the posed values", async () => {
   assertEqual(moth.type, "moth", "run.enemies[0].type");
   assertNear(moth.x, MOTH_AT.x, POSITION_TOL, "run.enemies[0].x");
   assertNear(moth.y, MOTH_AT.y, POSITION_TOL, "run.enemies[0].y");
-  for (const field of ["id", "hp", "maxHp", "age", "contactCooldown"] as const) {
+  for (const field of [
+    "id",
+    "hp",
+    "maxHp",
+    "age",
+    "contactCooldown",
+  ] as const) {
     assertEqual(typeof moth[field], "number", `run.enemies[0].${field}`);
   }
   requireFields(moth.heading, ["x", "y"], "run.enemies[0].heading");

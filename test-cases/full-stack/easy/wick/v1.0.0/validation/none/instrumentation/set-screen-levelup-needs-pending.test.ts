@@ -39,7 +39,11 @@ it("changes nothing with no level-up queued", async () => {
   const after = await h.snapshot();
   await captureStill(h, "inert");
 
-  assertEqual(after.screen, "playing", "the screen after an unqueued setScreen('levelup')");
+  assertEqual(
+    after.screen,
+    "playing",
+    "the screen after an unqueued setScreen('levelup')",
+  );
   assertDeepEqual(
     posedState(after),
     posedState(before),

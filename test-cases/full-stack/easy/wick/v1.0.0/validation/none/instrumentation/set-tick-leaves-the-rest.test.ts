@@ -59,7 +59,11 @@ it("changes nothing but the clock", async () => {
   await h.debug.setFacing("left");
   await h.debug.setHp(40);
   const before = await h.snapshot();
-  assertNotEqual(before.run.firedEvents.length, 0, "an event fired before the pose");
+  assertNotEqual(
+    before.run.firedEvents.length,
+    0,
+    "an event fired before the pose",
+  );
 
   await h.debug.setTick(POSED_TICK);
   const after = await h.snapshot();

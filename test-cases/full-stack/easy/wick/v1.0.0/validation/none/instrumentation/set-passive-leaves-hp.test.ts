@@ -15,12 +15,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { BASE_MAX_HP, maxHpOf } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
 const LEVEL = 2;
 
@@ -41,6 +36,10 @@ it("leaves hp untouched while maxHp follows", async () => {
   await h.debug.setPassive(0, "tallow", LEVEL);
   const after = await h.snapshot();
   await captureStill(h, "kept");
-  assertEqual(after.run.maxHp, maxHpOf({ tallow: LEVEL }), "maxHp with Tallow 2");
+  assertEqual(
+    after.run.maxHp,
+    maxHpOf({ tallow: LEVEL }),
+    "maxHp with Tallow 2",
+  );
   assertEqual(after.run.player.hp, BASE_MAX_HP, "hp across the Tallow pose");
 });

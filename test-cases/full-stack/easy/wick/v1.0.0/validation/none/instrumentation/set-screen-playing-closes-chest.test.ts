@@ -12,7 +12,12 @@
 // collects it, on an isolated night so the tick does nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertNotNull, assertNull } from "../assert";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertNotNull,
+  assertNull,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -42,7 +47,11 @@ it("closes the chest overlay and leaves the run otherwise untouched", async () =
   const closed = await poseScreen(h, "playing");
   await captureStill(h, "closed");
 
-  assertEqual(closed.screen, "playing", "the screen after setScreen('playing')");
+  assertEqual(
+    closed.screen,
+    "playing",
+    "the screen after setScreen('playing')",
+  );
   assertNull(closed.run.chestResult, "chestResult after the overlay closed");
   const rest = documentedRun(closed.run);
   rest.chestResult = chest.run.chestResult;

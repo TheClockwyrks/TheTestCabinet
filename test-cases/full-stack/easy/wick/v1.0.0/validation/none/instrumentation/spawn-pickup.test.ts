@@ -51,6 +51,16 @@ it("places a pickup with the next id, which stays put", async () => {
   const later = await h.step(HELD_TICKS);
   await captureStill(h, "placed");
   const still = pickupById(later, bread.id);
-  assertNear(still?.x ?? NaN, AT.x, POSITION_TOL, `the pickup's x after ${HELD_TICKS} ticks`);
-  assertNear(still?.y ?? NaN, AT.y, POSITION_TOL, `the pickup's y after ${HELD_TICKS} ticks`);
+  assertNear(
+    still?.x ?? NaN,
+    AT.x,
+    POSITION_TOL,
+    `the pickup's x after ${HELD_TICKS} ticks`,
+  );
+  assertNear(
+    still?.y ?? NaN,
+    AT.y,
+    POSITION_TOL,
+    `the pickup's y after ${HELD_TICKS} ticks`,
+  );
 });

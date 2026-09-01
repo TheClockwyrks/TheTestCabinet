@@ -50,7 +50,11 @@ afterEach(async () => {
 it("runs exactly one tick per stepped frame on playing", async () => {
   await isolate(h);
   const seeded = await advanceBy(h, PARTIAL_SECONDS);
-  assertNotEqual(seeded.accumulator, 0, "a remainder waiting before the frames");
+  assertNotEqual(
+    seeded.accumulator,
+    0,
+    "a remainder waiting before the frames",
+  );
   assertEqual(seeded.screen, "playing", "the screen the frames run on");
 
   const { before, after } = await captureReplay(h, "thirty", () =>
@@ -58,7 +62,11 @@ it("runs exactly one tick per stepped frame on playing", async () => {
   );
 
   assertEqual(after.screen, "playing", "the screen after the frames");
-  assertEqual(after.run.tick - before.run.tick, FRAMES, `ticks ${FRAMES} frames ran`);
+  assertEqual(
+    after.run.tick - before.run.tick,
+    FRAMES,
+    `ticks ${FRAMES} frames ran`,
+  );
   assertNear(
     after.simTime - before.simTime,
     FRAMES * TICK_DT,

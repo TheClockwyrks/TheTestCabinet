@@ -72,8 +72,16 @@ it("holds every effect in place while off, timers and hits still running", async
   const boltNow = mustProjectile(held, bolt.id);
   assertEqual(boltNow.x, bolt.x, `the bolt's x after ${HELD_TICKS} held ticks`);
   assertEqual(boltNow.y, bolt.y, `the bolt's y after ${HELD_TICKS} held ticks`);
-  assertEqual(boltNow.vx, bolt.vx, `the bolt's vx after ${HELD_TICKS} held ticks`);
-  assertEqual(boltNow.vy, bolt.vy, `the bolt's vy after ${HELD_TICKS} held ticks`);
+  assertEqual(
+    boltNow.vx,
+    bolt.vx,
+    `the bolt's vx after ${HELD_TICKS} held ticks`,
+  );
+  assertEqual(
+    boltNow.vy,
+    bolt.vy,
+    `the bolt's vy after ${HELD_TICKS} held ticks`,
+  );
   assertNear(
     boltNow.ttl,
     bolt.ttl - HELD_TICKS * TICK_DT,
@@ -96,7 +104,11 @@ it("holds every effect in place while off, timers and hits still running", async
   );
 
   const houndNow = mustEnemy(held, hound.id);
-  assertLessThan(houndNow.hp, hound.hp, "the hound's hp after the lantern's hits resolved");
+  assertLessThan(
+    houndNow.hp,
+    hound.hp,
+    "the hound's hp after the lantern's hits resolved",
+  );
   const entry = hitEntry(lanternNow, hound.id);
   assertNotNull(entry ?? null, "the lantern's re-hit entry for the hound");
   assertLessThan(

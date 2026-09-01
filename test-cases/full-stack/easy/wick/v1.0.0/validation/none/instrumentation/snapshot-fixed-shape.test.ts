@@ -83,7 +83,11 @@ it("carries every field on all eight screens, with the run each reports", async 
   const playing = await isolate(h);
   requireShape(playing, "playing");
   assertLength(playing.run.pool, 0, "the pool on playing");
-  assertEqual(playing.menuIndex, 0, "menuIndex on playing, a screen with no menu");
+  assertEqual(
+    playing.menuIndex,
+    0,
+    "menuIndex on playing, a screen with no menu",
+  );
 
   // levelup: the real path, a queued level-up and the tick that opens it.
   const levelup = await openLevelUp(h);
@@ -107,7 +111,11 @@ it("carries every field on all eight screens, with the run each reports", async 
   const paused = await poseScreen(h, "paused");
   requireShape(paused, "paused");
   assertLength(paused.run.pool, 0, "the pool on paused");
-  assertEqual(paused.menuIndex, 0, "menuIndex on paused, a screen with no menu");
+  assertEqual(
+    paused.menuIndex,
+    0,
+    "menuIndex on paused, a screen with no menu",
+  );
 
   // fallen, keeping the run that just ended.
   await isolate(h);

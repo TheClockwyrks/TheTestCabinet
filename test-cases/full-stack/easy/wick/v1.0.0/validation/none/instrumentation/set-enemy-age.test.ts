@@ -24,7 +24,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear } from "../assert";
-import { ENEMIES, POSITION_TOL, TICK_DT, TIMER_TOL, wispOffset } from "../constants";
+import {
+  ENEMIES,
+  POSITION_TOL,
+  TICK_DT,
+  TIMER_TOL,
+  wispOffset,
+} from "../constants";
 import {
   captureStill,
   createHarness,
@@ -80,7 +86,22 @@ it("poses an enemy's age, and the weave follows from it", async () => {
   const ticked = await h.step(1);
   const moved = mustEnemy(ticked, wisp.id);
   const expected = weaveTick(posed, aged.run.player);
-  assertNear(moved.age, POSED_AGE + TICK_DT, TIMER_TOL, "the wisp's age after the tick");
-  assertNear(moved.x, expected.x, POSITION_TOL, "the wisp's x after one weave tick from the posed age");
-  assertNear(moved.y, expected.y, POSITION_TOL, "the wisp's y after one weave tick from the posed age");
+  assertNear(
+    moved.age,
+    POSED_AGE + TICK_DT,
+    TIMER_TOL,
+    "the wisp's age after the tick",
+  );
+  assertNear(
+    moved.x,
+    expected.x,
+    POSITION_TOL,
+    "the wisp's x after one weave tick from the posed age",
+  );
+  assertNear(
+    moved.y,
+    expected.y,
+    POSITION_TOL,
+    "the wisp's y after one weave tick from the posed age",
+  );
 });
