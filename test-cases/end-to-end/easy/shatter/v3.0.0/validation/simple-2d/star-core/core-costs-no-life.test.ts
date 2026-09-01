@@ -28,8 +28,10 @@
 // AND THE FIELD IS OTHERWISE EMPTY. `startPlaying` clears every roster, removes the
 // saucer and holds the wave loop and the saucer's arrival off, so the only body the
 // ship can reach is the core and the only thing that could take a life is the thing
-// under test. The ship's respawn grace is `0`, so nothing is being suppressed by
-// `specs/progression.md`'s window either.
+// under test. The ship's respawn grace is SET to `0` and read back before the drive,
+// so nothing is being suppressed by `specs/progression.md`'s window either: a build
+// that opens a run with grace still running would otherwise survive this drive
+// whatever its core does, and pass an item it never answered.
 //
 // TWO READINGS, BOTH FROM THE REVIEW ITEM. Every ship is still in hand —
 // `START_LIVES`, which `specs/progression.md` fixes at `3` and which counts the one
@@ -59,6 +61,9 @@ import { contactOf, driveIntoTheCore, poseHeadOnApproach } from "./strike";
  */
 const DRIVE_TICKS = ticksFor(1.5);
 
+/** The respawn grace the ship is driven in with: none, so nothing suppresses a death. */
+const NO_GRACE = 0;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -72,9 +77,17 @@ afterEach(() => {
 it("costs the run nothing when the ship is driven onto the core and held there", async () => {
   startPlaying(h);
   h.debug.setShipCollision(true);
+  h.debug.setShipInvuln(NO_GRACE);
   poseHeadOnApproach(h);
 
   const posed = h.snapshot();
+  assertEqual(
+    posed.ship.invuln,
+    NO_GRACE,
+    "the seconds of respawn grace the ship carries into the core, which must " +
+      "be none for the contact to be the only thing that could take a life " +
+      "(specs/instrumentation.md)",
+  );
   if (!posed.ship.collision) {
     fail(
       "the ship's lethal contact test on, which is what this item is about " +
