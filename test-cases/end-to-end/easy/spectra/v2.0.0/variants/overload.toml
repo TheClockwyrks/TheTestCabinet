@@ -20,11 +20,13 @@ description = "The same swarm, with mistakes that bite back: a wrong-band shot c
 
 # What the game looks like played correctly, shown before anyone runs it: the same
 # sustained stretch of real play as the other mode, with the charge telegraph filling
-# on the drones a wrong-band shot found and at least one drone tipping over into its
-# reaction. Captured from `references/simple-2d/overload` driven through this case's
-# own validator harness, with every outcome arising from the game's own rules under
-# scripted key input. `showcase/overload/showcase.toml` lists the media;
-# `showcase/overload/showcase.md` carries the description.
+# on the drones a wrong-band shot found and one drone of each kind tipping over into
+# its own reaction. Captured from `references/none/overload` driven through this
+# case's own validator harness — see `variants/base.toml` for why the showcase is
+# taken from the engineless reference — with every outcome arising from the game's
+# own rules under scripted key input. `showcase/overload/showcase.toml` lists the
+# media; `showcase/overload/showcase.md` carries the description, and
+# `showcase/capture/README.md` says how each file was produced.
 showcase = "showcase/overload"
 
 # The authored, *correct* static build of this variant, one directory per engine —

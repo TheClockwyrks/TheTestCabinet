@@ -1,11 +1,17 @@
-# SCAFFOLD PLACEHOLDER. The showcase stage replaces this file with the real
-# carousel: a leading `.json.gz` replay of sustained play, then two stills from
-# the same take, captured from `references/simple-2d/base`.
-#
-# One entry is the minimum a showcase may declare, and `placeholder.png` is a flat
-# swatch rather than a capture — it is here only so the manifest resolves, and it
-# goes with this comment.
+# The carousel, in the order it is presented. The first entry is what the
+# catalog's preview stage plays, so it leads with sustained play and the stills
+# follow it. Every file here was captured from `references/none/base` by
+# `showcase/capture/base.showcase-capture.test.ts`, which records that build
+# being flown through the keyboard; its README says how each one was produced.
 
 [[media]]
-file = "placeholder.png"
-name = "Placeholder — the showcase has not been captured yet"
+file = "gameplay.json.gz"
+name = "Stage one flown to a clear: a Prism opened, the field inverted, a discharge spent"
+
+[[media]]
+file = "mid-wave.png"
+name = "The block overhead under a spectral inversion, with both bands on it"
+
+[[media]]
+file = "title.png"
+name = "The title screen"

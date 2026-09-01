@@ -20,13 +20,17 @@ description = "The straight sortie: match the band or the shot is wasted, and th
 # What the game looks like played correctly, shown before anyone runs it: a
 # sustained stretch of real play — a wave flying in and assembling, dives peeling
 # off, the ship flipping to match and again to shield, a Prism broken shell-then-core,
-# and a discharge wiping a messy dive — plus stills of a mid-wave field carrying both
-# bands and of the title screen. All of it is captured from
-# `references/simple-2d/base` driven through this case's own validator harness, and
-# every outcome on screen arises from the game's own rules under scripted key input:
-# posing an outcome through the debug surface would be fabrication.
+# a spectral inversion, and a discharge wiping the air — plus stills of a mid-wave
+# field carrying both bands and of the title screen. All of it is captured from
+# `references/none/base` driven through this case's own validator harness, and every
+# outcome on screen arises from the game's own rules under scripted key input: posing
+# an outcome through the debug surface would be fabrication. The ENGINELESS reference
+# is the one it is taken from because only that project runs in a real browser, where
+# the recorder can carry the seeded sprite art into the recording; the two
+# engine-backed projects render headless and record every sprite as an opaque handle,
+# which is right for a validator's evidence and blank for a showcase.
 # `showcase/base/showcase.toml` lists the media; `showcase/base/showcase.md` carries
-# the description.
+# the description, and `showcase/capture/README.md` says how each file was produced.
 showcase = "showcase/base"
 
 # The authored, *correct* static build of this variant — the case-variant analogue
