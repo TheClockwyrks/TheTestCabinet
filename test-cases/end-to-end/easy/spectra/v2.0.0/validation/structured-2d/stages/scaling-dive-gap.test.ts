@@ -6,18 +6,28 @@
 // dive launches when its dive clock reaches `DIVE_FIRST_DELAY` (2.0 s), and "each
 // later dive" when the clock reaches "a value drawn between `DIVE_GAP_MIN` (1.4)
 // and `DIVE_GAP_MAX` (2.6) seconds, multiplied by `diveGapScale(stage)`". The mean
-// of that draw is 2.0 s at stage 1 and `diveGapScale(5)` — 0.80 — times it at
-// stage 5.
+// of that draw is 2.0 s at stage 1 and `diveGapScale(7)` — 0.70 — times it at
+// stage 7.
 //
-// WHY STAGE FIVE. It is inside the ramp: `diveGapScale` reaches its 0.55 floor at
+// WHY STAGE SEVEN. It is inside the ramp — `diveGapScale` reaches its 0.55 floor at
 // stage 10, so a later stage would assert the same figure
-// `stages/scaling-dive-gap-floor` already asserts. At stage 5 a build that does not
-// scale the gap reads 1.00 and one already on the floor reads 0.55, both far
-// outside the band below.
+// `stages/scaling-dive-gap-floor` already asserts — and it is the point on the ramp
+// where the wrong models sit furthest OUTSIDE the band, which is the figure that
+// decides anything. `diveGapScale(7)` is 0.70, so the accepted band is
+// [0.56, 0.84]: a build that does not scale the gap at all reads 1.00, 0.16 clear
+// of the upper edge and better than four standard deviations of the measurement;
+// one that scales at half the stated rate reads 0.85; and one already on the floor
+// reads 0.55. Read at stage 5 the same 20% band spans [0.64, 0.96] and the model
+// this point exists to catch — no scaling, at 1.00 — clears the EDGE by only 0.04,
+// which is under one standard deviation, while a half-rate build at 0.90 sits
+// inside the band altogether. Read at stage 8 the band spans [0.52, 0.78] and
+// admits the 0.55 an over-scaling build reads. Seven is the only stage at which all
+// three fall outside, and the distance that matters is always to the band's EDGE,
+// never to its centre.
 //
 // WHY THE FIRST GAP IS DISCARDED. `DIVE_FIRST_DELAY` is a fixed 2.0 s that
 // `specs/stages.md` does not scale — only "each later dive" is drawn and scaled —
-// so counting the wave's opening delay as a gap would drag the stage-5 mean toward
+// so counting the wave's opening delay as a gap would drag the stage-7 mean toward
 // the stage-1 one and blunt exactly the difference under test. The reading starts
 // at the FIRST launch and measures the gaps between launches after it.
 //
@@ -55,7 +65,7 @@ import {
 } from "../harness";
 
 /** The stage the ramp is read at, and the stage it is read against. */
-const LATE_STAGE = 5;
+const LATE_STAGE = 7;
 const BASE_STAGE = 1;
 
 /** What `specs/stages.md` says the late stage's gap is, per the base stage's. */
@@ -68,7 +78,7 @@ const GAPS = 20;
  * Frames between two samples of the sweep.
  *
  * Twenty, a fifth of a second. The shortest gap either leg can draw is
- * `DIVE_GAP_MIN * diveGapScale(5)` = 1.12 s, so no two launches can fall inside one
+ * `DIVE_GAP_MIN * diveGapScale(7)` = 0.98 s, so no two launches can fall inside one
  * sample and every launch is seen. The error it puts on a single gap is at most one
  * sample either way, and it TELESCOPES across the twenty gaps a leg measures — the
  * mean gap is the span from the first launch to the last divided by twenty, so only
@@ -91,9 +101,16 @@ const SWEEP_FRAMES = ticksFor((2.0 + GAPS * 2.6) * 1.5);
  * How far the measured ratio may sit from the stated one, as a fraction.
  *
  * The manifest's own figure, and the right order for a mean of drawn values: 20% of
- * 0.80 is 0.16, which is three and a half times the standard deviation of the
- * measurement, and both wrong models are far outside it — no scaling reads 1.00,
- * 0.20 above, and the floor reads 0.55, 0.25 below.
+ * 0.70 is 0.14, three and a half times the standard deviation of the measurement,
+ * so a conforming build is not failed by the draw. It is not tightened further
+ * because `specs/swarm.md` fixes only the RANGE a gap is drawn from and not the
+ * distribution: a build drawing the two ends of that range rather than uniformly
+ * over it carries a wider spread on the same mean, and it is conformant.
+ *
+ * What the band has to clear is measured to its EDGE, at `EXPECTED_RATIO` * 1.2 =
+ * 0.84 above and * 0.8 = 0.56 below, and every wrong model is outside it: no
+ * scaling at 1.00, half the stated rate at 0.85, the floor at 0.55. See WHY STAGE
+ * SEVEN above for why this stage is where that is true.
  */
 const TOLERANCE = 0.2;
 
@@ -101,7 +118,7 @@ const TOLERANCE = 0.2;
  * Launches kept as the replay this point hands the reviewer.
  *
  * Four, which is the first delay and three gaps — about seven seconds of the
- * stage-five leg. The measurement itself needs twenty gaps and more than half a
+ * stage-seven leg. The measurement itself needs twenty gaps and more than half a
  * minute of game time, and a replay of the whole of that would be a minute of a
  * formation that deliberately does not move. What is kept is the opening of the
  * same drive the verdict is read from.
@@ -201,7 +218,7 @@ async function meanGap(
   return seconds(total / GAPS);
 }
 
-it("launches stage-five dives diveGapScale(5) times as far apart as stage-one dives", async () => {
+it("launches stage-seven dives diveGapScale(7) times as far apart as stage-one dives", async () => {
   const base = await meanGap(h, BASE_STAGE);
   const late = await meanGap(h, LATE_STAGE, "tighter");
 

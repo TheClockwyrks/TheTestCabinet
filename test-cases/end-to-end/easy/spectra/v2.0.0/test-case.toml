@@ -2012,16 +2012,21 @@ failure_cap = "passable"
 validation = { script = "stages/scaling-bullet-speed-cap.test.ts", outputs = [
   { id = "capped", name = "The capped bullet speed at a late stage", kind = "image" },
 ] }
-# Stage 5 is inside the ramp: the formula reaches its 0.55 floor at stage 10,
-# where this item would assert the same figure its floor sibling does.
+# Stage 7 is inside the ramp — the formula reaches its 0.55 floor at stage 10, where
+# this item would assert the same figure its floor sibling does — and it is the one
+# stage on the ramp at which a 20% band excludes every wrong model: diveGapScale(7)
+# is 0.70, so the band is [0.56, 0.84], clear of the 1.00 a build that does not
+# scale reads, the 0.85 one scaling at half the stated rate reads, and the 0.55 one
+# already on the floor reads. Read earlier the band admits half-rate scaling; read
+# later it admits the floor.
 [[review.categories.items]]
 id = "scaling-dive-gap"
 title = "Dives come faster at a later stage"
-description = "Over a posed complete formation with the dive clock posed at 0 and dive launching on, the mean gap between dive launches at stage 5 is diveGapScale(5) — 0.80 — times the stage-1 mean, within 20%."
+description = "Over a posed complete formation with the dive clock posed at 0 and dive launching on, the mean gap between dive launches at stage 7 is diveGapScale(7) — 0.70 — times the stage-1 mean, within 20%."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-dive-gap.test.ts", outputs = [
-  { id = "tighter", name = "The tighter stage-five dive cadence", kind = "replay" },
+  { id = "tighter", name = "The tighter stage-seven dive cadence", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "scaling-dive-gap-floor"
