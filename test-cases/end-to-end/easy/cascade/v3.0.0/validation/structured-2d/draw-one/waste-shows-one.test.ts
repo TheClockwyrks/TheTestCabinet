@@ -25,16 +25,20 @@
 // `table/waste-anchor`; how many cards a turn moves is `draw-one/turn-count`;
 // what the waste falls back to once its newest set is played off is
 // `draw-one/set-falls-back`.
+//
+// THE FIGURE IS WRITTEN OUT RATHER THAN IMPORTED. `src/constants.ts` is supplied
+// with the project and carries this figure already, but the figure IS this
+// item's requirement, so reading it back out of the build's own module would
+// decide the point against whatever the build says rather than against the
+// specification: a build that edited the file it was told not to edit would
+// report its own figure to a check sized by that same figure and pass. The
+// literal is written here for the same reason `draw-three` writes its own, and
+// for the reason the engineless suite keeps a `constants.ts` of its own. Checks
+// that merely SIZE a scenario to the deal mode still read
+// `snapshot().turnCount`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CARD_H,
-  CARD_W,
-  FOUNDATION_X,
-  TOP_ROW_Y,
-  TURN_COUNT,
-  WASTE_X,
-} from "../../src/constants";
+import { CARD_H, CARD_W, FOUNDATION_X, TOP_ROW_Y, WASTE_X } from "../../src/constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACE,
@@ -55,6 +59,9 @@ import {
   shapesAt,
   type Harness,
 } from "../harness";
+
+/** specs/stock.md: this variant's `TURN_COUNT`, the cards one turn moves. */
+const TURN_COUNT = 1;
 
 /** Turns taken before the waste is read, which the review item fixes at three. */
 const TURNS = 3;
