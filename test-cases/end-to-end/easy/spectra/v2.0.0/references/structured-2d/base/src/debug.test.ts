@@ -154,10 +154,34 @@ describe("every pose reads back", () => {
     expect(drone?.slotX).toBe(600);
     expect(drone?.slotY).toBe(300);
     expect(drone?.bandClock).toBe(0.5);
-    expect(drone?.shellAlive).toBe(false);
+    // A Flux has no shell, so setDroneShell moves nothing on one
+    // (specs/instrumentation.md); it is posed on a Prism below.
+    expect(drone?.shellAlive).toBe(true);
     expect(drone?.travel).toBe(false);
     expect(drone?.oscillation).toBe(false);
     expect(drone?.fire).toBe(false);
+  });
+
+  it("poses a Prism's shell, and leaves the other kinds' shells standing", () => {
+    for (const kind of ["shard", "flux", "prism"] as const) {
+      h.debug.clearDrones();
+      h.debug.addDrone(kind, 400, 200);
+      const id = lastDroneId(h.debug);
+      h.debug.setDroneShell(id, false);
+      expect(h.debug.snapshot().drones[0]?.shellAlive).toBe(kind !== "prism");
+    }
+  });
+
+  it("poses a Flux's band clock, and leaves the other kinds' at zero", () => {
+    for (const kind of ["shard", "flux", "prism"] as const) {
+      h.debug.clearDrones();
+      h.debug.addDrone(kind, 400, 200);
+      const id = lastDroneId(h.debug);
+      h.debug.setDroneBandClock(id, 0.5);
+      expect(h.debug.snapshot().drones[0]?.bandClock).toBe(
+        kind === "flux" ? 0.5 : 0,
+      );
+    }
   });
 
   it("reads a band back on all three kinds", () => {

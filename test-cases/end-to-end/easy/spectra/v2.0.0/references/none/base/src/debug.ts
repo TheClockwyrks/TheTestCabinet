@@ -303,7 +303,7 @@ export function createDebugApi(
           slotY: entry.slotY,
           bandClock: entry.kind === "flux" ? entry.bandClock : 0,
           shimmer: isShimmering(state, entry),
-          shellAlive: entry.shellAlive,
+          shellAlive: entry.kind === "prism" ? entry.shellAlive : true,
           travel: entry.travel,
           oscillation: entry.oscillation,
           fire: entry.fire,

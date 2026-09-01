@@ -117,8 +117,10 @@ describe("the surface", () => {
         phase: "diving",
         slotX: 500,
         slotY: 180,
-        bandClock: 0.5,
-        shellAlive: false,
+        // A Flux's clock and a Prism's shell; on the other kinds the surface
+        // reports the fixed figure (specs/instrumentation.md).
+        bandClock: kind === "flux" ? 0.5 : 0,
+        shellAlive: kind !== "prism",
         charge: 2,
         travel: false,
         oscillation: false,

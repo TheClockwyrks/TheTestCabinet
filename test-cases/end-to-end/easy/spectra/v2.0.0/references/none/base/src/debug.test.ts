@@ -360,7 +360,9 @@ describe("every pose reads back", () => {
       slotY: 300,
       band: "magenta",
       bandClock: 0.75,
-      shellAlive: false,
+      // A Flux has no shell, so setDroneShell moves nothing on one
+      // (specs/instrumentation.md); it is posed on a Prism below.
+      shellAlive: true,
       travel: false,
       oscillation: false,
       fire: false,
@@ -373,6 +375,24 @@ describe("every pose reads back", () => {
     ] as const) {
       d.setDronePhase(id, phase);
       expect(d.snapshot().drones[0]?.phase).toBe(phase);
+    }
+  });
+
+  it("poses a shell on a Prism and on no other kind", () => {
+    for (const kind of ["shard", "flux", "prism"] as const) {
+      d.clearDrones();
+      const id = d.addDrone(kind, 400, 200);
+      d.setDroneShell(id, false);
+      expect(d.snapshot().drones[0]?.shellAlive).toBe(kind !== "prism");
+    }
+  });
+
+  it("poses a band clock on a Flux and on no other kind", () => {
+    for (const kind of ["shard", "flux", "prism"] as const) {
+      d.clearDrones();
+      const id = d.addDrone(kind, 400, 200);
+      d.setDroneBandClock(id, 0.5);
+      expect(d.snapshot().drones[0]?.bandClock).toBe(kind === "flux" ? 0.5 : 0);
     }
   });
 

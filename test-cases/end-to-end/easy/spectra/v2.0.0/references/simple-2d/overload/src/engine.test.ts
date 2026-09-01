@@ -217,8 +217,11 @@ describe("the debug surface", () => {
       expect(drone?.phase).toBe("diving");
       expect(drone?.slotX).toBe(500);
       expect(drone?.slotY).toBe(300);
-      expect(drone?.bandClock).toBeCloseTo(0.5, 6);
-      expect(drone?.shellAlive).toBe(false);
+      // The band clock is a Flux's and the shell a Prism's; on the other kinds
+      // the surface reports the fixed figure whatever the setter was called with
+      // (specs/instrumentation.md).
+      expect(drone?.bandClock).toBeCloseTo(kind === "flux" ? 0.5 : 0, 6);
+      expect(drone?.shellAlive).toBe(kind !== "prism");
       expect(drone?.charge).toBe(2);
       expect(drone?.travel).toBe(true);
       expect(drone?.oscillation).toBe(true);
