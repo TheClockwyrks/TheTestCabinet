@@ -7,6 +7,13 @@
 // measurement is one drive, run twice — once on each side of the bit — over a
 // scenario that reaches every one of the ten events.
 //
+// AND IT STATES THE ROUTE, WHICH IS WHY THE TWO PASSES ARE COMPARED AT ALL. Under
+// this engine the engine owns the mute bit, and `specs/audio.md` fixes what the
+// game does with it: "The game does not gate its own cues on the bit — the same
+// events ask the bus for the same cues muted as unmuted — and the engine plays
+// each of them at an amplitude of zero." So the muted pass must raise the same
+// cues as the unmuted one, and every one of them must play at no gain.
+//
 // THE BIT IS SET THE WAY A PLAYER SETS IT. The engine owns muting and the surface
 // therefore carries no operation for it: "`mute` is reached the way a player
 // reaches it, through its binding in `specs/controls.md` or the panel's mute

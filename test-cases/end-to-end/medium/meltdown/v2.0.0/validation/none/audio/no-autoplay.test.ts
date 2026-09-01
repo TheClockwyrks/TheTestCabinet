@@ -14,17 +14,15 @@
 // window it reads is the whole life of the page and not merely the part this check
 // drove.
 //
-// WHAT "EMITS NOTHING" IS TAKEN TO MEAN. `audio-init.js` wraps the two doors a
-// browser can make a sound through — a Web Audio source node being `start()`ed,
-// whatever kind, and an `<audio>` element being played — and counts what goes
-// through them. So the reading held here is that the build STARTS no source and
-// plays no clip before the first interaction, which is what a build does when it
-// waits for a gesture to create its context at all. A build that instead created a
-// suspended context up front and started sources into it would be inaudible to a
-// listener and would still fail this point. That is the reading the review item
-// states ("emits nothing until the first input reaches it") and the only one
-// observable from outside the page; the stage report notes that
-// `specs/audio.md` could say which of the two it means.
+// WHAT "EMITS NOTHING" IS TAKEN TO MEAN, AND THE SPECIFICATION SAYS IT.
+// `audio-init.js` wraps the two doors a browser can make a sound through — a Web
+// Audio source node being `start()`ed, whatever kind, and an `<audio>` element
+// being played — and counts what goes through them. `specs/audio.md` fixes that
+// reading for this engine: "until then it starts no audio source and plays no clip,
+// whatever a source would have sounded like." So a build that created a suspended
+// context up front and started sources into it has started a source before the
+// first input, and fails here as the specification says it should; a build that
+// waits for a gesture to create its context at all passes.
 //
 // EVENTS THAT WOULD SOUND ARE DRIVEN INSIDE THE SILENT WINDOW, which is what makes
 // the silence mean something. A build that never reaches the events cannot be told

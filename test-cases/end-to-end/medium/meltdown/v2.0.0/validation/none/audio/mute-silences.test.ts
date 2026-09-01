@@ -41,12 +41,13 @@
 // since it loaded, frames or not, which also catches a build that makes its noise
 // straight from a key's or a pointer's event handler rather than from its loop.
 //
-// WHAT "SILENT" IS TAKEN TO MEAN. A muted cue starts no source and plays no clip at
-// all. That is the reading `specs/audio.md`'s "none of the ten cues produces any
-// sound" is held to here and the one the review item states; a build that instead
-// kept starting its sources at a gain of zero would be inaudible to a listener and
-// would still fail this point. See the stage report — the specification should say
-// which of the two it means.
+// WHAT "SILENT" IS TAKEN TO MEAN, AND THE SPECIFICATION SAYS IT. Under this engine
+// the build owns the mute bit, so the build is what silences the game, and
+// `specs/audio.md` states the route: "the build plays no muted cue at all, starting
+// no audio source and playing no clip for it." That is exactly what is read here —
+// no source started and no clip played, on any frame or off one — so a build that
+// kept starting its sources at a gain of zero is not silent in the sense this
+// engine's branch of the specification fixes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

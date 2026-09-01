@@ -32,19 +32,22 @@ plays no `place` cue.
 Audio is synthesized with the Web Audio API. The build ships no audio file and
 loads none.
 
-Browsers block audio until the page has been interacted with, so the game plays
-nothing at all before the first input reaches it, and it starts and runs
-correctly whether or not audio can start.
+Browsers block audio until the page has been interacted with, so the game makes
+no sound at all before the first input reaches it: until then it starts no audio
+source and plays no clip, whatever a source would have sounded like. It starts
+and runs correctly whether or not audio can start.
 
 ## Mute
 
-The build owns the mute bit. It is toggled by the `mute` action and by the
-panel's mute control, from any screen, and `specs/hud.md` states how the control
-reads.
+The build owns the mute bit, so the build is what silences the game. It is
+toggled by the `mute` action and by the panel's mute control, from any screen,
+and `specs/hud.md` states how the control reads.
 
-While muted, none of the ten cues produces any sound. The game stays fully
-playable muted: nothing about the floor, the run, or the screens changes with the
-mute bit.
+While muted, none of the ten cues produces any sound: the build plays no muted
+cue at all, starting no audio source and playing no clip for it. The game stays
+fully playable muted: nothing about the floor, the run, or the screens changes
+with the mute bit, so every event that would have carried a cue still resolves,
+and every figure it moves still moves.
 {{else}}
 ## Playing them
 
@@ -53,17 +56,20 @@ The cues are defined once, when the game is initialized, and played through the
 directory at the root of this repository. Each cue is synthesized rather than
 loaded: the build ships no audio file.
 
-The engine owns the first-interaction unlock, so the game plays nothing before
-the first input reaches it and it starts and runs correctly whether or not audio
-can start.
+The engine owns the first-interaction unlock, so the game plays none of the ten
+cues before the first input reaches it — it asks the bus for nothing, whatever
+the bus would have done with the request — and it starts and runs correctly
+whether or not audio can start.
 
 ## Mute
 
-The engine owns the mute bit. It is toggled by the `mute` action and by the
-panel's mute control, from any screen, and `specs/hud.md` states how the control
-reads.
+The engine owns the mute bit, so the engine is what silences the game. It is
+toggled by the `mute` action and by the panel's mute control, from any screen,
+and `specs/hud.md` states how the control reads.
 
-While muted, none of the ten cues produces any sound. The game stays fully
-playable muted: nothing about the floor, the run, or the screens changes with the
-mute bit.
+While muted, none of the ten cues produces any sound. The game does not gate its
+own cues on the bit — the same events ask the bus for the same cues muted as
+unmuted — and the engine plays each of them at an amplitude of zero. The game
+stays fully playable muted: nothing about the floor, the run, or the screens
+changes with the mute bit, so every event that carries a cue still resolves.
 {{/if}}
