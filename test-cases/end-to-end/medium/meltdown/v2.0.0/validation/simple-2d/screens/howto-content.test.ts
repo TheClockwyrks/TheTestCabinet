@@ -1,40 +1,44 @@
-// screens/howto-content — the how-to screen covers the eight subjects the case
-// requires of it.
+// screens/howto-content — the how-to screen covers every subject the case says it
+// covers.
 //
-// THE RULE. specs/screens.md's `howto` section: it "Covers the goal of the game,
+// THE RULE. specs/screens.md, `howto`: the screen "Covers the goal of the game,
 // the controls, heat as power and the redline trip, the Forge and the Sink, the
-// heat-averse Rime, flyers and the air-only Flak, that a Containment wave fields a
-// single type, and the economy."
+// heat-averse Rime, flyers and the air-only Flak, that a Containment wave fields
+// a single type, and the economy." Eleven subjects, and the screen is read for
+// all eleven.
 //
-// THE COPY IS THE BUILD'S; THE VOCABULARY IS THE CASE'S. specs/screens.md fixes no
-// wording for this screen and specs/overview.md fixes no typeface or layout, so
-// nothing here reads a sentence, a length or a position. What each subject is
-// decided by is the case's OWN NAME for the thing: the Forge, the Sink, the Rime
-// and the Flak are named towers of specs/towers.md; the redline and the trip are
-// named in specs/heat.md; the vent, the exhaust, the lives, the interest and the
-// bounty are named in specs/floor.md, specs/waves.md and specs/economy.md. A
-// screen that covers a subject in this game names the thing the game calls it, and
-// a screen that never says "Rime" has not told a player about the Rime.
+// A SUBJECT IS COVERED BY A SCREEN THAT NAMES IT, and that is the whole reading.
+// specs/screens.md fixes the subjects and fixes no wording for any of them, so
+// nothing here reads a sentence, a length, a position or a layout. What each
+// subject is looked for by is the CASE'S OWN vocabulary — the proper nouns
+// specs/towers.md fixes for the four towers, and for the rest a set of
+// alternatives every one of which names the subject — so a build is free to write
+// its how-to in its own words and still be read as covering the subject. No
+// alternative below is a word the specifications do not themselves use.
 //
-// EACH SUBJECT IS ASSERTED ON ITS OWN, so a screen that covers seven of the eight
-// fails naming the one it left out rather than failing as a whole.
+// EACH SUBJECT IS ASSERTED ON ITS OWN, so a screen that covers ten of the eleven
+// fails naming the one it skipped rather than failing as a whole.
 //
-// TWO SUBJECTS ARE COUNTED RATHER THAN REQUIRED WHOLE. "The controls" and "the
-// economy" are each a handful of separate things, and specs/screens.md asks the
-// screen to cover the subject, not to enumerate every member of it. So each of
-// those is a list of the case's own names with a bar below its length: a screen
-// naming most of the controls has covered the controls, and one naming none of
-// them has not. The bar is stated with the subject and derived there.
+// A STEM RATHER THAN A WHOLE WORD, because English inflects and a specification
+// names a subject rather than a sentence: a screen covering the redline TRIP may
+// say "trips", "tripped" or "the trip". The token boundary is what keeps it
+// honest — a stem of `AIR` is not answered by `REPAIR`.
 //
-// THE WHOLE FRAME'S TEXT IS ONE BODY. A build wraps its copy into lines however it
-// likes, and a phrase can fall across two of them, so the runs of text the frame
-// drew are joined with spaces before they are read. The screen is posed with
-// `setScreen`, which runs no entry effect (specs/instrumentation.md); how the
-// screen is reached is `screens.title-to-howto`'s requirement and how it is left is
+// ONE SUBJECT TAKES TWO WORDS, and it is the one whose whole content is a
+// relation: "that a Containment wave fields a single type" is not covered by a
+// screen that merely says `wave`, which any screen about this game says somewhere,
+// so it asks for a wave AND for a type. Every other subject is one set.
+//
+// AND THE SCREEN MUST CARRY PROSE. `HOWTO_MIN_LETTERS` is a floor on the letters
+// the screen draws, so a build that satisfies eleven word-searches with a word
+// list still fails. It is far under the tersest honest how-to and far over what a
+// bare list of eleven words comes to.
+//
+// THE SCREEN IS POSED, because what it DRAWS does not depend on how a player got
+// to it: reaching it is `screens.title-to-howto`'s reading and leaving it is
 // `screens.back-from-howto`'s.
-
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -44,83 +48,95 @@ import {
 } from "../harness";
 import { poseMenu } from "./menu";
 
-/** One subject specs/screens.md requires the screen to cover. */
-interface Subject {
-  /** The subject, as specs/screens.md names it. */
-  name: string;
-  /** The case's own names for the things that subject is made of. */
-  names: readonly RegExp[];
-  /** How many of them must appear. Defaults to all of them. */
-  atLeast?: number;
-}
+/**
+ * How many letters the how-to screen must carry.
+ *
+ * specs/screens.md gives it eleven subjects and fixes no wording, so the floor has
+ * to sit below the tersest honest screen and above what a build that wrote no
+ * prose can produce. The words looked for below come to about seventy letters;
+ * `120` is well over that, which eleven subjects cannot be covered in without
+ * sentences, and a fraction of what any real how-to draws.
+ */
+const HOWTO_MIN_LETTERS = 120;
 
 /**
- * The eight subjects, in the order specs/screens.md lists them.
+ * One subject the how-to must cover, and the word stems that cover it.
  *
- * Every pattern below is a word the specifications themselves use for the thing:
- * nothing here asks a build for a phrase the case never fixed.
+ * `needs` is a list of requirements, each a set of alternatives: the subject is
+ * covered when the screen carries a word beginning with a stem from EVERY set.
+ * Almost every subject has one set, so one word covers it.
  */
+interface Subject {
+  readonly subject: string;
+  readonly needs: readonly (readonly string[])[];
+}
+
+/** The subjects specs/screens.md lists, in the order it lists them. */
 const SUBJECTS: readonly Subject[] = [
   {
-    // "the goal of the game": specs/waves.md's run, entered at a vent
-    // (specs/floor.md) and paid for in lives when a unit reaches its exhaust.
-    name: "the goal",
-    names: [/\bvent/i, /\bexhaust/i, /\blives?\b/i],
-  },
-  {
-    // "the controls": the actions specs/controls.md names. Four of the seven is
-    // the bar — a screen naming more than half the vocabulary has covered the
-    // controls, and one naming three or fewer has left a player without the means
-    // to build, sell or send.
-    name: "the controls",
-    names: [
-      /\bplac/i,
-      /\brotat/i,
-      /\bsell/i,
-      /\bupgrad/i,
-      /\bsend/i,
-      /\bpaus/i,
-      /\bmut/i,
+    subject: "the goal of the game",
+    needs: [
+      ["GOAL", "WIN", "SURVIV", "CONTAIN", "LIVES", "LIFE", "LEAK", "EXHAUST"],
     ],
-    atLeast: 4,
   },
   {
-    // "heat as power and the redline trip": specs/heat.md's own three words.
-    name: "heat as power and the redline trip",
-    names: [/\bheat/i, /\bredline/i, /\btrip/i],
+    subject: "the controls",
+    needs: [
+      [
+        "CONTROL",
+        "KEY",
+        "PRESS",
+        "POINT",
+        "TAP",
+        "CLICK",
+        "BUTTON",
+        "MOUSE",
+        "ARROW",
+        "ESC",
+      ],
+    ],
+  },
+  { subject: "heat as power", needs: [["HEAT", "HOTTER", "THERMAL"]] },
+  { subject: "the redline trip", needs: [["REDLINE", "TRIP", "OVERHEAT"]] },
+  { subject: "the Forge", needs: [["FORGE"]] },
+  { subject: "the Sink", needs: [["SINK"]] },
+  { subject: "the heat-averse Rime", needs: [["RIME"]] },
+  { subject: "the air-only Flak", needs: [["FLAK"]] },
+  {
+    subject: "flyers",
+    needs: [
+      ["FLY", "FLIER", "FLIES", "FLYER", "AIR", "AERIAL", "AIRBORNE", "DRIFT"],
+    ],
   },
   {
-    // "the Forge and the Sink": the two movers of specs/towers.md, by name.
-    name: "the Forge and the Sink",
-    names: [/\bforge/i, /\bsink/i],
+    subject: "that a Containment wave fields a single type",
+    needs: [["WAVE"], ["TYPE", "KIND"]],
   },
   {
-    // "the heat-averse Rime": the tower by name, and the fact that sets it apart
-    // — specs/towers.md's Rime is at its strongest cold.
-    name: "the heat-averse Rime",
-    names: [/\brime/i, /\bcold|\bcool/i],
-  },
-  {
-    // "flyers and the air-only Flak": specs/surge.md's flying units and the one
-    // tower specs/combat.md lets shoot them.
-    name: "flyers and the air-only Flak",
-    names: [/\bflak/i, /\bair\b|\bfl(y|ies|ying|yer)/i],
-  },
-  {
-    // "that a Containment wave fields a single type": specs/waves.md's rule, in
-    // its own words.
-    name: "that a wave fields one type",
-    names: [/\bwave/i, /\b(a single|one) type/i],
-  },
-  {
-    // "the economy": specs/economy.md's payments. Two of the three named payments
-    // beside the money itself is the bar — a screen naming money and nothing it is
-    // earned by has not covered the economy.
-    name: "the economy",
-    names: [/\bmoney/i, /\bbount/i, /\bbonus/i, /\binterest/i],
-    atLeast: 3,
+    subject: "the economy",
+    needs: [["MONEY", "BOUNTY", "INTEREST", "CASH", "COIN", "EARN", "INCOME"]],
   },
 ];
+
+/**
+ * Whether some run carries a token beginning with `stem`, ignoring case.
+ *
+ * The token boundary is what keeps a stem honest: a stem of `AIR` is not answered
+ * by `REPAIR`.
+ */
+function saysStem(texts: readonly string[], stem: string): boolean {
+  const escaped = stem.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^A-Za-z0-9])${escaped}[A-Za-z]*`, "i");
+  return texts.some((text) => pattern.test(text));
+}
+
+/** Whether some run carries a token beginning with ANY of `stems`. */
+function saysAnyStem(
+  texts: readonly string[],
+  stems: readonly string[],
+): boolean {
+  return stems.some((stem) => saysStem(texts, stem));
+}
 
 let h: Harness;
 
@@ -143,17 +159,23 @@ it("covers every subject the how-to screen is required to cover", async () => {
     "posing: the screen the copy is read from (specs/screens.md)",
   );
 
-  const copy = drawnText(calls).join(" ");
-  for (const subject of SUBJECTS) {
-    const found = subject.names.filter((pattern) => pattern.test(copy));
-    const bar = subject.atLeast ?? subject.names.length;
-    assertGreaterThanOrEqual(
-      found.length,
-      bar,
-      `the how-to screen covers ${subject.name}: ${bar} of the ` +
-        `${subject.names.length} names the case uses for it, ` +
-        `[${subject.names.map(String).join(", ")}], drawn somewhere on the ` +
-        `screen (specs/screens.md); the text drawn was ${JSON.stringify(copy)}`,
-    );
+  const copy = drawnText(calls);
+
+  assertGreaterThanOrEqual(
+    copy.join(" ").replace(/[^A-Za-z]/g, "").length,
+    HOWTO_MIN_LETTERS,
+    `the letters of text the how-to screen drew; it covers eleven subjects ` +
+      `(specs/screens.md), which no screen does without prose`,
+  );
+
+  for (const { subject, needs } of SUBJECTS) {
+    for (const alternatives of needs) {
+      assertTrue(
+        saysAnyStem(copy, alternatives),
+        `the how-to screen to cover ${subject}, naming one of ` +
+          `${alternatives.join(", ")} (specs/screens.md, \`howto\`); the text ` +
+          `drawn was ${JSON.stringify(copy.join(" "))}`,
+      );
+    }
   }
 });

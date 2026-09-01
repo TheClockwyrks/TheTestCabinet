@@ -1,50 +1,64 @@
-// Meltdown — screens/howto-content: the how-to screen covers the game.
+// screens/howto-content — the how-to screen covers every subject the case says it
+// covers.
 //
-// THE RULE. specs/screens.md, `howto`: "Covers the goal of the game, the
-// controls, heat as power and the redline trip, the Forge and the Sink, the
+// THE RULE. specs/screens.md, `howto`: the screen "Covers the goal of the game,
+// the controls, heat as power and the redline trip, the Forge and the Sink, the
 // heat-averse Rime, flyers and the air-only Flak, that a Containment wave fields
-// a single type, and the economy."
+// a single type, and the economy." Eleven subjects, and the screen is read for
+// all eleven.
 //
-// WHAT A SCRIPT CAN DECIDE HERE. Whether an explanation explains well is a
-// reviewer's judgement and no check's. What the specification states is a list of
-// SUBJECTS the screen must cover, and a subject is covered by a screen that NAMES
-// it — so each is looked for as a word on the screen, and the failure names the
-// subject the build's how-to never mentioned. A build that draws a how-to screen
-// with three lines on it fails naming the seven subjects it skipped; a build that
-// covers all of them in its own words passes whatever those words are.
+// A SUBJECT IS COVERED BY A SCREEN THAT NAMES IT, and that is the whole reading.
+// specs/screens.md fixes the subjects and fixes no wording for any of them, so
+// nothing here reads a sentence, a length, a position or a layout. What each
+// subject is looked for by is the CASE'S OWN vocabulary — the proper nouns
+// specs/towers.md fixes for the four towers, and for the rest a set of
+// alternatives every one of which names the subject — so a build is free to write
+// its how-to in its own words and still be read as covering the subject. No
+// alternative below is a word the specifications do not themselves use.
 //
-// THE VOCABULARY IS THE CASE'S, AND EVERY SUBJECT ACCEPTS ALTERNATIVES. Four of
-// the subjects are proper nouns the case fixes — the Forge, the Sink, the Rime and
-// the Flak are what those towers are CALLED (specs/towers.md), so a screen
-// covering them says their names. The rest are looked for through a set of words
-// any of which covers the subject, because specs/screens.md fixes the subject and
-// not the sentence: a screen that says "trips" and one that says "redline" have
-// both covered the redline trip, and a screen that says "bounty" and one that says
-// "money" have both covered the economy. The stem is matched at a token boundary,
-// so "REPAIR" is never mistaken for "AIR".
+// EACH SUBJECT IS ASSERTED ON ITS OWN, so a screen that covers ten of the eleven
+// fails naming the one it skipped rather than failing as a whole.
 //
-// WHY IT IS ONE ITEM AND NOT ELEVEN. specs/screens.md states the coverage as one
-// requirement about one screen, and the manifest declares one item for it; a
-// failure names the subject that was missing, which is what tells a build with a
-// thorough how-to from one with a thin one.
+// A STEM RATHER THAN A WHOLE WORD, because English inflects and a specification
+// names a subject rather than a sentence: a screen covering the redline TRIP may
+// say "trips", "tripped" or "the trip". The token boundary is what keeps it
+// honest — a stem of `AIR` is not answered by `REPAIR`.
 //
-// THE SCREEN IS POSED OUTRIGHT after a reset, so this reads what the how-to
-// covers rather than the route that reaches it — `screens.title-to-howto` reads
-// that — and no key is pressed: the way out is `screens.back-from-howto`.
-
+// ONE SUBJECT TAKES TWO WORDS, and it is the one whose whole content is a
+// relation: "that a Containment wave fields a single type" is not covered by a
+// screen that merely says `wave`, which any screen about this game says somewhere,
+// so it asks for a wave AND for a type. Every other subject is one set.
+//
+// AND THE SCREEN MUST CARRY PROSE. `HOWTO_MIN_LETTERS` is a floor on the letters
+// the screen draws, so a build that satisfies eleven word-searches with a word
+// list still fails. It is far under the tersest honest how-to and far over what a
+// bare list of eleven words comes to.
+//
+// THE SCREEN IS POSED, because what it DRAWS does not depend on how a player got
+// to it: reaching it is `screens.title-to-howto`'s reading and leaving it is
+// `screens.back-from-howto`'s.
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, fail } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual, fail } from "../assert";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 import { readScreen, saysAnyStem } from "./menu";
+
+/**
+ * How many letters the how-to screen must carry.
+ *
+ * specs/screens.md gives it eleven subjects and fixes no wording, so the floor has
+ * to sit below the tersest honest screen and above what a build that wrote no
+ * prose can produce. The words looked for below come to about seventy letters;
+ * `120` is well over that, which eleven subjects cannot be covered in without
+ * sentences, and a fraction of what any real how-to draws.
+ */
+const HOWTO_MIN_LETTERS = 120;
 
 /**
  * One subject the how-to must cover, and the word stems that cover it.
  *
  * `needs` is a list of requirements, each a set of alternatives: the subject is
- * covered when the screen carries a word from EVERY set. Almost every subject has
- * one set; the wave rule has two, because "a wave fields a single type" is a
- * statement about waves AND about types and a screen that mentions waves without
- * ever saying what one carries has not covered it.
+ * covered when the screen carries a word beginning with a stem from EVERY set.
+ * Almost every subject has one set, so one word covers it.
  */
 interface Subject {
   readonly subject: string;
@@ -55,13 +69,28 @@ interface Subject {
 const SUBJECTS: readonly Subject[] = [
   {
     subject: "the goal of the game",
-    needs: [["GOAL", "WIN", "SURVIV", "LIVES"]],
+    needs: [
+      ["GOAL", "WIN", "SURVIV", "CONTAIN", "LIVES", "LIFE", "LEAK", "EXHAUST"],
+    ],
   },
   {
     subject: "the controls",
-    needs: [["CONTROL", "KEY", "PRESS", "POINT", "TAP", "CLICK", "BUTTON"]],
+    needs: [
+      [
+        "CONTROL",
+        "KEY",
+        "PRESS",
+        "POINT",
+        "TAP",
+        "CLICK",
+        "BUTTON",
+        "MOUSE",
+        "ARROW",
+        "ESC",
+      ],
+    ],
   },
-  { subject: "heat as power", needs: [["HEAT"]] },
+  { subject: "heat as power", needs: [["HEAT", "HOTTER", "THERMAL"]] },
   { subject: "the redline trip", needs: [["REDLINE", "TRIP", "OVERHEAT"]] },
   { subject: "the Forge", needs: [["FORGE"]] },
   { subject: "the Sink", needs: [["SINK"]] },
@@ -69,17 +98,17 @@ const SUBJECTS: readonly Subject[] = [
   { subject: "the air-only Flak", needs: [["FLAK"]] },
   {
     subject: "flyers",
-    needs: [["FLY", "FLIER", "FLIES", "AIR", "AERIAL", "DRIFT"]],
+    needs: [
+      ["FLY", "FLIER", "FLIES", "FLYER", "AIR", "AERIAL", "AIRBORNE", "DRIFT"],
+    ],
   },
   {
-    subject: "that a wave fields a single type",
+    subject: "that a Containment wave fields a single type",
     needs: [["WAVE"], ["TYPE", "KIND"]],
   },
   {
     subject: "the economy",
-    needs: [
-      ["MONEY", "BOUNTY", "INTEREST", "CASH", "COIN", "SPEND", "PAY", "COST"],
-    ],
+    needs: [["MONEY", "BOUNTY", "INTEREST", "CASH", "COIN", "EARN", "INCOME"]],
   },
 ];
 
@@ -104,6 +133,16 @@ it("covers every subject the how-to screen is required to cover", async () => {
     h.snapshot().screen,
     "howto",
     "the screen the scenario is posed on",
+  );
+
+  assertGreaterThanOrEqual(
+    runs
+      .map((run) => run.text)
+      .join(" ")
+      .replace(/[^A-Za-z]/g, "").length,
+    HOWTO_MIN_LETTERS,
+    `the letters of text the how-to screen drew; it covers eleven subjects ` +
+      `(specs/screens.md), which no screen does without prose`,
   );
 
   // The whole of a how-to screen is far too much text to put on a failure's
