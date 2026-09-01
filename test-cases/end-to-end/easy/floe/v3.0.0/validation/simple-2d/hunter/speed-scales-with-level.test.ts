@@ -33,9 +33,10 @@ import {
   poseBear,
   speedOverTicks,
   startCrossing,
+  ticksFor,
   type Harness,
 } from "../harness";
-import { travelOverTicks } from "./harness";
+import { stepAcross } from "./harness";
 
 /** The levels read: the base, one step up the curve, and the far end. */
 const LEVELS = [1, 4, 8];
@@ -44,14 +45,8 @@ const LEVELS = [1, 4, 8];
 const WATER_ROW = 6;
 const FROM_COL = 5;
 
-/**
- * The ticks each rate is measured over, as `ice-speed` derives them.
- *
- * The narrowest tile of the six readings is a level-8 bear on ice, which crosses
- * one in `120 / 4.51` = 26.6 ticks, so twenty ticks stays inside every one of
- * them.
- */
-const MEASURE_TICKS = 20;
+/** The game time each rate is measured over. */
+const MEASURE_SECONDS = 1;
 
 /** The allowance the item states around each figure. */
 const SPEED_TOLERANCE = 0.02;
@@ -70,8 +65,8 @@ afterEach(() => {
 async function rateOn(row: number, level: number): Promise<number> {
   startCrossing(h, level);
   const id = poseBear(h, FROM_COL, row, { sense: false, routing: false });
-  const covered = await travelOverTicks(h, id, "right", MEASURE_TICKS);
-  return speedOverTicks(covered, MEASURE_TICKS);
+  const ticks = ticksFor(MEASURE_SECONDS);
+  return speedOverTicks(await stepAcross(h, id, "right", ticks), ticks);
 }
 
 it("scales both of a bear's speeds by BEAR_SPEED_STEP each level", async () => {

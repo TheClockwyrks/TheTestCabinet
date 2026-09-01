@@ -57,38 +57,43 @@ export async function samplePerTick(
   return samples;
 }
 
+/** Whether a bear is settled on a tile rather than between two. */
+function bearSettled(bear: BearSnapshot): boolean {
+  return bear.col === bear.stepCol && bear.row === bear.stepRow;
+}
+
 /**
- * Commit a settled bear to ONE step in `direction`, run `ticks` ticks, and hand
- * back how far its centre travelled.
+ * Drive a bear `ticks` ticks along one axis, committing it to another step in
+ * `direction` on every tick it is settled, and hand back the distance its centre
+ * covered.
  *
- * WHAT THIS MEASURES, AND WHY THE WINDOW STAYS INSIDE ONE TILE. The bear the
+ * WHAT THIS MEASURES, AND WHY IT IS A RATE RATHER THAN A ROUTE. The bear the
  * speed checks measure is posed with its routing off (`poseBear`), so nothing but
- * this chooses where it goes and the reading is a rate rather than a route. Every
- * tick inside the tile is then exactly `speed * TILE * TICK_DT` of travel, so the
- * distance over a counted window of ticks is the specification's own figure with
- * no arithmetic in between.
+ * this chooses where it goes: it travels the axis it was given, tile after tile,
+ * and the distance it covers over a known count of ticks is its speed and nothing
+ * else.
  *
- * The caller keeps the window inside the tile because `specs/hunter.md` fixes
- * what a bear does with the travel left over at a tile centre only for a bear
- * that goes on travelling — "the travel left over is added to the next tick's
- * travel" — while `specs/instrumentation.md` has a routing-off bear "finish the
- * step it is on and then hold that tile". What becomes of the leftover of a bear
- * that holds is not fixed anywhere, so a reading that spanned a centre would be
- * grading a rule the specification does not state.
+ * AND THE WINDOW DELIBERATELY SPANS TILE CENTRES. `specs/hunter.md` states what
+ * happens to the travel left over when a bear reaches one — "the travel left over
+ * is added to the next tick's travel, so no distance is lost at a tile center" —
+ * so a reading kept inside a single tile could not tell a build that honours that
+ * rule from one that throws the remainder away on every crossing. Re-committing
+ * the step on the tick the bear settles is what keeps it travelling, and loses
+ * none of the leftover.
  *
  * The distance is summed tick by tick rather than taken end to end, so a bear
  * that turned back would not read as one that had stood still.
  */
-export async function travelOverTicks(
+export async function stepAcross(
   h: Harness,
   id: number,
   direction: Facing,
   ticks: number,
 ): Promise<number> {
-  h.debug.setBearStep(id, direction);
   let view = bearOf(h.snapshot(), id);
   let covered = 0;
   for (let tick = 0; tick < ticks; tick += 1) {
+    if (bearSettled(view)) h.debug.setBearStep(id, direction);
     await h.advance(1);
     const next = bearOf(h.snapshot(), id);
     covered += Math.hypot(next.x - view.x, next.y - view.y);

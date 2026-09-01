@@ -27,9 +27,10 @@ import {
   poseLane,
   speedOverTicks,
   startCrossing,
+  ticksFor,
   type Harness,
 } from "../harness";
-import { travelOverTicks } from "./harness";
+import { stepAcross } from "./harness";
 
 /** A row of the water band, and where the run starts on it. */
 const WATER_ROW = 6;
@@ -39,25 +40,25 @@ const FROM_COL = 5;
  * The rafts laid under the run, by the column each one's left edge sits on.
  *
  * Two `raft4`s laid end to end cover eight consecutive columns from `FROM_COL - 1`,
- * so both the tile the bear stands on and the tile it steps into are floe footing
- * whatever the build's rate turns out to be.
+ * which is four tiles of clear margin past the three a level-1 bear covers in the
+ * second measured — so a build up to twice too fast is still measured over floe.
  */
 const RAFT_COLS = [FROM_COL - 1, FROM_COL - 1 + ITEM_LEN.raft4];
 
 /**
- * Columns right of `FROM_COL` the covering is confirmed over.
+ * How many columns past `FROM_COL` the measurement is required to be over floe.
  *
- * The two `raft4`s span `2 * ITEM_LEN.raft4` columns from `FROM_COL - 1`, so the
- * bear's own column and every column out to this one is floe footing — which is
- * what makes the whole measurement one footing rather than two.
+ * A level-1 bear covers three tiles in the second measured, and the two rafts
+ * cover eight columns from `FROM_COL - 1`, so six is comfortably inside the span
+ * and comfortably past where a build twice too fast would get to.
  */
-const MEASURED_COLS = 2 * ITEM_LEN.raft4 - 2;
+const MEASURED_COLS = 6;
 
 /** The level the figure is stated at. */
 const LEVEL = 1;
 
-/** The ticks the rate is measured over, as `ice-speed` derives them. */
-const MEASURE_TICKS = 20;
+/** The game time measured over. */
+const MEASURE_SECONDS = 1;
 
 /** The allowance `ice-speed` states around the same figure. */
 const SPEED_TOLERANCE = 0.02;
@@ -93,13 +94,14 @@ it("travels at the ice speed over a water row a raft covers", async () => {
     );
   }
 
+  const ticks = ticksFor(MEASURE_SECONDS);
   const covered = await captureReplay(h, "swim", () =>
-    travelOverTicks(h, id, "right", MEASURE_TICKS),
+    stepAcross(h, id, "right", ticks),
   );
 
   const expected = bearIceSpeed(LEVEL) * TILE;
   assertBetween(
-    speedOverTicks(covered, MEASURE_TICKS),
+    speedOverTicks(covered, ticks),
     expected * (1 - SPEED_TOLERANCE),
     expected * (1 + SPEED_TOLERANCE),
     `stage units a second over a floe at level ${LEVEL}`,

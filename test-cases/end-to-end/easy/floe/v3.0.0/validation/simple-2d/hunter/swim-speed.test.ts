@@ -24,9 +24,10 @@ import {
   poseBear,
   speedOverTicks,
   startCrossing,
+  ticksFor,
   type Harness,
 } from "../harness";
-import { travelOverTicks } from "./harness";
+import { stepAcross } from "./harness";
 
 /** A row of the water band, and where the run starts on it. */
 const WATER_ROW = 6;
@@ -35,16 +36,8 @@ const FROM_COL = 5;
 /** The level the figure is stated at. */
 const LEVEL = 1;
 
-/**
- * The ticks the rate is measured over, which stay inside the one tile the bear
- * was stepped into.
- *
- * At `BEAR_SWIM_SPEED` (2) tiles a second a tile is 60 ticks wide, so twenty ticks
- * is a third of the way across it. `ice-speed` states the rest of the reasoning:
- * inside the tile the reading is exact, and a build fast enough to settle inside
- * the window reads high rather than low.
- */
-const MEASURE_TICKS = 20;
+/** The game time measured over. */
+const MEASURE_SECONDS = 1;
 
 /** The allowance the item states around the figure. */
 const SPEED_TOLERANCE = 0.02;
@@ -76,13 +69,14 @@ it("covers BEAR_SWIM_SPEED tiles of game time a second over open water", async (
     `floes on water row ${WATER_ROW}, which is measured as open water`,
   );
 
+  const ticks = ticksFor(MEASURE_SECONDS);
   const covered = await captureReplay(h, "swim", () =>
-    travelOverTicks(h, id, "right", MEASURE_TICKS),
+    stepAcross(h, id, "right", ticks),
   );
 
   const expected = bearSwimSpeed(LEVEL) * TILE;
   assertBetween(
-    speedOverTicks(covered, MEASURE_TICKS),
+    speedOverTicks(covered, ticks),
     expected * (1 - SPEED_TOLERANCE),
     expected * (1 + SPEED_TOLERANCE),
     `stage units a second swimming at level ${LEVEL}`,
