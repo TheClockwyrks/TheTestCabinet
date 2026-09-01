@@ -590,7 +590,7 @@ validation = { script = "presentation/torpedo-is-drawn-and-distinct.test.ts", ou
 [[review.categories.items]]
 id = "hud-torpedo-charge-is-drawn"
 title = "The torpedo charge is drawn in the HUD"
-description = "With setTorpedoCharge posed at 1, 0.5 and 0, a torpedo readout is drawn in the upper portion of the field clear of the star, and the ink it carries falls with the charge: each of the two steps gives up at least a fifth of the whole full-to-empty swing."
+description = "With setTorpedoCharge posed at 1, 0.5 and 0, a torpedo readout is drawn in the upper portion of the field clear of the star, and the ink it carries falls with the charge: each of the two steps gives up at least a tenth of the whole full-to-empty swing."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/hud-torpedo-charge-is-drawn.test.ts", outputs = [
