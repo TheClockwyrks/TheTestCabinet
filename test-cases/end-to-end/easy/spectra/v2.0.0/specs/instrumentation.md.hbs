@@ -265,8 +265,8 @@ A drone is built one field at a time, so no operation takes a layout.
 | `setDroneBand(id, band)` | Sets the drone's stored band, on every kind. For a Prism it is the shell's band, and the core's is always the opposite. For a Flux it is the band the drone is holding, or, mid-shimmer, the one it is leaving. It moves the band and nothing else: `bandClock` stays exactly where it stands. |
 | `setDronePhase(id, phase)` | Sets the phase: `"entering"`, `"formation"`, `"diving"`, or `"returning"`. |
 | `setDroneSlot(id, x, y)` | Sets the center of the drone's resting formation slot. |
-| `setDroneBandClock(id, seconds)` | Sets how far a Flux is into its current band window, from `0` to `fluxWindow(stage)`. It moves the clock and nothing else: `shimmer` follows it, and `band` does not change. |
-| `setDroneShell(id, intact)` | Sets whether a Prism's outer shell stands. |
+| `setDroneBandClock(id, seconds)` | Sets how far a Flux is into its current band window, from `0` to `fluxWindow(stage)`. It moves the clock and nothing else: `shimmer` follows it, and `band` does not change. A Shard and a Prism have no band window to be in, so on either of those `bandClock` stays `0` whatever this is called with. |
+| `setDroneShell(id, intact)` | Sets whether a Prism's outer shell stands. A Shard and a Flux have no shell, so on either of those `shellAlive` stays `true` whatever this is called with. |
 {{#if (eq variant.slug "overload")}}
 | `setDroneCharge(id, charge)` | Sets the drone's charge, a whole number from `0` to `OVERLOAD_AT` (`3`). |
 {{/if}}
@@ -291,7 +291,7 @@ whole roster.
 | Operation | Effect |
 | --- | --- |
 | `addPlayerBullet(x, y, band)` | Adds one of the player's bullets in flight, its center at a logical stage position, traveling straight up at `PLAYER_BULLET_SPEED`, carrying `band`. It is appended to the roster with a fresh id and `friendly` true. |
-| `addEnemyBullet(x, y, band)` | Adds one enemy bullet in flight, its center at a logical stage position, traveling straight down at `ENEMY_BULLET_SPEED` scaled for the current stage, carrying `band`. It is appended with a fresh id and `friendly` false. |
+| `addEnemyBullet(x, y, band)` | Adds one enemy bullet in flight, its center at a logical stage position, traveling straight down at `ENEMY_BULLET_SPEED` multiplied by `bulletSpeedScale(stage)` — the same figure `snapshot().bulletSpeedScale` reports — carrying `band`. That figure is the stage's formula on EVERY stage, a challenge stage included, whatever speed the flyover itself is running its own fire at. It is appended with a fresh id and `friendly` false. |
 | `setBulletVelocity(id, vx, vy)` | Sets the bullet's velocity, in logical units per second. |
 | `removeBullet(id)` | Removes the bullet with that id. |
 | `clearPlayerBullets()` | Removes every one of the player's bullets, leaving the enemy bullets, the drones, and the bursts standing. |

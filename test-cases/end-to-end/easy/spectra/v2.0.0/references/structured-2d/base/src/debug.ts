@@ -44,7 +44,6 @@ import { bulletBand, droneBand, inverted, isShimmering } from "./bands";
 import { clampLane } from "./ship";
 import { dischargeReady } from "./discharge";
 import { resetToTitle } from "./flow";
-import { waveBulletScale } from "./swarm";
 import { bulletById, droneById, takeId } from "./entities";
 import { spectraState, type SpectraState } from "./game";
 import type {
@@ -260,9 +259,9 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
           phase: drone.phase,
           slotX: drone.slotX,
           slotY: drone.slotY,
-          bandClock: drone.bandClock,
+          bandClock: drone.kind === "flux" ? drone.bandClock : 0,
           shimmer: isShimmering(drone, state.stage),
-          shellAlive: drone.shellAlive,
+          shellAlive: drone.kind === "prism" ? drone.shellAlive : true,
           travel: drone.travel,
           oscillation: drone.oscillation,
           fire: drone.fire,
@@ -495,7 +494,7 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
         x,
         y,
         vx: 0,
-        vy: ENEMY_BULLET_SPEED * waveBulletScale(state.stage),
+        vy: ENEMY_BULLET_SPEED * bulletSpeedScale(state.stage),
         band,
         friendly: false,
       });
