@@ -81,6 +81,13 @@ a design should *not* do. Specifying what a design should do has an exact
 target. Specifying what a design should not do is attempting to enumerate
 elements of an infinite set.
 
+### No Implementation Status Notes
+
+Documentation is written and then immediately implemented. **NEVER** write
+phrases like "The design is specified in full on these pages and awaiting its
+implementation". All documentation should be written as though the documented
+design were already implemented.
+
 ### No "Narrative" Documentation
 
 Documentation must be concise, authoritative, and appropriately detailed.
