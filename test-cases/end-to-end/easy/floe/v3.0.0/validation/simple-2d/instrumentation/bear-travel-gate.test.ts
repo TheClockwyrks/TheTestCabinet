@@ -89,6 +89,29 @@ it("holds a gated bear's centre while its routing still commits a step", async (
   // takes the locomotion and nothing else.
   const bear = poseBear(h, BEAR_COL, BEAR_ROW, { travel: false });
 
+  // The pose, read back off the snapshot before anything is driven: every gate is
+  // reported by `snapshot` (specs/instrumentation.md), and the read-back is what
+  // makes the arrangement this point rests on a verifiable one.
+  const settled = bearOf(h.snapshot(), bear);
+  assertEqual(
+    settled.travel,
+    false,
+    `snapshot() bear ${bear}.travel after setBearTravel(${bear}, false), which ` +
+      `the snapshot reports (specs/instrumentation.md)`,
+  );
+  assertEqual(
+    settled.sense,
+    true,
+    `snapshot() bear ${bear}.sense, which the gate leaves untouched ` +
+      `(specs/instrumentation.md)`,
+  );
+  assertEqual(
+    settled.routing,
+    true,
+    `snapshot() bear ${bear}.routing, which the gate leaves untouched ` +
+      `(specs/instrumentation.md)`,
+  );
+
   const held = await captureReplay(h, "gate", async () => {
     await h.advance(SPAN_TICKS);
     return bearOf(h.snapshot(), bear);
@@ -121,5 +144,12 @@ it("holds a gated bear's centre while its routing still commits a step", async (
       `and from (${BEAR_COL}, ${BEAR_ROW}) on an empty strait the one step that ` +
       `shortens the route to the critter on (${CRITTER_COL}, ${CRITTER_ROW}) is ` +
       `the one to its right (specs/hunter.md)`,
+  );
+  assertEqual(
+    `${held.target.col},${held.target.row}`,
+    `${CRITTER_COL},${CRITTER_ROW}`,
+    `the tile the gated bear hunts after the same second — its sense runs ` +
+      `untouched, "so it still reports the target it reads" ` +
+      `(specs/instrumentation.md)`,
   );
 });

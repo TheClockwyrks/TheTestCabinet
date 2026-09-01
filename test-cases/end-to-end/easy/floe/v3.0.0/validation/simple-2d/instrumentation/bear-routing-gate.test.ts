@@ -33,7 +33,8 @@
 // got there is `hopping/*`'s point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNotEqual } from "../assert";
+import { tileCX, tileCY } from "../../src/constants";
+import { assertCloseTo, assertEqual, assertNotEqual } from "../assert";
 import {
   bearOf,
   captureReplay,
@@ -71,6 +72,19 @@ const ROUTING_ROW = 15;
 const SPAN_SECONDS = 3;
 const HALF_TICKS = ticksFor(SPAN_SECONDS / 2);
 
+/**
+ * How far the held bear's centre may sit from the centre of the tile its step
+ * ended on, as `assertCloseTo` digits.
+ *
+ * Six digits is half a millionth of a stage unit. specs/hunter.md settles a bear
+ * "exactly on that center" for the tick its travel would carry it past, so a
+ * build that stopped there is out only by the arithmetic of adding a tick's
+ * travel; a build still sliding is out by whole tiles. Without this reading a
+ * build that pinned the tile it REPORTS while going on moving the centre would
+ * pass, which is the failure the tile assertions alone cannot see.
+ */
+const CENTRE_DIGITS = 6;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -90,6 +104,23 @@ it("holds a gated bear on the tile its committed step ended, and lets the other 
   const gated = poseBear(h, GATED_COL, GATED_ROW, { routing: false });
   h.debug.setBearStep(gated, STEP);
   const routing = poseBear(h, ROUTING_COL, ROUTING_ROW);
+
+  // The pose, read back off the snapshot before anything is driven: every gate is
+  // reported by `snapshot` (specs/instrumentation.md), and the read-back is what
+  // makes the arrangement this point rests on a verifiable one.
+  const posed = h.snapshot();
+  assertEqual(
+    bearOf(posed, gated).routing,
+    false,
+    `snapshot() bear ${gated}.routing after setBearRouting(${gated}, false), ` +
+      `which the snapshot reports (specs/instrumentation.md)`,
+  );
+  assertEqual(
+    bearOf(posed, routing).routing,
+    true,
+    `snapshot() bear ${routing}.routing, which addBear leaves on ` +
+      `(specs/instrumentation.md)`,
+  );
 
   const after = await captureReplay(h, "gate", async () => {
     await h.advance(HALF_TICKS);
@@ -113,6 +144,22 @@ it("holds a gated bear on the tile its committed step ended, and lets the other 
     `the tile that same bear is travelling into — a bear settled on a tile ` +
       `reports the tile it is entering as the tile it is on, so a build that ` +
       `chose another step is named here`,
+  );
+  assertCloseTo(
+    held.x,
+    tileCX(STEP_COL),
+    CENTRE_DIGITS,
+    `the centre x that same bear holds, against the centre of tile ` +
+      `(${STEP_COL}, ${STEP_ROW}) — a build that pinned the tile it reports ` +
+      `while going on moving the centre is named here ` +
+      `(specs/instrumentation.md)`,
+  );
+  assertCloseTo(
+    held.y,
+    tileCY(STEP_ROW),
+    CENTRE_DIGITS,
+    `the centre y that same bear holds, against the centre of tile ` +
+      `(${STEP_COL}, ${STEP_ROW})`,
   );
   assertEqual(
     `${held.target.col},${held.target.row}`,
