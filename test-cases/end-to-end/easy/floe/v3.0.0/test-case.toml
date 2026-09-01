@@ -256,15 +256,17 @@ test = "npx vitest run --coverage"
 # and its readings return plain data. One handle, three ways to reach the same
 # operations.
 #
-# There is deliberately NO `tick_hz`. Floe does run on a fixed step, but that step
-# is a rule of the GAME — `TICK_HZ` (120), stated in `specs/overview.md` and
-# asserted by `instrumentation.tick-length` — rather than a property of the harness
-# that drives the build. Under `none` the surface carries its own `advance(ticks)`,
-# and under an engine a validator supplies a `ConstantClock` and calls
-# `engine.advance(n)`, so the size of a step is stated in the validator that takes
-# it. The key is optional precisely so a case clocked this way omits it.
+# `tick_hz` states the game's own fixed rate, `TICK_HZ` (120) from
+# `specs/overview.md` and asserted by `instrumentation.tick-length`. The engineless
+# surface steps in whole simulation TICKS — `advance(ticks)`, one tick of `TICK_DT`
+# each — and the contract is that a case which steps in ticks declares the rate the
+# stepped ticks are worth, which is what lets a runtime relate them back to real
+# time. Under an engine the validators still supply their own `ConstantClock` and
+# call `engine.advance(n)`, so the declaration changes nothing they do; it states
+# the rate of the step the debug surface itself takes.
 [instrumentation]
 handle = "__floe"
+tick_hz = 120
 
 # The specs. Every one of these is a COMMON spec, seeded for EVERY run of this
 # case, at the `dest` path within the run workspace. The single variant declares
