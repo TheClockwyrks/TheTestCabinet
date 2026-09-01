@@ -3,8 +3,9 @@
 `draw-one.showcase-capture.test.ts` and `draw-three.showcase-capture.test.ts`
 (re)record the four media files in `showcase/draw-one/` and
 `showcase/draw-three/` from the case's **engineless** reference implementations,
-by playing a real game of Cascade: the title screen's NEW GAME control is clicked with the mouse, the
-deal the game deals is read, a solve is planned through it, and that plan is then
+by playing a real game of Cascade: the title screen's NEW GAME control is clicked
+with the mouse, the deal the game deals is read, a solve is planned through it,
+and that plan is then
 performed one ordinary gesture at a time — a click on the stock, a drag of a run
 between columns, a double-click that sends a card home — until the game declares
 itself won and the victory cascade runs.
@@ -31,7 +32,7 @@ made of, and a replay is the preferred moving format for a showcase: smaller,
 scrubbable, and recorded at whatever rate the harness drives. It is the wrong
 format for **this** clip, and the reason is the victory cascade.
 
-While the cascade runs, the game blits its whole `1280 x 720` painted layer once
+While the cascade runs, the game copies its whole `1280 x 720` painted layer once
 per frame (`specs/victory.md`), and that layer changes with every stamp. A draw
 recording carries a changed image source as its pixels, so each of those frames
 puts a full-stage PNG in the file: a few seconds of cascade is tens of megabytes
@@ -93,7 +94,7 @@ The re-encode is a compression pass and nothing more — same frames, same order
 same timing. Chromium's screencast writes about 750 kb/s, which for a clip of
 this length is four megabytes, and the catalog's preview stage fetches the
 leading entry the moment a visitor picks the case; one VP8 pass at `380k` takes
-it to a third of that with no visible difference on a table of flat colour and
+it to a third of that with no visible difference on a table of flat color and
 crisp type. The publish pipeline re-encodes it again on its way to `.mp4`
 regardless.
 

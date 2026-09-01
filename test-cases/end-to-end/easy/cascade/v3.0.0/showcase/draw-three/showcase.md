@@ -6,7 +6,7 @@ foundations, each built up from Ace to King in a single suit.
 The table is played entirely with the pointer. Press a card to lift it and
 whatever ordered run is sitting on it comes up in your hand; carry it across and
 let it go on a column that will take it — a card one rank lower and the opposite
-colour, red on black and black on red. Strip a column down to its face-down card
+color, red on black and black on red. Strip a column down to its face-down card
 and the card turns over. An empty column takes a King and nothing else.
 Double-click a card that has a foundation waiting for it and it goes home on its
 own.
