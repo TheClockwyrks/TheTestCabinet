@@ -37,7 +37,7 @@
 // rock.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual } from "../assert";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { QUIET_CORNER } from "../fixtures";
 import {
   DEG,
@@ -45,6 +45,7 @@ import {
   angleBetween,
   directSeparation,
   headingOf,
+  speedOf,
   unit,
 } from "../geometry";
 import {
@@ -99,6 +100,27 @@ it("moves a rock left at rest straight down the line to the star, and not across
   const across = unit(line + Math.PI / 2);
 
   const moved = { x: now.x - posed.x, y: now.y - posed.y };
+
+  // The control the two bearings below rest on. A rock that never moved has no
+  // velocity and no displacement, so the bearing of either is `atan2(0, 0)` —
+  // zero, an angle it never chose — and a build whose rocks are inert would read
+  // "along the line" by accident at any ground where that zero happens to sit
+  // near the bearing to the star. The well pulls every rock (specs/gravity.md),
+  // so a conformant build has both figures above nothing, and the readings after
+  // these are readings of a motion that actually happened.
+  assertGreaterThan(
+    speedOf(now),
+    0,
+    "units per second the well gave a rock left at rest for a second, which " +
+      "is what makes the bearing of its velocity a bearing it chose " +
+      "(specs/gravity.md)",
+  );
+  assertGreaterThan(
+    Math.hypot(moved.x, moved.y),
+    0,
+    "units the rock moved over that second, which is what makes the bearing " +
+      "of its displacement a bearing it chose (specs/gravity.md)",
+  );
 
   assertLessThanOrEqual(
     angleBetween(headingOf(now), line) / DEG,
