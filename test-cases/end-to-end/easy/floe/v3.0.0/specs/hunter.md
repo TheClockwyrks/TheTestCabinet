@@ -124,4 +124,5 @@ distance between their centers, `hypot(bearX - critterX, bearY - critterY)`, is
 at most `BEAR_CATCH_DIST` (`18`) stage units. This is the one distance in the
 game measured in stage units rather than in tiles; the tile distance above is
 what the routing reads. The critter loses a life, wherever on the strait the two
-met, and `specs/progression.md` fixes what that costs.
+met, and `specs/progression.md` fixes what that costs. The catch's own
+drawing outlasts the bear that made it, and `specs/assets.md` fixes it.

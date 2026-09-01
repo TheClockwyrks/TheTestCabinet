@@ -106,6 +106,12 @@ and a lunge.
 | Swimming | The swim pair for its facing |
 | Catching the critter | The lunge frames |
 
+A catch is drawn from the lunge pair at the point on the strait where the bear
+and the critter met, on the tick the catch happens and for as long as the hold
+that follows it runs. It is drawn there although no bear is on the strait over
+that hold, because a catch takes every bear off it: `specs/hunter.md` and
+`specs/progression.md` fix that.
+
 The swim frames already carry the submerged silhouette and its wake, so a bear
 over the water stays trackable, including where it passes under a floe.
 `specs/hunter.md` fixes when a bear is swimming.
@@ -132,6 +138,5 @@ beside it fixes its behavior.
 | The strait itself: the water, the ice of the shores, the median and the ice band, and the far shore | `specs/strait.md` |
 | The bays, open and filled | `specs/bays.md` |
 | The bonus catch | `specs/bays.md` |
-| The splash and the spray when the critter falls in or is crushed | `specs/water.md`, `specs/ice.md` |
 | The HUD, every screen, every menu, and all text | `specs/ui.md` |
 | The debug overlay | `specs/instrumentation.md` |
