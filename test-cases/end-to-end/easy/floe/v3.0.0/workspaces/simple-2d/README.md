@@ -40,8 +40,7 @@ states the rule.
 path under the fixed `assets/` root relative to the page. Await every frame
 inside `initialize`, so a frame is a plain image value by the time anything draws
 it. Floe's frames are separate files rather than an atlas, so each frame is its
-own image; mirroring a leftward vehicle is a negative x scale on the draw rather
-than a second set of frames.
+own image.
 
 The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as `initialize` handed it over, and that is how the game

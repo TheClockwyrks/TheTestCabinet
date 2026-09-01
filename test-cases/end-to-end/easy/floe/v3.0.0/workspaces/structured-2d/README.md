@@ -50,8 +50,7 @@ directly.
 path under the fixed `assets/` root relative to the page. Await every frame in
 the level's load, so a frame is a plain image value by the time anything draws
 it. Floe's frames are separate files rather than an atlas, so each frame is its
-own image; mirroring a leftward vehicle is a negative x scale on the sprite
-component rather than a second set of frames.
+own image.
 
 The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as the instance's `initialize` handed it over, and that is
@@ -74,10 +73,9 @@ runs them in process, with coverage over `src/`. A test stands the engine up
 over a canvas from `@napi-rs/canvas`, with a `SurfaceMetrics` and a scripted
 clock of the test's own, then advances the game a counted number of frames with
 `engine.advance`, so it needs no browser. A test that draws the critter also
-needs the sprite art, which the loader reaches for through `fetch` and
-`createImageBitmap`: stand both globals up over the project's own `assets/`
-directory for the life of the file and restore them afterwards. The engine's
-documentation defines every other piece of that recipe.
+needs the seeded sprite art, which the engine's loader reaches for with browser
+globals a Node process does not have. The engine's documentation defines every
+other piece of that recipe.
 
 ## What you must not edit
 
