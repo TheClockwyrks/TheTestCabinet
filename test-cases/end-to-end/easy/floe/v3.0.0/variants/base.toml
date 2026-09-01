@@ -19,15 +19,18 @@ description = "The crossing on the one strait: eight lanes of sliding ice, eight
 # of any kind to put here. If you came to this file to add one, it almost
 # certainly belongs in `test-case.toml` as a common spec.
 
-# What the game looks like played correctly, shown before anyone runs it: a
-# sustained take of real play — the critter working up through the ice band, a
-# bear emerging behind it and being reset by a plow, the water crossing floe to
-# floe with a bear swimming after it, and a bay filled — plus a still from the
-# same take mid-water and a still of the title screen. Every outcome on screen
-# arises from the game's own rules under scripted input, computed against the
-# reference's own lane arithmetic at a fixed seed; nothing is posed through the
-# debug surface. `showcase/base/showcase.toml` lists the media;
-# `showcase/base/showcase.md` carries the description.
+# What the game looks like played correctly, shown before anyone runs it: half a
+# minute of real play recorded off `references/structured-2d` — the critter
+# timing the gaps up through the ice band, a bear emerging behind it, the water
+# crossed floe to floe with that bear swimming after it, and four bays filled —
+# plus a still from the same take on the last water row and a still of the title
+# screen. The critter is driven with real held-key input on the four movement
+# actions, and its hops are planned against the lane pattern the debug surface's
+# own snapshot reports; every outcome on screen is then the game's own rules
+# under that input, with the four world gates left on and nothing posed
+# mid-play. `showcase/base/showcase.toml` lists the media,
+# `showcase/base/showcase.md` carries the description, and
+# `showcase/capture/README.md` records how each file was produced.
 showcase = "showcase/base"
 
 # The authored correct build, one directory per supported engine, because the
