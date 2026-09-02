@@ -159,6 +159,28 @@ export default tseslint.config(
     },
   },
   {
+    // `validation/harness.ts` injects these two into the page before the build's
+    // own script runs, so they are BROWSER scripts sitting in a project whose
+    // every other file is Node's. Linting them as Node code reports the page's
+    // own globals as undefined; this says where they run instead. They are the
+    // case's own code, held to the same rules as the rest of it.
+    files: ["validation/*-init.js"],
+    languageOptions: {
+      globals: {
+        HTMLCanvasElement: "readonly",
+        btoa: "readonly",
+        document: "readonly",
+        requestAnimationFrame: "readonly",
+        window: "readonly",
+      },
+    },
+    rules: {
+      // A recorder proxies a context method onto the real one, which is what
+      // capturing `this` at the wrapper is for.
+      "@typescript-eslint/no-this-alias": "off",
+    },
+  },
+  {
     // The transcription itself: the one file that may re-export a value the
     // specification genuinely leaves to the build, by name.
     files: ["validation/constants.ts"],
