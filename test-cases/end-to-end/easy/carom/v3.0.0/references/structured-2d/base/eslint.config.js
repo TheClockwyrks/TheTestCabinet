@@ -80,6 +80,19 @@ export default tseslint.config(
           ],
         },
       ],
+      // A dynamic `import()` is invisible to `no-restricted-imports`, which reads
+      // static clauses only, so the same reach through
+      // `await import("../src/constants")` is refused here instead. The harness
+      // inherits this rule — its allowance below reopens the static clause and
+      // nothing else.
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "ImportExpression > Literal.source[value=/(^|\\/)src($|\\/)/]",
+          message: VALIDATOR_SRC_MESSAGE,
+        },
+      ],
     },
   },
   {
