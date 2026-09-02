@@ -179,6 +179,37 @@ a suite asserts comes from a figure the specs fix, never from a reference build.
 from that engine's reference build of that variant, so a reviewer sees the run's
 evidence and the reference's side by side.
 
+### Four captures move between runs
+
+`tcab capture-baselines` writes `1710` files across the six engine/variant
+targets: `1599` stills and `111` recorded replays. Nineteen of the stills are
+taken off a clock rather than off a posed frame, so two runs of the command over
+unchanged code write different bytes for them, and the committed baseline for
+each is one sample rather than a fixed picture. They are four outputs:
+
+| Output                                         | Targets | Why it moves                                                                                                                                      |
+| ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `controls.overlay-backquote__overlay`          | 6       | The panel carries a frame-time reading measured on the host that ran it: the engine's own line under an engine, the build's `dt` under `none`.    |
+| `instrumentation.advances-in-real-time__after` | 6       | The point's whole subject is a second of real time under the engine's own loop, so what has moved by the still is whatever that second delivered. |
+| `instrumentation.overlay__overlay`             | 5       | The same panel as the first, over a posed field.                                                                                                  |
+| `audio.no-autoplay__loaded`                    | 2       | The still follows 400 ms of the engine's own loop on the opening screen, so the field has drifted by however many frames that bought.             |
+
+None of the four is worth posing away. Two of the points measure what a build
+does with real time, and the other two open a panel whose own heading reports
+the frame it was drawn on; a still taken off a posed frame would show something
+none of them asserts.
+
+The churn is bounded and it is all there is. Three captures of the same code —
+the committed one and two run back to back — differ pairwise in 14, 17 and 18 of
+those nineteen files and in nothing else, and the deltas within a file run from
+6 to 2291 pixels of the 921600 in a frame, inside the panel's text band or on
+one moving entity. The other 1580 stills and all 111 replays are byte-identical
+across all three.
+
+So a recapture that leaves only those nineteen files dirty has changed nothing
+and is not worth committing. One that moves anything else has changed the
+picture a reviewer is shown, and is.
+
 ## Scoring
 
 A run is rated on four domains — `polarity` (the two bands, the shield, the
