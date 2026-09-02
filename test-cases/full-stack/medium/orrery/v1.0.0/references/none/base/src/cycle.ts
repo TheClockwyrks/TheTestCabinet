@@ -22,10 +22,9 @@
 // whatever fraction the run has reached rather than a second, parallel
 // derivation that could drift from the one the collision rule used.
 //
-// SEAM: the sigil phase of the boundary is the one part of the sequence still
-// to be written. `runSigilsSetsAndRises` is where the four waves, the sets, and
-// the rises of specs/sigils.md go; the area bank and the completion check
-// around it are in `src/sim.ts` and already run at every boundary.
+// The boundary that closes a cycle is NOT here: the sigil phase is
+// `src/boundary.ts`, and the area bank and the completion check around it are
+// `src/sim.ts`. This module ends where the motion lands.
 
 import { firstCollisionSample, type MotePoint } from "./collision";
 import { fetchCycle, type PartStep } from "./fetch";
@@ -161,14 +160,6 @@ function landCycle(
     pose.cell = { q: step.next.cell.q, r: step.next.cell.r };
   }
 }
-
-/**
- * The transforming, binding, sundering, and voiding waves in order, then every
- * set, then every rise, each in reading order (specs/simulation.md "The sigil
- * phase"). Run at every boundary, the settle included, before the area bank
- * and the completion check.
- */
-export function runSigilsSetsAndRises(_ctx: SimContext): void {}
 
 /**
  * Where a mote is DRAWN at the run's current fraction: its hex at the last

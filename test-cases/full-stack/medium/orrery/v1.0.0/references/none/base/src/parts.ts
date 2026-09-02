@@ -125,6 +125,15 @@ export function wheelSpokeHexes(hub: Hex): Hex[] {
   return [0, 1, 2, 3, 4, 5].map((spoke) => neighbor(hub, spoke));
 }
 
+/**
+ * A pattern coordinate placed at an anchor and a rotation: rotated about
+ * `(0, 0)` by the rotation, then translated by the anchor (specs/field.md
+ * "Molecule patterns"). Every footprint and every pattern is placed this way.
+ */
+export function placeHex(cell: Hex, anchor: Hex, rotation: number): Hex {
+  return addHex(anchor, rotateHex({ q: cell.q, r: cell.r }, rotation));
+}
+
 /** One hex of a placed sigil's footprint, and the role it carries. */
 export interface PlacedFootprintHex {
   hex: Hex;
@@ -138,7 +147,7 @@ export function sigilFootprint(
   rotation: number,
 ): PlacedFootprintHex[] {
   return SIGIL_FOOTPRINTS[kind].map((cell) => ({
-    hex: addHex(anchor, rotateHex({ q: cell.q, r: cell.r }, rotation)),
+    hex: placeHex(cell, anchor, rotation),
     role: cell.role,
   }));
 }
@@ -149,9 +158,7 @@ export function moleculeHexes(
   anchor: Hex,
   rotation: number,
 ): Hex[] {
-  return molecule.motes.map((mote) =>
-    addHex(anchor, rotateHex({ q: mote.q, r: mote.r }, rotation)),
-  );
+  return molecule.motes.map((mote) => placeHex(mote, anchor, rotation));
 }
 
 /**

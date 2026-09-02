@@ -19,6 +19,7 @@ import {
   writeTapeCell,
   type PartOptions,
 } from "./machine";
+import { dropMote } from "./motes";
 import { carriesTape, isArmKind, placementFailure } from "./parts";
 import { raiseFixtures } from "./sim";
 import type {
@@ -27,7 +28,6 @@ import type {
   OrreryState,
   PartKind,
   PartState,
-  SimState,
   SolutionPart,
 } from "./types";
 
@@ -128,15 +128,6 @@ export function enterRun(state: OrreryState, part: PartState): void {
     cell: { q: part.q, r: part.r },
   });
   if (part.kind === "wheel") raiseFixtures(sim, part);
-}
-
-/** Remove one mote, and with it every filament and grip touching it. */
-export function dropMote(sim: SimState, moteId: number): void {
-  sim.motes = sim.motes.filter((mote) => mote.id !== moteId);
-  sim.filaments = sim.filaments.filter(
-    (filament) => filament.a !== moteId && filament.b !== moteId,
-  );
-  sim.grips = sim.grips.filter((grip) => grip.mote !== moteId);
 }
 
 /** A part removed takes its live pose, its grips, and its fixtures with it. */

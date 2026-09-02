@@ -64,6 +64,11 @@ export function negHex(offset: Hex): Hex {
   return { q: canonical(-offset.q), r: canonical(-offset.r) };
 }
 
+/** An axial offset taken `steps` times over, for a repeat vector's copies. */
+export function scaleHex(offset: Hex, steps: number): Hex {
+  return { q: canonical(offset.q * steps), r: canonical(offset.r * steps) };
+}
+
 /** The difference of two axial coordinates, `a - b`. */
 export function subHex(a: Hex, b: Hex): Hex {
   return { q: a.q - b.q, r: a.r - b.r };

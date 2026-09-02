@@ -35,7 +35,6 @@ import {
   addPart,
   clearMachine,
   closeTrack,
-  dropMote,
   extendTrack,
   loadMachine,
   machineFromSolution,
@@ -46,6 +45,7 @@ import {
   setPartRotation,
   setTapeCell,
 } from "./machineops";
+import { dropMote } from "./motes";
 import { armSpokes, gripperHex, isArmKind, mountedTrack } from "./parts";
 import { snapshotOf } from "./snapshot";
 import { startRun, stopRun } from "./sim";

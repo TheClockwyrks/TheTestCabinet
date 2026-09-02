@@ -21,7 +21,8 @@
 // happened to land.
 
 import { CUES, DEFAULT_SPEED_INDEX, SPEEDS, type Cue } from "./constants";
-import { planCycle, runSigilsSetsAndRises } from "./cycle";
+import { runSigilsSetsAndRises } from "./boundary";
+import { planCycle } from "./cycle";
 import { sameHex } from "./hex";
 import { cloneMachine, machinePeriod } from "./machine";
 import {

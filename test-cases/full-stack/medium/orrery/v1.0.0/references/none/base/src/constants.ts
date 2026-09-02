@@ -98,6 +98,11 @@ export const PLANETS: readonly PlanetType[] = [
   "sol",
 ];
 
+/** A plain filament's weight (specs/field.md "Filaments and constellations"). */
+export const FILAMENT_WEIGHT = 1;
+/** A triune filament's weight; `triune` alone creates one (specs/sigils.md). */
+export const TRIUNE_WEIGHT = 3;
+
 /** Every mote's drawn form fits inside this radius of its position. */
 export const MOTE_R = 22;
 /** Two motes collide when their centers come closer than `2 * MOTE_COLLIDE_R`. */
