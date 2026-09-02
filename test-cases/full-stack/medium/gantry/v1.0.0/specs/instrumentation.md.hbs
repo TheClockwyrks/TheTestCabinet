@@ -413,6 +413,13 @@ holds when it comes off.
 are what a step's target is judged against when the step starts, not a bound on
 the axis itself.
 
+`setAxisRate` sets the rate the snapshot reports at once, and poses a
+precondition like every other pose rather than an outcome: an axis carrying no
+live command holds its value with zero rate (`specs/program.md`), so the next
+tick of a run leaves a rate posed onto such an axis at `0` again. Posing a rate
+onto an axis that is under a command sets what that axis is doing as the
+controller next reads it.
+
 `setBob` puts the bob where it is asked for, so a caller that wants a bob the
 cable can hold sets the hoist axis to the distance it left between the pivot and
 the bob. The pendulum's own constraint runs on the next tick either way.

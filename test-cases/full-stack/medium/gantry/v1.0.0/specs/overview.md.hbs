@@ -394,8 +394,11 @@ The canvas presents a fixed logical stage of `STAGE_W x STAGE_H` (`1280 x 720`,
 16:9). Fitting it to the browser window is the runtime's: the uniform scale that
 preserves the aspect ratio, the letterboxed centering, and the device pixel
 ratio. The complete stage is on screen at every window size, on load and at any
-pixel density. The 3D viewport fills the stage, screen-space readouts are laid
-out in logical stage units, and the pointer position the game reads is in those
+pixel density. The bars the letterboxing leaves around the stage carry the
+yard's own background color, so the picture reads as one field rather than as a
+panel on a different ground. The 3D viewport fills the stage, and over it the
+screen-space readouts are drawn on a 2D layer composited on top of the picture,
+laid out in logical stage units. The pointer position the game reads is in those
 same units.
 
 ## Visual design
