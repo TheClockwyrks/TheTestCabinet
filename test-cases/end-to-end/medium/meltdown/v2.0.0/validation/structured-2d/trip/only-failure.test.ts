@@ -43,7 +43,7 @@
 // thousands of frames together.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_TIME } from "../../src/constants";
+import { TRIP_TIME } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

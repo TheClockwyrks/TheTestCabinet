@@ -25,7 +25,7 @@
 // encodes — a gun with a mark parked in it, and a crowd of marks that never dies
 // and never leaks — is what the trip items share and no other group's.
 
-import { TILE, footprintCentre } from "../../src/constants";
+import { TILE, footprintCentre } from "../constants";
 import { onGrid, sizeOf, tileAt, type Point, type Tile } from "../geometry";
 import {
   poseTarget,

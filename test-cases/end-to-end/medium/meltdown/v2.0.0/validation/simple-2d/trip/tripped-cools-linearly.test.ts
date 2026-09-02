@@ -32,7 +32,7 @@
 // of `TRIP_TIME`, so every reading is taken while the tower is still tripped.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_HEAT, TRIP_TIME } from "../../src/constants";
+import { TRIP_HEAT, TRIP_TIME } from "../constants";
 import { assertCloseTo } from "../assert";
 import {
   captureReplay,

@@ -27,7 +27,7 @@
 // unambiguously inside the cooldown.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_HEAT, TRIP_TIME } from "../../src/constants";
+import { TRIP_HEAT, TRIP_TIME } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

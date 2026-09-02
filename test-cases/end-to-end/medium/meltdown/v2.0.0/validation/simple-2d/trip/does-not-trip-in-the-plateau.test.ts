@@ -34,7 +34,7 @@
 // model the build implemented.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_HEAT } from "../../src/constants";
+import { TRIP_HEAT } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

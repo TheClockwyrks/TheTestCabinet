@@ -39,7 +39,7 @@ import {
   TOWER_DEFS,
   emitterStats,
   type EmitterDef,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import {
   footprintCenter,
