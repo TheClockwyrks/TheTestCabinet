@@ -141,11 +141,11 @@ export async function frameOf(
   done: (snapshot: CascadeSnapshot) => boolean,
   maxFrames = NEVER_HAPPENED,
 ): Promise<Raised> {
-  const result = await h.until(done, { maxFrames, poll: 1 });
+  const result = await h.until(done, { maxFrames });
   if (result.hit && result.frames === 0 && h.frame() === 0) {
     fail("a driven frame to read the event on", "no frame had run yet");
   }
-  return { hit: result.hit, frame: h.frame(), snapshot: result.snapshot };
+  return { hit: result.hit, frame: result.at, snapshot: result.snapshot };
 }
 
 /** What a real drag did, and the two frames of it that are allowed to sound. */

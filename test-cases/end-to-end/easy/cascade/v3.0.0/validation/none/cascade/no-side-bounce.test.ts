@@ -79,7 +79,7 @@ it("carries a flyer across the right edge without turning it", async () => {
 
   const crossing = await harness.until(
     (s) => (flyerById(s, id)?.x ?? Number.NEGATIVE_INFINITY) >= PROBE_X,
-    { maxFrames: SWEEP_FRAMES, poll: 1 },
+    { maxFrames: SWEEP_FRAMES },
   );
   await captureStill(harness, "crossing");
 

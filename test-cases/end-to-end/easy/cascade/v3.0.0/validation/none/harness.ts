@@ -532,17 +532,43 @@ export interface HarnessOptions {
   reset?: boolean;
 }
 
-/** How far a sweep may run, and how many frames separate two samples. */
+/** How far a sweep may run, and how many frames it drives per crossing. */
 export interface UntilOptions {
   maxFrames?: number;
-  poll?: number;
+  /**
+   * How many frames one crossing into the page runs. Defaults to `1`.
+   *
+   * IT DOES NOT CHANGE WHAT IS READ. The predicate is applied to EVERY frame
+   * whatever this is, because the whole series comes back, so the frame reported
+   * and the state reported are the frame and the state the predicate first held
+   * on, exactly as they are at `1`. What it changes is the harness's own
+   * position: a sweep that batches has already run the rest of its last batch by
+   * the time it knows, so it stands up to `chunk - 1` frames past the frame it
+   * reports.
+   *
+   * So `1` is the default and is what a check whose NEXT act is a reading — a
+   * still, a replay, a count of what sounded — wants. A check that only reads
+   * what the sweep hands back may name a larger one and stop paying a round trip
+   * per frame; each such check names its own and says what the over-run costs
+   * it.
+   */
+  chunk?: number;
 }
 
-/** What a sweep found: whether the predicate ever held, and where it stopped. */
+/** What a sweep found: whether the predicate ever held, and where it held. */
 export interface UntilResult {
   hit: boolean;
-  /** Frames advanced before the sample that ended the sweep. */
+  /** Frames advanced before the sample the predicate first held on. */
   frames: number;
+  /**
+   * That sample's frame, as {@link Harness.frame} counts them.
+   *
+   * The frame the predicate held on, and NOT where the harness now stands: a
+   * batched sweep ({@link UntilOptions.chunk}) has run the rest of its last
+   * batch. A check that names the frame an event happened on reads this rather
+   * than `Harness.frame()`.
+   */
+  at: number;
   snapshot: CascadeSnapshot;
 }
 
@@ -597,11 +623,21 @@ export interface Harness {
   snapshot(): Promise<CascadeSnapshot>;
   /** Run `frames` frames back to back, each the length the clock says. */
   advance(frames: number): Promise<void>;
-  /** Advance until `predicate` holds, sampling every `poll` frames. */
+  /** Advance until `predicate` holds, reading the state every frame left. */
   until(
     predicate: (snapshot: CascadeSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
+  /**
+   * Run `frames` frames one at a time and hand back the state each one left.
+   *
+   * `samples[0]` is the state after the first frame. The frames are the frames
+   * {@link advance} runs — one `advance(dt, 1)` inside one recorded frame
+   * boundary — and the reading is the reading a per-frame `advance` then
+   * `snapshot` pair takes; what it does not do is pay a round trip into the page
+   * for each of them.
+   */
+  sample(frames: number): Promise<CascadeSnapshot[]>;
   /**
    * Run `duration` seconds of game time WITHOUT opening a recorded frame.
    *
@@ -691,6 +727,52 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  * the cost of a build with no surface at all, which pays it once per harness.
  */
 const SURFACE_TIMEOUT_MS = 10_000;
+
+/**
+ * The most frames one crossing carries a per-frame series back for.
+ *
+ * A series is a snapshot per frame, and a Cascade snapshot is a few hundred
+ * bytes, so a thousand frames is well under a megabyte — small enough that the
+ * crossing costs no more than an empty one and large enough that the sweeps this
+ * project runs are one or two crossings rather than thousands. It bounds the
+ * payload of a single crossing and nothing else: a longer run is simply several
+ * crossings, and the frames it drives are identical either way.
+ */
+const SERIES_CHUNK_FRAMES = 1_000;
+
+/**
+ * The key a non-finite number is carried across in.
+ *
+ * A series crosses back as ONE JSON string rather than as an array of objects,
+ * because Playwright's own value protocol walks every property of everything it
+ * returns and that walk costs tens of milliseconds per snapshot — a cost of the
+ * transport, paid per frame read, that has nothing to do with the build. A string
+ * crosses as a single value and is parsed here.
+ *
+ * The one thing plain JSON would lose is a number that is not finite, and a
+ * validator must not lose it: `NaN` in a flyer's velocity is a build's defect and
+ * has to reach the check that grades it rather than arriving as `null`. So a
+ * non-finite number is written as `{ "__cascadeNumber": "NaN" }` on the way out
+ * and read back as the number it names, which leaves every reading identical to
+ * the one Playwright's protocol would have delivered.
+ */
+const NON_FINITE_KEY = "__cascadeNumber";
+
+/** Read a crossing back, restoring the numbers plain JSON cannot carry. */
+function parseCrossing<T>(text: string): T {
+  return JSON.parse(text, (_key, value: unknown) => {
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      !Array.isArray(value) &&
+      Object.keys(value).length === 1 &&
+      NON_FINITE_KEY in value
+    ) {
+      return Number((value as Record<string, string>)[NON_FINITE_KEY]);
+    }
+    return value;
+  }) as T;
+}
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -947,55 +1029,103 @@ export async function createHarness(
   let timeMs = 0;
 
   /**
-   * Run `frames` frames and read the state they left, in one crossing.
+   * Run `frames` frames and read what they left, in as few crossings as the
+   * series asked for allows.
    *
    * Each frame is opened and closed around a single `advance(dt, 1)`, all inside
    * one synchronous evaluation, so nothing the page's own animation frame renders
    * can land inside a recorded frame — and so a frame the recorder keeps is
    * exactly one frame the game ran.
+   *
+   * `series` decides what comes back: `false` reads the state the LAST frame left
+   * and `true` reads the state EVERY frame left, which is the reading a check
+   * that has to catch the frame something happened on needs. The frames are the
+   * same either way — the flag changes what crosses back, never what ran.
+   *
+   * WHY THE LOOP IS INSIDE THE PAGE AND NOT OUT HERE. A crossing costs a round
+   * trip, and a round trip is a property of how busy the HOST is: tens of
+   * milliseconds on an idle machine and hundreds on a loaded one. A sweep that
+   * paid one per frame therefore took a length of time nothing about the build
+   * decided, and the vitest allowance it ran against is wall clock — so the same
+   * build passed on a quiet host and timed out on a busy one. Driving the frames
+   * inside the page removes the host from the reading: the check still steps one
+   * frame at a time and still reads every frame, and what it costs is now the
+   * build's own work.
    */
-  const drive = async (frames: number): Promise<CascadeSnapshot> => {
+  const runFrames = async (
+    frames: number,
+    series: boolean,
+  ): Promise<CascadeSnapshot[]> => {
     if (surfaceFault !== null) refuse();
-    const deltas: number[] = [];
-    for (let i = 0; i < frames; i += 1) deltas.push(clock.delta());
-    const result = (await page.evaluate(
-      ([handle, dts]) => {
-        const api = (
-          window as unknown as Record<
-            string,
-            Record<string, (...a: unknown[]) => unknown>
-          >
-        )[handle];
-        const rec = (
-          window as unknown as {
-            __cascadeRec: Record<string, (...a: unknown[]) => unknown>;
+    const wanted = Math.max(0, Math.trunc(frames));
+    const collected: CascadeSnapshot[] = [];
+    let left = wanted;
+    while (left > 0) {
+      const step = series ? Math.min(left, SERIES_CHUNK_FRAMES) : left;
+      const deltas: number[] = [];
+      for (let i = 0; i < step; i += 1) deltas.push(clock.delta());
+      const raw = await page.evaluate(
+        ([handle, dts, all, nonFinite]) => {
+          const api = (
+            window as unknown as Record<
+              string,
+              Record<string, (...a: unknown[]) => unknown>
+            >
+          )[handle];
+          const rec = (
+            window as unknown as {
+              __cascadeRec: Record<string, (...a: unknown[]) => unknown>;
+            }
+          ).__cascadeRec;
+          const audio = (
+            window as unknown as { __cascadeAudio: { started(): number } }
+          ).__cascadeAudio;
+          const sounds: number[] = [];
+          const snapshots: unknown[] = [];
+          for (const dt of dts) {
+            const before = audio.started();
+            rec.begin();
+            api.advance(dt / 1000, 1);
+            rec.end(dt);
+            sounds.push(audio.started() - before);
+            if (all) snapshots.push(api.snapshot());
           }
-        ).__cascadeRec;
-        const audio = (
-          window as unknown as { __cascadeAudio: { started(): number } }
-        ).__cascadeAudio;
-        const sounds: number[] = [];
-        for (const dt of dts) {
-          const before = audio.started();
-          rec.begin();
-          api.advance(dt / 1000, 1);
-          rec.end(dt);
-          sounds.push(audio.started() - before);
-        }
-        return { snapshot: api.snapshot(), sounds };
-      },
-      [HANDLE, deltas] as const,
-    )) as { snapshot: CascadeSnapshot; sounds: number[] };
+          if (!all) snapshots.push(api.snapshot());
+          return JSON.stringify({ snapshots, sounds }, (_key, value: unknown) =>
+            typeof value === "number" && !Number.isFinite(value)
+              ? { [nonFinite]: String(value) }
+              : value,
+          );
+        },
+        [HANDLE, deltas, series, NON_FINITE_KEY] as const,
+      );
+      const result = parseCrossing<{
+        snapshots: CascadeSnapshot[];
+        sounds: number[];
+      }>(raw);
 
-    for (const [index, delta] of deltas.entries()) {
-      frameCount += 1;
-      timeMs += delta;
-      for (let n = 0; n < result.sounds[index]; n += 1) {
-        for (const sink of cueSinks)
-          sink.push({ frame: frameCount, t: timeMs });
+      for (const [index, delta] of deltas.entries()) {
+        frameCount += 1;
+        timeMs += delta;
+        for (let n = 0; n < result.sounds[index]; n += 1) {
+          for (const sink of cueSinks)
+            sink.push({ frame: frameCount, t: timeMs });
+        }
       }
+      if (series) collected.push(...result.snapshots);
+      else {
+        collected.length = 0;
+        collected.push(result.snapshots[0]);
+      }
+      left -= step;
     }
-    return result.snapshot;
+    return collected;
+  };
+
+  /** Run `frames` frames and read the state the last of them left. */
+  const drive = async (frames: number): Promise<CascadeSnapshot> => {
+    const [last] = await runFrames(frames, false);
+    return last ?? (await debug.snapshot());
   };
 
   /**
@@ -1093,21 +1223,35 @@ export async function createHarness(
       await drive(frames);
     },
 
+    sample: (frames) => runFrames(frames, true),
+
     async until(predicate, untilOptions = {}) {
       const maxFrames = untilOptions.maxFrames ?? framesFor(5);
-      const poll = Math.max(1, untilOptions.poll ?? 1);
+      const chunk = Math.max(1, untilOptions.chunk ?? 1);
 
       let snapshot = await this.snapshot();
-      if (predicate(snapshot)) return { hit: true, frames: 0, snapshot };
+      if (predicate(snapshot))
+        return { hit: true, frames: 0, at: frameCount, snapshot };
 
       let frames = 0;
       while (frames < maxFrames) {
-        const step = Math.min(poll, maxFrames - frames);
-        snapshot = await drive(step);
+        const step = Math.min(chunk, maxFrames - frames);
+        const opened = frameCount;
+        const series = await runFrames(step, true);
+        for (const [index, sampled] of series.entries()) {
+          if (predicate(sampled)) {
+            return {
+              hit: true,
+              frames: frames + index + 1,
+              at: opened + index + 1,
+              snapshot: sampled,
+            };
+          }
+        }
         frames += step;
-        if (predicate(snapshot)) return { hit: true, frames, snapshot };
+        snapshot = series[series.length - 1] ?? snapshot;
       }
-      return { hit: false, frames, snapshot };
+      return { hit: false, frames, at: frameCount, snapshot };
     },
 
     async skip(duration, hz = TICK_HZ) {

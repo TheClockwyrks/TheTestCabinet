@@ -60,7 +60,7 @@ it("sends a descending flyer back up off the floor", async () => {
   const bounce = await captureReplay(harness, "bounce", async () => {
     const rebound = await harness.until(
       (s) => (flyerById(s, id)?.vy ?? 0) < 0,
-      { maxFrames: SWEEP_FRAMES, poll: 1 },
+      { maxFrames: SWEEP_FRAMES },
     );
     await harness.advance(DEPARTURE_FRAMES);
     return rebound;

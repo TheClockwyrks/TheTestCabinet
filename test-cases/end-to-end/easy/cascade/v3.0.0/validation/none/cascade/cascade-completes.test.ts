@@ -67,7 +67,6 @@ it("launches all fifty-two cards, retires them all, and marks itself done", asyn
   const done = await captureReplay(harness, "cascade", async () => {
     const finished = await harness.until((s) => s.cascadeDone, {
       maxFrames: TAIL_FRAMES,
-      poll: 2,
     });
     await harness.advance(SETTLE_FRAMES);
     return finished;

@@ -119,17 +119,16 @@ export async function openCascade(
  * contact — the frame a bounce resolved on, the frame two flyers crossed —
  * needs the frame before it as well as the frame itself, and there is no other
  * way to have both.
+ *
+ * Every frame is still run and read one at a time; what {@link Harness.sample}
+ * spares the reading is a round trip into the page per frame, which is a cost
+ * the HOST decides and the build does not.
  */
 export async function frameSamples(
   h: Harness,
   frames: number,
 ): Promise<CascadeSnapshot[]> {
-  const seen: CascadeSnapshot[] = [];
-  for (let i = 0; i < frames; i += 1) {
-    await h.advance(1);
-    seen.push(await h.snapshot());
-  }
-  return seen;
+  return h.sample(frames);
 }
 
 /**
@@ -169,12 +168,16 @@ export interface LaunchReading {
  * keeps `launch-position`, `launch-vy` and `launch-takes-top-card` independent of
  * `launch-cycles-foundations`, which is the point that grades the order.
  *
- * The sweep is per frame, so `flyer` is the card as it stood on the frame it
+ * The reading is per frame, so `flyer` is the card as it stood on the frame it
  * launched — before it had taken any motion, which `specs/victory.md` is explicit
- * about ("A card launched in a frame takes no motion in that frame").
+ * about ("A card launched in a frame takes no motion in that frame"). The frames
+ * are DRIVEN in batches and READ one at a time ({@link Harness.sample}), so the
+ * reading is the frame-by-frame one it has always been while the cost of taking
+ * it no longer includes a round trip into the page per frame.
  *
  * It reads the NEXT `count` launches, counted from wherever the cascade already
- * stands, so a check may read a stretch, look at the table, and read on.
+ * stands, and leaves the cascade on the frame the last of them launched, so a
+ * check may read a stretch, look at the table, and read on.
  */
 export async function readLaunches(
   h: Harness,
@@ -184,60 +187,103 @@ export async function readLaunches(
   let before = await h.snapshot();
   const already = before.launched;
 
-  for (let step = 1; step <= count; step += 1) {
-    const ordinal = already + step;
-    const swept = await h.until((s) => s.launched >= ordinal, {
-      maxFrames: LAUNCH_SWEEP_FRAMES,
-      poll: 1,
-    });
-    if (!swept.hit) {
-      fail(
-        `launch ${ordinal} of the victory cascade within ${LAUNCH_SWEEP_FRAMES} frames of launch ${ordinal - 1} (specs/victory.md)`,
-        `the cascade had launched ${swept.snapshot.launched} card(s) and stopped`,
-      );
-    }
-    const after = swept.snapshot;
+  // Frames driven since the last launch was seen, against which the sweep's own
+  // bound is applied — the same per-launch allowance a launch-at-a-time sweep
+  // applied, kept here because the frames now arrive in batches.
+  let sinceLaunch = 0;
 
-    const emptied: number[] = [];
-    for (let index = 0; index < FOUNDATION_COUNT; index += 1) {
-      if (after.foundations[index].length < before.foundations[index].length) {
-        emptied.push(index);
+  while (readings.length < count) {
+    const wanted = count - readings.length;
+    // ONE FRAME PER CROSSING IS THE COST THE HOST DECIDES, so the frames are
+    // driven in batches — but never a batch that could carry MORE launches than
+    // are still wanted, because a launch driven past and not returned would be
+    // one the caller's next `readLaunches` could never count. A frame launches
+    // at most one card in any build the cadence rule admits, so a batch of
+    // `wanted` frames cannot overshoot; the batch is bounded again by what is
+    // left of this launch's own sweep allowance, so a build that stops launching
+    // still fails by assertion at the same frame it always did.
+    const step = Math.max(
+      1,
+      Math.min(wanted, LAUNCH_SWEEP_FRAMES - sinceLaunch),
+    );
+    const opened = h.frame();
+    const series = await h.sample(step);
+
+    for (const [index, after] of series.entries()) {
+      sinceLaunch += 1;
+      if (after.launched <= before.launched) continue;
+
+      // The frame launched at least one card. Each is read against the state the
+      // frame BEFORE it left, which is what makes "the pile that shrank" the
+      // pile that launched.
+      for (
+        let launched = before.launched;
+        launched < after.launched && readings.length < count;
+        launched += 1
+      ) {
+        const ordinal = launched + 1;
+        readings.push(
+          readLaunch(before, after, ordinal, opened + index + 1),
+        );
       }
-    }
-    if (emptied.length !== 1) {
-      fail(
-        "each launch to take its card from exactly one foundation (specs/victory.md)",
-        `launch ${ordinal} left ${emptied.length} foundation(s) shorter than before it`,
-      );
-    }
-    const foundation = emptied[0];
-    const took = topOf(before.foundations[foundation]);
-    if (took === undefined) {
-      fail(
-        `foundation ${foundation} to hold the card launch ${ordinal} took (specs/victory.md)`,
-        "it was already empty on the frame before the launch",
-      );
-    }
-    const flyer = lastFlyer(after);
-    if (flyer === undefined) {
-      fail(
-        "a launched card to be in flight (specs/victory.md)",
-        `nothing was in flight on the frame launch ${ordinal} was counted`,
-      );
+      before = after;
+      sinceLaunch = 0;
     }
 
-    readings.push({
-      ordinal,
-      frame: h.frame(),
-      flyer,
-      foundation,
-      took,
-      after,
-    });
-    before = after;
+    if (readings.length < count && sinceLaunch >= LAUNCH_SWEEP_FRAMES) {
+      const last = series[series.length - 1] ?? before;
+      fail(
+        `launch ${already + readings.length + 1} of the victory cascade within ${LAUNCH_SWEEP_FRAMES} frames of launch ${already + readings.length} (specs/victory.md)`,
+        `the cascade had launched ${last.launched} card(s) and stopped`,
+      );
+    }
+    before = series[series.length - 1] ?? before;
   }
 
   return readings;
+}
+
+/**
+ * One launch, read off the frame it landed on and the frame before it.
+ *
+ * Split out of {@link readLaunches} so the reading is stated once: which
+ * foundation shrank, what was on top of it, and what went into the air.
+ */
+function readLaunch(
+  before: CascadeSnapshot,
+  after: CascadeSnapshot,
+  ordinal: number,
+  frame: number,
+): LaunchReading {
+  const emptied: number[] = [];
+  for (let index = 0; index < FOUNDATION_COUNT; index += 1) {
+    if (after.foundations[index].length < before.foundations[index].length) {
+      emptied.push(index);
+    }
+  }
+  if (emptied.length !== 1) {
+    fail(
+      "each launch to take its card from exactly one foundation (specs/victory.md)",
+      `launch ${ordinal} left ${emptied.length} foundation(s) shorter than before it`,
+    );
+  }
+  const foundation = emptied[0];
+  const took = topOf(before.foundations[foundation]);
+  if (took === undefined) {
+    fail(
+      `foundation ${foundation} to hold the card launch ${ordinal} took (specs/victory.md)`,
+      "it was already empty on the frame before the launch",
+    );
+  }
+  const flyer = lastFlyer(after);
+  if (flyer === undefined) {
+    fail(
+      "a launched card to be in flight (specs/victory.md)",
+      `nothing was in flight on the frame launch ${ordinal} was counted`,
+    );
+  }
+
+  return { ordinal, frame, flyer, foundation, took, after };
 }
 
 /**

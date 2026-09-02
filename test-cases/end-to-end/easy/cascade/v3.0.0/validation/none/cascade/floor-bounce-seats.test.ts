@@ -60,7 +60,6 @@ it("puts a bounced card exactly on FLOOR_Y", async () => {
 
   const bounce = await harness.until((s) => (flyerById(s, id)?.vy ?? 0) < 0, {
     maxFrames: SWEEP_FRAMES,
-    poll: 1,
   });
   await captureStill(harness, "seated");
 

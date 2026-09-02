@@ -58,7 +58,6 @@ it("carries a flyer's vx through the floor bounce untouched", async () => {
 
   const bounce = await harness.until((s) => (flyerById(s, id)?.vy ?? 0) < 0, {
     maxFrames: SWEEP_FRAMES,
-    poll: 1,
   });
   await captureStill(harness, "bounce");
 

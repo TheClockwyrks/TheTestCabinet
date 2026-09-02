@@ -59,7 +59,6 @@ it("takes a flyer out of the flight once it is wholly past the left edge", async
   const gone = await captureReplay(harness, "retire", () =>
     harness.until((s) => flyerById(s, id) === undefined, {
       maxFrames: SWEEP_FRAMES,
-      poll: 1,
     }),
   );
 
