@@ -82,9 +82,9 @@ import {
   type Viewport,
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
-import { BINDINGS, LAYOUT, STAGE_H, STAGE_W, TICK_HZ } from "../src/constants";
 import { BACKGROUND, game as build, type FathomState } from "../src/game";
 import { assertTruthy, fail } from "./assert";
+import { BINDINGS, LAYOUT, STAGE_H, STAGE_W, TICK_HZ } from "./constants";
 import { tileCenter, type Dir, type Tile } from "./maze";
 import { MOTION_EPS } from "./scene";
 import { READINGS, type FathomDebugApi, type FathomSnapshot } from "./surface";

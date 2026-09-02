@@ -68,9 +68,9 @@ import {
   type Viewport,
   type World,
 } from "@test-cabinet/structured-2d";
-import { BINDINGS, LAYOUT, STAGE_H, STAGE_W, TICK_HZ } from "../src/constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { assertTruthy, fail } from "./assert";
+import { BINDINGS, LAYOUT, STAGE_H, STAGE_W, TICK_HZ } from "./constants";
 import type { FixtureHost } from "./fixtures";
 import { tileCenter, type Dir, type GridFrame, type Tile } from "./maze";
 import type { SceneHost } from "./scene";
@@ -115,12 +115,12 @@ const game = build as unknown as GameDefinition<FathomSurface>;
 /**
  * One frame of the default clock, in milliseconds.
  *
- * `TICK_HZ` is the game's own, from the seeded `src/constants.ts`: unlike a case
- * that leaves its timestep to the frame, specs/movement.md fixes Fathom's core at
- * `120` steps a second and integrates every rate in whole ticks of it. Running the
- * clock at exactly that rate makes one advanced frame one simulation tick, so a
- * duration is a whole number of frames and a tolerance stated in ticks means the
- * same thing on every machine.
+ * `TICK_HZ` is the case's own, from `./constants` and never off the build:
+ * unlike a case that leaves its timestep to the frame, specs/movement.md fixes
+ * Fathom's core at `120` steps a second and integrates every rate in whole ticks
+ * of it. Running the clock at exactly that rate makes one advanced frame one
+ * simulation tick, so a duration is a whole number of frames and a tolerance
+ * stated in ticks means the same thing on every machine.
  */
 export const TICK_MS = 1000 / TICK_HZ;
 
@@ -159,8 +159,8 @@ export function ticksFor(duration: number): number {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The first key each movement action is bound to, from the seeded
- * `src/constants.ts`.
+ * The first key each movement action is bound to, from the case's own
+ * `BINDINGS` in `./constants`.
  *
  * A check about ONE binding names that binding itself (`"KeyW"`,
  * `"ArrowLeft"`); this is for the scenarios that need the forager traveling in a
@@ -346,7 +346,7 @@ class KeyEvent extends Event {
 /**
  * A logical point's device pixel, through the world's camera and the engine's
  * fit. The camera opens at the defaults — world and logical coordinates coincide,
- * which is the space every figure in `src/constants.ts` is stated in — so the
+ * which is the space every figure in `./constants` is stated in — so the
  * projection is the identity unless the build moved it, and mapping through it
  * keeps the reading honest either way.
  */
