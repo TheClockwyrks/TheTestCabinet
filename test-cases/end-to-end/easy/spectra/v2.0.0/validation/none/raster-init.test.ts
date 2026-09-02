@@ -28,9 +28,9 @@
 //
 //   npx vitest run --config validation/vitest.config.ts
 //
-// It reaches the browser `globalSetup.ts` started, but not the build: every page
-// it opens is a blank document with a canvas of its own, so nothing here depends
-// on what a run produced.
+// It uses the browser `globalSetup.ts` started and nothing else the project
+// stands up: every page it opens is a blank document with a canvas of its own, so
+// nothing here depends on what a run produced.
 
 import { afterAll, beforeAll, expect, inject, it } from "vitest";
 import { readFileSync } from "node:fs";

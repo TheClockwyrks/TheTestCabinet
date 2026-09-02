@@ -82,6 +82,13 @@ function draw(
  * A scene that the wrapper is expected to clear and a scene it is expected to
  * refuse are proved the same way, because the property being proved is the same
  * one: the picture is what the build drew.
+ *
+ * The first eighteen are the table `validation/none/raster-init.test.ts` runs
+ * against the browser implementation, scene for scene, so that one rule is held
+ * to one set of cases on all three engines. The eighteenth is where the two
+ * implementations part: this wrapper refuses to clear under an open `save` and
+ * the browser one clears anyway, and both tables prove the frame comes out the
+ * same either way.
  */
 const scenes: Record<string, (ctx: SKRSContext2D, frame: number) => void> = {
   "an opaque background fill": (ctx, frame) => {
@@ -207,6 +214,67 @@ const scenes: Record<string, (ctx: SKRSContext2D, frame: number) => void> = {
     ctx.fill();
     ctx.filter = "none";
     sprites(ctx, frame, 3);
+  },
+
+  // ---- The shapes a proof must refuse, or prove exactly ---------------------
+
+  "a clip opened and then dropped by a reset": (ctx, frame) => {
+    ctx.beginPath();
+    ctx.rect(0, 0, 100, 100);
+    ctx.clip();
+    ctx.reset();
+    ctx.fillStyle = "#05070f";
+    ctx.fillRect(0, 0, W, H);
+    sprites(ctx, frame, 6);
+  },
+  "a background fill under the copy operator": (ctx, frame) => {
+    ctx.globalCompositeOperation = "copy";
+    ctx.fillStyle = "#05070f";
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "source-over";
+    sprites(ctx, frame, 6);
+  },
+  "a background fill given as a negative rectangle": (ctx, frame) => {
+    ctx.fillStyle = "#05070f";
+    ctx.fillRect(W, H, -W, -H);
+    sprites(ctx, frame, 6);
+  },
+  "a background fill under a half-turn": (ctx, frame) => {
+    ctx.setTransform(-1, 0, 0, -1, W, H);
+    ctx.fillStyle = "#05070f";
+    ctx.fillRect(0, 0, W, H);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    sprites(ctx, frame, 6);
+  },
+  "a background fill under a rotation": (ctx, frame) => {
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(Math.PI / 6);
+    ctx.fillStyle = "#05070f";
+    ctx.fillRect(-W, -H, W * 2, H * 2);
+    ctx.restore();
+    sprites(ctx, frame, 6);
+  },
+  "a background fill casting a shadow": (ctx, frame) => {
+    ctx.shadowColor = "#ff0000";
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = "#05070f";
+    ctx.fillRect(0, 0, W, H);
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    sprites(ctx, frame, 6);
+  },
+  "a canvas resized after a clip was taken": (ctx, frame) => {
+    if (frame === 0) {
+      ctx.beginPath();
+      ctx.rect(0, 0, 80, 80);
+      ctx.clip();
+      ctx.canvas.width = W - 40;
+      ctx.canvas.height = H - 20;
+    }
+    ctx.fillStyle = "#05070f";
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    sprites(ctx, frame, 6);
   },
 };
 
