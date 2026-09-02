@@ -31,7 +31,7 @@
 // then taken — rather than half a minute of the same.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DRIFTER_INTERVAL, DRIFTER_SPEED, TICK_HZ } from "../../src/constants";
+import { DRIFTER_INTERVAL, DRIFTER_SPEED, TICK_HZ } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

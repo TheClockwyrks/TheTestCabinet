@@ -24,7 +24,7 @@
 // own, and the only thing removed is the gamble.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_DRIFTER } from "../../src/constants";
+import { SCORE_DRIFTER } from "../constants";
 import { assertEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
