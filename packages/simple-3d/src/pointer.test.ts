@@ -444,9 +444,20 @@ describe("PointerInput", () => {
       expect(input.snapshot()).toMatchObject({ x: 5, y: 5, down: true });
     });
 
-    it("tracks an id-less non-primary pointer apart from the primary one", () => {
+    it("reads an absent pointerId as zero however the event flags itself", () => {
+      // A browser always supplies the field, so an event without one was dispatched
+      // by hand and has said nothing about which pointer it is. `isPrimary` is not
+      // an id, and reading it as one would invent a contact the dispatcher never
+      // named; a suite driving two contacts gives each a `pointerId`.
       pointer(target, "pointerdown", 5, 5);
       pointer(target, "pointerdown", 9, 9, { isPrimary: false });
+
+      expect(input.contacts().map((c) => c.id)).toEqual([0]);
+    });
+
+    it("keeps two hand-dispatched contacts apart when each names its pointerId", () => {
+      pointer(target, "pointerdown", 5, 5, { pointerId: 0 });
+      pointer(target, "pointerdown", 9, 9, { pointerId: 1, isPrimary: false });
 
       expect(input.contacts().map((c) => c.id)).toEqual([0, 1]);
     });

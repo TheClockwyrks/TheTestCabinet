@@ -541,15 +541,17 @@ export class PointerInput {
 /**
  * The pointer's id.
  *
- * An event carrying no `pointerId` is read as `0` when it is primary and `1`
- * when it is not, so a hand-dispatched second pointer is tracked as a second
- * pointer rather than folded into the first. A browser always supplies the
- * field, and a validator dispatching plain events rarely does.
+ * An event carrying no `pointerId` is read as `0`, whatever else it says about
+ * itself: a browser always supplies the field, so an event without one was
+ * dispatched by hand, and the id is the one thing a hand-dispatched event has no
+ * way of implying. Reading `isPrimary` as a second id instead would invent a
+ * pointer the dispatcher never named, and a suite driving two contacts says which
+ * two by giving each a `pointerId` — which is what the field is for.
  */
 function pointerId(event: Event): number {
   const candidate = event as Partial<PointerEvent>;
   if (typeof candidate.pointerId === "number") return candidate.pointerId;
-  return candidate.isPrimary === false ? 1 : 0;
+  return 0;
 }
 
 /** The device `pointerType` names, defaulting to a mouse. */
