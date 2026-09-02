@@ -20,6 +20,16 @@
 // hold, so a build that restores none of them, or restores only the ones it
 // happens to rebuild, reads as the field it left behind.
 //
+// THE DISCHARGE IS LIT BEFORE THE RESET, TOO. "It empties … the live discharge"
+// is one of the fields on that list, and a reset read off a game with no wave
+// running decides nothing about it: the meter is filled and the key held until
+// `discharge.active` reads true, and the check says so as a precondition before
+// it asks what the reset left. The wave is lit BEFORE the figures below are
+// posed, because lighting it costs frames and spends the meter, and no frame runs
+// between the last pose and the reset — so the radius the wave reached in those
+// few frames is a fraction of `DISCHARGE_RADIUS` and it takes nothing off the
+// field this point needs standing.
+//
 // MUTE IS THE ONE THING RESET MAY NOT TOUCH: "`muted` is left exactly as it
 // stands, because muting is a player preference the runtime owns." So it is
 // turned on through its real binding — there is no `setMuted`
@@ -34,10 +44,11 @@
 // randomness, which is `instrumentation/reset-seeds-randomness`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, START_LIVES } from "../../src/constants";
+import { BINDINGS, RESONANCE_MAX, START_LIVES } from "../../src/constants";
 import {
   assertCloseTo,
   assertEqual,
+  assertGreaterThan,
   assertLength,
   assertTrue,
 } from "../assert";
@@ -48,6 +59,7 @@ import {
   lastDrone,
   poseDrone,
   startPosed,
+  ticksFor,
   type Harness,
 } from "../harness";
 import { poseBursts } from "./bursts";
@@ -87,6 +99,16 @@ const ENEMY_BULLET_Y = 160;
 
 /** How many bursts stand on the field before the reset. */
 const BURSTS = 2;
+
+/**
+ * Frames the discharge is given to go live after the key goes down.
+ *
+ * A tenth of a second. specs/resonance.md fires the wave on the press with the
+ * meter full, so a conformant build has it running on the first frame; the window
+ * is the room a build gets to raise it on the frame after, and it is short enough
+ * that the wave's radius when the reset lands is a fraction of its full reach.
+ */
+const RELEASE_TICKS = ticksFor(0.1);
 
 /** Where the probe drone that reads the id counter is placed. */
 const PROBE_X = 640;
@@ -133,6 +155,24 @@ it("restores every declared field to its title value, and leaves mute alone", as
   poseDrone(h, "prism", PRISM_X, DRONE_Y, { shell: false });
   h.debug.addPlayerBullet(BULLET_X, PLAYER_BULLET_Y, "cyan");
   h.debug.addEnemyBullet(BULLET_X, ENEMY_BULLET_Y, "magenta");
+
+  // The live wave, lit before the figures below because it costs frames and
+  // spends the meter. Nothing runs between the last pose and the reset, so the
+  // radius it reached here is what stands when the reset lands.
+  h.debug.setResonance(RESONANCE_MAX);
+  h.hold(BINDINGS.discharge[0]);
+  const fired = await h.until((state) => state.discharge.active, {
+    maxFrames: RELEASE_TICKS,
+  });
+  h.release(BINDINGS.discharge[0]);
+  assertTrue(
+    fired.hit,
+    `a discharge wave live within ${String(RELEASE_TICKS)} frames of the ` +
+      `${String(BINDINGS.discharge[0])} key going down with the meter at ` +
+      `RESONANCE_MAX (${String(RESONANCE_MAX)}) (specs/resonance.md) — this ` +
+      "point cannot hold reset to emptying a wave that never ran",
+  );
+
   h.debug.setScore(MESSY_SCORE);
   h.debug.setLives(MESSY_LIVES);
   h.debug.setStage(MESSY_STAGE);
@@ -153,6 +193,22 @@ it("restores every declared field to its title value, and leaves mute alone", as
   const messy = h.snapshot();
   assertLength(messy.bursts, BURSTS, "the bursts standing before the reset");
   assertEqual(messy.bursts[0]?.id, burstIds[0], "the first burst posed");
+  assertGreaterThan(
+    messy.drones.length,
+    0,
+    "the drones standing before the reset, which it empties",
+  );
+  assertGreaterThan(
+    messy.bullets.length,
+    0,
+    "the bullets in flight before the reset, which it empties",
+  );
+  assertEqual(
+    messy.discharge.active,
+    true,
+    "the wave still live at the moment of the reset, which it empties " +
+      "(specs/resonance.md, specs/instrumentation.md)",
+  );
   assertTrue(
     messy.simTime > 0,
     "simulation time accumulated while the run was posed, so the reset has " +
