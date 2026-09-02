@@ -9,8 +9,14 @@ how the game consumes it.
 Production is a one-time step. The tools are development tools of this
 machine; the committed files are the assets, and the build bundles them, so
 `npm ci` and `npm run build` invoke no tool and the built site fetches nothing
-from outside its own `dist/`. Commit the produced files under `assets/` in a
-layout of your choosing.
+from outside its own `dist/`.
+
+Commit the produced files under `assets/`, at these paths: each model as
+`assets/models/<model>.glb`, under the model name the table below gives it; each
+cue's sound as `assets/audio/<cue>.wav`, under the cue name `specs/ui.md` gives
+it; and the music bed as `assets/audio/music.wav` with `assets/audio/music.mid`
+beside it. The name a file carries is what says which subject or which cue it
+is.
 
 ## The tools
 
@@ -35,7 +41,8 @@ you play.
 
 Sculpt each model with `voxel` at `VOXELS_PER_UNIT` (`8`): eight voxels to one
 world unit, so the game draws every model at a scale of `1 / VOXELS_PER_UNIT`.
-Produce these:
+Produce these, each committed as `assets/models/<model>.glb` under the name in
+the first column:
 
 | Model | Stands for | Sized about |
 | --- | --- | --- |
@@ -115,8 +122,8 @@ The engine's own documentation is the authoritative API.
 
 ## The sound
 
-Produce one `.wav` per cue in `specs/ui.md`, with `sfx-synth` and
-`sfx-sample` as suits each:
+Produce one `.wav` per cue in `specs/ui.md`, committed as
+`assets/audio/<cue>.wav`, with `sfx-synth` and `sfx-sample` as suits each:
 
 | Cue | Tool | What it is |
 | --- | --- | --- |
@@ -133,8 +140,8 @@ Produce one `.wav` per cue in `specs/ui.md`, with `sfx-synth` and
 | `motor` | `sfx-synth` or `sfx-sample` | The drive turning, authored to loop cleanly. |
 
 Produce the music bed with `music`: a steady, unhurried machine-yard piece
-under the title and select screens, its `.mid` committed beside the `.wav` the
-game plays.
+under the title and select screens, committed as `assets/audio/music.wav` with
+the `.mid` it emits beside it as `assets/audio/music.mid`.
 
 Sound reads the yard's character, so hold it to the same bar as the models:
 cues that are felt rather than noticed, a `collapse` with real weight, and a
