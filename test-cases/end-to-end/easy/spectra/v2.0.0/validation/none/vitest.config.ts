@@ -47,11 +47,14 @@ export default defineConfig({
     // model's build under it.
     maxWorkers: 4,
     minWorkers: 1,
-    // Every scenario is posed rather than played into, so a suite is a few
-    // hundred crossings into the page rather than thousands of real-time frames;
-    // the ceiling is for the handful that run a stage's whole entrance, and it
-    // still bounds a hung one.
-    testTimeout: 90_000,
-    hookTimeout: 90_000,
+    // Every scenario is posed rather than played into, so a suite is a few dozen
+    // crossings into the page rather than thousands of real-time frames. The
+    // ceiling is not a figure any check is sized against: what it bounds is a
+    // suite that never returns. It stands far above the longest reading taken
+    // even on a host running a hundred other jobs, because a check cut short by
+    // the runner reports a build's failure that never happened, and how busy the
+    // machine was is not a property of the build.
+    testTimeout: 240_000,
+    hookTimeout: 240_000,
   },
 });
