@@ -42,7 +42,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SHIP_MAX } from "../../src/constants";
-import { assertLessThanOrEqual } from "../assert";
+import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import { speedOf } from "../geometry";
 import {
   captureReplay,
@@ -56,8 +56,17 @@ import {
 /** The two seconds of held thrust the item names. */
 const BURN_TICKS = ticksFor(2);
 
-/** How often the speed is read over that burn: every twentieth of a second. */
-const SAMPLE_TICKS = 6;
+/**
+ * How often the speed is read over that burn: every tick.
+ *
+ * The item's word is NEVER, and a reading taken every twentieth of a second can
+ * only say "not at the forty moments it looked". A build with no clamp at all is
+ * caught by any sample — it climbs monotonically past the bound from the first
+ * one — but a build that clamps on some ticks and not others returns inside the
+ * cap between reads, and only a reading of every tick the snapshot can report
+ * excludes it.
+ */
+const SAMPLE_TICKS = 1;
 
 /** The one unit per second of headroom the item allows over `SHIP_MAX`. */
 const CAP_TOLERANCE = 1;
@@ -84,23 +93,47 @@ it("never lets the speed pass SHIP_MAX under a burn along the motion", async () 
   h.debug.setShipAngle(FACE_EAST);
   h.debug.setShipVelocity(SHIP_MAX, 0);
 
+  const posed = h.snapshot();
+  assertCloseTo(
+    speedOf(posed.ship),
+    SHIP_MAX,
+    1,
+    "the ship posed at SHIP_MAX before the burn, so the burn presses on the " +
+      "cap from its first tick (specs/instrumentation.md: setShipVelocity)",
+  );
+
   const thrust = keyFor("up");
-  const peak = await captureReplay(h, "capped", async () => {
+  const burn = await captureReplay(h, "capped", async () => {
     let highest = speedOf(h.snapshot().ship);
+    let thrusting = false;
     h.hold(thrust);
     try {
       for (let done = 0; done < BURN_TICKS; done += SAMPLE_TICKS) {
         await h.advance(Math.min(SAMPLE_TICKS, BURN_TICKS - done));
-        highest = Math.max(highest, speedOf(h.snapshot().ship));
+        const ship = h.snapshot().ship;
+        highest = Math.max(highest, speedOf(ship));
+        thrusting = ship.thrusting;
       }
     } finally {
       h.release(thrust);
     }
-    return highest;
+    return { highest, thrusting };
   });
 
+  // THE BURN WAS REAL. Without this the item passes a build that never answers
+  // the thrust key at all: a ship posed at SHIP_MAX and left to coast only ever
+  // reads at or below the cap, so the bound below is met by doing nothing.
+  assertEqual(
+    burn.thrusting,
+    true,
+    "the ship still reporting thrust at the end of the burn, with the key held " +
+      "throughout — thrust is read as a hold (specs/controls.md), and a build " +
+      "that answers none of it coasts under the cap and clears the bound below " +
+      "without ever pressing on it",
+  );
+
   assertLessThanOrEqual(
-    peak,
+    burn.highest,
     SHIP_MAX + CAP_TOLERANCE,
     "the highest speed two seconds of thrust from the cap, along the motion, " +
       "ever showed — thrust and carried momentum reach SHIP_MAX but never pass " +

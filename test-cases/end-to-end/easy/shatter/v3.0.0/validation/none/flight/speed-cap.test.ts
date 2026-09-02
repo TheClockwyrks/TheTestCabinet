@@ -32,7 +32,7 @@
 // `startPlaying` has emptied the field and shut both world gates.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThanOrEqual } from "../assert";
+import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import { KEYS_THRUST, SHIP_MAX } from "../constants";
 import { magnitude } from "../geometry";
 import {
@@ -47,8 +47,17 @@ import {
 /** The two seconds of held thrust the item names. */
 const BURN_TICKS = ticksFor(2);
 
-/** How often the speed is read over that burn: every twentieth of a second. */
-const SAMPLE_TICKS = 6;
+/**
+ * How often the speed is read over that burn: every tick.
+ *
+ * The item's word is NEVER, and a reading taken every twentieth of a second can
+ * only say "not at the forty moments it looked". A build with no clamp at all is
+ * caught by any sample — it climbs monotonically past the bound from the first
+ * one — but a build that clamps on some ticks and not others returns inside the
+ * cap between reads, and only a reading of every tick the snapshot can report
+ * excludes it.
+ */
+const SAMPLE_TICKS = 1;
 
 /** The one unit per second of headroom the item allows over `SHIP_MAX`. */
 const CAP_TOLERANCE = 1;
@@ -75,23 +84,46 @@ it("never lets the speed pass SHIP_MAX under a burn along the motion", async () 
   await harness.debug.setShipAngle(FACE_EAST);
   await harness.debug.setShipVelocity(SHIP_MAX, 0);
 
-  const peak = await captureReplay(harness, "capped", async () => {
+  const posed = await harness.snapshot();
+  assertCloseTo(
+    magnitude(shipVelocity(posed)),
+    SHIP_MAX,
+    1,
+    "the ship posed at SHIP_MAX before the burn, so the burn presses on the " +
+      "cap from its first tick (specs/instrumentation.md: setShipVelocity)",
+  );
+
+  const burn = await captureReplay(harness, "capped", async () => {
     let highest = magnitude(shipVelocity(await harness.snapshot()));
+    let thrusting = false;
     await harness.hold(KEYS_THRUST[0]);
     try {
       for (let run = 0; run < BURN_TICKS; run += SAMPLE_TICKS) {
         await harness.advance(Math.min(SAMPLE_TICKS, BURN_TICKS - run));
-        const speed = magnitude(shipVelocity(await harness.snapshot()));
-        highest = Math.max(highest, speed);
+        const snapshot = await harness.snapshot();
+        highest = Math.max(highest, magnitude(shipVelocity(snapshot)));
+        thrusting = snapshot.ship.thrusting;
       }
     } finally {
       await harness.release(KEYS_THRUST[0]);
     }
-    return highest;
+    return { highest, thrusting };
   });
 
+  // THE BURN WAS REAL. Without this the item passes a build that never answers
+  // the thrust key at all: a ship posed at SHIP_MAX and left to coast only ever
+  // reads at or below the cap, so the bound below is met by doing nothing.
+  assertEqual(
+    burn.thrusting,
+    true,
+    "the ship still reporting thrust at the end of the burn, with the key held " +
+      "throughout — thrust is read as a hold (specs/controls.md), and a build " +
+      "that answers none of it coasts under the cap and clears the bound below " +
+      "without ever pressing on it",
+  );
+
   assertLessThanOrEqual(
-    peak,
+    burn.highest,
     SHIP_MAX + CAP_TOLERANCE,
     "the highest speed two seconds of thrust from the cap ever showed",
   );
