@@ -449,6 +449,35 @@ describe("arming and disarming", () => {
     expect(r.codecs.encoders).toHaveLength(2);
   });
 
+  it("turns away the frame it was armed in, and takes every frame past it", async () => {
+    // What an engine passes is the frame counter as it stood at the arming, so a
+    // recorder armed part-way through frame two is handed `2` and the recording
+    // opens at frame three.
+    const r = rig();
+    r.recorder.start(2);
+
+    r.recorder.capture(frameAt(2, 32));
+    r.recorder.capture(frameAt(3, 48));
+    r.recorder.capture(frameAt(4, 64));
+
+    const recording = await r.recorder.stop();
+    expect(recording.frames.map((frame) => frame.count)).toEqual([3, 4]);
+    // The turned-away frame reached neither the encoder nor the first keyframe.
+    expect(r.codecs.frames).toHaveLength(2);
+    expect(r.encoder().encoded[0]?.options?.keyFrame).toBe(true);
+  });
+
+  it("takes every frame when nothing was in flight at the arming", () => {
+    // The default boundary, which is what a caller driving the recorder itself
+    // between frames gets: no frame counter is below one, so none is turned away.
+    const r = rig();
+    r.recorder.start();
+
+    r.run(3);
+
+    expect(r.codecs.frames).toHaveLength(3);
+  });
+
   it("costs nothing per frame while idle", () => {
     const r = rig();
 

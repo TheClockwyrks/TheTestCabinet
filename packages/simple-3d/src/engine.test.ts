@@ -2290,6 +2290,44 @@ describe("recording", () => {
     expect(recording.frames.map((frame) => frame.count)).toEqual([6, 7]);
   });
 
+  it("begins at the next frame when the game arms itself from inside update", async () => {
+    // The engine captures near the end of a frame, so a game that arms the recorder
+    // from that same frame's `update` has been watched for only the tail of it. The
+    // recording holds whole frames, and this one begins at frame three.
+    let engine: Engine<TestState, unknown> | null = null;
+    const game = testGame({
+      update: (state) => {
+        if (state.updates === 2) engine?.startRecording();
+        return state;
+      },
+    });
+    const rig = recordingRig({ game });
+    engine = rig.engine;
+    await rig.engine.initialize();
+    await rig.engine.advance(4);
+    const recording = await rig.engine.stopRecording();
+
+    expect(recording.frames.map((frame) => frame.count)).toEqual([3, 4]);
+  });
+
+  it("begins at the next frame when the game arms itself from inside render", async () => {
+    // `render` runs later still — the composed picture is taken a few statements
+    // after the game returns from it — so the boundary has to hold from here too.
+    let engine: Engine<TestState, unknown> | null = null;
+    const game = testGame({
+      render: (state) => {
+        if (state.updates === 1) engine?.startRecording();
+      },
+    });
+    const rig = recordingRig({ game });
+    engine = rig.engine;
+    await rig.engine.initialize();
+    await rig.engine.advance(3);
+    const recording = await rig.engine.stopRecording();
+
+    expect(recording.frames.map((frame) => frame.count)).toEqual([2, 3]);
+  });
+
   it("closes every VideoFrame it opened", async () => {
     const rig = recordingRig();
     await rig.engine.initialize();

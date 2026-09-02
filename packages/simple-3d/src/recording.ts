@@ -490,6 +490,13 @@ interface Session {
   /** The frame size every frame of this recording is encoded at. */
   readonly width: number;
   readonly height: number;
+  /**
+   * The frame counter the recorder was armed at, past which capture begins.
+   *
+   * A frame whose `count` is not greater than this was already in progress when the
+   * arming happened, and it is turned away: see {@link FrameRecorder.start}.
+   */
+  readonly armedAfterFrame: number;
   /** The frames captured so far, in order. */
   readonly frames: RecordedFrame[];
   /** The encoded frames the encoder has emitted so far, in order. */
@@ -537,10 +544,17 @@ export class FrameRecorder {
    *
    * The size is taken here and held for the recording's life, because a
    * `VideoEncoder` is configured once and every frame it is given must match — see
-   * decision 3 in this module's header. Capture itself begins at the caller's next
-   * `capture`, which for an engine is the next whole frame.
+   * decision 3 in this module's header.
+   *
+   * `armedAfterFrame` is where the recording's first frame is bounded away from the
+   * frame the arming happened in. The engine passes its current frame counter, and
+   * {@link capture} turns away any frame not past it: a game that arms the recorder
+   * from inside its own `update` or `render` is arming part-way through a frame the
+   * recorder has only half a picture of, and the recording begins at the next whole
+   * frame instead. A caller driving the recorder directly, with no frame in flight,
+   * leaves it at the default and every `capture` from here on is taken.
    */
-  start(): void {
+  start(armedAfterFrame = 0): void {
     if (this.session !== null) {
       throw new Error(
         "engine.startRecording() was called while already recording: call engine.stopRecording() first",
@@ -616,6 +630,7 @@ export class FrameRecorder {
       context,
       width,
       height,
+      armedAfterFrame,
       frames,
       chunks,
       failure,
@@ -631,6 +646,13 @@ export class FrameRecorder {
    * drawn the screen layer, and before the diagnostics overlay draws — which is what
    * keeps the overlay out of every recording.
    *
+   * The frame the recorder was armed in is turned away. The engine's `capture` runs
+   * near the end of the frame, so a `startRecording` reached from inside that same
+   * frame's `update` or `render` would otherwise put a frame the recorder watched
+   * only the tail of at the head of the recording — and two recordings of one
+   * scenario, one armed between frames and one armed from inside the game, would
+   * disagree about which frame they start on.
+   *
    * The stage canvas is read back through `drawImage` in the same task the scene was
    * rendered in, which is the only time a WebGL drawing buffer is guaranteed to
    * still hold the picture: the browser clears it when it composites, not when the
@@ -639,6 +661,10 @@ export class FrameRecorder {
   capture(frame: FrameInfo): void {
     const session = this.session;
     if (session === null) return;
+    // Before every other guard, because a frame the arming boundary turns away is
+    // not a frame this recording has: it must not fail it, count against its bound,
+    // or take its first keyframe.
+    if (frame.count <= session.armedAfterFrame) return;
     // A recording that has already failed encodes nothing more. The frames it holds
     // are whole, and `stop` is where the caller hears why there are no more of them.
     if (session.failure.error !== null) return;

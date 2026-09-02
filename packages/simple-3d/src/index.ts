@@ -773,14 +773,18 @@ export function createEngine<S, D = unknown>(
      *
      * Capture begins at the next frame rather than part-way through the current
      * one, because the recorder composes a frame from two canvases and a frame
-     * armed part-way through has only half of one to compose.
+     * armed part-way through has only half of one to compose. The loop's current
+     * frame counter is what fixes that boundary: reached from between frames it is
+     * the frame that just finished, and reached from inside the game's `update` or
+     * `render` it is the frame in flight — either way the recording begins at the
+     * first frame past it.
      *
      * The size the recording is encoded at is fixed here, and the unbalanced-call
      * and no-WebCodecs refusals are the recorder's own, so the invariant holds
      * however the recorder is driven.
      */
     startRecording(): void {
-      recorder.start();
+      recorder.start(loop.info().count);
     },
 
     /**
