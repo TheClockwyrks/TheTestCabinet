@@ -40,7 +40,9 @@ import {
 } from "../constants";
 import { wrappedDistance, type Vec } from "../geometry";
 import {
+  HANDLE,
   destroyRock,
+  failSurface,
   poseRock,
   shootFieldDown,
   startPlaying,
@@ -246,17 +248,78 @@ export const COARSE_FLOOR = 2 * COARSE_POLL * TICK_DT;
 /**
  * Run from a cleared wave to the first tick its rocks are on the field, and report
  * where the sweep stopped.
+ *
+ * THE SWEEP RUNS INSIDE THE PAGE, and it is the same sweep: the build's own
+ * `advance`, then the build's own `snapshot`, coarse strides first and then a tick
+ * at a time, with the phases and the ceiling exactly as described above. Every wave
+ * this project clears runs one of these, and the two speed items run fifty apiece;
+ * sampled from outside, the arrival costs forty round trips into the page per wave
+ * and the item's verdict becomes a fact about how loaded the host was. Nothing is
+ * simulated here, and no tick is fabricated: what is saved is the round trip.
  */
 export async function waveArrival(h: Harness): Promise<UntilResult> {
-  await h.skipUntil(
-    (snapshot) =>
-      snapshot.rocks.length > 0 || snapshot.waveBanner <= COARSE_FLOOR,
-    { maxTicks: ARRIVAL_TICKS, poll: COARSE_POLL },
-  );
-  return h.skipUntil((snapshot) => snapshot.rocks.length > 0, {
-    maxTicks: ARRIVAL_TICKS,
-    poll: 1,
-  });
+  if (h.surfaceFault !== null) failSurface(h.surfaceFault);
+  const traced = (await h.page.evaluate(
+    ([handle, spec]) => {
+      const api = (window as unknown as Record<string, unknown>)[handle] as
+        | {
+            advance(n: number): void;
+            snapshot(): { rocks: unknown[]; waveBanner: number };
+          }
+        | undefined;
+      if (
+        api === undefined ||
+        typeof api.advance !== "function" ||
+        typeof api.snapshot !== "function"
+      ) {
+        return { fault: "advance and snapshot on the debug surface" };
+      }
+      try {
+        const arrived = (snapshot: { rocks: unknown[] }): boolean =>
+          snapshot.rocks.length > 0;
+        let snapshot = api.snapshot();
+        // The coarse phase: strides until a rock is up or the build's own banner
+        // clock is inside two strides of zero.
+        let coarse = 0;
+        while (
+          !arrived(snapshot) &&
+          snapshot.waveBanner > spec.coarseFloor &&
+          coarse < spec.maxTicks
+        ) {
+          const stride = Math.min(spec.coarsePoll, spec.maxTicks - coarse);
+          api.advance(stride);
+          coarse += stride;
+          snapshot = api.snapshot();
+        }
+        // The fine phase: a tick at a time, so the arrival is read on the tick it
+        // happens rather than up to a stride after it.
+        let ticks = 0;
+        while (!arrived(snapshot) && ticks < spec.maxTicks) {
+          api.advance(1);
+          ticks += 1;
+          snapshot = api.snapshot();
+        }
+        return { read: { hit: arrived(snapshot), ticks, snapshot } };
+      } catch (error) {
+        return { fault: String(error) };
+      }
+    },
+    [
+      HANDLE,
+      {
+        maxTicks: ARRIVAL_TICKS,
+        coarsePoll: COARSE_POLL,
+        coarseFloor: COARSE_FLOOR,
+      },
+    ] as [
+      string,
+      { maxTicks: number; coarsePoll: number; coarseFloor: number },
+    ],
+  )) as { fault?: string; read?: UntilResult };
+  if (traced.fault !== undefined || traced.read === undefined) {
+    failSurface(traced.fault ?? "the surface answered the sweep with nothing");
+  }
+  return traced.read;
 }
 
 /**

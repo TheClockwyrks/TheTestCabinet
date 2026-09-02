@@ -46,8 +46,10 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween } from "../assert";
 import { FIRE_INTERVAL_TICKS, KEY_FIRE, TICK_HZ } from "../constants";
 import {
+  HANDLE,
   captureStill,
   createHarness,
+  failSurface,
   startPlaying,
   ticksFor,
   type Harness,
@@ -78,6 +80,70 @@ const DUE = WINDOW_TICKS / FIRE_INTERVAL_TICKS;
 /** How far the count may fall from that: one shot, the review item's figure. */
 const TOLERANCE = 1;
 
+/**
+ * Count the rounds a held gun adds over `ticks`, a tick at a time, inside the page.
+ *
+ * THE SAME SWEEP THE HARNESS WOULD DRIVE, in the same order: the build's own
+ * `advance(1)`, then the build's own `snapshot()` to see what that tick put on the
+ * roster, then the build's own `clearBullets()` on any tick that added one so the
+ * four-round cap can never be what refuses the next request. Nothing is simulated
+ * here and no tick is fabricated. The key is already down when this is entered — a
+ * real, browser-trusted keydown that Chromium delivered — and a key that is held
+ * stays held for every tick the loop runs.
+ *
+ * WHAT IT SAVES IS THE ROUND TRIP. Twelve hundred ticks read one number each, and
+ * asking for that number from outside the page costs a crossing apiece: a few
+ * milliseconds on an idle host and tens of milliseconds on one that is also running
+ * a model's build. Driven that way this item takes six seconds on a quiet machine
+ * and minutes on a busy one, which makes its verdict a fact about the host rather
+ * than about the gun. Driven here it takes one crossing and the ticks themselves.
+ *
+ * The roster is left holding the last tick's round, because {@link captureStill}
+ * keeps the picture afterwards and a picture of an empty field shows nothing.
+ */
+async function countHeldFire(h: Harness, ticks: number): Promise<number> {
+  if (h.surfaceFault !== null) failSurface(h.surfaceFault);
+  const traced = (await h.page.evaluate(
+    ([handle, count]) => {
+      const api = (window as unknown as Record<string, unknown>)[handle] as
+        | {
+            advance(n: number): void;
+            snapshot(): { bullets: { id: number }[] };
+            clearBullets(): void;
+          }
+        | undefined;
+      if (
+        api === undefined ||
+        typeof api.advance !== "function" ||
+        typeof api.snapshot !== "function" ||
+        typeof api.clearBullets !== "function"
+      ) {
+        return {
+          fault: "advance, snapshot and clearBullets on the debug surface",
+        };
+      }
+      try {
+        let shots = 0;
+        for (let tick = 1; tick <= count; tick += 1) {
+          api.advance(1);
+          const rounds = api.snapshot().bullets;
+          const added = rounds === undefined ? 0 : rounds.length;
+          shots += added;
+          if (added > 0 && tick < count) api.clearBullets();
+        }
+        return { read: shots };
+      } catch (error) {
+        return { fault: String(error) };
+      }
+    },
+    [HANDLE, ticks] as [string, number],
+  )) as { fault?: string; read?: number };
+  if (traced.fault !== undefined || traced.read === undefined) {
+    failSurface(traced.fault ?? "the surface answered the sweep with nothing");
+  }
+  return traced.read;
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -98,17 +164,7 @@ it("takes 1200 / FIRE_INTERVAL_TICKS shots over ten seconds of held fire", async
   let shots = 0;
   await h.hold(KEY_FIRE);
   try {
-    for (let tick = 1; tick <= WINDOW_TICKS; tick += 1) {
-      // The state the tick left comes back off the step that ran it, rather than
-      // from a second crossing asking for the same reading — the same reading,
-      // half the round trips, over a thousand-tick window.
-      const now = await h.advance(1);
-      shots += now.bullets.length;
-      // Every tick but the last, so the picture kept below still holds a round.
-      if (now.bullets.length > 0 && tick < WINDOW_TICKS) {
-        await h.debug.clearBullets();
-      }
-    }
+    shots = await countHeldFire(h, WINDOW_TICKS);
   } finally {
     await h.release(KEY_FIRE);
   }
