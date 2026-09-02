@@ -5,8 +5,20 @@ import { Actor, Pawn } from "./actors";
 import { WorldCamera } from "./camera";
 import { ConstantClock } from "./clocks";
 import { ColliderComponent } from "./collision";
-import { MeshComponent } from "./components";
-import type { CameraSnapshot, DiagnosticValue } from "./contract";
+import {
+  Component,
+  LightComponent,
+  MeshComponent,
+  ShapeComponent,
+} from "./components";
+import type {
+  CameraSnapshot,
+  DiagnosticValue,
+  EndPlayReason,
+  SurfaceMetrics,
+  TouchLayout,
+} from "./contract";
+import { PlayerController } from "./controllers";
 import {
   assembleEngine,
   createEngine,
@@ -23,6 +35,7 @@ import {
   type InitApi,
 } from "./game-instance";
 import { GameMode } from "./game-mode";
+import type { EngineEventMap } from "./events";
 import type { World } from "./worlds";
 import {
   createContextlessCanvas,
@@ -1702,6 +1715,1200 @@ describe("end to end over the real subsystems", () => {
     });
     await engine.initialize();
     expect(engine.debug).toBe(surface);
+    engine.destroy();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The screen layer the engine draws its HUD on                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where the layer comes from, and what a refusal costs.
+ *
+ * The two refusals themselves are asserted with the rest of the errors table
+ * above; what is left is the half of the option that is not a refusal — the
+ * canvas the engine makes for itself, and the supplied canvas that makes the
+ * question moot — together with the disposal a refusal after the pipeline owes,
+ * and the one ordering pair the table's own row for `screen` fixes.
+ */
+describe("the screen layer the engine draws its HUD on", () => {
+  const cleanup: Array<() => void> = [];
+  afterEach(() => {
+    while (cleanup.length > 0) cleanup.pop()?.();
+  });
+
+  /**
+   * A surface with no element behind it, for the canvases below that have no
+   * document either: the default surface reads the canvas's owning document for
+   * its ratio and its listeners, which an orphaned canvas cannot answer.
+   */
+  const detached: SurfaceMetrics = (() => {
+    const target = new EventTarget();
+    return {
+      cssWidth: (): number => 320,
+      cssHeight: (): number => 180,
+      dpr: (): number => 1,
+      events: (): EventTarget => target,
+    };
+  })();
+
+  /** `assembleEngine` over fakes with nothing defaulted, for the odd canvases. */
+  function assemble(overrides: Partial<EngineOptions>): Engine {
+    return assembleEngine(
+      {
+        canvas: createStubCanvas().canvas,
+        width: 640,
+        height: 360,
+        game: definition(),
+        surface: detached,
+        ...overrides,
+      },
+      () => fakes().subsystems,
+    );
+  }
+
+  it("takes the supplied screen canvas over the document, whatever the document holds", () => {
+    const stage = createStubCanvas();
+    Object.defineProperty(stage.canvas, "ownerDocument", {
+      value: null,
+      configurable: true,
+    });
+    const screen = createStubCanvas();
+    expect(() =>
+      assemble({ canvas: stage.canvas, screen: screen.canvas }),
+    ).not.toThrow();
+  });
+
+  it("makes the screen canvas from the stage canvas's own document when none is supplied", async () => {
+    const contexts = installCanvasContexts();
+    cleanup.push(() => contexts.uninstall());
+    const { engine, fixture } = build({ screen: undefined });
+    await engine.initialize();
+    await engine.advance(1);
+    // The overlay draws on the layer, so a frame that got as far as drawing it
+    // had a screen context to draw through.
+    expect(fixture.log).toContain("diagnostics.draw");
+    engine.destroy();
+  });
+
+  it("leaves no renderer behind when the screen canvas is refused", () => {
+    const stage = createStubCanvas();
+    const live = watchContextLoss(stage.canvas);
+    expect(() =>
+      assemble({ canvas: stage.canvas, screen: createContextlessCanvas() }),
+    ).toThrow(/2D context from the screen canvas/);
+    // The refusal lands before the renderer is built, so there is nothing to
+    // give back and nothing left holding the context: a page that retries
+    // construction does not run the browser out of them.
+    expect(live()).toBe(0);
+  });
+
+  it("refuses the missing document before an argument measured against it", () => {
+    const orphan = createStubCanvas();
+    Object.defineProperty(orphan.canvas, "ownerDocument", {
+      value: null,
+      configurable: true,
+    });
+    expect(() =>
+      assemble({
+        canvas: orphan.canvas,
+        game: { levels: { arena: { mode: GameMode } }, startLevel: "nowhere" },
+      }),
+    ).toThrow(/no owning document/);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The options the engine threads through                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Each option, asserted where it lands rather than where it was given.
+ *
+ * An option that is read but never applied is invisible to a type and to a
+ * construction test alike, so every one of these is checked through the thing
+ * it is supposed to change: the GL calls a frame makes, the state of the screen
+ * layer's context, what the game's own `initialize` is handed.
+ */
+describe("the options the engine threads through", () => {
+  it("clears the whole canvas to `background`, and to transparency without one", async () => {
+    const opaque = build({ background: "#ff0000" });
+    await opaque.engine.initialize();
+    opaque.stage.stage.gl.forget();
+    await opaque.engine.advance(1);
+    const cleared = opaque.stage.stage.gl.callsTo("clearColor");
+    expect(cleared.length).toBeGreaterThan(0);
+    // Compared as floats: the color travels through three's working color space
+    // on its way to the context, and a round trip is not bit-exact.
+    const [r, g, b, a] = cleared[0]?.args as [number, number, number, number];
+    expect(r).toBeCloseTo(1, 6);
+    expect(g).toBeCloseTo(0, 6);
+    expect(b).toBeCloseTo(0, 6);
+    expect(a).toBe(1);
+    opaque.engine.destroy();
+
+    const clear = build();
+    await clear.engine.initialize();
+    clear.stage.stage.gl.forget();
+    await clear.engine.advance(1);
+    // No background is transparency rather than black: the alpha is what says
+    // so, and the color behind it is never seen.
+    expect(clear.stage.stage.gl.callsTo("clearColor")[0]?.args).toEqual([
+      0, 0, 0, 0,
+    ]);
+    expect(clear.stage.stage.gl.callsTo("clear").length).toBeGreaterThan(0);
+    clear.engine.destroy();
+  });
+
+  it("installs `imageSmoothing` on the screen layer's context every frame", async () => {
+    const crisp = build({ imageSmoothing: false });
+    await crisp.engine.initialize();
+    await crisp.engine.advance(1);
+    expect(crisp.stage.screen.context2d.ctx.imageSmoothingEnabled).toBe(false);
+    crisp.engine.destroy();
+
+    const smooth = build();
+    await smooth.engine.initialize();
+    await smooth.engine.advance(1);
+    expect(smooth.stage.screen.context2d.ctx.imageSmoothingEnabled).toBe(true);
+    smooth.engine.destroy();
+  });
+
+  it("enables shadow maps only when `shadows` is set, as an off-screen pass", async () => {
+    class Sun extends Actor {
+      constructor() {
+        super();
+        this.attach(
+          new LightComponent({
+            light: { kind: "directional", castShadow: true },
+          }),
+        );
+      }
+    }
+    class Ground extends Actor {
+      constructor() {
+        super();
+        const mesh = new MeshComponent({
+          geometry: { kind: "box", width: 4, height: 1, depth: 4 },
+        });
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.attach(mesh);
+      }
+    }
+    const game: GameDefinition = {
+      levels: {
+        arena: { mode: GameMode, actors: [{ type: Sun }, { type: Ground }] },
+      },
+      startLevel: "arena",
+    };
+
+    const dark = realEngine(game);
+    await dark.engine.initialize();
+    dark.stage.stage.gl.forget();
+    await dark.engine.advance(1);
+    // A shadow pass renders the scene into a depth target first, which is the
+    // only thing in the documented pipeline that attaches a texture to a
+    // framebuffer of its own.
+    expect(dark.stage.stage.gl.callsTo("framebufferTexture2D")).toHaveLength(0);
+    dark.engine.destroy();
+
+    const lit = realEngine(game, { shadows: true });
+    await lit.engine.initialize();
+    lit.stage.stage.gl.forget();
+    await lit.engine.advance(1);
+    expect(
+      lit.stage.stage.gl.callsTo("framebufferTexture2D").length,
+    ).toBeGreaterThan(0);
+    lit.engine.destroy();
+  });
+
+  it("hands the game the layout it was built with, and none without one", async () => {
+    const seen: Array<TouchLayout | null> = [];
+    class Game extends GameInstance {
+      override initialize(api: InitApi): null {
+        seen.push(api.input.layout());
+        return null;
+      }
+    }
+    const game: GameDefinition = {
+      instance: Game,
+      levels: { arena: { mode: GameMode } },
+      startLevel: "arena",
+    };
+    const bare = realEngine(game);
+    await bare.engine.initialize();
+    bare.engine.destroy();
+    const dual = realEngine(game, { layout: "dual-stick" });
+    await dual.engine.initialize();
+    dual.engine.destroy();
+
+    expect(seen[0]).toBeNull();
+    expect(seen[1]?.name).toBe("dual-stick");
+    expect(seen[1]?.actions.length).toBeGreaterThan(0);
+  });
+
+  it("resolves every asset path under `assetRoot`, defaulting to assets/", async () => {
+    const seen: string[] = [];
+    class Game extends GameInstance {
+      override initialize(api: InitApi): null {
+        seen.push(api.assets.resolve("sprites/hero.png"));
+        return null;
+      }
+    }
+    const game: GameDefinition = {
+      instance: Game,
+      levels: { arena: { mode: GameMode } },
+      startLevel: "arena",
+    };
+    const fallback = realEngine(game);
+    await fallback.engine.initialize();
+    fallback.engine.destroy();
+    const rooted = realEngine(game, { assetRoot: "content/" });
+    await rooted.engine.initialize();
+    rooted.engine.destroy();
+
+    expect(seen).toEqual([
+      "assets/sprites/hero.png",
+      "content/sprites/hero.png",
+    ]);
+  });
+
+  it("reads the canvas's own document when no surface is supplied", () => {
+    // The default surface listens on the canvas's owning document, so the key
+    // that toggles the overlay is heard from anywhere on the page rather than
+    // only while the canvas itself has focus.
+    const { engine, fixture } = build({ surface: undefined });
+    document.dispatchEvent(new KeyboardEvent("keydown", { code: "Backquote" }));
+    expect(fixture.toggles).toBe(1);
+    engine.destroy();
+    document.dispatchEvent(new KeyboardEvent("keydown", { code: "Backquote" }));
+    expect(fixture.toggles).toBe(1);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The frame order, from the game's side                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The eleven-step order, asserted by its consequences rather than by its calls.
+ *
+ * The unit half already proves the engine issues the steps in order over the
+ * ports; what a build actually depends on is what each position *buys* it — a
+ * pawn that sees its controller's drive in the frame the controller wrote it, a
+ * timer that observes the world the frame already moved, a mode that decides
+ * from a settled world with this frame's overlaps reported, a destroy that no
+ * tick observes half-finished, and an edge that every controller got a look at
+ * before it was discarded. Each test below breaks if its step moves.
+ */
+describe("the frame order, from the game's side", () => {
+  it("lets a pawn read, in the same frame, the drive its controller wrote", async () => {
+    const seen: number[] = [];
+    class Hero extends Pawn {
+      drive = 0;
+      override tick(): void {
+        seen.push(this.drive);
+      }
+    }
+    class Driver extends PlayerController {
+      override tick(): void {
+        const pawn = this.pawn as Hero | null;
+        if (pawn !== null) pawn.drive += 1;
+      }
+    }
+    class Mode extends GameMode {
+      override pawnClass = Hero;
+      override playerControllerClass = Driver;
+      override beginPlay(): void {
+        this.addPlayer();
+      }
+    }
+    const { engine } = realEngine({
+      levels: { arena: { mode: Mode } },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    await engine.advance(2);
+    // Step 4 before step 5: the pawn never reads last frame's drive.
+    expect(seen).toEqual([1, 2]);
+    engine.destroy();
+  });
+
+  it("ticks actors in spawn order, each one's components after it in attachment order", async () => {
+    const log: string[] = [];
+    class Marker extends Component {
+      readonly label: string;
+      constructor(label: string) {
+        super();
+        this.label = label;
+      }
+      override tick(): void {
+        log.push(this.label);
+      }
+    }
+    class First extends Actor {
+      constructor() {
+        super();
+        this.attach(new Marker("first.a"));
+        this.attach(new Marker("first.b"));
+      }
+      override tick(): void {
+        log.push("first");
+      }
+    }
+    class Second extends Actor {
+      constructor() {
+        super();
+        this.attach(new Marker("second.a"));
+      }
+      override tick(): void {
+        log.push("second");
+      }
+    }
+    const { engine } = realEngine({
+      levels: {
+        arena: { mode: GameMode, actors: [{ type: First }, { type: Second }] },
+      },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    await engine.advance(1);
+    expect(log).toEqual(["first", "first.a", "first.b", "second", "second.a"]);
+    engine.destroy();
+  });
+
+  it("fires a timer due this frame after every tick of that frame", async () => {
+    const log: string[] = [];
+    class Ticker extends Actor {
+      override beginPlay(): void {
+        this.world.after(0.01, () => log.push("timer"));
+      }
+      override tick(): void {
+        log.push("tick");
+      }
+    }
+    const { engine } = realEngine({
+      levels: { arena: { mode: GameMode, actors: [{ type: Ticker }] } },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    // One 16 ms frame carries world time past the 10 ms the timer waits for.
+    await engine.advance(1);
+    expect(log).toEqual(["tick", "timer"]);
+    engine.destroy();
+  });
+
+  it("reports a pair this frame's movement produced, before the mode decides on it", async () => {
+    const log: string[] = [];
+    class Target extends Actor {
+      constructor() {
+        super();
+        this.attach(
+          new ColliderComponent({
+            shape: { kind: "box", width: 1, height: 1, depth: 1 },
+            responses: { default: "overlap" },
+          }),
+        );
+      }
+    }
+    class Charger extends Target {
+      override tick(): void {
+        log.push("charger");
+        this.transform.position = { x: 0, y: 0, z: 0 };
+      }
+    }
+    class Mode extends GameMode {
+      override tick(): void {
+        log.push("mode");
+      }
+    }
+    const { engine } = realEngine({
+      levels: {
+        arena: {
+          mode: Mode,
+          actors: [
+            { type: Target },
+            { type: Charger, transform: { position: { x: 8, y: 0, z: 0 } } },
+          ],
+        },
+      },
+      startLevel: "arena",
+    });
+    engine.events.on("overlap:begin", () => log.push("overlap"));
+    await engine.initialize();
+    await engine.advance(1);
+    // Step 7 after step 5, step 8 after step 7: the pair the charger's own
+    // tick produced is reported in that frame, and the mode ticks knowing it.
+    expect(log).toEqual(["charger", "overlap", "mode"]);
+    engine.destroy();
+  });
+
+  it("removes a destroyed actor after every tick and the mode's, not during", async () => {
+    const log: string[] = [];
+    class Doomed extends Actor {
+      override tick(): void {
+        log.push("doomed.tick");
+        this.destroy();
+      }
+      override endPlay(reason: EndPlayReason): void {
+        log.push(`doomed.endPlay:${reason}`);
+      }
+    }
+    class Later extends Actor {
+      override tick(): void {
+        log.push("later.tick");
+      }
+    }
+    class Mode extends GameMode {
+      override tick(): void {
+        log.push("mode.tick");
+      }
+    }
+    const { engine } = realEngine({
+      levels: {
+        arena: { mode: Mode, actors: [{ type: Doomed }, { type: Later }] },
+      },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    await engine.advance(1);
+    // Step 9 last of the simulation: a tick never observes a half-removed
+    // world, and the actor behind the doomed one still gets its frame.
+    expect(log).toEqual([
+      "doomed.tick",
+      "later.tick",
+      "mode.tick",
+      "doomed.endPlay:destroyed",
+    ]);
+    engine.destroy();
+  });
+
+  it("closes the input frame after every controller has had the edge", async () => {
+    const reads: Array<[number, boolean]> = [];
+    class Reader extends PlayerController {
+      override tick(): void {
+        reads.push([this.index, this.input.pressed("jump")]);
+      }
+    }
+    class Mode extends GameMode {
+      override playerControllerClass = Reader;
+      override beginPlay(): void {
+        this.addPlayer();
+        this.addPlayer();
+      }
+    }
+    class Game extends GameInstance {
+      override initialize(api: InitApi): null {
+        api.input.register("jump", { keys: ["Space"] });
+        return null;
+      }
+    }
+    const { engine, stage } = realEngine({
+      instance: Game,
+      levels: { arena: { mode: Mode } },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    stage.surface.target.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "Space" }),
+    );
+    await engine.advance(1);
+    // Step 11 last: both controllers consumed their own copy of the one edge,
+    // and it is gone by the next frame.
+    expect(reads).toEqual([
+      [0, true],
+      [1, true],
+    ]);
+    await engine.advance(1);
+    expect(reads.slice(2)).toEqual([
+      [0, false],
+      [1, false],
+    ]);
+    engine.destroy();
+  });
+
+  it("takes the fit before any tick runs, so a tick reads the frame it renders through", async () => {
+    const seen: number[] = [];
+    class Watcher extends Actor {
+      override tick(): void {
+        seen.push(this.world.viewport().scale);
+      }
+    }
+    const stage = createStage({ cssWidth: 320, cssHeight: 180, dpr: 1 });
+    let ratio = 1;
+    const surface: SurfaceMetrics = {
+      cssWidth: (): number => stage.surface.surface.cssWidth(),
+      cssHeight: (): number => stage.surface.surface.cssHeight(),
+      dpr: (): number => ratio,
+      events: (): EventTarget => stage.surface.target,
+    };
+    const engine = createEngine({
+      canvas: stage.stage.canvas,
+      screen: stage.screen.canvas,
+      width: 640,
+      height: 360,
+      clock: new ConstantClock(16),
+      surface,
+      game: {
+        levels: { arena: { mode: GameMode, actors: [{ type: Watcher }] } },
+        startLevel: "arena",
+      },
+    });
+    await engine.initialize();
+    await engine.advance(1);
+    ratio = 3;
+    await engine.advance(1);
+    // Step 3 before step 4: the second frame's tick already reads the ratio
+    // that frame renders through rather than the one before it.
+    expect(seen[1]).toBe(engine.viewport().scale);
+    expect(seen[1]).not.toBe(seen[0]);
+    engine.destroy();
+  });
+
+  it("skips steps 4 through 8 while paused, except an actor that opted in", async () => {
+    const log: string[] = [];
+    class Marker extends Component {
+      override tick(): void {
+        log.push("component");
+      }
+    }
+    class Sleeper extends Actor {
+      override tick(): void {
+        log.push("sleeper");
+      }
+    }
+    class Menu extends Actor {
+      constructor() {
+        super();
+        this.tickWhenPaused = true;
+        this.attach(new Marker());
+      }
+      override tick(): void {
+        log.push("menu");
+      }
+    }
+    class Mode extends GameMode {
+      override beginPlay(): void {
+        this.world.setPaused(true);
+      }
+      override tick(): void {
+        log.push("mode");
+      }
+    }
+    const { engine } = realEngine({
+      levels: {
+        arena: { mode: Mode, actors: [{ type: Sleeper }, { type: Menu }] },
+      },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    const before = engine.world.time;
+    await engine.advance(3);
+    // The pause menu drives itself, and its components with it; nothing else
+    // moves, and the world's own clock stands still.
+    expect(log).toEqual([
+      "menu",
+      "component",
+      "menu",
+      "component",
+      "menu",
+      "component",
+    ]);
+    expect(engine.world.time).toBe(before);
+    // The frame counter belongs to the loop rather than to the world, so it
+    // advances regardless.
+    expect(engine.frame().count).toBe(3);
+    engine.destroy();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The whole event map, over the shipped wiring                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every entry of `EngineEventMap`, reached the way a game reaches it.
+ *
+ * The broadcaster itself is proved in `events.test.ts`; what is asserted here is
+ * that each announcement is actually *made*, by the subsystem the table names,
+ * through the one bus `engine.events` hands out — which is the only thing that
+ * makes a validator's subscription a complete account of a run.
+ */
+describe("the whole event map, over the shipped wiring", () => {
+  const cleanup: Array<() => void> = [];
+  afterEach(() => {
+    while (cleanup.length > 0) cleanup.pop()?.();
+  });
+
+  /** Every payload of `event`, in the order the engine announced them. */
+  function collect<K extends keyof EngineEventMap>(
+    engine: Engine,
+    event: K,
+  ): EngineEventMap[K][] {
+    const seen: EngineEventMap[K][] = [];
+    engine.events.on(event, (payload) => seen.push(payload));
+    return seen;
+  }
+
+  it("announces every actor spawned and destroyed, carrying the actor", async () => {
+    class Spawner extends GameMode {
+      override beginPlay(): void {
+        this.world.spawn(Cube);
+      }
+    }
+    const { engine } = realEngine({
+      levels: { arena: { mode: Spawner, actors: [{ type: Cube }] } },
+      startLevel: "arena",
+    });
+    const spawned = collect(engine, "actor:spawned");
+    const destroyed = collect(engine, "actor:destroyed");
+    await engine.initialize();
+    // The level's own actor, then the one the mode's `beginPlay` added.
+    expect(spawned).toHaveLength(2);
+    expect(spawned[0]?.actor).toBeInstanceOf(Cube);
+    expect(destroyed).toEqual([]);
+
+    engine.world.actors()[0]?.destroy();
+    await engine.advance(1);
+    expect(destroyed).toHaveLength(1);
+    expect(destroyed[0]?.actor).toBe(spawned[0]?.actor);
+    engine.destroy();
+  });
+
+  it("announces a phase change with the phase it left, and nothing for a repeat", async () => {
+    class Mode extends GameMode {
+      override beginPlay(): void {
+        this.setPhase("playing");
+        this.setPhase("playing");
+      }
+    }
+    const { engine } = realEngine({
+      levels: { arena: { mode: Mode } },
+      startLevel: "arena",
+    });
+    const phases = collect(engine, "match:phase");
+    await engine.initialize();
+    expect(phases).toEqual([{ phase: "playing", previous: "waiting" }]);
+    engine.world.mode.setPhase("over");
+    expect(phases[1]).toEqual({ phase: "over", previous: "playing" });
+    engine.destroy();
+  });
+
+  it("announces a cue played, looped, and stopped, stamped with the frame's time", async () => {
+    class Game extends GameInstance {
+      override initialize(api: InitApi): null {
+        api.audio.define("ping", { freq: 440, durationMs: 40 });
+        api.audio.define("hum", { freq: 110, durationMs: 200 });
+        return null;
+      }
+    }
+    const { engine } = realEngine({
+      instance: Game,
+      levels: { arena: { mode: GameMode } },
+      startLevel: "arena",
+    });
+    const played = collect(engine, "cue:played");
+    const looped = collect(engine, "cue:looped");
+    const stopped = collect(engine, "cue:stopped");
+    await engine.initialize();
+    await engine.advance(2);
+
+    engine.world.audio.play("ping", { at: { x: 1, y: 2, z: 3 } });
+    engine.world.audio.loop("hum");
+    engine.world.audio.stop("hum");
+
+    // `t` is the frame's simulated time rather than wall time, so a cue lines
+    // up with the `frame().timeMs` a check asserts against.
+    expect(played[0]?.cue).toBe("ping");
+    expect(played[0]?.t).toBe(engine.frame().timeMs);
+    expect(played[0]?.at).toEqual({ x: 1, y: 2, z: 3 });
+    expect(looped[0]?.cue).toBe("hum");
+    expect(looped[0]?.at).toBeNull();
+    expect(stopped[0]).toEqual({ cue: "hum", t: engine.frame().timeMs });
+    engine.destroy();
+  });
+
+  it("announces the audio unlock once, on the first gesture the surface sees", async () => {
+    const { engine, stage } = realEngine({
+      levels: { arena: { mode: GameMode } },
+      startLevel: "arena",
+    });
+    const unlocked = collect(engine, "audio:unlocked");
+    await engine.initialize();
+    expect(unlocked).toEqual([]);
+    stage.surface.target.dispatchEvent(new Event("pointerdown"));
+    stage.surface.target.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "KeyA" }),
+    );
+    expect(unlocked).toHaveLength(1);
+    engine.destroy();
+  });
+
+  it("announces an asset the loader refused, with no url to blame", async () => {
+    const { engine } = realEngine({
+      levels: { arena: { mode: GameMode } },
+      startLevel: "arena",
+    });
+    const failed = collect(engine, "asset:failed");
+    await engine.initialize();
+    await expect(engine.world.assets.load("../outside.png")).rejects.toThrow();
+    // An empty url is the unambiguous signature of a path the engine refused
+    // rather than a file that resolved and was missing.
+    expect(failed[0]?.path).toBe("../outside.png");
+    expect(failed[0]?.url).toBe("");
+    expect(failed[0]?.reason).toMatch(/\.\./);
+    engine.destroy();
+  });
+
+  it("announces an asset that arrived, with the url it resolved under", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> =>
+      new Response(new Blob(["ok"]))) as typeof globalThis.fetch;
+    cleanup.push(() => {
+      globalThis.fetch = original;
+    });
+    const { engine } = realEngine(
+      { levels: { arena: { mode: GameMode } }, startLevel: "arena" },
+      { assetRoot: "content/" },
+    );
+    const loaded = collect(engine, "asset:loaded");
+    await engine.initialize();
+    await engine.world.assets.load("levels/arena.json");
+    expect(loaded).toEqual([
+      { path: "levels/arena.json", url: "content/levels/arena.json" },
+    ]);
+    engine.destroy();
+  });
+
+  it("ends an overlap when one of its actors is destroyed", async () => {
+    const { engine } = realEngine({
+      levels: {
+        arena: {
+          mode: GameMode,
+          actors: [{ type: Cube }, { type: Cube }],
+        },
+      },
+      startLevel: "arena",
+    });
+    const begun = collect(engine, "overlap:begin");
+    const ended = collect(engine, "overlap:end");
+    await engine.initialize();
+    await engine.advance(1);
+    expect(begun).toHaveLength(1);
+    expect(ended).toEqual([]);
+
+    engine.world.actors()[1]?.destroy();
+    await engine.advance(1);
+    // The pair ends because one side left, not because the pass stopped finding
+    // it: the colliders it names are still the two it began with.
+    expect(ended).toHaveLength(1);
+    expect(ended[0]?.colliders[0]).toBe(begun[0]?.colliders[0]);
+    expect(ended[0]?.colliders[1]).toBe(begun[0]?.colliders[1]);
+    engine.destroy();
+  });
+
+  it("reports a blocking pair as a hit, with a manifold, on every frame it holds", async () => {
+    class Blocker extends Actor {
+      constructor() {
+        super();
+        this.attach(
+          new ColliderComponent({
+            shape: { kind: "sphere", radius: 1 },
+            responses: { default: "block" },
+          }),
+        );
+      }
+    }
+    const { engine } = realEngine({
+      levels: {
+        arena: {
+          mode: GameMode,
+          actors: [
+            { type: Blocker },
+            { type: Blocker, transform: { position: { x: 1, y: 0, z: 0 } } },
+          ],
+        },
+      },
+      startLevel: "arena",
+    });
+    const hits = collect(engine, "hit");
+    await engine.initialize();
+    await engine.advance(2);
+    // Nothing the engine reports moves anything, so the pair is still blocking
+    // on the second frame and is reported again.
+    expect(hits).toHaveLength(2);
+    expect(hits[0]?.manifold.depth).toBeCloseTo(1, 5);
+    expect(hits[0]?.manifold.normal).toEqual({ x: 1, y: 0, z: 0 });
+    expect(hits[0]?.manifold.point).toEqual({ x: 0.5, y: 0, z: 0 });
+    engine.destroy();
+  });
+
+  it("contains a handler that throws, and still runs the ones after it", async () => {
+    const seen: string[] = [];
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]): void => {
+      errors.push(args[0]);
+    };
+    cleanup.push(() => {
+      console.error = original;
+    });
+    const { engine } = realEngine({
+      levels: { arena: { mode: GameMode } },
+      startLevel: "arena",
+    });
+    engine.events.on("world:opened", () => {
+      throw new Error("a subscriber's own mistake");
+    });
+    engine.events.on("world:opened", ({ level }) => seen.push(level));
+    await expect(engine.initialize()).resolves.toBeDefined();
+    expect(seen).toEqual(["arena"]);
+    expect(errors).toHaveLength(1);
+    engine.destroy();
+  });
+
+  it("removes a handler through the function `on` returned", async () => {
+    const { engine } = realEngine({
+      levels: {
+        arena: { mode: GameMode, actors: [{ type: Cube }] },
+        cavern: { mode: GameMode },
+      },
+      startLevel: "arena",
+    });
+    const seen: string[] = [];
+    const off = engine.events.on("world:opened", ({ level }) =>
+      seen.push(level),
+    );
+    await engine.initialize();
+    off();
+    off();
+    engine.world.open("cavern");
+    await engine.advance(1);
+    expect(engine.world.level).toBe("cavern");
+    expect(seen).toEqual(["arena"]);
+    engine.destroy();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The lifecycle's remaining edges                                            */
+/* -------------------------------------------------------------------------- */
+
+describe("the lifecycle's remaining edges", () => {
+  it("rejects initialize with the cause when the start level's load throws", async () => {
+    const cause = new Error("the level's manifest is missing");
+    const { engine } = realEngine({
+      levels: {
+        arena: {
+          mode: GameMode,
+          load: (): never => {
+            throw cause;
+          },
+        },
+      },
+      startLevel: "arena",
+    });
+    await expect(engine.initialize()).rejects.toBe(cause);
+    // The world never opened, so the gate is still shut.
+    expect(() => engine.world).toThrow(/before initialize\(\) resolved/);
+    engine.destroy();
+  });
+
+  it("rejects initialize with the cause when an actor's beginPlay throws", async () => {
+    const cause = new Error("this actor needs a peer that is not here");
+    class Fragile extends Actor {
+      override beginPlay(): never {
+        throw cause;
+      }
+    }
+    const { engine } = realEngine({
+      levels: { arena: { mode: GameMode, actors: [{ type: Fragile }] } },
+      startLevel: "arena",
+    });
+    await expect(engine.initialize()).rejects.toBe(cause);
+    engine.destroy();
+  });
+
+  it("rejects initialize with the cause when the game mode's beginPlay throws", async () => {
+    const cause = new Error("the mode cannot seat its players");
+    class Fragile extends GameMode {
+      override beginPlay(): never {
+        throw cause;
+      }
+    }
+    const { engine } = realEngine({
+      levels: { arena: { mode: Fragile } },
+      startLevel: "arena",
+    });
+    await expect(engine.initialize()).rejects.toBe(cause);
+    engine.destroy();
+  });
+
+  it("leaves the start level unopened when a destroy races initialize", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let shutdowns = 0;
+    class Slow extends GameInstance {
+      override async initialize(): Promise<null> {
+        await gate;
+        return null;
+      }
+      override shutdown(): void {
+        shutdowns += 1;
+      }
+    }
+    const { engine } = realEngine({
+      instance: Slow,
+      levels: { arena: { mode: GameMode } },
+      startLevel: "arena",
+    });
+    const opened: string[] = [];
+    engine.events.on("world:opened", ({ level }) => opened.push(level));
+    const started = engine.initialize();
+    engine.destroy();
+    release();
+    await expect(started).resolves.toBeInstanceOf(Slow);
+    // The engine is torn down, so opening the start level into it would
+    // resurrect a world nothing will ever close — and the instance whose
+    // `initialize` did run is shut down rather than left standing.
+    expect(opened).toEqual([]);
+    expect(shutdowns).toBe(1);
+    expect(() => engine.world).toThrow(/before initialize\(\) resolved/);
+  });
+
+  it("runs the instance's shutdown exactly once however destroy is reached", async () => {
+    let shutdowns = 0;
+    class Game extends GameInstance {
+      override shutdown(): void {
+        shutdowns += 1;
+      }
+    }
+    const { engine } = realEngine({
+      instance: Game,
+      levels: { arena: { mode: GameMode } },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    engine.destroy();
+    engine.destroy();
+    expect(shutdowns).toBe(1);
+  });
+
+  it("ends play for the open world's actors and mode when the engine is destroyed", async () => {
+    const log: string[] = [];
+    class Watched extends Actor {
+      override endPlay(reason: EndPlayReason): void {
+        log.push(`actor:${reason}`);
+      }
+    }
+    class Mode extends GameMode {
+      override endPlay(reason: EndPlayReason): void {
+        log.push(`mode:${reason}`);
+      }
+    }
+    const { engine } = realEngine({
+      levels: { arena: { mode: Mode, actors: [{ type: Watched }] } },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    engine.destroy();
+    expect(log).toEqual(["actor:level-closed", "mode:level-closed"]);
+  });
+
+  it("halts a run on an abort and leaves the engine usable, unlike a destroy", async () => {
+    const host = scriptedHost();
+    const { engine } = build({}, host);
+    await engine.initialize();
+    const controller = new AbortController();
+    const running = engine.run({ signal: controller.signal });
+    host.step();
+    controller.abort();
+    await expect(running).resolves.toBeUndefined();
+    // Aborting is a halt rather than a teardown: the engine still runs frames.
+    const before = engine.frame().count;
+    await engine.advance(2);
+    expect(engine.frame().count).toBe(before + 2);
+    engine.destroy();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* What a validator reaches through the engine                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The idioms the validator pages are written in, run against the real pipeline.
+ *
+ * A suite reads a build through four things and no others: `engine.world` for
+ * the framework objects, `engine.scene` for what the pipeline did with them,
+ * `engine.advance` for stepping, and `engine.debug` for posing the scenario.
+ * Every assertion below is one of the documented shapes, so a change that broke
+ * a published check breaks here first.
+ */
+describe("what a validator reaches through the engine", () => {
+  /** The validators' own helper, copied from the rendering page verbatim. */
+  function meshesAt(
+    scene: THREE.Scene,
+    point: { x: number; y: number; z: number },
+    tolerance = 1e-3,
+  ): THREE.Mesh[] {
+    const target = new THREE.Vector3(point.x, point.y, point.z);
+    const position = new THREE.Vector3();
+    const found: THREE.Mesh[] = [];
+    scene.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      if (object.getWorldPosition(position).distanceTo(target) <= tolerance) {
+        found.push(object);
+      }
+    });
+    return found;
+  }
+
+  /** A ball the pipeline draws in a color a check can name. */
+  class Ball extends Actor {
+    constructor() {
+      super();
+      this.attach(
+        new MeshComponent({
+          geometry: { kind: "sphere", radius: 0.5 },
+          material: { color: "#ff8800" },
+        }),
+      );
+    }
+  }
+
+  it("finds the mesh the pipeline placed at an actor, and reads it back", async () => {
+    const { engine } = realEngine({
+      levels: {
+        arena: {
+          mode: GameMode,
+          actors: [
+            {
+              type: Ball,
+              tags: ["ball"],
+              transform: { position: { x: 2, y: 1, z: -3 } },
+            },
+          ],
+        },
+      },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    await engine.advance(1);
+
+    const ball = engine.world.byTag("ball")[0];
+    expect(ball).toBeDefined();
+    const [mesh] = meshesAt(engine.scene, ball!.transform.position);
+    expect(mesh).toBeDefined();
+    expect(mesh!.visible).toBe(true);
+    expect(mesh!.geometry.getAttribute("position").count).toBeGreaterThan(0);
+    expect(
+      `#${(mesh!.material as THREE.MeshStandardMaterial).color.getHexString()}`,
+    ).toBe("#ff8800");
+    engine.destroy();
+  });
+
+  it("drops a destroyed actor's object on the frame that removed it", async () => {
+    const { engine } = realEngine({
+      levels: { arena: { mode: GameMode, actors: [{ type: Ball }] } },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    await engine.advance(1);
+    const ball = engine.world.actors()[0];
+    expect(meshesAt(engine.scene, ball!.transform.position)).toHaveLength(1);
+
+    ball!.destroy();
+    await engine.advance(1);
+    expect(meshesAt(engine.scene, ball!.transform.position)).toHaveLength(0);
+    engine.destroy();
+  });
+
+  it("empties the scene of the outgoing world's objects across a transition", async () => {
+    const { engine } = realEngine({
+      levels: {
+        arena: { mode: GameMode, actors: [{ type: Ball }] },
+        cavern: { mode: GameMode },
+      },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    await engine.advance(1);
+    expect(meshesAt(engine.scene, { x: 0, y: 0, z: 0 })).toHaveLength(1);
+
+    engine.world.open("cavern");
+    await engine.advance(1);
+    expect(engine.world.level).toBe("cavern");
+    // The frame that performs the transition renders the world it opened, so
+    // nothing of the outgoing one is left standing in the scene.
+    expect(meshesAt(engine.scene, { x: 0, y: 0, z: 0 })).toHaveLength(0);
+    engine.destroy();
+  });
+
+  it("puts a screen component's drawing on the screen layer, in logical units", async () => {
+    class Hud extends Actor {
+      constructor() {
+        super();
+        this.attach(
+          new ShapeComponent({
+            shape: { kind: "rect", width: 40, height: 10 },
+            fill: "#00ff00",
+          }),
+        );
+      }
+    }
+    const { engine, stage } = realEngine({
+      levels: { arena: { mode: GameMode, actors: [{ type: Hud }] } },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    stage.screen.context2d.forget();
+    await engine.advance(1);
+    // A shape is traced and then filled, so its size is on the `rect` and its
+    // color on the `fill` that closes it.
+    const traced = stage.screen.context2d.opsOf("rect");
+    expect(traced).toHaveLength(1);
+    expect(traced[0]?.args.slice(2)).toEqual([40, 10]);
+    const filled = stage.screen.context2d
+      .opsOf("fill")
+      .filter((op) => op.fill === "#00ff00");
+    expect(filled).toHaveLength(1);
+    engine.destroy();
+  });
+
+  it("poses the world through the debug surface the instance returned", async () => {
+    interface Tools {
+      place(x: number): void;
+      where(): number;
+    }
+    class Game extends GameInstance<Tools> {
+      override initialize(): Tools {
+        return {
+          place: (x): void => {
+            const ball = this.engine.world.actors()[0];
+            if (ball) ball.transform.position = { x, y: 0, z: 0 };
+          },
+          where: (): number =>
+            this.engine.world.actors()[0]?.transform.position.x ?? Number.NaN,
+        };
+      }
+    }
+    const { engine } = realEngine({
+      instance: Game as never,
+      levels: { arena: { mode: GameMode, actors: [{ type: Ball }] } },
+      startLevel: "arena",
+    });
+    await engine.initialize();
+    (engine.debug as Tools).place(4);
+    await engine.advance(1);
+    expect((engine.debug as Tools).where()).toBe(4);
+    // The pose reaches the picture, which is what makes the surface a way to
+    // drive the build rather than a second copy of its state.
+    expect(meshesAt(engine.scene, { x: 4, y: 0, z: 0 })).toHaveLength(1);
     engine.destroy();
   });
 });
