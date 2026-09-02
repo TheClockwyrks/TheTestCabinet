@@ -42,13 +42,13 @@
 // than by inference.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEN_RELEASE_GAP } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   assertLength,
 } from "../assert";
+import { DEN_RELEASE_GAP } from "../constants";
 import {
   holdPredators,
   placeForager,

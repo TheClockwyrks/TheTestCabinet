@@ -32,13 +32,13 @@
 // measurement, which here is the subject.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, INK_COOLDOWN, SONAR_COOLDOWN } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   fail,
 } from "../assert";
+import { BRIGHT_HOLD, INK_COOLDOWN, SONAR_COOLDOWN } from "../constants";
 import { holdPredators, spawnDrifter } from "../fixtures";
 import {
   captureReplay,

@@ -31,12 +31,12 @@
 // it off the approach axis.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
+import { TILE } from "../constants";
 import { poseCorner } from "../fixtures";
 import {
   captureReplay,

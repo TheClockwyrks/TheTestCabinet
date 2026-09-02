@@ -25,8 +25,8 @@
 // the sealed den, and the lives are read either side of the bite.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_CLEAR, SCORE_PLANKTON } from "../constants";
 import { assertEqual } from "../assert";
+import { SCORE_CLEAR, SCORE_PLANKTON } from "../constants";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,

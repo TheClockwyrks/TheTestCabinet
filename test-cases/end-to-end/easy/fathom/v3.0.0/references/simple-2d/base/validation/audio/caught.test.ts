@@ -33,8 +33,8 @@
 // `scoring/caught-costs-life`'s; the run ending, which is `scoring/three-lives`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { clearWorld } from "../fixtures";
 import { CUES } from "../constants";
+import { clearWorld } from "../fixtures";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

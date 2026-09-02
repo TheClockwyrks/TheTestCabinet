@@ -36,8 +36,8 @@
 // descent, which is `scoring/descend-on-clear`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, CUES } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureReplay,

@@ -29,8 +29,8 @@
 // the one this check posed, and no flare or pulse reveals anything.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../constants";
 import { poseLitWallProbe } from "../fixtures";
 import {
   captureStill,

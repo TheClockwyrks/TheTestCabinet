@@ -27,8 +27,8 @@
 // what it does to brightness, which is `brightness/from-eating`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, CUES } from "../constants";
 import { poseMoveKeyRun, stockPlankton } from "../fixtures";
 import {
   captureReplay,

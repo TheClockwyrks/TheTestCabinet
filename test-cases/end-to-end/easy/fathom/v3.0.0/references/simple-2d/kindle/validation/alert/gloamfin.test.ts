@@ -34,8 +34,8 @@
 // the measurement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ALERT_TIME, GLOAMFIN_HEAR } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
+import { ALERT_TIME, GLOAMFIN_HEAR } from "../constants";
 import { poseOccludedPair, spawnPredator } from "../fixtures";
 import {
   captureReplay,

@@ -33,8 +33,8 @@
 // into rock.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORAGER_SPEED, TICK_HZ } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
+import { FORAGER_SPEED, TICK_HZ } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

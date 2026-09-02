@@ -38,8 +38,8 @@
 // corridor of pellets kept topping up.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

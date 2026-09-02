@@ -34,6 +34,7 @@
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween } from "../assert";
 import {
   MAZE_DENSITY_MAX,
   MAZE_DENSITY_MIN,
@@ -42,7 +43,6 @@ import {
   MAZE_OPENNESS_MAX,
   MAZE_OPENNESS_MIN,
 } from "../constants";
-import { assertBetween } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { density, meanCorridorRun, openness } from "../maze";
 import { captureBoard, freshBoards, witness } from "./boards";
