@@ -175,22 +175,35 @@ destroyed rather than on a predicate over an empty field, which
 `stages.empty-wave-does-not-clear` is what holds a build to. Every expected value
 a suite asserts comes from a figure the specs fix, never from a reference build.
 
-### Where a scaling point's expectation comes from
+### Where the figure a suite asserts comes from
 
-Under `simple-2d` and `structured-2d` a suite reads the figures it POSES a
-scenario from — a slot's centre, the fire line, the field's edges — out of the
-build's seeded `src/constants.ts`, which is the case's own file and the one
-`specs/overview.md` tells the build is authoritative.
+Every figure a suite asserts is transcribed from the specification into
+`validation/<engine>/constants.ts` and imported from `"../constants"`. That file
+is the only one in a validator project permitted to reach into the build at all,
+and only for a value the specification genuinely leaves to the build to pick.
 
-The four stage RAMPS of `specs/stages.md` are the exception, and they are
-restated on the validator's side in `validation/<engine>/stages/ramps.ts`. A
-build is free to leave `src/constants.ts` exactly as it was seeded and still run
-its simulation off a formula of its own — `1 + 0.06 * stage` where the
-specification says `1 + 0.06 * (stage - 1)`, say — so reading the ramp back off
-the snapshot and comparing it against the seeded function agrees with such a
-build twice over and grades nothing. `validation/none/constants.ts` states the
-same principle for the engineless project, which has no seeded module to reach
-for at all.
+A suite that read its figure back out of the build's own seeded
+`src/constants.ts` would reduce its check to "does the build do what the build
+says it does". A build is free to seed that module untouched and run its
+simulation off a figure of its own — flying the swarm at `66` where the
+specification fixes `60` — and both sides of such a comparison then come from the
+same wrong number, so the check passes. The same holds for a formula: a build can
+ramp its stages off `1 + 0.06 * stage` where `specs/stages.md` says
+`1 + 0.06 * (stage - 1)`, which is why the four stage RAMPS are restated on the
+validator's side too, in `constants.ts` beside the scalars.
+
+`harness.ts` is the one other file that names a build module, and only the entry
+(`../src/game`), to stand the build up so a scenario can be posed in it. The
+`none` project names none at all: it drives a built site through
+`window.__spectra`, and reads every figure from `validation/none/constants.ts`.
+
+**The rule is a gate, not a convention.** The project's `eslint.config.js` — the
+same file the seeded workspace carries, run by `npm run lint` at the repository
+root — holds `validation/**/*.ts` to it as soon as the tree is staged there. An
+import, a re-export, a `require` or a dynamic `import()` reaching `src/` is an
+error naming the file; `harness.ts` may name the build's entry and nothing else;
+and `validation/constants.ts`, exempt from the import rule, still may not pass a
+whole build module on with `export *`.
 
 For the same reason none of the four `stages/scaling-*` points is decided by a
 RATIO between two stages: a ramp one step out shifts both stages by very nearly
@@ -213,32 +226,15 @@ evidence and the reference's side by side.
 `overload`, and which of them a run executes is decided by the variant's own
 `validation` entries in `variants/*.toml`.
 
-Under `simple-2d` and `structured-2d` the `overload/` suites import `OVERLOAD_AT`
-and its four siblings from the build's own `src/constants.ts`, which is exactly
-where those figures are seeded — but only into the **overload** workspace. So
-`npx tsc -p validation/tsconfig.json` staged into a *base* implementation reports
-`has no exported member 'OVERLOAD_AT'` for every one of those files. That is
-deliberate, and it is the same choice Carom v3.0.0 makes:
-
-- The five figures are Overload's alone. Exporting them from the base workspace
-  would put a sibling mode's constants into a seeded set that otherwise never
-  mentions it, which is the one thing the two variants are built not to do.
-- Restating them inside `validation/` would let the validator's copy and the
-  seeded constant drift, and the seeded constant is the one `specs/overview.md`
-  tells the build is authoritative.
-- Nothing in the pipeline type-checks the tree as a whole. The suites are executed
-  per review item, and an `overload/` suite is never executed against a base
-  build.
-
-So typecheck an engine's validators against an **overload** implementation:
+Overload's own five figures — `OVERLOAD_AT` and its siblings — are seeded into the
+**overload** workspace's `src/constants.ts` alone, and the `overload/` suites do
+not read them from there. Like every other asserted figure they are transcribed
+into `validation/<engine>/constants.ts`, so the whole tree type-checks against
+either variant's build, on any engine:
 
 ```sh
-npx tsc -p validation/tsconfig.json    # from an overload build's root
+npx tsc --noEmit -p validation/tsconfig.json    # from a build's root
 ```
-
-Under `none` the question does not arise: that project reads every figure from
-its own `validation/none/constants.ts`, so its tree type-checks against either
-variant.
 
 ### Four captures move between runs
 
