@@ -32,7 +32,7 @@
 // ship at the centre of its lane is neither clamped nor wrapped.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_SPEED, SHIP_X_MIN } from "../../src/constants";
+import { BINDINGS, SHIP_SPEED, SHIP_X_MIN } from "../constants";
 import { assertBetween, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

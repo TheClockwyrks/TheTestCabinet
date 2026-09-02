@@ -27,7 +27,7 @@
 // held.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_SPEED, SHIP_X_MAX } from "../../src/constants";
+import { BINDINGS, SHIP_SPEED, SHIP_X_MAX } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,

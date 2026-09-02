@@ -38,7 +38,7 @@
 // are held.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_SPEED, SHIP_X_MAX, SHIP_X_MIN } from "../../src/constants";
+import { SHIP_SPEED, SHIP_X_MAX, SHIP_X_MIN } from "../constants";
 import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

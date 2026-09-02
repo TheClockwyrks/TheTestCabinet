@@ -30,7 +30,7 @@
 // to cost a life and return the ship to the centre of its lane mid-scenario.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_X_MAX } from "../../src/constants";
+import { SHIP_X_MAX } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

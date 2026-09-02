@@ -47,7 +47,7 @@ import {
   BINDINGS,
   FIRE_INTERVAL,
   MAX_PLAYER_BULLETS,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

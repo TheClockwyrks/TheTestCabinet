@@ -46,7 +46,7 @@
 // counted over the two seconds is one this key fired.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL } from "../../src/constants";
+import { FIRE_INTERVAL } from "../constants";
 import {
   assertBetween,
   assertEqual,

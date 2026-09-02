@@ -40,7 +40,7 @@ import {
   FIELD_TOP,
   FORM_CENTER_X,
   PLAYER_BULLET_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual, fail } from "../assert";
 import {
   captureStill,

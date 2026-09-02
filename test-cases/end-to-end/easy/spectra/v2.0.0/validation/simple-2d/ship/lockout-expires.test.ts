@@ -45,7 +45,7 @@
 // during the wait and no contact drops the ship into the `ready` phase.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, FLIP_LOCKOUT } from "../../src/constants";
+import { BINDINGS, FLIP_LOCKOUT } from "../constants";
 import {
   assertBetween,
   assertEqual,

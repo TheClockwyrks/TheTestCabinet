@@ -11,7 +11,7 @@
 // the key goes down, the frames run one at a time, the key comes up — and every
 // figure a check asserts about the shot that comes back is stated in that check.
 
-import { BINDINGS, FIRE_INTERVAL } from "../../src/constants";
+import { BINDINGS, FIRE_INTERVAL } from "../constants";
 import { fail } from "../assert";
 import {
   bulletById,

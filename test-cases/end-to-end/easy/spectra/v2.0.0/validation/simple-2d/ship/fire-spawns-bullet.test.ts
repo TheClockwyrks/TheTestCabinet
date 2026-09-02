@@ -32,7 +32,7 @@
 // drops the ship into the `ready` phase. No drone is posed: a shot needs no target.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

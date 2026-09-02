@@ -43,7 +43,7 @@ import {
   SHIP_SPEED,
   SHIP_X_MAX,
   SHIP_X_MIN,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

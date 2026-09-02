@@ -50,7 +50,7 @@
 // consume the bullet before the flip lands (specs/bands.md).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_Y } from "../../src/constants";
+import { BINDINGS, SHIP_Y } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
 import {
   captureStill,

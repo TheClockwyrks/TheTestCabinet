@@ -51,7 +51,7 @@
 // consume one (specs/bands.md).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_PLAYER_BULLETS, SHIP_Y } from "../../src/constants";
+import { MAX_PLAYER_BULLETS, SHIP_Y } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

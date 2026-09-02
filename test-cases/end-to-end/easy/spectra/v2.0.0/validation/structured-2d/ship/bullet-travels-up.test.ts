@@ -40,7 +40,7 @@ import {
   FIELD_TOP,
   PLAYER_BULLET_HALF,
   PLAYER_BULLET_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,

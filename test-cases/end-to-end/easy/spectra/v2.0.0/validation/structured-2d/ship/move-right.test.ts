@@ -32,7 +32,7 @@
 // reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_SPEED, SHIP_X_MAX } from "../../src/constants";
+import { SHIP_SPEED, SHIP_X_MAX } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

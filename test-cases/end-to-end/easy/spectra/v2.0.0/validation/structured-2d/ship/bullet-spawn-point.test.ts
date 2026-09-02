@@ -36,7 +36,7 @@
 // what band it carries (`ship/bullet-carries-band`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_X_MAX, SHIP_X_MIN, SHIP_Y } from "../../src/constants";
+import { SHIP_X_MAX, SHIP_X_MIN, SHIP_Y } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

@@ -34,7 +34,7 @@
 // fire for a different reason entirely.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, FLIP_LOCKOUT } from "../../src/constants";
+import { BINDINGS, FLIP_LOCKOUT } from "../constants";
 import { assertBetween, assertEqual, assertLength } from "../assert";
 import {
   captureStill,

@@ -50,7 +50,7 @@
 // three gates, so no drone can consume either bullet before it is read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, FIELD_TOP } from "../../src/constants";
+import { BINDINGS, FIELD_TOP } from "../constants";
 import { assertEqual, assertNotEqual, fail } from "../assert";
 import {
   captureStill,

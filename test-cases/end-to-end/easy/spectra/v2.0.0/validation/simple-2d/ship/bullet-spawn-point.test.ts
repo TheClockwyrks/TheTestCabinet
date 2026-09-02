@@ -40,7 +40,7 @@
 // the cooldown and the lockout at zero.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_W, SHIP_Y } from "../../src/constants";
+import { BINDINGS, SHIP_W, SHIP_Y } from "../constants";
 import {
   assertBetween,
   assertEqual,

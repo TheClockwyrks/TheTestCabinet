@@ -39,7 +39,7 @@
 // counted at the end are the ones this key fired.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL, FLIP_LOCKOUT } from "../../src/constants";
+import { FIRE_INTERVAL, FLIP_LOCKOUT } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,

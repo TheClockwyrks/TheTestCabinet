@@ -42,7 +42,7 @@
 // consume either.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

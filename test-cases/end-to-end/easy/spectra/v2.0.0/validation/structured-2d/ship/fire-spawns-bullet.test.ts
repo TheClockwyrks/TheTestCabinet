@@ -37,7 +37,7 @@
 // put a bullet on the field or take one off it while the press is delivered.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL } from "../../src/constants";
+import { FIRE_INTERVAL } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
