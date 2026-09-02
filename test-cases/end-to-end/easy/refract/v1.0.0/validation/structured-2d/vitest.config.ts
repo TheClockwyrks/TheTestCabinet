@@ -29,10 +29,27 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    // Traces are immediate, so even a whole campaign course walk or a
-    // twenty-five-board cascade sweep costs milliseconds; the headroom is for
-    // the cascade solver's documented worst case, and it is still generous
-    // there.
-    testTimeout: 60_000,
+    // WHAT A TIMEOUT IS FOR, AND WHAT IT MUST NOT DO. Nothing this project
+    // measures is taken from the wall clock: every check drives the game frame by
+    // frame through the engine's host interface and asserts on what the build's
+    // own snapshot reports. The one wall clock left is this allowance — and an
+    // allowance a correct build can cross is a defect in the check, because it
+    // turns "how busy the machine was" into a lost point on a build that did
+    // nothing wrong.
+    //
+    // The measurement it is set against: on a host running nine of these
+    // projects at once (load average ~450), the slowest suite here — a
+    // twenty-five-board cascade sweep — took about 40 s against about 6 s quiet,
+    // and the engineless sibling of this project lost four points to a sixty-
+    // second allowance under the same conditions. Four minutes is roughly six
+    // times the worst reading actually taken. A hung build is still bounded, and
+    // bounded twice over, since the runner caps the whole suite run as well.
+    testTimeout: 240_000,
+    // Vitest defaults an unset hook allowance to TEN SECONDS, which is the
+    // tightest wall clock in the project and the one least related to anything
+    // the build does — a `beforeEach` that builds a harness over the engine can
+    // cross it on a loaded host alone. Set explicitly, for the same reason the
+    // test allowance is.
+    hookTimeout: 120_000,
   },
 });

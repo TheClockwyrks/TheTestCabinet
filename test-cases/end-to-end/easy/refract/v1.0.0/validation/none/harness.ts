@@ -237,6 +237,14 @@ export interface Viewport {
   offsetY: number;
 }
 
+/** A rectangle of the stage, in logical units, corner to corner. */
+export interface LogicalRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 export interface HarnessOptions {
   /** The clock each frame takes its delta from. Defaults to 60 Hz. */
   clock?: Clock;
@@ -293,6 +301,23 @@ export interface Harness {
 
   /** A fresh read of the game's state through the build's `snapshot`. */
   snapshot(): Promise<RefractSnapshot>;
+  /**
+   * Draw several routes through the build's own `trace`, then read the state
+   * they left — ALL IN ONE CROSSING.
+   *
+   * The same operations in the same order as one `trace` call per route
+   * followed by a `snapshot`, and the build sees no difference: `trace` resolves
+   * a route the moment it is called, between frames, so nothing runs between two
+   * of them for a crossing to have separated. What changes is the cost. A
+   * crossing is a round trip into a browser process, and a round trip is priced
+   * by how busy the HOST is — 6 ms on an idle box and 90 ms on a loaded one —
+   * so a sweep that solves twenty-five boards three channels at a time pays for
+   * a hundred of them in latency that has nothing to do with the build. Sending
+   * the whole solution at once takes that out of the reading.
+   */
+  traces(
+    routes: readonly (readonly { col: number; row: number }[])[],
+  ): Promise<RefractSnapshot>;
   /** Run `frames` frames back to back, each the length the clock says. */
   advance(frames: number): Promise<void>;
   /** Advance until `predicate` holds, sampling every `poll` frames. */
@@ -334,6 +359,19 @@ export interface Harness {
   pixels(
     points: readonly { x: number; y: number }[],
   ): Promise<[number, number, number, number][]>;
+  /**
+   * The mean rendered colour over a logical rectangle, taken over EVERY device
+   * pixel inside it, in one crossing.
+   *
+   * The same reading a caller gets by walking the rectangle a device pixel at a
+   * time through {@link Harness.pixels} and averaging what comes back, but read
+   * as one `getImageData` over the whole rectangle and summed in the page. A
+   * tile-sized patch is ten thousand device pixels; taken point by point that is
+   * ten thousand `getImageData` calls and forty thousand numbers crossing back,
+   * and both halves of that cost scale with how busy the host is rather than
+   * with anything the build did.
+   */
+  meanColor(region: LogicalRect): Promise<Rgb>;
   /** A pixel addressed in the canvas's own backing store, past the fit. */
   devicePixel(x: number, y: number): Promise<[number, number, number, number]>;
   /** The canvas's backing store size, as the build sized it. */
@@ -361,16 +399,47 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 /**
  * How long the surface is waited for before the build is called non-conformant.
  *
- * Generous against a conformant build and cheap against one: the wait is a poll
- * that returns the instant the global appears, and a build installs it while its
- * entry module runs, so a page that has fired `load` has either installed it
- * already or is not going to. What the ceiling really bounds is the cost of a
- * build with no surface at all, which pays it once per harness — and there is a
- * cap on the whole suite run, so a wait long enough to exhaust it would turn
- * "every point this decides failed" into "the validators did not run", which
- * tells a reviewer far less.
+ * THE ONE READING IN THIS PROJECT THAT CANNOT BE TAKEN OFF THE HOST'S CLOCK. A
+ * page boots in real time and there is no simulated clock to read it against:
+ * the game does not exist yet, so it has no clock of its own to have gained on.
+ * The wait is therefore a real one, and the rule for a real one is that its
+ * allowance must be a length a LOADED host cannot cross, because everything on
+ * the other side of it is charged to the build. A `waitForFunction` that expires
+ * here does not report a slow host; it reports `window.__refract was still
+ * absent`, which reads as a hard conformance verdict against a build that
+ * installed its surface perfectly well — the worst shape a flake can take.
+ *
+ * Five seconds was that: on a host running nine of these projects at once, a
+ * conformant reference lost `instrumentation/reset` to exactly this line. Thirty
+ * is chosen against the measured worst case rather than against a healthy
+ * machine — a page whose whole boot is milliseconds when the box is idle takes
+ * seconds when it is not, and the poll returns the instant the global appears,
+ * so a conformant build is charged nothing for the headroom.
+ *
+ * What the ceiling still bounds is the cost of a build with no surface at all,
+ * which would otherwise pay it once per harness across the whole checklist and
+ * turn "every point this decides failed" into "the validators did not run" —
+ * which tells a reviewer far less. {@link SURFACE_ABSENT_TIMEOUT_MS} is what
+ * bounds it instead, so the ceiling here can be generous.
  */
-const SURFACE_TIMEOUT_MS = 5_000;
+const SURFACE_TIMEOUT_MS = 30_000;
+
+/**
+ * The wait a harness uses once a page in this worker has already been given the
+ * full {@link SURFACE_TIMEOUT_MS} and come back without a surface.
+ *
+ * The first page pays the generous wait, which is what keeps a slow host from
+ * being read as a broken build. A second page in the same file, on a build that
+ * has just demonstrated it installs nothing, is not going to repay it: the
+ * verdict is settled and the rest of the wait buys only wall clock the whole
+ * suite run is capped on. A page that DID install the surface never sets this,
+ * so a later page failing where an earlier one succeeded still gets the full
+ * hearing.
+ */
+const SURFACE_ABSENT_TIMEOUT_MS = 1_000;
+
+/** Whether a page in this worker has been seen to install the surface at all. */
+let surfaceEverSeen: boolean | null = null;
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -496,16 +565,20 @@ export function failSurface(fault: string): never {
  * specification requires.
  */
 async function readSurfaceFault(page: Page): Promise<string | null> {
+  const budget =
+    surfaceEverSeen === false ? SURFACE_ABSENT_TIMEOUT_MS : SURFACE_TIMEOUT_MS;
   try {
     await page.waitForFunction(
       (handle) =>
         typeof (window as never)[handle] === "object" &&
         (window as never)[handle] !== null,
       HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
+      { timeout: budget },
     );
+    surfaceEverSeen = true;
   } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
+    surfaceEverSeen = false;
+    return `window.${HANDLE} was still absent ${budget / 1000}s after the page loaded`;
   }
   const missing = await page.evaluate(
     ([handle, ops]) => {
@@ -705,6 +778,63 @@ export async function createHarness(
       devicePoints as { x: number; y: number }[],
     );
 
+  /**
+   * Sum the canvas over a device-pixel rectangle and hand back its mean, in one
+   * crossing. The rectangle is clamped to the backing store, so a caller cannot
+   * ask for a reading off the edge of it.
+   */
+  const meanDeviceRect = async (
+    left: number,
+    top: number,
+    right: number,
+    bottom: number,
+  ): Promise<Rgb> =>
+    page.evaluate(
+      (rect) => {
+        const canvases = Array.from(document.querySelectorAll("canvas"));
+        if (canvases.length === 0)
+          throw new Error("refract: the page has no <canvas>");
+        let canvas = canvases[0];
+        for (const other of canvases) {
+          if (other.width * other.height > canvas.width * canvas.height)
+            canvas = other;
+        }
+        const ctx = canvas.getContext("2d");
+        if (ctx === null)
+          throw new Error("refract: the canvas has no 2D context");
+        const x0 = Math.min(
+          Math.max(rect.left, 0),
+          Math.max(canvas.width - 1, 0),
+        );
+        const y0 = Math.min(
+          Math.max(rect.top, 0),
+          Math.max(canvas.height - 1, 0),
+        );
+        const x1 = Math.min(
+          Math.max(rect.right, 0),
+          Math.max(canvas.width - 1, 0),
+        );
+        const y1 = Math.min(
+          Math.max(rect.bottom, 0),
+          Math.max(canvas.height - 1, 0),
+        );
+        const width = Math.max(1, x1 - x0 + 1);
+        const height = Math.max(1, y1 - y0 + 1);
+        const { data } = ctx.getImageData(x0, y0, width, height);
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+        }
+        const count = data.length / 4;
+        return { r: r / count, g: g / count, b: b / count };
+      },
+      { left, top, right, bottom },
+    );
+
   const harness: Harness = {
     page,
     debug,
@@ -715,6 +845,26 @@ export async function createHarness(
     timeMs: () => timeMs,
 
     snapshot: () => debug.snapshot(),
+
+    async traces(routes) {
+      if (surfaceFault !== null) refuse();
+      return (await page.evaluate(
+        ([handle, list]) => {
+          const api = (
+            window as unknown as Record<
+              string,
+              Record<string, (...a: unknown[]) => unknown>
+            >
+          )[handle];
+          for (const route of list) api.trace(route);
+          return api.snapshot();
+        },
+        [
+          HANDLE,
+          routes.map((route) => route.map((cell) => ({ ...cell }))),
+        ] as const,
+      )) as RefractSnapshot;
+    },
 
     advance: async (frames) => {
       await drive(frames);
@@ -823,6 +973,16 @@ export async function createHarness(
     },
     pixel: async (x, y) => (await readPixels([toDevice(view, x, y)]))[0],
     pixels: (points) => readPixels(points.map((p) => toDevice(view, p.x, p.y))),
+    meanColor: (region) => {
+      const a = toDevice(view, region.x0, region.y0);
+      const b = toDevice(view, region.x1, region.y1);
+      return meanDeviceRect(
+        Math.min(a.x, b.x),
+        Math.min(a.y, b.y),
+        Math.max(a.x, b.x),
+        Math.max(a.y, b.y),
+      );
+    },
     devicePixel: async (x, y) => (await readPixels([{ x, y }]))[0],
 
     surface: () =>
@@ -1844,11 +2004,23 @@ export async function traceRoute(
  * there. On the last permitted move of the last channel the board solves and
  * the trace ends on the spot, exactly as `specs/beams.md` states.
  */
-export async function drawBeams(h: Harness, beams: Beams): Promise<void> {
+export async function drawBeams(
+  h: Harness,
+  beams: Beams,
+): Promise<RefractSnapshot> {
+  const routes: { col: number; row: number }[][] = [];
   for (const channel of CHANNELS) {
     const route = beams[channel];
-    if (route !== undefined && route.length > 0) await traceCells(h, route);
+    if (route !== undefined && route.length > 0) {
+      routes.push(route.map(({ col, row }) => ({ col, row })));
+    }
   }
+  // One crossing for every channel and the read-back, through {@link
+  // Harness.traces}: the routes are drawn in CHANNELS order by the same `trace`
+  // a caller would have called one at a time, and no frame runs between two of
+  // them either way, so the game cannot tell the difference and a sweep of
+  // twenty-five boards stops paying four round trips a board for the privilege.
+  return h.traces(routes);
 }
 
 /* ---- The real pointer ------------------------------------------------------ */
@@ -1941,7 +2113,7 @@ function requireScreen(
 export async function solveCampaignBoard(
   h: Harness,
   index: number,
-): Promise<void> {
+): Promise<RefractSnapshot> {
   const data = CAMPAIGN_BOARDS[index];
   if (data === undefined) {
     fail(`a campaign board index 0..${CAMPAIGN_BOARDS.length - 1}`, index);
@@ -1953,7 +2125,7 @@ export async function solveCampaignBoard(
       beams[channel] = route.map(([col, row]) => ({ col, row }));
     }
   }
-  await drawBeams(h, beams);
+  return drawBeams(h, beams);
 }
 
 /** What a course walk saw: each board on entry, and the screen it ended on. */
@@ -2003,8 +2175,9 @@ export async function driveCourse(
     );
     entered.push(snapshot);
     await onBoard?.(snapshot, index);
-    await solveCampaignBoard(h, index);
-    snapshot = await h.snapshot();
+    // The solution's own read-back IS the state after the solve: `trace`
+    // resolves between frames, so nothing has run since.
+    snapshot = await solveCampaignBoard(h, index);
     if (index < boards - 1) {
       requireScreen(
         snapshot,
@@ -2084,8 +2257,14 @@ export async function solveGenerated(
     await onBoard?.(snapshot, index);
     const verdict = solve(board);
     verdicts.push(verdict);
-    if (verdict.status === "solved") await drawBeams(h, verdict.beams);
-    snapshot = await h.snapshot();
+    // The solution's own read-back IS the state after the solve: `trace`
+    // resolves between frames, so nothing has run since. A board the solver
+    // could not crack is read back as it stands, unsolved, for the caller's
+    // own verdict.
+    snapshot =
+      verdict.status === "solved"
+        ? await drawBeams(h, verdict.beams)
+        : await h.snapshot();
     afterSolve.push(snapshot);
     if (index < count - 1 && snapshot.screen === "solved") {
       // First choice, highlighted on arrival: NEXT BOARD.
