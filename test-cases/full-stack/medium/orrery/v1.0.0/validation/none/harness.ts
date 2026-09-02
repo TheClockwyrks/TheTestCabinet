@@ -443,12 +443,18 @@ export async function createHarness(
       .evaluate(
         () =>
           new Promise<void>((done) => {
+            // Two frames, not one. A callback registered here runs in the next
+            // frame alongside the build's own, and the order of the two is the
+            // order they were registered in, which this side does not control.
+            // Waiting for the frame after guarantees the build's loop has run a
+            // whole frame with the key or button still down.
             requestAnimationFrame(() => {
-              done();
+              requestAnimationFrame(() => {
+                done();
+              });
             });
           }),
       )
-      .catch(() => undefined)
       .then(() => undefined);
 
   const harness: Harness = {
