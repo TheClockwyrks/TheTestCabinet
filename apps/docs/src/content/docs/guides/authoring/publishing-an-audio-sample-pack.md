@@ -101,13 +101,14 @@ the URL, and keeps every credential out of the image.
 Read these from repo-root `.env` locally and from GitHub secrets and variables
 in CI.
 
-| Variable                                                           | Role                       | Where                        |
-| ------------------------------------------------------------------ | -------------------------- | ---------------------------- |
-| `CLOUDFLARE_ACCOUNT_ID`                                            | derives the S3 endpoint    | every step                   |
-| `CLOUDFLARE_AUDIO_R2_BUCKET`                                       | the private bucket name    | every step                   |
-| `CLOUDFLARE_AUDIO_R2_PUBLISH_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | write                      | ingest + publish, local only |
-| `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | read                       | image build, local + CI      |
-| `FREESOUND_API_KEY`                                                | Freesound search and fetch | ingest only                  |
+| Variable                                                           | Role                                        | Where                        |
+| ------------------------------------------------------------------ | ------------------------------------------- | ---------------------------- |
+| `CLOUDFLARE_AUDIO_R2_S3_URL`                                       | the S3 endpoint                             | every step                   |
+| `CLOUDFLARE_ACCOUNT_ID`                                            | derives that endpoint when the URL is unset | every step                   |
+| `CLOUDFLARE_AUDIO_R2_BUCKET`                                       | the private bucket name                     | every step                   |
+| `CLOUDFLARE_AUDIO_R2_PUBLISH_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | write                                       | ingest + publish, local only |
+| `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | read                                        | image build, local + CI      |
+| `FREESOUND_API_KEY`                                                | Freesound search and fetch                  | ingest only                  |
 
 Publishing needs `ffmpeg` on `PATH` to normalize, and curating a bank uses it to
 detect pitch. The image build needs neither `ffmpeg` nor a Freesound key.

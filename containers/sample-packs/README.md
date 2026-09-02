@@ -203,7 +203,8 @@ presign pair.
 
 | Variable | Role | Where |
 | --- | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | derives the S3 endpoint | publish + presign |
+| `CLOUDFLARE_AUDIO_R2_S3_URL` | the S3 endpoint | publish + presign |
+| `CLOUDFLARE_ACCOUNT_ID` | derives that endpoint when the URL is unset | publish + presign |
 | `CLOUDFLARE_AUDIO_R2_BUCKET` | the private bucket | publish + presign |
 | `CLOUDFLARE_AUDIO_R2_PUBLISH_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | write | local ingest + publish only |
 | `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | read | local + CI image build |
