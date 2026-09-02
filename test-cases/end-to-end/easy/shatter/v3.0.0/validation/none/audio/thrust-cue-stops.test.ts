@@ -77,6 +77,20 @@ const RELEASE_TICKS = ticksFor(0.1);
 /** The one tick after the release the review item's picture is taken on. */
 const PICTURE_TICKS = 1;
 
+/**
+ * How long the released key is held up after the deadline, in ticks.
+ *
+ * A STOP IS NOT SILENCE. `specs/audio.md` has the cue stop within a tenth of a
+ * second of the release and says nothing about it coming back, so a build that
+ * stops its voice on the release and immediately starts another — or one holding a
+ * one-shot going by re-playing it every few ticks — clears the deadline above while
+ * the player hears an engine that never shut off. A quarter of a second with the
+ * key up, on an emptied field `specs/audio.md` names no event on, is long enough to
+ * catch a re-play at any cadence a build would choose and short enough that the
+ * drifting ship reaches nothing.
+ */
+const TAIL_TICKS = ticksFor(0.25);
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -138,5 +152,19 @@ it("stops a sounding voice within a tenth of a second of the key coming up", asy
     `sounding voices the build stopped over the ${String(RELEASE_TICKS)} ticks ` +
       "after the thrust key came up — the held cue stops within a tenth of a " +
       "second of thrust being released (specs/audio.md)",
+  );
+
+  // AND IT STAYS STOPPED. The reading above is of a stop, not of silence.
+  const quiet = await h.sounds();
+  await h.advance(TAIL_TICKS);
+
+  assertEqual(
+    (await h.sounds()) - quiet,
+    0,
+    `sounds the build emitted over the ${String(TAIL_TICKS)} ticks after that ` +
+      "deadline, with thrust released throughout and nothing on the field " +
+      "specs/audio.md names a cue for — a build that stops its voice on the " +
+      "release and starts another, or holds a one-shot going by re-playing it, " +
+      "clears the deadline while the player hears an engine that never shut off",
   );
 });
