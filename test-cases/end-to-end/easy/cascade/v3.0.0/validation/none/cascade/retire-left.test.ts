@@ -21,12 +21,13 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { CARD_W } from "../constants";
 import {
-  type Harness,
+  SWEEP_CHUNK_FRAMES,
   captureReplay,
   createHarness,
   flyerById,
   framesFor,
   poseFlyer,
+  type Harness,
 } from "../harness";
 import { openFlight } from "./flight";
 
@@ -59,6 +60,7 @@ it("takes a flyer out of the flight once it is wholly past the left edge", async
   const gone = await captureReplay(harness, "retire", () =>
     harness.until((s) => flyerById(s, id) === undefined, {
       maxFrames: SWEEP_FRAMES,
+      chunk: SWEEP_CHUNK_FRAMES,
     }),
   );
 

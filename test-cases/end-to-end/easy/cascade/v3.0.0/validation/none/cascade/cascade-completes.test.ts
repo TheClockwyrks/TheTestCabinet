@@ -26,6 +26,7 @@ import { assertEqual, assertLength } from "../assert";
 import { DECK_SIZE } from "../constants";
 import {
   RUNOUT_HZ,
+  SWEEP_CHUNK_FRAMES,
   captureReplay,
   createHarness,
   framesFor,
@@ -68,6 +69,7 @@ it("launches all fifty-two cards, retires them all, and marks itself done", asyn
   const done = await captureReplay(harness, "cascade", async () => {
     const finished = await harness.until((s) => s.cascadeDone, {
       maxFrames: TAIL_FRAMES,
+      chunk: SWEEP_CHUNK_FRAMES,
     });
     await harness.advance(SETTLE_FRAMES);
     return finished;

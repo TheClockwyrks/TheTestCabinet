@@ -20,13 +20,14 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { FLOOR_Y } from "../constants";
 import {
-  type Harness,
+  SWEEP_CHUNK_FRAMES,
   captureStill,
   createHarness,
   flyerById,
   framesFor,
   poseFlyer,
   requireFlyer,
+  type Harness,
 } from "../harness";
 import { openFlight } from "./flight";
 
@@ -60,6 +61,7 @@ it("puts a bounced card exactly on FLOOR_Y", async () => {
 
   const bounce = await harness.until((s) => (flyerById(s, id)?.vy ?? 0) < 0, {
     maxFrames: SWEEP_FRAMES,
+    chunk: SWEEP_CHUNK_FRAMES,
   });
   await captureStill(harness, "seated");
 

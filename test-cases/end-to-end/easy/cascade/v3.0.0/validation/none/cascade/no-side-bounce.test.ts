@@ -26,13 +26,14 @@ import {
 } from "../assert";
 import { CARD_W, STAGE_W } from "../constants";
 import {
-  type Harness,
+  SWEEP_CHUNK_FRAMES,
   captureStill,
   createHarness,
   flyerById,
   framesFor,
   poseFlyer,
   requireFlyer,
+  type Harness,
 } from "../harness";
 import { openFlight } from "./flight";
 
@@ -79,7 +80,7 @@ it("carries a flyer across the right edge without turning it", async () => {
 
   const crossing = await harness.until(
     (s) => (flyerById(s, id)?.x ?? Number.NEGATIVE_INFINITY) >= PROBE_X,
-    { maxFrames: SWEEP_FRAMES },
+    { maxFrames: SWEEP_FRAMES, chunk: SWEEP_CHUNK_FRAMES },
   );
   await captureStill(harness, "crossing");
 

@@ -18,13 +18,14 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { FLOOR_Y } from "../constants";
 import {
-  type Harness,
+  SWEEP_CHUNK_FRAMES,
   captureReplay,
   createHarness,
   flyerById,
   framesFor,
   poseFlyer,
   requireFlyer,
+  type Harness,
 } from "../harness";
 import { openFlight } from "./flight";
 
@@ -60,7 +61,7 @@ it("sends a descending flyer back up off the floor", async () => {
   const bounce = await captureReplay(harness, "bounce", async () => {
     const rebound = await harness.until(
       (s) => (flyerById(s, id)?.vy ?? 0) < 0,
-      { maxFrames: SWEEP_FRAMES },
+      { maxFrames: SWEEP_FRAMES, chunk: SWEEP_CHUNK_FRAMES },
     );
     await harness.advance(DEPARTURE_FRAMES);
     return rebound;

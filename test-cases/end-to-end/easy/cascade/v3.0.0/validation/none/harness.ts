@@ -498,6 +498,31 @@ export function framesFor(duration: number): number {
  */
 export const RUNOUT_HZ = 60;
 
+/**
+ * How many frames a SWEEP drives per crossing into the page.
+ *
+ * A sweep runs frames until something happens and then reads the frame it
+ * happened on. Driving one frame per crossing made the reading cost a round trip
+ * per frame — tens of milliseconds on an idle host and hundreds on a loaded one —
+ * so a sweep of a second of game time spent a minute of a busy machine's time
+ * arriving at an answer that was decided in the first two hundred frames.
+ *
+ * IT CHANGES NO READING. {@link Harness.until} applies its predicate to every
+ * frame of the batch it drives and reports the frame the predicate first held on
+ * and the state that frame left, so a batched sweep answers exactly what a
+ * frame-at-a-time one answers. What it changes is where the harness STANDS
+ * afterwards: up to `chunk - 1` frames past the frame it reported. Fifty
+ * milliseconds of game time is the size chosen for that — small against every
+ * span these sweeps end on, and large enough that a sweep is a dozen crossings
+ * rather than hundreds.
+ *
+ * So it belongs only to a sweep whose next act is not a reading of the moment it
+ * stopped on. A sweep that has to leave the game exactly where it found the
+ * event — every audio point, which counts what sounded on which frame — takes
+ * the default of one instead and says so.
+ */
+export const SWEEP_CHUNK_FRAMES = framesFor(0.05);
+
 /* -------------------------------------------------------------------------- */
 /* The harness                                                                */
 /* -------------------------------------------------------------------------- */
@@ -589,11 +614,11 @@ export interface UntilOptions {
    * the time it knows, so it stands up to `chunk - 1` frames past the frame it
    * reports.
    *
-   * So `1` is the default and is what a check whose NEXT act is a reading — a
-   * still, a replay, a count of what sounded — wants. A check that only reads
-   * what the sweep hands back may name a larger one and stop paying a round trip
-   * per frame; each such check names its own and says what the over-run costs
-   * it.
+   * So `1` is the default and is what a check whose NEXT act is a reading of the
+   * moment the sweep stopped on wants — every audio point, which counts what
+   * sounded on which frame. A check that only reads what the sweep hands back
+   * passes {@link SWEEP_CHUNK_FRAMES}, where the size and the reason for it are
+   * stated once.
    */
   chunk?: number;
 }
