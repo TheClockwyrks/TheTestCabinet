@@ -1,17 +1,24 @@
-// R2 (S3-compatible) access for the sample-pack tooling, signed with AWS SigV4.
+// R2 (S3-compatible) access for the audio clip store, signed with AWS SigV4.
 //
-// The audio sample packs live in a PRIVATE R2 bucket (zero-egress, not publicly
-// listable). Two operations are needed and no more, so — exactly like the backend's
+// The audio objects live in a PRIVATE R2 bucket (zero-egress, not publicly listable).
+// Only four operations are needed, so — exactly like the backend's
 // `crates/backend/src/r2.rs`, which this mirrors — we sign requests directly with
 // SigV4 over `node:crypto` rather than pull in the AWS SDK:
 //
-//   - `putObject`      — the PUBLISH side: a curator uploads a built pack tarball
-//                        (needs the write-scoped PUBLISH credentials).
-//   - `presignGetUrl`  — the BUILD side: `containers/build.sh` mints a short-lived
-//                        GET URL the `sfx-sample`/`music` image build fetches the
-//                        pack from via `ADD --checksum` (needs only the read-scoped
-//                        PRESIGN credentials; the URL itself is anonymous once
-//                        minted, so no credential ever enters an image layer).
+//   - `putObject`      — the INGEST/PUBLISH side: a curator uploads a source clip
+//                        (`sources/<clip-id>`) or a normalized rendition
+//                        (`normalized/<clip-id>/<profile-id>.wav`); needs the
+//                        write-scoped PUBLISH credentials.
+//   - `headObject`     — the PUBLISH side again: cheaply answer "is this object
+//                        already there, and how big is it" before re-uploading.
+//   - `getObject`      — the BUILD side: `scripts/stage-audio-image.mjs` downloads
+//                        each object it bakes and verifies it against
+//                        `objects.lock.json`; needs only the read-scoped PRESIGN
+//                        credentials.
+//   - `presignGetUrl`  — a short-lived anonymous GET URL, for the cases where the
+//                        bytes must be fetched by something that cannot sign (a
+//                        Docker `ADD`, a browser); no credential enters an image
+//                        layer because the URL itself carries the signature.
 //
 // R2 is path-style (`{endpoint}/{bucket}/{key}`) and signs region `auto`.
 
@@ -72,6 +79,51 @@ function hostOf(endpoint) {
   return new URL(endpoint).host;
 }
 
+/** sha256 of the empty payload — the body hash every GET/HEAD signs. */
+const EMPTY_SHA256 = sha256Hex(Buffer.alloc(0));
+
+/**
+ * Sign one header-signed request against `{endpoint}/{bucket}/{key}` and return the
+ * `{ url, headers }` to hand to `fetch`. The signed header set is always
+ * `host;x-amz-content-sha256;x-amz-date`, so the same signer serves PUT (payload
+ * hashed) and GET/HEAD (empty payload).
+ */
+function signRequest({
+  method,
+  endpoint,
+  accessKeyId,
+  secretAccessKey,
+  bucket,
+  key,
+  payloadHash,
+}) {
+  const host = hostOf(endpoint);
+  const { amzDate, scopeDate } = amzDates();
+  const canonicalUri = `/${uriEncode(bucket, false)}/${uriEncode(key, false)}`;
+
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+  const canonicalRequest = `${method}\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+
+  const scope = `${scopeDate}/${REGION}/${SERVICE}/aws4_request`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${sha256Hex(Buffer.from(canonicalRequest))}`;
+  const signature = hmac(
+    signingKey(secretAccessKey, scopeDate),
+    stringToSign,
+  ).toString("hex");
+
+  return {
+    url: `${endpoint.replace(/\/+$/, "")}${canonicalUri}`,
+    headers: {
+      // undici derives Host from the URL (matching what we signed) even if it
+      // ignores an explicit Host header, so the signature stays valid either way.
+      "x-amz-date": amzDate,
+      "x-amz-content-sha256": payloadHash,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    },
+  };
+}
+
 /**
  * Upload one object: `PUT {endpoint}/{bucket}/{key}` with `body`, signed SigV4
  * single-chunk payload-signed. Throws on a non-2xx response.
@@ -85,34 +137,18 @@ export async function putObject({
   body,
   contentType = "application/octet-stream",
 }) {
-  const host = hostOf(endpoint);
-  const { amzDate, scopeDate } = amzDates();
-  const canonicalUri = `/${uriEncode(bucket, false)}/${uriEncode(key, false)}`;
-  const payloadHash = sha256Hex(body);
-
-  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
-  const canonicalRequest = `PUT\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
-
-  const scope = `${scopeDate}/${REGION}/${SERVICE}/aws4_request`;
-  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${sha256Hex(Buffer.from(canonicalRequest))}`;
-  const signature = hmac(
-    signingKey(secretAccessKey, scopeDate),
-    stringToSign,
-  ).toString("hex");
-  const authorization = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-  const url = `${endpoint.replace(/\/+$/, "")}${canonicalUri}`;
+  const { url, headers } = signRequest({
+    method: "PUT",
+    endpoint,
+    accessKeyId,
+    secretAccessKey,
+    bucket,
+    key,
+    payloadHash: sha256Hex(body),
+  });
   const res = await fetch(url, {
     method: "PUT",
-    headers: {
-      // undici derives Host from the URL (matching what we signed) even if it
-      // ignores an explicit Host header, so the signature stays valid either way.
-      "x-amz-date": amzDate,
-      "x-amz-content-sha256": payloadHash,
-      Authorization: authorization,
-      "Content-Type": contentType,
-    },
+    headers: { ...headers, "Content-Type": contentType },
     body,
   });
   if (!res.ok) {
@@ -121,6 +157,77 @@ export async function putObject({
       `R2 PUT ${key} -> HTTP ${res.status} ${res.statusText}: ${detail}`,
     );
   }
+}
+
+/**
+ * Download one object: `GET {endpoint}/{bucket}/{key}`, signed SigV4. Returns the
+ * body as a `Buffer`. A missing object throws an error that names the bucket and key
+ * and says what to do about it, because that is the failure a build hits when a clip
+ * was never ingested.
+ */
+export async function getObject({
+  endpoint,
+  accessKeyId,
+  secretAccessKey,
+  bucket,
+  key,
+}) {
+  const { url, headers } = signRequest({
+    method: "GET",
+    endpoint,
+    accessKeyId,
+    secretAccessKey,
+    bucket,
+    key,
+    payloadHash: EMPTY_SHA256,
+  });
+  const res = await fetch(url, { method: "GET", headers });
+  if (res.status === 404) {
+    throw new Error(
+      `R2 GET ${key} -> not found in bucket ${bucket} (HTTP 404): the object was never published — ingest the clip before building`,
+    );
+  }
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `R2 GET ${key} -> HTTP ${res.status} ${res.statusText}: ${detail}`,
+    );
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/**
+ * Probe one object: `HEAD {endpoint}/{bucket}/{key}`, signed SigV4. Returns
+ * `{ bytes, etag }` when it exists and `null` when it does not, so a publish step can
+ * skip an object already in the store. `bytes` is `null` if the response carried no
+ * `content-length`; `etag` has its quotes stripped.
+ */
+export async function headObject({
+  endpoint,
+  accessKeyId,
+  secretAccessKey,
+  bucket,
+  key,
+}) {
+  const { url, headers } = signRequest({
+    method: "HEAD",
+    endpoint,
+    accessKeyId,
+    secretAccessKey,
+    bucket,
+    key,
+    payloadHash: EMPTY_SHA256,
+  });
+  const res = await fetch(url, { method: "HEAD", headers });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`R2 HEAD ${key} -> HTTP ${res.status} ${res.statusText}`);
+  }
+  const len = res.headers.get("content-length");
+  return {
+    bytes: len === null ? null : Number.parseInt(len, 10),
+    etag: (res.headers.get("etag") ?? "").replace(/^"|"$/g, ""),
+  };
 }
 
 /**
