@@ -121,6 +121,24 @@ const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
  */
 const SUITE_DIR = join("validation", "harness.test.ts");
 
+/**
+ * One stretch of real time the build's own loop is handed the clock for, in
+ * milliseconds.
+ *
+ * A stretch rather than the whole wait: see the handback below.
+ */
+const HANDBACK_MS = 300;
+
+/**
+ * The most real time those stretches are given altogether, in milliseconds.
+ *
+ * A harness that hands the clock over clears the first stretch on any machine
+ * that presents a frame in it, and a host too busy to present one is given more
+ * stretches rather than a failure. Only a `runFor` that never hands the clock
+ * over at all spends the whole of this, which is the thing being pinned.
+ */
+const PATIENT_MS = 30_000;
+
 let h: Harness;
 const spares: Harness[] = [];
 
@@ -363,11 +381,26 @@ it("sweeps with until and skipUntil, and hands the clock back with runFor", asyn
 
   // And the clock really goes back and forth: the loop advances the game on its
   // own while `runFor` holds it, and stops again the moment it is taken back.
+  //
+  // THE HANDBACK IS EXTENDED, NOT LENGTHENED. How many frames a machine presents
+  // in a fixed stretch of real time is the MACHINE's business, and a busy one
+  // presents none — so the loop is handed the clock in `HANDBACK_MS` stretches
+  // until the build's OWN clock says it ran, up to `PATIENT_MS`. What is pinned
+  // is that `runFor` hands the clock over at all, which a build's running loop
+  // shows on the first stretch and a harness that never handed it over shows on
+  // none of them.
   const before = (await h.snapshot()).simTime;
-  await h.runFor(300);
-  const ran = (await h.snapshot()).simTime;
+  let ran = before;
+  let handed = 0;
+  while (ran === before && handed < PATIENT_MS) {
+    await h.runFor(HANDBACK_MS);
+    handed += HANDBACK_MS;
+    ran = (await h.snapshot()).simTime;
+  }
   assertGreaterThan(ran - before, 0, "the build's own loop advanced the game");
-  await h.page.waitForTimeout(150);
+  // Taken back, the game is off the wall clock — and THIS half needs no patience
+  // at all: a clock that is off stays where it is however long the host takes.
+  await h.page.waitForTimeout(HANDBACK_MS);
   assertEqual(
     (await h.snapshot()).simTime,
     ran,

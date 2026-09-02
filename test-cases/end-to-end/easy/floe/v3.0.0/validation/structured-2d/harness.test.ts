@@ -92,6 +92,24 @@ const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
  */
 const SUITE_DIR = join("validation", "harness.test.ts");
 
+/**
+ * One stretch of real time the engine's own frame loop is handed the clock for,
+ * in milliseconds.
+ *
+ * A stretch rather than the whole wait: see the handback below.
+ */
+const HANDBACK_MS = 300;
+
+/**
+ * The most real time those stretches are given altogether, in milliseconds.
+ *
+ * A `runFor` that hands the clock over clears the first stretch on any machine
+ * that runs a frame in it, and a host too busy to run one is given more stretches
+ * rather than a failure. Only a `runFor` that never hands the clock over at all
+ * spends the whole of this, which is the thing being pinned.
+ */
+const PATIENT_MS = 30_000;
+
 let mediaDir: string;
 let collecting: string | undefined;
 let h: Harness;
@@ -524,8 +542,19 @@ it("sweeps with until, paces the clock, and drives the engine's own loop", async
   expect(h.engine.frame().count - oneAtATime).toBe(ticksFor(0.5));
 
   // `runFor` hands the engine its own frame loop for a stretch of real time.
+  //
+  // THE HANDBACK IS EXTENDED, NOT LENGTHENED. How many frames a machine presents
+  // in a fixed stretch of real time is the MACHINE's business, and a busy one
+  // presents none in sixty milliseconds — so the loop is handed the clock in
+  // `HANDBACK_MS` stretches until it has run a frame, up to `PATIENT_MS`. What is
+  // pinned is that `runFor` hands the clock over at all, which any machine shows
+  // in a stretch or two and a `runFor` that never hands it over shows in none.
   const ran = h.engine.frame().count;
-  await h.runFor(60);
+  let handed = 0;
+  while (h.engine.frame().count === ran && handed < PATIENT_MS) {
+    await h.runFor(HANDBACK_MS);
+    handed += HANDBACK_MS;
+  }
   expect(h.engine.frame().count).toBeGreaterThan(ran);
 });
 

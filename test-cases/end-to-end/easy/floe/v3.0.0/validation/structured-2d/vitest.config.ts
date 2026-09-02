@@ -30,6 +30,14 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
+    // A CEILING ON HOW MANY OF THESE RUN AT ONCE, because every one of them is
+    // CPU. The runtime advances and draws each frame in this process, so a suite
+    // is compute rather than a wait — left to fan out across every core, the
+    // project contends with ITSELF and the same suites take several times as long
+    // as they do in isolation. Four is the figure the engineless project runs at,
+    // and it leaves the host something for the model's build underneath.
+    maxWorkers: 4,
+    minWorkers: 1,
     // A CEILING FOR A HUNG SUITE, NOT AN ALLOWANCE FOR A SLOW ONE. Every
     // measurement in this project is taken in the game's own ticks and decides
     // the same thing however long the host took to run them; the only thing this

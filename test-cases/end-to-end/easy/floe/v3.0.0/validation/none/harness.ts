@@ -1041,6 +1041,40 @@ const RECORD_MIN_TICKS = 4;
 const RECORD_MAX_FRAMES = 240;
 
 /**
+ * The most real time one drive spends waiting on the BUILD'S OWN animation
+ * frame, in milliseconds, altogether across every frame it records.
+ *
+ * WHY THERE IS A CEILING ON THIS AT ALL. A build that draws only from its loop
+ * (`"raf"`) is recorded by bracketing one of its own animation frames, which is
+ * the only place its picture exists — so this one wait cannot be replaced with a
+ * step. A browser presents in a frame's time and a drive spends milliseconds of
+ * this; but an animation frame is the one thing in this harness the HOST can
+ * withhold, and a drive that records {@link RECORD_MAX_FRAMES} frames would wait
+ * on it that many times. Without a ceiling, a host that stops presenting turns a
+ * build whose loop is fine into a check that ran out of time — a verdict about
+ * the machine wearing the build's name, which is the whole thing this project
+ * refuses to do.
+ *
+ * Spending it costs the EVIDENCE and nothing else: the frames still run, the
+ * ticks are still the ticks the check asked for, and every reading a check takes
+ * is a snapshot of the game's own state rather than a picture. What a spent
+ * budget loses is pictures in a replay, which no item is graded on.
+ *
+ * Two seconds is a hundred and twenty frames' worth at sixty a second — far more
+ * than any drive needs on a host that is presenting at all.
+ */
+const RECORD_PAINT_BUDGET_MS = 2_000;
+
+/**
+ * The most real time ONE such wait is given, in milliseconds.
+ *
+ * The budget above is the whole drive's; this bounds a single frame so a drive
+ * that is going to lose its pictures loses them early rather than spending the
+ * whole budget on the first one.
+ */
+const RECORD_PAINT_MAX_MS = 500;
+
+/**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
  *
@@ -1180,7 +1214,16 @@ export async function createHarness(
     const poses = options.poses ?? [];
     const collect = options.collect ?? false;
     const result = (await page.evaluate(
-      async ([handle, sizes, how, dt, before, series]) => {
+      async ([
+        handle,
+        sizes,
+        how,
+        dt,
+        before,
+        series,
+        budgetMs,
+        maxPaintMs,
+      ]) => {
         const api = (
           window as unknown as Record<
             string,
@@ -1195,9 +1238,31 @@ export async function createHarness(
         const audio = (
           window as unknown as { __floeAudio: { started(): number } }
         ).__floeAudio;
+        // The build's own animation frame, waited on for at most what the
+        // budget has left — see `RECORD_PAINT_BUDGET_MS`. A frame that arrives
+        // costs its own time and no more; one the host never presents costs the
+        // wait its ceiling and then costs nothing, so a drive cannot be held up
+        // by a renderer that has stopped.
+        let paintLeft = budgetMs;
         const paint = (): Promise<void> =>
           new Promise((done) => {
-            requestAnimationFrame(() => done());
+            if (paintLeft <= 0) {
+              done();
+              return;
+            }
+            const opened = performance.now();
+            let closed = false;
+            const close = (): void => {
+              if (closed) return;
+              closed = true;
+              paintLeft -= performance.now() - opened;
+              done();
+            };
+            const timer = setTimeout(close, Math.min(paintLeft, maxPaintMs));
+            requestAnimationFrame(() => {
+              clearTimeout(timer);
+              close();
+            });
           });
         const sounds: number[] = [];
         const shots: unknown[] = [];
@@ -1233,6 +1298,8 @@ export async function createHarness(
         TICK_DT * 1000,
         calls.map((_, index) => poses[index] ?? null),
         collect,
+        RECORD_PAINT_BUDGET_MS,
+        RECORD_PAINT_MAX_MS,
       ] as const,
     )) as {
       snapshot: FloeSnapshot;
@@ -1326,10 +1393,17 @@ export async function createHarness(
   const settle = async (): Promise<void> => {
     if (frameMode === "advance") return;
     await page.evaluate(
-      () =>
+      // Bounded for the reason `RECORD_PAINT_BUDGET_MS` gives: a host that has
+      // stopped presenting must cost this a wait, not the check its verdict.
+      (maxPaintMs) =>
         new Promise<void>((done) => {
-          requestAnimationFrame(() => done());
+          const timer = setTimeout(done, maxPaintMs);
+          requestAnimationFrame(() => {
+            clearTimeout(timer);
+            done();
+          });
         }),
+      RECORD_PAINT_MAX_MS,
     );
   };
 
