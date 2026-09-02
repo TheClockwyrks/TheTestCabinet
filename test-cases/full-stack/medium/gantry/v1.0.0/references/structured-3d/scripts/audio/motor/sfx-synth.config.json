@@ -1,0 +1,2 @@
+{ "sample_rate": 44100, "channels": "mono", "max_duration_ms": 2000, "seed": 7,
+  "actions": "log.json", "preview": "preview.png", "wav": "motor.wav" }
