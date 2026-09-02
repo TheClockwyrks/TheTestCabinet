@@ -78,7 +78,7 @@ import {
   LAYOUT,
   P1_X1,
   P2_X0,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build, type CaromState } from "../src/game";
 import { assertEqual, assertNotEqual, assertTruthy, fail } from "./assert";
 import {
@@ -137,7 +137,7 @@ export type CaromDriver = Driver<CaromState, CaromSurface>;
 /**
  * The frame the suite steps in, in milliseconds.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
+ * This is the SUITE's choice, not the game's: the specification deliberately
  * fixes no timestep, because the runtime hands the game whatever elapsed time a
  * frame really took. Fixing it here makes a duration a whole number of frames, so
  * a tolerance can be stated in ticks and mean the same thing on every machine.
@@ -1692,7 +1692,7 @@ export async function arrangeLiveBall(
 // what was painted against what else was painted. They are gathered here rather
 // than folded in above so the two halves of this file stay separable.
 
-import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
+import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "./constants";
 
 /* ---- Controls tolerances -------------------------------------------------- */
 
