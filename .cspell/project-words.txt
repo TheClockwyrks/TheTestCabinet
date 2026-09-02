@@ -591,6 +591,7 @@ unminable
 unmined
 unmute
 unmuted
+unmutes
 unoccluded
 unparked
 unperformable

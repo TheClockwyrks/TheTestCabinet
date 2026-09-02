@@ -1,0 +1,333 @@
+import { describe, expect, it } from "vitest";
+
+import { PARTS, PART_COSTS, WHEEL_MOTES } from "./constants";
+import { createPart } from "./machine";
+import {
+  apertureFootprint,
+  armGripperHexes,
+  armSpokes,
+  machineCost,
+  partClass,
+  partCost,
+  partHexes,
+  placementFailure,
+  placementLegal,
+  mountedTrack,
+  sigilFootprint,
+  wheelFixture,
+} from "./parts";
+import type { Challenge, Molecule, PartState } from "./types";
+
+const dust: Molecule = {
+  motes: [{ q: 0, r: 0, type: "dust" }],
+  filaments: [],
+  repeat: null,
+};
+
+const pair: Molecule = {
+  motes: [
+    { q: 0, r: 0, type: "luna" },
+    { q: 1, r: 0, type: "luna" },
+  ],
+  filaments: [{ a: { q: 0, r: 0 }, b: { q: 1, r: 0 }, weight: 1 }],
+  repeat: null,
+};
+
+const challenge: Challenge = {
+  name: "Fixture",
+  reagents: [dust],
+  products: [pair],
+  permitted: ["arm"],
+  target: 6,
+};
+
+let nextId = 1;
+function part(
+  kind: PartState["kind"],
+  q: number,
+  r: number,
+  rotation = 0,
+  options: Parameters<typeof createPart>[5] = {},
+): PartState {
+  nextId += 1;
+  return createPart(nextId, kind, q, r, rotation, options);
+}
+
+describe("part anatomy (specs/parts.md)", () => {
+  it("names each part kind's class", () => {
+    expect(PARTS).toHaveLength(21);
+    expect(partClass("piston")).toBe("arm");
+    expect(partClass("wheel")).toBe("wheel");
+    expect(partClass("track")).toBe("track");
+    expect(partClass("void")).toBe("sigil");
+    expect(partClass("rise")).toBe("rise");
+    expect(partClass("set")).toBe("set");
+  });
+
+  it("gives each arm kind its spokes, relative to the rotation", () => {
+    expect(armSpokes("arm", 2)).toEqual([2]);
+    expect(armSpokes("piston", 0)).toEqual([0]);
+    expect(armSpokes("biarm", 1)).toEqual([1, 4]);
+    expect(armSpokes("triarm", 1)).toEqual([1, 3, 5]);
+    expect(armSpokes("hexarm", 4)).toEqual([4, 5, 0, 1, 2, 3]);
+  });
+
+  it("stands a gripper at base + length * DIRS[spoke]", () => {
+    expect(armGripperHexes("arm", { q: 0, r: 0 }, 0, 3)).toEqual([
+      { q: 3, r: 0 },
+    ]);
+    expect(armGripperHexes("biarm", { q: 1, r: 1 }, 1, 2)).toEqual([
+      { q: 1, r: 3 },
+      { q: 1, r: -1 },
+    ]);
+  });
+
+  it("turns the wheel's whole ring with its rotation", () => {
+    expect(WHEEL_MOTES).toHaveLength(6);
+    expect(wheelFixture(0, 0)).toBe("nebula");
+    expect(wheelFixture(1, 1)).toBe("nebula");
+    expect(wheelFixture(0, 1)).toBe("dust");
+    expect(wheelFixture(2, 2)).toBe("nebula");
+  });
+
+  it("rotates a sigil's footprint about its anchor", () => {
+    const upright = sigilFootprint("conjoin", { q: 0, r: 0 }, 0);
+    expect(upright.map((entry) => entry.hex)).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 0, r: 1 },
+    ]);
+    expect(upright.map((entry) => entry.role)).toEqual([
+      "fount",
+      "fount",
+      "crown",
+    ]);
+    const turned = sigilFootprint("conjoin", { q: 0, r: 0 }, 1);
+    expect(turned.map((entry) => entry.hex)).toEqual([
+      { q: 0, r: 0 },
+      { q: 0, r: 1 },
+      { q: -1, r: 1 },
+    ]);
+  });
+
+  it("gives a void sigil a maw and six rim hexes", () => {
+    expect(sigilFootprint("void", { q: 0, r: 0 }, 0)).toHaveLength(7);
+  });
+
+  it("adds the repeat translate to a repeating product's set footprint", () => {
+    const repeating: Molecule = {
+      motes: [{ q: 0, r: 0, type: "luna" }],
+      filaments: [],
+      repeat: {
+        vector: { q: 1, r: 0 },
+        link: { a: { q: 0, r: 0 }, b: { q: 1, r: 0 }, weight: 1 },
+      },
+    };
+    expect(apertureFootprint(repeating, { q: 0, r: 0 }, 0, true)).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]);
+    expect(apertureFootprint(repeating, { q: 0, r: 0 }, 0, false)).toEqual([
+      { q: 0, r: 0 },
+    ]);
+  });
+
+  it("reports every hex a placed part occupies", () => {
+    expect(partHexes(part("arm", 1, 1), challenge)).toEqual([{ q: 1, r: 1 }]);
+    expect(
+      partHexes(
+        part("track", 0, 0, 0, {
+          cells: [
+            { q: 0, r: 0 },
+            { q: 1, r: 0 },
+          ],
+        }),
+        challenge,
+      ),
+    ).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]);
+    expect(partHexes(part("set", 0, 0, 0, { index: 0 }), challenge)).toEqual([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ]);
+  });
+
+  it("finds the track a mechanism's anchor sits on", () => {
+    const track = part("track", 0, 0, 0, {
+      cells: [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+      ],
+    });
+    expect(mountedTrack({ q: 1, r: 0 }, [track])).toBe(track);
+    expect(mountedTrack({ q: 2, r: 0 }, [track])).toBeNull();
+  });
+});
+
+describe("costs (specs/parts.md)", () => {
+  it("charges a track per cell and every other part its own figure", () => {
+    expect(partCost(part("hexarm", 0, 0))).toBe(PART_COSTS.hexarm);
+    expect(
+      partCost(
+        part("track", 0, 0, 0, {
+          cells: [
+            { q: 0, r: 0 },
+            { q: 1, r: 0 },
+            { q: 2, r: 0 },
+          ],
+        }),
+      ),
+    ).toBe(15);
+    expect(partCost(part("void", 0, 0))).toBe(0);
+  });
+
+  it("sums the machine", () => {
+    expect(machineCost([part("arm", 0, 0), part("bind", 2, 0)])).toBe(30);
+    expect(machineCost([])).toBe(0);
+  });
+});
+
+describe("the placement rules (specs/parts.md)", () => {
+  it("refuses a part with a hex off the field", () => {
+    expect(placementFailure(part("arm", 6, 0), [], challenge)).toMatch(
+      /on the field/,
+    );
+    expect(placementFailure(part("bind", 5, 0), [], challenge)).toMatch(
+      /on the field/,
+    );
+    expect(placementLegal(part("bind", 4, 0), [], challenge)).toBe(true);
+  });
+
+  it("refuses two engravings that overlap", () => {
+    const first = part("bind", 0, 0);
+    expect(placementFailure(part("wane", 1, 0), [first], challenge)).toMatch(
+      /engraving/,
+    );
+    expect(placementLegal(part("wane", 2, 0), [first], challenge)).toBe(true);
+  });
+
+  it("refuses a track cell on an engraving, and an engraving over a track", () => {
+    const sigil = part("bind", 0, 0);
+    const track = part("track", 3, 0, 0, { cells: [{ q: 3, r: 0 }] });
+    expect(
+      placementFailure(
+        part("track", 0, 0, 0, { cells: [{ q: 0, r: 0 }] }),
+        [sigil],
+        challenge,
+      ),
+    ).toMatch(/engraving/);
+    expect(placementFailure(part("bind", 3, 0), [track], challenge)).toMatch(
+      /track cell/,
+    );
+  });
+
+  it("refuses a hex in two tracks, and a hex twice in one track", () => {
+    const track = part("track", 0, 0, 0, {
+      cells: [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+      ],
+    });
+    expect(
+      placementFailure(
+        part("track", 1, 0, 0, { cells: [{ q: 1, r: 0 }] }),
+        [track],
+        challenge,
+      ),
+    ).toMatch(/another track/);
+    expect(
+      placementFailure(
+        part("track", 0, 0, 0, {
+          cells: [
+            { q: 0, r: 0 },
+            { q: 1, r: 0 },
+            { q: 0, r: 0 },
+          ],
+        }),
+        [],
+        challenge,
+      ),
+    ).toMatch(/one track twice/);
+  });
+
+  it("refuses two arms or wheels on one anchor, and allows one over a sigil", () => {
+    const arm = part("arm", 0, 0);
+    expect(placementFailure(part("wheel", 0, 0), [arm], challenge)).toMatch(
+      /already stands/,
+    );
+    const sigil = part("bind", 2, 0);
+    expect(placementLegal(part("arm", 2, 0), [sigil], challenge)).toBe(true);
+  });
+
+  it("refuses a second rise or set for one index", () => {
+    const rise = part("rise", 0, 0, 0, { index: 0 });
+    expect(
+      placementFailure(part("rise", 3, 0, 0, { index: 0 }), [rise], challenge),
+    ).toMatch(/already placed/);
+  });
+
+  it("refuses a track whose cells are not a path", () => {
+    expect(
+      placementFailure(
+        part("track", 0, 0, 0, {
+          cells: [
+            { q: 0, r: 0 },
+            { q: 2, r: 0 },
+          ],
+        }),
+        [],
+        challenge,
+      ),
+    ).toMatch(/adjacent/);
+  });
+
+  it("refuses a closed track under three cells, or whose ends do not meet", () => {
+    expect(
+      placementFailure(
+        part("track", 0, 0, 0, {
+          cells: [
+            { q: 0, r: 0 },
+            { q: 1, r: 0 },
+          ],
+          closed: true,
+        }),
+        [],
+        challenge,
+      ),
+    ).toMatch(/at least 3 cells/);
+    expect(
+      placementFailure(
+        part("track", 0, 0, 0, {
+          cells: [
+            { q: 0, r: 0 },
+            { q: 1, r: 0 },
+            { q: 2, r: 0 },
+          ],
+          closed: true,
+        }),
+        [],
+        challenge,
+      ),
+    ).toMatch(/adjacent to its first/);
+    expect(
+      placementLegal(
+        part("track", 0, 0, 0, {
+          cells: [
+            { q: 0, r: 0 },
+            { q: 1, r: 0 },
+            { q: 0, r: 1 },
+          ],
+          closed: true,
+        }),
+        [],
+        challenge,
+      ),
+    ).toBe(true);
+  });
+
+  it("reads no permitted list: that is a tray rule of specs/editor.md", () => {
+    expect(placementLegal(part("hexarm", 0, 0), [], challenge)).toBe(true);
+  });
+});
