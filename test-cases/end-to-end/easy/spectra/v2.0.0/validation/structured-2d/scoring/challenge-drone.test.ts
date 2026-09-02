@@ -44,7 +44,7 @@ import {
   CHALLENGE_EVERY,
   CHALLENGE_TOTAL,
   SCORE_CHALLENGE_DRONE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { destroyDrone, openWave } from "./wave";

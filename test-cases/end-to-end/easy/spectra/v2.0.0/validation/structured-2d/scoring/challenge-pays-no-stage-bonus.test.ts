@@ -43,7 +43,7 @@ import {
   CHALLENGE_EVERY,
   CHALLENGE_TOTAL,
   SCORE_STAGE_CLEAR,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength, assertTrue } from "../assert";
 import {
   captureStill,

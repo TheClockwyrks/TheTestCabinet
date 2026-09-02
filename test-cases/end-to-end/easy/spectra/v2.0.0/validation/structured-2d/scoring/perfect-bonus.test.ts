@@ -50,7 +50,7 @@ import {
   CHALLENGE_EVERY,
   CHALLENGE_TOTAL,
   SCORE_PERFECT_BONUS,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { destroyDrone, openWave } from "./wave";

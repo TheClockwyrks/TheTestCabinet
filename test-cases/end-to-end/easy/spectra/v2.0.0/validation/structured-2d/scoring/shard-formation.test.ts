@@ -32,7 +32,7 @@
 // pays is `scoring.stage-clear-bonus`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_SHARD_FORM } from "../../src/constants";
+import { SCORE_SHARD_FORM } from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

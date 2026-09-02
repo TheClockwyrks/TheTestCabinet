@@ -32,7 +32,7 @@ import {
   PLAYER_BULLET_HALF,
   SCORE_SHARD_DIVE,
   SHARD_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   SHOT_GAP,

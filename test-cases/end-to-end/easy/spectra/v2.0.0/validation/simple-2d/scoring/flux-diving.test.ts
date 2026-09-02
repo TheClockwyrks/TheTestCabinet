@@ -31,7 +31,7 @@ import {
   FLUX_HALF,
   PLAYER_BULLET_HALF,
   SCORE_FLUX_DIVE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   SHOT_GAP,

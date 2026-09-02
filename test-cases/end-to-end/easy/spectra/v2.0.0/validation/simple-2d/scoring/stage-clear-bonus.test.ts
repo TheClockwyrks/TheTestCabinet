@@ -35,7 +35,7 @@
 // stage is `screens`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_STAGE_CLEAR } from "../../src/constants";
+import { SCORE_STAGE_CLEAR } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,

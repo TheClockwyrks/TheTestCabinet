@@ -35,7 +35,7 @@ import {
   PLAYER_BULLET_HALF,
   PRISM_HALF,
   SCORE_PRISM_SHELL,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   SHOT_GAP,

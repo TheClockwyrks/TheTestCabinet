@@ -31,7 +31,7 @@
 // What the exposed CORE pays is `scoring.prism-core`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_PRISM_SHELL } from "../../src/constants";
+import { SCORE_PRISM_SHELL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

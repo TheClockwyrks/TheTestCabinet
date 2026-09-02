@@ -34,7 +34,7 @@
 // `scoring.prism-shell`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_PRISM_CORE } from "../../src/constants";
+import { SCORE_PRISM_CORE } from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

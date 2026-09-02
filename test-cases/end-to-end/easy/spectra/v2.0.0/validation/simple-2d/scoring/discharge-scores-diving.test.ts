@@ -46,7 +46,7 @@ import {
   RESONANCE_MAX,
   SCORE_FLUX_DIVE,
   SCORE_SHARD_DIVE,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertLength,

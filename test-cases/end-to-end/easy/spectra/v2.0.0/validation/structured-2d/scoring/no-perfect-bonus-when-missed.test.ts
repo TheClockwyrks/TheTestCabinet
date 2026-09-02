@@ -45,7 +45,7 @@ import {
   CHALLENGE_EVERY,
   CHALLENGE_TOTAL,
   SCORE_PERFECT_BONUS,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertLength,

@@ -26,7 +26,7 @@
 // `scoring.entering-scores-diving`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_SHARD_DIVE } from "../../src/constants";
+import { SCORE_SHARD_DIVE } from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

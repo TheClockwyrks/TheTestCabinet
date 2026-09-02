@@ -29,7 +29,7 @@
 // What a DIVING Flux pays is `scoring.flux-diving`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_FLUX_FORM } from "../../src/constants";
+import { SCORE_FLUX_FORM } from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

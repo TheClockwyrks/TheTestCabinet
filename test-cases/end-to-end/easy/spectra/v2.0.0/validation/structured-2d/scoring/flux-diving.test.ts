@@ -27,7 +27,7 @@
 // `scoring.flux-formation`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_FLUX_DIVE } from "../../src/constants";
+import { SCORE_FLUX_DIVE } from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

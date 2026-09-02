@@ -39,7 +39,7 @@
 // drone stands when it is shot decides none of these four points, so bringing it
 // to a fixed spot costs the reading nothing and keeps every shot identical.
 
-import { FIELD_LEFT, FIELD_TOP } from "../../src/constants";
+import { FIELD_LEFT, FIELD_TOP } from "../constants";
 import { assertTrue, fail } from "../assert";
 import {
   droneOf,
