@@ -50,7 +50,7 @@
 // units up, inside the bar, and only the topmost bodies show it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_LEVEL_LABEL } from "../../src/constants";
+import { HUD_LEVEL_LABEL } from "../constants";
 import { assertBetween, assertGreaterThanOrEqual, fail } from "../assert";
 import {
   captureStill,

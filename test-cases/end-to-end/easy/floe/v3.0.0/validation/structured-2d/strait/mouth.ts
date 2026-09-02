@@ -19,7 +19,7 @@
 // while these two points name a COLUMN of row `1` — the ten a bay covers and the
 // thirty it does not.
 
-import { WATER_TOP } from "../../src/constants";
+import { WATER_TOP } from "../constants";
 import { poseLane, type Harness } from "../harness";
 
 /**

@@ -44,12 +44,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import {
-  ROW_MEDIAN,
-  START_COL,
-  START_LIVES,
-  TOTAL_LEVELS,
-} from "../../src/constants";
+import { ROW_MEDIAN, START_COL, START_LIVES, TOTAL_LEVELS } from "../constants";
 import {
   captureReplay,
   createHarness,

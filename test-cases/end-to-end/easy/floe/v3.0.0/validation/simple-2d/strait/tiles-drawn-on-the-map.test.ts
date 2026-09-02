@@ -16,7 +16,7 @@
 // SO THE TARGET IS THE MAP, NOT THE SNAPSHOT AND NOT THE BUILD'S OWN MODULE.
 // Every reading below is taken against `./harness.ts`'s `mapCX`/`mapCY`, which
 // write the specification's two conversions out from `TILE` and `STRAIT_TOP`
-// rather than calling `src/constants.ts`'s `tileCX` and `tileCY`. A build that
+// rather than calling a ready-made `tileCX` and `tileCY`. A build that
 // reports a wrong centre and faithfully draws at it fails this item as well as
 // the other, which is the honest verdict: it drew the critter in the wrong place;
 // and a build that changed the map itself cannot make the target follow it.

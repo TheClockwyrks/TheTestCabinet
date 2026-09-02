@@ -41,7 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import { BAYS, ROW_BAYS, TILE } from "../../src/constants";
+import { BAYS, ROW_BAYS, TILE } from "../constants";
 import {
   captureStill,
   colorDistance,

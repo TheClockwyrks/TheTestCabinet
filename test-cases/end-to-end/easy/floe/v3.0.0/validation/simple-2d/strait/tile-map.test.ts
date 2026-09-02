@@ -10,7 +10,7 @@
 //
 // THE TARGET IS THE SPECIFICATION'S FORMULA, NOT THE BUILD'S FUNCTION.
 // `./harness.ts`'s `mapCX`/`mapCY` write the two conversions out from the figures
-// `TILE` and `STRAIT_TOP` rather than calling `src/constants.ts`'s `tileCX` and
+// `TILE` and `STRAIT_TOP` rather than calling a ready-made `tileCX` and
 // `tileCY`, because the map is exactly what this item decides: a check that asked
 // the build's own module where a tile's centre is would pass any build whose map
 // is wrong and used consistently.

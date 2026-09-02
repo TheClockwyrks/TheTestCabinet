@@ -32,13 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNull } from "../assert";
-import {
-  BAYS,
-  COLS,
-  ROW_BAYS,
-  START_LIVES,
-  WATER_TOP,
-} from "../../src/constants";
+import { BAYS, COLS, ROW_BAYS, START_LIVES, WATER_TOP } from "../constants";
 import {
   bayAtColumn,
   captureReplay,

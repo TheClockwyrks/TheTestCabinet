@@ -1,21 +1,22 @@
 // Floe (the strait) — specs/strait.md's geometry, and the arrangements this
 // group's checks share. CASE-PROVIDED.
 //
-// WHY THIS GROUP WRITES ITS FIGURES OUT INSTEAD OF IMPORTING THEM. Everywhere
-// else in this suite a check reads a figure from `src/constants.ts`, which is the
-// exact module the build was handed and the right thing to read: the figure and
-// the build cannot then disagree about what the case fixed. THIS GROUP IS THE ONE
-// EXCEPTION, because `src/constants.ts` is a file in the BUILD's tree and the
-// geometry is the very thing these ten items decide. A check that asked the
-// build's own module where the bays are, and then held the build to that answer,
-// would pass a build that moved them — the wrong figure and the wrong behaviour
+// WHY THIS GROUP QUOTES ITS FIGURES A SECOND TIME. Everywhere else in this suite
+// a check reads a figure from the project's own `../constants`, which transcribes
+// `specs/` on the validator's side; nothing in this project is ever graded
+// against the build's `src/constants.ts`, because a check that asked the build's
+// own module where the bays are, and then held the build to that answer, would
+// pass a build that moved them — the wrong figure and the wrong behaviour
 // cancelling each other out — and a validator that passes on any self-consistent
 // build is no validator at all.
 //
-// So every number below is quoted from `specs/strait.md`, and the comment beside
-// it says which line of that file it is quoted from. A build that leaves
-// `src/constants.ts` as it was seeded — which specs/overview.md requires: the file
-// is listed under "What stays as it is" — reads back exactly these.
+// THIS GROUP GOES ONE STEP FURTHER, because the geometry is the very thing these
+// ten items decide: every number below is quoted from `specs/strait.md` with the
+// comment beside it naming the line of that file it came from, so a figure these
+// items are graded by is read off the specification at the point of use rather
+// than at one remove. A build that leaves `src/constants.ts` as it was seeded —
+// which specs/overview.md requires: the file is listed under "What stays as it
+// is" — reads back exactly these.
 //
 // What is imported instead is what these items are NOT about: `crossingTimer`,
 // which is `specs/progression.md`'s figure and only ever sets a scenario up, and
@@ -40,7 +41,7 @@
 // None of them asserts a verdict and none carries a tolerance: a check states its
 // own, beside the figure it is a tolerance on.
 
-import { crossingTimer } from "../../src/constants";
+import { crossingTimer } from "../constants";
 import { poseLane, sampleColor, type Harness, type Rgb } from "../harness";
 
 /* ---- The stage, divided (specs/strait.md's region table) ------------------- */
@@ -155,9 +156,10 @@ export function bayMouthX(columns: readonly [number, number]): number {
 /**
  * The rendered colour at the centre of tile `(col, row)`.
  *
- * The shared harness's `sampleTile` reads through `src/constants.ts`'s own map;
- * this reads through `mapCX`/`mapCY`, so a band item samples where the
- * SPECIFICATION puts the row rather than where the build says it is.
+ * The shared harness's `sampleTile` reads through `../constants`'s map; this
+ * reads through this group's own `mapCX`/`mapCY`, written out from the figures
+ * `specs/strait.md` states, so a band item samples where the SPECIFICATION puts
+ * the row and says so at the point of use.
  */
 export function bandColor(h: Harness, col: number, row: number): Rgb {
   return sampleColor(h, mapCX(col), mapCY(row));

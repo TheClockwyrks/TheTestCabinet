@@ -50,7 +50,7 @@ import {
   START_COL,
   WATER_BOTTOM,
   WATER_TOP,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,

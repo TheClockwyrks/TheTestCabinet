@@ -60,7 +60,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
-import { COLS, ROWS, STAGE_H, STAGE_W } from "../../src/constants";
+import { COLS, ROWS, STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   clearColor,

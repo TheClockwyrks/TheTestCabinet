@@ -41,7 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { TOTAL_LEVELS } from "../../src/constants";
+import { TOTAL_LEVELS } from "../constants";
 import {
   captureReplay,
   createHarness,

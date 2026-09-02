@@ -37,7 +37,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
-import { HUD_H, TILE, tileCX, tileCY } from "../../src/constants";
+import { HUD_H, TILE, tileCX, tileCY } from "../constants";
 import {
   bandOf,
   captureStill,
