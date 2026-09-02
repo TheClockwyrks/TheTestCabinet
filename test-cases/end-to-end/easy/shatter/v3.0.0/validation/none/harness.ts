@@ -492,6 +492,15 @@ export interface UntilResult {
   snapshot: ShatterSnapshot;
 }
 
+/**
+ * One operation on the build's debug surface: the name `specs/instrumentation.md`
+ * gives it, and the arguments it takes.
+ *
+ * What {@link Harness.batch} is handed. It is a name rather than a bound method
+ * because the call has to survive being handed into the page as data.
+ */
+export type SurfaceCall = readonly [op: string, ...args: unknown[]];
+
 /** A device pixel, as `[r, g, b, a]`. */
 export type Pixel = [number, number, number, number];
 
@@ -528,6 +537,30 @@ export interface Harness {
 
   /** A fresh read of the game's state through the build's `snapshot`. */
   snapshot(): Promise<ShatterSnapshot>;
+  /**
+   * Run several of the build's surface operations in one crossing, in order, and
+   * hand back what each one answered.
+   *
+   * THE SAME CALLS THE SAME WAY, and that is the whole of it: the same operation
+   * names, the same arguments, in the same order, invoked on the same
+   * `window.__shatter` the {@link debug} proxy invokes them on. What it removes is
+   * the round trip between them, not a call. A build that carries no such
+   * operation still throws on it, naming it, exactly as one call would.
+   *
+   * AND NOTHING RUNS IN THE GAP IT CLOSES. The harness holds the game off the wall
+   * clock from the moment it is built, so no tick passes between two poses however
+   * far apart in real time they land; batching them changes what a pose COSTS and
+   * not what it does.
+   *
+   * IT EXISTS BECAUSE THE CROSSING IS THE COST. Every scenario in this project
+   * poses a field before it measures one, and a pose is a dozen or two operations
+   * on the surface; driven one crossing at a time, a suite spends more of its
+   * allowance on round trips into the page than on the ticks it is grading. On a
+   * host this project shares with a model's build, a crossing costs tens of
+   * milliseconds rather than the two it costs on an idle one, and a check whose
+   * verdict turns on how many of them it made is a check that grades the machine.
+   */
+  batch(calls: readonly SurfaceCall[]): Promise<unknown[]>;
   /**
    * Run `ticks` real ticks, each closed as one recorded frame.
    *
@@ -867,6 +900,45 @@ export async function createHarness(
     );
   };
 
+  /**
+   * {@link Harness.batch}: one crossing for a whole pose.
+   *
+   * The loop runs inside the page, so an operation that throws stops the rest —
+   * the same order of events a caller awaiting each one in turn would see — and
+   * the name of the operation that threw travels back in the message.
+   */
+  const batch = async (calls: readonly SurfaceCall[]): Promise<unknown[]> => {
+    if (surfaceFault !== null) refuse();
+    if (calls.length === 0) return [];
+    return page.evaluate(
+      ([handle, list]) => {
+        const target = (
+          window as unknown as Record<
+            string,
+            Record<string, (...a: unknown[]) => unknown>
+          >
+        )[handle];
+        const answered: unknown[] = [];
+        for (const call of list) {
+          const [name, ...args] = call as [string, ...unknown[]];
+          const operation = target[name];
+          if (typeof operation !== "function") {
+            throw new Error(`shatter: window.${handle} carries no ${name}()`);
+          }
+          try {
+            answered.push(operation.apply(target, args));
+          } catch (error) {
+            throw new Error(
+              `shatter: window.${handle}.${name}() threw: ${String(error)}`,
+            );
+          }
+        }
+        return answered;
+      },
+      [HANDLE, calls as SurfaceCall[]] as const,
+    );
+  };
+
   const debug =
     surfaceFault !== null
       ? unexposedSurface(surfaceFault)
@@ -1081,6 +1153,7 @@ export async function createHarness(
     timeMs: () => timeMs,
 
     snapshot: () => debug.snapshot(),
+    batch,
 
     advance: async (count) => {
       if (count > 0) return drive(count);
@@ -2555,7 +2628,7 @@ export async function carriesTorpedoes(h: Harness): Promise<boolean> {
 }
 
 /**
- * Empty every roster on the field, one atomic clear at a time.
+ * Empty every roster on the field, one atomic clear per roster.
  *
  * `specs/instrumentation.md` deliberately carries no `clearField()`: emptying the
  * world arranges several things at once, which is the shape a debug API may not
@@ -2568,13 +2641,30 @@ export async function carriesTorpedoes(h: Harness): Promise<boolean> {
  * destroyed and is a wave being PLAYED rather than a wave CLEARED
  * (`specs/progression.md`). A check whose requirement is the wave loop reaches its
  * cleared field through {@link shootFieldDown} instead.
+ *
+ * The five clears go over in ONE crossing ({@link Harness.batch}) rather than five:
+ * the same five operations in the same order, with no tick able to run between them
+ * either way, because the game is off the wall clock from the moment the harness is
+ * built. {@link clearCalls} is what they are, so a longer pose can carry them
+ * inside its own batch instead of paying for a second one.
  */
 export async function clearWorld(h: Harness): Promise<void> {
-  await h.debug.clearRocks();
-  await h.debug.clearBullets();
-  await h.debug.clearEnemyBullets();
-  await h.debug.removeSaucer();
-  if (await carriesTorpedoes(h)) await h.debug.clearTorpedoes();
+  await h.batch(clearCalls(await carriesTorpedoes(h)));
+}
+
+/**
+ * The clears {@link clearWorld} makes, as calls a caller can carry in its own
+ * batch. `torpedoes` is {@link carriesTorpedoes} for the build in question.
+ */
+function clearCalls(torpedoes: boolean): SurfaceCall[] {
+  const calls: SurfaceCall[] = [
+    ["clearRocks"],
+    ["clearBullets"],
+    ["clearEnemyBullets"],
+    ["removeSaucer"],
+  ];
+  if (torpedoes) calls.push(["clearTorpedoes"]);
+  return calls;
 }
 
 /**
@@ -2614,28 +2704,38 @@ export async function clearWorld(h: Harness): Promise<void> {
  *
  * It poses no rock, no bullet and no saucer: a check adds exactly what its
  * requirement concerns.
+ *
+ * THE WHOLE POSE IS ONE CROSSING. Nineteen atomic operations in the order above,
+ * handed over together ({@link Harness.batch}) rather than nineteen round trips
+ * into the page. Every suite in this project opens with this, so what it costs is
+ * paid two hundred and seven times a run, on a host that is also running a model's
+ * build; and since the game is off the wall clock throughout, a build cannot tell
+ * the two apart.
  */
 export async function startPlaying(
   h: Harness,
   options: { wave?: number } = {},
 ): Promise<void> {
-  const { debug } = h;
-  await clearWorld(h);
-  await debug.setWaveSpawning(false);
-  await debug.setSaucerSpawning(false);
-  await debug.setShipCollision(false);
-  await debug.setScreen("playing");
-  await debug.setMenuIndex(0);
-  await debug.setScore(0);
-  await debug.setLives(START_LIVES);
-  await debug.setWave(options.wave ?? 1);
-  await debug.setWaveBanner(0);
-  await debug.setShipPosition(SAFE_X, SAFE_Y);
-  await debug.setShipVelocity(0, 0);
-  await debug.setShipAngle(FACE_UP);
-  await debug.setShipInvuln(0);
-  await debug.setFireCooldown(0);
-  if (await carriesTorpedoes(h)) await debug.setTorpedoCharge(1);
+  const torpedoes = await carriesTorpedoes(h);
+  const calls: SurfaceCall[] = [
+    ...clearCalls(torpedoes),
+    ["setWaveSpawning", false],
+    ["setSaucerSpawning", false],
+    ["setShipCollision", false],
+    ["setScreen", "playing"],
+    ["setMenuIndex", 0],
+    ["setScore", 0],
+    ["setLives", START_LIVES],
+    ["setWave", options.wave ?? 1],
+    ["setWaveBanner", 0],
+    ["setShipPosition", SAFE_X, SAFE_Y],
+    ["setShipVelocity", 0, 0],
+    ["setShipAngle", FACE_UP],
+    ["setShipInvuln", 0],
+    ["setFireCooldown", 0],
+  ];
+  if (torpedoes) calls.push(["setTorpedoCharge", 1]);
+  await h.batch(calls);
 }
 
 /**
@@ -2664,6 +2764,24 @@ export async function startGameFromTitle(
 }
 
 /**
+ * Make one call on the surface and read the state it left, in one crossing.
+ *
+ * The `add*` operations answer nothing (`specs/instrumentation.md` gives them no
+ * return), so a caller learns which body it just added by reading the roster back —
+ * two round trips into the page for one pose, on every rock, bullet and saucer this
+ * project stands up. {@link Harness.batch} makes it one, and the reading is the same
+ * one: the build's own `snapshot`, taken after the same call, with nothing able to
+ * run in between.
+ */
+async function poseAndRead(
+  h: Harness,
+  call: SurfaceCall,
+): Promise<ShatterSnapshot> {
+  const answered = await h.batch([call, ["snapshot"]]);
+  return answered[1] as ShatterSnapshot;
+}
+
+/**
  * Put one rock of `size` on the field, at rest unless a velocity is given, and hand
  * back its id.
  *
@@ -2681,8 +2799,7 @@ export async function poseRock(
   vx = 0,
   vy = 0,
 ): Promise<number> {
-  await h.debug.addRock(size, x, y);
-  const added = lastRock(await h.snapshot());
+  const added = lastRock(await poseAndRead(h, ["addRock", size, x, y]));
   if (added === undefined) {
     fail(
       "addRock to append a rock to the roster (specs/instrumentation.md)",
@@ -2701,8 +2818,7 @@ export async function poseBullet(
   vx: number,
   vy: number,
 ): Promise<number> {
-  await h.debug.addBullet(x, y, vx, vy);
-  const added = lastBullet(await h.snapshot());
+  const added = lastBullet(await poseAndRead(h, ["addBullet", x, y, vx, vy]));
   if (added === undefined) {
     fail(
       "addBullet to append a bullet to the roster (specs/instrumentation.md)",
@@ -2720,8 +2836,9 @@ export async function poseEnemyBullet(
   vx: number,
   vy: number,
 ): Promise<number> {
-  await h.debug.addEnemyBullet(x, y, vx, vy);
-  const added = lastEnemyBullet(await h.snapshot());
+  const added = lastEnemyBullet(
+    await poseAndRead(h, ["addEnemyBullet", x, y, vx, vy]),
+  );
   if (added === undefined) {
     fail(
       "addEnemyBullet to append a bullet to the roster (specs/instrumentation.md)",
@@ -2762,14 +2879,23 @@ export async function poseSaucer(
   y: number,
   spec: SaucerSpec = {},
 ): Promise<number> {
-  await h.debug.addSaucer(x, y);
-  const added = requireSaucer(await h.snapshot(), "addSaucer");
+  const added = requireSaucer(
+    await poseAndRead(h, ["addSaucer", x, y]),
+    "addSaucer",
+  );
+  const faculties: SurfaceCall[] = [];
   if (spec.vx !== undefined || spec.vy !== undefined) {
-    await h.debug.setSaucerVelocity(spec.vx ?? added.vx, spec.vy ?? added.vy);
+    faculties.push([
+      "setSaucerVelocity",
+      spec.vx ?? added.vx,
+      spec.vy ?? added.vy,
+    ]);
   }
-  if (spec.mind !== undefined) await h.debug.setSaucerMind(spec.mind);
-  if (spec.gun !== undefined) await h.debug.setSaucerGun(spec.gun);
-  if (spec.travel !== undefined) await h.debug.setSaucerTravel(spec.travel);
+  if (spec.mind !== undefined) faculties.push(["setSaucerMind", spec.mind]);
+  if (spec.gun !== undefined) faculties.push(["setSaucerGun", spec.gun]);
+  if (spec.travel !== undefined)
+    faculties.push(["setSaucerTravel", spec.travel]);
+  await h.batch(faculties);
   return added.id;
 }
 
@@ -2787,8 +2913,9 @@ export async function poseTorpedo(
   heading: number,
   spec: { homing?: boolean } = {},
 ): Promise<number> {
-  await h.debug.addTorpedo(x, y, heading);
-  const added = lastTorpedo(await h.snapshot());
+  const added = lastTorpedo(
+    await poseAndRead(h, ["addTorpedo", x, y, heading]),
+  );
   if (added === undefined) {
     fail(
       "addTorpedo to append a torpedo to the roster (specs/instrumentation.md)",
