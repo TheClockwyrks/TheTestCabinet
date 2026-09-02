@@ -29,7 +29,7 @@ import {
   FIELD_H,
   FIELD_W,
   HOLD_TIME,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import { TICK_HZ, allBalls, type BallView, type Harness } from "../harness";
 import type { CaromSnapshot } from "../surface";
