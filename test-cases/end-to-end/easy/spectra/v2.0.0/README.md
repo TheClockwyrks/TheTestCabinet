@@ -175,6 +175,33 @@ destroyed rather than on a predicate over an empty field, which
 `stages.empty-wave-does-not-clear` is what holds a build to. Every expected value
 a suite asserts comes from a figure the specs fix, never from a reference build.
 
+### Where a scaling point's expectation comes from
+
+Under `simple-2d` and `structured-2d` a suite reads the figures it POSES a
+scenario from — a slot's centre, the fire line, the field's edges — out of the
+build's seeded `src/constants.ts`, which is the case's own file and the one
+`specs/overview.md` tells the build is authoritative.
+
+The four stage RAMPS of `specs/stages.md` are the exception, and they are
+restated on the validator's side in `validation/<engine>/stages/ramps.ts`. A
+build is free to leave `src/constants.ts` exactly as it was seeded and still run
+its simulation off a formula of its own — `1 + 0.06 * stage` where the
+specification says `1 + 0.06 * (stage - 1)`, say — so reading the ramp back off
+the snapshot and comparing it against the seeded function agrees with such a
+build twice over and grades nothing. `validation/none/constants.ts` states the
+same principle for the engineless project, which has no seeded module to reach
+for at all.
+
+For the same reason none of the four `stages/scaling-*` points is decided by a
+RATIO between two stages: a ramp one step out shifts both stages by very nearly
+the same factor, so the error cancels in the ratio whatever band is put around
+it. Each leg is read absolutely, against the figure the specification fixes for
+its own stage, and the two points whose quantity is drawn or sampled rather than
+exact carry a second, exact reading beside the measured one — the Flux hold
+probes `shimmer` either side of the stated boundary, and the dive gap brackets a
+hundred drawn gaps against `[DIVE_GAP_MIN, DIVE_GAP_MAX] * diveGapScale(7)` by
+posing the wave's own dive clock either side of the window.
+
 `validation-baseline/<engine>/<variant>/` holds the media the same suites captured
 from that engine's reference build of that variant, so a reviewer sees the run's
 evidence and the reference's side by side.
