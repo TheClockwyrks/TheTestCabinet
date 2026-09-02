@@ -412,34 +412,35 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  * Five seconds was that: on a host running nine of these projects at once, a
  * conformant reference lost `instrumentation/reset` to exactly this line. Thirty
  * is chosen against the measured worst case rather than against a healthy
- * machine — a page whose whole boot is milliseconds when the box is idle takes
- * seconds when it is not, and the poll returns the instant the global appears,
- * so a conformant build is charged nothing for the headroom.
+ * machine — instrumented time-to-surface over thirteen harnesses at load average
+ * 73-120 ran 72 ms to 299 ms, so this is a hundred times the worst reading
+ * actually taken — and the poll returns the instant the global appears, so a
+ * conformant build is charged nothing for the headroom.
  *
- * What the ceiling still bounds is the cost of a build with no surface at all,
- * which would otherwise pay it once per harness across the whole checklist and
- * turn "every point this decides failed" into "the validators did not run" —
- * which tells a reviewer far less. {@link SURFACE_ABSENT_TIMEOUT_MS} is what
- * bounds it instead, so the ceiling here can be generous.
+ * EVERY PAGE GETS THE WHOLE OF IT, and that is the point rather than an
+ * oversight. It is tempting to let a worker remember that one page here already
+ * waited the full thirty and came back with nothing, and give the pages after it
+ * a token wait instead, so that a build with no surface at all does not pay the
+ * ceiling once per harness. That trade is the wrong way round. The only evidence
+ * such a memo could rest on is a wait that expired — and a wait expires either
+ * because the build installs nothing or because the host stalled. Trusting it
+ * turns ONE unlucky page on a loaded host into a fabricated `window.__refract
+ * was still absent` on every harness that worker builds afterwards, which is the
+ * single failure this project most has to be incapable of.
+ *
+ * The cost that memo was avoiding is affordable without it, and it was measured
+ * rather than guessed. A reference with the one line that installs the surface
+ * removed validates in 705 s end to end — install, build and all 94 points
+ * decided, all 94 lost, none left unrun — against the twenty minutes the runner
+ * caps the whole suite run at. Nearly all of that is idle waiting on this
+ * ceiling, eight workers deep, which is why the figure barely moves with how
+ * busy the host is: a page that installs nothing costs thirty seconds of
+ * nothing, whatever else the box is doing. Twelve minutes of nothing buys
+ * "every point this decides failed" instead of "the validators did not run",
+ * and it buys a conformant build an allowance no busy host can turn into a
+ * verdict.
  */
 const SURFACE_TIMEOUT_MS = 30_000;
-
-/**
- * The wait a harness uses once a page in this worker has already been given the
- * full {@link SURFACE_TIMEOUT_MS} and come back without a surface.
- *
- * The first page pays the generous wait, which is what keeps a slow host from
- * being read as a broken build. A second page in the same file, on a build that
- * has just demonstrated it installs nothing, is not going to repay it: the
- * verdict is settled and the rest of the wait buys only wall clock the whole
- * suite run is capped on. A page that DID install the surface never sets this,
- * so a later page failing where an earlier one succeeded still gets the full
- * hearing.
- */
-const SURFACE_ABSENT_TIMEOUT_MS = 1_000;
-
-/** Whether a page in this worker has been seen to install the surface at all. */
-let surfaceEverSeen: boolean | null = null;
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -565,20 +566,16 @@ export function failSurface(fault: string): never {
  * specification requires.
  */
 async function readSurfaceFault(page: Page): Promise<string | null> {
-  const budget =
-    surfaceEverSeen === false ? SURFACE_ABSENT_TIMEOUT_MS : SURFACE_TIMEOUT_MS;
   try {
     await page.waitForFunction(
       (handle) =>
         typeof (window as never)[handle] === "object" &&
         (window as never)[handle] !== null,
       HANDLE,
-      { timeout: budget },
+      { timeout: SURFACE_TIMEOUT_MS },
     );
-    surfaceEverSeen = true;
   } catch {
-    surfaceEverSeen = false;
-    return `window.${HANDLE} was still absent ${budget / 1000}s after the page loaded`;
+    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
   }
   const missing = await page.evaluate(
     ([handle, ops]) => {
