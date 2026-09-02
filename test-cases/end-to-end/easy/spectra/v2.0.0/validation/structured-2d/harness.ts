@@ -125,6 +125,7 @@ import {
 } from "../src/constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
+import { clearBeforeCoveringFills } from "./covered-frames";
 import type {
   Band,
   BulletSnapshot,
@@ -932,7 +933,9 @@ export async function createHarness(
   );
   const ctx = canvas.getContext("2d");
   const calls: DrawCall[] = [];
-  const recorded = recorder(ctx, calls);
+  // Under the recorder, so the clear it issues is in no draw-call list and in no
+  // captured replay: what a check reads is what the build itself drew.
+  const recorded = recorder(clearBeforeCoveringFills(ctx), calls);
   const element = Object.assign(canvas, {
     style: {} as CSSStyleDeclaration,
     getContext: (): SKRSContext2D => recorded,
