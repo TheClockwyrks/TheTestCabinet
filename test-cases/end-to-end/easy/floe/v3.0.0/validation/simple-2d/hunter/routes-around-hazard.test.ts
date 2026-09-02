@@ -19,7 +19,7 @@
 // alone would pass a bear that walked through the wall.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ITEM_LEN, ROW_NEAR } from "../../src/constants";
+import { COLS, ITEM_LEN, ROW_NEAR } from "../constants";
 import { assertDeepEqual, assertLength, assertTrue } from "../assert";
 import {
   captureReplay,

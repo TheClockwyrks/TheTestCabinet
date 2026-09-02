@@ -25,7 +25,7 @@
 // traffic and the tile the critter lands on is the tile it aimed for.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, TILE, tileCX, tileCY } from "../../src/constants";
+import { ROW_NEAR, TILE, tileCX, tileCY } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

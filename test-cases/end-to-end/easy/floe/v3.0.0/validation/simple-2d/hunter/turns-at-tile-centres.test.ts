@@ -17,7 +17,7 @@
 // The bear runs under its own routing, because a turn is what routing produces.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, colAt, rowAt, tileCX, tileCY } from "../../src/constants";
+import { ROW_NEAR, colAt, rowAt, tileCX, tileCY } from "../constants";
 import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureReplay,

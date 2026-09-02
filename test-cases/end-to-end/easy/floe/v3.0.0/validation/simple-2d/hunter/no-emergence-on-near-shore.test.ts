@@ -19,7 +19,7 @@
 // delay a build might have read alone runs out several times over.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BEAR_EMERGE_DELAY, ROW_NEAR } from "../../src/constants";
+import { BEAR_EMERGE_DELAY, ROW_NEAR } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

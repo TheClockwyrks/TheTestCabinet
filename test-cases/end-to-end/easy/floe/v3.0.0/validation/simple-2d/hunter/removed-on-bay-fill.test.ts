@@ -17,7 +17,7 @@
 // has floe footing to hop from rather than drowning on the tick before it jumps.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAYS, WATER_TOP } from "../../src/constants";
+import { BAYS, WATER_TOP } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureReplay,

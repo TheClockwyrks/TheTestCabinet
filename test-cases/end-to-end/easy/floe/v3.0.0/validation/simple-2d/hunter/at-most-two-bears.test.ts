@@ -26,7 +26,7 @@ import {
   ROW_NEAR,
   START_COL,
   TOTAL_LEVELS,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

@@ -22,7 +22,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { ITEM_LEN, ROW_MEDIAN } from "../../src/constants";
+import { ITEM_LEN, ROW_MEDIAN } from "../constants";
 import {
   captureReplay,
   createHarness,

@@ -22,12 +22,7 @@
 // and a frozen bear cannot drift out of the range between the pose and the tick.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BEAR_CATCH_DIST,
-  START_LIVES,
-  tileCX,
-  tileCY,
-} from "../../src/constants";
+import { BEAR_CATCH_DIST, START_LIVES, tileCX, tileCY } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   bearOf,

@@ -26,7 +26,7 @@ import {
   ROW_NEAR,
   SECOND_BEAR_LEVEL,
   START_COL,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,

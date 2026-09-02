@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { ICE_TOP, ROW_NEAR, START_COL } from "../../src/constants";
+import { ICE_TOP, ROW_NEAR, START_COL } from "../constants";
 import {
   captureReplay,
   createHarness,

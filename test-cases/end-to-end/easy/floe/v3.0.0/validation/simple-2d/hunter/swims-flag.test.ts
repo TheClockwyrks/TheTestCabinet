@@ -21,7 +21,7 @@
 // the build's own update makes of the pose, not the instant between them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ITEM_LEN, ROW_MEDIAN } from "../../src/constants";
+import { ITEM_LEN, ROW_MEDIAN } from "../constants";
 import { assertEqual } from "../assert";
 import {
   bearOf,

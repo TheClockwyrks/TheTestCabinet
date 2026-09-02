@@ -15,7 +15,7 @@
 // in which only the entering tile is covered.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, laneSpeed, tileCX, tileCY } from "../../src/constants";
+import { TILE, laneSpeed, tileCX, tileCY } from "../constants";
 import { assertDeepEqual, assertEqual, assertLength, fail } from "../assert";
 import {
   bearOf,

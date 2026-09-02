@@ -13,7 +13,7 @@
 // under a posed step.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR } from "../../src/constants";
+import { ROW_NEAR } from "../constants";
 import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureReplay,

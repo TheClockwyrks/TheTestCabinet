@@ -16,7 +16,7 @@
 // bodies sit on the ice band, where an emptied strait leaves nothing under them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR } from "../../src/constants";
+import { ROW_NEAR } from "../constants";
 import { assertLessThan } from "../assert";
 import {
   bearOf,

@@ -32,7 +32,7 @@ import {
   rowAt,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,

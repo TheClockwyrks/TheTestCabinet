@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertLength } from "../assert";
-import { TILE, bearSwimSpeed } from "../../src/constants";
+import { TILE, bearSwimSpeed } from "../constants";
 import {
   captureReplay,
   createHarness,

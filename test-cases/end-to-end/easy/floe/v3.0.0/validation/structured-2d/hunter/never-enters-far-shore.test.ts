@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
-import { ROW_BAYS, WATER_TOP } from "../../src/constants";
+import { ROW_BAYS, WATER_TOP } from "../constants";
 import {
   bearStepTile,
   bearTile,

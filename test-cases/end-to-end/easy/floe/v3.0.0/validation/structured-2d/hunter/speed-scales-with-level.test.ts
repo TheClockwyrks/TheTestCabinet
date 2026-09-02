@@ -21,12 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween } from "../assert";
-import {
-  ROW_MEDIAN,
-  TILE,
-  bearIceSpeed,
-  bearSwimSpeed,
-} from "../../src/constants";
+import { ROW_MEDIAN, TILE, bearIceSpeed, bearSwimSpeed } from "../constants";
 import {
   captureReplay,
   createHarness,

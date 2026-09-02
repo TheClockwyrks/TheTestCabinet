@@ -7,7 +7,7 @@
 // axis, and the two questions `specs/hunter.md` asks about a tile.
 //
 // NOTHING HERE HOLDS A TOLERANCE. Every figure below is the specification's own,
-// read out of `../../src/constants`; the slack a check allows around a reading is
+// read out of `../constants`; the slack a check allows around a reading is
 // that check's own business and is stated in the check, beside the figure it is
 // slack on. `imminentlyCovered` therefore takes its margin as an argument rather
 // than choosing one.
@@ -17,7 +17,7 @@
 // wanted to measure one fails with the bear it wanted rather than with a
 // `TypeError`.
 
-import { BEAR_AVOID_LEAD, TILE, tileCX } from "../../src/constants";
+import { BEAR_AVOID_LEAD, TILE, tileCX } from "../constants";
 import { fail } from "../assert";
 import {
   bearById,

@@ -20,12 +20,7 @@
 // put the traffic back onto the row each rate is measured on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  ROW_MEDIAN,
-  TILE,
-  bearIceSpeed,
-  bearSwimSpeed,
-} from "../../src/constants";
+import { ROW_MEDIAN, TILE, bearIceSpeed, bearSwimSpeed } from "../constants";
 import { assertBetween } from "../assert";
 import {
   captureReplay,

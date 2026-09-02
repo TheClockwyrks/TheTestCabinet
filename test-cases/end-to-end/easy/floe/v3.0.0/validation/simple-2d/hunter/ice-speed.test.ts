@@ -16,7 +16,7 @@
 // states at a centre is part of what it reads.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_MEDIAN, TILE, bearIceSpeed } from "../../src/constants";
+import { ROW_MEDIAN, TILE, bearIceSpeed } from "../constants";
 import { assertBetween } from "../assert";
 import {
   captureReplay,

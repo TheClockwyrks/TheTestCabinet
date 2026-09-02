@@ -24,7 +24,7 @@ import {
   ROW_NEAR,
   START_COL,
   TOTAL_LEVELS,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,

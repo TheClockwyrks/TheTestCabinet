@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
-import { BEAR_EMERGE_ADVANCE, ROW_NEAR, START_COL } from "../../src/constants";
+import { BEAR_EMERGE_ADVANCE, ROW_NEAR, START_COL } from "../constants";
 import {
   captureReplay,
   createHarness,

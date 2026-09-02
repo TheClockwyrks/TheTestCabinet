@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { ROW_NEAR } from "../../src/constants";
+import { ROW_NEAR } from "../constants";
 import {
   captureReplay,
   createHarness,

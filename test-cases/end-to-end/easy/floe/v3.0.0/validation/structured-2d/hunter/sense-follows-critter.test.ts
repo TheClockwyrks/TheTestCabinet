@@ -31,7 +31,7 @@ import {
   assertGreaterThanOrEqual,
   assertEqual,
 } from "../assert";
-import { ROW_NEAR, TILE, tileCX, tileCY } from "../../src/constants";
+import { ROW_NEAR, TILE, tileCX, tileCY } from "../constants";
 import {
   bearSettled,
   captureReplay,

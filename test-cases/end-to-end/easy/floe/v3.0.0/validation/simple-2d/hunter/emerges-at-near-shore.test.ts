@@ -12,7 +12,7 @@
 // grain and a coarser one wrong.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BEAR_EMERGE_ADVANCE, ROW_NEAR, START_COL } from "../../src/constants";
+import { BEAR_EMERGE_ADVANCE, ROW_NEAR, START_COL } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

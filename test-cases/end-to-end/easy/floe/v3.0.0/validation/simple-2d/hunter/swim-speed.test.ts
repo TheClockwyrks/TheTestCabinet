@@ -15,7 +15,7 @@
 // and not a route.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, bearSwimSpeed } from "../../src/constants";
+import { TILE, bearSwimSpeed } from "../constants";
 import { assertBetween, assertLength } from "../assert";
 import {
   captureReplay,

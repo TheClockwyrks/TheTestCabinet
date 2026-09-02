@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { COLS, ITEM_LEN, ROW_NEAR } from "../../src/constants";
+import { COLS, ITEM_LEN, ROW_NEAR } from "../constants";
 import {
   bearStepTile,
   captureReplay,

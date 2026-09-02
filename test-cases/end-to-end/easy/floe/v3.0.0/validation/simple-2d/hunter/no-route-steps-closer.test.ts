@@ -24,7 +24,7 @@
 // critter happens to be.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ITEM_LEN, ROW_NEAR } from "../../src/constants";
+import { COLS, ITEM_LEN, ROW_NEAR } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   bearOf,

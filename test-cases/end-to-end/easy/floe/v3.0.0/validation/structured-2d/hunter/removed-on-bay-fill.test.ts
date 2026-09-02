@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { BAYS, WATER_TOP } from "../../src/constants";
+import { BAYS, WATER_TOP } from "../constants";
 import {
   captureReplay,
   createHarness,

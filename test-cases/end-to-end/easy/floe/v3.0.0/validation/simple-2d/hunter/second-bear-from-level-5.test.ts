@@ -25,7 +25,7 @@ import {
   ROW_NEAR,
   SECOND_BEAR_LEVEL,
   START_COL,
-} from "../../src/constants";
+} from "../constants";
 import { assertLength } from "../assert";
 import {
   captureReplay,

@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength, fail } from "../assert";
-import { TILE, laneSpeed, tileCX, tileCY } from "../../src/constants";
+import { TILE, laneSpeed, tileCX, tileCY } from "../constants";
 import {
   bearStepTile,
   bearTile,

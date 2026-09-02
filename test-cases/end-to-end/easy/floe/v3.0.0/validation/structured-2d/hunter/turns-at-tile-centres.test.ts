@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLength } from "../assert";
-import { ROW_NEAR, colAt, rowAt, tileCX, tileCY } from "../../src/constants";
+import { ROW_NEAR, colAt, rowAt, tileCX, tileCY } from "../constants";
 import {
   captureReplay,
   createHarness,

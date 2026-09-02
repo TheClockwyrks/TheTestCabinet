@@ -30,7 +30,7 @@
 // a decision the bear took and not a route it never wanted.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, laneSpeed, tileCX } from "../../src/constants";
+import { ROW_NEAR, laneSpeed, tileCX } from "../constants";
 import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   bearOf,

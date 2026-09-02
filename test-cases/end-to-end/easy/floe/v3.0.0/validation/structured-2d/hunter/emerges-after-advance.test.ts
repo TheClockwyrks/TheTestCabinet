@@ -19,7 +19,7 @@ import {
   BEAR_EMERGE_DELAY,
   ROW_NEAR,
   START_COL,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,

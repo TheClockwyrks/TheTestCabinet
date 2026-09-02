@@ -15,7 +15,7 @@
 // redirect it mid-tile.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_MEDIAN, tileCX } from "../../src/constants";
+import { ROW_MEDIAN, tileCX } from "../constants";
 import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   bearOf,

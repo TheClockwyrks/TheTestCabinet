@@ -16,7 +16,7 @@
 // it is measured over stays covered for the whole measurement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ITEM_LEN, TILE, bearIceSpeed } from "../../src/constants";
+import { ITEM_LEN, TILE, bearIceSpeed } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

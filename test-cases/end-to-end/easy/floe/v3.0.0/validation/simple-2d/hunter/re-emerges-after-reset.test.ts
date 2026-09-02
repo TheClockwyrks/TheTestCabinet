@@ -24,7 +24,7 @@ import {
   ROW_NEAR,
   START_COL,
   laneSpeed,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength, fail } from "../assert";
 import {
   captureReplay,

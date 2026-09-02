@@ -31,7 +31,7 @@ import {
   rowAt,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   bearOf,

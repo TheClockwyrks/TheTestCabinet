@@ -25,7 +25,7 @@ import {
   ROW_NEAR,
   START_COL,
   laneSpeed,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,

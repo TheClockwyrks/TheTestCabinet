@@ -26,7 +26,7 @@
 // showing a reviewer is the one in which the hunt starts and does not double.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_TOP, ROW_NEAR, START_COL } from "../../src/constants";
+import { ICE_TOP, ROW_NEAR, START_COL } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureReplay,

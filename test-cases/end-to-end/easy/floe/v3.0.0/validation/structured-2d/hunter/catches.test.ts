@@ -23,12 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
-import {
-  BEAR_CATCH_DIST,
-  START_LIVES,
-  tileCX,
-  tileCY,
-} from "../../src/constants";
+import { BEAR_CATCH_DIST, START_LIVES, tileCX, tileCY } from "../constants";
 import {
   captureReplay,
   createHarness,

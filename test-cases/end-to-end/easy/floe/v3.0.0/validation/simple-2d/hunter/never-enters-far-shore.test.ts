@@ -20,7 +20,7 @@
 // sense and their routing off, so the step each has is the one it was sent.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_BAYS, WATER_TOP } from "../../src/constants";
+import { ROW_BAYS, WATER_TOP } from "../constants";
 import { assertDeepEqual } from "../assert";
 import {
   bearOf,

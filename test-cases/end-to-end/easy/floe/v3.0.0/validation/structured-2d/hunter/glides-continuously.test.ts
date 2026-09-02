@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
-import { ROW_MEDIAN, tileCX } from "../../src/constants";
+import { ROW_MEDIAN, tileCX } from "../constants";
 import {
   bearStepTile,
   captureReplay,
