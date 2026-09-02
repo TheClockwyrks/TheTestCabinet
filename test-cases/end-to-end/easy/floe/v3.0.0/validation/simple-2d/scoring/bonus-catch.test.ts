@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
-import { SCORE_BONUS_CATCH } from "../../src/constants";
+import { SCORE_BONUS_CATCH } from "../constants";
 import {
   captureReplay,
   createHarness,

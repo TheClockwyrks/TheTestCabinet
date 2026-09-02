@@ -19,7 +19,7 @@
 // reading. The bays group poses its own mouth for its own reason — whether the
 // bay fills — and reads no score off it; this one carries the payment with it.
 
-import { BAYS, WATER_TOP } from "../../src/constants";
+import { BAYS, WATER_TOP } from "../constants";
 import { hop, poseLane, type FloeSnapshot, type Harness } from "../harness";
 
 /**

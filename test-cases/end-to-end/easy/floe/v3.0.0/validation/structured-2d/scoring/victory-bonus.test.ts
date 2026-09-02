@@ -42,7 +42,7 @@ import {
   SCORE_VICTORY_LIFE,
   START_LIVES,
   TOTAL_LEVELS,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,

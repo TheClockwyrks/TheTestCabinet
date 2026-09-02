@@ -29,12 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import {
-  ICE_BOTTOM,
-  ROW_NEAR,
-  SCORE_ROW,
-  START_COL,
-} from "../../src/constants";
+import { ICE_BOTTOM, ROW_NEAR, SCORE_ROW, START_COL } from "../constants";
 import {
   captureReplay,
   createHarness,

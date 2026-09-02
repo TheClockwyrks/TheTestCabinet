@@ -48,7 +48,7 @@ import {
   START_COL,
   START_LIVES,
   WATER_TOP,
-} from "../../src/constants";
+} from "../constants";
 import {
   bayAtColumn,
   captureReplay,
