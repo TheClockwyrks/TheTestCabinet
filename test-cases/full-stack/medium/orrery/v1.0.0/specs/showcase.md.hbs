@@ -1,0 +1,112 @@
+# Orrery — Showcase
+
+The finished game ships a showcase: the store-page presentation a player reads
+before deciding to play. It is a `showcase/` directory at the root of this
+repository, committed with the rest of the project, holding a description of
+the game and a short carousel of captured media. This file defines its
+contents.
+
+## Layout
+
+Every file of the showcase sits directly in `showcase/`, with no
+subdirectories:
+
+- `showcase/showcase.md`, the description.
+- `showcase/showcase.toml`, the carousel.
+- The media files the carousel and the description name.
+
+## The description
+
+`showcase/showcase.md` is Markdown written for a player: what Orrery is, how a
+challenge is taken from an empty field to a machine that delivers its
+constellations, and what Campaign and Extras each offer. Three to five short
+paragraphs, between 200 and 500 words in all. It is strictly about playing the
+game; implementation, architecture, and tooling stay out of it. It may embed
+images that sit beside it, referenced by bare relative path (for example
+`![The field](field.png)`); every image it embeds is a `.png` in `showcase/`.
+
+## The carousel
+
+`showcase/showcase.toml` lists the media in the order they are presented, one
+`[[media]]` table per entry:
+
+{{#if (eq engine.slug "none")}}
+```toml
+[[media]]
+file = "building-a-machine.webm"
+name = "A machine built, run, and delivering"
+
+[[media]]
+file = "field.png"
+name = "Arms carrying motes mid-run"
+```
+{{else}}
+```toml
+[[media]]
+file = "building-a-machine.json.gz"
+name = "A machine built, run, and delivering"
+
+[[media]]
+file = "field.png"
+name = "Arms carrying motes mid-run"
+```
+{{/if}}
+
+- `file` names a file directly in `showcase/`, with no path separators. Every
+  file the carousel names exists there, and each stays under 25 MiB.
+- `name` is a caption of a few words, under sixty characters.
+- The carousel holds three to five entries: one moving entry first, then two
+  to four stills.
+
+## What the media shows
+
+The leading entry is a single continuous stretch of live play, fifteen
+seconds or longer, of one challenge worked in the editor and then run: parts
+taken from the tray onto the field, at least one tape written in the tape
+panel, the machine started from the run controls, arms turning and carrying
+motes across the field, and at least one constellation delivered at a set. It
+ends on the completed run or the solved panel rather than mid-swing.
+
+The stills are frames of that same game running, such as the field mid-run
+with the tape panel beside it, the solved panel with its three metrics, or
+the title screen. Each still holds the whole stage, at `1280 x 720` pixels or
+larger.
+
+The machine on screen is built and run through the game's own editor and run
+controls, and everything it does follows from the simulation of
+`specs/simulation.md` under that input. What a player sees is the built game
+drawing the sprites, sheets, and effects this build produced, so the showcase
+presents the finished game as it plays.
+
+## Media
+
+{{#if (eq engine.slug "none")}}
+The file extension states what an entry is.
+
+| Extension | Media |
+| --- | --- |
+| `.png` | A screenshot of the running game. |
+| `.webm` | A video clip of the running game. |
+
+The leading entry is a `.webm` clip recorded at 30 frames a second or better,
+and the stills are `.png`. How screenshots and clips are captured is the
+build's own business.
+{{else}}
+The file extension states what an entry is.
+
+| Extension | Media |
+| --- | --- |
+| `.png` | A screenshot of the running game. |
+| `.json.gz` | A replay: a gzipped recording of the game's own drawing, made with the engine's recorder. |
+| `.webm` | A video clip. |
+
+Anything in motion is captured as a replay rather than a video.
+
+### Capturing a replay
+
+A replay is a gzipped JSON recording made with the engine's recorder, which
+the engine documents in `engine/recording.md` at the root of this repository.
+The leading entry is one such recording, covering the stretch of play above in
+a single unbroken session at the game's own frame rate. How screenshots and
+replays are captured is the build's own business.
+{{/if}}

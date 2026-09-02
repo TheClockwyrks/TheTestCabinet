@@ -300,7 +300,8 @@ handle = "__orrery"
 # `formats.md` the challenge and solution documents, `challenges.md` the ten
 # fixed Extras, `state.md` the game's state, `instrumentation.md` the debug
 # surface, `ui.md` the screens and audio, `assets.md` the art and sound the build
-# produces, and `modes/campaign.md` and `modes/extras.md` the two ways to play.
+# produces, `modes/campaign.md` and `modes/extras.md` the two ways to play, and
+# `showcase.md` the presentation the finished game ships beside its source.
 #
 # The two mode files are common specs like any other. Both modes ship in every
 # build and both are reachable from the title menu, so both files are seeded into
@@ -312,11 +313,13 @@ handle = "__orrery"
 # from), `controls.md.hbs` (where the pointer layer sits), `state.md.hbs` (the
 # build's own shape versus the exact `OrreryState` declaration),
 # `instrumentation.md.hbs` (the global versus `engine.debug`, and the clock
-# operations only an engineless build needs), `ui.md.hbs` (where cues are played)
-# and `assets.md.hbs` (how files are loaded and how a particle system reaches the
-# screen) all branch on it. Nothing branches on the variant. A spec's `dest`
-# defaults to its `source` with a trailing `.hbs` stripped, so an `.md.hbs` source
-# seeds to the same `.md` path and a plain `.md` source is seeded verbatim.
+# operations only an engineless build needs), `ui.md.hbs` (where cues are played),
+# `assets.md.hbs` (how files are loaded and how a particle system reaches the
+# screen) and `showcase.md.hbs` (whether motion is recorded as a clip or as a
+# replay through the engine's recorder) all branch on it. Nothing branches on the
+# variant. A spec's `dest` defaults to its `source` with a trailing `.hbs`
+# stripped, so an `.md.hbs` source seeds to the same `.md` path and a plain `.md`
+# source is seeded verbatim.
 [[spec]]
 source = "specs/overview.md.hbs"
 
@@ -412,6 +415,16 @@ source = "specs/modes/campaign.md"
 [[spec]]
 source = "specs/modes/extras.md"
 
+# The showcase the finished build ships beside its source: a `showcase/` directory
+# holding a player-facing description and a short carousel of media captured from
+# the game as it plays. It branches on the engine, because an engineless build
+# records motion as a `.webm` clip while an engine run records it as a replay
+# through the engine's recorder. It earns no review item: the showcase is the
+# build's own presentation of what it made, graded by a reviewer looking at the
+# run's Play page rather than decided by a script.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
 # No `[[reference]]`, no `[[check]]`, and no `[[proof]]`.
 #
 # Orrery fixes no palette, no font, no rendered artwork and no background: the look
@@ -427,7 +440,9 @@ source = "specs/modes/extras.md"
 # built game and the committed files.
 #
 # `[[proof]]` is likewise empty: nothing is asked of the build beyond the game
-# itself and the assets it ships. The automated load check still runs.
+# itself, the assets it ships, and the showcase it presents them with, all of
+# which are read from the produced tree rather than declared as a proof. The
+# automated load check still runs.
 
 # Scoring domains. A run is rated on each independently, and the run's overall
 # rating is the WORST across them — an immaculate Extras shelf cannot mask a
