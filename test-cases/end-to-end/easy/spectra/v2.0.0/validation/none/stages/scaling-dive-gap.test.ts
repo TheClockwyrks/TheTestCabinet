@@ -303,7 +303,7 @@ interface Brackets {
  * The two brackets alternate, an even round posing the window's lower edge and an
  * odd round its upper, so `DRAWS * 2` rounds is `DRAWS` draws bracketed on both
  * sides. Each round reseats whatever the round before it launched, which is what
- * keeps the grid full so no draw goes unlaunched for want of a drone.
+ * keeps the grid full, so no draw fails to launch for want of a drone.
  */
 async function bracketDraws(h: Harness): Promise<Brackets> {
   await poseWave(h);

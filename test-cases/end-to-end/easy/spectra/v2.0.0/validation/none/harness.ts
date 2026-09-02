@@ -780,10 +780,13 @@ export interface Harness {
    * `stage` and `read` are carried into the page as source, so each must stand on
    * its own: they see the parameters they are handed and nothing else, and
    * anything from the suite reaches them as `argument`, which crosses as JSON.
-   * `stage` is handed the round's index and the PREVIOUS round's reading — which
-   * crosses no boundary, so it must be JSON too — and returns the surface calls
-   * that arrange the round, exactly the batch {@link pose} would run. `read`
-   * projects the state the round's frame left.
+   * `stage` is handed the round's index and the PREVIOUS round's reading, and
+   * returns the surface calls that arrange the round, exactly the batch
+   * {@link pose} would run. `read` projects the state the round's frame left; a
+   * reading is handed straight to the next round's `stage` inside the page, and
+   * every one of them comes back to the suite at the end, so a reading must be
+   * JSON — and keeping it to the fields the check uses is what keeps the one
+   * crossing small.
    *
    * `operations` names every surface operation `stage` may issue. They are
    * checked against what the build carries before the crossing opens, exactly as
