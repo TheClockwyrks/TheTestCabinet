@@ -117,3 +117,34 @@ export function furthestChange(
   }
   return found;
 }
+
+/**
+ * How many samples of a region moved further than `minDistance` between two
+ * readings of it.
+ *
+ * The count rather than the single furthest sample, for a check asking whether
+ * something was PAINTED over a stretch of field: one sample can move because a
+ * build's starfield drifted a mark under the reading, while a population of
+ * particles moves a whole patch of them.
+ *
+ * The lattice is {@link readRegion}'s, and the two readings must have been taken
+ * on the same one — a pair of different lengths is not comparable and says so
+ * rather than quietly counting the shorter.
+ */
+export function changedSamples(
+  before: readonly Rgb[],
+  after: readonly Rgb[],
+  minDistance: number,
+): number {
+  if (before.length !== after.length) {
+    fail(
+      `two readings of the same region (${before.length} samples)`,
+      `${after.length} samples`,
+    );
+  }
+  let moved = 0;
+  for (let index = 0; index < after.length; index += 1) {
+    if (colorDistance(before[index], after[index]) > minDistance) moved += 1;
+  }
+  return moved;
+}

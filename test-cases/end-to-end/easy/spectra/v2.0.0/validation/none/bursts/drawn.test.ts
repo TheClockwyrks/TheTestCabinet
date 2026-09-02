@@ -8,13 +8,19 @@
 // reading here is on the pixels rather than on the roster.
 //
 // THE READING IS THE SAME SQUARE OF THE SAME FIELD, WITH THE BURST AND WITHOUT
-// IT. Inside the footprint the burst is played at, some sample must move more
-// than `DISTINCT_MIN` of `441` when the burst is taken off the field with
-// `clearBursts` — which is to say the burst put something there the field does
-// not carry on its own. A flash, a ring, spark streaks, or any composition of
-// them satisfies that, since it is the pixels a build put down rather than the
-// shape it drew them in; a burst drawn nowhere, drawn somewhere else, or drawn
-// in the colour of the field behind it does not.
+// IT. Inside the footprint the burst is played at, `PAINTED_MIN` samples must
+// move more than `DISTINCT_MIN` of `441` when the burst is taken off the field
+// with `clearBursts` — which is to say the burst put something there the field
+// does not carry on its own. A flash, a ring, spark streaks, or any composition
+// of them satisfies that, since it is the pixels a build put down rather than
+// the shape it drew them in; a burst drawn nowhere, drawn somewhere else, or
+// drawn in the colour of the field behind it does not.
+//
+// IT IS A PATCH THAT IS ASKED FOR, NOT A SINGLE SAMPLE. One sample can move
+// because a build's own starfield drifted a mark under the reading between the
+// two, so a check that asked only for the furthest sample would read a star as a
+// burst. A population of particles moves a whole patch of them, which is the
+// reading the other two engines take of this same point.
 //
 // WHY THE CONTROL IS THE SAME SQUARE RATHER THAN A PATCH OF FIELD ELSEWHERE.
 // `specs/overview.md` fixes no palette and `specs/field.md` puts a starfield
@@ -35,7 +41,7 @@
 // `bursts/scaled-to-drone`, and that two of them differ is `bursts/varies`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertLength } from "../assert";
+import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import { SHARD_SIZE } from "../constants";
 import {
   captureStill,
@@ -49,7 +55,7 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { furthestChange } from "./reading";
+import { changedSamples, furthestChange } from "./reading";
 
 /**
  * How far the drawn burst must move the field, as a Euclidean RGB distance out
@@ -75,6 +81,24 @@ const READ_AGE = 0.05;
  * samples.
  */
 const READ_STEP = 1;
+
+/**
+ * How many samples of the footprint must move that far.
+ *
+ * A fortieth of the `SHARD_SIZE` (`28`) square, which is `20` of its `784`
+ * samples. The floor it has to clear is what a drifting starfield could
+ * contribute: the play field is `1280` by `592` units and carries at least
+ * `STARFIELD_MIN` (`40`) marks (`specs/field.md`), so a square this size holds a
+ * twentieth of one mark on an even spread, and a build would need tens of
+ * thousands of stars before one frame's drift moved twenty samples of it. The
+ * ceiling it has to stay under is what a burst does: the seeded system puts
+ * `235` particles inside the same square at this age, so even a build drawing
+ * them small and dim leaves a patch several times this. It asks for a patch, not
+ * for a brightness, a shape or a coverage the specification does not fix — the
+ * same figure the other two engines read this point to, since what the burst has
+ * to put on the field belongs to the case rather than to the runtime.
+ */
+const PAINTED_MIN = Math.round((SHARD_SIZE * SHARD_SIZE) / 40);
 
 /** Where the drone is posed, and how far below it the shot starts. */
 const POP_AT = { x: 1000, y: 460 } as const;
@@ -123,15 +147,17 @@ it("paints the field inside the footprint the burst is played at", async () => {
   );
   const bare = await readRegion(h, rect, READ_STEP);
 
-  const moved = furthestChange(bare, painted, rect, READ_STEP);
-  assertGreaterThan(
-    moved.distance,
-    DISTINCT_MIN,
-    `the burst painting some pixel of the SHARD_SIZE (${SHARD_SIZE}) footprint ` +
-      `it is played at, centred on (${POP_AT.x}, ${POP_AT.y}), more than ` +
-      `${DISTINCT_MIN} of 441 from what that same square of the field carries ` +
-      `with no burst on it (specs/assets.md: the build draws the particles the ` +
-      `simulation reports, composited additively over the field); the sample ` +
-      `that moved furthest was at (${moved.x.toFixed(0)}, ${moved.y.toFixed(0)})`,
+  const moved = changedSamples(bare, painted, DISTINCT_MIN);
+  const furthest = furthestChange(bare, painted, rect, READ_STEP);
+  assertGreaterThanOrEqual(
+    moved,
+    PAINTED_MIN,
+    `the samples of the SHARD_SIZE (${SHARD_SIZE}) footprint the burst is ` +
+      `played at, centred on (${POP_AT.x}, ${POP_AT.y}), that the burst moved ` +
+      `more than ${DISTINCT_MIN} of 441 from what that same square of the ` +
+      `field carries with no burst on it (specs/assets.md: the build draws the ` +
+      `particles the simulation reports, composited additively over the field); ` +
+      `the sample that moved furthest moved ${furthest.distance.toFixed(1)}, ` +
+      `at (${furthest.x.toFixed(0)}, ${furthest.y.toFixed(0)})`,
   );
 });
