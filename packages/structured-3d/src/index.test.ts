@@ -18,6 +18,7 @@ import type {
   CollisionWorld,
   ComponentClass,
   ControllerClass,
+  CueSpec,
   DiagnosticReading,
   DiagnosticValue,
   DrawApi,
@@ -275,6 +276,7 @@ interface DocumentedTypes {
   collisionWorld: CollisionWorld;
   componentClass: ComponentClass;
   controllerClass: ControllerClass;
+  cueSpec: CueSpec;
   diagnosticReading: DiagnosticReading;
   diagnosticValue: DiagnosticValue;
   drawApi: DrawApi;
