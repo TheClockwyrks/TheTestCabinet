@@ -65,6 +65,28 @@ npm test            # vitest run --coverage
 The unit tests live beside the sources as `src/**/*.test.ts` and run in Node,
 with no browser.
 
+## The reference solutions
+
+Every challenge in the build — the ten Extras and the thirteen of the campaign
+course — ships a machine that solves it. They live in `src/solutions.ts` in the
+solution format of `specs/formats.md`, and they are reachable only through the
+automation surface:
+
+```js
+const solution = window.__orrery.referenceSolution("campaign", 12);
+window.__orrery.openChallenge("campaign", 12);
+window.__orrery.loadSolution(solution);
+window.__orrery.startRun();
+```
+
+`src/solutions.test.ts` runs all twenty-three end to end: it opens each
+challenge, loads its reference solution through the surface, steps whole cycles
+until the run stops, and asserts that it completed without faulting inside the
+600 cycles `specs/modes/campaign.md` allows. The `cost`, `cycles` and `area`
+each machine records are asserted too, so a change in the simulation that leaves
+a run still completing but spending differently is a red test naming the
+challenge it moved.
+
 ## The art and the sound
 
 Orrery ships no third-party art and no third-party audio. The fifteen mote

@@ -11,9 +11,9 @@
 //   4  The Zodiac Wheel     `wheel` and `mirror`: a fixture is an essence
 //   5  The Long Reach       `piston`: one arm, two radii
 //   6  The Carriage         `track`: an arm that translates what it carries
-//   7  Quicksilver Ladder   `ascend` and `biarm`: two stations, one turn
+//   7  Quicksilver Ladder   `ascend` climbed twice, by a biarm's two grippers
 //   8  The Second Rung      `conjoin`: two motes must arrive together
-//   9  Umbra and Lumen      `eclipse` and `triarm`: one grab, two products
+//   9  Umbra and Lumen      `eclipse`: one sigil, two products, two sets
 //  10  Chaff and Grain      `sunder` and `void`: taking a reagent apart
 //  11  Threefold Cord       `triune` and `manifold`: a constellation of four
 //  12  Aether Undone        `dispersion`: one reagent, four consequences
@@ -28,6 +28,12 @@
 // A product delivered by an earlier challenge is a reagent of a later one:
 // `dust` leaves 1 and 2 and returns as the reagent of 3, 6, 9 and 13, and the
 // `nova` of 4 returns as the reagent of 11.
+//
+// A tray offers more than one machine can want, so the kind a challenge is
+// named for is not always the kind its reference solution turns on: the trays
+// of 9, 11, 12 and 13 all admit a triarm, and the reference that first places
+// one is 11's. What every reference DOES place, between them, is all
+// twenty-one kinds of `PARTS`, which `src/solutions.test.ts` asserts.
 //
 // The documents are written in the challenge format of specs/formats.md and
 // parsed by `src/challenges.ts`, so a typo here is a loud failure at start-up.

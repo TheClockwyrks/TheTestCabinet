@@ -9,13 +9,13 @@
 // transcribed challenge is a loud failure at start-up rather than a puzzle
 // that quietly cannot be solved.
 //
-// SEAM: `SOLUTION_DOCUMENTS` is what the reference-solution phase of this
-// build fills in — one solution per challenge of each mode, in the solution
-// format — so the debug surface's `referenceSolution` is written against it
-// and needs no further change.
+// The reference solutions themselves live in `src/solutions.ts` — one per
+// challenge of each mode, in the solution format — and `referenceSolution`
+// below is the one door onto them.
 
 import { CAMPAIGN_DOCUMENTS } from "./campaign";
 import { parseChallenge, parseSolution } from "./formats";
+import { SOLUTION_DOCUMENTS } from "./solutions";
 import type { Challenge, Mode, Solution } from "./types";
 
 /** The ten Extras, exactly as specs/challenges.md writes them. */
@@ -156,12 +156,6 @@ export const EXTRA_CHALLENGES: readonly Challenge[] =
 /** The campaign course, parsed and checked. */
 export const CAMPAIGN_CHALLENGES: readonly Challenge[] =
   CAMPAIGN_DOCUMENTS.map(parseChallenge);
-
-/** The reference solution documents, one per challenge of each mode. */
-const SOLUTION_DOCUMENTS: Record<Mode, unknown[]> = {
-  campaign: [],
-  extras: [],
-};
 
 /** The challenges of one mode, in order. */
 export function challengesOf(mode: Mode): readonly Challenge[] {
