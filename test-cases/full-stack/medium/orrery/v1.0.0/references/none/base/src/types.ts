@@ -171,7 +171,12 @@ export interface PartState {
   tape: TapeCell[] | null;
 }
 
-/** The live drag, in one of its three shapes (specs/editor.md). */
+/**
+ * The live drag, in one of its three shapes (specs/editor.md). Each carries
+ * `before`, the machine as it stood when the press began: a whole gesture is
+ * one edit, so the entry the release commits is taken at the press rather than
+ * rebuilt from what the gesture did.
+ */
 export type DragState =
   | {
       kind: "place";
@@ -180,9 +185,20 @@ export type DragState =
       rotation: number;
       length: number;
       at: Hex | null;
+      before: PartState[];
     }
-  | { kind: "move"; part: number; from: Hex; at: Hex | null }
-  | { kind: "lay"; part: number; end: "first" | "last" };
+  | {
+      kind: "move";
+      part: number;
+      from: Hex;
+      at: Hex | null;
+      /** The ghost's rotation, which the release carries onto the part. */
+      rotation: number;
+      /** The ghost's length, carried the same way. */
+      length: number;
+      before: PartState[];
+    }
+  | { kind: "lay"; part: number; end: "first" | "last"; before: PartState[] };
 
 /** The machine, and the hands on it (specs/state.md). */
 export interface EditorState {

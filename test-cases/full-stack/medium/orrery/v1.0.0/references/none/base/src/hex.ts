@@ -91,17 +91,30 @@ function canonical(value: number): number {
   return value === 0 ? 0 : value;
 }
 
-/** An offset rotated `steps` sixty-degree steps clockwise about `(0, 0)`. */
+/** An offset turned one sixty-degree step clockwise: `(q, r) -> (-r, q + r)`. */
+export function rotateCW(offset: Hex): Hex {
+  return { q: canonical(-offset.r), r: canonical(offset.q + offset.r) };
+}
+
+/** The same, counterclockwise: `(q, r) -> (q + r, -q)`. */
+export function rotateCCW(offset: Hex): Hex {
+  return { q: canonical(offset.q + offset.r), r: canonical(-offset.q) };
+}
+
+/**
+ * An offset rotated `steps` sixty-degree steps clockwise about `(0, 0)`. Six
+ * steps is the identity, so the turn is taken the shorter way round: `steps`
+ * of `4` and `5` are two and one counterclockwise steps of the same rotation.
+ */
 export function rotateHex(offset: Hex, steps: number): Hex {
-  let { q, r } = offset;
   const turns = wrapDir(steps);
-  for (let i = 0; i < turns; i += 1) {
-    const nq = -r;
-    const nr = q + r;
-    q = nq;
-    r = nr;
+  let cell: Hex = { q: canonical(offset.q), r: canonical(offset.r) };
+  if (turns <= 3) {
+    for (let i = 0; i < turns; i += 1) cell = rotateCW(cell);
+    return cell;
   }
-  return { q: canonical(q), r: canonical(r) };
+  for (let i = 0; i < 6 - turns; i += 1) cell = rotateCCW(cell);
+  return cell;
 }
 
 /** A hex rotated `steps` steps clockwise about `center`. */

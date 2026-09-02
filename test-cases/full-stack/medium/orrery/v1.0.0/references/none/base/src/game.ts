@@ -268,7 +268,7 @@ export class Game implements RunHost {
       down:
         sample.type === "move" ? state.pointer.down : sample.type === "down",
     };
-    applyPointerSample(state, sample);
+    applyPointerSample(this, sample);
   }
 
   /**
@@ -374,7 +374,7 @@ export class Game implements RunHost {
       this.enterScreen("select");
       return;
     }
-    applyEditorAction(state, action);
+    applyEditorAction(this, action);
   }
 
   private runningAction(action: Action): void {

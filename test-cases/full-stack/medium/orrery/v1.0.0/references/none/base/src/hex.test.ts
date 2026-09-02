@@ -12,6 +12,8 @@ import {
   onField,
   readingOrder,
   rotateAbout,
+  rotateCCW,
+  rotateCW,
   rotateHex,
   wrapDir,
 } from "./hex";
@@ -107,5 +109,36 @@ describe("targeting a hex with the pointer (specs/field.md)", () => {
     expect(hexAt(east.x, east.y)).toEqual({ q: 0, r: 0 });
     const southeast = between({ q: 0, r: 0 }, { q: 0, r: 1 });
     expect(hexAt(southeast.x, southeast.y)).toEqual({ q: 0, r: 0 });
+  });
+});
+
+describe("the two rotation formulas (specs/field.md)", () => {
+  it("turns an offset clockwise by (q, r) -> (-r, q + r)", () => {
+    expect(rotateCW({ q: 1, r: 0 })).toEqual({ q: 0, r: 1 });
+    expect(rotateCW({ q: 2, r: -1 })).toEqual({ q: 1, r: 1 });
+  });
+
+  it("turns an offset counterclockwise by (q, r) -> (q + r, -q)", () => {
+    expect(rotateCCW({ q: 0, r: 1 })).toEqual({ q: 1, r: 0 });
+    expect(rotateCCW({ q: 1, r: 1 })).toEqual({ q: 2, r: -1 });
+  });
+
+  it("reaches the same cell whichever way round the turn is taken", () => {
+    for (const offset of [
+      { q: 1, r: 0 },
+      { q: 2, r: -1 },
+      { q: -3, r: 1 },
+    ]) {
+      for (let steps = 0; steps < 6; steps += 1) {
+        let byCW = offset;
+        for (let i = 0; i < steps; i += 1) byCW = rotateCW(byCW);
+        expect(rotateHex(offset, steps)).toEqual(byCW);
+      }
+    }
+  });
+
+  it("counts a direction index the same way", () => {
+    expect(wrapDir(0 - 1)).toBe(5);
+    expect(wrapDir(5 + 1)).toBe(0);
   });
 });

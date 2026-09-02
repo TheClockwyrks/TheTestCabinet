@@ -11,6 +11,8 @@ import {
   parseSolution,
   solutionFromMachine,
 } from "./formats";
+import { createStateOps, type OrreryStateOps } from "./debug";
+import { Game } from "./game";
 import { createPart } from "./machine";
 
 const oneMote = { motes: [{ q: 0, r: 0, type: "luna" }], filaments: [] };
@@ -294,5 +296,102 @@ describe("solutions (specs/formats.md)", () => {
     const copy = cloneChallenge(original);
     copy.reagents[0].motes[0].q = 9;
     expect(original.reagents[0].motes[0].q).toBe(0);
+  });
+});
+
+describe("loading a solution onto the machine (specs/formats.md)", () => {
+  /** Extras 1, opened, with the state operations over it. */
+  function opened(): { game: Game; api: OrreryStateOps } {
+    const game = new Game();
+    const api = createStateOps(game);
+    api.openChallenge("extras", 0);
+    return { game, api };
+  }
+
+  it("applies the parts in the order the document lists them", () => {
+    const { game, api } = opened();
+    api.loadSolution({
+      parts: [
+        { kind: "rise", index: 0, q: -3, r: 0, rotation: 0 },
+        {
+          kind: "arm",
+          q: 0,
+          r: 0,
+          rotation: 3,
+          length: 2,
+          tape: ["grab", null, "drop"],
+        },
+        {
+          kind: "track",
+          cells: [
+            { q: 0, r: 2 },
+            { q: 1, r: 2 },
+          ],
+          closed: false,
+        },
+      ],
+    });
+    expect(game.state.editor.parts.map((part) => part.kind)).toEqual([
+      "rise",
+      "arm",
+      "track",
+    ]);
+    expect(game.state.editor.parts[1]).toMatchObject({
+      rotation: 3,
+      length: 2,
+      tape: ["grab", null, "drop"],
+    });
+    expect(game.state.editor.parts[2].cells).toHaveLength(2);
+  });
+
+  it("clears the hands and both histories", () => {
+    const { game, api } = opened();
+    api.loadSolution({ parts: [{ kind: "arm", q: 0, r: 0, rotation: 0 }] });
+    expect(game.state.editor.undo).toHaveLength(0);
+    expect(game.state.editor.redo).toHaveLength(0);
+    expect(game.state.editor.selected).toBeNull();
+    expect(game.state.editor.cursor).toBeNull();
+    expect(game.state.editor.drag).toBeNull();
+  });
+
+  it("refuses a whole document one part of which breaks a placement rule", () => {
+    const { api } = opened();
+    api.placePart("arm", 2, 0, 0);
+    const standing = JSON.stringify(api.readSolution());
+    expect(() =>
+      api.loadSolution({
+        parts: [
+          { kind: "arm", q: 0, r: 0, rotation: 0 },
+          { kind: "arm", q: 0, r: 0, rotation: 0 },
+        ],
+      }),
+    ).toThrow(/parts\[1\]/);
+    expect(JSON.stringify(api.readSolution())).toBe(standing);
+  });
+
+  it("refuses a malformed document before it writes anything", () => {
+    const { game, api } = opened();
+    api.placePart("arm", 2, 0, 0);
+    expect(() => api.loadSolution({ parts: [{ kind: "nonsense" }] })).toThrow(
+      DocumentError,
+    );
+    expect(game.state.editor.parts).toHaveLength(1);
+  });
+
+  it("refuses a rise or set whose index the challenge does not carry", () => {
+    const { api } = opened();
+    expect(() =>
+      api.loadSolution({
+        parts: [{ kind: "rise", index: 4, q: 0, r: 0, rotation: 0 }],
+      }),
+    ).toThrow(/no footprint/);
+  });
+
+  it("accepts an empty machine, and a machine that omits its rises and sets", () => {
+    const { game, api } = opened();
+    api.loadSolution({ parts: [] });
+    expect(game.state.editor.parts).toEqual([]);
+    api.loadSolution({ parts: [{ kind: "arm", q: 0, r: 0, rotation: 0 }] });
+    expect(game.state.editor.parts).toHaveLength(1);
   });
 });

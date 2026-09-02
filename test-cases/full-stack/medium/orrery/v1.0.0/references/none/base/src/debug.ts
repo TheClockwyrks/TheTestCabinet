@@ -17,6 +17,7 @@
 // build owns it, so it belongs to the runtime and is added in `src/surface.ts`.
 
 import { challengeCount, referenceSolutionFor } from "./challenges";
+import { filamentBetween } from "./constellation";
 import {
   ARM_MAX_LEN,
   ARM_MIN_LEN,
@@ -36,6 +37,8 @@ import {
   closeTrack,
   dropMote,
   extendTrack,
+  loadMachine,
+  machineFromSolution,
   movePart,
   removePart,
   requirePart,
@@ -477,24 +480,17 @@ export function createStateOps(game: Game): OrreryStateOps {
       challengeOpen("loadSolution");
       const document = parseSolution(solution);
       const current = state();
-      clearMachine(current);
-      for (const part of document.parts) {
-        addPart(
-          current,
+      // The whole document is built and checked before anything is written, so
+      // a solution one part of which is illegal changes nothing at all.
+      loadMachine(
+        current,
+        machineFromSolution(
           "loadSolution",
-          part.kind,
-          part.q ?? part.cells?.[0]?.q ?? 0,
-          part.r ?? part.cells?.[0]?.r ?? 0,
-          part.rotation ?? 0,
-          {
-            length: part.length,
-            cells: part.cells,
-            closed: part.closed,
-            index: part.index,
-            tape: part.tape,
-          },
-        );
-      }
+          document.parts,
+          current.challenge,
+          current.editor.nextId,
+        ),
+      );
     },
 
     readSolution() {
@@ -754,21 +750,6 @@ function requireWholeHex(
     invalid(operation, argument, "a whole number", value);
   }
   return value;
-}
-
-/** The filament joining two motes, in either direction, or `null`. */
-function filamentBetween(
-  sim: SimState,
-  a: number,
-  b: number,
-): SimState["filaments"][number] | null {
-  return (
-    sim.filaments.find(
-      (filament) =>
-        (filament.a === a && filament.b === b) ||
-        (filament.a === b && filament.b === a),
-    ) ?? null
-  );
 }
 
 /** A part's live pose, or the surface's refusal that it carries none. */

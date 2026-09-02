@@ -18,6 +18,7 @@ describe("the snapshot's derived and posed shapes", () => {
       rotation: 2,
       length: 3,
       at: { q: 1, r: -1 },
+      before: [],
     };
     game.state.editor.drag = place;
     expect((snapshotOf(game.state).editor as { drag: unknown }).drag).toEqual({
@@ -34,6 +35,9 @@ describe("the snapshot's derived and posed shapes", () => {
       part: 7,
       from: { q: 0, r: 0 },
       at: null,
+      rotation: 0,
+      length: 1,
+      before: [],
     };
     expect((snapshotOf(game.state).editor as { drag: unknown }).drag).toEqual({
       kind: "move",
@@ -42,7 +46,12 @@ describe("the snapshot's derived and posed shapes", () => {
       at: null,
     });
 
-    game.state.editor.drag = { kind: "lay", part: 7, end: "first" };
+    game.state.editor.drag = {
+      kind: "lay",
+      part: 7,
+      end: "first",
+      before: [],
+    };
     expect((snapshotOf(game.state).editor as { drag: unknown }).drag).toEqual({
       kind: "lay",
       part: 7,
@@ -59,6 +68,7 @@ describe("the snapshot's derived and posed shapes", () => {
       rotation: 0,
       length: 1,
       at: null,
+      before: [],
     };
     const editor = snapshotOf(game.state).editor as {
       drag: { at: unknown };

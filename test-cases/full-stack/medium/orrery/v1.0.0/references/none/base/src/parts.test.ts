@@ -6,6 +6,7 @@ import {
   apertureFootprint,
   armGripperHexes,
   armSpokes,
+  lengthInBounds,
   machineCost,
   partClass,
   partCost,
@@ -329,5 +330,55 @@ describe("the placement rules (specs/parts.md)", () => {
 
   it("reads no permitted list: that is a tray rule of specs/editor.md", () => {
     expect(placementLegal(part("hexarm", 0, 0), [], challenge)).toBe(true);
+  });
+});
+
+describe("what the placement rules leave free (specs/parts.md)", () => {
+  it("lets a gripper and a fixture ring stand off the field", () => {
+    // A hexarm on the rim reaches three hexes past it, and only its anchor is
+    // ruled on: only motes collide, so a gripper passes over anything.
+    const hexarm = part("hexarm", 5, 0, 0, { length: 3 });
+    expect(placementLegal(hexarm, [], challenge)).toBe(true);
+    expect(
+      armGripperHexes("hexarm", { q: 5, r: 0 }, 0, 3).some(
+        (cell) => Math.max(Math.abs(cell.q), Math.abs(cell.r)) > 5,
+      ),
+    ).toBe(true);
+    // A wheel's anatomy is its hub and its ring, so its anchor alone is ruled
+    // on and its ring may hang off the field.
+    expect(placementLegal(part("wheel", 5, 0), [], challenge)).toBe(true);
+  });
+
+  it("mounts an arm positionally, on whatever track holds its anchor", () => {
+    const track = part("track", 0, 0, 0, {
+      cells: [
+        { q: 0, r: 0 },
+        { q: 1, r: 0 },
+        { q: 2, r: 0 },
+      ],
+    });
+    const arm = part("arm", 1, 0);
+    expect(placementLegal(arm, [track], challenge)).toBe(true);
+    expect(mountedTrack({ q: 1, r: 0 }, [track, arm])?.id).toBe(track.id);
+    // Moving the arm off the path unmounts it, with nothing else changed.
+    expect(mountedTrack({ q: 1, r: 2 }, [track, arm])).toBeNull();
+    // Moving the track off the arm does the same.
+    const moved = { ...track, cells: [{ q: 0, r: 3 }] };
+    expect(mountedTrack({ q: 1, r: 0 }, [moved, arm])).toBeNull();
+  });
+
+  it("bounds an arm's rest length to ARM_MIN_LEN through ARM_MAX_LEN", () => {
+    expect(lengthInBounds(1)).toBe(true);
+    expect(lengthInBounds(3)).toBe(true);
+    expect(lengthInBounds(0)).toBe(false);
+    expect(lengthInBounds(4)).toBe(false);
+    expect(lengthInBounds(1.5)).toBe(false);
+  });
+
+  it("lets a sigil footprint hex carry an arm's anchor", () => {
+    const bind = part("bind", 0, 0);
+    const arm = part("arm", 1, 0);
+    expect(placementLegal(arm, [bind], challenge)).toBe(true);
+    expect(placementLegal(bind, [arm], challenge)).toBe(true);
   });
 });

@@ -22,11 +22,13 @@ import {
 import { carriesTape, isArmKind, placementFailure } from "./parts";
 import { raiseFixtures } from "./sim";
 import type {
+  Challenge,
   Instruction,
   OrreryState,
   PartKind,
   PartState,
   SimState,
+  SolutionPart,
 } from "./types";
 
 /** Raise the surface's refusal for a placement, naming the rule it broke. */
@@ -75,6 +77,39 @@ export function addPart(
     state.challenge,
   );
   if (failure !== null) refuse(operation, failure);
+  state.editor.nextId += 1;
+  state.editor.parts.push(candidate);
+  enterRun(state, candidate);
+  return candidate;
+}
+
+/**
+ * Place one part when the placement rules allow it, and report `null` when
+ * they do not. This is the editor's door onto `addPart`: specs/editor.md
+ * refuses an illegal placement silently, where the debug surface raises the
+ * rule it broke.
+ */
+export function tryAddPart(
+  state: OrreryState,
+  kind: PartKind,
+  q: number,
+  r: number,
+  rotation: number,
+  options: PartOptions = {},
+): PartState | null {
+  const candidate = createPart(
+    state.editor.nextId,
+    kind,
+    q,
+    r,
+    rotation,
+    options,
+  );
+  if (
+    placementFailure(candidate, state.editor.parts, state.challenge) !== null
+  ) {
+    return null;
+  }
   state.editor.nextId += 1;
   state.editor.parts.push(candidate);
   enterRun(state, candidate);
@@ -134,6 +169,53 @@ export function removePart(state: OrreryState, part: PartState): void {
   leaveRun(state, part);
 }
 
+/**
+ * The machine a solution document describes, built by applying its parts in
+ * the order `parts` lists them and checking each against the machine built so
+ * far. The first part that breaks a placement rule refuses the WHOLE document,
+ * so a refused load leaves the editor exactly as it stood rather than holding
+ * half a machine.
+ */
+export function machineFromSolution(
+  operation: string,
+  document: readonly SolutionPart[],
+  challenge: Challenge | null,
+  firstId: number,
+): PartState[] {
+  const built: PartState[] = [];
+  document.forEach((entry, index) => {
+    const anchor = entry.cells?.[0] ?? { q: entry.q ?? 0, r: entry.r ?? 0 };
+    const part = createPart(
+      firstId + index,
+      entry.kind,
+      anchor.q,
+      anchor.r,
+      entry.rotation ?? 0,
+      {
+        length: entry.length,
+        cells: entry.cells,
+        closed: entry.closed,
+        index: entry.index,
+        tape: entry.tape,
+      },
+    );
+    const failure = placementFailure(part, built, challenge);
+    if (failure !== null) refuse(operation, `parts[${index}]: ${failure}`);
+    built.push(part);
+  });
+  return built;
+}
+
+/** Replace the machine with one already built, entering a live run with it. */
+export function loadMachine(state: OrreryState, machine: PartState[]): void {
+  clearMachine(state);
+  for (const part of machine) {
+    state.editor.parts.push(part);
+    state.editor.nextId = Math.max(state.editor.nextId, part.id + 1);
+    enterRun(state, part);
+  }
+}
+
 /** Remove every placed part, and clear the hands on the machine. */
 export function clearMachine(state: OrreryState): void {
   for (const part of [...state.editor.parts]) removePart(state, part);
@@ -146,13 +228,16 @@ export function clearMachine(state: OrreryState): void {
   editor.redo = [];
 }
 
-/** Apply a change to one part, refusing it when the result is illegal. */
-function repose(
+/**
+ * Apply a change to one part, and report the first placement rule the result
+ * breaks. A refused change writes nothing, so the machine is left exactly as
+ * it stood.
+ */
+function reposeFailure(
   state: OrreryState,
-  operation: string,
   part: PartState,
   change: (draft: PartState) => void,
-): void {
+): string | null {
   const draft: PartState = {
     ...part,
     cells: part.cells === null ? null : part.cells.map((cell) => ({ ...cell })),
@@ -161,9 +246,35 @@ function repose(
   change(draft);
   const others = state.editor.parts.filter((entry) => entry.id !== part.id);
   const failure = placementFailure(draft, others, state.challenge);
-  if (failure !== null) refuse(operation, failure);
+  if (failure !== null) return failure;
   const at = state.editor.parts.indexOf(part);
   state.editor.parts[at] = draft;
+  return null;
+}
+
+/**
+ * Apply a change to one part, leaving it exactly as it stands when the result
+ * would be illegal, and report whether it was applied. This is the editor's
+ * door: specs/editor.md refuses an illegal edit silently, where the debug
+ * surface raises the rule it broke.
+ */
+export function tryRepose(
+  state: OrreryState,
+  part: PartState,
+  change: (draft: PartState) => void,
+): boolean {
+  return reposeFailure(state, part, change) === null;
+}
+
+/** Apply a change to one part, refusing it when the result is illegal. */
+function repose(
+  state: OrreryState,
+  operation: string,
+  part: PartState,
+  change: (draft: PartState) => void,
+): void {
+  const failure = reposeFailure(state, part, change);
+  if (failure !== null) refuse(operation, failure);
 }
 
 /** Set a part's rest rotation, `0` to `5`. */
