@@ -38,7 +38,7 @@ import {
   GLOAMFIN_HEAR,
   GLOAMFIN_PING_INTERVAL,
   TICK_HZ,
-} from "../../src/constants";
+} from "../constants";
 import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

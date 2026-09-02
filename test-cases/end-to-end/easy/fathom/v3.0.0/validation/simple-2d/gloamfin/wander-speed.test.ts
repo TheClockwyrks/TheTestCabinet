@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
-import { PREDATOR_SPEED, TICK_HZ } from "../../src/constants";
+import { PREDATOR_SPEED, TICK_HZ } from "../constants";
 import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,

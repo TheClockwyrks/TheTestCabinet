@@ -41,7 +41,7 @@ import {
   FORAGER_SPEED,
   GLOAMFIN_CHASE_SPEED,
   TICK_HZ,
-} from "../../src/constants";
+} from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

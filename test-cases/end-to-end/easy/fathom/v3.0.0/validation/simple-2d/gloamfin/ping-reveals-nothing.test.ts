@@ -54,7 +54,7 @@ import {
   assertLessThanOrEqual,
   assertTrue,
 } from "../assert";
-import { GLOAMFIN_PING_RANGE, TICK_HZ, TILE } from "../../src/constants";
+import { GLOAMFIN_PING_RANGE, TICK_HZ, TILE } from "../constants";
 import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   captureReplay,
