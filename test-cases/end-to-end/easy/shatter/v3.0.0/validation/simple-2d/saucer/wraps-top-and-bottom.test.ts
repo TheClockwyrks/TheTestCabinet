@@ -33,8 +33,8 @@
 // every wrong model above is outside it by hundreds.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_WEAVE_SPEED } from "../../src/constants";
-import { assertLessThanOrEqual } from "../assert";
+import { FIELD_H, SAUCER_WEAVE_SPEED } from "../../src/constants";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { foldY, wrapY } from "../geometry";
 import {
   captureStill,
@@ -91,10 +91,35 @@ it("re-enters at the bottom edge when it is driven off the top", async () => {
   const wrapped = theSaucer(h.snapshot(), "wraps-top-and-bottom");
   captureStill(h, "wrap");
 
+  // IT REALLY LEFT THE FIELD BY THE TOP. Read as a shortest wrapped separation
+  // alone, a saucer clamped at the top edge and a saucer that wrapped are two
+  // different rows and the reading tells them apart — but only because the
+  // arithmetic happens to work out. Reading the half of the field it stands in
+  // says it directly.
+  assertGreaterThan(
+    wrapped.y,
+    FIELD_H / 2,
+    `the saucer's centre y after ${String(DRIFT_TICKS)} ticks climbing at ` +
+      `${String(-DRIFT)} units per second from y = ${String(START.y)} — it ` +
+      "left the top edge and must stand in the bottom half of the field " +
+      "(specs/field.md)",
+  );
+
   assertLessThanOrEqual(
     Math.abs(foldY(wrapped.y - EXPECTED_Y)),
     WRAP_TOLERANCE,
     `how far the saucer stood from ${EXPECTED_Y}, the row specs/field.md's ` +
       "wrap puts it on",
+  );
+
+  // AND THE OTHER AXIS IS UNTOUCHED. `specs/field.md` wraps each axis on its own,
+  // so a build that carries the saucer round the top and slides it along the row
+  // as it goes has not wrapped it, it has moved it.
+  assertLessThanOrEqual(
+    Math.abs(wrapped.x - START.x),
+    WRAP_TOLERANCE,
+    `how far the saucer's centre x moved from the column ${String(START.x)} it ` +
+      "was flown along — a vertical wrap leaves the other axis exactly as it " +
+      "was (specs/field.md)",
   );
 });
