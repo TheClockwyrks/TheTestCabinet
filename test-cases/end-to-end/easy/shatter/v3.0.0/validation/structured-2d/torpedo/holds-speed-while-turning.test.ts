@@ -40,7 +40,7 @@
 // left.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, TORPEDO_SPEED, TICK_DT } from "../../src/constants";
+import { DEG, TORPEDO_SPEED, TICK_DT } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

@@ -41,7 +41,7 @@
 // whole scenario is `62` ticks, a seventh of `TORPEDO_LIFE`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, TICK_DT, TORPEDO_TURN } from "../../src/constants";
+import { DEG, TICK_DT, TORPEDO_TURN } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { angleBetween, bearing } from "../geometry";
 import {

@@ -24,7 +24,7 @@
 // the true one — that a `warhead` build is missing something its specification
 // requires.
 
-import { TICK_DT, TORPEDO_RECHARGE, TORPEDO_SPEED } from "../../src/constants";
+import { TICK_DT, TORPEDO_RECHARGE, TORPEDO_SPEED } from "../constants";
 import { fail } from "../assert";
 import { shortestSeparation, wrapPoint, type Vec } from "../geometry";
 import { torpedoesOf, type Harness, type ShatterSnapshot } from "../harness";

@@ -34,7 +34,7 @@
 // span. `startPlaying` leaves nothing else on the field.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { angleBetween, bearing } from "../geometry";
 import {

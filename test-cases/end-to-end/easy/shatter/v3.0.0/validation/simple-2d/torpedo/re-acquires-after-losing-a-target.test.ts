@@ -39,7 +39,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
-import { DEG, TICK_DT, TORPEDO_TURN } from "../../src/constants";
+import { DEG, TICK_DT, TORPEDO_TURN } from "../constants";
 import {
   angleBetween,
   angleGap,

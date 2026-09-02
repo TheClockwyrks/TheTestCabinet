@@ -28,7 +28,7 @@
 // reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TORPEDO_SPEED } from "../../src/constants";
+import { TORPEDO_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { speedOf, wrappedDistance } from "../geometry";
 import {

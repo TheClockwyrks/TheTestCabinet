@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, fail } from "../assert";
-import { ROCK_RADIUS, SHIP_R, START_LIVES } from "../../src/constants";
+import { ROCK_RADIUS, SHIP_R, START_LIVES } from "../constants";
 import {
   captureStill,
   createHarness,

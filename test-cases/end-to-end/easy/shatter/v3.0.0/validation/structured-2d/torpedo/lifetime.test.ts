@@ -35,7 +35,7 @@
 // the star as an acquirable body from steering out of the lane this check chose.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TORPEDO_LIFE } from "../../src/constants";
+import { TORPEDO_LIFE } from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,

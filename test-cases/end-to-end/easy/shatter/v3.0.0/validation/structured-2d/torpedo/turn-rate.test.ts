@@ -38,7 +38,7 @@
 // EVERY WRONG MODEL READS AS A DIFFERENT NUMBER. A build at half the rate reads
 // `0.67` degrees a tick; one that turns instantly onto the bearing reads `14` on
 // its first step and `0` after; one that took `TORPEDO_TURN` for a figure in
-// DEGREES when `src/constants.ts` gives it in radians reads `0.023`. The sign is
+// DEGREES when `../constants` gives it in radians reads `0.023`. The sign is
 // asserted too, so a build that turns the wrong way is not read as a build with
 // the right rate.
 //
@@ -49,7 +49,7 @@
 // `specs/field.md` means is the bearing this check posed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, TICK_DT, TORPEDO_TURN } from "../../src/constants";
+import { DEG, TICK_DT, TORPEDO_TURN } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { angleDelta } from "../geometry";
 import {

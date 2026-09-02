@@ -29,7 +29,7 @@
 // velocity put it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, SHIP_R } from "../../src/constants";
+import { DEG, SHIP_R } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

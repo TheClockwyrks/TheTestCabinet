@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
-import { SHIP_R, TICK_DT } from "../../src/constants";
+import { SHIP_R, TICK_DT } from "../constants";
 import { separation, wrap } from "../geometry";
 import {
   captureStill,

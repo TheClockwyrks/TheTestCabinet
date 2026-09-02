@@ -31,7 +31,7 @@
 // the fourth launch rather than all four at once.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { angleBetween } from "../geometry";
 import {

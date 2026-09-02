@@ -27,7 +27,7 @@
 // check advances.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TORPEDO_RECHARGE } from "../../src/constants";
+import { TORPEDO_RECHARGE } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -26,7 +26,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength } from "../assert";
-import { TORPEDO_LIFE } from "../../src/constants";
+import { TORPEDO_LIFE } from "../constants";
 import {
   captureStill,
   createHarness,

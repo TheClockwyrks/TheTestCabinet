@@ -31,7 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, fail } from "../assert";
-import { FIELD_W, TICK_DT } from "../../src/constants";
+import { FIELD_W, TICK_DT } from "../constants";
 import { separation, wrapX } from "../geometry";
 import {
   captureStill,

@@ -29,7 +29,7 @@
 // to `1`").
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TORPEDO_RECHARGE } from "../../src/constants";
+import { TORPEDO_RECHARGE } from "../constants";
 import { assertBetween, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

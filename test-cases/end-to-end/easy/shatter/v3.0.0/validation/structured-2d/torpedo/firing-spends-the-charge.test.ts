@@ -21,7 +21,7 @@
 // on a charge it never spent.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT, TORPEDO_RECHARGE } from "../../src/constants";
+import { TICK_DT, TORPEDO_RECHARGE } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -51,7 +51,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, fail } from "../assert";
-import { DEG, STAR_X, STAR_Y } from "../../src/constants";
+import { DEG, STAR_X, STAR_Y } from "../constants";
 import { STAR, angleGap, closestApproachTo, degrees } from "../geometry";
 import {
   captureReplay,

@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
-import { TICK_DT, TORPEDO_RECHARGE } from "../../src/constants";
+import { TICK_DT, TORPEDO_RECHARGE } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -43,7 +43,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { angleBetween, degrees } from "../geometry";
 import {
   captureStill,

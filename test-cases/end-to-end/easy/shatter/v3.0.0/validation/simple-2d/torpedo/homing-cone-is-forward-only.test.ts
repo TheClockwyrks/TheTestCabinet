@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { angleGap, degrees } from "../geometry";
 import {
   captureReplay,

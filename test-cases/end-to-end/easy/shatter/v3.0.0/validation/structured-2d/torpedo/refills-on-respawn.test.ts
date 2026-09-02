@@ -35,7 +35,7 @@
 // charge and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SHIP_R, START_LIVES } from "../../src/constants";
+import { ROCK_RADIUS, SHIP_R, START_LIVES } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

@@ -42,7 +42,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, fail } from "../assert";
-import { DEG, TICK_DT, TORPEDO_TURN } from "../../src/constants";
+import { DEG, TICK_DT, TORPEDO_TURN } from "../constants";
 import { angleBetween, degrees } from "../geometry";
 import {
   captureReplay,

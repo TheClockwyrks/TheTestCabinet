@@ -59,7 +59,7 @@
 // whole of a tick's pull, `450 / 120` units per second at the closest approach.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_R, STAR_X, STAR_Y, TORPEDO_R } from "../../src/constants";
+import { CORE_R, STAR_X, STAR_Y, TORPEDO_R } from "../constants";
 import {
   assertGreaterThan,
   assertLessThanOrEqual,

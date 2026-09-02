@@ -31,7 +31,7 @@
 // re-entry is still near the left edge where a reviewer can see it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_W, TORPEDO_SPEED } from "../../src/constants";
+import { FIELD_W, TORPEDO_SPEED } from "../constants";
 import { assertLessThan, assertLessThanOrEqual } from "../assert";
 import { speedOf, wrapCoordinate } from "../geometry";
 import { SEAM } from "../fixtures";

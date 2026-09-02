@@ -22,7 +22,7 @@
 // reading. What counts as close enough is each check's own figure, stated in that
 // check beside the specification rule it serves.
 
-import { DEG, TICK_DT } from "../../src/constants";
+import { DEG, TICK_DT } from "../constants";
 import { fail } from "../assert";
 import { separation, wrap, type Point, type Velocity } from "../geometry";
 import { poseTorpedo, tapAction, torpedoesOf, type Harness } from "../harness";
@@ -308,8 +308,9 @@ export function poseShip(h: Harness, pose: ShipPose = {}): Point {
  * press left behind.
  *
  * The ACTION, not the key: `specs/controls.md` binds the torpedo to the `b` action
- * under `warhead`, and `keyFor` reads the key off the seeded `BINDINGS` — the
- * `controls` group is where the binding itself is graded. `Harness.tap` presses,
+ * under `warhead`, and `keyFor` reads the key off `../constants`'s transcription of
+ * that binding table, so the press lands on the key the specification named rather
+ * than on whichever key the build chose to answer to. `Harness.tap` presses,
  * runs the tick that delivers the press, releases and runs the tick that delivers
  * the release, so a build that answers the armed EDGE and one that answers the
  * HELD value both see one press and neither sees two.

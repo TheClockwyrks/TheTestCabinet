@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual } from "../assert";
-import { SHIP_MAX, TORPEDO_SPEED } from "../../src/constants";
+import { SHIP_MAX, TORPEDO_SPEED } from "../constants";
 import {
   captureStill,
   createHarness,

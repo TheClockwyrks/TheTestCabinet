@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, fail } from "../assert";
-import { TORPEDO_RECHARGE } from "../../src/constants";
+import { TORPEDO_RECHARGE } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -38,7 +38,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
-import { DEG, TORPEDO_CONE } from "../../src/constants";
+import { DEG, TORPEDO_CONE } from "../constants";
 import { angleGap, degrees } from "../geometry";
 import {
   captureStill,
