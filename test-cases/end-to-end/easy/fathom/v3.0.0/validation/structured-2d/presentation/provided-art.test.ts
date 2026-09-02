@@ -63,7 +63,7 @@ import {
   FLARE_RADIUS,
   TICK_HZ,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { assertTrue, fail } from "../assert";
 import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
