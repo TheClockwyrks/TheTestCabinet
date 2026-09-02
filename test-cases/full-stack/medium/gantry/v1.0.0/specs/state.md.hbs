@@ -63,10 +63,9 @@ own figures, read by the site index from that same fixed set.
   reports its depth as `historyDepth`.
 - The result the static check is showing on the build screen, or none: the
   issues that would refuse a run, the cost, the budget, whether the structure
-  stands, and each intact member's force and utilization in member-id order
-  (`specs/structure.md`). It is the result the `check` action left, and it goes
-  back to none as soon as the structure changes, so what is shown always
-  describes the structure on screen.
+  stands, and each intact member's force and utilization in member-id order.
+  `specs/structure.md` owns the check, what it reports, and how long the build
+  screen shows what it reported.
 
 ### The tape
 
@@ -79,10 +78,12 @@ target, and a rate.
 - The orbit camera's yaw, pitch, and distance.
 - The pointer position, in the stage's logical units, and whether a press is
   live; where the live press began, in those same units; and whether that press
-  has passed `CLICK_SLOP`, which is what makes it an orbit drag rather than a
-  click (`specs/controls.md`). The origin and that bit cannot be read back from
-  the pointer's current position, so a press that began as a click and a press
-  that has become a drag are told apart by what the state kept.
+  has reached `CLICK_SLOP` from where it began, which is what makes it an orbit
+  drag rather than a click (`specs/controls.md`). The last three are the state's
+  own record of the press it is following rather than a reading taken afresh
+  each update, so a press that began as a click and a press that has become a
+  drag are told apart by what the state kept. `specs/instrumentation.md` gives
+  what sets each of the six fields.
 
 ### The run
 
@@ -91,9 +92,8 @@ first:
 
 - Its phase, one of `idle`, `running`, `cleared`, and `failed`, and its failure
   cause, or none, from the vocabulary `specs/statics.md` closes with.
-- The tick count — `0` when the run starts, and `1` after its first tick — from
-  which the run clock is `tick / TICK_HZ` seconds, and the watch-speed index
-  into `RUN_SPEEDS`.
+- The tick count, from which the run clock is `tick / TICK_HZ` seconds, and the
+  watch-speed index into `RUN_SPEEDS`. What a run's start leaves is below.
 - The tape step the run is on, counted from `0`, and whether that step is live:
   taken, and not yet complete. A move step is live from the tick that issues
   its commands until the tick that finds every one of its axes arrived; an
@@ -103,18 +103,19 @@ first:
   all cleared and a move not yet issued leave the axes alike.
 - Each of the four axes: its value, its signed rate, and its live command's
   target and rate, or none.
-- The pivot the cable hangs from, at the most recent tick's geometry. The
-  pendulum reads it as the previous pivot on the tick after
-  (`specs/rigging.md`), and it cannot be recomputed from the axes once a rail
-  has broken, because the track it was taken along is gone.
+- The pivot the cable hangs from, at the most recent tick's geometry, and at a
+  run's start what the table below gives. The pendulum reads it as the previous
+  pivot on the tick after (`specs/rigging.md`), and it cannot be recomputed
+  from the axes once a rail has broken, because the track it was taken along is
+  gone.
 - The pendulum bob's position and velocity.
 - The attached load's index, or none.
-- Each load's run state, index-aligned with the open site's loads for a run in
-  progress and for the run left in place after one ends: its phase, one of
-  `waiting`, `attached`, `placed`, and `lost`, its lift point's current
-  position, and its yaw. The idle placeholder carries no load entries.
+- Each load's run state, one entry per load the run started with and in that
+  order: its phase, one of `waiting`, `attached`, `placed`, and `lost`, its
+  lift point's current position, and its yaw. The idle placeholder carries no
+  load entries.
 - The latest solve's force and utilization per intact member, in member-id
-  order.
+  order, and none until a run's first solve.
 - The ids of the members broken so far this run, in the order they broke.
 
 ### The frame
@@ -131,9 +132,7 @@ speed index, no live step, the four axes at the run-start posture
 `specs/program.md` fixes with no command and zero rate, a zero pivot, a bob at
 the origin with zero velocity, no attachment, and an empty load, force, and
 broken list. It is what the run carries before the first run of a site, and what
-opening a site, aborting a run, and a `reset` put back. Every run starts at the
-placeholder's speed index, `0`, rather than carrying the speed the run before it
-was watched at.
+opening a site, aborting a run, and a `reset` put back.
 
 A run that ends is left as it ended until the next one starts: its verdict, its
 cause, its clock, and its broken list stay readable while the results screen
@@ -143,6 +142,23 @@ them as they are. That broken list belongs to the run that broke them; the
 structure itself is untouched, so the build screen and its check read every
 member. Every field is present whatever the screen, so the snapshot never
 reports a gap.
+
+## What a run's start leaves
+
+At the moment a run starts, however it was started, the run carries:
+
+| Fact | At the start |
+| --- | --- |
+| Its phase and cause | `running`, and no cause |
+| The tick count | `0`. A start takes no tick of its own, and carries no earlier time into the run, so the run's first tick is the first tick the frame loop takes after the start, numbered `1` |
+| The watch-speed index | `0`, rather than the speed the run before it was watched at |
+| The step index, and whether that step is live | `0`, and not live: the first tick is what takes the first step |
+| The four axes | the run-start posture `specs/program.md` fixes, each stopped with no command |
+| The pivot | the trolley point that posture puts under the cable (`specs/statics.md`) |
+| The bob | at rest the hoist length below that pivot, with zero velocity (`specs/rigging.md`) |
+| The attachment | none |
+| The loads | one entry per load standing in the yard, in the site's order, each `waiting` at the pose it stands at |
+| The forces and the broken list | empty: no solve has run yet |
 
 ## What a site opening does
 
@@ -355,7 +371,7 @@ export interface PointerState {
   /** Where the live press began, in those same units. */
   pressX: number;
   pressY: number;
-  /** Whether the live press has passed CLICK_SLOP, so it is an orbit drag. */
+  /** Whether the live press has reached CLICK_SLOP: an orbit drag. */
   dragging: boolean;
 }
 
@@ -444,7 +460,8 @@ What the open site puts in the yard, copied out of the fixed set
 - `loads` — the site's loads, in the order that file lists them, each with its
   class, its mass, the pose it starts at, and the pose it is wanted at. The
   build screen draws them at `from` and their pads at `to`, and a run's
-  `run.loads` is index-aligned with this list.
+  `run.loads` is one entry per load standing here when that run started
+  (`RunState` below).
 - `obstacles` — the site's obstacles, each the axis-aligned box it fills.
 
 The state owns these all the way down: opening a site copies the site's loads,
@@ -456,8 +473,8 @@ carried; they are read by `siteIndex` against `specs/sites.md`.
 ## `CheckResult`
 
 What the `check` action last reported, and what the build screen is showing
-until the structure changes (`specs/structure.md`, `specs/ui.md`). It is
-`null` whenever nothing is showing.
+until the structure changes (`specs/structure.md`). It is `null` whenever
+nothing is showing.
 
 - `issues` — what would refuse a run, empty when nothing would.
 - `cost`, `budget` — the crane's cost and the site's budget.
@@ -469,18 +486,19 @@ until the structure changes (`specs/structure.md`, `specs/ui.md`). It is
 ## `PointerState`
 
 Where the pointer is and what the press being held has done so far. The frame
-reads the position and the hold from the engine; what the press has done since
-it went down is the state's own.
+reads the position from the engine and follows the press and release edges it
+delivers; whether a press is live, and what it has done since it went down, are
+the state's own (`specs/instrumentation.md` gives what sets each field).
 
 - `x`, `y` — the pointer position in the stage's logical units, the units a
   pick radius is measured in.
 - `down` — whether a press is live.
 - `pressX`, `pressY` — where that press began, which decides whether it is
   still a click. They rest where the last press began and are read while `down`.
-- `dragging` — `false` whenever no press is live, and `true` from the move
-  that carries a live press past `CLICK_SLOP` (`6`) until it is released. That
-  move is the one that makes the press an orbit drag rather than a click, and
-  once it is a drag it stays one.
+- `dragging` — `false` whenever no press is live, and `true` from the move on
+  which a live press reaches `CLICK_SLOP` (`6`) from where it went down until
+  it is released (`specs/controls.md`). That move is the one that makes the
+  press an orbit drag rather than a click, and once it is a drag it stays one.
 
 ## `RunState`
 
@@ -490,8 +508,8 @@ first.
 - `phase` — `"idle"` with no run to report, `"running"` while the tape plays,
   and `"cleared"` or `"failed"` once one has ended.
 - `cause` — the failure cause, and `null` unless `phase` is `"failed"`.
-- `tick` — ticks since the run started: `0` when it starts, and `1` after its
-  first tick. The run clock is `tick / TICK_HZ` seconds.
+- `tick` — ticks the run has taken. The run clock is `tick / TICK_HZ` seconds,
+  and the table below gives what a start leaves and where tick `1` falls.
 - `speedIndex` — the watch speed, as an index into `RUN_SPEEDS`.
 - `stepIndex` — the tape step the run is on, counted from `0`, which reaches
   the tape's length once every step is complete. The run screen shows it as
@@ -505,18 +523,17 @@ first.
 - `axes` — the four axes, each carrying its value, its signed rate, and the
   command live on it, or `null` with none.
 - `pivot` — the point the cable hangs from, at the geometry of the most recent
-  tick. The pendulum reads it as `P_prev` on the tick after
-  (`specs/rigging.md`), and a rail breaking takes away the track it was
-  measured along, so it does not follow from the axes.
+  tick, and at a run's start what the table below gives. The pendulum reads it
+  as `P_prev` on the tick after (`specs/rigging.md`), and a rail breaking takes
+  away the track it was measured along, so it does not follow from the axes.
 - `bob` — the pendulum bob's position and velocity. The hook point and any
   attached load's lift point are both `bob.pos`.
 - `attached` — the index of the load on the hook, or `null`. One load is
   attached at a time.
-- `loads` — one entry per load of `site.loads`, in the same order, for a run in
-  progress and for the run left in place after one ends. The idle placeholder
-  carries none.
+- `loads` — one entry per load the run started with, in that order. The idle
+  placeholder carries none.
 - `forces` — the latest solve's force and utilization for each member still
-  intact, in member-id order.
+  intact, in member-id order, and empty until a run's first solve.
 - `broken` — the ids of the members broken so far this run, in the order they
   broke.
 
@@ -525,13 +542,27 @@ and `stepIndex` `0`, `stepLive` `false`, the four axes at the run-start posture
 `specs/program.md` fixes with zero rate and no command, `pivot` and both parts
 of `bob` the zero vector, `attached` `null`, and `loads`, `forces`, and `broken`
 empty. It is what `run` carries before the first run of a site, and what opening
-a site, `abortRun`, and a `reset` put back. Every run starts at the
-placeholder's `speedIndex`, `0`, rather than carrying the speed the run before
-it was watched at. A run that ends is left as it ended until the next one
-starts, so the results screen and a failed run's screen both read their figures
-off it (`specs/ui.md`), and going back to the build screen leaves them as they
-are. Its `broken` belongs to the run that broke those members; the structure
-itself is untouched, so the build screen and its check read every member.
+a site, `abortRun`, and a `reset` put back. A run that ends is left as it ended
+until the next one starts, so the results screen and a failed run's screen both
+read their figures off it (`specs/ui.md`), and going back to the build screen
+leaves them as they are. Its `broken` belongs to the run that broke those
+members; the structure itself is untouched, so the build screen and its check
+read every member.
+
+At the moment a run starts, however it was started, `run` carries:
+
+| Field | At the start |
+| --- | --- |
+| `phase`, `cause` | `"running"` and `null` |
+| `tick` | `0`. A start takes no tick of its own, and carries no earlier time into the run, so the run's first tick is the first tick the frame loop takes after the start, numbered `1` |
+| `speedIndex` | `0`, rather than the speed the run before it was watched at |
+| `stepIndex`, `stepLive` | `0` and `false`: the first tick is what takes the first step |
+| `axes` | the run-start posture `specs/program.md` fixes, each axis stopped with no command |
+| `pivot` | the trolley point that posture puts under the cable (`specs/statics.md`) |
+| `bob` | at rest the hoist length below that pivot, with zero velocity (`specs/rigging.md`) |
+| `attached` | `null` |
+| `loads` | one entry per load standing in the yard, in `site.loads` order, each `"waiting"` at the pose it stands at |
+| `forces`, `broken` | empty: no solve has run yet |
 
 ## `GantryState`
 
@@ -560,8 +591,8 @@ the fields posed and read back by reading them.
 - `checkResult` — the check result the build screen is showing, or `null`.
 - `camera` — the orbit camera's pose, which persists across the three yard
   screens and returns to its start pose when a site is opened.
-- `pointer` — the pointer as of this frame: `x`, `y`, and `down` refreshed
-  from the engine on every update, and `pressX`, `pressY`, and `dragging` the
+- `pointer` — the pointer as of this frame: `x` and `y` refreshed from the
+  engine on every update, and `down`, `pressX`, `pressY`, and `dragging` the
   state's own, carried from the frame the press went down.
 - `run` — the run in progress, the run last ended, or the idle placeholder.
 - `muted` — the game's readable copy of the engine's mute bit, which every
@@ -800,7 +831,7 @@ export interface PointerState {
   /** Where the live press began, in those same units. */
   pressX: number;
   pressY: number;
-  /** Whether the live press has passed CLICK_SLOP, so it is an orbit drag. */
+  /** Whether the live press has reached CLICK_SLOP: an orbit drag. */
   dragging: boolean;
 }
 
@@ -932,8 +963,9 @@ opened. The initializer above is site `0`'s, the site the game opens on.
 
 - `loads` — the site's loads, in the order `specs/sites.md` lists them, each
   with its class, its mass, the pose it starts at, and the pose it is wanted
-  at. The build screen draws them at `from` and their pads at `to`, and a run's
-  `run.loads` is index-aligned with this list.
+  at. The build screen draws them at `from` and their pads at `to`, and a
+  run's `run.loads` is one entry per load standing here when that run started
+  (`RunState` below).
 - `obstacles` — the site's obstacles, each the axis-aligned box it fills.
 
 The state owns these all the way down. A copy reaches every part: the load
@@ -948,8 +980,8 @@ against `SITES`.
 ## `CheckResult`
 
 What the `check` action last reported, and what the build screen is showing
-until the structure changes (`specs/structure.md`, `specs/ui.md`). It is
-`null` whenever nothing is showing.
+until the structure changes (`specs/structure.md`). It is `null` whenever
+nothing is showing.
 
 - `issues` — what would refuse a run, empty when nothing would.
 - `cost`, `budget` — the crane's cost and the site's budget.
@@ -961,18 +993,20 @@ until the structure changes (`specs/structure.md`, `specs/ui.md`). It is
 ## `PointerState`
 
 Where the pointer is and what the press being held has done so far. The player
-controller reads the position and the hold from the engine each tick; what the
-press has done since it went down is the state's own.
+controller reads the position from the engine each tick and follows the press
+and release edges it delivers; whether a press is live, and what it has done
+since it went down, are the state's own (`specs/instrumentation.md` gives what
+sets each field).
 
 - `x`, `y` — the pointer position in the stage's logical units, the units a
   pick radius is measured in.
 - `down` — whether a press is live.
 - `pressX`, `pressY` — where that press began, which decides whether it is
   still a click. They rest where the last press began and are read while `down`.
-- `dragging` — `false` whenever no press is live, and `true` from the move
-  that carries a live press past `CLICK_SLOP` (`6`) until it is released. That
-  move is the one that makes the press an orbit drag rather than a click, and
-  once it is a drag it stays one.
+- `dragging` — `false` whenever no press is live, and `true` from the move on
+  which a live press reaches `CLICK_SLOP` (`6`) from where it went down until
+  it is released (`specs/controls.md`). That move is the one that makes the
+  press an orbit drag rather than a click, and once it is a drag it stays one.
 
 ## `RunState`
 
@@ -982,8 +1016,8 @@ first.
 - `phase` — `"idle"` with no run to report, `"running"` while the tape plays,
   and `"cleared"` or `"failed"` once one has ended.
 - `cause` — the failure cause, and `null` unless `phase` is `"failed"`.
-- `tick` — ticks since the run started: `0` when it starts, and `1` after its
-  first tick. The run clock is `tick / TICK_HZ` seconds.
+- `tick` — ticks the run has taken. The run clock is `tick / TICK_HZ` seconds,
+  and the table below gives what a start leaves and where tick `1` falls.
 - `speedIndex` — the watch speed, as an index into `RUN_SPEEDS`.
 - `stepIndex` — the tape step the run is on, counted from `0`, which reaches
   the tape's length once every step is complete. The run screen shows it as
@@ -997,30 +1031,42 @@ first.
 - `axes` — the four axes, each carrying its value, its signed rate, and the
   command live on it, or `null` with none.
 - `pivot` — the point the cable hangs from, at the geometry of the most recent
-  tick. The pendulum reads it as `P_prev` on the tick after
-  (`specs/rigging.md`), and a rail breaking takes away the track it was
-  measured along, so it does not follow from the axes.
+  tick, and at a run's start what the table below gives. The pendulum reads it
+  as `P_prev` on the tick after (`specs/rigging.md`), and a rail breaking takes
+  away the track it was measured along, so it does not follow from the axes.
 - `bob` — the pendulum bob's position and velocity. The hook point and any
   attached load's lift point are both `bob.pos`.
 - `attached` — the index of the load on the hook, or `null`. One load is
   attached at a time.
-- `loads` — one entry per load of `site.loads`, in the same order, for a run in
-  progress and for the run left in place after one ends. The idle placeholder
-  carries none.
+- `loads` — one entry per load the run started with, in that order. The idle
+  placeholder carries none.
 - `forces` — the latest solve's force and utilization for each member still
-  intact, in member-id order.
+  intact, in member-id order, and empty until a run's first solve.
 - `broken` — the ids of the members broken so far this run, in the order they
   broke.
 
 The initializer above is the idle placeholder: what `run` carries before the
 first run of a site, and what opening a site, `abortRun`, and a `reset` put
-back. Every run starts at the placeholder's `speedIndex`, `0`, rather than
-carrying the speed the run before it was watched at. A run that ends is left as
-it ended until the next one starts, so the results screen and a failed run's
-screen both read their figures off it (`specs/ui.md`), and going back to the
-build screen leaves them as they are. Its `broken` belongs to the run that broke
-those members; the structure itself is untouched, so the build screen and its
-check read every member.
+back. A run that ends is left as it ended until the next one starts, so the
+results screen and a failed run's screen both read their figures off it
+(`specs/ui.md`), and going back to the build screen leaves them as they are.
+Its `broken` belongs to the run that broke those members; the structure itself
+is untouched, so the build screen and its check read every member.
+
+At the moment a run starts, however it was started, `run` carries:
+
+| Field | At the start |
+| --- | --- |
+| `phase`, `cause` | `"running"` and `null` |
+| `tick` | `0`. A start takes no tick of its own, and carries no earlier time into the run, so the run's first tick is the first tick the frame loop takes after the start, numbered `1` |
+| `speedIndex` | `0`, rather than the speed the run before it was watched at |
+| `stepIndex`, `stepLive` | `0` and `false`: the first tick is what takes the first step |
+| `axes` | the run-start posture `specs/program.md` fixes, each axis stopped with no command |
+| `pivot` | the trolley point that posture puts under the cable (`specs/statics.md`) |
+| `bob` | at rest the hoist length below that pivot, with zero velocity (`specs/rigging.md`) |
+| `attached` | `null` |
+| `loads` | one entry per load standing in the yard, in `site.loads` order, each `"waiting"` at the pose it stands at |
+| `forces`, `broken` | empty: no solve has run yet |
 
 ## `GantryState`
 
@@ -1049,8 +1095,8 @@ reading them.
 - `checkResult` — the check result the build screen is showing, or `null`.
 - `camera` — the orbit camera's pose, which persists across the three yard
   screens and returns to its start pose when a site is opened.
-- `pointer` — the pointer as of this frame: `x`, `y`, and `down` refreshed by
-  the player controller every tick, and `pressX`, `pressY`, and `dragging` the
+- `pointer` — the pointer as of this frame: `x` and `y` refreshed by the player
+  controller every tick, and `down`, `pressX`, `pressY`, and `dragging` the
   state's own, carried from the tick the press went down.
 - `run` — the run in progress, the run last ended, or the idle placeholder.
 - `muted` — the game's readable copy of the engine's mute bit. The engine owns

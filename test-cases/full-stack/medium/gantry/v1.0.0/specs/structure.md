@@ -190,15 +190,19 @@ it stands, without starting a run. It reports:
 - each intact member's force and utilization, in member-id order
   (`specs/state.md`).
 
+The build screen shows the result the action left until the structure changes,
+when it goes back to none, so what is shown always describes the structure on
+screen.
+
 With any readiness issue the structure is not solved. Otherwise the two solves
-of `specs/statics.md` run at the run-start posture, `slew` `0`, `trolley` `0`,
-`hoist` `HOIST_START`, the bare hook hanging at rest and nothing moving, and
-the structure stands when both solves are regular. A structure that is not
-solved does not stand, whether a readiness issue refused the solve or a solve
-went singular, and it reports no member at all: the member list is empty
-exactly when the structure does not stand. A ready structure is solved whether
-or not it has a tape, so `empty-program` on its own still reports the forces
-and the verdict.
+of `specs/statics.md` run at the run-start posture `specs/program.md` fixes,
+`slew` `0`, `trolley` `0`, `hoist` `HOIST_START`, and `grip` `0`, with the
+bare hook hanging at rest and nothing moving, and the structure stands when
+both solves are regular. A structure that is not solved does not stand,
+whether a readiness issue refused the solve or a solve went singular, and it
+reports no member at all: the member list is empty exactly when the structure
+does not stand. A ready structure is solved whether or not it has a tape, so
+`empty-program` on its own still reports the forces and the verdict.
 
 Nothing breaks and nothing fails during a check: a utilization above `1` is
 reported and no more.

@@ -8,9 +8,7 @@ defines, and each `From` and `To` below is a load's lift point, `(x, y, z)`,
 followed by its yaw in degrees.
 
 Par figures are targets to beat, shown beside a clear's score; they gate
-nothing. Each site sets two, a par cost and a par time, and a score meets them
-one at a time: the par cost is beaten by a crane that costs less, the par time
-by a run that finishes sooner.
+nothing.
 
 ## Site 1 — First Lift
 

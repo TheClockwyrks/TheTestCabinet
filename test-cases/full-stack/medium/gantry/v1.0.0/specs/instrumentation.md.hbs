@@ -233,7 +233,7 @@ picks none.
 | Operation | Effect |
 | --- | --- |
 | `reset` | Returns the game to its title state, as below. |
-| `setScreen(screen)` | Moves to a named screen, exactly as reaching it in play does. `screen` is one of the seven identifiers of `specs/ui.md`. |
+| `setScreen(screen)` | Shows a named screen and sets nothing else. `screen` is one of the seven identifiers of `specs/ui.md`. |
 | `setMenuIndex(index)` | Sets the highlighted entry of the menu on the screen showing, counted from `0`. |
 | `openSite(index)` | Opens site `index`, counted from `0`, locked or not, as below. |
 | `setCleared(index, cleared)` | Sets whether site `index` has been cleared this session, and with it which sites are open. |
@@ -250,30 +250,42 @@ without playing to it, and a site opened this way carries the loads and
 obstacles `specs/sites.md` gives it, so a caller that wants a different set
 poses it with the site operations below.
 
+`setScreen` shows the screen and sets nothing else. Arriving at a screen in
+play does more than show it: `specs/ui.md` puts the highlight somewhere on
+every menu, entering `build` from the select screen opens a site, and a cleared
+run records its score on the way to `results`. Each of those belongs to the
+operation that carries it, which is why entering a site is `openSite` rather
+than `setScreen("build")`.
+
 The first eight of these apply on every screen. `startRun` applies on the build
 and program screens, where the `run` action does, and `abortRun` while a run is
 in progress. `startRun` is refused exactly as the action is, leaving the state
 as it was; `check` says why it would refuse. A run that begins is the ordinary
-run: it starts at `speedIndex` `0` and ticks nothing at the call, so `run.tick`
-reads `0` immediately after it. The run's first tick is the next frame
-advanced, numbered tick `1`, and the verdict comes from the ticks that follow.
+run, and it starts as `specs/state.md` says a run starts: nothing has ticked at
+the call, so `run.tick` reads `0` immediately after it, and the axes, the
+pivot, and the bob stand at the run-start values that file gives.
 
 `reset` restores every field the snapshot reports to its title-screen value, bar
 one: the `title` screen with `menuIndex` `0`, site `0` open, every site
 uncleared with no recorded score, every site's stored structure and tape
 emptied, the open site's loads and obstacles back to the ones `specs/sites.md`
 gives it, the strut tool, no pending node, an empty history, the camera at its
-start pose, no check result showing, an idle run, and `simTime` at `0`. The
-pointer goes back field by field: `x` and `y` to `0`, `down` to `false`,
-`pressX` and `pressY` to `0`, and `dragging` to `false`. The position and the
-hold are read afresh from outside the game on the next update, so a `reset`
-shows in them only until then; the press origin and the drag bit are the game's
-own record of a press it has been following, so `reset` puts both back, and a
-release clears `dragging` alone and leaves `pressX` and `pressY` where the last
-press began. The one field left alone is `muted`, the game's readable copy of a
-mute bit it does not own (`specs/state.md`), which `reset` leaves as it stands
-rather than turning a player's preference off. Because `reset` restores exactly
-those fields, anything else the build keeps across frames is derived from them.
+start pose, no check result showing, an idle run, and `simTime` at `0`. The one
+field left alone is `muted`, the game's readable copy of a mute bit it does not
+own (`specs/state.md`), which `reset` leaves as it stands rather than turning a
+player's preference off. Because `reset` restores exactly those fields, anything
+else the build keeps across frames is derived from them.
+
+The pointer is six fields, and this table is the whole of what sets each:
+
+| Field | On a `reset` | What else sets it |
+| --- | --- | --- |
+| `x` | `0` | Every update reads the pointer's current position into it (`specs/controls.md`), so a `reset` shows in it only until the next update. |
+| `y` | `0` | The same, on the other axis. |
+| `down` | `false` | A press sets it `true` and a release sets it `false`, and no update rewrites it in between: it is the game's own record of the press it is following rather than a reading of the button taken afresh. After a `reset` it is `false` until the next press. |
+| `pressX` | `0` | A press writes the position it went down at, and a release leaves it, so it rests where the last press began. |
+| `pressY` | `0` | The same, on the other axis. |
+| `dragging` | `false` | The move on which a live press reaches `CLICK_SLOP` (`6`) from where it went down sets it `true`, and the release sets it `false` (`specs/controls.md`). |
 
 ### The structure
 
@@ -463,7 +475,7 @@ after it.
     down: <boolean>,               // a press is live
     pressX: <number>,              // where the live press went down
     pressY: <number>,
-    dragging: <boolean>,           // the live press has passed CLICK_SLOP
+    dragging: <boolean>,           // the press has reached CLICK_SLOP
   },
   pick: {                          // what a click at the pointer would take
     node: { x, y, z } | null,
@@ -516,17 +528,17 @@ after it.
 
 The shape is fixed and every field is present whatever the screen. `site`,
 `structure`, and `program` report the open site's, and the structure and tape
-authored on another site are read by opening that site. `run.loads` is
-index-aligned with `site.loads` for a run in progress and for the run left in
-place after one ends; the idle placeholder carries no load entries. A field the
-current screen does not use reports the value it is holding rather than going
-missing, and the table below gives the value each rests at.
+authored on another site are read by opening that site. `run.loads` carries one
+entry per load the run started with, in that order (`specs/state.md`); the idle
+placeholder carries no load entries. A field the current screen does not use
+reports the value it is holding rather than going missing, and the table below
+gives the value each rests at.
 
 | Field | Resting value |
 | --- | --- |
 | `pendingNode` | `null` until a first node is held, and again once it is placed or cleared |
 | `historyDepth` | `0` on a site opened and not yet edited |
-| `pointer` | `{ x: 0, y: 0, down: false, pressX: 0, pressY: 0, dragging: false }` before the pointer has been used, and again after `reset` |
+| `pointer` | `{ x: 0, y: 0, down: false, pressX: 0, pressY: 0, dragging: false }` before the pointer has been used; after that, what the pointer table under `reset` above gives each field |
 | `pick` | `{ node: null, member: null }` on every screen but `build`, and where nothing is in range |
 | `checkResult` | `null` while the build screen is showing no check result |
 | `run` | the idle placeholder `specs/state.md` gives it before a site's first run, and again whenever a site is opened, a run is aborted, or `reset` is called; otherwise the run last started, left as it ended until the next one starts |
@@ -543,19 +555,19 @@ missing, and the table below gives the value each rests at.
 - `pick` is the node candidate and the member candidate a click at the pointer's
   current position would take, decided by the pick radii and the tie-breaks
   `specs/controls.md` fixes. Either is `null` when nothing is in range.
-- `pointer.pressX` and `pointer.pressY` are where the live press went down, in
-  the same logical stage units, and they rest where the last press began.
-  `pointer.dragging` is false whenever no press is live, and turns true on the
-  move that carries a live press past `CLICK_SLOP`, which is the move that makes
-  it an orbit drag rather than a click.
+- `pointer.pressX` and `pointer.pressY` are in the same logical stage units as
+  `pointer.x` and `pointer.y`. The pointer table under `reset` above is what
+  sets each of the six fields, and `specs/controls.md` fixes what separates a
+  click from an orbit drag.
 - `checkResult` is the result the build screen is currently showing, exactly as
   the `check` action left it. The `check` reading never sets it.
 - `run.stepLive` is whether the step at `run.stepIndex` has been taken and is
   not yet complete, and `run.pivot` is the point the cable hangs from at the
   most recent tick's geometry, which the pendulum reads on the tick after
-  (`specs/rigging.md`).
+  (`specs/rigging.md`); before a run's first tick it is the run-start pivot
+  `specs/state.md` gives.
 - `run.forces` is the latest solve's, in member-id order, and covers the
-  members still intact.
+  members still intact. It is empty until a run's first solve.
 - `muted` is the game's readable copy of the mute bit `specs/state.md`
   declares, and `simTime` accumulates every update's delta time whatever the
   screen.

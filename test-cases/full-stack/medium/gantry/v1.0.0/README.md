@@ -198,29 +198,37 @@ worked crane is loaded hard and none of them is near breaking.
 The figures were measured with a dependency-free node simulation of the specs —
 the two solves, the slack-cable iteration, the breakage cascade, the pendulum,
 the axis controller, the tape — written against `specs/` alongside these
-passes. That simulation is not in this tree, so every figure in this section —
-the table above, and the site figures below it — is the record of a measurement
-rather than something a reader can re-run today; the reference implementations
-listed above are what will make it reproducible, and they need the same core.
+passes. That simulation is not in this tree, so no figure here can be re-run
+from the version directory as it stands, and the reference implementations
+listed above are what will change that — they need the same core. With the
+simulation in hand, most of this section comes back and one part of it does not:
 
-Par is set from that table by one rule, both halves alike: **par cost is 1.05x
-the worked crane's cost rounded up to the next `50`, and par time is 1.05x its
-clear time rounded up to the next whole second.** Four of the six par costs
-already followed it. Site 3's (`3500` to `3550`) and Site 4's (`5150` to
+| Figures | What produces them |
+| --- | --- |
+| The summary table above — each site's cost, clear time, and peak utilization | The simulation, run per site over the worked crane and tape it holds for that site |
+| The room figures for Sites 3 and 4 — the eleven variants' costs, how many of them clear, and the margins over them | The simulation, driven over a fixed list of ordinary perturbations of each worked crane |
+| Site 3's leanest clearing build, `3329.6` at `0.977` | The simulation, driven over the tower and arm variants at the height the wall forces |
+| The two-crane probe at `(16, 2, 6)` | The simulation, with Site 4's target moved back to it |
+| The wider search for a crane that clears `(16, 2, 6)` | One run that left no artifact; it is recorded below as a claim rather than a figure |
+
+Par is set from that summary table by one rule, both halves alike: **par cost
+is 1.05x the worked crane's cost rounded up to the next `50`, and par time is
+1.05x its clear time rounded up to the next whole second.** Four of the six par
+costs already followed it. Site 3's (`3500` to `3550`) and Site 4's (`5150` to
 `5250`) were brought onto it, and every par time was reset from about 1.5x the
 clear time, a scale that left the time half of a score nearly free to beat
 while the cost half sat a few percent above the leanest crane found.
 
 Site 4's delivery pad moved from `(16, 2, 6)` to `(14, 2, 6)`, and it is worth
 being exact about why, because only part of what was measured then survives.
-What can still be measured is a two-crane probe with the target put back at
-`(16, 2, 6)`: the worked crane's sixteen-unit jib cannot reach that pad at
-all, because the trolley has no station for the point and there is therefore
-no tape to run, and the eighteen-unit jib that does reach it costs `5268.6`
-and collapses at `t = 0.02 s` with one member broken, at any budget. A wider
-search over cranes at that reach was run against the site's budget of the time,
-`5200`, and turned up nothing that held the load, but it left no artifact, so it
-is recorded here as a claim rather than as a figure. No crane clearing
+What the simulation still reproduces is a two-crane probe with the target put
+back at `(16, 2, 6)`: the worked crane's sixteen-unit jib cannot reach that pad
+at all, because the trolley has no station for the point and there is therefore
+no tape to run, and the eighteen-unit jib that does reach it costs `5268.6` and
+collapses at `t = 0.02 s` with one member broken, at any budget. A wider search
+over cranes at that reach was run against the site's budget of the time,
+`5200`, and turned up nothing that held the load, but it left no artifact, so
+it is recorded here as a claim rather than as a figure. No crane clearing
 `(16, 2, 6)` was found; none was shown not to exist. At `(14, 2, 6)` the worked
 crane clears with `0.909` peak utilization.
 
@@ -235,8 +243,7 @@ counter-jib, two more units of jib. Site 4 rejected three of them on cost alone
 (`5431.2`, `5297.9`, `5268.6`); no other site rejected any. At `5600` it
 rejects none, seven of the eleven clear, and the budget stands `607.6` over the
 cheapest of them and `302.1` over the dearest. Par cost follows the rule above
-to `5250`. The pad and the budget are the only figures that moved on this
-site.
+to `5250`. The pad and the budget are the only figures that moved on this site.
 
 Site 3's budget moved from `3600` to `4000` for the same reason: nothing about
 the site changed, only the room it leaves. The wall is eight units tall, so a
@@ -245,12 +252,12 @@ with `HOIST_MIN` `1` — a trolley at `y 11` or higher, which puts the ring at
 `y 10` and fixes the tower at three braced levels. That floor is real: among
 the tower and arm variants searched at that height the leanest build that
 clears costs `3329.6` and peaks at utilization `0.977`, and the worked crane
-costs `3369.6`, so a `3600` budget left a player `230` to be wrong with. Going
-around the wall rather than over it is not the escape it looks like — the wall
-stops two units short of the envelope at each end, but every tape that tried
-that gap struck the wall on the swing. The budget is now `4000`, `630.4` over
-the worked crane and `99.9` over the dearest of those eleven variants that
-still clears, which puts the two sites in one band. Par cost is `3550`.
+costs `3369.6`, so a `3600` budget left a player `230.4` to be wrong with.
+Going around the wall rather than over it is not the escape it looks like — the
+wall stops two units short of the envelope at each end, but every tape that
+tried that gap struck the wall on the swing. The budget is now `4000`, `630.4`
+over the worked crane and `99.9` over the dearest of those eleven variants
+that still clears, which puts the two sites in one band. Par cost is `3550`.
 
 ## Versioning
 

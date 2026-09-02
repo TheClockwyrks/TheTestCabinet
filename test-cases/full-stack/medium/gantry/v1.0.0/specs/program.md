@@ -132,7 +132,8 @@ tape is empty (`empty-program`). A refused start leaves the player where they
 were.
 
 A started run plays the `run-start` cue, moves to the run screen, and ticks
-until it ends. The player watches at any of `RUN_SPEEDS` (`1`, `2`, `4`) times
+until it ends; `specs/state.md` fixes what the start leaves and which tick is
+the run's first. The player watches at any of `RUN_SPEEDS` (`1`, `2`, `4`) times
 real time; speed changes how many ticks a second of watching covers and
 nothing else. The `back` action aborts a run early and returns to the build
 screen; an aborted run has no verdict.
