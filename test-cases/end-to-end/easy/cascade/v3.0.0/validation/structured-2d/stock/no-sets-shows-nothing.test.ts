@@ -41,7 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual } from "../assert";
-import { CARD_H, CARD_W, TOP_ROW_Y, WASTE_X } from "../constants";
+import { CARD_H, CARD_W, TOP_ROW_Y, WASTE_X, type Rect } from "../constants";
 import {
   captureStill,
   card,
@@ -54,7 +54,6 @@ import {
   THREE,
   TWO,
   type Harness,
-  type Rect,
 } from "../harness";
 
 /**
