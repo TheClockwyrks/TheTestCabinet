@@ -38,7 +38,7 @@ import {
   TILE,
   TOP_VENT_COLS,
   inBounds,
-} from "../../src/constants";
+} from "../constants";
 import {
   footprintTiles,
   sizeOf,

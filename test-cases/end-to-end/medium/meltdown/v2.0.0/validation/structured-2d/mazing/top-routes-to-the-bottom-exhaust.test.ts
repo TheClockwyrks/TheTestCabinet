@@ -34,7 +34,7 @@
 // this point decides only where the crossing ends.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOTTOM_EXHAUST_COLS, ROWS } from "../../src/constants";
+import { BOTTOM_EXHAUST_COLS, ROWS } from "../constants";
 import {
   assertContains,
   assertEqual,

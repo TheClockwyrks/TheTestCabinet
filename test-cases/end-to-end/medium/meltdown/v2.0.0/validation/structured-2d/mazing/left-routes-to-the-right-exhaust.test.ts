@@ -33,7 +33,7 @@
 // `mazing/tower-lengthens-the-route` carry that one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, RIGHT_EXHAUST_ROWS } from "../../src/constants";
+import { COLS, RIGHT_EXHAUST_ROWS } from "../constants";
 import {
   assertContains,
   assertEqual,

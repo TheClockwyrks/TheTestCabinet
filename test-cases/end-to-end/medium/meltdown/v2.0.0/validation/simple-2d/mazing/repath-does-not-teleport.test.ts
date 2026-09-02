@@ -37,7 +37,7 @@ import {
   SURGE_DEFS,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   TICK_HZ,

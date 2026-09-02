@@ -27,7 +27,7 @@
 // every bound a check asserts is stated in that check, beside the figure the
 // specification fixes for it.
 
-import { COLS, ROWS } from "../../src/constants";
+import { COLS, ROWS } from "../constants";
 import { exhaustTiles, type Point } from "../geometry";
 import {
   blockedOf,

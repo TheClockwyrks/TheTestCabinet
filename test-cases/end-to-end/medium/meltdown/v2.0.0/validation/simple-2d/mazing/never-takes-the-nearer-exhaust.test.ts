@@ -34,7 +34,7 @@
 // is exactly the scenario this point is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS, TILE, tileCX, tileCY } from "../../src/constants";
+import { SURGE_DEFS, TILE, tileCX, tileCY } from "../constants";
 import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

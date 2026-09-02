@@ -26,7 +26,7 @@
 // (specs/instrumentation.md, the firing gate).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS } from "../../src/constants";
+import { LEFT_VENT_ROWS } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
