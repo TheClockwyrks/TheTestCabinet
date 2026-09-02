@@ -23,7 +23,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ROCK_SPEED_MAX, ROCK_SPEED_MIN } from "../../src/constants";
-import { assertBetween, assertEqual } from "../assert";
+import {
+  assertBetween,
+  assertEqual,
+  assertGreaterThan,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -68,10 +72,25 @@ it("re-enters at a fresh base drift speed while still carrying its damage", asyn
   const id = poseRock(h, "large", FALL_FROM.x, FALL_FROM.y, 0, FALL_SPEED);
   poseHealth(h, id, CHIPPED);
 
-  const returned = await slingIntoTheStar(h);
+  const recycle = await slingIntoTheStar(h);
   captureStill(h, "recycle");
 
-  const rock = theOneRock(returned, "the recycled rock");
+  // The rock is proved to have been travelling FASTER than any base drift speed on
+  // its way in, so a re-entry inside the size's range can only be a reset and not a
+  // speed the scenario happened to leave it at.
+  const arriving = theOneRock(
+    recycle.before,
+    "the Large on its way into the core",
+  );
+  assertGreaterThan(
+    speedOf(arriving),
+    ROCK_SPEED_MAX.large,
+    `the speed the Large carried into the star, dropped at FALL_SPEED ` +
+      `(${FALL_SPEED}) and only added to by the well (specs/gravity.md) — ` +
+      "so a re-entry inside the size's range can only be a reset",
+  );
+
+  const rock = theOneRock(recycle.at, "the recycled rock");
   // The speed is drawn afresh from the size's range...
   assertBetween(
     speedOf(rock),

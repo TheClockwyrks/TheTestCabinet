@@ -22,7 +22,7 @@
 // could pass on by mistake.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertEqual } from "../assert";
+import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import { ROCK_SPEED_MAX, ROCK_SPEED_MIN } from "../constants";
 import { magnitude } from "../geometry";
 import {
@@ -75,10 +75,25 @@ it("re-enters at a fresh base drift speed while still carrying its damage", asyn
   );
   await h.debug.setRockHealth(id, CHIPPED);
 
-  const returned = await slingIntoTheStar(h);
+  const recycle = await slingIntoTheStar(h);
   await captureStill(h, "recycle");
 
-  const rock = theOneRock(returned, "the recycled rock");
+  // The rock is proved to have been travelling FASTER than any base drift speed on
+  // its way in, so a re-entry inside the size's range can only be a reset and not a
+  // speed the scenario happened to leave it at.
+  const arriving = theOneRock(
+    recycle.before,
+    "the Large on its way into the core",
+  );
+  assertGreaterThan(
+    magnitude(velocityOf(arriving)),
+    ROCK_SPEED_MAX.large,
+    `the speed the Large carried into the star, dropped at FALL_SPEED ` +
+      `(${FALL_SPEED}) and only added to by the well (specs/gravity.md) — ` +
+      "so a re-entry inside the size's range can only be a reset",
+  );
+
+  const rock = theOneRock(recycle.at, "the recycled rock");
   // The speed is drawn afresh from the size's range...
   assertBetween(
     magnitude(velocityOf(rock)),

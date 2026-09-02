@@ -19,6 +19,12 @@
 // pose a health fails there by name. The pose is read back before the fall, so a
 // failure here is the recycling and not the posing.
 //
+// THE RECYCLE IS FOUND AS THE RE-PLACEMENT ITSELF, not as the rock reading far from
+// the star (`./scene.ts`). A build that never recycles sends its rock straight
+// through the core and out the far side, where it reads exactly as far out as a
+// re-placed one — and the health of a rock nothing touched is the health it was
+// posed at, so this item, of all of them, is the one that would pass vacuously.
+//
 // THE ROCK IS FOUND IN THE ROSTER, NOT BY ITS ID. The specification makes recycling
 // leave the field's rock count unchanged but never says the id survives, so a check
 // that followed the id would be demanding something it does not require. The field
@@ -75,11 +81,11 @@ it("re-enters a Large chipped to one hit still carrying that damage", async () =
     "the health the rock carried into the star (specs/instrumentation.md)",
   );
 
-  const returned = await slingIntoTheStar(h);
+  const recycle = await slingIntoTheStar(h);
   await captureStill(h, "recycle");
 
   assertEqual(
-    healthOf(theOneRock(returned, "the recycled rock"), "the recycled rock"),
+    healthOf(theOneRock(recycle.at, "the recycled rock"), "the recycled rock"),
     CHIPPED,
     "the health a recycled rock carries back (specs/rocks.md)",
   );

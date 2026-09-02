@@ -11,7 +11,7 @@
 
 import { ROCK_HEALTH } from "../../src/constants";
 import { fail } from "../assert";
-import { directDistanceToStar } from "../geometry";
+import { directDistanceToStar, distance } from "../geometry";
 import {
   aimedRound,
   poseBullet,
@@ -154,35 +154,65 @@ export const FALL_FROM = { x: 640, y: 60 } as const;
 /** The inward speed it is dropped at, so the fall is a second rather than three. */
 export const FALL_SPEED = 150;
 
-/** Inside this the rock is committed to the core and only the recycle takes it out. */
-const NEAR_STAR = 150;
-
 /**
- * Outside this the rock has been re-placed on an edge.
+ * Inside this the rock is committed to the core, and the sweep that watches for the
+ * re-placement begins.
  *
- * `specs/rocks.md` re-places a recycled rock at a random point on one of the four
- * edges of the field, and the nearest point of any edge to the star's centre is
- * `360` away (the middle of the top or bottom edge), so a rock reading further out
- * than this has been MOVED rather than merely climbed back out of the well.
+ * Geometry: a Large's circle reaches the core at `CORE_R + ROCK_RADIUS.large` (`76`)
+ * from the star's centre (`specs/collision.md`), so a rock reading inside `200` has
+ * not yet been taken and is a few dozen units from being.
  */
-const OFF_EDGE = 250;
+const COMMITTED = 200;
 
 /**
- * Drop the field's one rock onto the star and hand back the state on the tick it
- * re-entered.
+ * A one-tick move further than this can only be a re-placement.
+ *
+ * `specs/rocks.md` takes a rock at the core and re-places it at a random point on
+ * one of the four edges of the field. The nearest point of any edge to the star's
+ * centre is `360` away, and the rock is inside `76` when it is taken, so the
+ * shortest wrapped separation between where it was and where it re-appears is at
+ * least `284`. A rock still drifting covers at most a handful of units in a tick
+ * even after a fall through the well, so nothing but the re-placement can clear
+ * this — and measuring it as the SHORTEST WRAPPED separation (`specs/field.md`) is
+ * what keeps a rock crossing a seam from reading as one.
+ */
+const REPLACEMENT_JUMP = 200;
+
+/** A recycle, as the two ticks that bracket it. */
+export interface Recycle {
+  /** The state on the last tick before the re-placement: the rock still at the core. */
+  before: ShatterSnapshot;
+  /** The state on the tick the rock re-entered. */
+  at: ShatterSnapshot;
+}
+
+/**
+ * Drop the field's one rock onto the star and hand back the tick it re-entered on
+ * and the tick before it.
  *
  * The rock is posed straight above the star's centre, so the well's pull is exactly
  * along its fall and the approach is radial: it reaches the core
  * (`ROCK_RADIUS.large + CORE_R` away from the centre, `specs/collision.md`) rather
- * than swinging past it. The re-entry is swept a tick at a time, so the velocity a
- * check reads is the one the rock re-entered with.
+ * than swinging past it. The march inward is skipped, and the re-placement is then
+ * swept one tick at a time, so the state a check reads is the one the rock
+ * re-entered in and not one the well has had a chance to work on.
+ *
+ * THE RECYCLE IS FOUND AS A DISCONTINUITY, not as the rock reading far from the
+ * star. A build that never recycles at all sends its rock straight through the core
+ * and out the far side, where it reads exactly as far out as a re-placed one — so a
+ * sweep watching a distance would report a recycle that never happened and
+ * `recycling-preserves-health`, whose reading is the same on a rock nothing touched,
+ * would pass vacuously. A jump of {@link REPLACEMENT_JUMP} units inside one tick is
+ * the thing itself. This is the same drive `../rocks/scene.ts` runs the five
+ * `rocks/recycle-*` checks on, so the two groups decide the star's recycling by one
+ * reading rather than two.
  *
  * The rock is found in the roster rather than by its id: `specs/rocks.md` makes a
  * recycled rock the same rock relocated and leaves the field's rock count
  * unchanged, but it never says the id is preserved, so a check that followed one
  * would be demanding something the specification does not.
  */
-export async function slingIntoTheStar(h: Harness): Promise<ShatterSnapshot> {
+export async function slingIntoTheStar(h: Harness): Promise<Recycle> {
   const posed = h.snapshot();
   if (posed.rocks.length !== 1) {
     fail(
@@ -193,39 +223,46 @@ export async function slingIntoTheStar(h: Harness): Promise<ShatterSnapshot> {
   }
 
   const falling = await h.until(
-    (snapshot) => {
-      const rock = snapshot.rocks[0];
-      return rock !== undefined && directDistanceToStar(rock) < NEAR_STAR;
-    },
-    { maxFrames: ticksFor(4), poll: 1 },
+    (snapshot) =>
+      snapshot.rocks.length !== 1 ||
+      directDistanceToStar(snapshot.rocks[0]) < COMMITTED,
+    { maxFrames: ticksFor(6), poll: 4 },
   );
   if (!falling.hit) {
     fail(
-      `a rock dropped from y=${FALL_FROM.y} reaching the star inside four ` +
+      `a rock dropped from y=${FALL_FROM.y} reaching the star inside six ` +
         "seconds (specs/gravity.md)",
-      falling.snapshot.rocks.length === 0
-        ? "the rock left the field before it got there"
-        : `it was still ${directDistanceToStar(falling.snapshot.rocks[0]).toFixed(1)} units out`,
+      `it is still ${directDistanceToStar(
+        falling.snapshot.rocks[0] ?? FALL_FROM,
+      ).toFixed(1)} units out`,
     );
   }
 
-  const returned = await h.until(
-    (snapshot) => {
-      const rock = snapshot.rocks[0];
-      return rock !== undefined && directDistanceToStar(rock) > OFF_EDGE;
-    },
-    { maxFrames: ticksFor(2), poll: 1 },
-  );
-  if (!returned.hit) {
-    fail(
-      "a rock that reached the core re-placed on an edge of the field " +
-        "(specs/rocks.md)",
-      returned.snapshot.rocks.length === 0
-        ? "the rock was destroyed rather than recycled"
-        : `it was still ${directDistanceToStar(returned.snapshot.rocks[0]).toFixed(1)} units from the star`,
-    );
+  let before = falling.snapshot;
+  for (let tick = 1; tick <= ticksFor(2); tick += 1) {
+    await h.advance(1);
+    const at = h.snapshot();
+    const was = before.rocks[0];
+    const now = at.rocks[0];
+    if (
+      at.rocks.length !== before.rocks.length ||
+      was === undefined ||
+      now === undefined ||
+      distance(was, now) > REPLACEMENT_JUMP
+    ) {
+      return { before, at };
+    }
+    before = at;
   }
-  return returned.snapshot;
+
+  fail(
+    "a rock that reached the star's core taken from it and re-placed on an " +
+      "edge (specs/rocks.md)",
+    `two seconds on it is still ${directDistanceToStar(
+      before.rocks[0] ?? FALL_FROM,
+    ).toFixed(1)} units from the star, having moved no further than a drift ` +
+      "in any tick",
+  );
 }
 
 /** The one rock the recycling scenario runs with, failing when it is gone. */
