@@ -43,15 +43,15 @@ const DRIVE_TICKS = ticksFor(0.75);
 const POSED_FACING = radians(35);
 
 /**
- * How far the facing may have moved, in radians: a thousandth.
+ * How far the facing may have moved, in radians: a ten-thousandth.
  *
- * `specs/collision.md` leaves the facing unchanged, so the specification's answer
- * is exactly the angle it was posed with and this is rounding room rather than an
- * allowance. It is six hundredths of a degree, against the `27` degrees that
- * separate the posed facing from the nearest direction a wrong build would snap it
- * to.
+ * `specs/collision.md` leaves the facing UNCHANGED through the slide, so the
+ * specification's answer is exactly the angle the ship struck with and this is
+ * float slack rather than an allowance — nothing in the contact touches the angle,
+ * so a conformant build reports the number it was handed. It is six thousandths of
+ * a degree, and the same figure decides the item under every engine.
  */
-const FACING_TOLERANCE = 0.001;
+const FACING_TOLERANCE = 1e-4;
 
 let h: Harness;
 

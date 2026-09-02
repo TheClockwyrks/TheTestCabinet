@@ -22,12 +22,14 @@
 // from the core, and one that aligns it with the slide each read a different
 // number, and every one of them is more than a hundred times the bound.
 //
-// WHY HALF A DEGREE. The rule allows no change at all, so the bound is not a
-// share of a figure but a floor under one: the smallest turn the game itself can
-// make is one tick of `SHIP_TURN` (`300` degrees a second), which is `2.5`
-// degrees. Half a degree is a fifth of that — well below any change a build
-// could make on purpose, and far above the rounding of an angle carried through
-// a snapshot.
+// WHY A TEN-THOUSANDTH OF A RADIAN. The rule allows no change at all, so the
+// bound is not a share of a figure but float slack: nothing in the contact
+// touches the angle, so a conformant build reports the number it was handed and
+// the only thing between the two readings is the rounding of an angle carried
+// through a snapshot. Six thousandths of a degree is far above that rounding and
+// far below the smallest turn the game itself can make, which is one tick of
+// `SHIP_TURN` (`300` degrees a second) — `2.5` degrees, four hundred times this.
+// It is the figure every engine's copy of this item uses.
 //
 // THE SHIP IS ALONE, AND NO KEY IS HELD. `startPlaying` empties the field, shuts
 // both world gates and leaves every key up, so nothing in the game has any
@@ -45,12 +47,15 @@ import {
 import { GRAZE_FACING, grazeTheCore, showTheContact } from "./approach";
 
 /**
- * How far the facing may have swung, in radians.
+ * How far the facing may have moved, in radians: a ten-thousandth.
  *
- * Half a degree. See the header: the rule allows none, and one tick of the
- * game's own rotation rate is five times this.
+ * `specs/collision.md` leaves the facing UNCHANGED through the slide, so the
+ * specification's answer is exactly the angle the ship struck with and this is
+ * float slack rather than an allowance — nothing in the contact touches the angle,
+ * so a conformant build reports the number it was handed. It is six thousandths of
+ * a degree, and the same figure decides the item under every engine.
  */
-const FACING_TOLERANCE = 0.5 * DEG;
+const FACING_TOLERANCE = 1e-4;
 
 let h: Harness;
 
