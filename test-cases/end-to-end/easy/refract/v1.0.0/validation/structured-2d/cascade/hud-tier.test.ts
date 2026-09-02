@@ -10,8 +10,8 @@
 // "SOLVED 0", so no other digit on the frame reads 1 by accident.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_TIER_LABEL } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { HUD_TIER_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
