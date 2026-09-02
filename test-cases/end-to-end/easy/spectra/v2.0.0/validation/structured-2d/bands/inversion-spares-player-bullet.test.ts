@@ -20,7 +20,7 @@
 // reading. The pair is read, stored band and effective band together.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { INVERSION_TIME } from "../../src/constants";
+import { INVERSION_TIME } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   bulletById,

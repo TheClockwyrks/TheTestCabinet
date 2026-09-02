@@ -22,7 +22,7 @@
 // of game time bring nothing in that could disturb either reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { INVERSION_TIME } from "../../src/constants";
+import { INVERSION_TIME } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   LANE_CENTER,

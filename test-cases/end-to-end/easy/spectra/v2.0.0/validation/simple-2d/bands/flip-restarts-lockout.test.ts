@@ -33,7 +33,7 @@
 // `bands/flip-instant`'s point and is not restated here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, FLIP_LOCKOUT } from "../../src/constants";
+import { BINDINGS, FLIP_LOCKOUT } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -20,7 +20,7 @@
 // the hit.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENEMY_BULLET_HALF, SHIP_HALF, START_LIVES } from "../../src/constants";
+import { ENEMY_BULLET_HALF, SHIP_HALF, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

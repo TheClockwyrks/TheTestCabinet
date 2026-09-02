@@ -28,7 +28,7 @@
 // use to hide a shortened or lengthened inversion.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { INVERSION_TIME } from "../../src/constants";
+import { INVERSION_TIME } from "../constants";
 import { assertEqual } from "../assert";
 import {
   LANE_CENTER,

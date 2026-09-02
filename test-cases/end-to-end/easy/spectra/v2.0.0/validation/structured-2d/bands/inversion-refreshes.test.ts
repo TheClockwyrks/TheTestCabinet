@@ -36,7 +36,7 @@ import {
   FORM_CENTER_X,
   INVERSION_TIME,
   PRISM_INVERT_Y,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,

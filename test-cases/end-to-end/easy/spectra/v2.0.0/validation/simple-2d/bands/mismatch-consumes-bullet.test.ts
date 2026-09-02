@@ -24,7 +24,7 @@ import {
   FIELD_TOP,
   PLAYER_BULLET_SPEED,
   SHARD_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertNull } from "../assert";
 import {
   LANE_CENTER,

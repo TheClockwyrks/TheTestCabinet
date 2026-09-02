@@ -27,7 +27,7 @@ import {
   SHIP_HALF,
   START_LIVES,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   SHIP_LANE_Y,

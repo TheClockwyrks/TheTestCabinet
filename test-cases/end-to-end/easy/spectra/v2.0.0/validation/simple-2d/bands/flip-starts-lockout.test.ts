@@ -26,7 +26,7 @@
 // every other duration this game carries.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, FLIP_LOCKOUT } from "../../src/constants";
+import { BINDINGS, FLIP_LOCKOUT } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,

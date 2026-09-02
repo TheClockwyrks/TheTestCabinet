@@ -30,7 +30,7 @@ import {
   SHIP_HALF,
   SHIP_Y,
   START_LIVES,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   LANE_CENTER,

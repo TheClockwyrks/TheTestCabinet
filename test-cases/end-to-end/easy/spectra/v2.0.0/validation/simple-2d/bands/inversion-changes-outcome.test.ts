@@ -26,7 +26,7 @@
 // is not a bystander parked in a corner: each is a target this point fires at.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { INVERSION_TIME, PRISM_HALF, SHARD_HALF } from "../../src/constants";
+import { INVERSION_TIME, PRISM_HALF, SHARD_HALF } from "../constants";
 import { assertEqual, assertNotNull, assertNull } from "../assert";
 import {
   captureStill,

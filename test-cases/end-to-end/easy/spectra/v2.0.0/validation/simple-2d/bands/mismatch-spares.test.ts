@@ -23,7 +23,7 @@
 // `bands.match-destroys`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYER_BULLET_SPEED, SHARD_HALF } from "../../src/constants";
+import { PLAYER_BULLET_SPEED, SHARD_HALF } from "../constants";
 import { assertNotNull, assertTrue } from "../assert";
 import {
   LANE_CENTER,

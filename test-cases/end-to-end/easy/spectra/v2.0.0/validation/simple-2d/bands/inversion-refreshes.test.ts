@@ -41,7 +41,7 @@ import {
   DIVE_SPEED,
   INVERSION_TIME,
   PRISM_INVERT_Y,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual, assertTrue } from "../assert";
 import {
   LANE_CENTER,

@@ -36,7 +36,7 @@ import {
   INVERSION_TIME,
   PLAYER_BULLET_SPEED,
   PRISM_CORE_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   LANE_CENTER,

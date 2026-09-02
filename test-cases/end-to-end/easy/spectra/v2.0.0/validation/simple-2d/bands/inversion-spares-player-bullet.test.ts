@@ -23,7 +23,7 @@
 // frame that runs leaves it on the roster to be read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { INVERSION_TIME } from "../../src/constants";
+import { INVERSION_TIME } from "../constants";
 import { assertEqual } from "../assert";
 import {
   LANE_CENTER,

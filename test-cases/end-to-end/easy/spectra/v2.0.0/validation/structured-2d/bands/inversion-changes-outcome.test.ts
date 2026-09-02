@@ -27,7 +27,7 @@ import {
   INVERSION_TIME,
   PLAYER_BULLET_HALF,
   SHARD_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertDefined, assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

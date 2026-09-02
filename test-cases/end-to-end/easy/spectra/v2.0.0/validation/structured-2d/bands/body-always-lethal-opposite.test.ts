@@ -24,7 +24,7 @@
 // can only move for the contact under test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { READY_HOLD, SHIP_Y, START_LIVES } from "../../src/constants";
+import { READY_HOLD, SHIP_Y, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
