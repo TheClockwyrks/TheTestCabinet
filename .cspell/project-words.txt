@@ -443,6 +443,7 @@ railgun
 rangerate
 reactorpile
 readback
+realpath
 rebalances
 reband
 recenters
