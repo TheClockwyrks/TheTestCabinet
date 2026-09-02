@@ -69,9 +69,9 @@ const DEADLINE_MS = 30_000;
  * be over.
  *
  * A twentieth of a second, which is five frames of the harness's 100 Hz clock. A
- * host frame callback delivers tens of frames in half a second, so this is set
- * where "the clock never moved" ends rather than at any frame rate, which is the
- * machine's business and not the specification's.
+ * host frame callback delivering frames at all reaches it in a fraction of a
+ * second, so this is set where "the clock never moved" ends rather than at any
+ * frame rate, which is the machine's business and not the specification's.
  */
 const SIM_MIN = 0.05;
 
