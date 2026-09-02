@@ -166,6 +166,16 @@ whose requirement that faculty is. No suite reaches a cleared wave with
 own collision and split code. Every expected value a suite asserts comes from a
 figure the specs fix, never from a reference build.
 
+Each project's `constants.ts` is where those figures live, transcribed from the
+`specs/` file named in each section heading, and every other file in the project
+imports the ones it asserts from there. The reference projects'
+`eslint.config.js` carries that rule so it holds wherever the case is checked out:
+with the validators staged, a specifier climbing out of `validation/` is refused,
+so a check that reached into the build's `src/` for a figure fails `npx eslint .`
+instead of passing quietly against every build. `constants.ts` is the one file
+exempt, because it is the transcription, and `harness.ts` may name the build entry
+it stands the build up through and nothing else.
+
 Each point declares one output. Most are a single captured frame, the right
 evidence for a posed scenario read once; the twenty-two points whose requirement
 _is_ motion declare a replay instead, and a replay ends on the outcome rather than
