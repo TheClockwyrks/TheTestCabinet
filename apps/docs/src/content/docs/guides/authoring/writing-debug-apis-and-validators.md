@@ -114,6 +114,69 @@ in the specs, designed around the behavior rather than around an engine or the
 reference's architecture, and assert the now-stated behavior. If it is not,
 the validator has nothing to assert.
 
+### Validators own the figures they assert
+
+Every figure a validator compares against is stated by the validator. Each
+engine's validator project carries a `constants.ts` at its root that transcribes
+those figures from the rendered specs under the names the specs use, and a suite
+imports each figure it asserts from there: `./constants` from the project root,
+`../constants` from a suite one directory down.
+
+Under an engine the case seeds the build a `src/constants.ts`, so a suite can
+reach the build's own copy of the same figures. A suite that reaches it grades
+nothing. The comparison becomes "does the build do what the build says it does",
+which holds for every build, including one whose figure is wrong.
+
+Meltdown's `surge/walks-at-its-speed` is the pair that shows it. The suite in
+each project computes the same expression:
+
+```ts
+const expected = SURGE_DEFS[type].speed * WINDOW_SECONDS;
+```
+
+The `none` project imports `SURGE_DEFS` from `../constants`, which spells out
+`mote: { speed: 60 }` from `specs/surge.md`. An engine project that imports it
+from `../../src/constants` reads the build's own table instead. A build that
+walks Motes at 66 fails the first suite and passes the second, because its table
+says 66 too. A run selects one engine, so that build buys itself a clean sheet on
+whichever engine it draws.
+
+### The build's module has one import site
+
+A specification leaves some values to the build: which touch layout it
+registers, which key it binds an action to where the specs name none, where it
+places a decoration the specs require only to exist. A validator reads such a
+value to drive the build or to locate what the build drew, and grades nothing by
+it.
+
+`constants.ts` is the only file in a validator project that imports the build's
+`../src/constants`, and it re-exports each value it reads under a heading saying
+why that value is the build's to choose. The suites, the harness and the surface
+all import from `constants.ts`. One import site per project is what makes the
+rule mechanical, and `scripts/ci/validator-constants.sh` reports a project where
+a second file reaches for the build's module.
+
+```ts
+// validation/simple-2d/constants.ts
+
+/** The paddle's travel speed, in units per second (specs/paddles.md). */
+export const PADDLE_SPEED = 720;
+
+/* ---- What the specification leaves to the build ------------------------- */
+//
+// Read to drive the build, never compared against. `specs/controls.md` requires
+// a touch layout carrying the four movement actions and names no layout, so
+// which one the build registers is the build's own choice and the harness has
+// to ask for it.
+
+export { LAYOUT } from "../src/constants";
+```
+
+Each engine's project holds its own copy of `constants.ts`. A run stages one
+project, copying `validation/<engine>/` whole into the produced tree at
+`validation/`, so a module the projects shared from outside them would be absent
+when the suites run.
+
 ### One requirement per validator
 
 A validator decides one requirement in one direction. A build with a working
@@ -238,6 +301,10 @@ When designing or revising a case's debug API and validators:
 - `snapshot()` reports every field an operation can set.
 - Each assertion traces to a statement in the specs, not to the reference
   implementation, and every spec-honoring design passes.
+- Every figure a suite asserts comes from the project's own `constants.ts`,
+  transcribed from the specs.
+- `constants.ts` is the only file in a project that imports the build's
+  `src/constants`, and re-exports only what the specs leave to the build.
 - Each validator decides one requirement in one direction, and each edge case
   has its own validator.
 - Each validator reaches its scenario through the debug API alone and drives
