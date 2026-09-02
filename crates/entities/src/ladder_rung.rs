@@ -1,7 +1,7 @@
 //! The `ladder_rung` table: one step of a [`ladder`](crate::ladder)'s climb.
 //!
-//! A rung is exactly one test case, pinned to an exact `(slug, version, variant)` —
-//! the same triple a coverage plan's cases carry — plus its place in the ordering.
+//! A rung is exactly one test case, pinned to an exact `(slug, version, variant, engine)`
+//! — the same pin a coverage plan's cases carry — plus its place in the ordering.
 //! Rungs are real rows rather than a JSON list on the ladder because they are
 //! ordered, individually reorderable, individually re-pinnable, and referenced by id
 //! from every recorded outcome.
@@ -39,6 +39,15 @@ pub struct Model {
     pub version: String,
     /// The variant to climb (e.g. `base`).
     pub variant: String,
+    /// The engine to climb on (e.g. `simple-2d`), or `NULL` for the `none` engine — the
+    /// engineless run every case supports, and what every rung declared before the
+    /// column existed asked for.
+    ///
+    /// Part of the pin because a result is only comparable within one engine: the same
+    /// case at the same version and variant on two engines is two rungs, and each is
+    /// counted and gated on its own.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub engine: Option<String>,
     /// This rung's override of the ladder's `runs_per_cell`, or `NULL` to inherit it.
     /// Lets a pivotal step demand more evidence than the rest of the climb without
     /// making every rung more expensive.

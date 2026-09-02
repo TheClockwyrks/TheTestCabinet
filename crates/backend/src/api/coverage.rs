@@ -105,9 +105,10 @@ const MAX_QUEUE_RUNS: usize = 600;
 /// keeps a queue over a wide plan from assembling every run the cabinet ever ran.
 const QUEUE_CELL_SCAN: usize = 100;
 
-/// One test case in a plan or a case group, pinned to an exact version (and
-/// variant). Coverage is counted against exactly this version; the matrix flags it
-/// when a newer version has since been ingested.
+/// One **pinned case** in a plan or a case group: a slug, an exact version, a variant,
+/// and the [engine](test_cabinet_core::engine) its runs are built on. Coverage is counted
+/// against exactly this pin; the matrix flags it when a newer version has since been
+/// ingested.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -118,6 +119,42 @@ pub struct ReviewPlanCase {
     pub version: String,
     /// The variant to cover (e.g. `base`).
     pub variant: String,
+    /// The engine to cover (e.g. `simple-2d`), or null for the `none` engine — the
+    /// engineless run every case supports, and exactly what a plan scheduled before the
+    /// pin carried an engine asked for.
+    ///
+    /// The engine is in the pin because a result is only comparable with another result
+    /// on the same engine: a model handed a runtime and a documented API is doing
+    /// different work from the same model starting from nothing, so one case at one
+    /// version and variant on two engines is two pinned cases and two sets of cells.
+    ///
+    /// A pin naming an engine the version does not declare support for is accepted here
+    /// and reported by the run, exactly as an uningested version is. The catalogue moves
+    /// under a standing plan, so the check belongs where a run executes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub engine: Option<String>,
+}
+
+impl ReviewPlanCase {
+    /// The pin's engine as the [cell key](crate::db::CellKey) segments it: the slug it
+    /// names, or `none` when it names nothing. Absent and `none` are the same pin, so
+    /// they must never be two cells.
+    pub(super) fn engine_slug(&self) -> String {
+        self.launch_engine()
+            .unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string())
+    }
+
+    /// The pin's engine as a launch request carries it: the slug it names, or `None`
+    /// where it names nothing, which is the key a launch omits to ask for the engineless
+    /// run. A pin holding only whitespace is a pin holding nothing.
+    pub(super) fn launch_engine(&self) -> Option<String> {
+        self.engine
+            .as_deref()
+            .map(str::trim)
+            .filter(|slug| !slug.is_empty())
+            .map(str::to_string)
+    }
 }
 
 /// One **combination** in a plan, a ladder, or a combo group: what a cell's runs are
@@ -495,6 +532,10 @@ pub struct CoverageCell {
     pub version: String,
     /// The variant.
     pub variant: String,
+    /// The engine this cell counts against, resolved: `none` where the pin names none.
+    /// Always concrete, because a run recorded with no engine is a `none` run and the
+    /// two must land in one cell.
+    pub engine: String,
     /// The harness — `gg` on a gg cell.
     pub harness: HarnessSlug,
     /// The model id: the one a harness cell's runs are launched with, and on a gg cell the
@@ -675,6 +716,9 @@ pub struct TopUpLaunch {
     pub version: String,
     /// The variant.
     pub variant: String,
+    /// The engine the enqueued runs are built on, resolved: `none` where the cell's pin
+    /// names none.
+    pub engine: String,
     /// The harness.
     pub harness: HarnessSlug,
     /// The combination's canonical model id (not the launched one — see
@@ -727,6 +771,9 @@ pub struct TopUpBlocked {
     pub version: String,
     /// The variant.
     pub variant: String,
+    /// The engine the cell would have launched on, resolved: `none` where the pin names
+    /// none.
+    pub engine: String,
     /// The harness — `gg` on a gg member.
     pub harness: HarnessSlug,
     /// The combination's model id, empty when the member could not be resolved far enough
@@ -804,6 +851,8 @@ pub struct CoverageQueueEntry {
     pub version: String,
     /// The variant.
     pub variant: String,
+    /// The engine the run was built on, resolved: `none` where the cell's pin names none.
+    pub engine: String,
     /// The harness.
     pub harness: HarnessSlug,
     /// The model id the run was launched with.
@@ -1977,17 +2026,28 @@ pub(super) fn resolve_combos(
 }
 
 /// Resolve referenced case groups and one-off cases into the de-duped case list,
-/// keyed by `(slug, version, variant)`. The case-side twin of [`resolve_combos`],
-/// with the same ordering and dangling-reference rules.
+/// keyed by the whole pin — `(slug, version, variant, engine)`. The case-side twin of
+/// [`resolve_combos`], with the same ordering and dangling-reference rules.
+///
+/// The engine is part of the key because it is part of the pin: the same case at the same
+/// version and variant on two engines is two pinned cases whose runs are not comparable,
+/// and de-duplicating on the first three segments would silently drop one of them. The
+/// engine is compared **resolved**, so a pin naming `none` and a pin naming nothing are
+/// the one case they describe.
 pub(super) fn resolve_cases(
     group_ids: &[String],
     one_offs: &[ReviewPlanCase],
     groups: &HashMap<String, CoverageGroup>,
 ) -> Vec<ReviewPlanCase> {
     let mut cases = Vec::new();
-    let mut seen: HashSet<(String, String, String)> = HashSet::new();
+    let mut seen: HashSet<(String, String, String, String)> = HashSet::new();
     let mut push = |c: &ReviewPlanCase, cases: &mut Vec<ReviewPlanCase>| {
-        let key = (c.slug.clone(), c.version.clone(), c.variant.clone());
+        let key = (
+            c.slug.clone(),
+            c.version.clone(),
+            c.variant.clone(),
+            c.engine_slug(),
+        );
         if seen.insert(key) {
             cases.push(c.clone());
         }
@@ -2296,6 +2356,7 @@ impl MatrixCtx {
             slug: case.slug.clone(),
             version: case.version.clone(),
             variant: case.variant.clone(),
+            engine: case.engine_slug(),
             harness: member.combo.harness,
             model: member.combo.model.clone(),
             provider: member.combo.provider.clone(),
@@ -2359,21 +2420,26 @@ impl MatrixCtx {
     }
 }
 
-/// The [`CellKey`] a case and a resolved member cross to: the case's three segments, the
-/// harness, the model as it is **launched**, and the two gg segments — the configuration's
-/// id and the models its bound set runs, both empty on a harness cell.
+/// The [`CellKey`] a case and a resolved member cross to: the case pin's four segments,
+/// the harness, the model as it is **launched**, and the two gg segments — the
+/// configuration's id and the models its bound set runs, both empty on a harness cell.
 ///
-/// Every segment comes off the resolved member rather than the stored combination, which is
-/// the point of resolving one: a gg member's launch model is the model its bound set's root
-/// agent runs, its models segment is what the bound set actually binds, and its configuration
-/// segment is the bare id the account's library is keyed by — the row may spell that id as
-/// the picker's `saved:<id>`, and a run records only the bare one.
+/// The engine segment is the pin's engine **resolved**, so a pin naming nothing keys as
+/// `none` — the same segment the grouped counts collapse a run that recorded no engine to.
+/// A plan pinning no engine therefore counts exactly the runs it always counted.
+///
+/// Every other segment comes off the resolved member rather than the stored combination,
+/// which is the point of resolving one: a gg member's launch model is the model its bound
+/// set's root agent runs, its models segment is what the bound set actually binds, and its
+/// configuration segment is the bare id the account's library is keyed by — the row may
+/// spell that id as the picker's `saved:<id>`, and a run records only the bare one.
 pub(super) fn cell_key(case: &ReviewPlanCase, member: &PlanMember) -> CellKey {
     let (harness, model, config_id, models) = member.cell_identity();
     (
         case.slug.clone(),
         case.version.clone(),
         case.variant.clone(),
+        case.engine_slug(),
         harness,
         model,
         config_id,
@@ -2412,13 +2478,16 @@ async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
         if job.state != "pending" {
             continue;
         }
-        // The job's own lifted gg columns complete the cell, read exactly as the
-        // grouped counts read them: absent is the empty segment a harness cell carries.
+        // The job's own lifted engine and gg columns complete the cell, read exactly as
+        // the grouped counts read them: an absent engine is `none`, and an absent gg
+        // segment is the empty one a harness cell carries.
         *pending
             .entry((
                 job.test_case_slug,
                 job.test_case_version,
                 job.variant,
+                job.engine_slug
+                    .unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string()),
                 job.harness_slug,
                 job.model_id,
                 job.gg_config_id.unwrap_or_default(),
@@ -2520,6 +2589,7 @@ pub(super) fn blocked_cell(
         slug: case.slug.clone(),
         version: case.version.clone(),
         variant: case.variant.clone(),
+        engine: case.engine_slug(),
         harness: member.combo.harness,
         model: member.combo.model.clone(),
         provider: member.combo.provider.clone(),
@@ -2527,6 +2597,59 @@ pub(super) fn blocked_cell(
         gg_config_name: member.combo.gg_config_name.clone(),
         gg_slot_models: member.combo.gg_slot_models.clone(),
         reason,
+    }
+}
+
+/// The launch request one top-up cell's runs are enqueued with: the cell's whole case pin
+/// crossed with what its resolved member runs.
+///
+/// The two shapes live here together rather than inline at the enqueue because they must
+/// agree on the pin. A gg cell is lowered through the very builder `POST /gg/runs` lowers a
+/// launch form with ([`super::gg::gg_launch_body`]) and a harness cell is the console's
+/// default new-run shape, but both carry the same slug, version, variant, and **engine** —
+/// a cell whose runs arrived on another engine would satisfy nothing it was counted
+/// against, and the two branches drifting apart on that is precisely the defect that would
+/// not show up until a plan had bought a second set of runs.
+///
+/// The engine travels as [`ReviewPlanCase::launch_engine`] gives it, so a pin naming
+/// nothing sends no engine key at all — the `none` default, which is the engineless build
+/// every plan scheduled before the pin carried an engine got.
+///
+/// A plan pins no orchestrator, runtime ceiling, auth mode, or retry policy, so everything
+/// else is the default a hand-launched run takes.
+fn top_up_launch_body(cell: &TopUpCell<'_>) -> test_cabinet_core::LaunchBody {
+    match &cell.member.gg {
+        Some(gg) => super::gg::gg_launch_body(
+            super::gg::GgLaunchSubject {
+                test_case: cell.case.slug.clone(),
+                version: cell.case.version.clone(),
+                variant: cell.case.variant.clone(),
+                engine: cell.case.launch_engine(),
+                max_runtime_seconds: None,
+                retry_count: None,
+            },
+            super::gg::GgLaunchIdentity {
+                capability_set: gg.capability_set.clone(),
+                model: cell.member.launch_model.clone(),
+            },
+        ),
+        None => test_cabinet_core::LaunchBody {
+            test_case: cell.case.slug.clone(),
+            version: cell.case.version.clone(),
+            variant: cell.case.variant.clone(),
+            harness: cell.member.combo.harness,
+            model: cell.member.launch_model.clone(),
+            orchestrator: None,
+            engine: cell.case.launch_engine(),
+            max_runtime_seconds: None,
+            auth_mode: None,
+            retry_count: None,
+            // A harness member configures no capability set, and none of the per-model
+            // catalog facts a set's bindings would need resolving.
+            gg_capability_set: None,
+            gg_model_windows: Default::default(),
+            gg_model_modalities: Default::default(),
+        },
     }
 }
 
@@ -2576,46 +2699,7 @@ pub(super) async fn enqueue_top_up(
             blocked.push(cell.blocked(reason.clone()));
             continue;
         }
-        let mut body = match &cell.member.gg {
-            Some(gg) => super::gg::gg_launch_body(
-                super::gg::GgLaunchSubject {
-                    test_case: cell.case.slug.clone(),
-                    version: cell.case.version.clone(),
-                    variant: cell.case.variant.clone(),
-                    // A plan pins no engine, no runtime ceiling, and no retry policy, so a
-                    // scheduled gg run takes exactly the defaults its harness runs take.
-                    engine: None,
-                    max_runtime_seconds: None,
-                    retry_count: None,
-                },
-                super::gg::GgLaunchIdentity {
-                    capability_set: gg.capability_set.clone(),
-                    model: cell.member.launch_model.clone(),
-                },
-            ),
-            // A plan pins no orchestrator, runtime, or auth mode, so the request is the
-            // console's default new-run shape: the one-shot orchestrator and the
-            // backend's default retry policy.
-            None => test_cabinet_core::LaunchBody {
-                test_case: cell.case.slug.clone(),
-                version: cell.case.version.clone(),
-                variant: cell.case.variant.clone(),
-                harness: cell.member.combo.harness,
-                model: cell.member.launch_model.clone(),
-                orchestrator: None,
-                // A plan pins no engine either, so the run gets the `none` default —
-                // the engineless build every plan scheduled before engines existed.
-                engine: None,
-                max_runtime_seconds: None,
-                auth_mode: None,
-                retry_count: None,
-                // A harness member configures no capability set, and none of the
-                // per-model catalog facts a set's bindings would need resolving.
-                gg_capability_set: None,
-                gg_model_windows: Default::default(),
-                gg_model_modalities: Default::default(),
-            },
-        };
+        let mut body = top_up_launch_body(cell);
         match cell.member.gg.as_ref().map(|gg| gg.model_facts.clone()) {
             // The facts a caller about to launch resolved for this member up front (see
             // [`resolve_gg_launch_facts`]) — the same figures a second resolution would
@@ -2684,6 +2768,7 @@ pub(super) async fn enqueue_top_up(
             slug: cell.case.slug.clone(),
             version: cell.case.version.clone(),
             variant: cell.case.variant.clone(),
+            engine: cell.case.engine_slug(),
             harness: cell.member.combo.harness,
             model: cell.member.combo.model.clone(),
             provider: cell.member.combo.provider.clone(),
@@ -2759,6 +2844,11 @@ pub(super) async fn collect_queue(
             harness: Some(cell.member.combo.harness.as_str().to_string()),
             variant: Some(cell.case.variant.clone()),
             version: Some(cell.case.version.clone()),
+            // Resolved, so a cell pinned to no engine asks for `none` — the one filter
+            // value that also matches the rows whose slug was never lifted, which are
+            // engineless runs. Without it a queue would offer another engine's runs for a
+            // cell that never counted them.
+            engine: Some(cell.case.engine_slug()),
             ..SummaryFilter::default()
         };
         let (found, _total) = state
@@ -2792,6 +2882,7 @@ pub(super) async fn collect_queue(
                 slug: run.record.subject.test_case_slug.clone(),
                 version: run.record.subject.test_case_version.clone(),
                 variant: run.record.subject.variant.clone(),
+                engine: run.record.subject.engine_slug.clone(),
                 harness: run.record.subject.harness_slug,
                 model: run.record.subject.model_id.clone(),
                 // Off the member rather than off the run: the run records the set it ran,

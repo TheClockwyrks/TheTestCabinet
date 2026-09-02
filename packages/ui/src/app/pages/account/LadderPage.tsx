@@ -29,8 +29,9 @@ import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
 import { routes } from "../../routes";
 import { ReviewQueue, describeUnlaunchable } from "./CoveragePlanPage";
 import { comboLabel } from "./comboLabels";
+import { caseLabel } from "./caseLabels";
 import { RungRuns } from "./LadderRungRuns";
-import { ladderAxisLabel } from "./ladderPickers";
+import { ladderAxisLabel, rungInput } from "./ladderPickers";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
@@ -330,8 +331,11 @@ function RungRow({
       className={`${ladderStyles.rungRow} ${current ? ladderStyles.rungRowCurrent : ""}`}
     >
       <span className={ladderStyles.rungIndex}>{rung.position + 1}</span>
+      {/* Through the shared pin label, so a rung reads the way the plan's cells and
+          the ladder editor's rung list do. Two rungs of one case on two engines are
+          two rows, and this is what tells them apart. */}
       <span className={ladderStyles.rungName}>
-        {testCaseName(rung.slug)} · {rung.variant} · {rung.version}
+        {caseLabel(testCaseName(rung.slug), rung)}
       </span>
 
       {effective ? (
@@ -1055,12 +1059,13 @@ export function LadderPage() {
             gate: ladder.gate,
             comboGroupIds: ladder.comboGroupIds,
             combos: ladder.combos,
+            // Every rung rewritten as it stands, through the same projection the
+            // editor loads with — the version of the one being bumped is the only
+            // thing that changes. Anything else this list forgot (the engine, a run
+            // override) would be dropped from the ladder by the save.
             rungs: ladder.rungs.map((r) => ({
-              id: r.id,
-              slug: r.slug,
+              ...rungInput(r),
               version: r.id === rung.id ? rung.latestVersion : r.version,
-              variant: r.variant,
-              ...(r.runs === undefined ? {} : { runs: r.runs }),
             })),
             // No schedule: bumping a pin is not a decision to enable a disabled ladder.
           },

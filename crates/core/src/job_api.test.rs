@@ -7,6 +7,7 @@ fn summary() -> JobSummary {
         variant: "base".to_string(),
         harness_slug: "claude-code".to_string(),
         model_id: "claude-opus-4".to_string(),
+        engine: None,
         gg_preset: None,
     }
 }
@@ -21,6 +22,23 @@ fn a_notification_flattens_the_run_identity() {
     assert_eq!(value["variant"], "base");
     assert_eq!(value["harnessSlug"], "claude-code");
     assert_eq!(value["modelId"], "claude-opus-4");
+}
+
+/// The engine rides in the flattened identity, and only when the run names one: an
+/// absent field is the `none` engine, the same defaulting the launch request and the
+/// run record use, so a client that reads it back gets one answer rather than two
+/// spellings of the engineless run.
+#[test]
+fn a_run_events_identity_carries_the_engine_only_when_one_is_named() {
+    let value = serde_json::to_value(RunEvent::enqueued("j1", summary())).unwrap();
+    assert!(value.get("engine").is_none());
+
+    let on_engine = JobSummary {
+        engine: Some("simple-2d".to_string()),
+        ..summary()
+    };
+    let value = serde_json::to_value(RunEvent::enqueued("j1", on_engine)).unwrap();
+    assert_eq!(value["engine"], "simple-2d");
 }
 
 /// A completed run points the console at the record it produced; the kind is the

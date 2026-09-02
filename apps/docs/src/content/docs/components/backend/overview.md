@@ -158,10 +158,10 @@ account wants to exist, and how fast it wants them arriving. The data is
 private, per-account and console-only — no runner consults it and none of it
 reaches the public snapshot or the projection.
 
-- A [coverage plan](/components/backend/coverage/) declares version-pinned cases
-  crossed with harness+model combinations and a target run count per cell. The
-  backend expands the declaration into a matrix, counts what exists against it,
-  and enqueues what is missing.
+- A [coverage plan](/components/backend/coverage/) declares cases pinned to a
+  version, variant and engine, crossed with combinations and a target run count
+  per cell. The backend expands the declaration into a matrix, counts what
+  exists against it, and enqueues what is missing.
 - A [ladder](/components/backend/ladders/) applies the same machinery to an
   ordered series of cases, which each combination climbs until a gate stops it.
 

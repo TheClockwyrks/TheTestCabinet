@@ -300,6 +300,7 @@ fn run_summary(run: &run::Model) -> JobSummary {
         variant: run.variant.clone(),
         harness_slug: run.harness_slug.clone(),
         model_id: run.model_id.clone(),
+        engine: run.engine_slug.clone(),
         gg_preset: run.gg_preset.clone(),
     }
 }

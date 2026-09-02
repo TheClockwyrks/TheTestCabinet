@@ -587,6 +587,18 @@ describe("ClimberRow", () => {
     expect(screen.getByText("not reached")).toBeTruthy();
   });
 
+  it("names a rung's engine, so one case climbed on two is two rows", () => {
+    renderRow({}, [
+      rung(0, { engine: "simple-2d" }),
+      rung(1, { slug: "case-0" }),
+    ]);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText("Case 0 · base · v1.0.0 · Simple 2D")).toBeTruthy();
+    // The engineless rung reads exactly as it always did: every pin has an engine, so
+    // naming `none` would add a word to every rung and distinguish nothing.
+    expect(screen.getByText("Case 0 · base · v1.0.0")).toBeTruthy();
+  });
+
   it("lists a reached rung's own runs inline, for that combination at the pinned version", async () => {
     const query = vi.fn(async () => ({
       summaries: [runSummary("run-1", "case-0")],
@@ -631,6 +643,31 @@ describe("ClimberRow", () => {
         // The bare id the run records, not the picker's `saved:` spelling.
         ggConfigId: "cfg-1",
       }),
+    );
+  });
+
+  it("narrows a rung's runs to the rung's own engine", () => {
+    // Two rungs of one case on two engines are two cells, and the gate counts its
+    // evidence through the engine segment. A listing without it shows the other
+    // rung's runs as the argument behind this rung's verdict.
+    const query = vi.fn(async () => ({ summaries: [], total: 0 }));
+    renderRow({}, [rung(0, { engine: "simple-2d" }), rung(1)], query);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: "simple-2d" }),
+    );
+  });
+
+  it("asks for the engineless runs of a rung that pins no engine", () => {
+    // Absent and `none` are one pin, so the listing names the engineless run rather
+    // than leaving the filter off and picking up every engine's runs.
+    const query = vi.fn(async () => ({ summaries: [], total: 0 }));
+    renderRow({}, undefined, query);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: "none" }),
     );
   });
 

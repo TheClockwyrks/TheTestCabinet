@@ -821,6 +821,23 @@ plan's or ladder's *declaration* and its *schedule* (`outerAxis`, `paused`,
 being written separately — an absent `schedule` on a `PUT` means "leave it alone",
 so saving an edited model list can never un-pause a running plan.
 
+### Pinned cases
+
+Every case list on this surface — a `kind: "case"` group, and a plan's or ladder's
+one-off cases — carries the same `ReviewPlanCase`: `slug`, `version`, `variant`,
+and an optional `engine`. An absent `engine` is the `none` engine, so a list
+written without the field covers the engineless run.
+
+A [cell](/components/backend/coverage/#pinned-cases) is that whole pin crossed with
+the combination, so every cell, launch, and queue entry this surface returns names
+its `engine`, and a cell counts only the runs recorded on it. A run recorded with
+no engine counts as a `none` run. A top-up launches each cell's runs on the cell's
+engine, in a harness launch and a gg launch alike.
+
+A pin naming a version the backend has not ingested, or an engine the pinned
+version does not declare, is accepted and reported by the run rather than refused
+at save time.
+
 ### Combinations
 
 Every member list on this surface — a `kind: "combo"` group, a plan's or ladder's
@@ -855,11 +872,12 @@ as it arrived and belongs to no configuration's cell.
 ### Groups and plans
 
 - `GET|POST /coverage-groups`, `PUT|DELETE /coverage-groups/{id}` — reusable member
-  groups, each holding either combinations (`kind: "combo"`) or version-pinned cases
-  (`kind: "case"`). Plans and ladders reference them by id, so editing a group
-  reshapes everything that points at it. A plan that references a deleted group
-  ignores the dangling id at coverage time; there is no cascade. A `combo` member
-  naming a gg configuration the account does not own is refused with `400`.
+  groups, each holding either combinations (`kind: "combo"`) or
+  [pinned cases](#pinned-cases) (`kind: "case"`). Plans and ladders reference them
+  by id, so editing a group reshapes everything that points at it. A plan that
+  references a deleted group ignores the dangling id at coverage time; there is no
+  cascade. A `combo` member naming a gg configuration the account does not own is
+  refused with `400`.
 - `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
   themselves. Reads return `CoveragePlanOut` (declaration + schedule flattened).
   `runsPerCell` is clamped server-side, because a mistyped target is a mistyped
@@ -938,10 +956,10 @@ before calling it and must never make it the default.
 ### Ladders
 
 A [ladder](/components/backend/ladders/) is a sibling of the coverage plan, not a
-mode of it: an ordered list of **rungs** (one version-pinned case each, addressed by
-a stable opaque id) that **climbers** ascend until a **gate** stops them. It reuses
-the plan's `kind: "combo"` groups, buffer, top-up, queue, and halting verbatim, so
-only its own endpoints are listed here.
+mode of it: an ordered list of **rungs** (one [pinned case](#pinned-cases) each,
+addressed by a stable opaque id) that **climbers** ascend until a **gate** stops
+them. It reuses the plan's `kind: "combo"` groups, buffer, top-up, queue, and
+halting verbatim, so only its own endpoints are listed here.
 
 - `GET|POST /ladders`, `GET|PUT|DELETE /ladders/{id}` — the declaration: rungs,
   climbers, `runsPerCell`, and the single parameterised `gate` (`floor`,
@@ -950,8 +968,8 @@ only its own endpoints are listed here.
   ladder enqueues nothing until it is enabled, and from then on each review feeds it
   (see [A ladder starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)).
   Rungs are matched on their
-  stable ids and **reconciled, never replaced**, so a reorder or a version bump keeps
-  every climber's recorded verdicts. A rung holding a
+  stable ids and **reconciled, never replaced**, so a reorder, a version bump, or an
+  engine re-pin keeps every climber's recorded verdicts. A rung holding a
   [performance](/testing/performance/overview/) or
   [game jam](/testing/game-jam/overview/) case is refused with `400`: neither can
   ever produce a rating for the gate to read, so it would stall the climb silently.
@@ -1281,9 +1299,17 @@ run's identity and its state *after* the transition:
   "variant": "base",
   "harnessSlug": "claude",
   "modelId": "…",
+  "engine": "simple-2d",
   "state": "running"
 }
 ```
+
+The identity carries `engine` only when the run names one, an absent field being the
+`none` engine as it is on a launch request. It is there because the engine is a
+segment of the run's [cell](/components/backend/coverage/#pinned-cases): a client
+listing one cell's runs keeps another engine's live rows out with it, and an
+in-flight run has no record to read the engine from. `GET /jobs/active` reports the
+same identity.
 
 `kind` is `enqueued` (joined the queue), `state-changed` (moved between two
 non-terminal states), or `finished` (reached `succeeded`, `failed`, or `canceled`,

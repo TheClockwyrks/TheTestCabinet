@@ -3,16 +3,16 @@ title: Coverage Plans
 ---
 
 A **coverage plan** is a reviewer's standing declaration of the runs they want to
-exist: a set of version-pinned [test cases](/testing/overview/) crossed with a set
-of [combinations](#combinations), plus a target number of runs for each
+exist: a set of [pinned cases](#pinned-cases) crossed with a set of
+[combinations](#combinations), plus a target number of runs for each
 `case × combination` **cell**. The backend expands that declaration into a
 **matrix**, counts what already exists against it, and — when asked — enqueues
 the runs that are still missing.
 
 Plans are per [account](/components/backend/overview/#authentication) and an account may
 hold many. Their members are normally pointers to reusable **coverage groups** (a
-group holds either combinations or version-pinned cases), so one saved set of
-models can drive several plans and editing the group reshapes all of them at once.
+group holds either combinations or pinned cases), so one saved set of models can
+drive several plans and editing the group reshapes all of them at once.
 A plan may also pin one-off members directly; the two are unioned.
 
 A plan answers "have I run this yet?". Its sibling, the
@@ -42,6 +42,25 @@ The practical consequence is that two reviewers pointed at the same cabinet shar
 its runs and not each other's worklists. Neither re-runs work the other already
 paid for; neither is blocked by the other's backlog.
 
+## Pinned cases
+
+A plan's case axis is a set of pinned cases, and a pin names four things: a
+[test case](/testing/overview/)'s slug, an exact version, a variant of that
+version, and the [engine](/components/core/engines/) its runs are built on. A pin
+that names no engine covers the `none` engine, the engineless run every case
+supports.
+
+The engine is part of the pin because a result is only comparable with another
+result on the same engine. A model handed a runtime and a documented API is doing
+different work from the same model starting from nothing, so a plan that wants
+both asks for both: one case at one version and variant on two engines is two
+pinned cases, and each crosses the plan's combinations on its own.
+
+A pin naming an engine the case version does not declare support for is accepted
+at author time, and the run reports it, exactly as a version the backend has not
+ingested does. The catalogue moves under a standing plan, so the check belongs at
+the moment a run is executed rather than at the moment a plan is saved.
+
 ## Combinations
 
 A combination is what a cell's runs are executed by, and it takes one of two shapes:
@@ -64,8 +83,8 @@ the [launch form](/gg/configurations/#launching-one) produces by hand.
 
 ### What identifies a gg cell
 
-A harness cell is identified by `case@version/variant × harness/model`. A gg cell
-adds the **configuration's id** and the **models the bound set runs on**.
+A harness cell is identified by `case@version/variant/engine × harness/model`. A gg
+cell adds the **configuration's id** and the **models the bound set runs on**.
 
 The id is the identity because an operator renames a configuration freely and two
 of an account's configurations may carry one name. A [ladder's climber
@@ -120,10 +139,16 @@ is reported on its own. A top-up will not *prefer* to create the first kind — 
 [harness parallelism comes first](#harness-parallelism-comes-first) — but it will
 still queue depth behind a cap once there is nothing else to launch.
 
-A cell counts against the **pinned** version only. A case version is frozen once it
-has runs, so an older minor is a different specification whose runs are not
-comparable; `stale` flags that a newer version exists without silently moving the
-target.
+`inFlight` is counted by the same identity as `completed`. A job records its case
+pin's engine beside its harness and its model when it is enqueued, so the in-flight
+count is one grouped query over the job table rather than a parse of every queued
+launch request.
+
+A cell counts against the **pinned** version and the **pinned** engine only. A case
+version is frozen once it has runs, so an older minor is a different specification
+whose runs are not comparable, and a run on another engine was built against
+another runtime. `stale` flags that a newer version exists without silently moving
+the target. A run recorded with no engine counts as a `none` run.
 
 ## Emission order is execution order
 
@@ -213,6 +238,10 @@ The algorithm is the same for plans and ladders:
 5. Emit **whole** cells — all of a cell's missing repeats together — until
    `outstanding` reaches the buffer target.
 6. Walk the deferred cells, in the same order, until the buffer target is reached.
+
+Every run a top-up enqueues carries its cell's whole pin: the slug, the version,
+the variant, and the engine. Both combination shapes carry it, so a gg cell's runs
+are built on the cell's engine exactly as a harness cell's are.
 
 `POST /coverage-plans/{id}/topup` reports what it did in enough detail that an idle
 plan is never a mystery: the buffer target in force, the occupancy it observed, the

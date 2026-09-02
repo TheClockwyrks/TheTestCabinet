@@ -1600,11 +1600,11 @@ function launchBodyOf(config: LaunchConfig): LaunchBody {
     harness: config.harness as LaunchBody["harness"],
     model: config.modelId,
     orchestrator: config.orchestrator,
-    // Omitted entirely by a caller that pins no engine — a coverage plan and a
-    // comparison arm both mean the `none` default, which the backend spells as an
-    // absent field. The run form always names one. Typing this return against the
-    // contract's own `LaunchBody` is what keeps a field the console collects from
-    // being silently dropped here.
+    // Omitted entirely by a caller that pins no engine — a comparison arm, which
+    // varies the combination and not the runtime, means the `none` default, which the
+    // backend spells as an absent field. The run form and a coverage plan's cells both
+    // name one. Typing this return against the contract's own `LaunchBody` is what
+    // keeps a field the console collects from being silently dropped here.
     ...(config.engine ? { engine: config.engine } : {}),
     ...(config.maxRuntimeOverride != null
       ? { maxRuntimeSeconds: config.maxRuntimeOverride }

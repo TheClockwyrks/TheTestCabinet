@@ -44,6 +44,7 @@ import {
   isGgCombo,
   type CombinationLike,
 } from "./comboLabels";
+import { caseEngine, caseLabel, caseQualifier } from "./caseLabels";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
@@ -84,9 +85,10 @@ export function cellKey(
     slug: string;
     version: string;
     variant: string;
+    engine?: string | null;
   } & CombinationLike,
 ): string {
-  return `${c.slug}@${c.version}@${c.variant}::${c.harness}::${c.model}::${ggIdentity(c)}`;
+  return `${c.slug}@${c.version}@${c.variant}@${caseEngine(c)}::${c.harness}::${c.model}::${ggIdentity(c)}`;
 }
 
 // The group a cell belongs to under the plan's ordering. The dashboard groups on
@@ -95,15 +97,18 @@ export function cellKey(
 // scatter each model's contiguous block of runs across every block on the page.
 function groupKey(cell: CoverageCell, axis: CoverageAxis): string {
   return axis === "case"
-    ? `${cell.slug}@${cell.version}@${cell.variant}`
+    ? // The engine is in the case key because it is in the pin: one case at one
+      // version and variant on two engines is two blocks, and a key without it would
+      // roll their cells into one block whose heading described neither.
+      `${cell.slug}@${cell.version}@${cell.variant}@${caseEngine(cell)}`
     : `${cell.harness}::${cell.model}::${ggIdentity(cell)}`;
 }
 
 /**
  * The launch items for a set of coverage cells — `remaining` runs per cell, each
  * config resolved exactly as the new-run form does (provider prefix applied for
- * provider-routed harnesses; the default one-shot orchestrator, since a plan does not
- * pin one).
+ * provider-routed harnesses; the cell's own engine; the default one-shot
+ * orchestrator, since a plan does not pin one).
  *
  * **Harness cells only.** A gg cell is configured by a capability set rather than a
  * `(harness, model, orchestrator)` tuple and has no batch endpoint at all, so it is
@@ -129,6 +134,13 @@ export function itemsForCells(cells: CoverageCell[]): LaunchItem[] {
             cell.model,
           ),
           orchestrator: DEFAULT_ORCHESTRATOR_SLUG,
+          // The cell's own engine, named rather than defaulted. The engine is a
+          // segment of the cell's identity, so a run launched engineless from a cell
+          // pinned to a runtime is counted against a different cell — leaving the one
+          // that asked for it short by exactly the run just paid for, and pressable
+          // again forever. This is the by-hand half of what a top-up does server-side
+          // (`top_up_launch_body`), and the two must agree on the whole pin.
+          engine: caseEngine(cell),
           maxRuntimeOverride: null,
         },
         track: {
@@ -137,6 +149,9 @@ export function itemsForCells(cells: CoverageCell[]): LaunchItem[] {
           variant: cell.variant,
           harnessSlug: cell.harness,
           modelId: cell.model,
+          // Tracked as launched, so the in-flight row is filed under the cell that
+          // launched it while it runs, as the produced record will be after.
+          engine: caseEngine(cell),
         },
       })),
     );
@@ -236,9 +251,11 @@ export async function launchGgCells(
           version: cell.version,
           variant: cell.variant,
           capabilitySet,
-          // No engine and no runtime override, matching the harness cells beside it: a
-          // plan crosses cases with combinations and pins neither dimension, so a
-          // triggered run takes the engineless default and the case's own runtime.
+          // The cell's own engine, exactly as the harness cells beside it send it: a
+          // gg run seeds and builds a workspace like any other run, and the engine is
+          // a segment of the cell it counts against. No runtime override, because a
+          // plan pins none and the case's own runtime applies.
+          engine: caseEngine(cell),
         },
         token ?? "",
       );
@@ -250,6 +267,7 @@ export async function launchGgCells(
         // Read off the set that was actually sent rather than the cell, so the identity
         // shown now is byte-identical to the one the backend lifts back out of the job.
         modelId: capabilitySet.agents?.[0]?.modelId ?? "",
+        engine: caseEngine(cell),
         ggPreset: capabilitySet.preset ?? null,
         runId: ack.jobId,
         state: "queued",
@@ -271,8 +289,9 @@ export async function launchGgCells(
 //
 // `latest=0` because a cell pins an exact version: the listing's "current versions
 // only" default is on, and would filter a deliberately-pinned older version's runs
-// away, leaving an empty page for a cell that plainly has runs. Variant is not a
-// facet the listing offers, so a multi-variant case's cells share a link.
+// away, leaving an empty page for a cell that plainly has runs. Neither the variant
+// nor the engine is a facet the listing offers, so a case's cells that differ only on
+// one of those share a link.
 //
 // A gg cell adds the configuration's id as the listing's `ggConfigId` filter, the
 // same value the cell's own counts group on, so the rows behind the figure are exactly
@@ -299,7 +318,8 @@ export interface MatrixGroup {
   /** The block's heading — a case name, or a combination as {@link comboLabel}
    *  reads it. */
   title: string;
-  /** The muted qualifier beside the heading (a case's `variant · version`). */
+  /** The muted qualifier beside the heading — a case's pin, as {@link caseQualifier}
+   *  spells it. */
   subtitle: string;
   /** The cells in this block, in the plan's own emission order. */
   cells: CoverageCell[];
@@ -367,10 +387,7 @@ export function buildGroups(
         coverage.outerAxis === "case"
           ? testCaseName(cell0.slug)
           : comboLabel(cell0),
-      subtitle:
-        coverage.outerAxis === "case"
-          ? `${cell0.variant} · ${cell0.version}`
-          : "",
+      subtitle: coverage.outerAxis === "case" ? caseQualifier(cell0) : "",
       cells,
       done: completed + inFlight,
       desired,
@@ -698,7 +715,7 @@ export function MatrixSection({
                 <span className={styles.cellLabel}>
                   {axis === "case"
                     ? comboLabel(cell)
-                    : `${testCaseName(cell.slug)} · ${cell.variant} · ${cell.version}`}
+                    : caseLabel(testCaseName(cell.slug), cell)}
                   {axis === "combination" && cell.stale && (
                     <span
                       className={styles.staleBadge}
@@ -802,9 +819,10 @@ export function ReviewQueue({
             >
               {testCaseName(entry.slug)}
             </Link>
-            <span className={styles.queueMeta}>
-              {entry.variant} · {entry.version}
-            </span>
+            {/* The pin as the matrix spells it, engine included: a queue walked in
+                emission order puts one case's engines next to each other, and two
+                rows that read identically cannot be told apart before opening them. */}
+            <span className={styles.queueMeta}>{caseQualifier(entry)}</span>
             {/* Through the shared label, so a gg run reads the way its cell does.
                 A queue entry carries only the recorded launch identity, so a gg run
                 falls through to `gg · <model>` — the model its root agent ran. */}

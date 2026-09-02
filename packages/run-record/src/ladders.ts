@@ -115,7 +115,8 @@ export type LadderSchedule = {
 };
 
 /**
- * One rung: exactly one test case, pinned to an exact version and variant.
+ * One rung: exactly one [pinned case](ReviewPlanCase) — a slug, an exact version, a
+ * variant, and the engine its runs are built on.
  */
 export type LadderRung = {
   /**
@@ -140,6 +141,15 @@ export type LadderRung = {
    * The variant to climb.
    */
   variant: string;
+  /**
+   * The engine to climb on, or null for the `none` engine.
+   *
+   * Part of the rung's identity within the climb, because clearing a case with a
+   * runtime underneath is a different achievement from clearing it with nothing: one
+   * ladder holds the same case at the same version and variant twice when the two
+   * pins name different engines.
+   */
+  engine?: string;
   /**
    * This rung's override of the ladder's runs-per-cell target, or null to inherit
    * it — so one pivotal step can demand more evidence without making the whole
@@ -170,6 +180,10 @@ export type LadderRungInput = {
    * The variant to climb.
    */
   variant: string;
+  /**
+   * The engine to climb on, or null for the `none` engine.
+   */
+  engine?: string;
   /**
    * This rung's override of the ladder's runs-per-cell target, or null to inherit.
    */
@@ -421,6 +435,12 @@ export type LadderCell = {
    * The variant.
    */
   variant: string;
+  /**
+   * The engine this cell counts against, resolved: `none` where the pin names none.
+   * Always concrete, because a run recorded with no engine is a `none` run and the
+   * two must land in one cell.
+   */
+  engine: string;
   /**
    * The harness — `gg` on a gg cell.
    */
@@ -680,6 +700,15 @@ export type LadderProgressRung = {
    * The variant to climb.
    */
   variant: string;
+  /**
+   * The engine to climb on, or null for the `none` engine.
+   *
+   * Part of the rung's identity within the climb, because clearing a case with a
+   * runtime underneath is a different achievement from clearing it with nothing: one
+   * ladder holds the same case at the same version and variant twice when the two
+   * pins name different engines.
+   */
+  engine?: string;
   /**
    * This rung's override of the ladder's runs-per-cell target, or null to inherit
    * it — so one pivotal step can demand more evidence without making the whole

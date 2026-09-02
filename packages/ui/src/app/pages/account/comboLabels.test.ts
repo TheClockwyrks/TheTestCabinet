@@ -5,11 +5,13 @@ import {
   comboModels,
   ggBoundModels,
   ggConfigLabel,
+  ggModelSummary,
   isGgCombo,
 } from "./comboLabels";
 
 const OPUS = "anthropic/claude-opus-4.8";
 const HAIKU = "anthropic/claude-haiku-4.5";
+const SOL = "openai/gpt-5.6-sol";
 
 const harness = {
   harness: "claude",
@@ -79,5 +81,49 @@ describe("gg combinations", () => {
     expect(isGgCombo({ harness: "", model: "", ggConfigId: "cfg-1" })).toBe(
       true,
     );
+  });
+});
+
+// The member row names its configuration and, on one line beside it, what that member
+// binds. One line is the constraint: it has to tell two members of one configuration
+// apart at a glance without pushing the row's controls off the edge.
+describe("ggModelSummary", () => {
+  const bound = (...models: string[]) => ({
+    ...gg,
+    ggSlotModels: Object.fromEntries(
+      models.map((m, i) => [`slot-${i}`, m] as const),
+    ),
+  });
+
+  it("names every model while there are few enough to read", () => {
+    expect(ggModelSummary(bound(OPUS))).toBe(OPUS);
+    expect(ggModelSummary(bound(SOL, OPUS))).toBe(`${SOL}, ${OPUS}`);
+    expect(ggModelSummary(bound(SOL, OPUS, HAIKU))).toBe(
+      `${SOL}, ${OPUS}, ${HAIKU}`,
+    );
+  });
+
+  it("counts the rest once naming them all costs more width than it buys", () => {
+    expect(ggModelSummary(bound(SOL, OPUS, HAIKU, "z/one"))).toBe(
+      `${SOL}, ${OPUS}, and 2 others`,
+    );
+    expect(
+      ggModelSummary(bound(SOL, OPUS, HAIKU, "z/one", "z/two", "z/three")),
+    ).toBe(`${SOL}, ${OPUS}, and 4 others`);
+  });
+
+  // The count is of *distinct* models, so a configuration binding one model to five
+  // slots can never read "foobar, foobar, and 3 others".
+  it("counts distinct models, never slots", () => {
+    expect(ggModelSummary(bound(OPUS, OPUS, OPUS, OPUS, OPUS, HAIKU))).toBe(
+      `${OPUS}, ${HAIKU}`,
+    );
+    expect(ggModelSummary(bound(OPUS, OPUS, SOL, HAIKU, "z/one"))).toBe(
+      `${OPUS}, ${SOL}, and 2 others`,
+    );
+  });
+
+  it("falls back to the root model when the configuration binds no slots", () => {
+    expect(ggModelSummary({ ...gg, ggSlotModels: {} })).toBe(OPUS);
   });
 });

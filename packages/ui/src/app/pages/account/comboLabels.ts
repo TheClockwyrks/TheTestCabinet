@@ -104,6 +104,25 @@ export function comboModels(combo: CombinationLike): string {
 }
 
 /**
+ * The models a gg member binds, on one line, shortened once naming them all costs more
+ * width than it buys.
+ *
+ * Built on {@link ggBoundModels} and never on the raw slot map, so the line can never
+ * read "foobar, foobar, and 3 others": two slots bound to one model are one model, and a
+ * summary that counted them twice would describe a fan-out that does not exist. Three is
+ * the cut because three ids are the most that fit a member row before the line truncates
+ * mid-id, and past it the count is the useful fact rather than the names.
+ */
+export function ggModelSummary(combo: CombinationLike): string {
+  const bound = ggBoundModels(combo);
+  // A configuration that pins every model itself binds none, so the summary falls back
+  // to the root model a read filled in — the same fallback {@link comboModels} makes.
+  if (bound.length === 0) return combo.model;
+  if (bound.length <= 3) return bound.join(", ");
+  return `${bound[0]}, ${bound[1]}, and ${bound.length - 2} others`;
+}
+
+/**
  * The whole combination on one line: `harness · model`, or `configuration · models`.
  *
  * This is the form used wherever the combination stands alone — a matrix group title, a

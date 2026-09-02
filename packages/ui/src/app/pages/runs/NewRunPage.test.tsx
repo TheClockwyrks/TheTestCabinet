@@ -542,6 +542,9 @@ describe("NewRunPage", () => {
       variant: "base",
       harnessSlug: "gg",
       modelId: "openai/gpt-5.6-sol",
+      // The engine it was launched on, so the row is filtered with the runs of the
+      // cell it belongs to while it is still in flight.
+      engine: "none",
       ggPreset: "minimal",
       state: "queued",
     });

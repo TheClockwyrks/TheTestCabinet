@@ -79,8 +79,12 @@
       ]
     },
     "LadderRung": {
-      "description": "One rung: exactly one test case, pinned to an exact version and variant.",
+      "description": "One rung: exactly one [pinned case](ReviewPlanCase) — a slug, an exact version, a\nvariant, and the engine its runs are built on.",
       "properties": {
+        "engine": {
+          "description": "The engine to climb on, or null for the `none` engine.\n\nPart of the rung's identity within the climb, because clearing a case with a\nruntime underneath is a different achievement from clearing it with nothing: one\nladder holds the same case at the same version and variant twice when the two\npins name different engines.",
+          "type": ["string", "null"]
+        },
         "id": {
           "description": "The rung's **stable opaque id**, minted when the rung is added and never\nreused.\n\nEmphatically not its position. Rungs get reordered and re-pinned, and every\nrecorded verdict references this id — a positional identifier would silently\nreattribute a climber's verdicts to a different case the moment the ladder was\nrearranged.",
           "type": "string"

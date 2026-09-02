@@ -565,6 +565,18 @@ pub(super) fn build_new_job(
     }
     let request_json =
         serde_json::to_string(body).map_err(|e| format!("serializing launch request: {e}"))?;
+    // The engine the case pin names, lifted out of the request for the same reason the
+    // harness and the model are: it is a segment of the job's coverage cell, and a plan
+    // counts a cell's in-flight runs with a grouped query that cannot deserialize
+    // `request_json` per row. Left `None` when the request names none — that is the
+    // `none` engine, which is exactly what a `NULL` column coalesces to, so a launch by
+    // hand and a plan that pins no engine agree without either writing the slug out.
+    let engine_slug = body
+        .engine
+        .as_ref()
+        .map(|slug| slug.trim())
+        .filter(|slug| !slug.is_empty())
+        .map(str::to_string);
     // Lift a gg run's capability set out of the launch request into its own column so
     // a gg job's exact configuration is a first-class, queryable value rather than
     // only buried in `request_json`. `None` for every third-party-harness job.
@@ -598,6 +610,7 @@ pub(super) fn build_new_job(
         test_type: test_type.as_str().to_string(),
         harness_slug: body.harness.as_str().to_string(),
         model_id: body.model.clone(),
+        engine_slug,
         gg_config_json,
         gg_preset,
         gg_config_id,
@@ -1342,6 +1355,9 @@ async fn maybe_enqueue_retry(
             test_type: job.test_type.clone(),
             harness_slug: job.harness_slug.clone(),
             model_id: job.model_id.clone(),
+            // The retry is the same run on the same cell, so it carries the same pin the
+            // attempt it replaces was enqueued with — the engine included.
+            engine_slug: job.engine_slug.clone(),
             // Carry the gg capability set and the cell it was lifted to through
             // verbatim, so a retried gg run is configured identically and counts against
             // the same cell as the attempt it replaces. `None` for every
@@ -1650,6 +1666,7 @@ fn new_job_summary(new: &crate::db::NewJob) -> JobSummary {
         variant: new.variant.clone(),
         harness_slug: new.harness_slug.clone(),
         model_id: new.model_id.clone(),
+        engine: new.engine_slug.clone(),
         // The name comes off the lifted column the job is about to be written with,
         // not from re-parsing the capability set beside it: the announcement a console
         // renders and the row it will later re-read are then the same value by
@@ -1672,6 +1689,9 @@ fn job_summary(job: &job::Model) -> JobSummary {
         variant: job.variant.clone(),
         harness_slug: job.harness_slug.clone(),
         model_id: job.model_id.clone(),
+        // Straight off the lifted column, so an in-flight run is attributed to the same
+        // engine segment its completed run will be counted under.
+        engine: job.engine_slug.clone(),
         gg_preset: job
             .gg_config_json
             .as_deref()

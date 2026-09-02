@@ -203,6 +203,18 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping run engine-slug backfill"),
     }
 
+    // The same slug on the jobs still in flight across the deploy, re-derived from each
+    // one's launch request. A `NULL` column counts as the `none` engine, so only a job
+    // that named a real engine needs filling — and that is the one that would otherwise
+    // count toward a cell its run will never join, letting the plan buy a second set of
+    // runs on top of the ones already coming. Same contract as the backfills above:
+    // idempotent, best-effort, never blocks startup.
+    match db.backfill_in_flight_engine_slugs().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled in-flight engine slugs"),
+        Err(err) => tracing::warn!(error = %err, "skipping in-flight engine-slug backfill"),
+    }
+
     // Re-decide which stored records this build can read, for the rows whose marker
     // was decided under a different record-format generation. Zero rows in the steady
     // state and one bounded pass at the boot of a build that bumped

@@ -265,6 +265,30 @@ describe("MatrixSection collapse", () => {
     expect(params.get("latest")).toBe("0");
   });
 
+  it("names a cell's engine on a combination-grouped block", () => {
+    // The block has already said which combination it is, so the row is the pin — and
+    // two rows of one case on two engines are otherwise the same line of text.
+    render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <MatrixSection
+            group={group({
+              cells: [cell({ engine: "simple-2d" }), cell()],
+            })}
+            axis="combination"
+            busy={false}
+            canTrigger
+            onTrigger={vi.fn()}
+          />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText("Carom · base · v1.0.0 · Simple 2D")).toBeTruthy();
+    // The engineless row keeps the label it always had.
+    expect(screen.getByText("Carom · base · v1.0.0")).toBeTruthy();
+  });
+
   it("labels a gg cell by its configuration and the models it binds", () => {
     renderSection({ cells: [ggCell()] });
     fireEvent.click(screen.getByRole("button", { expanded: false }));
@@ -379,6 +403,29 @@ describe("buildGroups", () => {
     ]);
   });
 
+  it("names the engine in a case block's subtitle only when one is named", () => {
+    const plain = buildGroups(matrix([cell()]), nameOf);
+    // `none` is the ordinary case and every pin has an engine, so spelling it out
+    // would add a word to every block on the page and distinguish nothing.
+    expect(plain[0]!.subtitle).toBe("base · v1.0.0");
+    const engined = buildGroups(matrix([cell({ engine: "simple-2d" })]), nameOf);
+    expect(engined[0]!.subtitle).toBe("base · v1.0.0 · Simple 2D");
+  });
+
+  it("splits one case's two engines into two blocks", () => {
+    const groups = buildGroups(
+      matrix([cell({ engine: "none" }), cell({ engine: "simple-2d" })]),
+      nameOf,
+    );
+    // Two pins, whose runs are not comparable — rolled into one block the heading
+    // would describe neither, and the progress bar would sum two targets.
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.subtitle)).toEqual([
+      "base · v1.0.0",
+      "base · v1.0.0 · Simple 2D",
+    ]);
+  });
+
   it("rolls up the counts that explain an idle block", () => {
     const groups = buildGroups(
       matrix([
@@ -408,8 +455,22 @@ describe("buildGroups", () => {
 describe("cellKey", () => {
   it("keeps a harness cell's key free of any gg segment", () => {
     expect(cellKey(cell())).toBe(
-      "pong@v1.0.0@base::claude::claude-sonnet-4-5::",
+      "pong@v1.0.0@base@none::claude::claude-sonnet-4-5::",
     );
+  });
+
+  it("separates two cells of one pin that differ only on engine", () => {
+    // The same case, version, variant, harness and model on two engines is two cells
+    // the server counts separately; one React key for both renders one row.
+    expect(cellKey(cell({ engine: "simple-2d" }))).not.toBe(
+      cellKey(cell({ engine: "structured-2d" })),
+    );
+  });
+
+  it("keys a cell pinned to no engine as the engineless one", () => {
+    // Absent and `none` are the same pin, so a plan authored before the pin carried an
+    // engine and one that names `none` explicitly must land in a single cell.
+    expect(cellKey(cell({ engine: "none" }))).toBe(cellKey(cell()));
   });
 
   it("separates two gg cells of one configuration that bind different models", () => {
@@ -457,6 +518,21 @@ describe("itemsForCells", () => {
     const items = itemsForCells([cell({ remaining: 2 }), ggCell()]);
     expect(items).toHaveLength(2);
     expect(items.every((i) => i.config.harness === "claude")).toBe(true);
+  });
+
+  it("launches each run on the cell's own engine", () => {
+    // The engine is a segment of the cell's identity, so a run launched engineless
+    // from a cell pinned to a runtime is counted against another cell — leaving the
+    // one that asked for it short by exactly the run just paid for.
+    const [item] = itemsForCells([cell({ engine: "simple-2d", remaining: 1 })]);
+    expect(item!.config.engine).toBe("simple-2d");
+    // And tracked on it, so the in-flight row sits with the cell it was launched for.
+    expect(item!.track.engine).toBe("simple-2d");
+  });
+
+  it("names the engineless run rather than leaving the engine unsaid", () => {
+    const [item] = itemsForCells([cell({ engine: "none", remaining: 1 })]);
+    expect(item!.config.engine).toBe("none");
   });
 
   it("skips a cell the matrix said cannot be launched", () => {
@@ -570,6 +646,19 @@ describe("launchGgCells", () => {
       runId: "job-1",
       state: "queued",
     });
+  });
+
+  it("launches a gg cell on the cell's own engine", async () => {
+    // A gg run seeds and builds a workspace like any other run, and the plan's own
+    // top-up sends the cell's engine. The by-hand trigger sending nothing would put
+    // the two paths' runs in two different cells for one press of one button.
+    const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-1" });
+    const { launches } = planGgLaunches(
+      [ggCell({ remaining: 1, engine: "structured-2d" })],
+      [ggOption()],
+    );
+    await launchGgCells(worker(launchGgRun), "token", vi.fn(), launches);
+    expect(launchGgRun.mock.calls[0]![0].engine).toBe("structured-2d");
   });
 
   it("isolates a failure so the rest of the trigger still goes out", async () => {
@@ -754,6 +843,7 @@ describe("ReviewQueue", () => {
           slug: "zeta",
           version: "v1.0.0",
           variant: "base",
+          engine: "none",
           harness: "claude",
           model: "opus",
           finishedAt: "2026-08-15T00:00:00Z",
@@ -763,6 +853,7 @@ describe("ReviewQueue", () => {
           slug: "alpha",
           version: "v1.0.0",
           variant: "base",
+          engine: "none",
           harness: "codex",
           model: "gpt",
           finishedAt: "2026-08-15T00:01:00Z",
@@ -778,6 +869,44 @@ describe("ReviewQueue", () => {
     useRecordSectionIndex("coverage");
     return <ReviewQueue queue={queue()} />;
   }
+
+  it("names a queued run's engine, so two pins do not read alike", () => {
+    render(
+      <MemoryRouter initialEntries={["/account/coverage/p1"]}>
+        <GalleryDataProvider value={galleryValue()}>
+          <ReviewQueue
+            queue={{
+              runs: [
+                {
+                  runId: "r1",
+                  slug: "zeta",
+                  version: "v1.0.0",
+                  variant: "base",
+                  engine: "simple-2d",
+                  harness: "claude",
+                  model: "opus",
+                  finishedAt: "2026-08-15T00:00:00Z",
+                },
+              ],
+              truncated: false,
+            }}
+          />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("base · v1.0.0 · Simple 2D")).toBeTruthy();
+  });
+
+  it("leaves the engineless run unnamed, as every other surface does", () => {
+    render(
+      <MemoryRouter initialEntries={["/account/coverage/p1"]}>
+        <GalleryDataProvider value={galleryValue()}>
+          <ReviewQueue queue={queue()} />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByText("base · v1.0.0")).toHaveLength(2);
+  });
 
   it("keeps the plan's order rather than sorting the runs", () => {
     render(

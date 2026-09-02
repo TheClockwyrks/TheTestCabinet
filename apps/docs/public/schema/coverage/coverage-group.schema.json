@@ -16,8 +16,12 @@
       ]
     },
     "ReviewPlanCase": {
-      "description": "One test case in a plan or a case group, pinned to an exact version (and\nvariant). Coverage is counted against exactly this version; the matrix flags it\nwhen a newer version has since been ingested.",
+      "description": "One **pinned case** in a plan or a case group: a slug, an exact version, a variant,\nand the [engine](test_cabinet_core::engine) its runs are built on. Coverage is counted\nagainst exactly this pin; the matrix flags it when a newer version has since been\ningested.",
       "properties": {
+        "engine": {
+          "description": "The engine to cover (e.g. `simple-2d`), or null for the `none` engine — the\nengineless run every case supports, and exactly what a plan scheduled before the\npin carried an engine asked for.\n\nThe engine is in the pin because a result is only comparable with another result\non the same engine: a model handed a runtime and a documented API is doing\ndifferent work from the same model starting from nothing, so one case at one\nversion and variant on two engines is two pinned cases and two sets of cells.\n\nA pin naming an engine the version does not declare support for is accepted here\nand reported by the run, exactly as an uningested version is. The catalogue moves\nunder a standing plan, so the check belongs where a run executes.",
+          "type": ["string", "null"]
+        },
         "slug": {
           "description": "The test-case slug (e.g. `caldera`).",
           "type": "string"

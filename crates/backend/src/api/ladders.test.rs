@@ -38,6 +38,7 @@ fn rung_input(slug: &str) -> LadderRungInput {
         slug: slug.to_string(),
         version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        engine: None,
         runs: None,
     }
 }
@@ -483,6 +484,7 @@ fn a_verdict_decided_live_is_flagged_as_not_yet_recorded() {
         slug: "carom".to_string(),
         version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        engine: None,
         runs_override: None,
     };
     let wire = live_outcome(&rung, LadderOutcome::Advanced, "2026-08-15T00:00:00Z");
@@ -500,6 +502,7 @@ fn a_rung_is_counted_as_the_same_cell_a_plan_would_count() {
         slug: "carom".to_string(),
         version: "v1.2.0".to_string(),
         variant: "hard".to_string(),
+        engine: None,
         runs_override: None,
     };
     // The rung's case and a plan's case are the same identity, so a run of this rung
@@ -508,18 +511,89 @@ fn a_rung_is_counted_as_the_same_cell_a_plan_would_count() {
     assert_eq!(case.slug, "carom");
     assert_eq!(case.version, "v1.2.0");
     assert_eq!(case.variant, "hard");
+    assert_eq!(case.engine, None);
     assert_eq!(
         cell_key(&case, &member("opus")),
         (
             "carom".to_string(),
             "v1.2.0".to_string(),
             "hard".to_string(),
+            // A rung that pins no engine climbs the engineless run, which is the segment
+            // a run recording no engine is counted under.
+            "none".to_string(),
             "claude".to_string(),
             "opus".to_string(),
             // A harness combination has no gg identity: both segments are empty.
             String::new(),
             String::new(),
         )
+    );
+}
+
+#[test]
+fn the_same_case_on_two_engines_is_two_rungs() {
+    let ladder = ladder_from_input(
+        "l-1".to_string(),
+        input(vec![
+            rung_input("carom"),
+            LadderRungInput {
+                engine: Some("simple-2d".to_string()),
+                ..rung_input("carom")
+            },
+        ]),
+        "2026-08-15T00:00:00Z",
+    )
+    .expect("two engines are two rungs, not a duplicate");
+
+    // Clearing a case with a runtime underneath is a different achievement from clearing
+    // it with nothing, so a climb may ask for both — and the two are counted and gated
+    // apart.
+    let cases: Vec<ReviewPlanCase> = ladder.rungs.iter().map(rung_case).collect();
+    assert_eq!(
+        cases.iter().map(|c| c.engine_slug()).collect::<Vec<_>>(),
+        vec!["none", "simple-2d"]
+    );
+    assert_ne!(
+        cell_key(&cases[0], &member("opus")),
+        cell_key(&cases[1], &member("opus"))
+    );
+    // And the engine survives the round trip onto the wire, so a re-save does not quietly
+    // re-pin the rung to the engineless run.
+    assert_eq!(
+        rung_to_wire(&ladder.rungs[1]).engine.as_deref(),
+        Some("simple-2d")
+    );
+}
+
+#[test]
+fn a_rung_saved_before_the_engine_existed_climbs_the_engineless_run() {
+    // A console built against the previous contract sends no engine key, and the stored
+    // rungs written by one carry a `NULL` column. Both must keep meaning what they always
+    // meant — the engineless run — rather than becoming a rung nothing can resolve.
+    let sent: LadderRungInput =
+        serde_json::from_str(r#"{"slug":"carom","version":"v1.0.0","variant":"base"}"#)
+            .expect("a pre-engine rung input still parses");
+    assert_eq!(sent.engine, None);
+
+    let stored = StoredLadderRung {
+        id: "r1".to_string(),
+        slug: "carom".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+        engine: None,
+        runs_override: None,
+    };
+    assert_eq!(rung_case(&stored).engine_slug(), "none");
+    // And it goes back out the way it came in: no engine key on the wire, so a console
+    // round-tripping a ladder does not re-pin every rung it touches.
+    let wire = rung_to_wire(&stored);
+    assert_eq!(wire.engine, None);
+    assert!(
+        !serde_json::to_value(&wire)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("engine")
     );
 }
 
@@ -852,6 +926,7 @@ fn a_gg_rungs_gate_evidence_is_read_from_its_own_configurations_cell() {
         slug: "carom".to_string(),
         version: "v1.2.0".to_string(),
         variant: "hard".to_string(),
+        engine: None,
         runs_override: None,
     };
     let case = rung_case(&rung);
@@ -864,6 +939,7 @@ fn a_gg_rungs_gate_evidence_is_read_from_its_own_configurations_cell() {
             "carom".to_string(),
             "v1.2.0".to_string(),
             "hard".to_string(),
+            "none".to_string(),
             "gg".to_string(),
             "opus".to_string(),
             "cfg-1".to_string(),
@@ -895,6 +971,7 @@ fn a_climbers_key_and_its_cell_name_one_configuration() {
         slug: "carom".to_string(),
         version: "v1.2.0".to_string(),
         variant: "hard".to_string(),
+        engine: None,
         runs_override: None,
     };
     let case = rung_case(&rung);
@@ -907,7 +984,7 @@ fn a_climbers_key_and_its_cell_name_one_configuration() {
     let key = climber_key(&combo);
     assert_eq!(key, "gg:cfg-1|primary=opus,reviewer.critic=haiku");
     assert_eq!(
-        cell_key(&case, &gg_member("cfg-1", "opus", "haiku")).5,
+        cell_key(&case, &gg_member("cfg-1", "opus", "haiku")).6,
         "cfg-1"
     );
 

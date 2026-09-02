@@ -895,6 +895,7 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         test_type: TestType::EndToEnd.as_str().to_string(),
         harness_slug: "claude".to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
+        engine_slug: None,
         gg_config_json: None,
         gg_preset: None,
         gg_config_id: None,
@@ -950,6 +951,9 @@ async fn enqueue_jobs_batch_inserts_all_as_queued_and_claimable() {
         "pong".to_string(),
         "v1.0.0".to_string(),
         "base".to_string(),
+        // A job enqueued with no engine counts as a `none` job: an absent engine is the
+        // engineless run, not an unknown one.
+        "none".to_string(),
         "claude".to_string(),
         "claude-sonnet-4-5".to_string(),
         String::new(),
@@ -4606,6 +4610,7 @@ fn sample_case() -> crate::api::ReviewPlanCase {
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        engine: None,
     }
 }
 
@@ -4779,12 +4784,14 @@ async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
     let slugs = vec!["pong".to_string()];
     let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
     let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
-    // A harness cell key: the five identity segments plus the empty gg pair.
+    // A harness cell key: the six identity segments plus the empty gg pair. Neither the
+    // run nor the job names an engine, so both are counted as the `none` runs they are.
     let cell = |version: &str, model: &str| {
         (
             "pong".to_string(),
             version.to_string(),
             "base".to_string(),
+            "none".to_string(),
             "claude".to_string(),
             model.to_string(),
             String::new(),
@@ -4810,6 +4817,159 @@ async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
 }
 
 #[tokio::test]
+async fn coverage_counts_are_keyed_by_the_engine_and_read_a_missing_one_as_none() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Two completed runs of one case at one version and variant, on two engines. They are
+    // two cells: a model handed a runtime is not doing the work a model starting from
+    // nothing is, so the two results are not comparable and must not pool.
+    seed_engine(&db, "r1", "simple-2d").await;
+    seed_engine(&db, "r2", "none").await;
+    // And a run whose slug was never lifted — a row the backfill could not read. An
+    // absent engine is the engineless run, so it counts with `none` rather than into a
+    // cell of its own that nothing pins.
+    seed_engine(&db, "r3", "none").await;
+    let mut active = lifted(&db, "r3").await.into_active_model();
+    active.engine_slug = Set(None);
+    active.update(&db.connection()).await.unwrap();
+
+    let completed = db
+        .count_completed_runs_by_cell(&["pong".to_string()])
+        .await
+        .unwrap();
+    let cell = |engine: &str| {
+        (
+            "pong".to_string(),
+            "v1.0.0".to_string(),
+            "base".to_string(),
+            engine.to_string(),
+            "claude".to_string(),
+            "claude-sonnet-4-5".to_string(),
+            String::new(),
+            String::new(),
+        )
+    };
+    assert_eq!(completed.get(&cell("simple-2d")).copied(), Some(1));
+    assert_eq!(
+        completed.get(&cell("none")).copied(),
+        Some(2),
+        "the lifted `none` run and the unlifted one are the same cell"
+    );
+    assert_eq!(completed.len(), 2, "no third cell for the unlifted row");
+}
+
+#[tokio::test]
+async fn an_in_flight_job_is_counted_under_the_engine_it_was_enqueued_on() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(NewJob {
+        engine_slug: Some("simple-2d".to_string()),
+        ..new_job("j1", "2026-06-23T00:00:00Z")
+    })
+    .await
+    .unwrap();
+    db.enqueue_job(new_job("j2", "2026-06-23T00:00:01Z"))
+        .await
+        .unwrap();
+
+    let in_flight = db
+        .count_in_flight_jobs_by_cell(&["pong".to_string()])
+        .await
+        .unwrap();
+    let cell = |engine: &str| {
+        (
+            "pong".to_string(),
+            "v1.0.0".to_string(),
+            "base".to_string(),
+            engine.to_string(),
+            "claude".to_string(),
+            "claude-sonnet-4-5".to_string(),
+            String::new(),
+            String::new(),
+        )
+    };
+    // A cell pinned to one engine must not see the runs already coming for another, or a
+    // plan reads its shortfall as filled and buys nothing it actually asked for.
+    assert_eq!(in_flight.get(&cell("simple-2d")).copied(), Some(1));
+    assert_eq!(in_flight.get(&cell("none")).copied(), Some(1));
+}
+
+/// A queued job whose stored launch request names `engine`, with the lifted column left
+/// `NULL` — the shape of every job that was already in flight when the column arrived.
+fn unlifted_engine_job(id: &str, engine: Option<&str>) -> NewJob {
+    let engine = engine
+        .map(|slug| format!(",\"engine\":\"{slug}\""))
+        .unwrap_or_default();
+    NewJob {
+        request_json: format!(
+            "{{\"testCase\":\"pong\",\"version\":\"v1.0.0\",\"variant\":\"base\",\
+             \"harness\":\"claude\",\"model\":\"claude-sonnet-4-5\"{engine}}}"
+        ),
+        ..new_job(id, "2026-06-23T00:00:00Z")
+    }
+}
+
+#[tokio::test]
+async fn backfilling_an_in_flight_engine_slug_reads_the_jobs_own_launch_request() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(unlifted_engine_job("j1", Some("simple-2d")))
+        .await
+        .unwrap();
+    db.enqueue_job(unlifted_engine_job("j2", None))
+        .await
+        .unwrap();
+
+    // Only the job that named a real engine is rewritten. One that named none is already
+    // counted where it belongs — an absent slug is the `none` engine, not an unknown one —
+    // so filling it in would be a write for a number that does not change.
+    assert_eq!(db.backfill_in_flight_engine_slugs().await.unwrap(), 1);
+    assert_eq!(
+        db.get_job("j1").await.unwrap().unwrap().engine_slug,
+        Some("simple-2d".to_string())
+    );
+    assert_eq!(db.get_job("j2").await.unwrap().unwrap().engine_slug, None);
+
+    // Idempotent, because it runs on every boot: the second pass finds nothing left.
+    assert_eq!(db.backfill_in_flight_engine_slugs().await.unwrap(), 0);
+
+    // And the point of the pass — the filled job is now counted against the cell its run
+    // will actually land in, rather than against the `none` cell it never belonged to.
+    let in_flight = db
+        .count_in_flight_jobs_by_cell(&["pong".to_string()])
+        .await
+        .unwrap();
+    let cell = |engine: &str| {
+        (
+            "pong".to_string(),
+            "v1.0.0".to_string(),
+            "base".to_string(),
+            engine.to_string(),
+            "claude".to_string(),
+            "claude-sonnet-4-5".to_string(),
+            String::new(),
+            String::new(),
+        )
+    };
+    assert_eq!(in_flight.get(&cell("simple-2d")).copied(), Some(1));
+    assert_eq!(in_flight.get(&cell("none")).copied(), Some(1));
+}
+
+#[tokio::test]
+async fn backfilling_an_engine_slug_leaves_the_jobs_that_are_no_longer_in_flight() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(unlifted_engine_job("j1", Some("simple-2d")))
+        .await
+        .unwrap();
+    db.set_job_state("j1", "succeeded", "2026-06-23T00:01:00Z", None, None)
+        .await
+        .unwrap();
+
+    // A finished job's coverage comes from the `run` row it produced, so rewriting the
+    // whole job history would be a large write for a number nothing reads. The pass is
+    // bounded to what is still in flight across the deploy.
+    assert_eq!(db.backfill_in_flight_engine_slugs().await.unwrap(), 0);
+    assert_eq!(db.get_job("j1").await.unwrap().unwrap().engine_slug, None);
+}
+
+#[tokio::test]
 async fn a_claimed_job_no_longer_counts_toward_a_cell() {
     let db = Db::connect_in_memory().await.unwrap();
     db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
@@ -4820,6 +4980,9 @@ async fn a_claimed_job_no_longer_counts_toward_a_cell() {
         "pong".to_string(),
         "v1.0.0".to_string(),
         "base".to_string(),
+        // A job enqueued with no engine counts as a `none` job: an absent engine is the
+        // engineless run, not an unknown one.
+        "none".to_string(),
         "claude".to_string(),
         "claude-sonnet-4-5".to_string(),
         String::new(),
@@ -4894,6 +5057,7 @@ async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
             "pong".to_string(),
             "v1.0.0".to_string(),
             "base".to_string(),
+            "none".to_string(),
             "opencode".to_string(),
             model.to_string(),
             String::new(),
@@ -5380,13 +5544,14 @@ fn record_loaded(id: &str, loaded: bool) -> RunRecord {
     record
 }
 
-/// The cell key `record`/`new_job` produce: pong v1.0.0 base on claude/sonnet, with
-/// the empty gg pair every harness cell carries.
+/// The cell key `record`/`new_job` produce: pong v1.0.0 base on the `none` engine on
+/// claude/sonnet, with the empty gg pair every harness cell carries.
 fn sample_cell() -> CellKey {
     (
         "pong".to_string(),
         "v1.0.0".to_string(),
         "base".to_string(),
+        "none".to_string(),
         "claude".to_string(),
         "claude-sonnet-4-5".to_string(),
         String::new(),
@@ -5983,6 +6148,7 @@ fn rung(id: &str, slug: &str, version: &str) -> StoredLadderRung {
         slug: slug.to_string(),
         version: version.to_string(),
         variant: "base".to_string(),
+        engine: None,
         runs_override: None,
     }
 }
@@ -6017,7 +6183,13 @@ async fn ladders_round_trip_with_their_gate_and_scope_to_account() {
         vec![
             rung("r1", "pong", "v1.0.0"),
             rung("r2", "carom", "v1.0.0"),
-            rung("r3", "caldera", "v1.2.0"),
+            // A rung pinned to an engine, so the pin's fourth segment is proved to
+            // survive the round trip rather than silently reverting to the engineless
+            // run every rung written before the column existed asks for.
+            StoredLadderRung {
+                engine: Some("simple-2d".to_string()),
+                ..rung("r3", "caldera", "v1.2.0")
+            },
         ],
     );
     db.insert_ladder("u1", &ladder, &LadderSchedule::default())
@@ -6309,6 +6481,7 @@ fn gg_cell(config_id: &str, models: &str) -> CellKey {
         "pong".to_string(),
         "v1.0.0".to_string(),
         "base".to_string(),
+        "none".to_string(),
         "gg".to_string(),
         "mock/echo".to_string(),
         config_id.to_string(),
