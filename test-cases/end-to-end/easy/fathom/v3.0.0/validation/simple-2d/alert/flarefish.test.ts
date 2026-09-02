@@ -42,7 +42,7 @@ import {
   FLARE_INTERVAL,
   FLARE_RADIUS,
   LANTERN_RANGE_BASE,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

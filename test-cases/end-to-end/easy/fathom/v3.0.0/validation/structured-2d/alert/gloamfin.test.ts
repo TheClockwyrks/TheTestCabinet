@@ -32,7 +32,7 @@
 // check down rather than being failed twice for one fault.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ALERT_TIME, GLOAMFIN_HEAR } from "../../src/constants";
+import { ALERT_TIME, GLOAMFIN_HEAR } from "../constants";
 import {
   assertEqual,
   assertLessThanOrEqual,

@@ -24,7 +24,7 @@
 // check down rather than passing it on an absence that means nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ALERT_TIME, BRIGHT_HOLD } from "../../src/constants";
+import { ALERT_TIME, BRIGHT_HOLD } from "../constants";
 import { assertEqual, assertTrue, fail } from "../assert";
 import { poseSightLine, spawnPredator } from "../fixtures";
 import {
