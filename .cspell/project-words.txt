@@ -74,6 +74,7 @@
 # Game-jam vocabulary.
 # Gantry v1.0.0 authoring notes and manifest prose: the load model — static
 # Generic asset-pack test-case prose (2D / particle / music briefs) and the
+# in — a cell with no pose, a tape row not shown, a machine with no set sigil.
 # Includes graphics/particle jargon and bold-prefix markup fragments the tokenizer
 # Junction reference-impl DESIGN/README (Rust→wasm city builder).
 # Kessler (kessler) orbital-demolition full-stack case: the screen id, pod kinds, and asset names.
@@ -85,6 +86,7 @@
 # Meltdown (meltdown) domain terms.
 # Meltdown (meltdown) reference mockup class names.
 # Models
+# Orrery v1.0.0 review checklist: the coinages the per-item behaviors are stated
 # Orrery v1.0.0: the case's own vocabulary — arm variants, fault names, the
 # Project-specific words accepted by cspell. One word per line, case-insensitive.
 # R2 sample-pack publish/presign tooling (scripts/lib/r2.mjs, build.sh).
@@ -242,6 +244,7 @@ Devstral
 difficultyselect
 diggable
 dischargerig
+disjointness
 dmgboard
 dodgeable
 dogfighter
@@ -388,6 +391,7 @@ multishots
 muteable
 napi
 needbar
+nonblank
 nonfiring
 nonking
 nostack
@@ -423,8 +427,10 @@ playstyle
 playtest
 playtesting
 pointerdown
+poseless
 presign
 presigned
+pressable
 prio
 PRNG
 prowed
@@ -447,6 +453,7 @@ regen
 reharmonize
 rehit
 Reliquary
+relocks
 repath
 replayability
 reskin
@@ -472,6 +479,7 @@ rockbed
 roguelike
 roselite
 roughterrain
+rowless
 royale
 rquickjs
 rrggbb
@@ -494,6 +502,7 @@ Sela
 Sentinel
 serp
 serpentines
+setless
 setmaze
 sideload
 sideloaded
@@ -566,31 +575,39 @@ underglow
 undertune
 undertuned
 undoable
+undos
 undrawn
 undrillable
 undrilled
 unflawed
 unfun
 unheld
+unhighlighted
 unioned
 unioning
 unitless
+unmarks
 unminable
 unmined
 unmute
 unmuted
 unoccluded
 unparked
+unperformable
+unpermitted
 unpossessed
 unpowered
 unpremultiplied
 unpressured
 unranked
 unrigged
+unscrolled
 unseeable
 unslowed
+unspends
 unstaffed
 untargetable
+untargeted
 unthinned
 untimed
 varint

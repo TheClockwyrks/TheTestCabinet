@@ -19,17 +19,25 @@ description = "The full machine-building game: the build's own Campaign course a
 # spec, and no spec of any other kind, to put here. If you came to this file to
 # add one, it almost certainly belongs in `test-case.toml` as a common spec.
 
-# No `[reference_implementation]` yet. The authored correct builds — one per
-# supported engine, by convention `references/none` and `references/simple-2d` —
-# do not exist for this version at the time of writing, and a declared path that
-# does not resolve refuses the whole case. Declare the table here when they land,
-# exactly as Refract's base variant declares its two.
+# No `showcase` yet. The curated catalog presentation — a player-facing
+# description and a carousel led by sustained real play captured from a reference
+# build — lands with the reference builds below.
 
-# No `[workspaces]` table either. The engine manifest format is PARKED in
-# `test-case.toml` (see its `workspace` comment), so the case declares the
-# legacy single `workspace` — and even once the format is restored, its common
-# table covers both engines and there is nothing variant-specific to replace it
-# with.
+# No `[reference_implementation]` yet. The authored correct builds — one directory
+# per supported engine, by convention `references/none/base`,
+# `references/simple-2d/base` and `references/structured-2d/base` — do not exist
+# for this version, and a declared path that does not resolve refuses the whole
+# case. The table lands in the same change as the builds, naming EXACTLY the three
+# engines `test-case.toml` supports, exactly as Kessler's base variant declares
+# its three. Each of those builds is also what `tcab capture-baselines` drives to
+# synthesize the baseline half of every review item's validation media for its
+# engine, and each PRODUCES its own asset set during authoring and commits it
+# beside itself, because this is a full-stack case and `npm ci && npm run build`
+# must be self-contained.
+
+# No `[workspaces]` override. This is the only variant, so the case's own
+# `[workspaces]` table names the three starter projects directly, one per engine,
+# and there is nothing variant-specific to replace it with.
 
 # No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
 # point and every rated domain applies to every run, so they are all declared
