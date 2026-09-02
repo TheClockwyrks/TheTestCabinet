@@ -149,12 +149,10 @@ places a decoration the specs require only to exist. A validator reads such a
 value to drive the build or to locate what the build drew, and grades nothing by
 it.
 
-`constants.ts` is the only file in a validator project that imports the build's
-`../src/constants`, and it re-exports each value it reads under a heading saying
-why that value is the build's to choose. The suites, the harness and the surface
-all import from `constants.ts`. One import site per project is what makes the
-rule mechanical, and `scripts/ci/validator-constants.sh` reports a project where
-a second file reaches for the build's module.
+`constants.ts` is the file that reads them. It re-exports each value under a
+heading saying why that value is the build's to choose, and the suites, the
+harness and the surface all import from `constants.ts`. One import site per
+project is what makes the rule mechanical.
 
 ```ts
 // validation/simple-2d/constants.ts
@@ -174,8 +172,50 @@ export { LAYOUT } from "../src/constants";
 
 Each engine's project holds its own copy of `constants.ts`. A run stages one
 project, copying `validation/<engine>/` whole into the produced tree at
-`validation/`, so a module the projects shared from outside them would be absent
-when the suites run.
+`validation/`, so a module the projects shared from outside them is absent when
+the suites run. That is why a project resolves everything it needs from inside
+itself and from the build beside it.
+
+### What a project may reach for
+
+`scripts/ci/validator-constants.sh` reads every reference a project makes and
+allows three, over the whole project:
+
+| File           | May take                                             |
+| -------------- | ---------------------------------------------------- |
+| `constants.ts` | named bindings from any module of the build          |
+| `harness.ts`   | named bindings from the build's entry, `../src/game` |
+| any file       | a type-only clause from any module of the build      |
+
+A type is erased before anything runs, so `import type { State } from
+"../src/game"` carries no figure and any suite may take one.
+
+The gate parses the clause rather than matching the specifier, so the form
+matters as much as the module. `export { LAYOUT } from "../src/constants"` is a
+boundary a reader can count; `export * from "../src/constants"` names the same
+module and hands every suite in the project the build's whole figure table, so
+the gate refuses it, along with namespace and default bindings, bare side-effect
+imports, `import()` and `require()`.
+
+It refuses any reference that leaves the project for somewhere other than the
+build, and any `paths` alias or `file:` dependency in the project's
+`tsconfig.json` or `package.json` that would reopen the same route. Anything it
+cannot positively recognize is a finding.
+
+A project holding a `constants.ts` has been converted, and the gate blocks on it.
+A project without one is reported instead, which is how the conversion lands one
+case at a time. Adding the `constants.ts` enrols the project.
+
+The gate runs on every commit through pre-commit, on Azure, and on every GitHub
+pull request. Run it by hand over a case at any time:
+
+```sh
+./scripts/ci/validator-constants.sh test-cases/end-to-end/easy/carom/v3.0.0
+```
+
+It prints every name each project takes from the build even when it passes. That
+list is the thing to read when a case starts drifting back toward grading the
+build against itself.
 
 ### One requirement per validator
 
@@ -303,8 +343,9 @@ When designing or revising a case's debug API and validators:
   implementation, and every spec-honoring design passes.
 - Every figure a suite asserts comes from the project's own `constants.ts`,
   transcribed from the specs.
-- `constants.ts` is the only file in a project that imports the build's
-  `src/constants`, and re-exports only what the specs leave to the build.
+- `constants.ts` re-exports only what the specs leave to the build, `harness.ts`
+  takes only the build's entry, and every other reference the project makes
+  resolves inside the project.
 - Each validator decides one requirement in one direction, and each edge case
   has its own validator.
 - Each validator reaches its scenario through the debug API alone and drives
