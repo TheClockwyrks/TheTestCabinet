@@ -13,7 +13,7 @@
 // frame of travel of the face, on the near side of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_R, OBSTACLES } from "../../src/constants";
+import { BALL_R, OBSTACLES } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

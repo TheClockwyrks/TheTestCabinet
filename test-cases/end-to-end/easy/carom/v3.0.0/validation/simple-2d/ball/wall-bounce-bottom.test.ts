@@ -10,7 +10,7 @@
 // `FIELD_H - BALL_R`, on the field side of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_R, FIELD_CX, FIELD_H } from "../../src/constants";
+import { BALL_R, FIELD_CX, FIELD_H } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

@@ -8,7 +8,7 @@
 // margin rather than slack.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeObstacleBounce,
