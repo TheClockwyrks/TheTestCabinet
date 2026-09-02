@@ -75,11 +75,15 @@ const WALK_SECONDS = 1;
  * The least distance that second must carry the walker, in logical units.
  *
  * `specs/surge.md` gives the Mote `60` logical units per second, so a live
- * simulation moves it about three tiles. One unit is a twentieth of a tile: far
- * below anything a walking build produces, and far above the zero a surface that
- * poses nothing produces.
+ * simulation moves it about three tiles in the second this spends. A quarter of
+ * that is the floor: far above the zero a surface that poses nothing produces and
+ * above the twentieth of a tile a build inching a walker would produce, and still
+ * far below `60`, because this point asks whether the simulation ran at all and
+ * how fast it ran is `surge.*`'s question. It is the same
+ * quarter-of-the-specified-figure floor the engineless project's copy of this
+ * point holds.
  */
-const MIN_TRAVEL = 1;
+const MIN_TRAVEL = 15;
 
 /** The least number of canvas bytes a live render may differ by across the walk. */
 const MIN_PIXELS_CHANGED = 1;

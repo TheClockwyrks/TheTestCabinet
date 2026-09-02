@@ -58,11 +58,15 @@ const WATCH_FRAMES = ticksFor(0.5);
 /**
  * The least distance that watch must carry a survivor, in logical units.
  *
- * `specs/surge.md` gives the Mote `60` logical units a second, so half a second
- * carries it thirty. One unit is a twentieth of a tile: far under anything a
- * walking build produces and far over the zero a frozen one does.
+ * `specs/surge.md` gives the Mote `60` logical units a second, so the half second
+ * this watches carries it thirty. A quarter of that is the floor: far over the
+ * zero a frozen build produces and over the twentieth of a tile an inching one
+ * would, and still far under thirty, because how fast a Mote walks is `surge.*`'s
+ * question rather than this point's. It is the same
+ * quarter-of-the-specified-figure floor the engineless project's copy of this
+ * point holds.
  */
-const MIN_TRAVEL = 1;
+const MIN_TRAVEL = 7;
 
 let h: Harness;
 

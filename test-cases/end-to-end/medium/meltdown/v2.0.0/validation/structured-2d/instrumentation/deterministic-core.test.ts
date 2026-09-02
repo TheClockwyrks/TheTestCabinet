@@ -86,9 +86,14 @@ const POSITION_TOLERANCE = 0.5;
  *
  * A dead floor agrees with itself perfectly, so the comparison above means
  * nothing until both runs are known to have MOVED. `specs/surge.md` gives the
- * Mote `60` logical units per second; one unit is a twentieth of a tile.
+ * Mote `60` logical units per second, and the interval is one whole second, so a
+ * quarter of that is the floor: high enough that a build inching a walker a
+ * twentieth of a tile cannot satisfy it, and still far enough below `60` that it
+ * decides nothing about the speed, which is `surge.*`'s question. It is the same
+ * quarter-of-the-specified-figure floor the engineless project's copy of this
+ * point holds.
  */
-const MIN_TRAVEL = 1;
+const MIN_TRAVEL = 15;
 
 /** A harness whose frame is `ms` of game time, posed with one walker on an open row. */
 async function walkerOn(ms: number): Promise<{ h: Harness; id: number }> {
