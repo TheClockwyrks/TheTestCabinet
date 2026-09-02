@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertTrue } from "../assert";
-import { SLOW_TIME } from "../../src/constants";
+import { SLOW_TIME } from "../constants";
 import {
   captureStill,
   createHarness,

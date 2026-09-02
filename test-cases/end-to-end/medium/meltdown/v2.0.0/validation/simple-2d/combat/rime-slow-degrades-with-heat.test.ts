@@ -36,7 +36,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
-import { TRIP_HEAT } from "../../src/constants";
+import { TRIP_HEAT } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseGun, readGun, slowCeilOf } from "./duel";
 

@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
-import { SLOW_TIME, SURGE_DEFS } from "../../src/constants";
+import { SLOW_TIME, SURGE_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

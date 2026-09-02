@@ -49,7 +49,7 @@ import {
   footprintCentre,
   heatMultiplier,
   type EmitterDef,
-} from "../../src/constants";
+} from "../constants";
 import { tileAt, type Point, type Tile } from "../geometry";
 import {
   TICK_HZ,
