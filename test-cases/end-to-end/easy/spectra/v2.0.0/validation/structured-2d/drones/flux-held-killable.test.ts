@@ -31,7 +31,7 @@ import {
   FORM_CENTER_X,
   PLAYER_BULLET_SPEED,
   fluxHold,
-} from "../../src/constants";
+} from "../constants";
 import { assertUndefined } from "../assert";
 import {
   captureStill,

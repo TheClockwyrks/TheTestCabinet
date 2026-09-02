@@ -24,7 +24,7 @@
 // is `drones/flux-emerges-opposite`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLUX_SHIMMER, FORM_CENTER_X, fluxWindow } from "../../src/constants";
+import { FLUX_SHIMMER, FORM_CENTER_X, fluxWindow } from "../constants";
 import { assertBetween } from "../assert";
 import {
   captureStill,

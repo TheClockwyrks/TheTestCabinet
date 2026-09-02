@@ -36,7 +36,7 @@
 // `drones/flux-fires-held-band`'s, and where the dive goes is `swarm`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_FIRE_Y, FORM_CENTER_X, fluxHold } from "../../src/constants";
+import { DIVE_FIRE_Y, FORM_CENTER_X, fluxHold } from "../constants";
 import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,

@@ -46,7 +46,7 @@ import {
   FLUX_SHIMMER,
   FORM_CENTER_X,
   fluxHold,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

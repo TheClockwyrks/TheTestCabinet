@@ -22,7 +22,7 @@
 // `drones/flux-cycle-holds`' and `drones/flux-shimmer-duration`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLUX_SHIMMER, FORM_CENTER_X, fluxWindow } from "../../src/constants";
+import { FLUX_SHIMMER, FORM_CENTER_X, fluxWindow } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

@@ -29,7 +29,7 @@
 // clear is in play.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYER_BULLET_SPEED } from "../../src/constants";
+import { PLAYER_BULLET_SPEED } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

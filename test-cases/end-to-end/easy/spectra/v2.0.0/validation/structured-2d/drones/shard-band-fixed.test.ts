@@ -24,7 +24,7 @@
 // this drone does nothing but hold its band.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLUX_SHIMMER, FORM_CENTER_X, fluxCycle } from "../../src/constants";
+import { FLUX_SHIMMER, FORM_CENTER_X, fluxCycle } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

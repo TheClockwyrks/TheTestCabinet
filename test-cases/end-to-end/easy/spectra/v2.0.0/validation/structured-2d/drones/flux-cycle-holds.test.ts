@@ -23,7 +23,7 @@
 // `drones/flux-emerges-opposite` the band it comes out on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X, fluxHold, fluxWindow } from "../../src/constants";
+import { FORM_CENTER_X, fluxHold, fluxWindow } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

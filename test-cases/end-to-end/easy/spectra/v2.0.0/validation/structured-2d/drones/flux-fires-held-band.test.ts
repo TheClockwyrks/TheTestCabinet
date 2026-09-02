@@ -25,7 +25,7 @@
 // the bullet the dive produced, and stops there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_FIRE_Y, FORM_CENTER_X, fluxHold } from "../../src/constants";
+import { DIVE_FIRE_Y, FORM_CENTER_X, fluxHold } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

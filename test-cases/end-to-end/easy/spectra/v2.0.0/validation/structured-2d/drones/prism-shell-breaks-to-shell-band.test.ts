@@ -26,7 +26,7 @@
 // already gone. Nothing is destroyed here, so nothing clears the stage.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X, PLAYER_BULLET_SPEED } from "../../src/constants";
+import { FORM_CENTER_X, PLAYER_BULLET_SPEED } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

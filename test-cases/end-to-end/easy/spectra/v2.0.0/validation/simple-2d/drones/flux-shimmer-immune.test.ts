@@ -26,7 +26,7 @@
 // differently rather than cancelling out.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLUX_SHIMMER, FORM_CENTER_X, fluxHold } from "../../src/constants";
+import { FLUX_SHIMMER, FORM_CENTER_X, fluxHold } from "../constants";
 import { assertNotNull } from "../assert";
 import {
   captureStill,

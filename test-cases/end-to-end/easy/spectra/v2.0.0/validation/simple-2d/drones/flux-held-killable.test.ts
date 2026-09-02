@@ -27,7 +27,7 @@
 // is asserting. So no bystander is parked on the field to hold the wave open.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X, fluxHold } from "../../src/constants";
+import { FORM_CENTER_X, fluxHold } from "../constants";
 import { assertNull } from "../assert";
 import {
   captureStill,

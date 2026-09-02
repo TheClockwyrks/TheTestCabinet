@@ -43,7 +43,7 @@
 // land on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENTER_GROUP_GAP, PRISM_ESCORTS } from "../../src/constants";
+import { ENTER_GROUP_GAP, PRISM_ESCORTS } from "../constants";
 import { assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureReplay,

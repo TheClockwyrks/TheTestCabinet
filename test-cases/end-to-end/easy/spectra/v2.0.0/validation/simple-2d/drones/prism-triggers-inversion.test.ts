@@ -35,7 +35,7 @@ import {
   FORM_CENTER_X,
   FORM_ROW0_Y,
   PRISM_INVERT_Y,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
