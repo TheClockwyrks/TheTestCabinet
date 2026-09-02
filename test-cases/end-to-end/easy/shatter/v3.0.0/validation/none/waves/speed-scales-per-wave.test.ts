@@ -1,121 +1,122 @@
 // waves/speed-scales-per-wave — each wave's rocks drift four percent faster than
-// the last's.
+// the one before.
 //
-// `specs/progression.md`, Waves: "Each rock's speed is a Large's base drift speed
-// (`specs/rocks.md`) multiplied by `1 + min(WAVE_SPEED_CAP, WAVE_SPEED_STEP * (N -
-// 1))` with `WAVE_SPEED_STEP` (`0.04`) and `WAVE_SPEED_CAP` (`0.4`), so wave 1's
-// rocks take the plain range, wave 6's are `20` percent faster". `specs/rocks.md`
-// gives a Large's base drift speed as a value "drawn uniformly" from
-// `ROCK_SPEED_MIN.large` to `ROCK_SPEED_MAX.large` (`60` to `110`).
+// THE RULE. `specs/progression.md`, "Waves": "Each rock's speed is a Large's base
+// drift speed (`specs/rocks.md`) multiplied by `1 + min(WAVE_SPEED_CAP,
+// WAVE_SPEED_STEP * (N - 1))` with `WAVE_SPEED_STEP` (`0.04`) and
+// `WAVE_SPEED_CAP` (`0.4`), so wave 1's rocks take the plain range, wave 6's are
+// `20` percent faster".
 //
-// WHAT IS BEING MEASURED, AND WHY IT TAKES MORE THAN ONE WAVE. The multiplier does
-// not fix a rock's speed; it scales the RANGE a rock's speed is drawn from. Wave
-// 6's band is `[72, 132]` where wave 1's is `[60, 110]`, and the two overlap over
-// most of their length — a single rock at 100 units per second is an ordinary
-// member of either. So no reading of one rock, and no reading of one wave's nine,
-// can tell the two apart. What can is the BAND itself, and that is read here off
-// two hundred and sixteen rocks: twenty-four games, each posed at wave 5 and shot
-// clear, each answering with the nine rocks of wave 6.
+// WHAT IS MEASURED. The ratio of wave 6's base drift speeds to wave 1's, against
+// `1 + WAVE_SPEED_STEP * 5` = `1.20`. THE RATIO, so the base range itself falls
+// out of the comparison entirely: `specs/rocks.md` gives a Large `60` to `110`,
+// and a build whose range is wrong but whose per-wave scaling is right passes here
+// and loses `rocks/drift-speed-large`, which is the item for the range. It is also
+// the reading the review item states — "scaled by 1 + WAVE_SPEED_STEP x 5 AGAINST
+// WAVE 1'S" — rather than a band read off one wave in isolation.
 //
-// TWO ASSERTIONS, AND THEY FAIL DIFFERENT BUILDS.
+// WHY A STATISTIC AND NOT A ROCK. A base drift speed is DRAWN — "drawn uniformly
+// from its size's range" (`specs/rocks.md`) — so one rock of wave 6 says nothing
+// at all about the factor: a slow draw at `1.20` and a fast draw at `1.00` produce
+// the same number. What is compared is the MIDRANGE of each wave's sample,
+// `(min + max) / 2`, which for a uniform draw is the minimum-variance unbiased
+// estimator of the distribution's midpoint and therefore of the factor the range
+// was multiplied by (`./scenario.ts`, {@link midrange}).
 //
-//   - CONTAINMENT. Every one of the two hundred and sixteen speeds lies inside the
-//     scaled band, within three percent. This is the specification read literally,
-//     one rock at a time, and it is one-sided-safe: a conformant build satisfies it
-//     on every rock, however the draws fall. It is what kills a build that does not
-//     scale at all — such a build draws under seventy units per second about one
-//     rock in five, and over a hundred and forty rocks it will do so.
-//   - THE MEAN. A uniform draw's expectation is the midpoint of its range, so two
-//     hundred and sixteen samples of `[72, 132]` average `102` with a standard
-//     error near one and a half. The band below is a sampling band, not a
-//     per-rock one, and it is what separates a build whose step is in the right
-//     direction but the wrong size from one that has the figure right.
+// AND WHY THE MIDRANGE RATHER THAN THE MEAN. The mean of a `60`-to-`110` draw
+// wanders by about `1.4` percent over a hundred rocks, which is half the tolerance
+// this item is allowed. The midrange's spread falls like `1 / n` rather than like
+// `1 / sqrt(n)`: over the same hundred-odd rocks it wanders by about a third of
+// one percent, so the tolerance below is room for a build's arithmetic rather than
+// room for the check's own noise.
 //
-// EVERY WRONG MODEL READS AS A DIFFERENT NUMBER. No scaling at all averages 85;
-// scaling by the wave number rather than by the step averages far above the band
-// and breaks containment on the first rock; applying the step from wave 0 rather
-// than wave 1 averages 106; running the step backwards averages 68. A failure names
-// the mean it found and the rock that broke containment, so which one the build
-// implemented is readable off the message.
+// THE SAMPLE. A hundred and twenty rocks on each side, gathered by flying wave
+// after wave until that many have arrived — a ROCK count rather than a wave count,
+// so both samples carry the same spread whatever a build's waves happen to hold.
+// Each flight is a fresh `reset` to its own seed, so each is an independent draw
+// of the whole wave (`specs/simulation.md`, "Seeded randomness"), and both waves
+// are reached the SAME way: posed at `N - 1` with the wave loop running, and
+// cleared by shooting the field's last rock down.
+//
+// AND WHY EVERY WRONG MODEL READS AS A DIFFERENT NUMBER. A build that applies no
+// per-wave scaling at all reads `1.00`, twenty percent out and nearly seven times
+// the bound. A build that halves or doubles the step reads `1.10` or `1.40`. A
+// build that applies the cap from the start reads `1.40`.
+//
+// TWO WRONG MODELS THIS ITEM DOES NOT SEPARATE, AND WHERE THEY ARE CAUGHT. A build
+// that scales from `N` rather than from `N - 1` reads `1.24`, and one that
+// COMPOUNDS the step rather than adding it reads `1.04 ^ 5` = `1.217`: both sit
+// just outside and just inside a three percent bound around `1.20`, which is too
+// fine a distinction for a check whose input is a hundred and twenty drawn
+// numbers. Neither escapes the group. `speed-is-capped` compares wave 20 against
+// wave 1, and an off-by-one build reads `1.40 / 1.04` = `1.35` there — five bounds
+// out — because the same defect moves its BASELINE as well. That is why the two
+// speed items pose waves on opposite sides of the cap rather than one item posing
+// both.
+//
+// THE FACTOR IS READ AGAINST THE WAVE THE BUILD SAYS IT SPAWNED, not against the
+// one this check posed. `specs/progression.md` states two separate rules — the
+// wave number advances by one on a clear, and wave `N`'s speeds carry `N`'s factor
+// — and `wave-number-increments` is the item for the first. A build that advances
+// by two is wrong about that rule and can be exactly right about this one; read
+// against the posed wave it would lose this point as well, for a defect it has
+// already been charged for.
+//
+// THE READING IS TAKEN ON THE TICK EACH WAVE ARRIVES, because `specs/rocks.md`
+// makes the base drift speed "the speed it enters the field with" and every tick
+// afterwards is a tick `specs/gravity.md`'s well has been bending it. At most one
+// tick of the well is inside a reading — where a spawn sits among a tick's six
+// steps is not something `specs/simulation.md` fixes — and at the closest a wave
+// may spawn to the star that is under one unit per second (`./scenario.ts`,
+// {@link SPAWN_WELL_PER_TICK}), against a smallest legal base speed of `60`.
+//
+// WHAT THIS ITEM DOES NOT DECIDE. The CAP, which is `speed-is-capped`'s point: at
+// wave 6 the cap is nowhere near, so a build that never caps at all passes here
+// and fails there.
 //
 // THE CLEARED FIELD IS REACHED BY SHOOTING, never by `clearRocks`. See the note at
 // the top of `scenario.ts`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween } from "../assert";
-import {
-  ROCK_SPEED_MAX,
-  ROCK_SPEED_MIN,
-  WAVE_SPEED_STEP,
-  waveSpeedScale,
-} from "../constants";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import { WAVE_SPEED_CAP, WAVE_SPEED_STEP, waveSpeedScale } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import {
-  describeSample,
-  fastest,
-  gatherSpawnSpeeds,
-  meanOf,
-  slowest,
-  type SpeedSample,
-} from "./scenario";
+import { SPAWN_WELL_PER_TICK, midrange, sampleWaveSpeeds } from "./scenario";
 
-/** The wave the run is posed at, and the wave clearing it announces. */
-const POSED_WAVE = 5;
-const MEASURED_WAVE = POSED_WAVE + 1;
-
-/** The multiplier `specs/progression.md` gives wave 6: `1 + 0.04 x 5` = `1.20`. */
-const SCALE = waveSpeedScale(MEASURED_WAVE);
-
-/** The band wave 6's speeds are drawn from, straight off the two specs' figures. */
-const BAND_LOW = ROCK_SPEED_MIN.large * SCALE;
-const BAND_HIGH = ROCK_SPEED_MAX.large * SCALE;
+/** The two waves compared: the plain range, and five steps above it. */
+const BASELINE_WAVE = 1;
+const SCALED_WAVE = 6;
 
 /**
- * The twenty-four seeds the band is sampled on: `9` rocks each, `216` in all.
+ * How many rocks each of the two samples gathers, and the ceiling on the waves
+ * flown for them.
  *
- * Enough that the sample's mean is worth reading — the standard error of the mean
- * of `216` draws from a `60 x 1.2`-wide uniform is about one and a half units per
- * second, so the six percent below is more than four of them — and enough that a
- * build drawing from the UNSCALED band all but certainly puts a rock under the
- * containment floor, which it does about once in five.
+ * A hundred and twenty rocks a side. The midrange of a `60`-to-`110` uniform draw
+ * over that many samples wanders by about a third of one percent, which is a ninth
+ * of the tolerance this item allows — so the bound below is room for a build's
+ * arithmetic rather than room for the check's own noise. A conformant build
+ * reaches it in thirty waves of wave 1 and fourteen of wave 6; the ceiling is what
+ * stops a build whose waves are nearly empty from spinning, and it is a bound on
+ * the scenario rather than a threshold on the build.
  */
-const SEEDS = [
-  31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
-  50, 61, 62, 63, 64,
-];
+const SAMPLE_ROCKS = 120;
+const MAX_RUNS = 130;
+
+/** The seed each sample's first run is reset to; each later run takes the next. */
+const BASELINE_FIRST_SEED = 31;
+const SCALED_FIRST_SEED = 1031;
 
 /**
- * How far outside the scaled band one rock's speed may read: three percent, the
- * review item's own figure, plus a unit for the well.
+ * How far the measured ratio may fall from what the specification asks for.
  *
- * The three percent is the tolerance the item promises and it is checked against
- * each end of the band separately. The extra unit is the environment rather than
- * the rule: `specs/gravity.md`'s well is working on a rock from the tick it exists,
- * and at `WAVE_MIN_STAR_DIST` it adds `0.94` units per second in a tick — `MU / d^2`
- * over `TICK_HZ` — which is what a reading taken on the tick of arrival can carry,
- * and which the unit below covers with a little over.
+ * 3 percent, which is the figure the review item states, and inside it sit exactly
+ * two things: the midrange's own spread over samples this size, which is about a
+ * third of one percent on each of the two waves, and the at-most one tick of the
+ * well that is in every reading, worth under `0.94` units per second at
+ * `WAVE_MIN_STAR_DIST` against a `60`-to-`110` range. Together they are under a
+ * fifth of the bound; the rest is room for a build's own arithmetic.
  */
-const BAND_TOLERANCE = 0.03;
-const WELL_SLACK = 1;
-
-/** The ends the containment assertion holds every sample between. */
-const FLOOR = BAND_LOW * (1 - BAND_TOLERANCE) - WELL_SLACK;
-const CEILING = BAND_HIGH * (1 + BAND_TOLERANCE) + WELL_SLACK;
-
-/** What a uniform draw over the scaled band averages: its midpoint. */
-const EXPECTED_MEAN = (BAND_LOW + BAND_HIGH) / 2;
-
-/**
- * How far the sample's mean may fall from that midpoint: six percent.
- *
- * A SAMPLING BAND, NOT A PER-ROCK ONE, and it is set from the sampling error
- * rather than from any build. The standard error above is about `1.4` units per
- * second against a mean of `102`, so six percent is more than four standard errors
- * — a conformant build strays outside it about once in ten thousand runs. It stays
- * decisive: a build that does not scale averages `85`, sixteen percent low, and one
- * that scales by twice the stated step averages `119`, sixteen percent high.
- */
-const MEAN_TOLERANCE = 0.06;
+const RATIO_TOLERANCE = 0.03;
 
 let h: Harness;
 
@@ -127,36 +128,57 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("draws wave 6's speeds from a band 20 percent above wave 1's", async () => {
-  const samples: SpeedSample[] = await gatherSpawnSpeeds(h, POSED_WAVE, SEEDS);
+it("drifts wave 6's rocks WAVE_SPEED_STEP per wave faster than wave 1's", async () => {
+  const baseline = await sampleWaveSpeeds(h, BASELINE_WAVE, {
+    rocks: SAMPLE_ROCKS,
+    maxRuns: MAX_RUNS,
+    firstSeed: BASELINE_FIRST_SEED,
+  });
+  const scaled = await sampleWaveSpeeds(h, SCALED_WAVE, {
+    rocks: SAMPLE_ROCKS,
+    maxRuns: MAX_RUNS,
+    firstSeed: SCALED_FIRST_SEED,
+  });
+  // The faster rocks of a later wave, as the last flight of wave 6 left them.
   await captureStill(h, "wave");
 
-  const low = slowest(samples);
-  const high = fastest(samples);
-  const context =
-    `${samples.length} rocks over ${SEEDS.length} wave-${MEASURED_WAVE} ` +
-    `spawns, whose base drift speeds specs/progression.md draws from ` +
-    `[${ROCK_SPEED_MIN.large}, ${ROCK_SPEED_MAX.large}] scaled by ` +
-    `1 + WAVE_SPEED_STEP x ${MEASURED_WAVE - 1} (${SCALE.toFixed(2)}), so ` +
-    `[${BAND_LOW.toFixed(1)}, ${BAND_HIGH.toFixed(1)}]`;
+  // What `specs/progression.md` says the ratio is, for the two waves the build
+  // reported spawning: `1 + WAVE_SPEED_STEP * 5` = `1.20` for a build whose wave
+  // number advances by one, as waves/wave-number-increments requires separately.
+  const wanted = waveSpeedScale(scaled.wave) / waveSpeedScale(baseline.wave);
 
-  assertBetween(
-    low.speed,
-    FLOOR,
-    CEILING,
-    `the slowest of ${context} — ${describeSample(low)}`,
+  const slow = midrange(baseline.speeds);
+  const fast = midrange(scaled.speeds);
+
+  // A midrange of zero would make the ratio meaningless, and a build whose waves
+  // do not drift at all is what produces one.
+  assertGreaterThan(
+    slow,
+    0,
+    `wave ${String(baseline.wave)}'s rocks drifting at all, which is what the ` +
+      `ratio below is taken against — a wave sets its rocks drifting in a ` +
+      `random direction at a Large's base drift speed (specs/progression.md, ` +
+      `specs/rocks.md)`,
   );
-  assertBetween(
-    high.speed,
-    FLOOR,
-    CEILING,
-    `the fastest of ${context} — ${describeSample(high)}`,
-  );
-  assertBetween(
-    meanOf(samples.map((sample) => sample.speed)),
-    EXPECTED_MEAN * (1 - MEAN_TOLERANCE),
-    EXPECTED_MEAN * (1 + MEAN_TOLERANCE),
-    `the mean of ${context}, whose midpoint is ${EXPECTED_MEAN.toFixed(1)} ` +
-      `(WAVE_SPEED_STEP is ${WAVE_SPEED_STEP})`,
+
+  const ratio = fast / slow;
+
+  assertLessThanOrEqual(
+    Math.abs(ratio - wanted),
+    RATIO_TOLERANCE,
+    `wave ${String(scaled.wave)}'s base drift speeds ` +
+      `${wanted.toFixed(2)} times wave ${String(baseline.wave)}'s, within ` +
+      `${String(RATIO_TOLERANCE)} — a wave's speeds are the Large base range ` +
+      `multiplied by 1 + min(WAVE_SPEED_CAP, WAVE_SPEED_STEP * (N - 1)), with ` +
+      `WAVE_SPEED_STEP ${String(WAVE_SPEED_STEP)} and WAVE_SPEED_CAP ` +
+      `${String(WAVE_SPEED_CAP)} (specs/progression.md); measured as the ratio ` +
+      `of the two samples' midranges, ${fast.toFixed(2)} over ` +
+      `${slow.toFixed(2)}, from ${String(scaled.speeds.length)} and ` +
+      `${String(baseline.speeds.length)} rocks read on the tick each wave ` +
+      `arrived, where at most ${SPAWN_WELL_PER_TICK.toFixed(2)} units per ` +
+      `second of the well is in a reading; a ratio of 1.00 is a build that ` +
+      `never scales, and a build that scales from N rather than from N - 1 ` +
+      `sits just outside this bound and is decided squarely by ` +
+      `waves/speed-is-capped`,
   );
 });

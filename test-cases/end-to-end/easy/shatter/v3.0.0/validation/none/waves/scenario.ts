@@ -29,6 +29,7 @@
 
 import { fail } from "../assert";
 import {
+  MU,
   STAR_X,
   STAR_Y,
   TICK_DT,
@@ -324,73 +325,121 @@ export function describeRock(rock: {
 /* Sampling a wave's base drift speeds                                        */
 /* -------------------------------------------------------------------------- */
 
-/** One rock of one spawned wave, as the two speed checks read it. */
+/** A wave's base drift speeds, and the wave number the build spawned them for. */
 export interface SpeedSample {
-  /** The seed the game was opened on, so a failure can name the game. */
-  seed: number;
-  /** The wave the rock belongs to. */
+  /** The wave number the build reported when the rocks arrived. */
   wave: number;
-  /** The rock's id, so a failure can name the rock. */
-  id: number;
-  /** The magnitude of the velocity it entered the field with. */
-  speed: number;
+  /** How many waves were flown to gather them. */
+  runs: number;
+  /** Every rock's speed, read on the tick its wave arrived. */
+  speeds: number[];
+}
+
+/** How many rocks a speed sample gathers, and how many waves it may fly for them. */
+export interface SampleOptions {
+  /** How many speeds are wanted. The sweep stops once it holds this many. */
+  rocks: number;
+  /** The most waves it will fly. A ceiling on the scenario, not a threshold. */
+  maxRuns: number;
+  /** The seed the first run is reset to; each later run takes the next. */
+  firstSeed: number;
 }
 
 /**
- * Clear a wave on each of `seeds` and hand back the speed of every rock the wave
- * that followed put up.
+ * Every base drift speed a wave puts up, gathered over as many fresh runs as it
+ * takes to hold `rocks` of them.
  *
- * A WAVE IS ONE SAMPLE OF A DRAW, NOT A FIGURE. `specs/rocks.md` gives a rock's
- * base drift speed as a value "drawn uniformly from its size's range", and
- * `specs/simulation.md` lists those draws among the game's seeded randomness — so
- * a single wave says almost nothing about the multiplier `specs/progression.md`
- * applies to the range, and a hundred rocks says a great deal. This gathers the
- * hundred; what counts as agreement is decided in the check that asserts it.
+ * A wave's speeds are DRAWN — `specs/progression.md` sets each rock "drifting in a
+ * random direction" at a Large's base drift speed, which `specs/rocks.md` draws
+ * "uniformly from its size's range" (`60` to `110`) — so a single wave says almost
+ * nothing about the factor the range was multiplied by. What the two speed checks
+ * compare is a STATISTIC over many draws, and this is what gathers them: each run
+ * is a fresh `reset` to its own seed, so each is an independent draw of the whole
+ * wave (`specs/simulation.md`, "Seeded randomness").
  *
- * EVERY SPEED IS READ ON THE TICK ITS ROCK ARRIVED, through {@link waveArrival},
- * because `specs/gravity.md`'s well starts working on a rock the moment it exists:
- * a rock two hundred units out gains most of a unit per second of speed in every
- * tick that passes, so a reading taken even a tenth of a second late is partly the
- * environment's rather than the wave's.
+ * A ROCK COUNT RATHER THAN A RUN COUNT, and that is not a detail. How many rocks a
+ * wave holds is the BUILD's answer to a different rule, and `wave-one-spawns-four`
+ * and `wave-n-spawns-three-plus-n` are the items for it. A sweep of a fixed number
+ * of RUNS would hand a build that spawns too few rocks a smaller sample and a
+ * noisier statistic, and could fail it on the speed rule for a defect in the count
+ * rule. Gathering to a rock count gives every build the same sample and the same
+ * precision, and it is `maxRuns` that keeps a build spawning almost nothing from
+ * spinning.
+ *
+ * THE WAVE NUMBER COMES BACK BECAUSE THE FACTOR IS A FUNCTION OF IT, and the two
+ * speed checks read the factor against the wave the BUILD says it spawned rather
+ * than the one this posed — for the same reason, and against the same neighbouring
+ * item, `wave-number-increments`. The wave has to be the SAME across every run, or
+ * the sample is a mixture of two factors and its midrange means nothing.
+ *
+ * `wave` is the wave whose speeds are wanted, so the game is posed at `wave - 1`
+ * and cleared into it.
  */
-export async function gatherSpawnSpeeds(
+export async function sampleWaveSpeeds(
   h: Harness,
-  posedWave: number,
-  seeds: readonly number[],
-): Promise<SpeedSample[]> {
-  const samples: SpeedSample[] = [];
-  for (const seed of seeds) {
-    await h.debug.reset({ seed });
-    const cleared = await clearAWave(h, { wave: posedWave });
+  wave: number,
+  options: SampleOptions,
+): Promise<SpeedSample> {
+  const speeds: number[] = [];
+  let spawned: number | undefined;
+  let runs = 0;
+
+  while (speeds.length < options.rocks && runs < options.maxRuns) {
+    await h.debug.reset({ seed: options.firstSeed + runs });
+    runs += 1;
+    const cleared = await clearAWave(h, { wave: wave - 1 });
     const arrival = await arrivedWave(h, cleared);
-    for (const rock of arrival.rocks) {
-      samples.push({
-        seed,
-        wave: arrival.wave,
-        id: rock.id,
-        speed: speedOf(rock),
-      });
+    if (spawned === undefined) spawned = arrival.wave;
+    else if (arrival.wave !== spawned) {
+      fail(
+        `the same wave number on every run posed at ${String(wave - 1)} and ` +
+          `cleared, so one sample is one wave's speed factor ` +
+          `(specs/progression.md)`,
+        `run ${String(runs)} arrived at wave ${String(arrival.wave)}, where an ` +
+          `earlier run arrived at ${String(spawned)}`,
+      );
     }
+    for (const rock of arrival.rocks) speeds.push(speedOf(rock));
   }
-  return samples;
+
+  return { wave: spawned ?? wave, runs, speeds };
 }
 
-/** The arithmetic mean of a sample, which is what a uniform draw's midpoint predicts. */
-export function meanOf(values: readonly number[]): number {
-  return values.reduce((total, value) => total + value, 0) / values.length;
+/**
+ * The midpoint of a sample's observed range, `(min + max) / 2`.
+ *
+ * THE STATISTIC BOTH SPEED CHECKS COMPARE, and it is chosen rather than the mean
+ * because of how fast each converges. `specs/rocks.md` draws a base speed
+ * UNIFORMLY from `[60 s, 110 s]`, where `s` is the wave's factor, and for a uniform
+ * the midrange is the minimum-variance unbiased estimator of the distribution's
+ * midpoint, `85 s`: its spread falls like `1 / n` rather than like `1 / sqrt(n)`.
+ * Over a hundred-odd rocks the mean of a `60`-to-`110` draw still wanders by about
+ * `1.4` percent, which is half of the `3` percent both items allow; the midrange
+ * wanders by about a third of one percent.
+ *
+ * The ratio of two waves' midranges is therefore the ratio of their factors, with
+ * the base range `specs/rocks.md` fixes cancelling out of it entirely — which is
+ * what keeps these two items about the SCALING and leaves the range itself to
+ * `rocks/drift-speed-large`.
+ */
+export function midrange(values: readonly number[]): number {
+  if (values.length === 0) {
+    fail("at least one sampled base drift speed", "no rocks were sampled");
+  }
+  return (Math.min(...values) + Math.max(...values)) / 2;
 }
 
-/** The sample whose speed is the lowest, for a failure message that names one. */
-export function slowest(samples: readonly SpeedSample[]): SpeedSample {
-  return samples.reduce((low, one) => (one.speed < low.speed ? one : low));
-}
-
-/** The sample whose speed is the highest, for a failure message that names one. */
-export function fastest(samples: readonly SpeedSample[]): SpeedSample {
-  return samples.reduce((high, one) => (one.speed > high.speed ? one : high));
-}
-
-/** One speed sample as a short string, for a message that has to name which rock. */
-export function describeSample(sample: SpeedSample): string {
-  return `rock ${sample.id} of wave ${sample.wave} on seed ${sample.seed}, at ${sample.speed.toFixed(2)} units per second`;
-}
+/**
+ * How far one tick of the well can move a base drift speed at the closest a wave
+ * may spawn to the star, in units per second.
+ *
+ * A rock is read on the first tick it is on the field, but whether the build
+ * spawned it before or after that tick's gravity step is the build's own business
+ * (`specs/simulation.md` fixes the order of the six steps in a tick and says
+ * nothing about where a spawn sits among them). So at most one tick of the well is
+ * in every reading. `specs/progression.md` spawns no rock closer than
+ * `WAVE_MIN_STAR_DIST` (`200`) to the star, where `specs/gravity.md` pulls at
+ * `MU / d^2` — a shade under one unit per second over a tick, against a smallest
+ * legal base speed of `60`.
+ */
+export const SPAWN_WELL_PER_TICK = (MU / WAVE_MIN_STAR_DIST ** 2) * TICK_DT;
