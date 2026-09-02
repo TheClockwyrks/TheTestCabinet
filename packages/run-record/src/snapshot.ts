@@ -116,6 +116,17 @@ export type SubjectOut = {
    * assembled by hand rather than from a named configuration.
    */
   ggPreset?: string | null;
+  /**
+   * The **id** of the gg configuration this run was launched from — the
+   * [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) recorded on the
+   * run's capability set. Lifted onto the card beside the
+   * [name](Self::gg_preset) because it is what identifies the run's [coverage
+   * cell](https://docs.testcabinet.ai/components/backend/coverage/), and so what a
+   * listing narrowed to one configuration's runs matches on: a name is display text
+   * that is rewritten freely and is unique to nothing. `None` for every
+   * third-party-harness run and for a gg run assembled by hand.
+   */
+  ggConfigId?: string | null;
 };
 
 /**

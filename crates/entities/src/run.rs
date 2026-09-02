@@ -43,20 +43,42 @@ pub struct Model {
     /// console's run log identifies a gg row by its configuration, and the listing
     /// searches and orders that cell by this column rather than by `model_id`.
     ///
+    /// Display text and a slicing key, not identity: the run's cell is keyed on
+    /// [`gg_config_id`](Self::gg_config_id), so renaming a configuration re-points
+    /// nothing.
+    ///
     /// `NULL` for every non-gg run (the lift is gated on the harness) and for a gg
     /// run assembled by hand rather than from a named configuration; both fall back
     /// to `model_id` wherever this column is consulted.
     #[sea_orm(nullable)]
     pub gg_preset: Option<String>,
+    /// The **id** of the gg configuration the run was launched from, lifted from
+    /// `record.subject.gg_capability_set.preset_id`.
+    ///
+    /// It is the first half of a gg run's cell identity, and the id rather than the
+    /// [name](Self::gg_preset) because a name is display text: an operator rewrites one
+    /// freely and two of an account's configurations may carry the same one, so a cell
+    /// keyed on the name would empty itself on a rename and merge two configurations that
+    /// happen to agree. The ladder's climber key is the same id, so a rung's verdicts and
+    /// the runs counted under them describe one configuration.
+    ///
+    /// `NULL` for every non-gg run (the lift is gated on the harness), for a gg run
+    /// assembled by hand rather than from a saved configuration, and for a gg row written
+    /// before the column existed whose configuration the startup backfill
+    /// (`Db::backfill_gg_config_id`) could not resolve — all of which read as the empty
+    /// segment, the harness form of the cell key.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub gg_config_id: Option<String>,
     /// The models the run's gg capability set binds, sorted, de-duplicated, and
     /// comma-joined, lifted from `record.subject.gg_capability_set` beside
     /// [`gg_preset`](Self::gg_preset).
     ///
-    /// It is the second half of a gg run's cell identity. The configuration's name
-    /// says *what* was run and this says *on what*: one configuration can bind a
-    /// different model to every agent, so two runs of one configuration that differ
-    /// only on a subagent's model are two arms, and a cell reading `model_id` alone
-    /// — the representative primary-slot binding — would merge them. It names which
+    /// It is the second half of a gg run's cell identity. The
+    /// [configuration](Self::gg_config_id) says *what* was run and this says *on what*:
+    /// one configuration can bind a different model to every agent, so two runs of one
+    /// configuration that differ only on a subagent's model are two arms, and a cell
+    /// reading `model_id` alone — the representative primary-slot binding — would merge
+    /// them. It names which
     /// agent runs which model rather than the bare set, because two arms that swap
     /// two models between two agents bind the same set. Stored as one sorted, joined
     /// string so the coverage counts can group on it in SQL and so the order the set

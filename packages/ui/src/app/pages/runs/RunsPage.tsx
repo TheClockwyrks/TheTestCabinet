@@ -42,7 +42,8 @@ export function RunsPage() {
   const canStop = useCanStopRuns();
   const findModel = useFindModel();
   const filters = useRunFilters();
-  const { page, setPage, committedQuery, facets, latestVersions } = filters;
+  const { page, setPage, committedQuery, facets, latestVersions, ggConfigId } =
+    filters;
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -109,6 +110,10 @@ export function RunsPage() {
       version: facets.version || undefined,
       harness: facets.harness || undefined,
       model: facets.model || undefined,
+      // Set only by a coverage cell's Runs link, which narrows to the runs behind
+      // one cell's figure. The bar carries no control for it (see
+      // `useRunFilters`), so it reaches the query straight from the URL.
+      ggConfigId: ggConfigId || undefined,
       latestVersions,
       sort,
       dir,
@@ -131,6 +136,7 @@ export function RunsPage() {
     page,
     needle,
     facets,
+    ggConfigId,
     latestVersions,
     sort,
     dir,

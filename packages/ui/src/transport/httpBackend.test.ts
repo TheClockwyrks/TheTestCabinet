@@ -165,6 +165,24 @@ describe("createBackendExec unreadable listing", () => {
   });
 });
 
+describe("createHttpBackend summary listing", () => {
+  it("carries the gg configuration filter under its wire name", async () => {
+    // The filter is what a coverage cell's Runs link narrows by, and a name the
+    // backend does not bind is a filter that silently disappears: the listing would
+    // answer with every gg run of the model while claiming to be one cell's.
+    const fetchMock = vi.fn(async (_url: string) =>
+      Response.json({ runs: [], total: 0 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createHttpBackend(BACKEND);
+    await client.listRunSummaries({ offset: 0, ggConfigId: "cfg-a" });
+
+    const url = new URL(String(fetchMock.mock.calls[0]![0]));
+    expect(url.searchParams.get("ggConfigId")).toBe("cfg-a");
+  });
+});
+
 describe("createBackendExec catalog listing", () => {
   // The listing is what a catalog page renders from, and it must be ONE request:
   // the fan-out this endpoint's metadata replaced (resolve every version of every

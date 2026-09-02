@@ -1822,13 +1822,36 @@ pub fn is_valid_agent_slug(slug: &str) -> bool {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgCapabilitySet {
-    /// The name of a saved preset this set was assembled from (for example
-    /// `"minimal"`, `"full"`, or `"planning-A"`), when it is a named preset rather
-    /// than a hand-assembled configuration. A study is a sweep over presets, so this
-    /// records which one produced a run.
+    /// The **name** a saved configuration carried at launch (for example `"minimal"`,
+    /// `"full"`, or `"planning-A"`), when this set was launched from one rather than
+    /// assembled by hand. A study is a sweep over configurations, so this records which
+    /// one produced a run.
+    ///
+    /// Display text and a slicing key: it is what the run log shows, what the
+    /// [query language](https://docs.testcabinet.ai/gg/analysis/query-language/) reads as
+    /// `preset`, and what a comparison groups by. It is not identity — a name is rewritten
+    /// freely and two configurations may share one, so what a run is *attributed* to is
+    /// [`preset_id`](Self::preset_id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub preset: Option<String>,
+    /// The **id** of the saved configuration this set was launched from, when it was
+    /// launched from one rather than assembled by hand.
+    ///
+    /// This is what identifies a run's
+    /// [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/), and
+    /// [`preset`](Self::preset) beside it is what a person reads: the id is minted once and
+    /// never rewritten, so renaming a configuration costs a plan nothing and two
+    /// configurations that happen to agree on a name stay two cells.
+    ///
+    /// Recording it is consistent with gg's rule that launching resolves a configuration's
+    /// internal ids away. That rule covers the ids of [agent profiles](GgAgentConfig::id),
+    /// which are references the model reads back by slug, and nothing in a launched set
+    /// points at the configuration's own id — the model is never shown it. It rides along
+    /// as provenance, so a run can be attributed to the configuration that produced it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub preset_id: Option<String>,
     /// The agent profiles this run is configured with, each with its own capabilities,
     /// model binding, and delegation graph. **The first is the [root](Self::root)** — it
     /// drives the top-level session and is the default profile for issue dispatch and
@@ -1897,6 +1920,7 @@ impl Default for GgCapabilitySet {
     fn default() -> Self {
         Self {
             preset: None,
+            preset_id: None,
             agents: default_agents(),
             model_slots: Vec::new(),
             limits: GgRunLimits::authored(),
@@ -1921,6 +1945,7 @@ impl GgCapabilitySet {
     pub fn minimal(model_id: impl Into<String>) -> Self {
         Self {
             preset: Some("minimal".to_string()),
+            preset_id: None,
             agents: vec![GgAgentConfig {
                 model_id: model_id.into(),
                 ..GgAgentConfig::root()

@@ -150,6 +150,7 @@ fn queued_job(harness_slug: &str, gg_config_json: Option<&str>) -> job::Model {
         model_id: "claude-sonnet-4-5".to_string(),
         gg_config_json: gg_config_json.map(str::to_string),
         gg_preset: None,
+        gg_config_id: None,
         gg_models: None,
         job_token: "t".to_string(),
         record_id: None,

@@ -856,9 +856,8 @@ fn a_gg_rungs_gate_evidence_is_read_from_its_own_configurations_cell() {
     };
     let case = rung_case(&rung);
     // The key `rung_runs` asks the store for. The two gg segments are what keep one
-    // configuration's runs out of another's evidence: the name, because run counts are
-    // global and a run records the name it was launched from, and the bound models, because
-    // one configuration runs several.
+    // configuration's runs out of another's evidence: the configuration's id, because that is
+    // what it is across time, and the bound models, because one configuration runs several.
     assert_eq!(
         cell_key(&case, &gg_member("cfg-1", "opus", "haiku")),
         (
@@ -867,7 +866,7 @@ fn a_gg_rungs_gate_evidence_is_read_from_its_own_configurations_cell() {
             "hard".to_string(),
             "gg".to_string(),
             "opus".to_string(),
-            "Critic sweep".to_string(),
+            "cfg-1".to_string(),
             "reviewer=haiku,root=opus".to_string(),
         )
     );
@@ -887,6 +886,59 @@ fn a_gg_rungs_gate_evidence_is_read_from_its_own_configurations_cell() {
         cell_key(&case, &gg_member("cfg-1", "opus", "haiku")),
         cell_key(&case, &member("opus"))
     );
+}
+
+#[test]
+fn a_climbers_key_and_its_cell_name_one_configuration() {
+    let rung = StoredLadderRung {
+        id: "r1".to_string(),
+        slug: "carom".to_string(),
+        version: "v1.2.0".to_string(),
+        variant: "hard".to_string(),
+        runs_override: None,
+    };
+    let case = rung_case(&rung);
+    let combo = gg_combo("cfg-1", "opus", "haiku");
+
+    // The two halves of a ladder — the verdicts it records against a climber, and the runs
+    // it counts under that climber's cells — name the configuration by the same value. A
+    // ladder whose halves disagreed would keep a climber's history while resetting the
+    // evidence beneath it.
+    let key = climber_key(&combo);
+    assert_eq!(key, "gg:cfg-1|primary=opus,reviewer.critic=haiku");
+    assert_eq!(
+        cell_key(&case, &gg_member("cfg-1", "opus", "haiku")).5,
+        "cfg-1"
+    );
+
+    // Rename the configuration and neither half moves.
+    let renamed = GgLibrary::from_parts(
+        vec![
+            gg_config("cfg-1", "Sweep, take two"),
+            gg_config("cfg-2", "Solo sweep"),
+        ],
+        Vec::new(),
+    );
+    let after = resolve_member(&combo, &renamed);
+    assert_eq!(climber_key(&after.combo), key);
+    assert_eq!(
+        cell_key(&case, &after),
+        cell_key(&case, &gg_member("cfg-1", "opus", "haiku"))
+    );
+
+    // Two configurations an account gave one name are two climbers and two cells, on both
+    // halves at once.
+    let twins = GgLibrary::from_parts(
+        vec![
+            gg_config("cfg-1", "Critic sweep"),
+            gg_config("cfg-2", "Critic sweep"),
+        ],
+        Vec::new(),
+    );
+    let first = resolve_member(&combo, &twins);
+    let second = resolve_member(&gg_combo("cfg-2", "opus", "haiku"), &twins);
+    assert_ne!(climber_key(&first.combo), climber_key(&second.combo));
+    assert_ne!(cell_key(&case, &first), cell_key(&case, &second));
 }
 
 #[test]

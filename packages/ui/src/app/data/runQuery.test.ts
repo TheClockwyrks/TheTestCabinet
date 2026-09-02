@@ -20,6 +20,7 @@ function summary(
     rating?: Rating | null;
     aesthetic?: AestheticRating | null;
     ggPreset?: string | null;
+    ggConfigId?: string | null;
   } = {},
 ): RunSummary {
   const tokens = fields.tokens === undefined ? 100 : fields.tokens;
@@ -37,6 +38,7 @@ function summary(
       harnessVersion: "1",
       modelId: fields.model ?? "anthropic/claude",
       ggPreset: fields.ggPreset ?? null,
+      ggConfigId: fields.ggConfigId ?? null,
     },
     caseName: fields.testCase ?? "carom",
     metrics: {
@@ -266,6 +268,52 @@ describe("runSummaryPage", () => {
       "a",
       "b",
     ]);
+  });
+
+  it("ggConfigId selects one configuration's runs by its id", () => {
+    const runs = [
+      // Two configurations carrying one name, and one of `cfg-a`'s runs recorded
+      // before it was renamed. Only the id tells the three apart.
+      summary("mine", {
+        harness: "gg",
+        model: "mock/echo",
+        ggPreset: "planning-A",
+        ggConfigId: "cfg-a",
+      }),
+      summary("renamed", {
+        harness: "gg",
+        model: "mock/echo",
+        ggPreset: "planning-old",
+        ggConfigId: "cfg-a",
+      }),
+      summary("theirs", {
+        harness: "gg",
+        model: "mock/echo",
+        ggPreset: "planning-A",
+        ggConfigId: "cfg-b",
+      }),
+      // Assembled by hand: no configuration, so no configuration's listing.
+      summary("hand", { harness: "gg", model: "mock/echo" }),
+      // The guard is on the HARNESS, mirroring the backend's lift: a non-gg card
+      // carrying an id somehow is still filed under no configuration.
+      summary("impostor", { harness: "claude", ggConfigId: "cfg-a" }),
+    ];
+    expect(ids(runSummaryPage(runs, { ggConfigId: "cfg-a" })).sort()).toEqual([
+      "mine",
+      "renamed",
+    ]);
+    expect(ids(runSummaryPage(runs, { ggConfigId: "cfg-b" }))).toEqual([
+      "theirs",
+    ]);
+    // What the name answers instead, which is why a cell links by the id: it
+    // crosses the two configurations and misses the run recorded under the old
+    // name.
+    expect(ids(runSummaryPage(runs, { q: "planning-A" })).sort()).toEqual([
+      "mine",
+      "theirs",
+    ]);
+    // An empty id is ignored, like the other equality filters.
+    expect(runSummaryPage(runs, { ggConfigId: "" }).total).toBe(5);
   });
 
   it("sorts model by the gg configuration where there is one", () => {

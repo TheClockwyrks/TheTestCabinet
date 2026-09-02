@@ -38,11 +38,11 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::test_case::{TestType, version_key};
 use test_cabinet_entities::{
-    case_reference_build, case_reference_sheet, comparison, coverage_group, coverage_plan,
-    coverage_settings, gg_agent, gg_config, gg_dashboard, gg_saved_query, harness_config, job,
-    ladder, ladder_climber, ladder_outcome, ladder_rung, model, model_alias, model_price,
-    model_probe, model_probe_item, publish_job, review, review_plan, review_revision, run,
-    run_link, snapshot_state, tournament,
+    backfill_state, case_reference_build, case_reference_sheet, comparison, coverage_group,
+    coverage_plan, coverage_settings, gg_agent, gg_config, gg_dashboard, gg_saved_query,
+    harness_config, job, ladder, ladder_climber, ladder_outcome, ladder_rung, model, model_alias,
+    model_price, model_probe, model_probe_item, publish_job, review, review_plan, review_revision,
+    run, run_link, snapshot_state, tournament,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -379,6 +379,12 @@ pub struct SnapshotState {
 /// The fixed primary key of the single-row `snapshot_state` table.
 const SNAPSHOT_STATE_ID: i32 = 1;
 
+/// The `backfill_state` key of [`Db::backfill_gg_config_id`].
+const RUN_GG_CONFIG_ID_BACKFILL: &str = "run.gg_config_id";
+
+/// The `backfill_state` key of [`Db::backfill_in_flight_gg_config_ids`].
+const JOB_GG_CONFIG_ID_BACKFILL: &str = "job.gg_config_id";
+
 /// The SeaORM-backed store.
 pub struct Db {
     handle: ConnHandle,
@@ -547,6 +553,7 @@ impl Db {
             run::Column::HarnessVersion,
             run::Column::ModelId,
             run::Column::GgPreset,
+            run::Column::GgConfigId,
             run::Column::GgModels,
             run::Column::TestType,
             run::Column::RunState,
@@ -580,6 +587,7 @@ impl Db {
             harness_version: Set(record.subject.harness_version.clone()),
             model_id: Set(record.subject.model_id.clone()),
             gg_preset: Set(lifted.gg_preset),
+            gg_config_id: Set(lifted.gg_config_id),
             gg_models: Set(lifted.gg_models),
             test_type: Set(lifted.test_type),
             run_state: Set(run_state_str(record.status.state).to_string()),
@@ -2164,6 +2172,9 @@ struct LiftedRunMetrics {
     /// The gg configuration name the run was launched from, or `None` for a non-gg
     /// run or a gg run assembled without one (see [`lifted_gg_preset`]).
     gg_preset: Option<String>,
+    /// The id of the gg configuration the run was launched from, or `None` for a
+    /// non-gg run or a gg run assembled without one (see [`lifted_gg_config_id`]).
+    gg_config_id: Option<String>,
     /// The models the run's gg capability set binds, as one comparable string, or
     /// `None` for a non-gg run (see [`lifted_gg_models`]).
     gg_models: Option<String>,
@@ -2186,6 +2197,7 @@ fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
     LiftedRunMetrics {
         test_type: record.subject.test_type.as_str().to_string(),
         gg_preset: lifted_gg_preset(record),
+        gg_config_id: lifted_gg_config_id(record),
         gg_models: lifted_gg_models(record),
         run_time_seconds: record.metrics.run_time_seconds,
         total_tokens: record.metrics.tokens.total().unwrap_or(0) as i64,
@@ -2232,12 +2244,36 @@ fn lifted_gg_preset(record: &RunRecord) -> Option<String> {
         .and_then(|set| set.preset.clone())
 }
 
+/// The lifted `run.gg_config_id` column value: the id of the gg configuration the run
+/// was launched from, or `None`.
+///
+/// The first half of a gg run's [cell identity](CellKey) — the id, not the
+/// [name](lifted_gg_preset), because a name is rewritten freely and is unique to nothing,
+/// while the id a configuration is minted with is the same text tomorrow.
+///
+/// Gated on the **harness** exactly as [`lifted_gg_preset`] is, so a set that somehow rode
+/// in on a third-party-harness record cannot put the run in a cell no gg run can join. A
+/// gg run assembled by hand carries no configuration and so no id, which reads as the
+/// empty segment — the harness form of the cell key.
+fn lifted_gg_config_id(record: &RunRecord) -> Option<String> {
+    if record.subject.harness_slug != HarnessSlug::Gg {
+        return None;
+    }
+    record
+        .subject
+        .gg_capability_set
+        .as_ref()
+        .and_then(|set| set.preset_id.clone())
+}
+
 /// The lifted `run.gg_models` column value: the models the run's capability set binds,
 /// sorted, de-duplicated and comma-joined, or `None`.
 ///
 /// The other half of a gg run's [cell identity](CellKey), and gated on the **harness**
-/// exactly as [`lifted_gg_preset`] is, so the pair is written and absent together and a
-/// consumer that has tested one need not re-derive the other.
+/// exactly as [`lifted_gg_config_id`] and [`lifted_gg_preset`] are, so the three are
+/// written and absent together and a consumer that has tested one need not re-derive the
+/// others. (Absent for one further reason of its own: a hand-assembled set names no
+/// configuration, so it has an id and a name of `None` while still binding models.)
 ///
 /// The string is asked of the contract
 /// ([`bound_model_key`](test_cabinet_core::gg::GgCapabilitySet::bound_model_key)) rather
@@ -3287,7 +3323,7 @@ impl Db {
             .column(run::Column::Variant)
             .column(run::Column::HarnessSlug)
             .column(run::Column::ModelId)
-            .column(run::Column::GgPreset)
+            .column(run::Column::GgConfigId)
             .column(run::Column::GgModels)
             .column_as(run::Column::Id.count(), "cnt")
             .filter(run::Column::RunState.eq("completed"))
@@ -3297,7 +3333,7 @@ impl Db {
             .group_by(run::Column::Variant)
             .group_by(run::Column::HarnessSlug)
             .group_by(run::Column::ModelId)
-            .group_by(run::Column::GgPreset)
+            .group_by(run::Column::GgConfigId)
             .group_by(run::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
@@ -3323,7 +3359,7 @@ impl Db {
             .column(job::Column::Variant)
             .column(job::Column::HarnessSlug)
             .column(job::Column::ModelId)
-            .column(job::Column::GgPreset)
+            .column(job::Column::GgConfigId)
             .column(job::Column::GgModels)
             .column_as(job::Column::Id.count(), "cnt")
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
@@ -3333,7 +3369,7 @@ impl Db {
             .group_by(job::Column::Variant)
             .group_by(job::Column::HarnessSlug)
             .group_by(job::Column::ModelId)
-            .group_by(job::Column::GgPreset)
+            .group_by(job::Column::GgConfigId)
             .group_by(job::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
@@ -3376,7 +3412,7 @@ impl Db {
             .column(run::Column::Variant)
             .column(run::Column::HarnessSlug)
             .column(run::Column::ModelId)
-            .column(run::Column::GgPreset)
+            .column(run::Column::GgConfigId)
             .column(run::Column::GgModels)
             .column_as(run::Column::Id.count(), "cnt")
             // Left-join *this account's* review and keep the rows that found none.
@@ -3407,7 +3443,7 @@ impl Db {
             .group_by(run::Column::Variant)
             .group_by(run::Column::HarnessSlug)
             .group_by(run::Column::ModelId)
-            .group_by(run::Column::GgPreset)
+            .group_by(run::Column::GgConfigId)
             .group_by(run::Column::GgModels)
             .into_tuple()
             .all(&self.conn())
@@ -3439,7 +3475,7 @@ impl Db {
         cell: &CellKey,
         reviewer_user_id: &str,
     ) -> Result<Vec<CellRunRating>> {
-        let (slug, version, variant, harness, model, gg_preset, gg_models) = cell;
+        let (slug, version, variant, harness, model, gg_config_id, gg_models) = cell;
         let rows: Vec<(String, bool, Option<String>)> = run::Entity::find()
             .select_only()
             .column(run::Column::Id)
@@ -3465,7 +3501,9 @@ impl Db {
             .filter(run::Column::Variant.eq(variant))
             .filter(run::Column::HarnessSlug.eq(harness))
             .filter(run::Column::ModelId.eq(model))
-            .filter(Expr::expr(cell_gg_segment(run::Column::GgPreset)).eq(gg_preset.as_str()))
+            .filter(
+                Expr::expr(cell_gg_segment(run::Column::GgConfigId)).eq(gg_config_id.as_str()),
+            )
             .filter(Expr::expr(cell_gg_segment(run::Column::GgModels)).eq(gg_models.as_str()))
             .order_by_asc(run::Column::FinishedAt)
             .order_by_asc(run::Column::Id)
@@ -3590,9 +3628,9 @@ fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
 }
 
 /// A coverage cell's identity:
-/// `(slug, version, variant, harness, launch model, gg preset, gg models)` — the key
-/// every grouped-count query returns its tallies under, and the identity a gate reads
-/// its evidence by.
+/// `(slug, version, variant, harness, launch model, gg configuration id, gg models)` —
+/// the key every grouped-count query returns its tallies under, and the identity a gate
+/// reads its evidence by.
 ///
 /// The first five segments identify a **harness** cell, and its last two are empty. A
 /// gg run has no such identity to be counted by: it is launched from a saved
@@ -3600,19 +3638,28 @@ fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
 /// otherwise pile into a single `gg/<root model>` cell. The two extra segments are what
 /// separate them:
 ///
-/// - the configuration's **name**, because
-///   [counts are global](https://docs.testcabinet.ai/components/backend/coverage/): a run
-///   records the name it was launched from, and keying on the account-scoped id of the
-///   configuration behind it would make a gg cell's count per-account instead;
+/// - the configuration's **id**, because that is what a configuration *is* across time:
+///   its name is display text an operator rewrites freely and nothing keeps unique within
+///   an account, so a cell keyed on the name would empty itself on a rename — the plan
+///   reading 0/N and the next top-up re-buying every run behind it — and would merge two
+///   configurations that happen to agree on one. A ladder's climber is keyed on the same
+///   id ([`combination_key`]), so a rung's recorded verdicts and the runs counted under
+///   them describe one configuration rather than two halves that disagree;
 /// - the **models the bound set runs on**, because one configuration can run several.
 ///   Two members that agree on the root agent's model and differ on a reviewer's are two
 ///   arms of a study, and a cell reading only the root model would merge them.
+///
+/// A configuration is account-scoped, which costs the cell nothing: no other account's run
+/// could satisfy a cell by being "the same configuration" in the first place, so keying on
+/// the id narrows nothing that keying on the name kept. Counts stay
+/// [global](https://docs.testcabinet.ai/components/backend/coverage/) in the sense that
+/// matters — whoever launched a run of *this* configuration, it counts.
 pub type CellKey = (String, String, String, String, String, String, String);
 
 /// Per-cell counts from a grouped coverage query, keyed by [`CellKey`].
 pub type CellCounts = HashMap<CellKey, u32>;
 
-/// Fold the `(slug, version, variant, harness, model, gg preset, gg models, count)`
+/// Fold the `(slug, version, variant, harness, model, gg configuration id, gg models, count)`
 /// rows a grouped coverage query returns into a [`CellCounts`] map, reading the two
 /// nullable gg columns as the empty string a harness cell carries.
 ///
@@ -3623,7 +3670,7 @@ pub type CellCounts = HashMap<CellKey, u32>;
 /// non-negative; the clamp is defensive.
 fn cell_counts(rows: Vec<CellCountRow>) -> CellCounts {
     let mut counts = CellCounts::new();
-    for (slug, version, variant, harness, model, gg_preset, gg_models, count) in rows {
+    for (slug, version, variant, harness, model, gg_config_id, gg_models, count) in rows {
         *counts
             .entry((
                 slug,
@@ -3631,7 +3678,7 @@ fn cell_counts(rows: Vec<CellCountRow>) -> CellCounts {
                 variant,
                 harness,
                 model,
-                gg_preset.unwrap_or_default(),
+                gg_config_id.unwrap_or_default(),
                 gg_models.unwrap_or_default(),
             ))
             .or_insert(0) += count.max(0) as u32;
@@ -4801,6 +4848,20 @@ pub struct SummaryFilter {
     /// `NULL` matches: every pre-engine-era record deserializes to `none`, so an
     /// un-backfillable row can only plausibly be an engineless-era one.
     pub engine: Option<String>,
+    /// Restrict to the runs launched from one gg configuration, by the configuration's
+    /// **id** (`gg_config_id`).
+    ///
+    /// The id rather than the configuration's name, which is display text an operator
+    /// rewrites freely and nothing keeps unique within an account. A coverage
+    /// cell counts by this same column, so a listing narrowed by it holds exactly the runs
+    /// a cell's count is made of, and a reviewer following a cell's link reads the rows
+    /// behind the figure they clicked.
+    ///
+    /// The bare id the account's library is keyed by, never the `saved:<id>` spelling a
+    /// stored member may carry: the run records the bare form and this is an equality on
+    /// that column. `NULL` (every non-gg run, and a gg run assembled by hand) matches no
+    /// id.
+    pub gg_config_id: Option<String>,
     /// Restrict every run to its case's **current** version — the greatest
     /// `major.minor` that case has a run for within this filter's
     /// [`state`](Self::state) slice (see [`Db::current_case_versions`]). This is
@@ -4981,6 +5042,18 @@ fn summary_query(filter: &SummaryFilter, scope: Option<&[CaseVersions]>) -> Sele
     }
     if let Some(variant) = filter.variant.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::Variant.eq(variant));
+    }
+    if let Some(config_id) = filter
+        .gg_config_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        // An equality on the same column a gg cell's counts group on, so the listing this
+        // narrows to and the count a cell shows are the one set of runs. A NULL column
+        // never equals an id, which is the contract: a run launched from no configuration
+        // belongs to no configuration's listing.
+        query = query.filter(run::Column::GgConfigId.eq(config_id));
     }
     if let Some(q) = filter.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         // Lower both sides so the match is case-insensitive on any backend (SQLite's
@@ -5317,10 +5390,16 @@ pub struct NewJob {
     /// The **gg** run's capability set serialized to JSON, lifted from the launch
     /// request at enqueue. `None` for every third-party-harness job.
     pub gg_config_json: Option<String>,
-    /// The **gg** run's configuration name, lifted from that same capability set — the
-    /// first half of a queued gg run's [cell identity](CellKey). `None` for every
-    /// third-party-harness job, and for a gg run assembled without a configuration.
+    /// The **gg** run's configuration name, lifted from that same capability set for the
+    /// console's active-run list. Display text, not identity — that is
+    /// [`gg_config_id`](Self::gg_config_id). `None` for every third-party-harness job,
+    /// and for a gg run assembled without a configuration.
     pub gg_preset: Option<String>,
+    /// The id of the **gg** configuration the run was launched from, lifted from that
+    /// same capability set — the first half of a queued gg run's
+    /// [cell identity](CellKey). `None` for every third-party-harness job, and for a gg
+    /// run assembled without a configuration.
+    pub gg_config_id: Option<String>,
     /// The models the **gg** run's capability set binds, as one comparable string — the
     /// second half of a queued gg run's [cell identity](CellKey). `None` for every
     /// third-party-harness job.
@@ -5385,6 +5464,7 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         model_id: Set(new.model_id),
         gg_config_json: Set(new.gg_config_json),
         gg_preset: Set(new.gg_preset),
+        gg_config_id: Set(new.gg_config_id),
         gg_models: Set(new.gg_models),
         job_token: Set(new.job_token),
         record_id: Set(None),
@@ -6485,7 +6565,8 @@ impl Db {
 
     /// Backfill the sort/filter columns lifted onto the `run` row after rows
     /// already existed (`test_type`, `run_time_seconds`, `total_tokens`,
-    /// `cost_comparable`, `rating`, `review_count`, `gg_preset`, `gg_models`): parse each
+    /// `cost_comparable`, `rating`, `review_count`, `gg_preset`, `gg_config_id`,
+    /// `gg_models`): parse each
     /// un-backfilled row's record for the record-derived columns and compute
     /// `rating` / `review_count` from its reviews.
     ///
@@ -6496,8 +6577,9 @@ impl Db {
     ///
     /// That candidate rule is also why this is **not** what fills a gg row's cell identity: a
     /// gg run has always carried a `test_type`, so no gg row is ever a candidate here. The
-    /// pair is filled for those rows by [`Self::backfill_gg_models`] instead; the two columns
-    /// are written here as well only so a row this pass does claim is left complete.
+    /// gg columns are filled for those rows by [`Self::backfill_gg_models`] and
+    /// [`Self::backfill_gg_config_id`] instead; they are written here as well only so a row
+    /// this pass does claim is left complete.
     /// Best-effort per row: a legacy record that no longer deserializes is left for
     /// a later boot (exactly as [`Self::normalize_free_model_ids`] and
     /// `assemble` tolerate such rows). Returns how many rows were filled.
@@ -6550,6 +6632,7 @@ impl Db {
             active.aesthetic = Set(aesthetic);
             active.review_count = Set(review_count);
             active.gg_preset = Set(lifted.gg_preset);
+            active.gg_config_id = Set(lifted.gg_config_id);
             active.gg_models = Set(lifted.gg_models);
             active.update(&self.conn()).await?;
             touch_run(&self.conn(), &id).await?;
@@ -6775,6 +6858,324 @@ impl Db {
             active.update(&self.conn()).await?;
             backfilled += 1;
         }
+        Ok(backfilled)
+    }
+
+    /// Backfill the other half of a gg run's [cell identity](CellKey) —
+    /// `run.gg_config_id` — for the gg rows recorded before the column existed.
+    ///
+    /// Unlike every backfill above it, this one cannot be re-derived from the row: an older
+    /// run records the configuration's **name** and nothing else, and the name is not the
+    /// id. What resolves it is the `job` that produced the run — `job.record_id` points at
+    /// the run and `job.user_id` at the account that launched it — because a configuration
+    /// is account-scoped, so a name only means something inside one account. The launching
+    /// account's configurations are then matched by name.
+    ///
+    /// A resolved row is written in **both** places the id lives: the record's
+    /// [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) and the column
+    /// lifted from it. The column is what the grouped counts read and the record is what a
+    /// cell's review queue matches a run against, so filling one alone would produce a run
+    /// that counts toward a cell and can never be offered for review in it — a review-buffer
+    /// slot spent on a run no reviewer is ever shown.
+    ///
+    /// Both are left alone whenever the answer is not exact: no job points at the run, the
+    /// job that does is unattributed, two jobs disagree about whose run it is, the account
+    /// no longer has a configuration by that name, or it has more than one. A miss
+    /// under-counts one cell, which the next top-up fills with new runs; a guess would merge
+    /// two configurations' histories permanently, and no later pass could tell it had
+    /// happened. Rows recording no name at all — a set assembled by hand — are never
+    /// candidates: they belong in no configuration's cell.
+    ///
+    /// **One-shot**, unlike every other backfill here, and marked as such in
+    /// [`backfill_state`] once a pass completes. The name it resolves through is the one
+    /// thing an operator edits freely, so re-examining the residue on a later boot would
+    /// answer with a configuration library that has since moved: a rename frees a name, a
+    /// new configuration takes it, and the old configuration's whole history is adopted by a
+    /// configuration that never ran any of it. A pass that fails part way writes no marker
+    /// and runs again on the next boot.
+    ///
+    /// Best-effort and batched exactly as [`Self::backfill_gg_models`] is. Paged by an `id`
+    /// cursor, and scanning only the two columns it needs, with the whole row read for the
+    /// rows it actually resolves, because the one pass visits every gg run in the store.
+    pub async fn backfill_gg_config_id(&self) -> Result<usize> {
+        const BATCH: u64 = 256;
+        if self.backfill_completed(RUN_GG_CONFIG_ID_BACKFILL).await? {
+            return Ok(0);
+        }
+        let mut backfilled = 0usize;
+        let mut cursor: Option<String> = None;
+        // One name→ids map per account, kept across batches: a store's gg runs cluster into
+        // a handful of accounts, and re-reading a configuration list per batch would be the
+        // bulk of the work.
+        let mut by_account: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+        loop {
+            let mut query = run::Entity::find()
+                .select_only()
+                .column(run::Column::Id)
+                .column(run::Column::GgPreset)
+                .filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+                .filter(run::Column::GgConfigId.is_null())
+                .filter(run::Column::GgPreset.is_not_null());
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows: Vec<(String, Option<String>)> = query
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .into_tuple()
+                .all(&self.conn())
+                .await?;
+            let Some((last, _)) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.clone());
+
+            let launchers = self
+                .launching_accounts(rows.iter().map(|(id, _)| id.clone()).collect())
+                .await?;
+            let wanted: Vec<String> = launchers
+                .values()
+                .filter(|user_id| !by_account.contains_key(*user_id))
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            by_account.extend(self.gg_config_ids_by_name(&wanted).await?);
+
+            for (run_id, preset) in rows {
+                let Some(preset) = preset else {
+                    continue;
+                };
+                let Some(user_id) = launchers.get(&run_id) else {
+                    continue;
+                };
+                let Some(config_id) = by_account
+                    .get(user_id)
+                    .and_then(|configs| configs.get(&preset))
+                    .filter(|ids| ids.len() == 1)
+                    .and_then(|ids| ids.first())
+                    .cloned()
+                else {
+                    continue;
+                };
+                if self.stamp_run_gg_config_id(&run_id, &config_id).await? {
+                    backfilled += 1;
+                }
+            }
+        }
+        self.mark_backfill_complete(RUN_GG_CONFIG_ID_BACKFILL)
+            .await?;
+        Ok(backfilled)
+    }
+
+    /// Write one resolved configuration id onto a run, in the record and in the column
+    /// lifted from it, and report whether the row was rewritten.
+    ///
+    /// The record is the authority: a run whose stored capability set no longer
+    /// deserializes, or which carries no capability set at all, is left entirely alone
+    /// rather than given a column its record cannot account for.
+    async fn stamp_run_gg_config_id(&self, run_id: &str, config_id: &str) -> Result<bool> {
+        let Some(row) = run::Entity::find_by_id(run_id).one(&self.conn()).await? else {
+            return Ok(false);
+        };
+        let Ok(mut record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+            return Ok(false);
+        };
+        let Some(set) = record.subject.gg_capability_set.as_mut() else {
+            return Ok(false);
+        };
+        set.preset_id = Some(config_id.to_string());
+        let record_json = serde_json::to_string(&record)?;
+        let mut active = row.into_active_model();
+        active.gg_config_id = Set(Some(config_id.to_string()));
+        active.record_json = Set(record_json);
+        active.update(&self.conn()).await?;
+        touch_run(&self.conn(), run_id).await?;
+        Ok(true)
+    }
+
+    /// Whether the named startup backfill has already run to completion.
+    ///
+    /// Only the passes that must run **once** ask this. A backfill that re-derives a column
+    /// from the row holding the answer needs no marker: filling a row removes it from the
+    /// candidate set, so the pass settles to empty by itself.
+    async fn backfill_completed(&self, key: &str) -> Result<bool> {
+        Ok(backfill_state::Entity::find_by_id(key.to_string())
+            .one(&self.conn())
+            .await?
+            .is_some())
+    }
+
+    /// Record that the named startup backfill has completed, so no later boot re-examines
+    /// the rows it left unresolved. Called only on a pass that ran through without error.
+    async fn mark_backfill_complete(&self, key: &str) -> Result<()> {
+        let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
+        backfill_state::Entity::insert(backfill_state::ActiveModel {
+            id: Set(key.to_string()),
+            completed_at: Set(now),
+        })
+        .on_conflict(
+            OnConflict::column(backfill_state::Column::Id)
+                .do_nothing()
+                .to_owned(),
+        )
+        .do_nothing()
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Which account launched each of `run_ids`, via the `job` that produced the run — the
+    /// only link a `run` row has to an account, since a run belongs to no one.
+    ///
+    /// A run with no attributed job is absent, and so is one two jobs claim for two
+    /// different accounts: a retried run keeps its original launcher, so a disagreement is a
+    /// store nobody can interpret rather than a tie to break.
+    async fn launching_accounts(&self, run_ids: Vec<String>) -> Result<HashMap<String, String>> {
+        let rows: Vec<(Option<String>, Option<String>)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::RecordId)
+            .column(job::Column::UserId)
+            .filter(job::Column::RecordId.is_in(run_ids))
+            .filter(job::Column::UserId.is_not_null())
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let mut launchers: HashMap<String, String> = HashMap::new();
+        let mut disputed: Vec<String> = Vec::new();
+        for (record_id, user_id) in rows {
+            let (Some(record_id), Some(user_id)) = (record_id, user_id) else {
+                continue;
+            };
+            match launchers.get(&record_id) {
+                Some(seen) if seen != &user_id => disputed.push(record_id),
+                _ => {
+                    launchers.insert(record_id, user_id);
+                }
+            }
+        }
+        for record_id in disputed {
+            launchers.remove(&record_id);
+        }
+        Ok(launchers)
+    }
+
+    /// Every configuration each of `user_ids` has saved, as a name→ids map per account.
+    ///
+    /// The ids are a list rather than one id because nothing makes a configuration's name
+    /// unique within an account — which is one of the reasons a cell is keyed on the id in
+    /// the first place. A name that lands on two ids is ambiguous and its runs are left
+    /// unattributed; the caller decides that by asking for the length.
+    async fn gg_config_ids_by_name(
+        &self,
+        user_ids: &[String],
+    ) -> Result<HashMap<String, HashMap<String, Vec<String>>>> {
+        let mut by_account: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+        if user_ids.is_empty() {
+            return Ok(by_account);
+        }
+        // Every named account gets an entry, even one with no configurations at all, so the
+        // caller's cache does not re-query it on every batch.
+        for user_id in user_ids {
+            by_account.entry(user_id.clone()).or_default();
+        }
+        let rows: Vec<(String, String, String)> = gg_config::Entity::find()
+            .select_only()
+            .column(gg_config::Column::UserId)
+            .column(gg_config::Column::Name)
+            .column(gg_config::Column::Id)
+            .filter(gg_config::Column::UserId.is_in(user_ids.iter().map(String::as_str)))
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        for (user_id, name, id) in rows {
+            by_account
+                .entry(user_id)
+                .or_default()
+                .entry(name)
+                .or_default()
+                .push(id);
+        }
+        Ok(by_account)
+    }
+
+    /// Backfill `job.gg_config_id` on the gg **jobs still in flight** when the column
+    /// arrived, so a run already on its way is counted under the cell the run it becomes
+    /// will land in.
+    ///
+    /// Resolved from the job's own capability set where that set already names the
+    /// configuration it came from, and otherwise by the same name lookup
+    /// [`Self::backfill_gg_config_id`] uses — which is cheaper here, because a job carries
+    /// the launching account itself and needs no run to be traced back to it.
+    ///
+    /// A name-resolved job has the id written into its stored capability set as well as into
+    /// its column, because that set is what the driver hands the run: writing the column
+    /// alone would count the job toward a cell and then produce a run recording no
+    /// configuration, which lands in no cell at all and is re-bought.
+    ///
+    /// Bounded to the non-terminal states for the reason
+    /// [`Self::backfill_in_flight_gg_cells`] is: a finished job's counts come from the `run`
+    /// row it produced, so rewriting the whole job history would be a large write for a
+    /// number nothing reads. One-shot for the reason [`Self::backfill_gg_config_id`] is: the
+    /// name it resolves through belongs to a library the operator keeps editing.
+    pub async fn backfill_in_flight_gg_config_ids(&self) -> Result<usize> {
+        if self.backfill_completed(JOB_GG_CONFIG_ID_BACKFILL).await? {
+            return Ok(0);
+        }
+        let rows = job::Entity::find()
+            .filter(job::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+            .filter(job::Column::GgConfigId.is_null())
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .all(&self.conn())
+            .await?;
+        let user_ids: Vec<String> = rows.iter().filter_map(|row| row.user_id.clone()).collect();
+        let by_account = self.gg_config_ids_by_name(&user_ids).await?;
+
+        let mut backfilled = 0usize;
+        for row in rows {
+            let set = row.gg_config_json.as_deref().and_then(|json| {
+                serde_json::from_str::<test_cabinet_core::gg::GgCapabilitySet>(json).ok()
+            });
+            let Some(mut set) = set else {
+                continue;
+            };
+            // A set that already names its configuration needs no lookup, and its stored
+            // JSON is already right; only a name-resolved one is rewritten.
+            let resolved = match set.preset_id.clone() {
+                Some(id) => Some((id, false)),
+                None => set
+                    .preset
+                    .as_ref()
+                    .and_then(|name| {
+                        row.user_id
+                            .as_ref()
+                            .and_then(|user_id| by_account.get(user_id))
+                            .and_then(|configs| configs.get(name))
+                            .filter(|ids| ids.len() == 1)
+                            .and_then(|ids| ids.first())
+                            .cloned()
+                    })
+                    .map(|id| (id, true)),
+            };
+            let Some((config_id, rewrite_set)) = resolved else {
+                continue;
+            };
+            let gg_config_json = if rewrite_set {
+                set.preset_id = Some(config_id.clone());
+                Some(serde_json::to_string(&set)?)
+            } else {
+                None
+            };
+            let mut active = row.into_active_model();
+            active.gg_config_id = Set(Some(config_id));
+            if let Some(json) = gg_config_json {
+                active.gg_config_json = Set(Some(json));
+            }
+            active.update(&self.conn()).await?;
+            backfilled += 1;
+        }
+        self.mark_backfill_complete(JOB_GG_CONFIG_ID_BACKFILL)
+            .await?;
         Ok(backfilled)
     }
 }

@@ -65,19 +65,24 @@ the [launch form](/gg/configurations/#launching-one) produces by hand.
 ### What identifies a gg cell
 
 A harness cell is identified by `case@version/variant × harness/model`. A gg cell
-adds the **configuration's name** and the **models the bound set runs on**.
+adds the **configuration's id** and the **models the bound set runs on**.
 
-The name is the identity because
-[counts are global](#counts-are-global-judgement-is-yours). A run records the name
-of the configuration it was launched from, and that name is what the run log, the
-[query language](/gg/analysis/query-language/), and a plan all slice by. Keying on
-the account-scoped configuration id would make a gg cell's count per-account
-instead, so two configurations meant to be different arms need different names.
+The id is the identity because an operator renames a configuration freely and two
+of an account's configurations may carry one name. A [ladder's climber
+key](/components/backend/ladders/#climbers) names a configuration by its id as
+well, so a member, the cell counted for it, and the climber that carries its
+verdicts all resolve to the same configuration. The name is what a run records,
+and it is what the run log and the [query
+language](/gg/analysis/query-language/) slice by.
 
 The bound models are part of the identity because a configuration can run several.
 Two members of one configuration that agree on the root agent's model and differ on
 a reviewer's are two arms of a study, and a cell reading only the root model would
 merge them.
+
+Every endpoint that enqueues a run refuses a launch naming a configuration the
+launching account does not own. Counts are global, so an id recorded by an account
+that cannot resolve it would satisfy a cell of somebody else's plan.
 
 ### A member that cannot be launched
 

@@ -10,6 +10,7 @@ use crate::metrics::TokenCounts;
 fn root_set(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
     GgCapabilitySet {
         preset: None,
+        preset_id: None,
         agents: vec![GgAgentConfig {
             capabilities,
             ..GgAgentConfig::root()
@@ -238,6 +239,7 @@ fn disabled_capability_is_present_but_off() {
 fn capability_set_round_trips_through_json() {
     let set = GgCapabilitySet {
         preset: Some("planning-A".to_string()),
+        preset_id: None,
         agents: vec![
             GgAgentConfig {
                 slug: ROOT_PROFILE_ID.to_string(),
@@ -693,6 +695,7 @@ fn a_deferred_agent_is_unresolved_until_a_launch_fills_its_model_slot() {
     // slot, and a `judge` agent pinned inside the configuration.
     let mut set = GgCapabilitySet {
         preset: None,
+        preset_id: None,
         agents: vec![
             GgAgentConfig {
                 model_id: String::new(),
@@ -753,6 +756,7 @@ fn a_deferred_agent_is_unresolved_until_a_launch_fills_its_model_slot() {
 fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
     let set = GgCapabilitySet {
         preset: None,
+        preset_id: None,
         agents: vec![
             GgAgentConfig {
                 capabilities: vec![GgCapabilityConfig {
@@ -824,6 +828,7 @@ fn an_unresolvable_dispatch_names_the_missing_profile() {
     };
     let set_of = |root: GgAgentConfig| GgCapabilitySet {
         preset: None,
+        preset_id: None,
         agents: vec![root],
         model_slots: Vec::new(),
         limits: GgRunLimits::default(),
@@ -878,6 +883,7 @@ fn an_unresolvable_dispatch_names_the_missing_profile() {
 fn bound_model_ids_lists_each_resolved_model_once() {
     let set = GgCapabilitySet {
         preset: None,
+        preset_id: None,
         agents: vec![
             GgAgentConfig {
                 model_id: "anthropic/claude-opus-4.8".to_string(),
@@ -927,6 +933,7 @@ fn bound_model_ids_lists_each_resolved_model_once() {
 fn a_handoff_compaction_model_is_a_bound_model() {
     let handoff = |strategy: &str, model: serde_json::Value| GgCapabilitySet {
         preset: None,
+        preset_id: None,
         agents: vec![GgAgentConfig {
             model_id: "anthropic/claude-opus-4.8".to_string(),
             capabilities: vec![GgCapabilityConfig {
@@ -3615,6 +3622,7 @@ fn two_launch_inputs_at_one_name_are_refused() {
 fn deferred_configuration() -> GgCapabilitySet {
     GgCapabilitySet {
         preset: Some("critic-sweep".to_string()),
+        preset_id: Some("cfg-critic-sweep".to_string()),
         agents: vec![
             GgAgentConfig {
                 id: Some("k-root".to_string()),
@@ -3745,8 +3753,10 @@ fn a_launch_binds_every_deferred_binding_through_its_input() {
             .all(|agent| agent.model_slot.is_none() && agent.model_slots.is_empty())
     );
     assert!(launched.unresolved_agents().is_empty());
-    // …and everything the binding has no business touching is carried through untouched.
+    // …and everything the binding has no business touching is carried through untouched —
+    // the configuration's id included, which is what the run is attributed to.
     assert_eq!(launched.preset.as_deref(), Some("critic-sweep"));
+    assert_eq!(launched.preset_id.as_deref(), Some("cfg-critic-sweep"));
     assert_eq!(launched.limits, configured.limits);
     assert_eq!(launched.agents[1].name, "Reviewer");
 }

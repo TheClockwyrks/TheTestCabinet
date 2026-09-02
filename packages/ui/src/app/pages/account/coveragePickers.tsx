@@ -31,6 +31,7 @@ import { findGgConfig, useGgConfigs } from "../runs/gg/useGgConfigs";
 import {
   comboDetail,
   comboModels,
+  ggConfigKey,
   ggConfigLabel,
   isGgCombo,
 } from "./comboLabels";
@@ -191,13 +192,6 @@ function harnessName(slug: string): string {
   return recordedHarnesses.find((h) => h.slug === slug)?.displayName ?? slug;
 }
 
-/** The configuration a gg member names, in the one form the groups key on. The wire
- *  contract accepts a bare id and stores what arrived, while the picker writes the
- *  launcher's `saved:<id>`, so two members of one configuration can carry either. */
-function ggGroupKey(configId: string): string {
-  return configId.replace(/^saved:/, "");
-}
-
 /** One block of member pills: the axis its pills vary within, named, over the members
  *  that vary within it. Each item keeps its original index in the member list so
  *  removal targets the right entry after grouping and sorting. */
@@ -219,7 +213,7 @@ interface ComboGroup {
  */
 function useComboGroups(
   combos: ReviewPlanCombo[],
-  /** The current name of each configuration, keyed by {@link ggGroupKey}. */
+  /** The current name of each configuration, keyed by {@link ggConfigKey}. */
   ggNames: ReadonlyMap<string, string>,
 ): ComboGroup[] {
   return useMemo(() => {
@@ -248,7 +242,7 @@ function useComboGroups(
     const byConfig = new Map<string, ComboGroup>();
     for (const { combo, i } of indexed) {
       if (!isGgCombo(combo)) continue;
-      const key = ggGroupKey(combo.ggConfigId ?? "");
+      const key = ggConfigKey(combo.ggConfigId);
       let group = byConfig.get(key);
       if (!group) {
         group = {
@@ -347,7 +341,7 @@ export function ComboPicker({
   const fanSlotId = useId();
 
   const ggNames = useMemo(
-    () => new Map(ggOptions.map((o) => [ggGroupKey(o.key), o.name] as const)),
+    () => new Map(ggOptions.map((o) => [ggConfigKey(o.key), o.name] as const)),
     [ggOptions],
   );
   const comboGroups = useComboGroups(combos, ggNames);

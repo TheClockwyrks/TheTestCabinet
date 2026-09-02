@@ -319,7 +319,10 @@ export interface BackendClient {
    * - The **numbered-pager** window (console listings): pass an `offset` (0-based;
    *   its presence selects this mode) with an optional `limit`, `state` (including
    *   `any`, the published + unpublished union the console listings draw from), the
-   *   equality filters (`testCase`/`model`/`harness`/`variant`/`version`/`engine`),
+   *   equality filters
+   *   (`testCase`/`model`/`harness`/`variant`/`version`/`engine`/`ggConfigId`,
+   *   the last narrowing to the runs launched from one gg configuration by its
+   *   id),
    *   the `versions` list (exact versions, any of which match — the case-detail
    *   Runs tab's anchored version scope; like `version` it silences
    *   `latestVersions`), the `testCases` list (case slugs, any of which match —
@@ -342,6 +345,7 @@ export interface BackendClient {
     version?: string;
     versions?: string[];
     engine?: string;
+    ggConfigId?: string;
     latestVersions?: boolean;
     aesthetic?: string;
     q?: string;

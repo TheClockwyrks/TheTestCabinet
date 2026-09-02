@@ -2631,6 +2631,16 @@ pub struct SubjectOut {
     /// assembled by hand rather than from a named configuration.
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub gg_preset: Option<String>,
+    /// The **id** of the gg configuration this run was launched from — the
+    /// [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) recorded on the
+    /// run's capability set. Lifted onto the card beside the
+    /// [name](Self::gg_preset) because it is what identifies the run's [coverage
+    /// cell](https://docs.testcabinet.ai/components/backend/coverage/), and so what a
+    /// listing narrowed to one configuration's runs matches on: a name is display text
+    /// that is rewritten freely and is unique to nothing. `None` for every
+    /// third-party-harness run and for a gg run assembled by hand.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub gg_config_id: Option<String>,
 }
 
 impl SubjectOut {
@@ -2650,6 +2660,11 @@ impl SubjectOut {
                 .gg_capability_set
                 .as_ref()
                 .and_then(|set| set.preset.clone()),
+            gg_config_id: record
+                .subject
+                .gg_capability_set
+                .as_ref()
+                .and_then(|set| set.preset_id.clone()),
         }
     }
 }

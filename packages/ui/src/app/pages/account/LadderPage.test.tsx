@@ -617,6 +617,23 @@ describe("ClimberRow", () => {
     );
   });
 
+  it("narrows a gg climber's rung runs to its configuration", () => {
+    // Harness and model alone say nothing here: every gg climber on this model runs
+    // the `gg` harness, so a rung listing without the configuration would show the
+    // runs of every arm and disagree with the verdict printed above it.
+    const query = vi.fn(async () => ({ summaries: [], total: 0 }));
+    renderRow(ggClimber(), undefined, query);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({
+        harness: "gg",
+        // The bare id the run records, not the picker's `saved:` spelling.
+        ggConfigId: "cfg-1",
+      }),
+    );
+  });
+
   it("offers a promotion only where there is a verdict to promote past", () => {
     renderRow({
       status: "walled",

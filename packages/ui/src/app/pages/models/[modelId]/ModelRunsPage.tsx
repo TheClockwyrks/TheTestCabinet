@@ -48,7 +48,8 @@ function RunsContent({ model }: { model: ModelSummary }) {
   const modelId = model.modelIds[0] ?? model.slug;
 
   const filters = useRunFilters({ model: modelId });
-  const { page, setPage, committedQuery, facets, latestVersions } = filters;
+  const { page, setPage, committedQuery, facets, latestVersions, ggConfigId } =
+    filters;
   const [result, setResult] = useState<RunQueryResult>({
     summaries: [],
     total: 0,
@@ -85,6 +86,10 @@ function RunsContent({ model }: { model: ModelSummary }) {
       testCase: facets.testCase || undefined,
       version: facets.version || undefined,
       harness: facets.harness || undefined,
+      // Set only by a coverage cell's Runs link, which narrows to the runs behind
+      // one cell's figure. The bar carries no control for it (see
+      // `useRunFilters`), so it reaches the query straight from the URL.
+      ggConfigId: ggConfigId || undefined,
       latestVersions,
       sort,
       dir,
@@ -108,6 +113,7 @@ function RunsContent({ model }: { model: ModelSummary }) {
     page,
     needle,
     facets,
+    ggConfigId,
     latestVersions,
     sort,
     dir,

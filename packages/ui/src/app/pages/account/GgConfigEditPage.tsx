@@ -5,7 +5,6 @@ import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { BackChevron } from "../../components/BackChevron";
-import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
@@ -72,7 +71,6 @@ export function GgConfigEditPage() {
   const { token } = useAuth();
   const { client: backend } = useBackend();
   const navigate = useNavigate();
-  const { confirm } = useConfirm();
   // The account's agent library: what the Agents section imports from, and what an
   // already-imported profile is resolved against on the way in.
   const {
@@ -94,10 +92,6 @@ export function GgConfigEditPage() {
   // What the form held when it was loaded — the baseline the unsaved-changes prompt
   // measures against.
   const [saved, setSaved] = useState<string | null>(null);
-  // The name the stored configuration carries, kept apart from the snapshot because it
-  // is the one field whose change costs something beyond this form: a coverage cell and
-  // a ladder climber are identified by it.
-  const [savedName, setSavedName] = useState("");
   // Which agent's view is open, and the whole draft as it was when it opened: cancelling
   // an agent restores that, which is what makes Cancel mean something on a form that
   // edits a single draft in place.
@@ -138,7 +132,6 @@ export function GgConfigEditPage() {
       setDescription(nextDescription);
       setDraft(nextDraft);
       setSaved(snapshotOf(nextName, nextDescription, nextDraft));
-      setSavedName(nextName.trim());
     };
     // A blank configuration needs no round-trip; everything else reads the account's
     // stored configurations (to load the one being edited, or the one duplicated).
@@ -210,16 +203,6 @@ export function GgConfigEditPage() {
     () => saved !== null && snapshotOf(name, description, draft) !== saved,
     [saved, name, description, draft],
   );
-
-  // The name this configuration is stored under, when the form no longer holds it.
-  //
-  // A gg coverage cell and a ladder climber are identified by the configuration's name,
-  // because that is what a run records and what the query language slices by. Renaming
-  // therefore re-points every cell built on this configuration: the runs recorded under
-  // the old name stay with it, the cells read as empty, and the next top-up buys those
-  // runs again. Duplicating is exempt — a copy has produced nothing yet.
-  const renamedFrom =
-    editing && savedName && name.trim() !== savedName ? savedName : null;
 
   // Leaving with unsaved work needs a confirmation, whichever way the operator leaves:
   // the page's own back control (below) and a full-page navigation (here). A React Router
@@ -354,26 +337,20 @@ export function GgConfigEditPage() {
 
   async function onSave() {
     if (!token || !savable) return;
-    if (
-      renamedFrom &&
-      !(await confirm({
-        title: "Rename this configuration",
-        message:
-          `A coverage cell and a ladder climber are identified by the name a run was ` +
-          `launched under. Renaming “${renamedFrom}” to “${name.trim()}” leaves every ` +
-          `run recorded so far under the old name: the cells and climbers built on this ` +
-          `configuration read as empty, and the next top-up buys those runs again.`,
-        confirmLabel: "Rename and save",
-      }))
-    ) {
-      return;
-    }
     const input: GgConfigInput = {
       name: name.trim(),
       description: description.trim(),
-      // A saved configuration records its own name as the `preset` facet, so every
-      // run launched from it is sliceable by which configuration produced it.
-      capabilitySet: capabilitySetFromDraft(draft, name.trim()),
+      // A saved configuration records its own name as the `preset` facet, so every run
+      // launched from it is sliceable by which configuration produced it, and its own id
+      // as `presetId`, which is what a run is attributed to. A configuration being
+      // created has no id yet — it is minted server-side — and one being duplicated must
+      // not carry the original's; a launch takes the id from the
+      // [offered configuration](../runs/gg/useGgConfigs) either way.
+      capabilitySet: capabilitySetFromDraft(
+        draft,
+        name.trim(),
+        editing ? (configId ?? null) : null,
+      ),
       // Stored beside the resolved set: gg reads the set, and this is what says which
       // fields of which profile still follow a saved agent.
       agentSources: agentSourcesFromDraft(draft),
@@ -418,14 +395,9 @@ export function GgConfigEditPage() {
       </div>
     ) : (
       <div className={styles.detailActions}>
-        {structuralError ? (
+        {structuralError && (
           <span className={exec.muted}>{structuralError}</span>
-        ) : renamedFrom ? (
-          <span className={exec.muted}>
-            Renaming from “{renamedFrom}” re-points the coverage cells and
-            ladder climbers built on it.
-          </span>
-        ) : null}
+        )}
         <button
           type="button"
           className={exec.primary}

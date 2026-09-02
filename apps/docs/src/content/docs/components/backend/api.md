@@ -684,6 +684,12 @@ The offset mode additionally accepts:
   cases. It ANDs with the other filters, `testCase` included, so naming both
   narrows to their intersection, and `latestVersions` composes with it as with
   any case slice.
+- Filter `ggConfigId`, the id of a [gg configuration](/gg/configurations/),
+  narrowing to the runs launched from it. A [coverage
+  cell](/components/backend/coverage/#what-identifies-a-gg-cell) counts by the same
+  id, so a listing narrowed by it holds exactly the runs behind that cell's figure.
+  The id rather than the configuration's name, which an operator rewrites freely and
+  two configurations may share. A run launched from no configuration matches no id.
 - Filter `aesthetic`, one of the aesthetic tiers, narrowing to runs whose
   aggregate aesthetic rating, the worst run-wide tier across their reviews, is
   exactly that tier. A run no review has rated on that channel never matches.
@@ -834,6 +840,17 @@ no second axis.
 
 Reads add the resolved facts a client would otherwise recompute: the gg
 configuration's current `ggConfigName`, and the `model` its root agent binds to.
+
+A member's runs and a run launched by hand from the same configuration share one
+[coverage cell](/components/backend/coverage/#what-identifies-a-gg-cell), so every
+endpoint that enqueues a gg run applies one rule to the capability set it carries.
+The set's `presetId` must name a gg configuration the token's account holds, or the
+launch is refused with `400`; `POST /gg/runs` and the gg runs of `POST /jobs` and
+`POST /jobs/batch` each answer to it, and a batch reports the refusal at that run's
+own index. The enqueued set records that configuration's **current** name in
+`preset`, so the label the run log slices by is the one the configuration bears
+rather than the one the client last read. A set carrying no `presetId` is enqueued
+as it arrived and belongs to no configuration's cell.
 
 ### Groups and plans
 

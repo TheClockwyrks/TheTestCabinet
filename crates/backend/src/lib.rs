@@ -155,6 +155,31 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping in-flight gg-cell backfill"),
     }
 
+    // The configuration a gg run came from, for the runs (and in-flight jobs) recorded
+    // before the id was a column. It is resolved rather than lifted: an older run records
+    // only the configuration's name, so the account that launched it is traced through the
+    // job that produced it and the name matched against that account's configurations. A run
+    // that resolves to no configuration, or to two, keeps its `NULL` and counts toward no gg
+    // cell — an under-count the next top-up fills, where a guess would merge two
+    // configurations' histories for good. Best-effort and never blocks startup, as the
+    // backfills above are, and unlike them it runs exactly once: the name it resolves
+    // through belongs to a library the operator keeps editing, so a later pass would answer
+    // with configurations that never ran the runs it would stamp.
+    match db.backfill_gg_config_id().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run gg configuration ids"),
+        Err(err) => tracing::warn!(error = %err, "skipping run gg-configuration-id backfill"),
+    }
+    match db.backfill_in_flight_gg_config_ids().await {
+        Ok(0) => {}
+        Ok(backfilled) => {
+            tracing::info!(backfilled, "backfilled in-flight gg configuration ids")
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "skipping in-flight gg-configuration-id backfill")
+        }
+    }
+
     // Reap probes orphaned by the last shutdown. A model probe runs inside this
     // process, so a restart always killed it; the row is failed rather than left
     // `running` forever (which would also block re-triggering). Idempotent,

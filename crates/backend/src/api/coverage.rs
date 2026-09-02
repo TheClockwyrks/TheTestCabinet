@@ -173,18 +173,12 @@ impl ReviewPlanCombo {
     /// The bare id of the gg configuration this member names, or `None` on a harness
     /// member.
     ///
-    /// The console's picker values a configuration as `saved:<id>` and an API caller may
-    /// just as reasonably send the id alone; both name the same configuration, so both
-    /// must resolve — and key — identically. The stored value is whatever arrived, so
-    /// the normalization lives here, on every read, rather than being written into the
-    /// row.
-    ///
-    /// A blank id is no id: it names no configuration, and reading it as a gg member
-    /// would key every such member into one nameless cell.
+    /// The stored value is whatever arrived, so the normalization happens here, on every
+    /// read, rather than being written into the row — and it is
+    /// the same rule (`api::gg::saved_config_id`) a launch's `presetId` goes through, so a
+    /// member and the run it schedules name one configuration by one string.
     pub fn gg_config_ref(&self) -> Option<&str> {
-        let id = self.gg_config_id.as_deref()?.trim();
-        let id = id.strip_prefix("saved:").unwrap_or(id);
-        (!id.is_empty()).then_some(id)
+        super::gg::saved_config_id(self.gg_config_id.as_deref()?)
     }
 
     /// This member's slot bindings in **canonical** form: every slot name and every model id
@@ -1603,7 +1597,8 @@ pub(super) struct PlanMember {
 }
 
 /// The part of a [`CellKey`] a member contributes: its harness, the model its runs are
-/// launched with, and its two gg segments (both empty on a harness member).
+/// launched with, and its two gg segments — the configuration's id and the models its bound
+/// set runs on, both empty on a harness member.
 ///
 /// Named because it is compared on its own as well as crossed with a case: two members with
 /// the same identity produce the same cell for *every* case, which is a question about the
@@ -1613,14 +1608,14 @@ type MemberCellIdentity = (String, String, String, String);
 impl PlanMember {
     /// This member's [share](MemberCellIdentity) of the cell key it forms with any case.
     pub(super) fn cell_identity(&self) -> MemberCellIdentity {
-        let (preset, models) = match &self.gg {
-            Some(gg) => (gg.preset.clone(), gg.models.clone()),
+        let (config_id, models) = match &self.gg {
+            Some(gg) => (gg.config_id.clone(), gg.models.clone()),
             None => (String::new(), String::new()),
         };
         (
             self.combo.harness.as_str().to_string(),
             self.launch_model.clone(),
-            preset,
+            config_id,
             models,
         )
     }
@@ -1628,11 +1623,21 @@ impl PlanMember {
 
 /// What resolving a **gg** member against the account's saved configurations produced: the
 /// two halves of its [cell identity](CellKey) and the capability set a run of it carries.
+///
+/// The configuration's *name* is deliberately not here. It is display text, it is already on
+/// the member a read returns ([`ReviewPlanCombo::gg_config_name`]) and on the set a launch
+/// records ([`GgCapabilitySet::preset`]), and holding a third copy beside the identity would
+/// invite a cell to be keyed by it again.
 #[derive(Debug, Clone)]
 pub(super) struct ResolvedGg {
-    /// The configuration's current display name — the first gg segment of the cell key, and
-    /// the name the launched set records for itself.
-    pub preset: String,
+    /// The configuration's id — the first gg segment of the cell key, and what the launched
+    /// set records as its [`preset_id`](GgCapabilitySet::preset_id) so the run it produces
+    /// lands in this same cell.
+    ///
+    /// Always the bare id the account's library is keyed by, never the `saved:<id>` spelling
+    /// a member may have been written in: the run records this value and the store counts by
+    /// it, so the two must be one string.
+    pub config_id: String,
     /// The models the bound set runs on, as
     /// [`bound_model_key`](GgCapabilitySet::bound_model_key) writes them — the second gg
     /// segment of the cell key. Asked of the contract rather than assembled here, because
@@ -1879,10 +1884,13 @@ pub(super) fn resolve_member(combo: &ReviewPlanCombo, library: &GgLibrary) -> Pl
     let mut bound = config
         .capability_set
         .bind_launch_slots(&combo.gg_bindings());
-    // The name a run records is the configuration's name **now**, not the one its stored set
-    // happened to carry. Counts are global and a gg cell is keyed by that name, so the cell
-    // a top-up files runs into has to be the cell the matrix labelled with the same name.
+    // What a run records about the configuration it came from: the id, which is what its
+    // cell is keyed on, and the name as it stands **now** rather than the one the stored set
+    // happened to carry, so the run log and a comparison label it the way the matrix does.
+    // Writing the id here is what makes a scheduled run and a run launched by hand from the
+    // same configuration one cell.
     bound.preset = Some(config.name.clone());
+    bound.preset_id = Some(config.id.clone());
     match super::gg::gg_launch_identity(&bound) {
         Ok(identity) => {
             let super::gg::GgLaunchIdentity {
@@ -1893,7 +1901,7 @@ pub(super) fn resolve_member(combo: &ReviewPlanCombo, library: &GgLibrary) -> Pl
             PlanMember {
                 launch_model: model,
                 gg: Some(ResolvedGg {
-                    preset: config.name.clone(),
+                    config_id: config.id.clone(),
                     models: capability_set.bound_model_key(),
                     capability_set,
                     model_facts: None,
@@ -1922,8 +1930,8 @@ pub(super) fn resolve_member(combo: &ReviewPlanCombo, library: &GgLibrary) -> Pl
 ///
 /// **Two members that resolve to one cell are one cell.** The de-dupe key above is what a
 /// reviewer *wrote*, and two different declarations can still name the same runs — two
-/// configurations that share a name and bind the same agents to the same models, or two
-/// bindings that differ only where the configuration ignores them. The later of the pair keeps
+/// bindings of one configuration that differ only where the configuration ignores them, a slot
+/// name it does not declare being the plainest case. The later of the pair keeps
 /// its place carrying a reason rather than being dropped or launched: launching it would
 /// enqueue one cell's runs twice (each member reading the same global counts and each seeing
 /// its own target unmet), and dropping it would make a member the reviewer can see in the
@@ -1948,8 +1956,8 @@ pub(super) fn resolve_combos(
         if member.unlaunchable.is_none() && !cells.insert(member.cell_identity()) {
             member.unlaunchable = Some(
                 "another member of this plan already asks for exactly these runs — same case, \
-                 same launch model, and (for a gg member) the same configuration name bound to \
-                 the same agents"
+                 same launch model, and (for a gg member) the same configuration bound to the \
+                 same agents"
                     .to_string(),
             );
         }
@@ -2353,21 +2361,22 @@ impl MatrixCtx {
 
 /// The [`CellKey`] a case and a resolved member cross to: the case's three segments, the
 /// harness, the model as it is **launched**, and the two gg segments — the configuration's
-/// name and the models its bound set runs, both empty on a harness cell.
+/// id and the models its bound set runs, both empty on a harness cell.
 ///
 /// Every segment comes off the resolved member rather than the stored combination, which is
 /// the point of resolving one: a gg member's launch model is the model its bound set's root
-/// agent runs, and neither that nor the two gg segments can be read off the row a reviewer
-/// saved.
+/// agent runs, its models segment is what the bound set actually binds, and its configuration
+/// segment is the bare id the account's library is keyed by — the row may spell that id as
+/// the picker's `saved:<id>`, and a run records only the bare one.
 pub(super) fn cell_key(case: &ReviewPlanCase, member: &PlanMember) -> CellKey {
-    let (harness, model, preset, models) = member.cell_identity();
+    let (harness, model, config_id, models) = member.cell_identity();
     (
         case.slug.clone(),
         case.version.clone(),
         case.variant.clone(),
         harness,
         model,
-        preset,
+        config_id,
         models,
     )
 }
@@ -2412,7 +2421,7 @@ async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
                 job.variant,
                 job.harness_slug,
                 job.model_id,
-                job.gg_preset.unwrap_or_default(),
+                job.gg_config_id.unwrap_or_default(),
                 job.gg_models.unwrap_or_default(),
             ))
             .or_insert(0) += 1;
@@ -2771,7 +2780,7 @@ pub(super) async fn collect_queue(
             // configuration and subagent models included. The remaining two segments of the
             // cell are read off each run's own capability set, so one configuration's runs
             // never appear in another's queue.
-            .filter(|run| in_gg_cell(&run.record, cell.member))
+            .filter(|run| in_gg_cell(run.record.subject.gg_capability_set.as_ref(), cell.member))
             .filter(|run| {
                 !run.reviews
                     .iter()
@@ -2807,18 +2816,25 @@ pub(super) async fn collect_queue(
 }
 
 /// Whether one completed run belongs to a member's cell on the two segments a run listing
-/// cannot filter on: the gg configuration's name and the models its set bound.
+/// cannot filter on: the gg configuration's id and the models its set bound.
+///
+/// Read off the capability set the run recorded, and matched against the same two values
+/// [`cell_key`] builds its gg segments from, so the queue offers exactly the runs the cell's
+/// counts are made of. Those counts group on `run.gg_config_id`, which is
+/// [lifted](crate::db) from this very field, so the two agree by construction — a run
+/// carrying a column its record does not account for would be counted into a cell whose
+/// queue could never offer it, spending a review-buffer slot no reviewer can free.
 ///
 /// Trivially true for a harness member, whose cell those segments are empty for — and true
 /// for nothing at all on a member that never resolved, which has no cell for a run to be in.
-fn in_gg_cell(record: &test_cabinet_core::RunRecord, member: &PlanMember) -> bool {
+fn in_gg_cell(set: Option<&GgCapabilitySet>, member: &PlanMember) -> bool {
     let Some(gg) = &member.gg else {
         return member.unlaunchable.is_none();
     };
-    let Some(set) = record.subject.gg_capability_set.as_ref() else {
+    let Some(set) = set else {
         return false;
     };
-    set.preset.as_deref() == Some(gg.preset.as_str()) && set.bound_model_key() == gg.models
+    set.preset_id.as_deref() == Some(gg.config_id.as_str()) && set.bound_model_key() == gg.models
 }
 
 // ---- Small constructors ---------------------------------------------------

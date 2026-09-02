@@ -897,6 +897,7 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         model_id: "claude-sonnet-4-5".to_string(),
         gg_config_json: None,
         gg_preset: None,
+        gg_config_id: None,
         gg_models: None,
         job_token: format!("token-{id}"),
         attempt: 0,
@@ -2641,6 +2642,45 @@ async fn push_lifts_the_gg_configuration_name_only_for_a_gg_run() {
 }
 
 #[tokio::test]
+async fn push_lifts_the_gg_configuration_id_the_cell_is_keyed_on() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    let mut launched = gg_record("launched");
+    let set = launched.subject.gg_capability_set.as_mut().unwrap();
+    set.preset = Some("planning-A".to_string());
+    set.preset_id = Some("cfg-1".to_string());
+    db.push(&launched, &links(), None, None).await.unwrap();
+    let row = lifted(&db, "launched").await;
+    assert_eq!(row.gg_config_id.as_deref(), Some("cfg-1"));
+    assert_eq!(
+        row.gg_preset.as_deref(),
+        Some("planning-A"),
+        "the name rides along for display beside the id the cell is keyed on",
+    );
+
+    // A gg run assembled by hand was launched from no configuration, so there is no id
+    // to attribute it to and the column stays NULL — the harness form of the segment.
+    let mut hand_assembled = gg_record("hand");
+    let set = hand_assembled.subject.gg_capability_set.as_mut().unwrap();
+    set.preset = None;
+    set.preset_id = None;
+    db.push(&hand_assembled, &links(), None, None)
+        .await
+        .unwrap();
+    assert_eq!(lifted(&db, "hand").await.gg_config_id, None);
+
+    // Gated on the HARNESS like the name beside it: a set that somehow rode in on a
+    // third-party-harness run must not put it in a cell no gg run can join.
+    let mut impostor = gg_record("impostor");
+    impostor.subject.harness_slug = HarnessSlug::Claude;
+    let set = impostor.subject.gg_capability_set.as_mut().unwrap();
+    set.preset = Some("planning-A".to_string());
+    set.preset_id = Some("cfg-1".to_string());
+    db.push(&impostor, &links(), None, None).await.unwrap();
+    assert_eq!(lifted(&db, "impostor").await.gg_config_id, None);
+}
+
+#[tokio::test]
 async fn repush_refreshes_the_lifted_gg_configuration_name() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut r = gg_record("r1");
@@ -2678,6 +2718,15 @@ fn gg_record_binding(id: &str, preset: Option<&str>, models: &[&str]) -> RunReco
             ..GgAgentConfig::root()
         })
         .collect();
+    record
+}
+
+/// A gg run launched from the saved configuration `config_id`, displayed as `preset`.
+/// The shape every cell assertion needs: a cell is keyed on the id, and the name beside it
+/// is only what a person reads.
+fn gg_record_config(id: &str, config_id: &str, preset: &str, models: &[&str]) -> RunRecord {
+    let mut record = gg_record_binding(id, Some(preset), models);
+    record.subject.gg_capability_set.as_mut().unwrap().preset_id = Some(config_id.to_string());
     record
 }
 
@@ -2908,6 +2957,21 @@ async fn seed_gg_ident(db: &Db, id: &str, model: &str, preset: Option<&str>) {
     r.subject.model_id = model.to_string();
     r.subject.variant = "base".to_string();
     r.subject.gg_capability_set.as_mut().unwrap().preset = preset.map(str::to_string);
+    db.push(&r, &links(), None, None).await.unwrap();
+}
+
+/// Push an unpublished gg run launched from the saved configuration `config_id` and
+/// displaying `preset`, for the tests covering the `gg_config_id` filter. The two are
+/// separate arguments because that is the whole point of the column: a name is display
+/// text two configurations may share and one configuration may change.
+async fn seed_gg_config_ident(db: &Db, id: &str, config_id: &str, preset: &str) {
+    let mut r = gg_record(id);
+    r.subject.test_case_slug = "pong".to_string();
+    r.subject.model_id = "mock/echo".to_string();
+    r.subject.variant = "base".to_string();
+    let set = r.subject.gg_capability_set.as_mut().unwrap();
+    set.preset = Some(preset.to_string());
+    set.preset_id = Some(config_id.to_string());
     db.push(&r, &links(), None, None).await.unwrap();
 }
 
@@ -3819,6 +3883,67 @@ async fn list_summaries_free_text_matches_a_gg_configuration_name() {
     assert_eq!(
         summary_ids(&db, &q("sonnet"), SummarySort::Date, SortDir::Asc).await,
         ["third"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_gg_configuration_id() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Two configurations carrying one name, and one of `cfg-a`'s runs recorded before it
+    // was renamed. Nothing about the name separates the three; the id separates all of
+    // them.
+    seed_gg_config_ident(&db, "mine", "cfg-a", "planning-A").await;
+    seed_gg_config_ident(&db, "renamed", "cfg-a", "planning-old").await;
+    seed_gg_config_ident(&db, "theirs", "cfg-b", "planning-A").await;
+    // A gg run assembled by hand records no configuration, and a harness run has none to
+    // record: neither belongs to any configuration's listing.
+    seed_gg_ident(&db, "hand", "mock/echo", None).await;
+    seed_ident(
+        &db,
+        "harness",
+        "pong",
+        "sonnet",
+        HarnessSlug::Claude,
+        "base",
+        10,
+    )
+    .await;
+
+    let by_config = |id: &str| SummaryFilter {
+        gg_config_id: Some(id.to_string()),
+        ..unpublished_filter()
+    };
+
+    // Both of `cfg-a`'s runs, the one recorded under its old name included, and none of
+    // the same-named `cfg-b`'s.
+    assert_eq!(
+        summary_ids(&db, &by_config("cfg-a"), SummarySort::Date, SortDir::Asc).await,
+        ["mine", "renamed"]
+    );
+    assert_eq!(
+        summary_ids(&db, &by_config("cfg-b"), SummarySort::Date, SortDir::Asc).await,
+        ["theirs"]
+    );
+
+    // What the free text over the name answers instead: it crosses the two
+    // configurations and misses the renamed run, which is the reason a cell links by id.
+    let by_name = SummaryFilter {
+        q: Some("planning-A".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &by_name, SummarySort::Date, SortDir::Asc).await,
+        ["mine", "theirs"]
+    );
+
+    // An empty id is ignored, like the other equality filters.
+    let unfiltered = SummaryFilter {
+        gg_config_id: Some(String::new()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &unfiltered, SummarySort::Date, SortDir::Asc).await,
+        ["hand", "harness", "mine", "renamed", "theirs"]
     );
 }
 
@@ -6178,25 +6303,26 @@ async fn ladder_climbers_hold_steering_only_and_are_optional() {
 }
 
 /// A gg cell key for the `record` case: pong v1.0.0 base on the gg harness, with the
-/// configuration name and bound-model string that separate one gg arm from another.
-fn gg_cell(preset: &str, models: &str) -> CellKey {
+/// configuration id and bound-model string that separate one gg arm from another.
+fn gg_cell(config_id: &str, models: &str) -> CellKey {
     (
         "pong".to_string(),
         "v1.0.0".to_string(),
         "base".to_string(),
         "gg".to_string(),
         "mock/echo".to_string(),
-        preset.to_string(),
+        config_id.to_string(),
         models.to_string(),
     )
 }
 
-/// A queued gg job of the `new_job` case, lifted into the cell `preset`/`models` names.
-fn new_gg_job(id: &str, preset: &str, models: &str) -> NewJob {
+/// A queued gg job of the `new_job` case, lifted into the cell `config_id`/`models` name.
+fn new_gg_job(id: &str, config_id: &str, models: &str) -> NewJob {
     NewJob {
         harness_slug: "gg".to_string(),
         model_id: "mock/echo".to_string(),
-        gg_preset: Some(preset.to_string()),
+        gg_preset: Some("planning-A".to_string()),
+        gg_config_id: Some(config_id.to_string()),
         gg_models: Some(models.to_string()),
         ..new_job(id, "2026-06-23T00:00:00Z")
     }
@@ -6206,14 +6332,15 @@ fn new_gg_job(id: &str, preset: &str, models: &str) -> NewJob {
 async fn a_gg_cell_is_counted_by_its_configuration_and_the_models_it_binds() {
     let db = Db::connect_in_memory().await.unwrap();
     // Three gg runs of one case on one root model, differing only in the two segments
-    // that make a gg cell: the configuration's name, and the set of models it binds.
-    for (id, preset, models) in [
-        ("a-echo", "planning-A", vec!["mock/echo"]),
-        ("a-both", "planning-A", vec!["mock/echo", "anthropic/opus"]),
-        ("b-echo", "planning-B", vec!["mock/echo"]),
+    // that make a gg cell: the configuration they came from, and the set of models it
+    // binds.
+    for (id, config_id, models) in [
+        ("a-echo", "cfg-a", vec!["mock/echo"]),
+        ("a-both", "cfg-a", vec!["mock/echo", "anthropic/opus"]),
+        ("b-echo", "cfg-b", vec!["mock/echo"]),
     ] {
         db.push(
-            &gg_record_binding(id, Some(preset), &models),
+            &gg_record_config(id, config_id, "planning-A", &models),
             &links(),
             None,
             None,
@@ -6229,27 +6356,21 @@ async fn a_gg_cell_is_counted_by_its_configuration_and_the_models_it_binds() {
     let slugs = vec!["pong".to_string()];
     let completed = db.count_completed_runs_by_cell(&slugs).await.unwrap();
     assert_eq!(
-        completed
-            .get(&gg_cell("planning-A", "root=mock/echo"))
-            .copied(),
+        completed.get(&gg_cell("cfg-a", "root=mock/echo")).copied(),
         Some(1),
     );
     assert_eq!(
         completed
-            .get(&gg_cell(
-                "planning-A",
-                "agent-1=anthropic/opus,root=mock/echo"
-            ))
+            .get(&gg_cell("cfg-a", "agent-1=anthropic/opus,root=mock/echo"))
             .copied(),
         Some(1),
         "one configuration binding a second model is a second arm, not the same cell",
     );
     assert_eq!(
-        completed
-            .get(&gg_cell("planning-B", "root=mock/echo"))
-            .copied(),
+        completed.get(&gg_cell("cfg-b", "root=mock/echo")).copied(),
         Some(1),
-        "two configurations are two cells however alike their bindings",
+        "two configurations are two cells however alike their bindings, and however \
+         alike their names",
     );
     assert_eq!(
         completed.get(&sample_cell()).copied(),
@@ -6259,23 +6380,84 @@ async fn a_gg_cell_is_counted_by_its_configuration_and_the_models_it_binds() {
 
     // A queued gg job is attributed to its cell from the columns lifted at enqueue,
     // so an in-flight run counts toward the same target its finished record will.
-    db.enqueue_job(new_gg_job("j1", "planning-A", "root=mock/echo"))
+    db.enqueue_job(new_gg_job("j1", "cfg-a", "root=mock/echo"))
         .await
         .unwrap();
-    db.enqueue_job(new_gg_job("j2", "planning-B", "root=mock/echo"))
+    db.enqueue_job(new_gg_job("j2", "cfg-b", "root=mock/echo"))
         .await
         .unwrap();
     let in_flight = db.count_in_flight_jobs_by_cell(&slugs).await.unwrap();
     assert_eq!(
-        in_flight
-            .get(&gg_cell("planning-A", "root=mock/echo"))
-            .copied(),
+        in_flight.get(&gg_cell("cfg-a", "root=mock/echo")).copied(),
         Some(1),
     );
     assert_eq!(
-        in_flight
-            .get(&gg_cell("planning-B", "root=mock/echo"))
-            .copied(),
+        in_flight.get(&gg_cell("cfg-b", "root=mock/echo")).copied(),
+        Some(1),
+    );
+}
+
+#[tokio::test]
+async fn a_renamed_configuration_keeps_its_cell_and_the_counts_under_it() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Two runs of one configuration, recorded either side of a rename: each records the
+    // name the configuration carried at launch, and both record the id it has always had.
+    db.push(
+        &gg_record_config("before", "cfg-a", "planning-A", &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &gg_record_config("after", "cfg-a", "planning-A-v2", &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let completed = db
+        .count_completed_runs_by_cell(&["pong".to_string()])
+        .await
+        .unwrap();
+    assert_eq!(
+        completed.get(&gg_cell("cfg-a", "root=mock/echo")).copied(),
+        Some(2),
+        "renaming a configuration re-points nothing: the runs behind the cell survive it",
+    );
+    assert_eq!(completed.len(), 1, "one configuration, one cell");
+}
+
+#[tokio::test]
+async fn two_configurations_sharing_a_name_are_two_cells() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Nothing keeps a configuration's name unique within an account, so one name can
+    // stand for two capability sets. They are two cells, and a run of one never counts
+    // toward the other's target.
+    for id in ["cfg-a", "cfg-b"] {
+        db.push(
+            &gg_record_config(id, id, "planning-A", &["mock/echo"]),
+            &links(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+
+    let completed = db
+        .count_completed_runs_by_cell(&["pong".to_string()])
+        .await
+        .unwrap();
+    assert_eq!(
+        completed.get(&gg_cell("cfg-a", "root=mock/echo")).copied(),
+        Some(1),
+    );
+    assert_eq!(
+        completed.get(&gg_cell("cfg-b", "root=mock/echo")).copied(),
         Some(1),
     );
 }
@@ -6284,7 +6466,7 @@ async fn a_gg_cell_is_counted_by_its_configuration_and_the_models_it_binds() {
 async fn unreviewed_gg_cell_counts_split_on_the_configuration_too() {
     let db = Db::connect_in_memory().await.unwrap();
     db.push(
-        &gg_record_binding("a", Some("planning-A"), &["mock/echo"]),
+        &gg_record_config("a", "cfg-a", "planning-A", &["mock/echo"]),
         &links(),
         None,
         None,
@@ -6292,7 +6474,7 @@ async fn unreviewed_gg_cell_counts_split_on_the_configuration_too() {
     .await
     .unwrap();
     db.push(
-        &gg_record_binding("b", Some("planning-B"), &["mock/echo"]),
+        &gg_record_config("b", "cfg-b", "planning-B", &["mock/echo"]),
         &links(),
         None,
         None,
@@ -6307,14 +6489,9 @@ async fn unreviewed_gg_cell_counts_split_on_the_configuration_too() {
         .count_unreviewed_runs_by_cell(&["pong".to_string()], "u1", false)
         .await
         .unwrap();
+    assert_eq!(unreviewed.get(&gg_cell("cfg-a", "root=mock/echo")), None);
     assert_eq!(
-        unreviewed.get(&gg_cell("planning-A", "root=mock/echo")),
-        None
-    );
-    assert_eq!(
-        unreviewed
-            .get(&gg_cell("planning-B", "root=mock/echo"))
-            .copied(),
+        unreviewed.get(&gg_cell("cfg-b", "root=mock/echo")).copied(),
         Some(1),
         "reviewing one configuration's run says nothing about another's",
     );
@@ -6324,7 +6501,7 @@ async fn unreviewed_gg_cell_counts_split_on_the_configuration_too() {
 async fn cell_run_ratings_read_the_evidence_of_one_gg_configuration_only() {
     let db = Db::connect_in_memory().await.unwrap();
     db.push(
-        &gg_record_binding("a", Some("planning-A"), &["mock/echo"]),
+        &gg_record_config("a", "cfg-a", "planning-A", &["mock/echo"]),
         &links(),
         None,
         None,
@@ -6332,7 +6509,7 @@ async fn cell_run_ratings_read_the_evidence_of_one_gg_configuration_only() {
     .await
     .unwrap();
     db.push(
-        &gg_record_binding("b", Some("planning-B"), &["mock/echo"]),
+        &gg_record_config("b", "cfg-b", "planning-B", &["mock/echo"]),
         &links(),
         None,
         None,
@@ -6346,7 +6523,7 @@ async fn cell_run_ratings_read_the_evidence_of_one_gg_configuration_only() {
     // A gate reads the runs of the configuration its climber names — not every gg run
     // of the case, which would let one arm's failures wall another's climb.
     let a = db
-        .cell_run_ratings(&gg_cell("planning-A", "root=mock/echo"), "u1")
+        .cell_run_ratings(&gg_cell("cfg-a", "root=mock/echo"), "u1")
         .await
         .unwrap();
     assert_eq!(
@@ -6364,6 +6541,282 @@ async fn cell_run_ratings_read_the_evidence_of_one_gg_configuration_only() {
             .collect::<Vec<_>>(),
         vec!["harness"],
     );
+}
+
+/// Save a gg configuration for `user_id` under `id`/`name` — what the backfill matches a
+/// historical run's recorded configuration name against.
+async fn save_gg_config(db: &Db, user_id: &str, id: &str, name: &str) {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    db.insert_gg_config(
+        user_id,
+        &crate::api::GgConfig {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: String::new(),
+            capability_set: GgCapabilitySet::minimal("mock/echo"),
+            agent_sources: Vec::new(),
+            updated_at: "2026-08-18T00:00:00Z".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+}
+
+/// A finished gg job that `user_id` launched and that produced `run_id` — the only link a
+/// `run` row has back to an account, and so the only way the backfill can tell whose
+/// configuration a historical run came from.
+async fn finished_gg_job(db: &Db, job_id: &str, user_id: Option<&str>, run_id: &str) {
+    db.enqueue_job(NewJob {
+        harness_slug: "gg".to_string(),
+        model_id: "mock/echo".to_string(),
+        user_id: user_id.map(str::to_string),
+        ..new_job(job_id, "2026-06-23T00:00:00Z")
+    })
+    .await
+    .unwrap();
+    db.set_job_state(
+        job_id,
+        "succeeded",
+        "2026-06-23T01:00:00Z",
+        None,
+        Some(run_id),
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn the_gg_configuration_backfill_resolves_a_run_through_the_job_that_produced_it() {
+    let db = Db::connect_in_memory().await.unwrap();
+    save_gg_config(&db, "u1", "cfg-a", "planning-A").await;
+    // A run recorded before the id was part of a capability set: it names the
+    // configuration and nothing else.
+    db.push(
+        &gg_record_binding("r1", Some("planning-A"), &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(lifted(&db, "r1").await.gg_config_id, None);
+    finished_gg_job(&db, "j1", Some("u1"), "r1").await;
+
+    assert_eq!(db.backfill_gg_config_id().await.unwrap(), 1);
+    assert_eq!(
+        lifted(&db, "r1").await.gg_config_id.as_deref(),
+        Some("cfg-a"),
+        "the launching account is reached through the job, and the name resolved inside it",
+    );
+    // And the run now counts toward the same cell a fresh run of that configuration
+    // lands in, which is the whole point of resolving it.
+    let completed = db
+        .count_completed_runs_by_cell(&["pong".to_string()])
+        .await
+        .unwrap();
+    assert_eq!(
+        completed.get(&gg_cell("cfg-a", "root=mock/echo")).copied(),
+        Some(1),
+    );
+
+    // The record is filled too, not only the column lifted from it. The grouped counts read
+    // the column and a cell's review queue reads the record, so a row whose two disagreed
+    // would be counted into a cell that could never offer it for review — a buffer slot
+    // spent on a run no reviewer is ever shown.
+    let row = lifted(&db, "r1").await;
+    let stored: RunRecord = serde_json::from_str(&row.record_json).unwrap();
+    assert_eq!(
+        stored
+            .subject
+            .gg_capability_set
+            .as_ref()
+            .and_then(|set| set.preset_id.as_deref()),
+        Some("cfg-a"),
+    );
+    assert_eq!(crate::db::lifted_gg_config_id(&stored), row.gg_config_id);
+    // And the name the run was launched under is left as it was recorded.
+    assert_eq!(
+        stored
+            .subject
+            .gg_capability_set
+            .as_ref()
+            .and_then(|set| set.preset.as_deref()),
+        Some("planning-A"),
+    );
+
+    // Idempotent: the filled row is no longer a candidate.
+    assert_eq!(db.backfill_gg_config_id().await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn the_gg_configuration_backfill_runs_once_so_a_new_configuration_adopts_nothing() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Runs of a configuration that is gone by the time the column arrives. The account holds
+    // nothing by that name, so the pass resolves none of them.
+    db.push(
+        &gg_record_binding("r1", Some("planning-A"), &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    finished_gg_job(&db, "j1", Some("u1"), "r1").await;
+    assert_eq!(db.backfill_gg_config_id().await.unwrap(), 0);
+
+    // The operator later saves a fresh configuration and gives it the name the old one had —
+    // a rename frees a name, and the next configuration takes it. It ran none of those runs,
+    // and no later boot hands them to it: the residue stays unattributed, which under-counts
+    // one cell rather than crediting 40 runs to a configuration that never produced one.
+    save_gg_config(&db, "u1", "cfg-new", "planning-A").await;
+    assert_eq!(db.backfill_gg_config_id().await.unwrap(), 0);
+    assert_eq!(lifted(&db, "r1").await.gg_config_id, None);
+}
+
+#[tokio::test]
+async fn the_gg_configuration_backfill_leaves_an_unresolvable_run_null() {
+    let db = Db::connect_in_memory().await.unwrap();
+    save_gg_config(&db, "u1", "cfg-a", "planning-A").await;
+    for id in ["no-job", "unattributed", "other-account"] {
+        db.push(
+            &gg_record_binding(id, Some("planning-A"), &["mock/echo"]),
+            &links(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+    // One run whose job was never recorded, one whose job predates attribution, and one
+    // launched by an account that has no configuration of that name. None of the three
+    // can be tied to a configuration, and a plausible guess would merge two accounts'
+    // histories for good.
+    finished_gg_job(&db, "j-unattributed", None, "unattributed").await;
+    finished_gg_job(&db, "j-other", Some("u2"), "other-account").await;
+
+    assert_eq!(db.backfill_gg_config_id().await.unwrap(), 0);
+    for id in ["no-job", "unattributed", "other-account"] {
+        assert_eq!(
+            lifted(&db, id).await.gg_config_id,
+            None,
+            "{id} is left unattributed rather than guessed at",
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_gg_configuration_backfill_leaves_an_ambiguous_name_null() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Nothing keeps a configuration's name unique within an account, so a name can stand
+    // for two of them — and then it identifies neither.
+    save_gg_config(&db, "u1", "cfg-a", "planning-A").await;
+    save_gg_config(&db, "u1", "cfg-b", "planning-A").await;
+    db.push(
+        &gg_record_binding("r1", Some("planning-A"), &["mock/echo"]),
+        &links(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    finished_gg_job(&db, "j1", Some("u1"), "r1").await;
+
+    assert_eq!(db.backfill_gg_config_id().await.unwrap(), 0);
+    assert_eq!(lifted(&db, "r1").await.gg_config_id, None);
+}
+
+#[tokio::test]
+async fn the_in_flight_gg_configuration_backfill_reads_the_set_then_the_account() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    save_gg_config(&db, "u1", "cfg-a", "planning-A").await;
+
+    // One queued job whose capability set already names the configuration it came from,
+    // and one that predates the field and carries only the name.
+    let mut carried = GgCapabilitySet::minimal("mock/echo");
+    carried.preset = Some("planning-A".to_string());
+    carried.preset_id = Some("cfg-carried".to_string());
+    let mut named = GgCapabilitySet::minimal("mock/echo");
+    named.preset = Some("planning-A".to_string());
+    for (job_id, set) in [("j-carried", carried), ("j-named", named)] {
+        db.enqueue_job(NewJob {
+            harness_slug: "gg".to_string(),
+            model_id: "mock/echo".to_string(),
+            gg_config_json: Some(serde_json::to_string(&set).unwrap()),
+            gg_preset: set.preset.clone(),
+            user_id: Some("u1".to_string()),
+            ..new_job(job_id, "2026-06-23T00:00:00Z")
+        })
+        .await
+        .unwrap();
+    }
+
+    assert_eq!(db.backfill_in_flight_gg_config_ids().await.unwrap(), 2);
+    assert_eq!(
+        db.get_job("j-carried")
+            .await
+            .unwrap()
+            .unwrap()
+            .gg_config_id
+            .as_deref(),
+        Some("cfg-carried"),
+        "the set names its own configuration, so nothing is looked up",
+    );
+    assert_eq!(
+        db.get_job("j-named")
+            .await
+            .unwrap()
+            .unwrap()
+            .gg_config_id
+            .as_deref(),
+        Some("cfg-a"),
+        "and an older set is resolved against the launching account's configurations",
+    );
+
+    // A name-resolved job has the id written into its stored capability set as well, because
+    // that set is what the driver hands the run: the column alone would count the job toward
+    // a cell and then produce a run recording no configuration at all.
+    let stored: test_cabinet_core::gg::GgCapabilitySet = serde_json::from_str(
+        &db.get_job("j-named")
+            .await
+            .unwrap()
+            .unwrap()
+            .gg_config_json
+            .expect("a gg job carries its capability set"),
+    )
+    .unwrap();
+    assert_eq!(stored.preset_id.as_deref(), Some("cfg-a"));
+
+    // Idempotent, and bounded to what is still in flight.
+    assert_eq!(db.backfill_in_flight_gg_config_ids().await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn the_in_flight_gg_configuration_backfill_runs_once() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.preset = Some("planning-A".to_string());
+    db.enqueue_job(NewJob {
+        harness_slug: "gg".to_string(),
+        model_id: "mock/echo".to_string(),
+        gg_config_json: Some(serde_json::to_string(&set).unwrap()),
+        gg_preset: set.preset.clone(),
+        user_id: Some("u1".to_string()),
+        ..new_job("j1", "2026-06-23T00:00:00Z")
+    })
+    .await
+    .unwrap();
+    assert_eq!(db.backfill_in_flight_gg_config_ids().await.unwrap(), 0);
+
+    // The same rule the run pass follows: a configuration saved after the pass has run takes
+    // over none of the work in flight when it happens to share a name.
+    save_gg_config(&db, "u1", "cfg-new", "planning-A").await;
+    assert_eq!(db.backfill_in_flight_gg_config_ids().await.unwrap(), 0);
+    assert_eq!(db.get_job("j1").await.unwrap().unwrap().gg_config_id, None);
 }
 
 /// A gg member: the configuration `config` with `slots` bound.

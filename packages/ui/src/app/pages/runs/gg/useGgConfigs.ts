@@ -20,7 +20,8 @@ export interface GgConfigOption {
   description: string;
   /**
    * The capability set a run launched from it carries (before the model binds), with
-   * every [imported agent](./ggAgentLibrary) resolved against the library as it stands.
+   * every [imported agent](./ggAgentLibrary) resolved against the library as it stands,
+   * and `presetId` set to this configuration's id.
    */
   capabilitySet: GgCapabilitySet;
   /** The same configuration in editable form (what the editor mounts). */
@@ -121,14 +122,23 @@ export function useGgConfigs() {
       libraryLoading
         ? []
         : saved.map((config) => {
-            const capabilitySet = resolveCapabilitySet(config, library);
+            const resolved = resolveCapabilitySet(config, library);
+            // Every launch reads its set from here — the new-run form, a coverage
+            // cell's trigger, a comparison arm — so stamping the id on the offered
+            // option is what attributes each of those runs to the configuration that
+            // produced it. It is written after the imports resolve, because a
+            // resolution rebuilds the set and would otherwise drop it.
+            const capabilitySet: GgCapabilitySet = {
+              ...resolved,
+              presetId: config.id,
+            };
             return {
               key: savedKey(config.id),
               name: config.name,
               description: config.description,
               capabilitySet,
               draft: attachAgentSources(
-                draftFromCapabilitySet(capabilitySet),
+                draftFromCapabilitySet(resolved),
                 config.agentSources,
                 library,
               ),

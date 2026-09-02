@@ -36,18 +36,10 @@ test.
 A configuration names no test case, and it does not have to name the models it
 runs on.
 
-### Renaming one
-
-A configuration's name identifies its
-[coverage cells](/components/backend/coverage/#what-identifies-a-gg-cell) and its
-ladder climbers, because the name is what a run records. Renaming one therefore
-re-points every cell built on it: the runs recorded so far stay under the old
-name, the cells and climbers read as empty, and the next top-up buys those runs
-again.
-
-Rename a configuration when its recorded history belongs to the old name, such as
-an arm being retired or a typo caught before the first run. The console confirms a
-rename before saving it and says what it costs.
+An operator renames a configuration freely. A run records the name it was
+launched under, for display and for slicing, while the [coverage
+cells](/components/backend/coverage/#what-identifies-a-gg-cell) and ladder
+climbers built on a configuration are bound to its id.
 
 ### Run limits
 
@@ -456,6 +448,15 @@ A configuration is also launched on a schedule rather than by hand. A
 [coverage plan or ladder](/components/backend/coverage/#combinations) takes a
 configuration and a model per launch slot as one of its members, and its top-up
 enqueues the same run this form does.
+
+A launch from a configuration carries that configuration's id, which is what puts
+the run in the same [coverage
+cell](/components/backend/coverage/#what-identifies-a-gg-cell) the scheduled member
+fills. The id must name a configuration the launching account holds, and a launch
+naming any other is refused. The run records the configuration's name as it stands
+at that moment, so the run log and a comparison label it the way the coverage
+matrix does. A capability set assembled by hand names no configuration and is
+attributed to none.
 
 A launch refuses a capability set carrying any value gg cannot honour exactly as
 written, and names every one of them at once, so a single pass over the
