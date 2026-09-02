@@ -51,18 +51,6 @@ import { meanLuminance, readLook } from "./look";
 const SETTLE_TIME = 2 * HIT_FLASH_TIME;
 
 /**
- * How much brighter, out of 255, the flashing rock must read than the settled one.
- *
- * A brightening of the MEAN over the rock's whole body, so it is not a demand that
- * any particular part of it light up: a build that whitens the whole rock clears
- * this many times over, and a build that brightens only its outline clears it once
- * about a fiftieth of the body has gone bright. It is far above what the rock's
- * slow rotation can move a mean taken over complete rings — that is a fraction of a
- * level — and far below anything a player would call a flash.
- */
-const FLASH_MARGIN = 4;
-
-/**
  * Ticks of quiet observation before the round is fired: twice `HIT_FLASH_TIME`, so
  * the swing the rock's own cosmetic spin puts into a brightness reading is measured
  * over a stretch as long as the flash the check is about.
