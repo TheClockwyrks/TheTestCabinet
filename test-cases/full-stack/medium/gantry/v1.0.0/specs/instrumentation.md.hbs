@@ -157,7 +157,10 @@ Three rules cover every operation below.
 
 - An argument outside the domain its operation states is invalid, and the call
   fails loudly rather than guessing what was meant. So is an index no site,
-  load, or tape step carries, and an `id` no member carries.
+  load, or tape step carries, and an `id` no member carries. An operation whose
+  table names a lattice node takes one: a coordinate that is not a multiple of
+  `LATTICE_PITCH` is outside the domain and fails the same way, rather than
+  being refused as an edit.
 - A pose that stands for something a player does commits through the same rule
   the player's act passes, so it is refused wherever that act is refused and
   changes nothing when it is. The refusal is silent and readable in the

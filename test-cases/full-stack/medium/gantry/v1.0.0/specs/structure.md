@@ -157,7 +157,11 @@ rule would otherwise trap is reshaped.
 
 Deleting and undo round out the editor: a delete removes one member, the ring,
 or one counterweight, and undo restores the structure to what it was before the
-most recent structure-changing edit, as far back as the site was opened.
+most recent structure-changing edit, as far back as the site was opened. An
+undone placement gives no id back: the next member id climbs with every member
+placed and falls only when the structure is emptied whole
+(`specs/instrumentation.md`), so a member restored by an undo carries the id it
+was placed with and the member placed after it takes a new one.
 `specs/controls.md` states how both are driven.
 
 ## Readiness

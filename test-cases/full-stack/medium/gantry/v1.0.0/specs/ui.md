@@ -97,7 +97,9 @@ starts the run, and `back` returns to `select`.
   first tick takes a step and `step n / n` once every step is complete.
 - The run clock, in seconds, and the crane's cost.
 - The watch speed, cycled by `speed` through `RUN_SPEEDS`
-  (`specs/program.md`).
+  (`specs/program.md`): each press takes the next index and wraps from the last
+  back to the first, so a run started at index `0` reads `1`, `2`, `4`, `1`
+  across four presses.
 - A legend for the utilization ramp (`specs/overview.md`), so the member
   coloring reads.
 
@@ -162,7 +164,7 @@ these cues:
 | `collapse` | a run fails as `collapse` or `ring-overload` |
 | `complete` | a run clears the site |
 | `fail` | a run fails, whatever the cause |
-| `motor` | loops while a run is in progress and any axis's rate is nonzero, and is silent otherwise: a run that ends stops it, whatever rates its axes were left holding |
+| `motor` | loops while a run is in progress and any axis's rate is nonzero, and is silent otherwise: a run that leaves the running phase stops it, whether it cleared, failed, or was aborted, whatever rates its axes were left holding |
 
 Each cue is a distinct sound. A cue plays once for the event that raises it,
 and at most once on a given tick or edit; `motor` is the one loop. The title
