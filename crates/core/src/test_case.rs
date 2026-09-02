@@ -104,6 +104,15 @@ struct Manifest {
     /// an asset-generation case; an explicit value on any other type is rejected.
     #[serde(default)]
     asset_kind: AssetKind,
+    /// Within a full-stack case, which of the two full-stack run images the run
+    /// executes in — and so which asset-authoring binaries are on the model's `PATH`.
+    /// Defaults to [`AssetDimension::TwoD`] so every manifest that predates the key
+    /// keeps resolving onto `test-cabinet-full-stack-2d` unchanged; a case whose assets
+    /// include voxel models or 3D particle effects declares `asset_dimension = "3d"`.
+    /// Only valid for a full-stack case; an explicit value on any other type is
+    /// rejected.
+    #[serde(default)]
+    asset_dimension: AssetDimension,
     /// The frame grid and named animation sequences of a sprite-sheet case (the
     /// `[sheet]` table). Required for — and only for — `asset_kind =
     /// "sprite-sheet"`; forbidden otherwise.
@@ -1995,6 +2004,39 @@ impl std::fmt::Display for TestType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
+}
+
+/// Within a full-stack case, which dimension of asset tooling the run image carries.
+///
+/// A full-stack run builds a program *and* produces the assets it ships with, so the
+/// image it executes in has to have the authoring binaries baked in — and there are two
+/// such images, because the 3D tooling is a great deal heavier than the 2D tooling and
+/// most cases never touch it. `2d` selects `test-cabinet-full-stack-2d` (the six 2D
+/// binaries: `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`);
+/// `3d` selects `test-cabinet-full-stack-3d`, the same set plus `voxel`, `voxel-anim`
+/// and `particle-3d`. See [`crate::resolve_run_image`].
+///
+/// Like [`AssetKind`] this is a property of the **whole version**, not a per-variant
+/// choice: every variant of a case runs in one image. It is declared by the
+/// `asset_dimension` field and defaults to [`Self::TwoD`], so every manifest written
+/// before the key existed — and every full-stack case that only draws sprites and plays
+/// sound — resolves unchanged. It is meaningful only for a full-stack case; an explicit
+/// value on any other type is rejected rather than silently ignored, because on those
+/// types nothing consults it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum AssetDimension {
+    /// The 2D full-stack image: sprites, sprite sheets, 2D particle effects, and audio.
+    /// The default, and what every full-stack case that predates the key resolves to.
+    #[default]
+    #[serde(rename = "2d")]
+    TwoD,
+    /// The 3D full-stack image: everything the 2D image carries, plus the voxel-model
+    /// (`voxel`, `voxel-anim`) and 3D-particle (`particle-3d`) tooling. The meshed/SDF
+    /// families and the Blender toolchain are deliberately not in it — they are a far
+    /// heavier toolchain and no case needs them yet.
+    #[serde(rename = "3d")]
+    ThreeD,
 }
 
 /// Within an asset-generation case, the shape of the asset the model draws.
@@ -4118,6 +4160,11 @@ pub struct TestCaseVersion {
     /// (always `Sprite` for any other type).
     #[serde(default)]
     pub asset_kind: AssetKind,
+    /// Which of the two full-stack run images this version's runs execute in.
+    /// Defaults to [`AssetDimension::TwoD`]; meaningful only for full-stack (always
+    /// `TwoD` for any other type, whose image is selected by the type alone).
+    #[serde(default)]
+    pub asset_dimension: AssetDimension,
     /// The frame grid and named sequences of a sprite-sheet case. `Some` only when
     /// [`Self::asset_kind`] is [`AssetKind::SpriteSheet`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -4757,6 +4804,26 @@ impl TestCaseCatalog {
             ));
         }
 
+        let test_type = manifest.test_type;
+
+        // `asset_dimension` picks between the two full-stack run images, and full-stack
+        // is the only type with two images to pick between: every other type's image is
+        // selected by the type alone (or, for asset generation, by its `asset_kind`).
+        // So an `asset_dimension` anywhere else selects nothing, and silently ignoring
+        // it would leave an author believing they had chosen the image their case runs
+        // in when they had not — the kind of mistake whose only symptom is a missing
+        // binary inside the container. It is checked up here, before any per-type table
+        // validation, for two reasons: the per-type match below rejects the
+        // asset-generation-only keys in the very arm full-stack shares, and asset
+        // generation reaches that match through several `asset_kind`-guarded arms, every
+        // one of which would otherwise need the same check repeated.
+        if test_type != TestType::FullStack && manifest.asset_dimension != AssetDimension::TwoD {
+            return Err(invalid(format!(
+                "`asset_dimension` is only valid for a full-stack case (this case is \
+                 `type = \"{test_type}\"`)"
+            )));
+        }
+
         // The test type selects which tables are required and which are
         // forbidden. The `[build]` table is required for — and only for — an
         // end-to-end case: it must state exactly how its implementation is built
@@ -4765,7 +4832,6 @@ impl TestCaseCatalog {
         // skip a build step, so reject that too. An asset-generation case has no
         // build at all (it produces an action log, not a static site), so a
         // `[build]` table on one is a mistake worth rejecting rather than ignoring.
-        let test_type = manifest.test_type;
         let build = match test_type {
             TestType::EndToEnd | TestType::FullStack | TestType::GameJam => {
                 let build = manifest
@@ -7982,6 +8048,7 @@ impl TestCaseCatalog {
             r#match,
             replay,
             asset_kind: manifest.asset_kind,
+            asset_dimension: manifest.asset_dimension,
             sheet,
             voxel,
             model,

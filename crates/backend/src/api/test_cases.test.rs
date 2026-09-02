@@ -56,6 +56,7 @@ fn manifest() -> StoredManifest {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,

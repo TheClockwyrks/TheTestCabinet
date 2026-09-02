@@ -20,13 +20,17 @@ capabilities of current models so they stay relevant as models improve.
 ## Full stack
 
 A [full-stack](/testing/full-stack/overview/) case is an end-to-end case in
-which the model also produces the program's own 2D assets during the run: its
-sprites, particle effects, and sound. It makes them with the asset-generation
-binaries on the run container's PATH. One model makes the art and writes the
-code, so the case
-measures whether a single model can carry a whole small product to a coherent
-whole. Full-stack runs are scored exactly as end-to-end runs are, with the
-produced assets judged as part of the playable result.
+which the model also produces the program's own assets during the run: its art,
+its particle effects, and its sound. It makes them with the asset-generation
+binaries on the run container's PATH, and the case's
+[`asset_dimension`](/testing/full-stack/manifests/#asset_dimension) decides
+which of those binaries are there. Every case gets the six that produce 2D art,
+effects and audio; a `3d` case gets the voxel and volumetric-particle binaries
+on top of those six, since a 3D game still draws sprites and UI. One model makes
+the art and writes the code, so the case measures whether a single model can
+carry a whole small product to a coherent whole. Full-stack runs are scored
+exactly as end-to-end runs are, with the produced assets judged as part of the
+playable result.
 
 ## Game jam
 

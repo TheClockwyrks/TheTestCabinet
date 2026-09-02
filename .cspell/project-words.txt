@@ -607,6 +607,7 @@ wasip
 wasmtime
 waveclear
 wavefronts
+webgl
 wgpu
 worley
 xtal

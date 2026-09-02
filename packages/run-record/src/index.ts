@@ -198,6 +198,27 @@ export type AssetKind =
   | "blender-mechanism";
 
 /**
+ * Within a full-stack case, which dimension of asset tooling the run image carries.
+ *
+ * A full-stack run builds a program *and* produces the assets it ships with, so the
+ * image it executes in has to have the authoring binaries baked in — and there are two
+ * such images, because the 3D tooling is a great deal heavier than the 2D tooling and
+ * most cases never touch it. `2d` selects `test-cabinet-full-stack-2d` (the six 2D
+ * binaries: `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`);
+ * `3d` selects `test-cabinet-full-stack-3d`, the same set plus `voxel`, `voxel-anim`
+ * and `particle-3d`. See [`crate::resolve_run_image`].
+ *
+ * Like [`AssetKind`] this is a property of the **whole version**, not a per-variant
+ * choice: every variant of a case runs in one image. It is declared by the
+ * `asset_dimension` field and defaults to [`Self::TwoD`], so every manifest written
+ * before the key existed — and every full-stack case that only draws sprites and plays
+ * sound — resolves unchanged. It is meaningful only for a full-stack case; an explicit
+ * value on any other type is rejected rather than silently ignored, because on those
+ * types nothing consults it.
+ */
+export type AssetDimension = "2d" | "3d";
+
+/**
  * The subject of a run: what was run, with what, against which model.
  */
 export type RunSubject = {

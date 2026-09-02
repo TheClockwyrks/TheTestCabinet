@@ -6,9 +6,11 @@ cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
 There is **one image per run kind**, selected by a run's
-[test type](../apps/docs/src/content/docs/testing/) and — for asset-generation —
-its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md).
-The full set is whatever [`build.sh`](#building) builds; the notable ones:
+[test type](../apps/docs/src/content/docs/testing/), by — for asset-generation — its
+[`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md),
+and by — for full-stack — its
+[`asset_dimension`](../apps/docs/src/content/docs/testing/full-stack/manifests.md). The
+full set is whatever [`build.sh`](#building) builds; the notable ones:
 
 - the **base** image, the shared Node foundation every other image is built `FROM`
   (directly, or via **base-wasm**) except the self-contained blender image; it is
@@ -21,8 +23,24 @@ The full set is whatever [`build.sh`](#building) builds; the notable ones:
   ship it as a **committed wasm build input** (the toolchain is present only while
   the run is live — a build's `npm ci && npm run build` must consume the committed
   `.wasm`, never invoke `cargo`/`wasm-pack`, exactly as it must not shell out to
-  `draw`). It is the parent of the full-stack-2d, adversarial, and performance
-  images;
+  `draw`). It is the parent of the two full-stack images, the adversarial image, and
+  the performance image;
+- the **full-stack-2d** and **full-stack-3d** images, which every
+  [full-stack](../apps/docs/src/content/docs/testing/full-stack/overview.md) run
+  executes in — **base-wasm** plus the asset-generation binaries the model produces
+  the game's own assets with during the run, plus the two baked audio packs those
+  tools need (the same sample pack and instrument bank the sfx-sample and music
+  images carry). The case's
+  [`asset_dimension`](../apps/docs/src/content/docs/testing/full-stack/manifests.md)
+  picks between them: `"2d"` (the default) resolves **full-stack-2d**, which carries
+  `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample` and `music`; `"3d"`
+  resolves **full-stack-3d**, which carries those six *plus* `voxel`, `voxel-anim`
+  and `particle-3d`, and the Mesa software-Vulkan runtime those three render their
+  preview PNGs through. The 3D image is a **sibling** of the 2D one rather than
+  built `FROM` it — both are `FROM` base-wasm — so a 2D run carries neither the 3D
+  binaries nor the Mesa stack. The meshing families (`mc`/`sn`/`dc` and their
+  `-anim`/`-skin` siblings) and Blender are deliberately in neither: they are a far
+  heavier toolchain and no full-stack case needs one yet;
 - the **sprite** image, which every single-sprite
   [asset-generation](../apps/docs/src/content/docs/testing/asset-generation/overview.md)
   run (`asset_kind = "sprite"`) executes in — the base image plus the baked-in
@@ -106,7 +124,7 @@ harness's CLI into the image at run time, by running the harness's `install`
 command (see [`../harnesses/README.md`](../harnesses/README.md)). Installing at
 run time is what lets a run always pick up the harness's most recently published
 version, rather than whatever was current when an image was last built. The
-runner picks the image by test type and asset kind via
+runner picks the image by test type, asset kind, and asset dimension via
 [`harness::resolve_run_image`](../crates/core/src/harness.rs).
 
 ### The exception: the `-gg` variants
@@ -149,7 +167,10 @@ containers/
 ├── tools/Dockerfile            # the shared asset-tooling BUILDER: every asset binary compiled in ONE
 │                               #   cargo pass, exported as a `scratch` image. Not a run image and never
 │                               #   published — the asset images below `COPY --from` it (see Building)
-├── full-stack-2d/Dockerfile    # the full-stack run image: base-wasm plus the six 2D asset binaries + audio packs
+├── full-stack-2d/Dockerfile    # the 2D full-stack run image: base-wasm plus the six 2D asset binaries + audio packs
+├── full-stack-3d/Dockerfile    # the 3D full-stack run image: full-stack-2d's contents plus `voxel`,
+│                               #   `voxel-anim`, `particle-3d` and the Mesa software-Vulkan runtime those
+│                               #   three render their previews through. A SIBLING of full-stack-2d, not FROM it
 ├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
 ├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
 │                               #   responses-as-code programs may need, under /opt/gg (purs+esbuild,
@@ -246,12 +267,12 @@ the image that seeds runs.
 ## Rust/wasm base image (`base-wasm`)
 
 `base-wasm/` is the base image plus the shared **Rust → WebAssembly toolchain**, and
-it is the image **every end-to-end run executes in** (and the parent the full-stack-2d,
-adversarial, and performance images are each built `FROM`). It exists as its own layer,
-rather than folding the toolchain into the base, so the asset-generation images — which
-never compile Rust — do not carry it; and it is shared, rather than installed per
-dependent image, so the adversarial and performance images no longer install a Rust
-toolchain of their own.
+it is the image **every end-to-end run executes in** (and the parent the two full-stack
+images, the adversarial image, and the performance image are each built `FROM`). It
+exists as its own layer, rather than folding the toolchain into the base, so the
+asset-generation images — which never compile Rust — do not carry it; and it is shared,
+rather than installed per dependent image, so the adversarial and performance images no
+longer install a Rust toolchain of their own.
 
 It bakes on top of the base:
 
@@ -644,18 +665,28 @@ installs it (created container, copied to `/tmp/gg`, `exec`ed as the unprivilege
 `docker build` and `push_and_pin`**, so a variant with a dead arm cannot reach the
 registry.
 
-It runs in four **environment representatives** — `sprite-gg`, `base-wasm-gg`,
-`voxel-gg` and `blender-gg` — and not in all twenty-six. `/opt/gg` is byte-identical on
-every variant, so what can differ is the environment that tree has to run in. That is not
-the same as the parent, which is what this list first said and got wrong: there are two
-external parents, but a dozen run images `apt-get install` packages of their own on top of
-`base`, and apt brings each package's whole dependency closure with it. Probed with the C#
-arm's own missing library, `sprite-gg` and `base-wasm-gg` carry no ICU at all, `voxel-gg`
-carries `libicu72` because `mesa-vulkan-drivers` pulled it in, and `blender-gg` carries
-`libicu78` because Blender did — three answers where the parent count says two.
+It runs in five **environment representatives** — `sprite-gg`, `base-wasm-gg`, `voxel-gg`,
+`full-stack-3d-gg` and `blender-gg` — and not in all twenty-seven. `/opt/gg` is
+byte-identical on every variant, so what can differ is the environment that tree has to
+run in. That is not the same as the parent, which is what this list first said and got
+wrong: there are two external parents, but a dozen run images `apt-get install` packages
+of their own on top of `base`, and apt brings each package's whole dependency closure with
+it. Probed with the C# arm's own missing library, `sprite-gg` and `base-wasm-gg` carry no
+ICU at all, `voxel-gg` carries `libicu72` because `mesa-vulkan-drivers` pulled it in, and
+`blender-gg` carries `libicu78` because Blender did — three answers where the parent count
+says two.
 
-Grouping the variants by root **and** by every package installed along the way gives four
-groups, and those four images are one of each. The argument is only as good as its last
+`full-stack-3d-gg` is the fifth, and it is the one that looks redundant: it carries the
+same `libicu72`, from the same `mesa-vulkan-drivers`, that `voxel-gg` does. What makes it
+a distinct environment is everything *else* in the image — it is the only run image that
+is `FROM` base-wasm **and** installs the mesa stack, because it is the only one that both
+compiles Rust to wasm and renders a preview — and the grouping is the whole package set,
+not the one library the original bug happened to be about. A representative that were
+genuinely redundant could not be added by mistake anyway: `assert_gg_environments` refuses
+a gated build if two entries in the list are the same environment.
+
+Grouping the variants by root **and** by every package installed along the way gives five
+groups, and those five images are one of each. The argument is only as good as its last
 clause, so `build.sh` re-derives both halves: `assert_gg_lineages` reads the final `FROM`
 of every run image's Dockerfile and fails a gated build if the set of external parents is
 not exactly the two it knows, and `assert_gg_environments` re-derives the grouping and
@@ -749,10 +780,11 @@ runs in this **builder** stage — which `apt-get install`s the arm's own depend
 and then exports `/opt/gg` without them, so a pass here says nothing about the image
 the tree is copied *into*. The gate that does is
 [`gg selfcheck`](../apps/docs/src/content/docs/gg/languages/selfcheck.md), run inside
-a **built** `-gg` variant of each environment — `sprite-gg`, `base-wasm-gg`, `voxel-gg`
-and `blender-gg` — before any is published. A dependency satisfied by whatever the image
-happens to contain is not satisfied: it is an arm that works on some run images and dies
-on others, and moves between the two whenever an unrelated package does.
+a **built** `-gg` variant of each environment — `sprite-gg`, `base-wasm-gg`, `voxel-gg`,
+`full-stack-3d-gg` and `blender-gg` — before any is published. A dependency satisfied by
+whatever the image happens to contain is not satisfied: it is an arm that works on some
+run images and dies on others, and moves between the two whenever an unrelated package
+does.
 
 Self-containment is a **floor and not an override**, and the difference matters when
 reading a green check. What the vendored set guarantees is that the compiler starts on an
@@ -870,10 +902,10 @@ PureScript's library set is not.
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner
-resolves (by test type and asset
-kind) when its `TCAB_CONTAINER_REGISTRY` is set to an empty string, so a
-locally-built image is used for offline development without pulling anything.
-Override `IMAGE_TAG` / `IMAGE_NAME_PREFIX` to change the tag or name prefix.
+resolves (by test type, asset kind, and asset dimension) when its
+`TCAB_CONTAINER_REGISTRY` is set to an empty string, so a locally-built image is used
+for offline development without pulling anything. Override `IMAGE_TAG` /
+`IMAGE_NAME_PREFIX` to change the tag or name prefix.
 
 With `PUSH=1` and `IMAGE_REGISTRY` set (e.g. `ghcr.io/theclockwyrks`), each image
 is pushed and its pinned `repo@sha256:…` digest printed. Runners resolve the

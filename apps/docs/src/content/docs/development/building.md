@@ -413,7 +413,7 @@ arm's bootstrap program through the real preparation, guest and views in whateve
 environment the binary is running in, and exits non-zero when any arm fails.
 
 ```sh
-make -C deployments/local run-images-gg-selfcheck   # build gg, build the four, check them
+make -C deployments/local run-images-gg-selfcheck   # build gg, build the five, check them
 ```
 
 That target builds the static binary with `scripts/build-gg-static.sh` and hands
@@ -424,10 +424,10 @@ Naming the images runs the same command by hand:
 
 ```sh
 containers/build.sh --gg-selfcheck target/gg-selfcheck/gg \
-  sprite-gg base-wasm-gg voxel-gg blender-gg
+  sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg
 ```
 
-Four images answer for all twenty-six variants, because `/opt/gg` is byte-identical
+Five images answer for all twenty-seven variants, because `/opt/gg` is byte-identical
 across them and what differs is the environment it runs in — the image the lineage
 is rooted at plus every package a run image installs on the way down. `build.sh`
 re-derives that grouping from the Dockerfiles on every gated build. CI passes the

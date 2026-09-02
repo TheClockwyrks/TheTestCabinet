@@ -3355,6 +3355,9 @@ fn render_case_prompt(
         variant.description.as_deref(),
         &spec_dests,
         manifest.test_type,
+        // The dimension decides which asset-generation binaries the standing
+        // full-stack directive names, so the baked prompt reads as the run's own.
+        manifest.asset_dimension,
         manifest.max_runtime_seconds,
         // The variant's own volume overrides the case's for its prompt.
         variant.voxel.as_ref().or(manifest.voxel.as_ref()),

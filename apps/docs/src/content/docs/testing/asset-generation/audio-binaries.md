@@ -27,10 +27,12 @@ The DSP lives in `crates/audio-core`: the oscillators, noise, envelopes, filters
 and FM; the mixer and offline render engine; the WAV encoder; the waveform,
 spectrogram, and piano-roll PNG renderers; and the shared CLI record, preview,
 and config plumbing. Each binary has its own crate (`crates/sfx-synth`,
-`crates/sfx-sample`, `crates/music`) and is baked into its own run-container
+`crates/sfx-sample`, `crates/music`) and its own asset-generation run-container
 image, the `sfx-sample` and `music` images additionally carrying their [baked
-sample pack and instrument bank](#the-sample-library), so a run carries only the
-tool it uses.
+sample pack and instrument bank](#the-sample-library), so an audio
+asset-generation run carries only the tool its `asset_kind` names. Both
+[full-stack](/testing/full-stack/overview/) images carry all three binaries and
+both packs, because one full-stack run produces every asset its game needs.
 
 The emitted asset is a finished PCM `.wav`, and `music` also emits a portable
 `.mid` score. The clip is a finished waveform, so a game plays the `.wav`

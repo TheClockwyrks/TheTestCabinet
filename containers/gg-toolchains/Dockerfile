@@ -88,16 +88,17 @@
 #    version written into a script.
 #
 #    A dependency the image happens to contain is NOT satisfied, and there are more images than
-#    there are parents. Two external parents exist — `node:24.18.0-bookworm-slim` under 25 of the
-#    26 variants and `ubuntu:26.04` under `blender-gg` — but a dozen run images `apt-get install`
+#    there are parents. Two external parents exist — `node:24.18.0-bookworm-slim` under 26 of the
+#    27 variants and `ubuntu:26.04` under `blender-gg` — but a dozen run images `apt-get install`
 #    packages of their own on top of `base`, and apt brings each package's whole dependency closure
 #    with it. Probed with this arm's own missing library: `sprite-gg` and `base-wasm-gg` carry no
-#    ICU at all, `voxel-gg` carries `libicu72` because `mesa-vulkan-drivers` pulled it in, and
-#    `blender-gg` carries `libicu78` because Blender did. An arm that read ICU out of the image was
-#    therefore an arm that worked on some run images and aborted on others, and that would move
-#    between the two the next time any of their package closures changed for an unrelated reason.
-#    `COPY --link` makes this tree byte-identical in all 26 variants and says nothing whatever
-#    about what is underneath it.
+#    ICU at all, `voxel-gg` carries `libicu72` because `mesa-vulkan-drivers` pulled it in,
+#    `full-stack-3d-gg` carries that same `libicu72` from that same package but over base-wasm's
+#    packages rather than the bare base's, and `blender-gg` carries `libicu78` because Blender did.
+#    An arm that read ICU out of the image was therefore an arm that worked on some run images and
+#    aborted on others, and that would move between the two the next time any of their package
+#    closures changed for an unrelated reason. `COPY --link` makes this tree byte-identical in all
+#    27 variants and says nothing whatever about what is underneath it.
 #
 #    Vendoring is a FLOOR and not an override, which is why the gate below is per environment
 #    rather than once. What the vendored copy guarantees is that the compiler starts where the
@@ -118,7 +119,7 @@
 #    honest — and the gate that settles the question for real is
 #    [`gg selfcheck`](../../apps/docs/src/content/docs/gg/languages/selfcheck.md), run inside a
 #    BUILT `-gg` variant of each ENVIRONMENT — `sprite-gg`, `base-wasm-gg`, `voxel-gg`,
-#    `blender-gg` — before any of them is published.
+#    `full-stack-3d-gg`, `blender-gg` — before any of them is published.
 #
 # Each toolchain arrives with the language that needs it, so this layer grows one block at
 # a time. It carried nothing at all until PureScript's arrived, which was deliberate: an
@@ -490,8 +491,8 @@ RUN set -eux; \
 # the tree and `ldd` reports a complete closure over a `csc` that cannot start. It shipped that
 # way — a C# arm that worked on `blender-gg`, whose Ubuntu carries `libicu78` because Blender's
 # apt dependencies do, and that killed the first turn of every run on the twenty-five Node-based
-# variants with SIGABRT and an empty stdout. So `install-dotnet.sh` now vendors the three ICU
-# libraries into `<home>/lib` out of Debian bookworm's own package index, and
+# variants the set held at the time, with SIGABRT and an empty stdout. So `install-dotnet.sh` now
+# vendors the three ICU libraries into `<home>/lib` out of Debian bookworm's own package index, and
 # `csharp.compile.rs` names that directory on `LD_LIBRARY_PATH` for every `dotnet` it runs. It is
 # the Swift block's arrangement, reached from the same constraint; Swift's vendored set does not
 # rescue this one, because it carries `libicuuc` and `libicudata` for `libxml2` and not the

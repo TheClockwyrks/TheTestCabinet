@@ -35,9 +35,9 @@ place of per-domain ratings.
 
 A jam runs in the `test-cabinet-game-jam` image, which a deployment pins with
 `TCAB_CONTAINER_IMAGE_GAME_JAM`. The image is built from the
-[full-stack-2d image](/testing/full-stack/overview/) and adds no tooling of its
-own, so a deployment can pin the jam image on its own while a jam keeps the same
-capabilities:
+[full-stack-2d image](/testing/full-stack/overview/#the-run-image) and adds no
+tooling of its own, so a deployment can pin the jam image on its own while a jam
+keeps the same capabilities:
 
 - the six 2D asset-generation binaries on `PATH` (`draw`, `draw-sheet`,
   `particle-2d`, `sfx-synth`, `sfx-sample`, `music`) and the two baked audio

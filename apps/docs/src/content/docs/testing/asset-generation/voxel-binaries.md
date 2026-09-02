@@ -16,10 +16,12 @@ binary is the only channel for placing a voxel, the 3D counterpart of the
 
 The binaries are built from `crates/voxel` and `crates/voxel-anim` on the shared
 `crates/model-core` library, which holds the rig and animation model, the CLI
-record plumbing, and the `wgpu` mesh renderer. Each is baked into its own
-[run-container image](/components/core/execution/#containerization): `voxel`
-into `test-cabinet-voxel` and `voxel-anim` into `test-cabinet-voxel-animation`,
-so a run carries only the tool it uses.
+record plumbing, and the `wgpu` mesh renderer. Each has its own asset-generation
+[run-container image](/components/core/execution/#containerization), `voxel` in
+`test-cabinet-voxel` and `voxel-anim` in `test-cabinet-voxel-animation`, so a
+voxel asset-generation run carries only the tool its `asset_kind` names. A
+[full-stack](/testing/full-stack/overview/) run whose `asset_dimension` is `3d`
+carries both, because one such run produces every asset its game needs.
 
 The binary emits the reviewed artifacts. `render` writes the per-part `.glb`
 geometry the 3D client loads and the preview PNG a reviewer sees. After the run

@@ -33,7 +33,7 @@ not, and the environment that answers the question is the image a run executes
 in, so the gate is `gg selfcheck` inside a built `-gg` variant, run from the
 same static binary a run is given.
 
-Four images answer for the whole set. `/opt/gg/toolchains` is one tree copied
+Five images answer for the whole set. `/opt/gg/toolchains` is one tree copied
 identically into every variant, so what differs between them is the environment
 that tree has to run in. That is not the same as the parent: there are two
 parents, the Debian base every image but one is built from and the Ubuntu the
@@ -44,13 +44,14 @@ C# arm was published without — which no Dockerfile of theirs asks for and no
 count of parents can see.
 
 So an environment is the image a lineage is rooted at plus every package
-installed along the way, and the variants fall into four of them:
+installed along the way, and the variants fall into five of them:
 `sprite-gg` (the shared base), `base-wasm-gg` (and base-wasm's packages),
-`voxel-gg` (and the render images' mesa stack) and `blender-gg` (the Ubuntu
-lineage). All four pass before any variant is published, and
-`containers/build.sh` re-derives the grouping from the Dockerfiles on every gated
-build, so a run image that gains a package stops the build rather than joining
-the set unchecked.
+`voxel-gg` (and the render images' mesa stack), `full-stack-3d-gg` (which
+installs base-wasm's packages and that mesa stack together) and `blender-gg`
+(the Ubuntu lineage). All five pass before any variant is published, and
+`containers/build.sh` re-derives the grouping from the Dockerfiles on every
+gated build, so a run image that gains a package stops the build rather than
+joining the set unchecked.
 
 ## What it settles
 
@@ -83,7 +84,7 @@ The gate is a flag on the image build rather than a script beside it, because th
 question is only worth asking of an image that was just built:
 
 ```sh
-make -C deployments/local run-images-gg-selfcheck   # build gg, build the four, check them
+make -C deployments/local run-images-gg-selfcheck   # build gg, build the five, check them
 ```
 
 That target builds the static binary with `scripts/build-gg-static.sh` — the same
@@ -93,7 +94,7 @@ Running `build.sh` directly is the same thing with the images named:
 
 ```sh
 containers/build.sh --gg-selfcheck target/gg-selfcheck/gg \
-  sprite-gg base-wasm-gg voxel-gg blender-gg
+  sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg
 ```
 
 For each image it builds, `build.sh` installs the binary the way a run installs

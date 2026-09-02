@@ -43,12 +43,13 @@ FROM ${BASE_IMAGE}
 #
 # `--link` IS LOAD-BEARING, and this is the one line in the file where a change costs
 # gigabytes. Without it BuildKit computes this layer as a diff against THIS VARIANT'S
-# PARENT SNAPSHOT, so the twenty-six variants each get a DIFFERENT digest for byte-identical
-# content — 846 MB compressed (2.18 GB unpacked) stored twenty-six times over in the
-# registry, in every node that pulls more than one variant, and in every `docker save`
-# a local `make run-images-gg` feeds to `k3d image import`. That is not a theory: the
-# k3d node's content store held exactly twenty-six distinct blobs of exactly 846.3 MB
-# before this flag was added, and the comment that used to sit here claimed the opposite.
+# PARENT SNAPSHOT, so the twenty-seven variants each get a DIFFERENT digest for
+# byte-identical content — 846 MB compressed (2.18 GB unpacked) stored twenty-seven times
+# over in the registry, in every node that pulls more than one variant, and in every
+# `docker save` a local `make run-images-gg` feeds to `k3d image import`. That is not a
+# theory: the k3d node's content store held one 846.3 MB blob PER VARIANT before this flag
+# was added — twenty-six distinct copies of it, that being the size of the set when the
+# measurement was taken — and the comment that used to sit here claimed the opposite.
 #
 # `--link` builds the layer rooted at `scratch` and merges it in, so it does not depend on
 # what it is layered onto: every variant gets the SAME digest and the bytes are stored once,

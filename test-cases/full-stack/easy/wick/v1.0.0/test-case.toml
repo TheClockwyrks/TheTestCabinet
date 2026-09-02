@@ -54,8 +54,9 @@ prompt = "prompt.hbs"
 max_runtime_hours = 8
 
 # The test type: an end-to-end playable game whose assets the model also
-# produces during the run, on the full-stack-2d image with the six 2D asset
-# tools on PATH. A root key, so it sits above the first table header.
+# produces during the run, on the full-stack-2d image that this case's default
+# `asset_dimension` selects, with the six 2D asset tools on PATH. A root key, so
+# it sits above the first table header.
 type = "full-stack"
 
 # Init command, run in the container once the workspace and specs are seeded and

@@ -30,12 +30,12 @@ use crate::reference::RenderedReference;
 use crate::review::{FailureCap, Writeup};
 use crate::run_record::{PriorGameJamEntry, RunLinks, RunRecord};
 use crate::test_case::{
-    AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
-    EngineSupport, EngineWorkspaces, Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind,
-    ModelSpec, OutputSpec, ParticleSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView,
-    ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec,
-    SpecFile, SpecKind, SubReviewItem, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec,
-    Variant, VoxelSpec, WorkspaceFile,
+    AssetDimension, AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction,
+    ContractSpec, Domain, EngineSupport, EngineWorkspaces, Erratum, Instrumentation, MatchSpec,
+    MaterialSpec, MediaKind, ModelSpec, OutputSpec, ParticleSpec, PerformanceCase, ProofFile,
+    ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation,
+    SandboxSpec, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase,
+    TestCaseVersion, TestType, ToolSpec, UiSpec, Variant, VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -1693,6 +1693,17 @@ struct VersionBody {
     /// [`AssetKind::Sprite`], matching a store that predates the field.
     #[serde(default)]
     asset_kind: AssetKind,
+    /// Which full-stack run image the case's runs execute in. Defaults to
+    /// [`AssetDimension::TwoD`], matching a store that predates the field.
+    ///
+    /// It has to cross the wire because a dispatcher-scheduled run is *always*
+    /// backend-driven: the driver materializes its version through
+    /// [`BackendClient::resolve_version`] and core resolves the run image off the
+    /// [`TestCaseVersion`] that comes back. A field missing here would silently
+    /// resolve the 2D image for a 3D case — a failure that only shows up inside the
+    /// container as `voxel: not found`, and never at all in a local `tcab run`.
+    #[serde(default)]
+    asset_dimension: AssetDimension,
     /// The sprite-sheet grid and sequences. Deserialized straight into
     /// [`SheetSpec`] — the wire shape matches it field for field — so a
     /// backend-driven sprite-sheet run carries the same layout a local one does.
@@ -1857,6 +1868,7 @@ impl VersionBody {
                 renderer: PathBuf::from(&replay.renderer),
             }),
             asset_kind: self.asset_kind,
+            asset_dimension: self.asset_dimension,
             sheet: self.sheet,
             voxel: self.voxel,
             model: self.model,

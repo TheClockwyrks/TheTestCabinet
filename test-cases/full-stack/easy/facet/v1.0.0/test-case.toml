@@ -13,9 +13,10 @@ name = "Facet"
 
 # The test type: a playable game whose art, effects, and sound the model also
 # PRODUCES during the run, with the six 2D asset-generation binaries on the run
-# image's `PATH`. The type is the only declaration needed to select that image —
-# there is no manifest key naming it — and it is what makes `packages` below and
-# `specs/assets.md` load-bearing rather than decorative.
+# image's `PATH`. The type and `asset_dimension` together select that image, and
+# this case leaves `asset_dimension` unset so it takes its `2d` default. The
+# type is also what makes `packages` below and `specs/assets.md` load-bearing
+# rather than decorative.
 type = "full-stack"
 
 # Relative difficulty of this case, surfaced on the site. Facet is a lot of

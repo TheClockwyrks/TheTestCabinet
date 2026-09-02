@@ -16,9 +16,10 @@ name: Build containers
 # (plus the performance image — the base plus the wasm toolchain and the Lattice
 # tooling). All are built by containers/build.sh in one invocation (the sprite,
 # sprite-sheet, adversarial, and performance images are built FROM the base built
-# alongside them). Runners resolve the image for a run's test type and asset kind
-# directly from their own registry configuration (default ghcr.io/theclockwyrks on
-# the latest tag); the backend plays no part — see docs/components/core/execution.md.
+# alongside them). Runners resolve the image for a run's test type, asset kind, and
+# asset dimension directly from their own registry configuration (default
+# ghcr.io/theclockwyrks on the latest tag); the backend plays no part — see
+# docs/components/core/execution.md.
 #
 # Each image is published MULTI-ARCH (linux/amd64 + linux/arm64): the `build` job
 # below runs build.sh once per architecture on a native runner (pushing an
@@ -53,7 +54,11 @@ name: Build containers
 # (base, every asset-generation kind including blender, adversarial, and performance),
 # PLUS `test-cabinet-gg-toolchains`, which build.sh pushes but that list deliberately does
 # not name (see the manifest job at the bottom for why).
-# A newly-added image needs this the first time it is published.
+# A newly-added image needs this the first time it is published — and it is two packages
+# per image, not one, because every run image has a `-gg` variant with a package of its
+# own. `test-cabinet-full-stack-3d` and `test-cabinet-full-stack-3d-gg` are the most
+# recent pair; both default to Private on their first push, and a run scheduled onto a
+# Private package fails at pull time with a 403 that says nothing about visibility.
 on:
   # DELIBERATELY UNFILTERED, for the same reason as build-service-images.yml: every
   # push to master/staging must leave a COMPLETE `:<git-sha>` run-image set behind,
@@ -206,7 +211,7 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/build-gg-static.sh "$RUNNER_TEMP/gg"
-          # And then give the disk back. This job builds twenty-six `-gg` variants after
+          # And then give the disk back. This job builds twenty-seven `-gg` variants after
           # this step, on a runner whose image store and whose `target/` share one
           # filesystem; a release build of gg leaves several gigabytes of intermediate
           # artifacts behind and the binary itself has already been copied out to
@@ -241,10 +246,10 @@ jobs:
       # only a publisher of them: build.sh drives every language arm's real bootstrap turn
       # inside each environment representative it builds — as the unprivileged run user,
       # from this static binary — BETWEEN that image's build and its push, so a variant
-      # carrying a dead arm cannot reach the registry. Four images cover all twenty-six
+      # carrying a dead arm cannot reach the registry. Five images cover all twenty-seven
       # variants: `/opt/gg` is byte-identical across them, so what differs is the
       # environment it runs in — the image the lineage is rooted at plus every package the
-      # run images install on the way down, which is four groups and not the two parents it
+      # run images install on the way down, which is five groups and not the two parents it
       # looks like. build.sh's GG_SELFCHECK_IMAGES carries the argument and its
       # `assert_gg_environments` re-derives the grouping from the Dockerfiles on every
       # gated build.
@@ -286,7 +291,7 @@ jobs:
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/build-containers.log"
-          for image in sprite-gg base-wasm-gg voxel-gg blender-gg; do
+          for image in sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg; do
             if ! grep -Fq "gg selfcheck ok: $image" "$log"; then
               echo "::error::containers/build.sh published without running gg selfcheck in $image." >&2
               echo "The images built here carry gg's eleven language toolchains, and building one" >&2

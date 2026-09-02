@@ -64,6 +64,7 @@ impl BackendClient for StubBackend {
             r#match: None,
             replay: None,
             asset_kind: crate::test_case::AssetKind::Sprite,
+            asset_dimension: crate::test_case::AssetDimension::TwoD,
             sheet: None,
             voxel: None,
             model: None,
@@ -999,4 +1000,81 @@ async fn resolve_version_decodes_object_shaped_packages() {
         .expect("resolve version");
 
     assert_eq!(version.packages, vec!["@test-cabinet/particle-runtime"]);
+}
+
+#[tokio::test]
+async fn resolve_version_carries_the_full_stack_asset_dimension_across_the_wire() {
+    // A dispatcher-scheduled run is always backend-driven: the driver materializes its
+    // version through `resolve_version` and core resolves the run image off what comes
+    // back. So `assetDimension` has to survive the wire, or a 3D full-stack case
+    // silently resolves the 2D image and the run dies inside the container on the first
+    // `voxel` invocation — a failure a local `tcab run` (which resolves off the on-disk
+    // manifest) would never reproduce.
+    let body = serde_json::json!({
+        "slug": "gantry",
+        "version": "v1.0.0",
+        "name": "Gantry",
+        "difficulty": "medium",
+        "tags": ["simulation"],
+        "summary": null,
+        "description": null,
+        "maxRuntimeSeconds": 3600,
+        "engines": [{ "slug": "none" }],
+        "testType": "full-stack",
+        "assetDimension": "3d",
+        "promptTemplate": "",
+        "commonSpecs": [],
+        "assets": [],
+        "variants": [],
+        "commonReferences": [],
+        "checks": []
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let version = HttpBackendClient::new(base)
+        .resolve_version("gantry", "v1.0.0")
+        .await
+        .expect("resolve version");
+
+    assert_eq!(
+        version.asset_dimension,
+        crate::test_case::AssetDimension::ThreeD
+    );
+}
+
+#[tokio::test]
+async fn resolve_version_defaults_the_asset_dimension_when_the_backend_omits_it() {
+    // A store written before the discriminator existed serves no `assetDimension` at
+    // all. That must resolve to the 2D image rather than failing the whole body, which
+    // is what an absent `#[serde(default)]` would do — and would take every case with
+    // it, not just full-stack ones.
+    let body = serde_json::json!({
+        "slug": "junction",
+        "version": "v1.0.0",
+        "name": "Junction",
+        "difficulty": "hard",
+        "tags": ["simulation"],
+        "summary": null,
+        "description": null,
+        "maxRuntimeSeconds": 3600,
+        "engines": [{ "slug": "none" }],
+        "testType": "full-stack",
+        "promptTemplate": "",
+        "commonSpecs": [],
+        "assets": [],
+        "variants": [],
+        "commonReferences": [],
+        "checks": []
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let version = HttpBackendClient::new(base)
+        .resolve_version("junction", "v1.0.0")
+        .await
+        .expect("resolve version");
+
+    assert_eq!(
+        version.asset_dimension,
+        crate::test_case::AssetDimension::TwoD
+    );
 }

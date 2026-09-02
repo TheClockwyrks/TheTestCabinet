@@ -25,10 +25,30 @@ The `type` key is what identifies the type. An end-to-end case omits it or sets
 type = "full-stack"
 ```
 
-This is the only declaration a case needs to run in the
-[`test-cabinet-full-stack-2d`](/testing/full-stack/overview/) image with the six
-asset-generation binaries on `PATH`. The image is selected by the type rather
-than by a manifest key.
+The type and `asset_dimension` together select the
+[run image](/testing/full-stack/overview/#the-run-image) and put that image's
+asset-generation binaries on the model's `PATH`. A case that declares the type
+alone runs in the 2D image with the six 2D binaries.
+
+## `asset_dimension`
+
+`asset_dimension` says which dimension the case's produced art is in, and so
+which of the two full-stack images the run executes in:
+
+```toml
+type = "full-stack"
+asset_dimension = "3d"
+```
+
+- `"2d"` is the default and selects `test-cabinet-full-stack-2d`, carrying
+  `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music`.
+- `"3d"` selects `test-cabinet-full-stack-3d`, which adds `voxel`, `voxel-anim`,
+  and `particle-3d` to that same set.
+
+It is a root key, so it sits above the first table header. It is a property of
+the whole version rather than a per-variant choice, so every variant of a
+version runs in the same image. Resolution accepts it on a full-stack case and
+rejects it on every other test type.
 
 ## `[build]`
 
@@ -55,6 +75,10 @@ run:
 packages = ["@test-cabinet/particle-runtime"]
 ```
 
+A `3d` case that ships a produced voxel model declares
+[`@test-cabinet/voxel-runtime`](/components/voxel-runtime/overview/) the same
+way, so the game can decode each part's `.glb` and pose the produced rig.
+
 ## Forbidden asset-generation tables
 
 A full-stack case produces its assets at run time with the on-`PATH` binaries,
@@ -64,6 +88,9 @@ asset-generation-only surface, exactly as it does on an end-to-end case:
 - the `asset_kind` key and the `[sheet]` table;
 - `[canvas]`, `[tool]`, and `[output]`;
 - `[voxel]`, `[model]`, `[ui]`, `[material]`, `[particle]`, and `[audio]`.
+
+`asset_dimension` is a full-stack key of its own, unrelated to `asset_kind`: it
+picks the tooling the run carries rather than an asset to generate.
 
 What a full-stack case says about its produced assets belongs in its specs:
 what the program needs, and to what bar. The

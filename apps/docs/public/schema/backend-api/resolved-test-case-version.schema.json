@@ -1,5 +1,20 @@
 {
   "$defs": {
+    "AssetDimension": {
+      "description": "Within a full-stack case, which dimension of asset tooling the run image carries.\n\nA full-stack run builds a program *and* produces the assets it ships with, so the\nimage it executes in has to have the authoring binaries baked in — and there are two\nsuch images, because the 3D tooling is a great deal heavier than the 2D tooling and\nmost cases never touch it. `2d` selects `test-cabinet-full-stack-2d` (the six 2D\nbinaries: `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`);\n`3d` selects `test-cabinet-full-stack-3d`, the same set plus `voxel`, `voxel-anim`\nand `particle-3d`. See [`crate::resolve_run_image`].\n\nLike [`AssetKind`] this is a property of the **whole version**, not a per-variant\nchoice: every variant of a case runs in one image. It is declared by the\n`asset_dimension` field and defaults to [`Self::TwoD`], so every manifest written\nbefore the key existed — and every full-stack case that only draws sprites and plays\nsound — resolves unchanged. It is meaningful only for a full-stack case; an explicit\nvalue on any other type is rejected rather than silently ignored, because on those\ntypes nothing consults it.",
+      "oneOf": [
+        {
+          "const": "2d",
+          "description": "The 2D full-stack image: sprites, sprite sheets, 2D particle effects, and audio.\nThe default, and what every full-stack case that predates the key resolves to.",
+          "type": "string"
+        },
+        {
+          "const": "3d",
+          "description": "The 3D full-stack image: everything the 2D image carries, plus the voxel-model\n(`voxel`, `voxel-anim`) and 3D-particle (`particle-3d`) tooling. The meshed/SDF\nfamilies and the Blender toolchain are deliberately not in it — they are a far\nheavier toolchain and no case needs them yet.",
+          "type": "string"
+        }
+      ]
+    },
     "AssetKind": {
       "description": "Within an asset-generation case, the shape of the asset the model draws.\n\nA case is one of: a single 2D sprite, a 2D sprite sheet, a single static 3D\nvoxel model, or a rigged/animatable 3D voxel model — never a mix, and not a\nper-variant choice: it is a property of the whole version, chosen by the\n`asset_kind` field. A [`Self::SpriteSheet`] case additionally declares a\n`[sheet]` table (the frame grid and the named animation sequences); the two\nvoxel kinds declare a `[voxel]` table (the bounding volume), and\n[`Self::VoxelAnimation`] additionally declares a `[model]` table (the parts,\njoints, and clips of the rig). Defaults to [`Self::Sprite`] so a manifest that\npredates the discriminator — and every non-asset-generation case — resolves\nunchanged.",
       "oneOf": [
@@ -1185,6 +1200,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The resolved, fully-rendered definition of one test-case version: the body of\n`GET /test-cases/{slug}/{version}`. Everything a reporter needs to present the\ncase — its metadata, the per-test-type contract/sandbox shapes, the rendered\nprompt and seeded specs, and every variant, reference, proof, check, and\nreviewer item — resolved as a real run receives them.",
   "properties": {
+    "assetDimension": {
+      "$ref": "#/$defs/AssetDimension",
+      "description": "Which full-stack run image the version's runs execute in. Always serialized\n(never skipped) because the runner deserializes this body into the resolved\nversion it resolves the run image from."
+    },
     "assetKind": {
       "$ref": "#/$defs/AssetKind"
     },
@@ -1514,6 +1533,7 @@
     "engineFormat",
     "engines",
     "assetKind",
+    "assetDimension",
     "promptTemplate",
     "commonSpecs",
     "packages",

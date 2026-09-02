@@ -75,6 +75,7 @@ fn version() -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: crate::test_case::AssetKind::Sprite,
+        asset_dimension: crate::test_case::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,

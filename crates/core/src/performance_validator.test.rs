@@ -18,8 +18,8 @@ use lattice_core::{Engine, Scenario, Snapshot};
 use super::PerformanceValidator;
 use crate::execution::ArtifactCollection;
 use crate::test_case::{
-    AssetKind, BuildCommands, ContractSpec, PerformanceCase, SandboxSpec, TestCaseVersion,
-    TestType, Variant,
+    AssetDimension, AssetKind, BuildCommands, ContractSpec, PerformanceCase, SandboxSpec,
+    TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{PerformanceCaseKind, Validator};
 
@@ -150,6 +150,7 @@ fn performance_version_with_pass_limit(
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,

@@ -40,7 +40,7 @@ use crate::engine::{NONE_SLUG, ResolvedEngine};
 use crate::error::{Error, Result};
 use crate::execution::{GAME_JAM_PRIOR_ENTRIES_DIR, WORKSPACE_DIR};
 use crate::run_record::PriorGameJamEntry;
-use crate::test_case::{TestCaseVersion, TestType, Variant, VoxelSpec};
+use crate::test_case::{AssetDimension, TestCaseVersion, TestType, Variant, VoxelSpec};
 
 /// A standing quality directive prepended to every asset-generation case's
 /// rendered prompt.
@@ -92,7 +92,9 @@ const GAME_JAM_DIVIDER: &str = "========================================";
 /// only, after the jam's own brief.
 const GAME_JAM_README_DIRECTIVE: &str = "One deliverable beyond the game itself is required: commit a `README.md` at your project root that explains, to a player, WHAT the game is and HOW to play it — its premise, the goal, the controls, and the core loop — in a few short paragraphs. Keep it strictly about playing the game: no implementation, build, or code detail belongs in it. Write it so someone who has never seen the game understands what it is and how to pick it up. This README is read by the person reviewing your entry, and it is also what a later jam entry is shown so each new game can be made distinct from the ones before it — so describe the actual experience of play, clearly and honestly.";
 
-/// A standing directive prepended to every full-stack case's rendered prompt.
+/// The standing directive prepended to every full-stack case whose
+/// [`AssetDimension`] is [`AssetDimension::TwoD`] — the default, and so the
+/// directive nearly every full-stack case opens with.
 ///
 /// A full-stack case asks the model to do two jobs at once: build a working
 /// program *and* produce the program's own assets. The largest risk is that the
@@ -105,7 +107,49 @@ const GAME_JAM_README_DIRECTIVE: &str = "One deliverable beyond the game itself 
 /// itself. It is deliberately generic — no per-subject or per-asset detail, and no
 /// comparison, ranking, or benchmark framing. Prepended only for
 /// [`TestType::FullStack`]; every other test type renders unchanged.
-const FULL_STACK_PREAMBLE: &str = "This is a full-stack build: you must deliver a complete, working program AND the genuine assets it ships — its art, animation, particle effects, and sound — and both are judged. The run image puts asset-generation binaries on your PATH to help you make them (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — run each with `--help` to learn its operations); use them, or produce the assets any other way you prefer. What is not acceptable is shipping placeholders in place of real assets — flat colored rectangles, stand-ins drawn on the fly at runtime, or silence — which count as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live — not when your build is re-run to validate it, nor when the project is rebuilt from its published source — so treat asset generation as a one-time step that writes committed files into the repository, and make your build (the `npm run build` the harness runs) simply bundle those committed files. It must NOT invoke `draw` or the other generation binaries; a build that shells out to them fails everywhere they are absent. Hold the assets to the same ceiling as the code: the brief is the floor, and both the program and the art, motion, effects, and sound it ships should be the best you can make within the brief's constraints.";
+///
+/// The one thing it is *not* generic about is the tools, and it must not be: it
+/// names the six binaries the 2D run image bakes in and only those. A standing
+/// directive is worth no more than the tools it points at — naming a binary the
+/// run image does not carry sends the model hunting for something absent, and
+/// omitting one hides a tool the case's asset contract may require — so
+/// [`FULL_STACK_3D_PREAMBLE`] is the same directive over the 3D image's nine, and
+/// [`full_stack_preamble`] picks between them by the case's declared dimension.
+const FULL_STACK_2D_PREAMBLE: &str = "This is a full-stack build: you must deliver a complete, working program AND the genuine assets it ships — its art, animation, particle effects, and sound — and both are judged. The run image puts asset-generation binaries on your PATH to help you make them (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — run each with `--help` to learn its operations); use them, or produce the assets any other way you prefer. What is not acceptable is shipping placeholders in place of real assets — flat colored rectangles, stand-ins drawn on the fly at runtime, or silence — which count as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live — not when your build is re-run to validate it, nor when the project is rebuilt from its published source — so treat asset generation as a one-time step that writes committed files into the repository, and make your build (the `npm run build` the harness runs) simply bundle those committed files. It must NOT invoke `draw` or the other generation binaries; a build that shells out to them fails everywhere they are absent. Hold the assets to the same ceiling as the code: the brief is the floor, and both the program and the art, motion, effects, and sound it ships should be the best you can make within the brief's constraints.";
+
+/// The standing directive prepended to every full-stack case whose
+/// [`AssetDimension`] is [`AssetDimension::ThreeD`], the counterpart of
+/// [`FULL_STACK_2D_PREAMBLE`].
+///
+/// Word for word the 2D directive, with a single difference: the parenthetical
+/// naming the binaries on `PATH` lists all nine the 3D run image carries rather
+/// than the 2D image's six. Everything else — the two jobs, the placeholders that
+/// count as unfinished work, the self-containment requirement, and the quality
+/// ceiling — is the dimension-independent half of the directive and is required to
+/// stay identical between the two;
+/// `the_two_full_stack_preambles_differ_only_in_their_binary_list` in the tests is
+/// what holds them together.
+///
+/// The three added binaries carry a few words saying what each produces, which the
+/// 2D six do not need: `draw` and `music` name themselves, but nothing in the name
+/// `voxel-anim` tells a model where it stops and `voxel` begins, and a model that
+/// cannot tell them apart reaches for the wrong one. `--help` remains the
+/// authority on what each can actually do.
+const FULL_STACK_3D_PREAMBLE: &str = "This is a full-stack build: you must deliver a complete, working program AND the genuine assets it ships — its art, animation, particle effects, and sound — and both are judged. The run image puts asset-generation binaries on your PATH to help you make them (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music`, plus `voxel` for a static voxel model, `voxel-anim` for a rigged, animated one, and `particle-3d` for a volumetric effect — run each with `--help` to learn its operations); use them, or produce the assets any other way you prefer. What is not acceptable is shipping placeholders in place of real assets — flat colored rectangles, stand-ins drawn on the fly at runtime, or silence — which count as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live — not when your build is re-run to validate it, nor when the project is rebuilt from its published source — so treat asset generation as a one-time step that writes committed files into the repository, and make your build (the `npm run build` the harness runs) simply bundle those committed files. It must NOT invoke `draw` or the other generation binaries; a build that shells out to them fails everywhere they are absent. Hold the assets to the same ceiling as the code: the brief is the floor, and both the program and the art, motion, effects, and sound it ships should be the best you can make within the brief's constraints.";
+
+/// The standing full-stack directive for `asset_dimension`: the only part of a
+/// full-stack prompt that depends on which of the two run images the case resolves.
+///
+/// Selection is the whole of the function, and the dimension is the right
+/// discriminator for it because it is the same field that decides which binaries
+/// the run actually has on `PATH` (see [`crate::resolve_run_image`]). A case
+/// therefore cannot be handed a directive naming tools its image does not carry.
+const fn full_stack_preamble(asset_dimension: AssetDimension) -> &'static str {
+    match asset_dimension {
+        AssetDimension::TwoD => FULL_STACK_2D_PREAMBLE,
+        AssetDimension::ThreeD => FULL_STACK_3D_PREAMBLE,
+    }
+}
 
 /// The workspace-relative directory the selected engine's own documentation is
 /// seeded into, and so the tail of the `{{engine.docs}}` path a prompt points the
@@ -390,6 +434,7 @@ pub fn render_prompt(
         variant.description.as_deref(),
         &dests,
         test_case.test_type,
+        test_case.asset_dimension,
         test_case.max_runtime_seconds,
         test_case.voxel_for(variant),
         prior_game_jam_entries.len(),
@@ -434,10 +479,14 @@ fn game_jam_distinctness_section(count: usize) -> String {
 /// seed order (the common specs first, then the variant's own), exactly as
 /// [`TestCaseVersion::seeded_specs`] orders them. `test_type` selects which shared
 /// preamble is prepended: the `ASSET_QUALITY_PREAMBLE` for
-/// [`TestType::AssetGeneration`], the `FULL_STACK_PREAMBLE` for
+/// [`TestType::AssetGeneration`], a full-stack directive for
 /// [`TestType::FullStack`], the `GAME_JAM_PREAMBLE` for [`TestType::GameJam`], and
 /// none for the other types, so every asset-generation, full-stack, and game-jam
 /// case opens with the same standing directive while other types render bare.
+/// `asset_dimension` refines that choice for a full-stack case alone, picking the
+/// directive whose binary list matches the run image the dimension resolves (see
+/// `full_stack_preamble`); pass the case's declared value, which is
+/// [`AssetDimension::TwoD`] for every other type and is then never consulted.
 /// `max_runtime_seconds` is the run's wall-clock cap; it is exposed to the template
 /// as `{{time_limit_hours}}` (formatted hours) so a prompt can state the time budget.
 /// `voxel` is the effective bounding volume for a voxel case (the variant's
@@ -457,6 +506,7 @@ pub fn render_prompt_from_template(
     variant_description: Option<&str>,
     spec_dests: &[String],
     test_type: TestType,
+    asset_dimension: AssetDimension,
     max_runtime_seconds: u64,
     voxel: Option<&VoxelSpec>,
     prior_game_jam_entry_count: usize,
@@ -489,13 +539,17 @@ pub fn render_prompt_from_template(
     // The quality preambles are standing directives, not part of any case's
     // authored template, so prepend the one for this type to the rendered body:
     // the asset-quality directive for an asset-generation case, the full-stack
-    // directive for a full-stack case, the game-jam directive (followed by a
-    // divider fencing it off from the jam's own brief) for a game jam, and nothing
-    // for the other types. They are intentionally not run through the template
-    // engine (they hold no `{{...}}`), keeping them out of strict-mode resolution.
+    // directive of the case's asset dimension for a full-stack case, the game-jam
+    // directive (followed by a divider fencing it off from the jam's own brief) for
+    // a game jam, and nothing for the other types. They are intentionally not run
+    // through the template engine (they hold no `{{...}}`), keeping them out of
+    // strict-mode resolution.
     Ok(match test_type {
         TestType::AssetGeneration => format!("{ASSET_QUALITY_PREAMBLE}\n\n{body}"),
-        TestType::FullStack => format!("{FULL_STACK_PREAMBLE}\n\n{body}"),
+        TestType::FullStack => {
+            let preamble = full_stack_preamble(asset_dimension);
+            format!("{preamble}\n\n{body}")
+        }
         // A game jam opens with the standing preamble (fenced off from the jam's own
         // brief), and closes with the standing README requirement — and, when earlier
         // entries of this jam were seeded for this harness+model, a distinctness

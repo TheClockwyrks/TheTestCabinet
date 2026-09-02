@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use super::{
-    AssetKind, BuildCommands, ErratumSeverity, FailureCap, MediaKind, Result, SpecKind,
-    TestCaseCatalog, TestCaseVersion, TestType, is_shippable_package,
+    AssetDimension, AssetKind, BuildCommands, ErratumSeverity, FailureCap, MediaKind, Result,
+    SpecKind, TestCaseCatalog, TestCaseVersion, TestType, is_shippable_package,
     shippable_package_description,
 };
 
@@ -526,6 +526,113 @@ fn end_to_end_rejects_sprite_sheet_kind() {
         .expect_err("asset_kind on an e2e case is rejected");
     assert!(
         format!("{err}").contains("only valid for an asset-generation case"),
+        "got: {err}"
+    );
+}
+
+// --- `asset_dimension` (the full-stack run image) --------------------------
+
+/// The manifest body of a full-stack case, appended to the header
+/// [`catalog_with_manifest`] writes. A full-stack case is an end-to-end case that also
+/// produces its own assets, so it declares the same `[build]` table.
+const FULL_STACK_BODY: &str =
+    "type = \"full-stack\"\n[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"";
+
+#[test]
+fn full_stack_resolves_a_three_dimensional_asset_dimension() {
+    // `asset_dimension = "3d"` is what schedules a full-stack run onto the image that
+    // has `voxel`, `voxel-anim` and `particle-3d` on `PATH`, so it has to survive
+    // resolution onto the version the run image is selected from.
+    let (_dir, catalog) =
+        catalog_with_manifest(&format!("asset_dimension = \"3d\"\n{FULL_STACK_BODY}"));
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.test_type, TestType::FullStack);
+    assert_eq!(version.asset_dimension, AssetDimension::ThreeD);
+}
+
+#[test]
+fn full_stack_defaults_asset_dimension_to_two_dimensional() {
+    // A full-stack manifest that declares no `asset_dimension` — which is every one
+    // written before the key existed — keeps resolving onto the 2D image.
+    let (_dir, catalog) = catalog_with_manifest(FULL_STACK_BODY);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.asset_dimension, AssetDimension::TwoD);
+}
+
+#[test]
+fn asset_dimension_round_trips_as_its_two_wire_forms() {
+    // The wire spellings are `"2d"` and `"3d"` — the manifest spelling, the stored
+    // spelling, and the spelling that crosses the backend wire into a driver-run
+    // version are all the same string, so a case authored locally and one materialized
+    // from the backend resolve the same image.
+    for (dimension, wire) in [(AssetDimension::TwoD, "2d"), (AssetDimension::ThreeD, "3d")] {
+        let value = serde_json::to_value(dimension).expect("serialize");
+        assert_eq!(value, serde_json::json!(wire));
+        let parsed: AssetDimension = serde_json::from_value(value).expect("deserialize");
+        assert_eq!(parsed, dimension);
+    }
+}
+
+#[test]
+fn only_full_stack_accepts_an_asset_dimension() {
+    // Full-stack is the only type with two images to pick between: every other type
+    // resolves its image without consulting the dimension at all, by the type alone or,
+    // for asset generation, by its `asset_kind`. So an `asset_dimension` on one selects
+    // nothing: it is a mistake worth rejecting rather than silently ignoring — the
+    // author believes they have chosen an image and has not. Asserted per type because
+    // asset generation reaches resolution through its own kind-guarded arms rather than
+    // the shared one the other types take, so a check that lived in the shared arm would
+    // let every asset-generation kind through.
+    let build = "[build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"";
+    for (label, manifest_extra) in [
+        // End-to-end is the default type, so it declares no `type` at all.
+        ("end-to-end", format!("asset_dimension = \"3d\"\n{build}")),
+        (
+            "game-jam",
+            format!("asset_dimension = \"3d\"\ntype = \"game-jam\"\n{build}"),
+        ),
+        (
+            "adversarial",
+            "asset_dimension = \"3d\"\ntype = \"adversarial\"".to_string(),
+        ),
+        (
+            "performance",
+            "asset_dimension = \"3d\"\ntype = \"performance\"".to_string(),
+        ),
+    ] {
+        let (_dir, catalog) = catalog_with_manifest(&manifest_extra);
+        let err = catalog
+            .resolve("demo", "v1.0.0")
+            .expect_err("`asset_dimension` outside a full-stack case is rejected");
+        assert!(
+            format!("{err}").contains("`asset_dimension` is only valid for a full-stack case"),
+            "on a {label} case, got: {err}"
+        );
+    }
+
+    // A jam authored through its own `game-jam.toml` is rejected earlier still, by
+    // `deny_unknown_fields`: the jam manifest format has no `asset_dimension` at all,
+    // which is the strongest form of the same rule. Spliced in as a root key, ahead of
+    // the `[build]` table MINIMAL_JAM closes with — appended after it, TOML would read
+    // it as a `[build]` key instead.
+    let jam = MINIMAL_JAM.replace("[build]", "asset_dimension = \"3d\"\n[build]");
+    let err = catalog_with_jam(&jam)
+        .1
+        .resolve("trains", "v1.0.0")
+        .expect_err("`asset_dimension` in a game-jam.toml is rejected");
+    assert!(format!("{err}").contains("asset_dimension"), "got: {err}");
+
+    // And on an asset-generation case, whose image is chosen by `asset_kind`.
+    let manifest = VALID_ASSET_MANIFEST.replace(
+        "type = \"asset-generation\"\n",
+        "type = \"asset-generation\"\nasset_dimension = \"3d\"\n",
+    );
+    let err = asset_catalog(&manifest)
+        .1
+        .resolve("sprite", "v1.0.0")
+        .expect_err("`asset_dimension` on an asset-generation case is rejected");
+    assert!(
+        format!("{err}").contains("`asset_dimension` is only valid for a full-stack case"),
         "got: {err}"
     );
 }

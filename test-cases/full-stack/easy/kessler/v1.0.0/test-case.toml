@@ -17,11 +17,11 @@ name = "Kessler"
 # systems (the destruction burst, the impact spark, and the burn-up), and the game's
 # thirteen audio cues and two music beds; the rings and their derelicts, the
 # deflector, the shield ring, the containment field, the starfield, and the HUD are
-# all still drawn in code. The `full-stack` type schedules the run onto the
-# `test-cabinet-full-stack-2d` image, which carries six binaries on `PATH` — `draw`,
-# `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no
-# others; `specs/assets.md` is the production contract. A root identity field, so it
-# sits above the first table.
+# all still drawn in code. The `full-stack` type, with `asset_dimension` left at its
+# `2d` default, schedules the run onto the `test-cabinet-full-stack-2d` image, which
+# carries six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; `specs/assets.md` is the production
+# contract. A root identity field, so it sits above the first table.
 type = "full-stack"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Kessler is easy:

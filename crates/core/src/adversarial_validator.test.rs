@@ -15,8 +15,8 @@ use super::{AdversarialValidator, replay_entry, summarize};
 use crate::execution::ArtifactCollection;
 use crate::match_play::ended_to;
 use crate::test_case::{
-    AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec, TestCaseVersion, TestType,
-    Variant,
+    AssetDimension, AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec,
+    TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{AdversarialOutcome, AdversarialReplay, AdversarialTeam, Validator};
 
@@ -114,6 +114,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,

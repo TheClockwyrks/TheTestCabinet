@@ -11,13 +11,16 @@ implementation, built from `crates/draw`:
   plus a required `--frame <index>` on every drawing operation, and it adds
   keyframe animation of layers.
 
-Each binary is baked into its own
-[run-container image](/components/core/execution/#containerization): `draw` into
-`test-cabinet-sprite` (`asset_kind = "sprite"`) and `draw-sheet` into
-`test-cabinet-sprite-sheet` (`asset_kind = "sprite-sheet"`), so a run carries
-only the tool it uses. After the run, core regenerates each frame from its
-recorded log through the same library and compares the result to the model's
-preview. See [Evaluation](/testing/asset-generation/evaluation/).
+Each binary has its own asset-generation
+[run-container image](/components/core/execution/#containerization): `draw` in
+`test-cabinet-sprite` (`asset_kind = "sprite"`) and `draw-sheet` in
+`test-cabinet-sprite-sheet` (`asset_kind = "sprite-sheet"`), so a sprite
+asset-generation run carries only the tool its `asset_kind` names. Both
+[full-stack](/testing/full-stack/overview/) images carry both binaries, because
+one full-stack run produces every asset its game needs. After the run, core
+regenerates each frame from its recorded log through the same library and
+compares the result to the model's preview. See
+[Evaluation](/testing/asset-generation/evaluation/).
 
 ## Drawing operations
 

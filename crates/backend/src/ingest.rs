@@ -632,6 +632,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             renderer: replay.renderer.to_string_lossy().replace('\\', "/"),
         }),
         asset_kind: resolved.asset_kind,
+        asset_dimension: resolved.asset_dimension,
         sheet: resolved.sheet.clone(),
         voxel: resolved.voxel.clone(),
         model: resolved.model.clone(),

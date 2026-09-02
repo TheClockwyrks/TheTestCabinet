@@ -64,7 +64,7 @@ is a compile rather than a link check, on the terms every
 is held to.
 
 What that guarantees is a floor rather than an override. The compiler starts on
-an image that supplies no ICU at all, which is twenty-five of the twenty-six
+an image that supplies no ICU at all, which is twenty-six of the twenty-seven
 `-gg` variants' parent and was where this arm died on every turn. It does not
 decide which ICU the compiler starts against on an image that supplies a newer
 one: the runtime probes versioned sonames from newest downwards, so the Ubuntu

@@ -49,7 +49,7 @@
 #   run-images-e2e / -full-stack / -game-jam / -asset / -adversarial / -performance / -gg
 #                   rebuild+import ONLY one test type's run image(s) — the fast path when you touched just that type's tooling
 #   run-image-<name>  rebuild+import a SINGLE run image by short name (e.g. run-image-voxel-animation) — the finest grain, for one asset kind
-#   run-images-gg-selfcheck  build gg static and rebuild the four environment-representative `-gg` images WITH
+#   run-images-gg-selfcheck  build gg static and rebuild the five environment-representative `-gg` images WITH
 #                   the `gg selfcheck` gate — the same command CI publishes behind (builds only; imports nothing)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
 #   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
@@ -81,7 +81,7 @@ K3S_IMAGE ?= rancher/k3s:v1.35.6-k3s1
 # local import with NO registry behind it, and the kubelet's image garbage collector
 # does not know that: once the node's image filesystem — which under k3d is the HOST
 # disk — passes 85% full it deletes every image no running pod is using, which here is
-# exactly `tcab-driver:local` and all fifty-two run images. The next run then sits in
+# exactly `tcab-driver:local` and all fifty-four run images. The next run then sits in
 # `queued` forever while its driver pod is in ImagePullBackOff, and nothing can pull it
 # back. 100 disables the collector (the kubelet documents 100 as "off"). Passed on
 # `k3d cluster create`, and written into k3s's config.yaml on a node that predates it
@@ -167,9 +167,15 @@ RUN_IMAGE_TAG    := local
 #     shared Rust → wasm toolchain). The plain `base` is the FROM every other image
 #     builds on but is NOT itself a run image, so it is built as needed (build.sh
 #     handles it) and never imported on its own;
-#   - full-stack runs execute in the `full-stack-2d` image (base-wasm plus the six 2D
-#     asset-generation binaries and the two audio packs they need — so building it
-#     needs the R2 PRESIGN credentials in .env, like the sfx-sample/music images);
+#   - full-stack runs execute in one of the two full-stack images, chosen by the case's
+#     `asset_dimension`: `full-stack-2d` (the default) is base-wasm plus the six 2D
+#     asset-generation binaries and the two audio packs they need, and `full-stack-3d`
+#     is its SIBLING (also FROM base-wasm, not FROM the 2D image) carrying the same six
+#     plus `voxel`, `voxel-anim`, `particle-3d` and the Mesa software-Vulkan runtime
+#     those three render previews through. Both bake the same two packs, so building
+#     either needs the R2 PRESIGN credentials in .env, like the sfx-sample/music
+#     images — and BOTH are built and imported, because which one a run resolves is a
+#     property of the case, not of this Makefile;
 #   - game-jam runs execute in the `game-jam` image, built `FROM` the full-stack-2d
 #     image (it inherits those six binaries + baked audio packs + the Rust/wasm
 #     toolchain and adds nothing but its own identity, so it needs no R2 credentials
@@ -194,7 +200,7 @@ RUN_IMAGE_TAG    := local
 # image to build; rebuild it alone with `make run-image-blender` when iterating on the
 # `tcab-blend` runner rather than paying for the whole `run-images-asset` group.
 E2E_IMAGE_NAMES         := base-wasm
-FULL_STACK_IMAGE_NAMES  := full-stack-2d
+FULL_STACK_IMAGE_NAMES  := full-stack-2d full-stack-3d
 GAME_JAM_IMAGE_NAMES    := game-jam
 ASSET_IMAGE_NAMES       := sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned blender particle-2d particle-3d sfx-synth sfx-sample music
 ADVERSARIAL_IMAGE_NAMES := adversarial
@@ -203,27 +209,30 @@ PERFORMANCE_IMAGE_NAMES := performance
 # the name: there is exactly one variant per image and no list that could be missing one.
 GG_IMAGE_NAMES          := $(addsuffix -gg,$(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(GAME_JAM_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES))
 
-# The four variants `run-images-gg-selfcheck` drives `gg selfcheck` in, and the binary it
+# The five variants `run-images-gg-selfcheck` drives `gg selfcheck` in, and the binary it
 # builds to drive them with. One variant per ENVIRONMENT: every `-gg` image carries the same
 # `/opt/gg` (copied with `--link`, so byte-identical), so what differs between them is the
 # environment that tree has to run in — the image the lineage is rooted at, plus every package
-# the run images `apt-get install` on the way down. That is four and not two, because a dozen
+# the run images `apt-get install` on the way down. That is five and not two, because a dozen
 # run images install their own packages on top of `base` and apt brings each package's whole
 # closure with it: the mesa render images carry an ICU nothing in their Dockerfiles asked for,
-# which is the very library the C# arm was shipped without. Named here rather than derived
-# because they are the same four `containers/build.sh` names in GG_SELFCHECK_IMAGES and the
-# same four `.github/workflows/build-containers.yml` asserts by name. What keeps three lists
+# which is the very library the C# arm was shipped without. `full-stack-3d-gg` is the fifth
+# and the least obvious: it carries the same mesa ICU `voxel-gg` does, but on top of
+# base-wasm's packages rather than the bare base's, and it is the only run image that is
+# both. Named here rather than derived
+# because they are the same five `containers/build.sh` names in GG_SELFCHECK_IMAGES and the
+# same five `.github/workflows/build-containers.yml` asserts by name. What keeps three lists
 # from drifting apart is not agreement between them: `assert_gg_environments`, in build.sh,
 # re-derives the grouping from the Dockerfiles and fails a gated build if any variant's
 # environment has no representative.
-GG_SELFCHECK_IMAGE_NAMES := sprite-gg base-wasm-gg voxel-gg blender-gg
+GG_SELFCHECK_IMAGE_NAMES := sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg
 GG_SELFCHECK_BIN         := $(REPO)/target/gg-selfcheck/gg
 
 # Every run image this Makefile builds + imports locally: the union of the per-type
 # groups above (so it stays in lockstep with them). Order matches build.sh's
 # dependency order (base, then base-wasm which is FROM it, then full-stack-2d /
-# adversarial / performance which are FROM base-wasm — and game-jam, which is FROM
-# full-stack-2d, so it must follow it here).
+# full-stack-3d / adversarial / performance which are FROM base-wasm — and game-jam,
+# which is FROM full-stack-2d, so it must follow it here).
 RUN_IMAGE_NAMES  := $(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(GAME_JAM_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES) $(GG_IMAGE_NAMES)
 
 # Map a space-separated list of image NAMES to their fully-qualified `:local` refs
@@ -377,8 +386,8 @@ kubeconfig:
 # ONE ARCHIVE, NOT ONE PER IMAGE. `$(CONTAINER_TOOL) save a b c` writes each distinct blob
 # ONCE however many of the images share it; a tar per image cannot share anything, so every
 # image re-writes the whole base it inherits. That is not a rounding error on this image
-# set: the twenty-six non-gg run images are 8.5 GB as separate tars and 1.23 GB as one, and
-# all fifty-two together are 23.2 GB as one archive — the entire non-gg set rides along for
+# set: the twenty-seven non-gg run images are 8.5 GB as separate tars and 1.23 GB as one, and
+# all fifty-four together are 23.2 GB as one archive — the entire non-gg set rides along for
 # free once the gg set is in it. Every byte saved here is paid three times over, because it
 # is written to disk, streamed into the node, and unpacked into the node's snapshotter.
 #
@@ -482,7 +491,7 @@ images:
 # multi-minute recompile:
 #   - `run-images`               everything (what local-up runs; the heavy path)
 #   - `run-images-e2e`           the base-wasm image (an end-to-end / base-layer change)
-#   - `run-images-full-stack`    the full-stack-2d image (needs the R2 pack credentials)
+#   - `run-images-full-stack`    both full-stack images, 2d and 3d (needs the R2 pack credentials)
 #   - `run-images-game-jam`      the game-jam image (FROM full-stack-2d, which must be built first)
 #   - `run-images-asset`         every asset-generation kind
 #   - `run-image-<kind>`         one asset kind, e.g. `run-image-voxel-animation`
@@ -532,9 +541,13 @@ run-images-e2e: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-e2e:
 	$(call build_import_run_images,$(E2E_IMAGE_NAMES),$(call run_image_refs,$(E2E_IMAGE_NAMES)))
 
-# `-full-stack` rebuilds the full-stack-2d image (the base plus the six 2D asset
-# binaries + the two audio packs). Building it presigns the packs from R2, so it needs
-# the PRESIGN credentials in .env (as the sfx-sample/music asset images do).
+# `-full-stack` rebuilds BOTH full-stack images — full-stack-2d (base-wasm plus the six
+# 2D asset binaries + the two audio packs) and full-stack-3d (the same, plus `voxel`,
+# `voxel-anim`, `particle-3d` and the Mesa runtime they render previews through). They are
+# siblings, not a chain, so neither is a by-product of building the other and a local
+# cluster missing one cannot schedule a case that resolves it. Building either presigns
+# the packs from R2, so this needs the PRESIGN credentials in .env (as the sfx-sample/music
+# asset images do).
 run-images-full-stack: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-full-stack:
 	$(call build_import_run_images,$(FULL_STACK_IMAGE_NAMES),$(call run_image_refs,$(FULL_STACK_IMAGE_NAMES)))
@@ -564,8 +577,8 @@ run-images-performance:
 # responses-as-code program is compiled with. build.sh builds the shared toolchain
 # builder first (always — it carries the compilers, so a stale one would bake yesterday's
 # toolchain in) and each variant's parent when that is missing, which for the
-# full-stack-2d, game-jam, sfx-sample and music variants means the R2 PRESIGN credentials
-# in .env the first time. Only the variant refs are imported; their parents' layers are
+# full-stack-2d, full-stack-3d, game-jam, sfx-sample and music variants means the R2
+# PRESIGN credentials in .env the first time. Only the variant refs are imported; their parents' layers are
 # in them. This is the whole set — `make run-image-sprite-gg` rebuilds one.
 run-images-gg: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-gg:
@@ -589,23 +602,30 @@ run-images-gg:
 # invocation `.github/workflows/build-containers.yml` publishes behind, which is what makes a
 # green run here mean something: not a local approximation of the gate, the gate.
 #
-# FOUR IMAGES, NOT TWENTY-SIX. `/opt/gg` is byte-identical across every variant (the `--link`
-# COPY in containers/gg/Dockerfile), so what can differ is the environment it runs in — and
-# there are four of those, not the two parents it looks like: `sprite-gg` is the shared base,
-# `base-wasm-gg` adds base-wasm's packages, `voxel-gg` adds the mesa stack the render images
-# install, and `blender-gg` is the Ubuntu lineage. build.sh refuses the flag against a
-# selection containing none of them, and re-derives the grouping from the Dockerfiles before
-# it builds anything.
+# FIVE IMAGES, NOT TWENTY-SEVEN. `/opt/gg` is byte-identical across every variant (the
+# `--link` COPY in containers/gg/Dockerfile), so what can differ is the environment it runs
+# in — and there are five of those, not the two parents it looks like: `sprite-gg` is the
+# shared base, `base-wasm-gg` adds base-wasm's packages, `voxel-gg` adds the mesa stack the
+# render images install, `full-stack-3d-gg` is the one image that has BOTH base-wasm's
+# packages and that mesa stack, and `blender-gg` is the Ubuntu lineage. build.sh refuses the
+# flag against a selection containing none of them, and re-derives the grouping from the
+# Dockerfiles before it builds anything.
 #
 # It BUILDS but does not IMPORT: this is a question about the images, not a way to put them
 # in the cluster — `run-images-gg` is what the cluster needs. Expect minutes: the check
 # compiles one program per arm eleven times over (~35 s per image once the toolchain builder
-# and every parent is cached; the first run pays for those instead — and one of the four
-# parents is an asset image, so that first run also builds the `tools` Rust builder).
+# and every parent is cached; the first run pays for those instead — and two of the five
+# parents bake tooling binaries, so that first run also builds the `tools` Rust builder).
 #
 # The binary is written under the repository's own gitignored `target/`, beside where
 # `gg-reference`/`gg-artifacts` land, rather than into a temporary directory — it is ~750 MB
 # and rebuilding it for every check is the slow half of this target.
+#
+# ONE OF THE FIVE PARENTS NEEDS THE R2 CREDENTIALS. `full-stack-3d` bakes the same two audio
+# packs the 2D image does, so build.sh presigns them when it has to build that parent — which
+# it does the first time this target runs. Without the PRESIGN values in .env the gate stops
+# there with a presign error rather than a toolchain one; that is deliberate (an image is
+# never shipped with an empty audio palette), but it is a confusing place to meet it.
 run-images-gg-selfcheck: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-gg-selfcheck:
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'

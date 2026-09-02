@@ -74,8 +74,11 @@ which mounts it into the run container; `tcab` itself never reads it.
 ## 3. Run-container images
 
 Every run executes inside a run-container image selected by the test case's
-[test type](/testing/overview/) and, for asset generation, its
-[`asset_kind`](/testing/asset-generation/manifests/overview/). The
+[test type](/testing/overview/), by its
+[`asset_kind`](/testing/asset-generation/manifests/overview/) for asset
+generation, and by its
+[`asset_dimension`](/testing/full-stack/manifests/#asset_dimension) for full
+stack. The
 [harness](/components/core/harnesses/) is installed into that image at run time,
 so there is no per-harness image.
 

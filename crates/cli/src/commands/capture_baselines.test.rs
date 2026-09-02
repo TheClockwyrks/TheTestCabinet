@@ -6,7 +6,7 @@
 //! selection logic both commands route through — version resolution and variant
 //! targeting — leaving the clap surface to `cli.test.rs`.
 
-use test_cabinet_core::{AssetKind, EngineSupport, NONE_SLUG, TestType};
+use test_cabinet_core::{AssetDimension, AssetKind, EngineSupport, NONE_SLUG, TestType};
 
 use super::*;
 
@@ -43,6 +43,7 @@ fn test_case(variants: &[(&str, &[&str])]) -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,

@@ -13,8 +13,8 @@ use std::time::Duration;
 use super::*;
 use crate::engine::{EngineCatalog, EngineSelection};
 use crate::test_case::{
-    AssetKind, MediaKind, ReviewItem, ReviewOutput, ReviewValidation, SubReviewItem,
-    TestCaseVersion, TestType, Variant,
+    AssetDimension, AssetKind, MediaKind, ReviewItem, ReviewOutput, ReviewValidation,
+    SubReviewItem, TestCaseVersion, TestType, Variant,
 };
 
 // --- Fixtures ---------------------------------------------------------------
@@ -49,6 +49,7 @@ fn version(root: PathBuf, items: Vec<ReviewItem>) -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,

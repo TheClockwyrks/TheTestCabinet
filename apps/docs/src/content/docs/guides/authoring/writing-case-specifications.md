@@ -254,6 +254,6 @@ output rather than the sources. The seeded tree is what the model receives.
 - [Authoring an end-to-end case](/guides/authoring/authoring-an-end-to-end-test-case/)
   gives the structural procedure for a playable case.
 - [Authoring a full-stack case](/guides/authoring/authoring-a-full-stack-test-case/)
-  does the same for a case that also produces its own 2D assets.
+  does the same for a case that also produces its own assets.
 - [Instrumentation](/testing/end-to-end/instrumentation/) covers the debug API
   and deterministic core that validation scripts drive.

@@ -200,6 +200,10 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   filter the case. All three are required, though `tags` may be an empty list.
 - `type` selects the test type and defaults to `end-to-end`. The type decides
   which tables are required and which are rejected.
+- `asset_dimension` selects which of the two full-stack run images a run
+  executes in, `2d` or `3d`, and defaults to `2d`. It is valid for the
+  full-stack type only. See
+  [Full-stack manifests](/testing/full-stack/manifests/#asset_dimension).
 - `summary` is an optional one- or two-sentence abstract shown on the site's
   test case cards. It is authored inline as plain text so it renders safely
   inside the card's link. It is never seeded.

@@ -40,7 +40,7 @@ constraints that govern the task. The matching
 - [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/)
   adds a new playable mode to an existing end-to-end version.
 - [Authoring a Full-Stack Test Case](/guides/authoring/authoring-a-full-stack-test-case/)
-  covers writing a case whose run produces both the game and its own 2D assets.
+  covers writing a case whose run produces both the game and its own assets.
 
 ## Authoring 2D asset-generation cases
 

@@ -29,6 +29,14 @@
 #     binary (`mc`/`mc-anim`/`sn`/`sn-anim`/`dc`/`dc-anim`) and the Mesa
 #     software-Vulkan (lavapipe) runtime the previews render with (each
 #     `<name>/Dockerfile` is `FROM` the base); and
+#   - the two full-stack images, which every full-stack run executes in — base-wasm plus
+#     the asset-generation binaries the model produces the game's own assets with, and
+#     the audio packs those tools need. Which of the two a run resolves is the case's
+#     `asset_dimension`: full-stack-2d (the default) carries the 2D six — `draw`,
+#     `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music` — and full-stack-3d
+#     carries those plus `voxel`, `voxel-anim` and `particle-3d` and the Mesa
+#     software-Vulkan runtime those three render their previews through (each
+#     `full-stack-*/Dockerfile` is `FROM` base-wasm here); and
 #   - the adversarial image, which every adversarial run executes in — base-wasm
 #     (which supplies the Rust + `wasm32-unknown-unknown` toolchain a model's
 #     controller builds to wasm with) plus the Foray tooling compiled from
@@ -66,19 +74,19 @@
 #                             #   representative it builds, BEFORE that image is pushed. See
 #                             #   "Gating the `-gg` variants" below.
 #
-# The images are distributed via a registry and pulled by the runner, which
-# resolves the one for a run's test type and asset kind from its own registry
-# configuration (TCAB_CONTAINER_REGISTRY / TCAB_CONTAINER_TAG, or a per-image
-# override TCAB_CONTAINER_IMAGE_BASE_WASM (end-to-end) / TCAB_CONTAINER_IMAGE_SPRITE /
+# The images are distributed via a registry and pulled by the runner, which resolves
+# the one for a run's test type, its asset kind, and — for a full-stack case — its
+# asset dimension, from its own registry configuration (TCAB_CONTAINER_REGISTRY /
+# TCAB_CONTAINER_TAG, or a per-image override TCAB_CONTAINER_IMAGE_BASE_WASM
+# (end-to-end) / TCAB_CONTAINER_IMAGE_FULL_STACK_2D /
+# TCAB_CONTAINER_IMAGE_FULL_STACK_3D / TCAB_CONTAINER_IMAGE_SPRITE /
 # TCAB_CONTAINER_IMAGE_SPRITE_SHEET / TCAB_CONTAINER_IMAGE_VOXEL /
 # TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION / TCAB_CONTAINER_IMAGE_MC /
 # TCAB_CONTAINER_IMAGE_MC_ANIMATION / TCAB_CONTAINER_IMAGE_SN /
 # TCAB_CONTAINER_IMAGE_SN_ANIMATION / TCAB_CONTAINER_IMAGE_DC /
 # TCAB_CONTAINER_IMAGE_DC_ANIMATION / TCAB_CONTAINER_IMAGE_ADVERSARIAL /
-# TCAB_CONTAINER_IMAGE_PERFORMANCE; see
-# docs/components/core/execution.md). The
-# backend plays no part in container distribution, so this script never talks to
-# it.
+# TCAB_CONTAINER_IMAGE_PERFORMANCE; see docs/components/core/execution.md). The
+# backend plays no part in container distribution, so this script never talks to it.
 #
 # With PUSH=1 the script pushes each built image to IMAGE_REGISTRY and prints its
 # pushed digest reference. Without PUSH it just builds locally (the offline
@@ -214,14 +222,14 @@ if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
 fi
 readonly GG_SELFCHECK_BIN
 
-# THE FOUR IMAGES THE GATE RUNS IN, AND WHY IT IS FOUR AND NOT TWENTY-SIX.
+# THE FIVE IMAGES THE GATE RUNS IN, AND WHY IT IS FIVE AND NOT TWENTY-SEVEN.
 #
 # Every `-gg` variant carries the SAME toolchain tree: `containers/gg/Dockerfile` copies
 # `/opt/gg` with `--link`, which builds the layer rooted at `scratch` rather than as a diff
-# against each parent — so all twenty-six variants get the identical digest for identical
+# against each parent — so all twenty-seven variants get the identical digest for identical
 # bytes (that COPY's comment carries the measurement). What can differ between two variants
 # is therefore not the toolchain but the ENVIRONMENT it has to run in, and the question this
-# list answers is how many distinct environments the twenty-six are.
+# list answers is how many distinct environments the twenty-seven are.
 #
 # IT IS NOT "THE NUMBER OF PARENTS", which is what this list first said and got wrong. There
 # are two external parents — the Debian `node:*-bookworm-slim` and `blender`'s `ubuntu:26.04`
@@ -229,31 +237,46 @@ readonly GG_SELFCHECK_BIN
 # own on top of `base`, and a package brings its whole dependency closure with it. Measured
 # on the local store, with the C# arm's own missing library as the probe:
 #
-#   test-cabinet-sprite-gg      no libicu at all
-#   test-cabinet-base-wasm-gg   no libicu at all
-#   test-cabinet-voxel-gg       libicu{uc,i18n,data}.so.72, dragged in by mesa-vulkan-drivers
-#   test-cabinet-blender-gg     libicu{uc,i18n,data}.so.78, dragged in by blender
+#   test-cabinet-sprite-gg         no libicu at all
+#   test-cabinet-base-wasm-gg      no libicu at all
+#   test-cabinet-voxel-gg          libicu{uc,i18n,data}.so.72, dragged in by mesa-vulkan-drivers
+#   test-cabinet-full-stack-3d-gg  libicu{uc,i18n,data}.so.72, by the same mesa install — but
+#                                  on top of base-wasm's packages, which voxel-gg has none of
+#   test-cabinet-blender-gg        libicu{uc,i18n,data}.so.78, dragged in by blender
 #
 # So `base-wasm-gg` alone did not answer for `voxel-gg`: in one the vendored ICU is what the
 # runtime opens and in the other the image's own copy is there to be found instead, and
 # "satisfied by a package something unrelated pulled in" is the exact failure class this
-# whole gate exists to end. Grouping the twenty-six by the environment their Dockerfiles
+# whole gate exists to end. Grouping the twenty-seven by the environment their Dockerfiles
 # build — the external reference the lineage is rooted at, plus every package `apt` installs
-# anywhere along the chain — gives FOUR groups, and these are one of each:
+# anywhere along the chain — gives FIVE groups, and these are one of each:
 #
-#   sprite-gg     node:*-bookworm-slim + the shared base's packages
-#   base-wasm-gg  …and base-wasm's binaryen, libssl-dev, pkg-config
-#   voxel-gg      …and the mesa stack (libvulkan1, mesa-vulkan-drivers) the render images add
-#   blender-gg    ubuntu:26.04 + blender's packages
+#   sprite-gg         node:*-bookworm-slim + the shared base's packages
+#   base-wasm-gg      …and base-wasm's binaryen, libssl-dev, pkg-config
+#   voxel-gg          the base's packages and the mesa stack (libvulkan1,
+#                     mesa-vulkan-drivers) the render images add, but NOT base-wasm's
+#   full-stack-3d-gg  …base-wasm's AND the mesa stack: the 3D full-stack image is the only
+#                     run image that is `FROM` base-wasm and installs mesa, because it is
+#                     the only one that both compiles Rust to wasm and renders a preview
+#   blender-gg        ubuntu:26.04 + blender's packages
+#
+# THE FOURTH GROUP IS THE ONE THAT LOOKS REDUNDANT AND IS NOT. `full-stack-3d-gg` carries the
+# same `libicu72` `voxel-gg` does, from the same package, so the C# arm's original bug would
+# be answered identically in both — but the grouping is not "which ICU is present", it is the
+# whole package set, and an arm that resolves a library differently because binaryen's or
+# libssl-dev's closure is also there is exactly the accident nobody would predict in advance.
+# That is the reason this list is derived from the Dockerfiles rather than reasoned about:
+# `assert_gg_environments` would refuse the build if two entries here were the same
+# environment, so a redundant representative cannot be added by mistake either.
 #
 # `base` itself is in no group: it has no `-gg` variant, so no arm ever runs there.
 #
-# That is the whole argument, and it is only as good as "four groups" — which is why
+# That is the whole argument, and it is only as good as "five groups" — which is why
 # `assert_gg_environments` re-derives the grouping from the Dockerfiles on every gated build
 # instead of trusting this comment, and `assert_gg_lineages` separately pins the two external
 # references the grouping is rooted at. The C# bug was in the ENVIRONMENT (a missing ICU),
 # and `--link` says nothing whatever about what a variant is layered onto.
-readonly GG_SELFCHECK_IMAGES=(sprite-gg base-wasm-gg voxel-gg blender-gg)
+readonly GG_SELFCHECK_IMAGES=(sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg)
 
 # The external images the run images' lineages are rooted at, and the exact references they
 # name. `assert_gg_lineages` requires the set derived from `containers/*/Dockerfile` to be
@@ -262,7 +285,7 @@ readonly GG_SELFCHECK_IMAGES=(sprite-gg base-wasm-gg voxel-gg blender-gg)
 # image works today only because Ubuntu's own package closure happens to drag in an ICU,
 # which is precisely the kind of accident a new base image silently withdraws.
 #
-# This is a PIN and not the coverage argument. What makes four images answer for twenty-six
+# This is a PIN and not the coverage argument. What makes five images answer for twenty-seven
 # is `assert_gg_environments`, which groups the variants by root *and* by the packages each
 # one installs; a root that never moves while a run image gains a package is a change this
 # list cannot see and that one can.
@@ -293,9 +316,10 @@ readonly GG_SELFCHECK_USER="node"
 # base, adversarial, and performance tags are referenced by name here.
 readonly BASE_IMAGE="${IMAGE_NAME_PREFIX}base:${IMAGE_TAG}"
 # The Rust/wasm middle layer built `FROM` the base: the base plus the shared Rust →
-# WebAssembly toolchain. End-to-end runs resolve this image, and the full-stack-2d,
-# adversarial, and performance images are each built `FROM` it (they no longer install
-# a Rust toolchain of their own), so it stays in lockstep with the base within a build.
+# WebAssembly toolchain. End-to-end runs resolve this image, and the two full-stack
+# images (2d/3d), adversarial, and performance are each built `FROM` it (they no longer
+# install a Rust toolchain of their own), so it stays in lockstep with the base within
+# a build.
 readonly BASE_WASM_IMAGE="${IMAGE_NAME_PREFIX}base-wasm:${IMAGE_TAG}"
 # The full-stack-2d image tag. Referenced by name because the game-jam image is built
 # `FROM` it (it inherits the six asset binaries, the audio packs, and the Rust/wasm
@@ -331,10 +355,10 @@ readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 #
 # THAT LAST SENTENCE IS TRUE ONLY BECAUSE `containers/gg/Dockerfile` COPIES THE TREE WITH
 # `--link`. Identical content is not enough: a plain `COPY` is diffed against each
-# variant's own parent, which gave the twenty-six variants twenty-six DIFFERENT digests for
-# the same bytes and defeated every layer of sharing there is — registry storage, node
-# pulls, and the `docker save` a local import feeds on. Read the comment on that `COPY`
-# before touching it; it is the line this paragraph depends on.
+# variant's own parent, which gave the twenty-seven variants twenty-seven DIFFERENT
+# digests for the same bytes and defeated every layer of sharing there is — registry
+# storage, node pulls, and the `docker save` a local import feeds on. Read the comment on
+# that `COPY` before touching it; it is the line this paragraph depends on.
 #
 # Because it is not in image-names.sh, the `manifest` job in build-containers.yml — which
 # is driven by that list — fuses this one by name, immediately after its loop. See there.
@@ -613,7 +637,7 @@ gg_environment_key() {
 #
 # THIS IS THE ASSERTION THE FIRST VERSION OF THE GATE DID NOT HAVE, and its absence was the
 # same mistake in miniature as the one the gate exists to catch. The claim was "two images
-# cover twenty-six, because /opt/gg is byte-identical and there are two parents", and
+# cover twenty-seven, because /opt/gg is byte-identical and there are two parents", and
 # `assert_gg_lineages` was written to keep the "two parents" half honest — which it does, and
 # which was never the half that could go wrong quietly. A run image is not its parent: a
 # dozen of them `apt-get install` a package on top of `base`, apt brings the package's closure
@@ -759,7 +783,7 @@ build_gg_variant() {
 	# cannot run in it must never reach a registry, and `set -euo pipefail` plus the `exit 1`
 	# inside `gg_selfcheck` is what makes a broken arm end the build here rather than one
 	# image later. Only the environment representatives are driven — see GG_SELFCHECK_IMAGES
-	# for why four answer for twenty-six, and `assert_gg_environments` for what keeps that true.
+	# for why five answer for twenty-seven, and `assert_gg_environments` for what keeps that true.
 	if [[ -n "${GG_SELFCHECK_BIN}" ]] && gg_selfcheck_covers "${name}"; then
 		gg_selfcheck "${name}" "${image}"
 	fi
@@ -788,11 +812,11 @@ build_base() {
 
 # Build the Rust/wasm base image `FROM` the base built above plus the shared Rust →
 # WebAssembly toolchain (Rust + the `wasm32-unknown-unknown` target + wasm-bindgen +
-# wasm-pack + binaryen). End-to-end runs resolve this image directly, and the
-# full-stack-2d, adversarial, and performance images are built `FROM` it. Building
-# from the local base tag avoids a registry round-trip and keeps this image pinned to
-# the base produced in this same invocation. The context is the repository root only
-# for `.dockerignore` parity with the other images; this image compiles nothing from
+# wasm-pack + binaryen). End-to-end runs resolve this image directly, and the two
+# full-stack images, adversarial, and performance are built `FROM` it. Building from
+# the local base tag avoids a registry round-trip and keeps this image pinned to the
+# base produced in this same invocation. The context is the repository root only for
+# `.dockerignore` parity with the other images; this image compiles nothing from
 # `crates/` (it installs the public toolchain), so the context is otherwise unused.
 build_base_wasm() {
 	echo "==> building ${BASE_WASM_IMAGE} (FROM ${BASE_IMAGE})"
@@ -938,18 +962,38 @@ build_music_image() {
 	fi
 }
 
-# Build the 2D full-stack image: base-wasm plus the six 2D asset-generation binaries
-# (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the two audio packs
-# those tools need (the combat-core sample pack for `sfx-sample`, the gm-lite instrument
-# bank for `music`). It is the union of a plain asset image and BOTH audio images, so it
-# presigns two content-addressed packs from the private R2 bucket at build time (see
-# build_audio_image for the mechanism and credentials) and passes both — plus the base —
-# to the one Dockerfile. Like the audio images, a missing pin or a failed presign for
-# EITHER pack is a HARD error: a full-stack image is never shipped with an empty audio
-# palette. Publish a pack with `node scripts/build-sample-pack.mjs <pack> --publish` and
-# commit the pin before building this image.
-build_full_stack_2d() {
-	local image="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
+# Build a full-stack image: base-wasm plus the asset-generation binaries a full-stack run
+# produces the game's own assets with, AND the two audio packs those tools need (the
+# combat-core sample pack for `sfx-sample`, the gm-lite instrument bank for `music`). The
+# argument is the case's asset DIMENSION — `2d` or `3d` — which is both the image's name
+# suffix and the directory holding its Dockerfile, exactly as `build_asset_image`'s
+# argument is: full-stack-2d bakes the six 2D binaries (draw, draw-sheet, particle-2d,
+# sfx-synth, sfx-sample, music) and full-stack-3d bakes those plus `voxel`, `voxel-anim`,
+# `particle-3d` and the Mesa software-Vulkan runtime those three render their preview PNGs
+# through. A case picks between them with `asset_dimension` (see the crate's
+# `harness::resolve_run_image`); each Dockerfile says what is in its image and, for the 3D
+# one, what (the meshing families, Blender) is deliberately left out.
+#
+# ONE FUNCTION BUILDS BOTH BECAUSE THE TWO ARE SIBLINGS. The 3D image is a superset of the
+# 2D one by CONTENT, but it is built `FROM` base-wasm rather than `FROM` the 2D tag:
+# layering it there would make every 2D run pay for a rebuild of the 3D one, and would put
+# the two images in a dependency order that says nothing true about them. Being siblings,
+# they differ only in which binaries their Dockerfile copies out of the tooling builder —
+# same base, same build args, same two packs — so what varies between them is the argument
+# below and nothing else. A `game-jam`-style one-liner cannot express that, and a second
+# copy of this function would be a second place to keep the pack handling correct in.
+#
+# Each is the union of a plain asset image and BOTH audio images, so it presigns two
+# content-addressed packs from the private R2 bucket at build time (see build_audio_image
+# for the mechanism and credentials) and passes both — plus the base — to the one
+# Dockerfile. Like the audio images, a missing pin or a failed presign for EITHER pack is a
+# HARD error: a full-stack image is never shipped with an empty audio palette. Publish a
+# pack with `node scripts/build-sample-pack.mjs <pack> --publish` and commit the pin before
+# building either image.
+build_full_stack() {
+	local dimension="$1"
+	local name="full-stack-${dimension}"
+	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
 	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
 	local sample_ref="combat-core@0.1.0" bank_ref="gm-lite@0.1.0"
 
@@ -989,12 +1033,12 @@ build_full_stack_2d() {
 		--build-arg "INSTRUMENT_BANK_URL=${bank_url}" \
 		--build-arg "INSTRUMENT_BANK_SHA256=${bank_sha}" \
 		-t "${image}" \
-		-f "${SCRIPT_DIR}/full-stack-2d/Dockerfile" "${SCRIPT_DIR}/.."
+		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
 		local reference
-		reference="$(push_and_pin "${image}" full-stack-2d)"
-		echo "==> full-stack-2d reference: ${reference}"
+		reference="$(push_and_pin "${image}" "${name}")"
+		echo "==> ${name} reference: ${reference}"
 	fi
 }
 
@@ -1099,10 +1143,15 @@ build_one() {
 		base-wasm)    build_base_wasm ;;
 		adversarial)  build_adversarial ;;
 		performance)  build_performance ;;
-		# The full-stack-2d image bakes six binaries AND two content-addressed audio
-		# packs pulled from the private R2 bucket at build time (see
-		# build_full_stack_2d). Both packs must be published + pinned first.
-		full-stack-2d) build_full_stack_2d ;;
+		# The two full-stack images bake their asset binaries AND two content-addressed
+		# audio packs pulled from the private R2 bucket at build time (see
+		# build_full_stack, which both arms share — the argument is the dimension a case
+		# selects with `asset_dimension`). Both packs must be published + pinned first.
+		# Neither may fall through to `*)`, which would build it `FROM` the plain base
+		# with no pack args at all: an image that builds, resolves, and has neither audio
+		# nor a Rust toolchain in it.
+		full-stack-2d) build_full_stack 2d ;;
+		full-stack-3d) build_full_stack 3d ;;
 		# The game-jam image is built `FROM` the full-stack-2d image (see
 		# build_game_jam); the layered build below ensures full-stack-2d is present
 		# first when only game-jam is selected.
@@ -1138,7 +1187,7 @@ mapfile -t ALL_NAMES < <("${SCRIPT_DIR}/image-names.sh")
 
 # Before anything is built: if this build is claiming to gate the `-gg` variants, the claim
 # has to still be true. Both halves of it — the two external references the lineages are
-# rooted at, and the four environments those roots plus the images' own packages make. Cheap
+# rooted at, and the five environments those roots plus the images' own packages make. Cheap
 # (they read the Dockerfiles), and they run first so an uncovered variant is a message rather
 # than an hour of building followed by one.
 if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
@@ -1264,14 +1313,14 @@ select_needs_base() {
 }
 
 # Whether anything to be built is built `FROM` base-wasm (the Rust/wasm middle layer):
-# the full-stack-2d, adversarial, and performance images. `game-jam` is `FROM`
+# the two full-stack images, adversarial, and performance. `game-jam` is `FROM`
 # full-stack-2d (which is `FROM` base-wasm), so it needs base-wasm present too. Such a
 # selection needs base-wasm present, which in turn needs base — all handled below.
 select_needs_base_wasm() {
 	local x
 	for x in "${targets[@]}"; do
 		case "$x" in
-			full-stack-2d | game-jam | adversarial | performance) return 0 ;;
+			full-stack-2d | full-stack-3d | game-jam | adversarial | performance) return 0 ;;
 		esac
 	done
 	return 1
@@ -1349,7 +1398,7 @@ fi
 if select_has base-wasm; then
 	build_base_wasm
 elif select_needs_base_wasm && ! image_present "${BASE_WASM_IMAGE}"; then
-	echo "==> base-wasm image ${BASE_WASM_IMAGE} not present; building it first (full-stack-2d/adversarial/performance are FROM it)"
+	echo "==> base-wasm image ${BASE_WASM_IMAGE} not present; building it first (full-stack-2d/full-stack-3d/adversarial/performance are FROM it)"
 	build_base_wasm
 fi
 
@@ -1367,7 +1416,7 @@ if ! select_has full-stack-2d \
 	# selection did not trigger the layer-0 rule (game-jam inherits its binaries and
 	# needs no tooling of its own), so build the tooling here before its parent.
 	build_tools
-	build_full_stack_2d
+	build_full_stack 2d
 fi
 
 # Layer 4 — the parent of every selected `-gg` variant that is still missing. Selecting

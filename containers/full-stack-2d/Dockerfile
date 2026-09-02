@@ -1,6 +1,7 @@
 # The 2D full-stack run-container image for The Test Cabinet.
 #
-# Every full-stack run (a case with `type = "full-stack"`) executes in this one image.
+# Every 2D full-stack run — a case with `type = "full-stack"` that declares no
+# `asset_dimension`, or declares `"2d"` — executes in this one image.
 # Unlike an end-to-end run — which builds a program in the Rust/wasm base image — a
 # full-stack run must ALSO produce its own 2D assets during the run, so this image is
 # the Rust/wasm base image (`base-wasm`) plus the baked-in 2D asset-generation binaries
@@ -9,8 +10,11 @@
 # (sampled SFX), and `music` (sampled-instrument music). See the asset-generation docs
 # under `apps/docs/src/content/docs/testing/asset-generation/` for each tool and
 # `apps/docs/src/content/docs/testing/full-stack/` for how a full-stack case wires the
-# produced assets into its build. The 3D asset tooling (voxel/mesh/blender) is
-# deliberately NOT here: a full-stack-3d image is a separate, later addition.
+# produced assets into its build. The 3D voxel/particle tooling is deliberately NOT here:
+# it lives in the sibling `full-stack-3d` image, which a case selects with
+# `asset_dimension = "3d"` (see `containers/full-stack-3d/Dockerfile`). This image stays
+# the 2D set, so a 2D case carries neither those binaries nor the Mesa software-Vulkan
+# runtime they render their previews through.
 #
 # The binaries are baked in rather than installed at run time because, like the
 # per-kind asset-generation images, they are part of The Test Cabinet itself; building
@@ -26,7 +30,8 @@
 # `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack` toolchain, the unprivileged
 # `node` run user, the `/work` working directory, and the keep-alive CMD — so it only
 # adds the six binaries and the two audio packs. The image a run resolves is selected
-# by its test type (see crate `harness::resolve_run_image`).
+# by its test type and, for a full-stack case, its `asset_dimension` (see crate
+# `harness::resolve_run_image`).
 
 # `BASE_IMAGE` is the base image to extend — the Rust/wasm base (`base-wasm`), so a
 # full-stack build may author its simulation core in Rust and ship it as committed
@@ -76,7 +81,7 @@ COPY --from=tools /out/music /usr/local/bin/music
 # repo). The build PINS it BY DIGEST — `SAMPLE_PACK_SHA256`, enforced by `ADD
 # --checksum` — so the baked palette is immutable and versioned with the image; a run
 # container is offline, so the fetch happens at BUILD time, pinned. `build.sh`'s
-# `build_full_stack_2d` presigns a short-lived R2 GET URL from the pin in
+# `build_full_stack` presigns a short-lived R2 GET URL from the pin in
 # `containers/sample-packs/packs.lock.json` and supplies all three args (the defaults
 # are placeholders that fail the build until a real pack is pinned):
 #   --build-arg SAMPLE_PACK=combat-core@0.1.0
@@ -107,7 +112,7 @@ ENV TCAB_SAMPLE_PACK_DIR=/opt/sample-packs/pack
 #
 # Identical mechanism to the dedicated `music` image (see `containers/music/Dockerfile`):
 # a pinned, content-addressed instrument-bank tarball, fetched + verified at build time.
-# `build.sh`'s `build_full_stack_2d` presigns it from the same pin file and supplies:
+# `build.sh`'s `build_full_stack` presigns it from the same pin file and supplies:
 #   --build-arg INSTRUMENT_BANK=gm-lite@0.1.0
 #   --build-arg INSTRUMENT_BANK_SHA256=sha256:<digest printed by build-sample-pack.mjs>
 #   --build-arg INSTRUMENT_BANK_URL=<presigned R2 URL of gm-lite-0.1.0.tar>

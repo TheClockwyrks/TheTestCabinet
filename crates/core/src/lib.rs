@@ -174,7 +174,7 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
+    AssetDimension, AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
     EngineWorkspaces, Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec, ProofFile,
     ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation,
     SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
@@ -253,11 +253,11 @@ pub struct RunRequest {
     /// way the run is bounded, so a session can never continue unbounded.
     pub max_runtime_override: Option<u64>,
     /// An explicit per-run override for the run-container image: a full, pullable
-    /// reference the runtime pulls. `None` — the usual case — resolves the image
-    /// for the run's test type and asset kind from the environment via
-    /// [`resolve_run_image`], which consults
-    /// no backend. Whatever image actually runs is recorded (resolved to its
-    /// registry digest where it has one) as [`RunEnvironment::container_image`].
+    /// reference the runtime pulls. `None` — the usual case — resolves the image for
+    /// the run's test type, asset kind and asset dimension from the environment via
+    /// [`resolve_run_image`], which consults no backend. Whatever image actually
+    /// runs is recorded (resolved to its registry digest where it has one) as
+    /// [`RunEnvironment::container_image`].
     pub container_image: Option<String>,
     /// The declarative capability set that configures a **gg** run — which
     /// capabilities are on, their implementations/params, and the model-slot
@@ -724,22 +724,28 @@ where
         };
         let auth_mode = auth.mode();
 
-        // The image is the run's explicit per-run override when it carries one,
-        // else the image for the test case's test type and asset kind, resolved
-        // from the environment (a registry reference, resolved without any
-        // backend): end-to-end runs use the base image, single-sprite runs use the
-        // sprite image (the base plus the baked-in `draw` binary), sprite-sheet
-        // runs use the sprite-sheet image (the base plus the baked-in `draw-sheet`
-        // binary). The selected harness's CLI is installed into the container below
-        // either way — there is no per-harness image — with one exception, and it
-        // is why the slug is passed: a `gg` run resolves the gg VARIANT of that
-        // image, the same image plus the language toolchains its
-        // responses-as-code programs are compiled with. Those exist for one
-        // harness, so every other run gets an image without them.
-        let image = request
-            .container_image
-            .clone()
-            .unwrap_or_else(|| resolve_run_image(test_case.test_type, test_case.asset_kind, slug));
+        // The image is the run's explicit per-run override when it carries one, else
+        // the image for the test case's test type, asset kind and asset dimension,
+        // resolved from the environment (a registry reference, resolved without any
+        // backend): end-to-end runs use the base image, full-stack runs use the
+        // full-stack image of the dimension the case declares (the 2D six binaries,
+        // plus `voxel`/`voxel-anim`/`particle-3d` for `asset_dimension = "3d"`),
+        // single-sprite runs use the sprite image (the base plus the baked-in `draw`
+        // binary), sprite-sheet runs use the sprite-sheet image (the base plus the
+        // baked-in `draw-sheet` binary). The selected harness's CLI is installed into
+        // the container below either way — there is no per-harness image — with one
+        // exception, and it is why the slug is passed: a `gg` run resolves the gg
+        // VARIANT of that image, the same image plus the language toolchains its
+        // responses-as-code programs are compiled with. Those exist for one harness,
+        // so every other run gets an image without them.
+        let image = request.container_image.clone().unwrap_or_else(|| {
+            resolve_run_image(
+                test_case.test_type,
+                test_case.asset_kind,
+                test_case.asset_dimension,
+                slug,
+            )
+        });
         tracing::Span::current().record("container.image", image.as_str());
 
         // Pull the base image up front so the run fails fast with a clear error

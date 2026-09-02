@@ -34,7 +34,9 @@ use test_cabinet_core::review::FailureCap;
 use test_cabinet_core::test_case::{
     AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
-use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestCaseGroup, TestType, VoxelSpec};
+use test_cabinet_core::{
+    AssetDimension, AssetKind, ModelSpec, SheetSpec, TestCaseGroup, TestType, VoxelSpec,
+};
 
 use crate::error::{BackendError, Result};
 
@@ -211,6 +213,12 @@ pub struct StoredManifest {
     /// [`AssetKind::Sprite`] for manifests stored before the discriminator existed.
     #[serde(default)]
     pub asset_kind: AssetKind,
+    /// Which of the two full-stack run images a full-stack case's runs execute in.
+    /// Defaulted to [`AssetDimension::TwoD`] for manifests stored before the
+    /// discriminator existed. Stored — rather than re-derived — because the driver
+    /// resolves a backend-driven run's image off the version this store serves.
+    #[serde(default)]
+    pub asset_dimension: AssetDimension,
     /// The sprite-sheet frame grid and named sequences. `Some` only for a
     /// sprite-sheet case. Reuses the core [`SheetSpec`] verbatim — its serialized
     /// shape is the wire shape the runner deserializes — so the layout survives a

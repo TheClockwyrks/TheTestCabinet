@@ -1,13 +1,15 @@
 use std::path::PathBuf;
 
 use super::{
-    ASSET_QUALITY_PREAMBLE, FULL_STACK_PREAMBLE, GAME_JAM_DIVIDER, GAME_JAM_PREAMBLE,
-    GAME_JAM_README_DIRECTIVE, render_prompt, render_spec,
+    ASSET_QUALITY_PREAMBLE, FULL_STACK_2D_PREAMBLE, FULL_STACK_3D_PREAMBLE, GAME_JAM_DIVIDER,
+    GAME_JAM_PREAMBLE, GAME_JAM_README_DIRECTIVE, render_prompt, render_spec,
 };
 use crate::engine::{EngineCatalog, EngineSelection, NONE_SLUG, ResolvedEngine};
 use crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR;
 use crate::run_record::PriorGameJamEntry;
-use crate::test_case::{BuildCommands, SpecFile, TestCaseVersion, TestType, Variant};
+use crate::test_case::{
+    AssetDimension, BuildCommands, SpecFile, TestCaseVersion, TestType, Variant,
+};
 
 /// A prior game-jam entry with the given README, for exercising the distinctness
 /// section. The finished-at stamp is fixed so tests need not thread a clock.
@@ -60,6 +62,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         r#match: None,
         replay: None,
         asset_kind: crate::test_case::AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -85,6 +88,17 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         domains: vec![],
         cases: vec![],
         errata: vec![],
+    }
+}
+
+/// A full-stack version at an explicit [`AssetDimension`] — the discriminator
+/// that decides which of the two standing full-stack directives is prepended,
+/// because it is the same field that decides which asset-generation binaries the
+/// run image puts on the model's `PATH`.
+fn full_stack_version(prompt_path: PathBuf, asset_dimension: AssetDimension) -> TestCaseVersion {
+    TestCaseVersion {
+        asset_dimension,
+        ..version_with_prompt_typed(prompt_path, TestType::FullStack)
     }
 }
 
@@ -150,22 +164,145 @@ fn asset_generation_prompts_open_with_the_quality_preamble() {
 }
 
 #[test]
-fn full_stack_prompts_open_with_the_full_stack_preamble() {
+fn full_stack_2d_prompts_open_with_the_2d_preamble() {
     let dir = tempfile::tempdir().expect("temp dir");
     let prompt = dir.path().join("prompt.hbs");
     std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
 
-    let version = version_with_prompt_typed(prompt, TestType::FullStack);
+    let version = full_stack_version(prompt, AssetDimension::TwoD);
     let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
 
     // A full-stack case opens with its own standing directive — not the
     // asset-generation one — and the authored template still renders after it.
     assert!(
-        out.starts_with(FULL_STACK_PREAMBLE),
-        "a full-stack prompt must open with the full-stack preamble",
+        out.starts_with(FULL_STACK_2D_PREAMBLE),
+        "a 2D full-stack prompt must open with the 2D full-stack preamble",
     );
+    // The 2D run image bakes in six binaries and no more, so the directive must
+    // not name the 3D tooling: a model sent looking for `voxel` in a 2D run finds
+    // nothing on its `PATH`.
+    assert!(!out.contains("voxel"));
+    assert!(!out.contains("particle-3d"));
     assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
     assert!(out.contains("Build in /work."));
+}
+
+#[test]
+fn full_stack_3d_prompts_open_with_the_3d_preamble() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
+
+    let version = full_stack_version(prompt, AssetDimension::ThreeD);
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
+
+    assert!(
+        out.starts_with(FULL_STACK_3D_PREAMBLE),
+        "a 3D full-stack prompt must open with the 3D full-stack preamble",
+    );
+    assert!(!out.starts_with(FULL_STACK_2D_PREAMBLE));
+    // The directive names every binary the 3D run image carries: the three the 3D
+    // image adds, and the six it shares with the 2D one. Naming fewer would point
+    // a case away from tooling its asset contract requires.
+    for binary in [
+        "`draw`",
+        "`draw-sheet`",
+        "`particle-2d`",
+        "`sfx-synth`",
+        "`sfx-sample`",
+        "`music`",
+        "`voxel`",
+        "`voxel-anim`",
+        "`particle-3d`",
+    ] {
+        assert!(
+            out.contains(binary),
+            "the 3D full-stack preamble must name {binary}",
+        );
+    }
+    assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
+    assert!(out.contains("Build in /work."));
+}
+
+#[test]
+fn a_full_stack_case_that_declares_no_dimension_gets_the_2d_preamble() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
+
+    // `asset_dimension` defaults to 2D, so a case that never declares the key —
+    // which is every full-stack case that only draws sprites and plays sound —
+    // opens with the six-binary directive, matching the image it resolves.
+    let version = full_stack_version(prompt, AssetDimension::default());
+    let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
+
+    assert!(
+        out.starts_with(FULL_STACK_2D_PREAMBLE),
+        "the default dimension must render the 2D full-stack preamble",
+    );
+}
+
+#[test]
+fn non_full_stack_prompts_carry_neither_full_stack_preamble() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
+
+    // The dimension is a full-stack key, and resolution rejects a manifest that
+    // sets it on any other type. Even handed a version that carries one anyway,
+    // another type renders its own preamble or none at all.
+    for test_type in [
+        TestType::EndToEnd,
+        TestType::AssetGeneration,
+        TestType::GameJam,
+    ] {
+        let version = TestCaseVersion {
+            asset_dimension: AssetDimension::ThreeD,
+            ..version_with_prompt_typed(prompt.clone(), test_type)
+        };
+        let out = render_prompt(&version, &frenzy(), &[], None).expect("render prompt");
+
+        assert!(
+            !out.contains(FULL_STACK_2D_PREAMBLE),
+            "a {test_type:?} prompt must not carry the 2D full-stack preamble",
+        );
+        assert!(
+            !out.contains(FULL_STACK_3D_PREAMBLE),
+            "a {test_type:?} prompt must not carry the 3D full-stack preamble",
+        );
+    }
+}
+
+#[test]
+fn the_two_full_stack_preambles_differ_only_in_their_binary_list() {
+    // The dimension decides which binaries the run image carries, and that is all
+    // it decides. The bar the directive sets — the two jobs, what counts as a
+    // placeholder, the self-containment requirement, and the quality ceiling — is
+    // one standing wording, so a case must not be held to a different standard for
+    // having asked for the heavier image. The binary list sits in the only
+    // parenthetical either directive opens before it, so splitting on that
+    // parenthetical isolates the part allowed to differ.
+    let (opening_2d, rest_2d) = FULL_STACK_2D_PREAMBLE
+        .split_once('(')
+        .expect("the 2D preamble lists its binaries");
+    let (opening_3d, rest_3d) = FULL_STACK_3D_PREAMBLE
+        .split_once('(')
+        .expect("the 3D preamble lists its binaries");
+    assert_eq!(
+        opening_2d, opening_3d,
+        "both full-stack directives must open with the same wording",
+    );
+
+    let (_, closing_2d) = rest_2d
+        .split_once(')')
+        .expect("the 2D binary list is closed");
+    let (_, closing_3d) = rest_3d
+        .split_once(')')
+        .expect("the 3D binary list is closed");
+    assert_eq!(
+        closing_2d, closing_3d,
+        "both full-stack directives must close with the same wording",
+    );
 }
 
 #[test]

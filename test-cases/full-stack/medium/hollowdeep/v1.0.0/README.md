@@ -20,9 +20,10 @@ with the asset-generation binaries on the run image's `PATH`, and then builds a
 game that uses them. One model both produces the art, effects, and audio and
 builds the game around them.
 
-The `full-stack` type schedules the run onto the `test-cabinet-full-stack-2d`
-image, which carries exactly six binaries on `PATH`: `draw`, `draw-sheet`,
-`particle-2d`, `sfx-synth`, `sfx-sample`, and `music`. Every sprite, animation,
+The `full-stack` type, with `asset_dimension` left at its `2d` default,
+schedules the run onto the `test-cabinet-full-stack-2d` image, which carries
+exactly six binaries on `PATH`: `draw`, `draw-sheet`, `particle-2d`,
+`sfx-synth`, `sfx-sample`, and `music`. Every sprite, animation,
 particle effect, and sound the game plays is produced with one of them. There is
 no `ui`/`paint`/`texture`/voxel/mesh tool, so all HUD and dashboard chrome is
 drawn in code, and `specs/assets.md` holds the full production contract.

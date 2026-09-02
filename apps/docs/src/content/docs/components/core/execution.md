@@ -39,14 +39,19 @@ example by deleting files.
 ### Run images
 
 A run executes in exactly one run-container image, selected by the test case's
-[test type](/testing/overview/) and, for asset generation, its
-[`asset_kind`](/testing/asset-generation/manifests/overview/). Each image is the
-shared base plus what that kind needs: an
+[test type](/testing/overview/), by its
+[`asset_kind`](/testing/asset-generation/manifests/overview/) for asset
+generation, and by its
+[`asset_dimension`](/testing/full-stack/manifests/#asset_dimension) for full
+stack. Each image is the shared base plus what that kind needs: an
 [end-to-end](/testing/end-to-end/overview/) run gets the base plus the shared
-Rust to WebAssembly toolchain, and each
+Rust to WebAssembly toolchain, each
 [asset-generation](/testing/asset-generation/overview/) kind gets the base plus
-that kind's baked-in tool binary. The Blender kinds are the exception, running
-in a self-contained image built from Ubuntu that carries headless Blender.
+that kind's baked-in tool binary, and a
+[full-stack](/testing/full-stack/overview/) run gets that toolchain plus the
+asset-generation binaries of its dimension. The Blender kinds are the exception,
+running in a self-contained image built from Ubuntu that carries headless
+Blender.
 
 The selected harness's CLI is installed into the container at run time (see
 [Harness install](#harness-install)), so no image is per-harness.
@@ -59,8 +64,8 @@ to be present together. Every run image publishes a variant, and a variant's
 name is derived from its parent's rather than looked up, so a gg run of any kind
 resolves an image that has the compilers in it. The toolchain tree is one layer
 with the same digest in every variant, so a host that has pulled one variant
-already has those bytes for all the others — twenty-six variants cost one
-toolchain download, not twenty-six.
+already has those bytes for all the others — twenty-seven variants cost one
+toolchain download, not twenty-seven.
 
 A runner resolves the image for a run from its own registry configuration,
 consulting no backend, so it resolves the same image against any backend or

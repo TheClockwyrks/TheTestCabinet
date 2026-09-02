@@ -17,7 +17,8 @@ use test_cabinet_core::test_case::{
     AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
 };
 use test_cabinet_core::{
-    AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec, shippable_package_description,
+    AssetDimension, AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec,
+    shippable_package_description,
 };
 
 use crate::error::ApiError;
@@ -724,6 +725,7 @@ fn version_response(
         r#match: manifest.r#match.clone(),
         replay: manifest.replay.clone(),
         asset_kind: manifest.asset_kind,
+        asset_dimension: manifest.asset_dimension,
         sheet: manifest.sheet.clone(),
         voxel: manifest.voxel.clone(),
         model: manifest.model.clone(),
@@ -808,6 +810,9 @@ fn render_variant_prompt(
         variant.description.as_deref(),
         &spec_dests,
         manifest.test_type,
+        // The dimension decides which asset-generation binaries the full-stack
+        // directive names, so the gallery shows the tools the run really gets.
+        manifest.asset_dimension,
         manifest.max_runtime_seconds,
         // The variant's own volume overrides the case's for its prompt, so the
         // gallery renders each size variant's brief at its actual dimensions.
@@ -1254,6 +1259,10 @@ pub struct VersionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     replay: Option<StoredReplay>,
     asset_kind: AssetKind,
+    /// Which full-stack run image the version's runs execute in. Always serialized
+    /// (never skipped) because the runner deserializes this body into the resolved
+    /// version it resolves the run image from.
+    asset_dimension: AssetDimension,
     #[serde(skip_serializing_if = "Option::is_none")]
     sheet: Option<SheetSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]

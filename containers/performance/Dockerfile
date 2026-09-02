@@ -33,7 +33,8 @@
 # This image inherits everything from base-wasm — the Node toolchain, the Rust +
 # `wasm32-unknown-unknown` toolchain, the unprivileged `node` run user, the `/work`
 # working directory, and the keep-alive CMD. The image a run resolves is selected by
-# its test type (see crate `harness::resolve_run_image`).
+# its test type, asset kind, and asset dimension (see crate
+# `harness::resolve_run_image`).
 
 # `BASE_IMAGE` is the base image to extend — the Rust/wasm base (`base-wasm`), which
 # carries the pinned Rust toolchain (the `RUST_VERSION` there must stay compatible

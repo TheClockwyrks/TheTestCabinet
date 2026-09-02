@@ -15,9 +15,10 @@ name = "Volute"
 # Test type. Volute is a `full-stack` case: an end-to-end (playable-browser-game)
 # case with one addition — the model under test must PRODUCE the game's own art,
 # effects, and audio DURING the run, with the asset-generation binaries on the run
-# image's `PATH`, and then build a game around them. The type schedules the run
-# onto the `test-cabinet-full-stack-2d` image, which carries exactly six binaries
-# on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and
+# image's `PATH`, and then build a game around them. The type, with
+# `asset_dimension` left at its `2d` default, schedules the run onto the
+# `test-cabinet-full-stack-2d` image, which carries exactly six binaries on
+# `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and
 # `music` — and no others. `specs/assets.md` is the production contract. A root
 # identity field, so it sits above the first table header.
 type = "full-stack"

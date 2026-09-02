@@ -54,6 +54,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         r#match: None,
         replay: None,
         asset_kind: test_cabinet_core::AssetKind::Sprite,
+        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,

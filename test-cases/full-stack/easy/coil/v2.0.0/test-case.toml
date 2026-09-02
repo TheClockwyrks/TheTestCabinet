@@ -14,11 +14,12 @@ name = "Coil"
 # DURING the run, using the asset-generation binaries on the run image's `PATH`, and
 # then build a game that uses them. Here that produced set is the snake's full sprite
 # set and the game's sound and music; everything else (the board, walls, obstacles,
-# pellet, and HUD) is still drawn in code. The `full-stack` type schedules the run onto
-# the `test-cabinet-full-stack-2d` image, which carries six binaries on `PATH` —
-# `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no
-# others; `specs/assets.md` is the production contract. A root identity field, so it
-# sits above the first table.
+# pellet, and HUD) is still drawn in code. The `full-stack` type, with
+# `asset_dimension` left at its `2d` default, schedules the run onto the
+# `test-cabinet-full-stack-2d` image, which carries six binaries on `PATH` — `draw`,
+# `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no others;
+# `specs/assets.md` is the production contract. A root identity field, so it sits above
+# the first table.
 type = "full-stack"
 
 # Relative difficulty of this case, surfaced on the site. Coil's rules are simple: a
