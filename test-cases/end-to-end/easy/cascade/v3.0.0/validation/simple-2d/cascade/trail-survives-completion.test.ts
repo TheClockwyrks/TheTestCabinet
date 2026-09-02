@@ -28,15 +28,23 @@ import { STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   colorDistance,
-  createHarness,
-  framesFor,
+  createRunoutHarness,
+  runoutFrames,
   sampleGrid,
   startCascade,
   type Harness,
 } from "../harness";
 
-/** How long the cascade is given to run out, in frames. */
-const MAX_FRAMES = framesFor(20);
+/**
+ * How long the cascade is given to run out, in frames of the run-out clock.
+ *
+ * The frames are `RUNOUT_HZ`'s and not the suite's: what is read below is how much
+ * of the table is still painted once the cascade is over, and a stamp is a whole
+ * card's footprint — a flyer moving at the slowest speed the range allows still
+ * covers less than nine units between two frames at sixty, against a card a hundred
+ * wide, so the swath a card leaves is the same swath either way. See `RUNOUT_HZ`.
+ */
+const MAX_FRAMES = runoutFrames(20);
 
 /** The grid the stage is sampled on: 960 cells, evenly spread. */
 const GRID_COLS = 40;
@@ -61,7 +69,7 @@ const PAINTED_FRACTION = 0.25;
 let harness: Harness;
 
 beforeEach(async () => {
-  harness = await createHarness();
+  harness = await createRunoutHarness();
 });
 
 afterEach(() => {

@@ -32,8 +32,29 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    // A cascade advanced in frames of 1/240 s is thousands of frames of real
-    // integration; generous here, and still a fraction of a second in practice.
-    testTimeout: 60_000,
+    // WHAT THESE TWO BOUND, AND WHAT THEY MUST NOT DECIDE. A suite here is
+    // deterministic: it poses a board, steps a counted number of frames, and
+    // reads what they left, and not one assertion in the project reads a wall
+    // clock. What a timeout can therefore only ever measure is how much of this
+    // machine the suite was given — so a figure that a correct build can cross on
+    // a busy host is not a bound on the build, it is a second verdict on the
+    // host, and it fails the wrong thing.
+    //
+    // They are set from the longest scenario the checklist actually asks for. The
+    // victory cascade runs for a little over twelve seconds of game time and puts
+    // up to fifty-two cards in the air; every frame of it renders every one of
+    // them into `@napi-rs/canvas`, and a card face is five runs of text, so the
+    // run-out is the most expensive thing this project does — around a minute of
+    // it on an idle host. Ten minutes is that with an order of magnitude of room,
+    // which is what it takes to survive a host running many times its own number
+    // of cores. It is still a ceiling and not a target: a suite that hangs costs
+    // this and no more, and every suite here finishes in seconds when the machine
+    // is its own.
+    testTimeout: 600_000,
+    // A hook builds a harness — an engine over a canvas, initialized — and a
+    // scenario's arrangement often runs in one too. Left unset it would take
+    // vitest's own ten seconds, which is under the SETUP cost of a loaded host
+    // and turns a build's verdict into a hook failure that names nothing.
+    hookTimeout: 600_000,
   },
 });

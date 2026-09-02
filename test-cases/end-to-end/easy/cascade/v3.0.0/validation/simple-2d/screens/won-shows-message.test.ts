@@ -35,10 +35,10 @@ import { assertEqual } from "../assert";
 import { WIN_TEXT } from "../constants";
 import {
   captureStill,
-  createHarness,
+  createRunoutHarness,
   drawFrame,
   drewText,
-  framesFor,
+  runoutFrames,
   startCascade,
   type Harness,
 } from "../harness";
@@ -58,19 +58,24 @@ import {
  */
 const CASCADE_LIMIT = 18;
 
+// The sweep below is stepped at `RUNOUT_HZ` rather than at the suite's own clock:
+// this point reads a flag and the text of the frame after it, neither of them
+// quantised to a frame, and the wait is otherwise four thousand renders of up to
+// fifty-two card faces. See `RUNOUT_HZ`.
+
 /**
  * Frames between two samples of the sweep: a quarter-second of game time.
  *
  * Far finer than anything this point measures — it reads a flag, not a moment — and
- * coarse enough that the sweep is not asking the build for a snapshot four thousand
+ * coarse enough that the sweep is not asking the build for a snapshot a thousand
  * times over.
  */
-const POLL = framesFor(0.25);
+const POLL = runoutFrames(0.25);
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createRunoutHarness();
 });
 
 afterEach(() => {
@@ -87,7 +92,7 @@ it("draws WIN_TEXT once the cascade has reported itself done", async () => {
   );
 
   const swept = await h.until((snapshot) => snapshot.cascadeDone, {
-    maxFrames: framesFor(CASCADE_LIMIT),
+    maxFrames: runoutFrames(CASCADE_LIMIT),
     poll: POLL,
   });
   assertEqual(

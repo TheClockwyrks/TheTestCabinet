@@ -226,6 +226,44 @@ export function framesFor(duration: number): number {
   return Math.ceil(duration * TICK_HZ);
 }
 
+/**
+ * The frame a RUN-OUT is stepped in.
+ *
+ * Three checks have to sit through the whole victory cascade before they can read
+ * anything: `cascade/cascade-completes`, `screens/won-shows-message` and
+ * `cascade/trail-survives-completion`. Twelve and a half seconds of game time at
+ * {@link TICK_HZ} is three thousand frames, and every one of them renders up to
+ * fifty-two card faces into a real canvas — so the wait, and not the reading, is
+ * what those checks cost, and what they cost is what a busy host turns into a
+ * timeout against a build that did nothing wrong.
+ *
+ * NONE OF THE THREE READS AN ACCELERATED QUANTITY. They read the cascade's own end
+ * flag, the launched count, the flight being empty, the text the frame after it
+ * drew, and how much of the table is still painted — facts about where the cascade
+ * ENDED, none of them quantised to a frame. `TICK_HZ`'s own note says the fine step
+ * is for the checks whose tolerances are stated in frames, and these state none;
+ * `specs/instrumentation.md` has the game integrate whatever delta a frame supplies,
+ * and `instrumentation/advances-in-frames` is the point that grades exactly that. So
+ * a run-out stepped at sixty reaches the same end as one stepped at two hundred and
+ * forty and costs a quarter as much, which was measured on the references: at 240,
+ * 120, 60 and 30 Hz alike the cascade ends `cascadeDone` with all fifty-two launched
+ * and nothing in flight, at the same `12.57` s of game time.
+ *
+ * Sixty is also what a browser gives a game on an ordinary display, so it is the
+ * rate the ending a player sees really runs at.
+ */
+export const RUNOUT_HZ = 60;
+
+/** Whole frames of the run-out clock covering at least `duration` seconds. */
+export function runoutFrames(duration: number): number {
+  return Math.ceil(duration * RUNOUT_HZ);
+}
+
+/** A harness whose clock steps the frames a run-out is waited out in. */
+export function createRunoutHarness(): Promise<Harness> {
+  return createHarness({ clock: new ConstantClock(1000 / RUNOUT_HZ) });
+}
+
 /* -------------------------------------------------------------------------- */
 /* What a frame drew                                                          */
 /* -------------------------------------------------------------------------- */

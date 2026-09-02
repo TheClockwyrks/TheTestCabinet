@@ -21,7 +21,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { DECK_SIZE } from "../constants";
 import { captureReplay, startCascade, type Harness } from "../harness";
-import { createFlightHarness, flightFrames } from "./flight";
+import { createRunoutHarness, runoutFrames } from "./flight";
 
 /**
  * How long the cascade is given to run out, in frames.
@@ -32,12 +32,12 @@ import { createFlightHarness, flightFrames } from "./flight";
  * and short enough that a build that never finishes is reported rather than left
  * running.
  */
-const MAX_FRAMES = flightFrames(20);
+const MAX_FRAMES = runoutFrames(20);
 
 let harness: Harness;
 
 beforeEach(async () => {
-  harness = await createFlightHarness();
+  harness = await createRunoutHarness();
 });
 
 afterEach(() => {

@@ -30,10 +30,10 @@ import {
   startCascade,
   type Harness,
 } from "../harness";
-import { createFlightHarness, flightFrames, sampleGrid } from "./flight";
+import { createRunoutHarness, runoutFrames, sampleGrid } from "./flight";
 
 /** How long the cascade is given to run out, in frames. */
-const MAX_FRAMES = flightFrames(20);
+const MAX_FRAMES = runoutFrames(20);
 
 /** The grid the stage is sampled on: 960 cells, evenly spread. */
 const GRID_COLS = 40;
@@ -58,7 +58,7 @@ const PAINTED_FRACTION = 0.25;
 let harness: Harness;
 
 beforeEach(async () => {
-  harness = await createFlightHarness();
+  harness = await createRunoutHarness();
 });
 
 afterEach(() => {

@@ -22,26 +22,30 @@ import { assertEqual, assertLength } from "../assert";
 import { DECK_SIZE } from "../constants";
 import {
   captureReplay,
-  createHarness,
-  framesFor,
+  createRunoutHarness,
+  runoutFrames,
   startCascade,
   type Harness,
 } from "../harness";
 
 /**
- * How long the cascade is given to run out, in frames.
+ * How long the cascade is given to run out, in frames of the run-out clock.
  *
  * The fifty-second launch falls fifty-one launch intervals in, a little over nine
  * seconds; the slowest launch the range allows then needs under four more to cross
  * the table from the farthest foundation. Twenty seconds is comfortably past both and
  * short enough that a build that never finishes is reported rather than left running.
+ *
+ * The frames are `RUNOUT_HZ`'s and not the suite's, because everything below is a
+ * fact about where the cascade ENDED — the counter, the empty flight, the build's
+ * own flag — and not one of them is quantised to a frame. See `RUNOUT_HZ`.
  */
-const MAX_FRAMES = framesFor(20);
+const MAX_FRAMES = runoutFrames(20);
 
 let harness: Harness;
 
 beforeEach(async () => {
-  harness = await createHarness();
+  harness = await createRunoutHarness();
 });
 
 afterEach(() => {

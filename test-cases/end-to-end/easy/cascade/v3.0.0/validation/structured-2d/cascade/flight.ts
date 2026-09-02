@@ -65,6 +65,35 @@ export function flightSeconds(frames: number): number {
 }
 
 /**
+ * A harness whose clock steps the frames a RUN-OUT is waited out in — the suite's
+ * own `TICK_HZ`, not this group's {@link CASCADE_HZ}.
+ *
+ * Two checks in this group have to sit through the whole victory cascade before
+ * they can read anything: `cascade-completes` and `trail-survives-completion`.
+ * Twelve and a half seconds of game time at `CASCADE_HZ` is three thousand frames,
+ * and every one of them renders up to fifty-two card faces into a real canvas — so
+ * the WAIT, and not the reading, is what those two cost, and what they cost is what
+ * a busy host turns into a timeout against a build that did nothing wrong.
+ *
+ * NEITHER READS AN ACCELERATED QUANTITY, which is the whole reason this group steps
+ * finely: they read the cascade's own end flag, the launched count, the flight being
+ * empty, and how much of the table is still painted — facts about where the cascade
+ * ENDED, none of them quantised to a frame. `specs/instrumentation.md` has the game
+ * integrate whatever delta a frame supplies and `instrumentation/advances-in-frames`
+ * is the point that grades it, and the references were measured at 240, 120, 60 and
+ * 30 Hz: the cascade ends `cascadeDone` with all fifty-two launched and nothing in
+ * flight, at the same `12.57` s of game time, at every one of them.
+ */
+export function createRunoutHarness(): Promise<Harness> {
+  return createHarness();
+}
+
+/** Whole frames of the run-out clock covering `duration` seconds. */
+export function runoutFrames(duration: number): number {
+  return framesFor(duration);
+}
+
+/**
  * A cleared table on the won screen, with nothing in flight, nothing painted,
  * and no card launching.
  *
