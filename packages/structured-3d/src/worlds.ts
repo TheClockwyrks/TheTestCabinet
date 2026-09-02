@@ -843,23 +843,27 @@ export class EngineWorld implements World {
   }
 
   /**
-   * Fires every timer due at the current world time, earliest due first
-   * (handle order breaking ties). A one-shot is removed before its callback
-   * runs, so the callback may schedule afresh or clear anything, itself
-   * included, safely. A repeating timer catches up — a delta that steps over
-   * several periods fires once per period crossed, so a counter driven by
-   * `every` counts real elapsed time — and a degenerate period of zero or
-   * less fires once per pass rather than spinning. Timers scheduled by a
-   * callback are not in this pass's snapshot, so they fire no earlier than
-   * the next frame.
+   * Fires every timer due at the current world time, in scheduling order — the
+   * order the frame page fixes, and the handle order, since a handle is handed
+   * out in the order `after` and `every` are called. A frame long enough to
+   * make several timers due at once is a frame whose delta already swallowed
+   * the gaps between their due times, so what remains to order them by is the
+   * order the game asked for them, and a game reading the log sees its own
+   * calls back.
+   *
+   * A one-shot is removed before its callback runs, so the callback may
+   * schedule afresh or clear anything, itself included, safely. A repeating
+   * timer catches up — a delta that steps over several periods fires once per
+   * period crossed, so a counter driven by `every` counts real elapsed time —
+   * and a degenerate period of zero or less fires once per pass rather than
+   * spinning. Timers scheduled by a callback are not in this pass's snapshot,
+   * so they fire no earlier than the next frame.
    */
   private fireTimers(): void {
     const now = this.timeSeconds;
     const due = [...this.timers.entries()]
       .filter(([, timer]) => timer.dueAt <= now)
-      .sort(
-        ([aHandle, a], [bHandle, b]) => a.dueAt - b.dueAt || aHandle - bHandle,
-      );
+      .sort(([aHandle], [bHandle]) => aHandle - bHandle);
     for (const [handle, timer] of due) {
       // An earlier callback may have cleared this one.
       if (this.timers.get(handle) !== timer) continue;

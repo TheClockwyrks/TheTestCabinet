@@ -1215,13 +1215,17 @@ describe("timers", () => {
     expect(count).toBe(2);
   });
 
-  it("fires due timers earliest first, whatever the scheduling order", () => {
+  it("fires due timers in scheduling order, whatever their due times", () => {
+    // One frame long enough to make several timers due has already swallowed
+    // the gaps between their due times, so the order the game asked for them
+    // in is what is left to order them by.
     const fired: string[] = [];
     const { world } = openWorld({ mode: GameMode });
     world.after(2, () => fired.push("later"));
     world.after(1, () => fired.push("sooner"));
+    world.every(1.5, () => fired.push("repeating"));
     world.simulate(2);
-    expect(fired).toEqual(["sooner", "later"]);
+    expect(fired).toEqual(["later", "sooner", "repeating"]);
   });
 
   it("defers a timer scheduled by a callback to the next frame", () => {
