@@ -51,13 +51,22 @@ const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
 const SUITE_DIR = join("validation", "harness.test.ts");
 
 /**
- * The wall-clock window the real-time checks below spend.
+ * The wall-clock window the real-time checks below spend: a second and a half.
  *
  * Long enough that the host's frame callback fires many times inside it — it
- * falls back to a 16 ms timer off the browser, so this is tens of frames — and
- * short enough that a suite of these costs a second or two.
+ * falls back to a 16 ms timer off the browser, so this is tens of frames.
+ *
+ * IT WAS FOUR HUNDRED MILLISECONDS, AND FOUR HUNDRED IS BELOW THE FLOOR. These
+ * checks assert that a real window delivered SOMETHING — travel above zero, a
+ * clock gain above zero — and on a host running a hundred other things a
+ * four-hundred-millisecond window has been measured delivering no frames at all,
+ * which reports the harness as broken because the machine was busy. A second and
+ * a half is the same length the scored real-time items give their legs, and it is
+ * the shortest window on which a loaded host still hands the loop frames. Nothing
+ * here reads a RATE off it, so the extra second costs a second and buys the only
+ * thing this file needs: a window that is not a lottery.
  */
-const WINDOW_MS = 400;
+const WINDOW_MS = 1500;
 
 let mediaDir: string;
 let collecting: string | undefined;

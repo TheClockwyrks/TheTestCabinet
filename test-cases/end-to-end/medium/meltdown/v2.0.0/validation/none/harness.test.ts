@@ -115,8 +115,8 @@ const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
 const SUITE_DIR = join("validation", "harness.test.ts");
 
 /**
- * The real window each leg of the own-clock contrast is measured over, and the
- * bounds the three legs are held to.
+ * The length of each leg of the own-clock contrast, and the bounds the three legs
+ * are held to.
  *
  * These are this FILE's figures, not the harness's: `waves/pause-freezes-the-
  * floor` and its three siblings state their own, and the harness carries none.
@@ -124,8 +124,19 @@ const SUITE_DIR = join("validation", "harness.test.ts");
  * second, a build may clamp its per-frame delta and lose time to the handover,
  * and a build may resolve an injected key on its next frame rather than inside
  * the call.
+ *
+ * THE TWO RUNNING LEGS ARE STRETCHES OF THE BUILD'S OWN CLOCK and the paused one
+ * is a stretch of the host's, which is the same division the scored items make. A
+ * running leg closed by a stopwatch covers however many frames a busy machine let
+ * the page have, so `MIN_TRAVEL` read off it would be a reading of the host; a
+ * paused leg cannot be closed on a gain that must never happen, so it is spent in
+ * real time and only ever gives a broken pause more room to show itself.
+ * `WINDOW_DEADLINE_MS` is the ceiling on the host, and reaching it means the build
+ * does not advance unless something steps it.
  */
-const WINDOW_MS = 1500;
+const WINDOW_SECONDS = 1.5;
+const WINDOW_DEADLINE_MS = 60_000;
+const PAUSED_WINDOW_MS = 1500;
 const MIN_TRAVEL = 20;
 const MAX_DRIFT = 4;
 const MAX_CLOCK_DRIFT = 0.1;
@@ -471,20 +482,38 @@ it("reads the running floor, the pause and the resume on the build's own clock",
   // moved. Three legs of the same length on the build's own clock, with both
   // readings of the paused leg taken from the ONE snapshot on the press.
   const legs = await h.withOwnClock(async (clock) => {
-    const opened = await clock.read();
-    await clock.settle(WINDOW_MS);
+    // The opening state comes from the handover itself, not from a `read` a round
+    // trip later: the build is running by then, and on a busy host that gap is
+    // long enough for the floor to move under the reading.
+    const opened = clock.opened;
+    // The two RUNNING legs close on the build's own clock, so `MIN_TRAVEL` below
+    // follows from the game time they cover rather than from how many frames this
+    // machine handed the page. The PAUSED leg cannot: the whole claim is that the
+    // clock does not move, so it is the one leg spent against a stopwatch.
+    const ran = await clock.gain(WINDOW_SECONDS, WINDOW_DEADLINE_MS);
     await clock.press(BINDINGS.pause);
     const pressed = await clock.read();
-    await clock.settle(WINDOW_MS);
+    await clock.settle(PAUSED_WINDOW_MS);
     const held = await clock.read();
     await clock.press(BINDINGS.pause);
-    await clock.settle(WINDOW_MS);
-    return { opened, pressed, held, resumed: await clock.read() };
+    const resumedGain = await clock.gain(WINDOW_SECONDS, WINDOW_DEADLINE_MS);
+    return {
+      opened,
+      ran,
+      pressed,
+      held,
+      resumedGain,
+      resumed: await clock.read(),
+    };
   });
 
   const at = (snapshot: typeof legs.opened) =>
     requireUnit(snapshot, walker, "the own-clock legs");
 
+  assertTrue(
+    legs.ran.reached,
+    `the build's own clock gained ${WINDOW_SECONDS}s before the pause`,
+  );
   assertGreaterThan(
     distance(at(legs.opened), at(legs.pressed)),
     MIN_TRAVEL,
@@ -500,6 +529,10 @@ it("reads the running floor, the pause and the resume on the build's own clock",
     legs.held.simTime - legs.pressed.simTime,
     MAX_CLOCK_DRIFT,
     "the simulation clock does not advance while paused",
+  );
+  assertTrue(
+    legs.resumedGain.reached,
+    `the build's own clock gained ${WINDOW_SECONDS}s again after the resume`,
   );
   assertGreaterThan(
     distance(at(legs.held), at(legs.resumed)),
