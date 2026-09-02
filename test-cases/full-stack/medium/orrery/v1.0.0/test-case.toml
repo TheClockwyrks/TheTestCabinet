@@ -7702,21 +7702,21 @@ title = "The delivery system is one-shot"
 description = "deliver.json's timeline declares loop false, so an instance decays to empty rather than settling into a steady state."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "assets/deliver-system-one-shot.test.ts", outputs = [ { id = "decay", name = "The delivery system decaying to empty", kind = "video" } ] }
+validation = { script = "assets/deliver-system-one-shot.test.ts", outputs = [ { id = "decay", name = "The delivery system decaying to empty", kind = "image" } ] }
 [[review.categories.items]]
 id = "fault-system-one-shot"
 title = "The fault system is one-shot"
 description = "fault.json's timeline declares loop false, so an instance decays to empty rather than settling into a steady state."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "assets/fault-system-one-shot.test.ts", outputs = [ { id = "decay", name = "The fault system decaying to empty", kind = "video" } ] }
+validation = { script = "assets/fault-system-one-shot.test.ts", outputs = [ { id = "decay", name = "The fault system decaying to empty", kind = "image" } ] }
 [[review.categories.items]]
 id = "complete-system-one-shot"
 title = "The completion system is one-shot"
 description = "complete.json's timeline declares loop false, so an instance decays to empty rather than settling into a steady state."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "assets/complete-system-one-shot.test.ts", outputs = [ { id = "decay", name = "The completion system decaying to empty", kind = "video" } ] }
+validation = { script = "assets/complete-system-one-shot.test.ts", outputs = [ { id = "decay", name = "The completion system decaying to empty", kind = "image" } ] }
 [[review.categories.items]]
 id = "particle-systems-distinct"
 title = "The three particle systems differ from one another"
@@ -8222,7 +8222,7 @@ description = "Across a stretch of cycles with sim.status running and sim.fault 
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/no-fault-effect-while-running.test.ts", outputs = [
-  { id = "no-fault-effect", name = "A clean run playing no fault effect", kind = "video" },
+  { id = "no-fault-effect", name = "A clean run playing no fault effect", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "completion-effect-plays-on-completion"
@@ -8238,7 +8238,7 @@ description = "At a boundary where a set consumed a constellation but the tally 
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/no-completion-effect-at-a-non-completing-boundary.test.ts", outputs = [
-  { id = "no-complete-effect", name = "A short boundary playing no completion effect", kind = "video" },
+  { id = "no-complete-effect", name = "A short boundary playing no completion effect", kind = "replay" },
 ] }
 # The field and the machine, read at a glance.
 [[review.categories.items]]

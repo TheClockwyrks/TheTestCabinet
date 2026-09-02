@@ -259,6 +259,27 @@ function installAssetHost(): void {
     return image as unknown as ImageBitmap;
   };
 
+  // A build is free to compose a picture on a scratch canvas of its own before
+  // it blits that canvas over the frame — `document.createElement("canvas")` is
+  // how a browser hands one out, and a bare Node process has no `document` at
+  // all. That is a fact about Node rather than about the build, exactly as the
+  // absent `fetch`, `createImageBitmap` and `AudioContext` above are, so the
+  // harness supplies the one operation: a canvas backed by the same library the
+  // stage itself is drawn on, whose context and pixels the recorder already
+  // reads. Nothing else of a document is provided, because nothing else is
+  // something the engine's own runtime would give a build either.
+  const documented = globalThis as { document?: unknown };
+  documented.document ??= {
+    createElement(tag: string): unknown {
+      if (String(tag).toLowerCase() !== "canvas") {
+        throw new Error(
+          `orrery harness: this process has no document element "${tag}"`,
+        );
+      }
+      return createCanvas(1, 1);
+    },
+  };
+
   host.AudioContext = class {
     readonly currentTime = 0;
     readonly destination = {};
