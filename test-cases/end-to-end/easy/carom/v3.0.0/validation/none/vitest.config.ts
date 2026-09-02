@@ -46,9 +46,15 @@ export default defineConfig({
     maxWorkers: 4,
     minWorkers: 1,
     // A rally driven to the speed ceiling is thousands of frames of real
-    // physics, each of them a crossing into the page; generous here, and still
-    // seconds in practice.
-    testTimeout: 120_000,
-    hookTimeout: 60_000,
+    // physics, each of them a crossing into the page, and what a crossing costs
+    // is a property of how busy the machine is rather than of the build: the
+    // same suites measured on a loaded host take an order of magnitude longer
+    // than on an idle one. The ceilings are therefore set where a host that
+    // slow still finishes, since a timeout that fails a correct build is a
+    // defect in the check. The hook gets the same allowance as the check it
+    // opens: a page is built in a `beforeEach`, and a hook that expires fails
+    // the check just as a timeout does.
+    testTimeout: 180_000,
+    hookTimeout: 180_000,
   },
 });

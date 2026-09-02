@@ -351,6 +351,24 @@ export interface UntilResult {
   snapshot: CaromSnapshot;
 }
 
+/** How long a free-running watch may last, and how often it reads. */
+export interface RunUntilOptions {
+  /** The real time the build's own loop is given. Defaults to 20 s. */
+  timeoutMs?: number;
+  /** The real interval between readings. Defaults to 50 ms. */
+  pollMs?: number;
+}
+
+/** What a free-running watch found. */
+export interface RunUntilResult {
+  /** Whether the predicate ever held before the deadline. */
+  hit: boolean;
+  /** The reading that ended the watch. */
+  snapshot: CaromSnapshot;
+  /** The real time the loop was left running, in milliseconds. */
+  elapsedMs: number;
+}
+
 export interface Harness {
   /** The page the build is running in. For a check that needs Playwright itself. */
   readonly page: Page;
@@ -366,7 +384,7 @@ export interface Harness {
    *
    * A fault here is the build's: the surface is missing, or it is missing an
    * operation the specification requires. It says what was found (`window.__carom
-   * was still absent 10s after the page loaded`), and {@link failSurface} pairs
+   * was still absent 30s after the page loaded`), and {@link failSurface} pairs
    * it with what the specification requires. Every operation fails by assertion
    * with that pair rather than throwing, so the fault lands on the points whose
    * checks reach the game through the surface.
@@ -389,8 +407,20 @@ export interface Harness {
     predicate: (snapshot: CaromSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Hand the game back to its own frame loop for `ms` of real time, then take it back. */
-  runFor(ms: number): Promise<void>;
+  /**
+   * Hand the game back to its own frame loop, let REAL time pass until
+   * `predicate` holds of a fresh reading, then take the loop back.
+   *
+   * Nothing here steps the game: the build's own loop is what moves it, and the
+   * only thing this does while it runs is read. What bounds the wait is the
+   * build's own clock reaching the predicate, not a fixed stretch of wall clock,
+   * so a machine that starves the loop makes the wait longer rather than making
+   * the reading smaller.
+   */
+  runUntil(
+    predicate: (snapshot: CaromSnapshot) => boolean,
+    options?: RunUntilOptions,
+  ): Promise<RunUntilResult>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): Promise<void>;
@@ -445,16 +475,56 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 /**
  * How long the surface is waited for before the build is called non-conformant.
  *
- * Generous against a conformant build and cheap against one: the wait is a poll
- * that returns the instant the global appears, and a build installs it while its
- * entry module runs, so a page that has fired `load` has either installed it
- * already or is not going to. What the ceiling really bounds is the cost of a
- * build with no surface at all, which pays it once per harness — and there is a
- * cap on the whole suite run, so a wait long enough to exhaust it would turn
- * "every point this decides failed" into "the validators did not run", which
- * tells a reviewer far less.
+ * A build installs the surface while its entry module runs, so a page that has
+ * fired `load` has either installed it already or is not going to, and
+ * {@link readSurfaceFault} looks once before it waits at all: a conformant build
+ * never reaches this ceiling, whatever the machine is doing. What the ceiling
+ * bounds is the cost of a build with no surface, so it is set where a page that
+ * really is still initializing on a loaded host is not called non-conformant for
+ * being slow.
  */
-const SURFACE_TIMEOUT_MS = 5_000;
+const SURFACE_TIMEOUT_MS = 30_000;
+
+/**
+ * The ceiling used once this worker has already watched {@link SURFACE_TIMEOUT_MS}
+ * expire on this build.
+ *
+ * The first harness of a surfaceless build pays the full wait; every harness
+ * after it in the same worker pays this instead. Without it a build that installs
+ * nothing would spend the whole suite run waiting, and "every point this decides
+ * failed" would turn into "the validators did not run", which tells a reviewer
+ * far less.
+ */
+const SURFACE_RETRY_TIMEOUT_MS = 2_000;
+
+/** Whether a wait for the surface has already expired in this worker. */
+let surfaceKnownAbsent = false;
+
+/**
+ * How long the recorder's 2D context is waited for before a harness gives up on
+ * it.
+ *
+ * Nothing about a verdict rests on this: the wait only decides whether a replay
+ * has frames in it, so it is bounded well below {@link SURFACE_TIMEOUT_MS} rather
+ * than paid on every harness of a build that draws nothing.
+ */
+const RECORDER_READY_TIMEOUT_MS = 5_000;
+
+/**
+ * How long {@link Harness.runUntil} leaves the build's own loop running before it
+ * gives up on the predicate.
+ *
+ * The deadline is the ONLY wall clock a free-running watch answers to, and it is
+ * a ceiling rather than a measurement: what a watch reports is how far the
+ * build's own clock got, so the deadline only has to be long enough that a
+ * machine which starves the loop still lets a running build reach its floor.
+ * Thirty seconds is two orders of magnitude more real time than a healthy loop
+ * needs for the quarter second of game time the one check that uses it asks for.
+ */
+const RUN_UNTIL_TIMEOUT_MS = 30_000;
+
+/** How often a free-running watch reads the game's clock, in real milliseconds. */
+const RUN_UNTIL_POLL_MS = 50;
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -581,16 +651,34 @@ export function failSurface(fault: string): never {
  * specification requires.
  */
 async function readSurfaceFault(page: Page): Promise<string | null> {
-  try {
-    await page.waitForFunction(
+  const installed = (): Promise<boolean> =>
+    page.evaluate(
       (handle) =>
         typeof (window as never)[handle] === "object" &&
         (window as never)[handle] !== null,
       HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
     );
-  } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
+  // The common case, and the one that must not depend on how busy the machine
+  // is: `load` has fired, so a build that installs its surface from its entry
+  // module has already installed it, and one look settles it with no wait.
+  if (!(await installed())) {
+    const timeout = surfaceKnownAbsent
+      ? SURFACE_RETRY_TIMEOUT_MS
+      : SURFACE_TIMEOUT_MS;
+    try {
+      // Polled on a fixed interval rather than on animation frames, so a page
+      // whose frames are starved is still seen the moment it installs.
+      await page.waitForFunction(
+        (handle) =>
+          typeof (window as never)[handle] === "object" &&
+          (window as never)[handle] !== null,
+        HANDLE,
+        { timeout, polling: 100 },
+      );
+    } catch {
+      surfaceKnownAbsent = true;
+      return `window.${HANDLE} was still absent ${timeout / 1000}s after the page loaded`;
+    }
   }
   const missing = await page.evaluate(
     ([handle, ops]) => {
@@ -690,7 +778,7 @@ export async function createHarness(
             window as unknown as { __caromRec: { ready(): boolean } }
           ).__caromRec.ready(),
         undefined,
-        { timeout: SURFACE_TIMEOUT_MS },
+        { timeout: RECORDER_READY_TIMEOUT_MS, polling: 100 },
       )
       .catch(() => undefined);
   }
@@ -821,8 +909,10 @@ export async function createHarness(
       return { hit: false, frames, snapshot };
     },
 
-    async runFor(ms) {
+    async runUntil(predicate, runOptions = {}) {
       if (surfaceFault !== null) refuse();
+      const timeoutMs = runOptions.timeoutMs ?? RUN_UNTIL_TIMEOUT_MS;
+      const pollMs = Math.max(1, runOptions.pollMs ?? RUN_UNTIL_POLL_MS);
       // The one thing here that depends on real elapsed time, so the one thing a
       // browser's own idea of which page matters can distort. The launch already
       // turns the throttling off; bringing the page forward as well means this
@@ -842,7 +932,17 @@ export async function createHarness(
         },
         [HANDLE] as const,
       );
-      await page.waitForTimeout(ms);
+      const started = Date.now();
+      let snapshot = await debug.snapshot();
+      let hit = predicate(snapshot);
+      while (!hit && Date.now() - started < timeoutMs) {
+        await page.waitForTimeout(pollMs);
+        // A reading only: `snapshot` poses nothing, so the loop under watch is
+        // the only thing moving the game while this waits.
+        snapshot = await debug.snapshot();
+        hit = predicate(snapshot);
+      }
+      const elapsedMs = Date.now() - started;
       await page.evaluate(
         ([handle]) => {
           (
@@ -857,6 +957,7 @@ export async function createHarness(
         },
         [HANDLE] as const,
       );
+      return { hit, snapshot, elapsedMs };
     },
 
     hold: (code) => page.keyboard.down(code),
@@ -1821,6 +1922,15 @@ export async function drivePaddleHit(
 
 /* ---- Rally speed --------------------------------------------------------- */
 
+/**
+ * The speed the rally is launched at, in units per second.
+ *
+ * Below `SERVE_SPEED` so the climb to `SPEED_CAP` takes a hit or two more than a
+ * served ball would, and a round number so the number of hits a check must drive
+ * to reach the ceiling follows from it and `SPEED_MULT` alone.
+ */
+export const RALLY_LAUNCH_SPEED = 500;
+
 /** Two still, centred paddles and a ball launched level down the middle. */
 export async function arrangeRally(h: Harness): Promise<void> {
   await startPlaying(h);
@@ -1829,20 +1939,24 @@ export async function arrangeRally(h: Harness): Promise<void> {
   await h.debug.setBall(0, {
     x: FIELD_CX,
     y: FIELD_CY,
-    vx: -500,
+    vx: -RALLY_LAUNCH_SPEED,
     vy: 0,
     spin: 0,
   });
 }
 
 /**
- * Play a real rally and report the ball's speed after each successive paddle
- * hit. Speed is constant between hits, so each leg sweeps coarsely until the
+ * Play a real rally of `hits` paddle hits and report the ball's speed after each
+ * one. Speed is constant between hits, so each leg sweeps coarsely until the
  * horizontal direction reverses. Stops early if play ever leaves the field.
+ *
+ * `hits` has no default: a rally is the most expensive scenario in this suite,
+ * every leg of it is real physics rendered frame by frame, and how many legs a
+ * check needs follows from what that check decides. Each caller states its own.
  */
 export async function driveRallySpeeds(
   h: Harness,
-  hits = 24,
+  hits: number,
 ): Promise<number[]> {
   const speeds: number[] = [];
   let previousSign = -1; // the ball is launched toward the left paddle

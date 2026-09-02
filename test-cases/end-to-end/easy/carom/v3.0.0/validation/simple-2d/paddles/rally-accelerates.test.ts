@@ -6,6 +6,10 @@
 // per-hit ratio must be the specified multiplier while the ball is below the
 // ceiling, and the sequence must never decrease. The plateau AT the ceiling is
 // the sibling `rally-caps` check.
+//
+// HOW LONG THE RALLY IS. Exactly as long as the ratio has to be read to be read
+// many times over, and no longer: every hit past that is a leg of real physics
+// rendered frame by frame, deciding nothing this check has not already decided.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SPEED_CAP, SPEED_MULT } from "../constants";
@@ -18,7 +22,13 @@ import {
   type Harness,
 } from "../harness";
 
-/** Enough hits for the ratio to be read many times over below the ceiling. */
+/**
+ * Enough hits for the ratio to be read many times over below the ceiling.
+ *
+ * The rally drives exactly this many: from `RALLY_LAUNCH_SPEED` the twelfth hit
+ * leaves the ball at `RALLY_LAUNCH_SPEED * SPEED_MULT ** 12`, still clear of the
+ * ceiling, so every one of the twelve ratios below is one the multiplier decides.
+ */
 const MIN_HITS = 12;
 /** The review item's margin on the per-hit ratio: one percent of SPEED_MULT. */
 const RATIO_TOLERANCE = SPEED_MULT * 0.01;
@@ -39,7 +49,7 @@ it("multiplies the ball's speed on every hit below the ceiling", async () => {
   await arrangeRally(harness);
 
   const speeds = await captureReplay(harness, "acceleration", () =>
-    driveRallySpeeds(harness),
+    driveRallySpeeds(harness, MIN_HITS),
   );
 
   assertGreaterThanOrEqual(speeds.length, MIN_HITS);
