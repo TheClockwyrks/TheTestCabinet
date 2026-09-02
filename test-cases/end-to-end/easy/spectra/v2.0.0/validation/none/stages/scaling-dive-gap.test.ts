@@ -278,19 +278,6 @@ async function meanGap(h: Harness): Promise<number> {
   return seconds((seen.at[GAPS] - seen.at[0]) / GAPS);
 }
 
-/** How many drones the wave has just put into phase `diving`. */
-async function divers(h: Harness): Promise<number[]> {
-  const snapshot = await h.snapshot();
-  return snapshot.drones
-    .filter((drone) => drone.phase === "diving")
-    .map((drone) => drone.id);
-}
-
-/** Put every diver back in its slot, so the grid is full for the next draw. */
-async function reseat(h: Harness, ids: readonly number[]): Promise<void> {
-  for (const id of ids) await h.debug.setDronePhase(id, "formation");
-}
-
 /** What bracketing `DRAWS` drawn gaps against the stated window found. */
 interface Brackets {
   /** Draws that launched before the window's shortest gap could have elapsed. */
@@ -299,30 +286,63 @@ interface Brackets {
   late: number;
 }
 
-/** Bracket every drawn gap between `GAP_MIN` and `GAP_MAX`. */
+/**
+ * Bracket every drawn gap between `GAP_MIN` and `GAP_MAX`.
+ *
+ * THE WHOLE PROBE RUNS IN ONE CROSSING. Each bracket is the same three beats —
+ * put the drones a previous bracket launched back in their slots, pose the wave's
+ * timer at one edge of the stated window, drive the one frame that settles
+ * whether the build launched on it — and `DRAWS` draws is two hundred of them.
+ * Driven a round trip apart that is some eight hundred crossings into the page
+ * for a reading that is deterministic in the build's own terms, and a round
+ * trip's cost is a fact about how busy the host is: a check that spends eight
+ * hundred of them has made how busy the host was part of its verdict. `trials`
+ * runs the same beats, the same frames and the same posed fields, with the
+ * arranging and the reading done inside the page.
+ *
+ * The two brackets alternate, an even round posing the window's lower edge and an
+ * odd round its upper, so `DRAWS * 2` rounds is `DRAWS` draws bracketed on both
+ * sides. Each round reseats whatever the round before it launched, which is what
+ * keeps the grid full so no draw goes unlaunched for want of a drone.
+ */
 async function bracketDraws(h: Harness): Promise<Brackets> {
   await poseWave(h);
   // The wave's FIRST gap is the fixed `DIVE_FIRST_DELAY`, which `specs/stages.md`
   // does not scale, so it is spent before any draw is bracketed.
   await h.debug.setDiveClock(DIVE_FIRST_DELAY + PROBE_MARGIN);
   await h.advance(1);
-  await reseat(h, await divers(h));
+  // And the drone that first delay launched goes back in its slot before the
+  // first bracket reads, so what a round sees diving is what that round's own
+  // frame launched and never a leftover of the frame before the probe opened.
+  const spent = await h.snapshot();
+  await h.pose(
+    spent.drones
+      .filter((drone) => drone.phase === "diving")
+      .map((drone) => ["setDronePhase", drone.id, "formation"] as const),
+  );
+
+  const { readings } = await h.trials(DRAWS * 2, {
+    stage: (round, last, edges) => [
+      ...(last ?? []).map(
+        (id) => ["setDronePhase", id, "formation"] as const,
+      ),
+      ["setDiveClock", round % 2 === 0 ? edges.low : edges.high] as const,
+    ],
+    read: (snapshot) =>
+      snapshot.drones
+        .filter((drone) => drone.phase === "diving")
+        .map((drone) => drone.id),
+    argument: { low: GAP_MIN - PROBE_MARGIN, high: GAP_MAX + PROBE_MARGIN },
+    operations: ["setDronePhase", "setDiveClock"],
+  });
 
   const found: Brackets = { early: 0, late: 0 };
-  for (let draw = 0; draw < DRAWS; draw += 1) {
-    await h.debug.setDiveClock(GAP_MIN - PROBE_MARGIN);
-    await h.advance(1);
-    const tooSoon = await divers(h);
-    if (tooSoon.length > 0) {
-      found.early += 1;
-      await reseat(h, tooSoon);
-    }
-
-    await h.debug.setDiveClock(GAP_MAX + PROBE_MARGIN);
-    await h.advance(1);
-    const launched = await divers(h);
-    if (launched.length === 0) found.late += 1;
-    await reseat(h, launched);
+  for (const [round, launched] of readings.entries()) {
+    // An even round posed the window's lower edge, where a conforming build has
+    // not launched yet; an odd round posed its upper, where one always has.
+    if (round % 2 === 0) {
+      if (launched.length > 0) found.early += 1;
+    } else if (launched.length === 0) found.late += 1;
   }
   return found;
 }

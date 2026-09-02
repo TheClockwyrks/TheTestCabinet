@@ -765,6 +765,51 @@ export interface Harness {
     },
   ): Promise<{ samples: Sample[]; snapshot: SpectraSnapshot; frames: number }>;
   /**
+   * Run `rounds` rounds of "pose, drive ONE frame, read" inside the page, in ONE
+   * crossing.
+   *
+   * The sweep a check that PROBES runs. {@link sweep} poses once and then drives,
+   * and {@link samples} drives without posing at all; a trial is the shape left
+   * over, where each frame has to be arranged from what the frame before it left
+   * — a timer posted just under a bound and the one frame that settles whether
+   * the build acted on it, a hundred times over. Taken a round trip apart that is
+   * hundreds of crossings for a reading that is deterministic in the build's own
+   * terms, which makes what the check costs a fact about how busy the host is and
+   * therefore makes its verdict one too.
+   *
+   * `stage` and `read` are carried into the page as source, so each must stand on
+   * its own: they see the parameters they are handed and nothing else, and
+   * anything from the suite reaches them as `argument`, which crosses as JSON.
+   * `stage` is handed the round's index and the PREVIOUS round's reading — which
+   * crosses no boundary, so it must be JSON too — and returns the surface calls
+   * that arrange the round, exactly the batch {@link pose} would run. `read`
+   * projects the state the round's frame left.
+   *
+   * `operations` names every surface operation `stage` may issue. They are
+   * checked against what the build carries before the crossing opens, exactly as
+   * {@link sweep}'s `pose` is, so a build missing one fails by assertion naming
+   * the operation rather than with a raw TypeError from inside the page. A call
+   * to an operation not named here is not checked, so name them all.
+   *
+   * The frames are the frames {@link advance} runs, one `advance(dt, 1)` each,
+   * opened and closed on the recorder and accounted to the cue sinks the same
+   * way, so a recording or a cue watch running across trials reads exactly what
+   * it would have read across the round trips this replaces.
+   */
+  trials<Reading, Argument>(
+    rounds: number,
+    options: {
+      stage: (
+        round: number,
+        last: Reading | null,
+        argument: Argument,
+      ) => readonly SurfaceCall[];
+      read: (snapshot: SpectraSnapshot, argument: Argument) => Reading;
+      argument: Argument;
+      operations: readonly string[];
+    },
+  ): Promise<{ readings: Reading[]; snapshot: SpectraSnapshot }>;
+  /**
    * Run `duration` seconds of game time WITHOUT opening a recorded frame.
    *
    * The same real update the loop runs, `hz` frames per second of it, but off
@@ -1492,6 +1537,62 @@ export async function createHarness(
       return {
         samples: result.samples as never[],
         frames: result.frames,
+        snapshot: result.snapshot,
+      };
+    },
+
+    async trials(rounds, trialOptions) {
+      if (surfaceFault !== null) refuse();
+      for (const operation of trialOptions.operations) {
+        if (known.has(operation) && !present.has(operation)) {
+          failSurface(`window.${HANDLE} carries no ${operation}()`);
+        }
+      }
+      const whole = Math.max(0, rounds);
+      const deltas: number[] = [];
+      for (let i = 0; i < whole; i += 1) deltas.push(clock.delta());
+
+      const script = `((stage, read, handle, dts, argument) => {
+  const api = window[handle];
+  const rec = window.__spectraRec;
+  const audio = window.__spectraAudio;
+  const sounds = [];
+  const readings = [];
+  let last = null;
+  for (let round = 0; round < dts.length; round += 1) {
+    for (const entry of stage(round, last, argument)) api[entry[0]](...entry.slice(1));
+    const dt = dts[round];
+    const before = audio.started();
+    rec.begin();
+    api.advance(dt / 1000, 1);
+    rec.end(dt);
+    sounds.push(audio.started() - before);
+    last = read(api.snapshot(), argument);
+    readings.push(last);
+  }
+  return { readings: readings, snapshot: api.snapshot(), sounds: sounds };
+})(${String(trialOptions.stage)}, ${String(
+        trialOptions.read,
+      )}, ${JSON.stringify(HANDLE)}, ${JSON.stringify(deltas)}, ${JSON.stringify(
+        trialOptions.argument,
+      )})`;
+
+      const result = (await page.evaluate(script)) as {
+        readings: unknown[];
+        snapshot: SpectraSnapshot;
+        sounds: number[];
+      };
+
+      for (const [index, delta] of deltas.entries()) {
+        frameCount += 1;
+        timeMs += delta;
+        for (let n = 0; n < result.sounds[index]; n += 1) {
+          for (const sink of cueSinks)
+            sink.push({ frame: frameCount, t: timeMs });
+        }
+      }
+      return {
+        readings: result.readings as never[],
         snapshot: result.snapshot,
       };
     },
