@@ -165,6 +165,9 @@ A fault names what raised it:
 | `torn` | every part holding the constellation | every mote of the constellation |
 | Every fetch fault | the faulting part | empty |
 
+Both lists name each part and each mote once, however many pairs or grips
+reached it. `parts` is in placement order and `motes` is in ascending mote id.
+
 ## The sigil phase
 
 At each boundary, the settle included, sigils act in four waves, each wave
