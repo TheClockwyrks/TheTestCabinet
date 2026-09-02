@@ -32,4 +32,53 @@
  * belongs to the game — nothing the engine reports moves anything.
  */
 
-export {};
+/**
+ * The vector, quaternion, and transform helpers a game moves things with.
+ *
+ * Plain functions over plain records rather than methods on a class: a
+ * {@link Transform} is data the engine reads and the game replaces, so the
+ * helpers that build one take values and return fresh values, and none of them
+ * writes through an argument. A build that wants three's own math imports
+ * `three` itself — the engine re-exports nothing from it.
+ */
+export {
+  VEC3_ZERO,
+  VEC3_ONE,
+  UP,
+  FORWARD,
+  RIGHT,
+  QUAT_IDENTITY,
+  vec3,
+  add,
+  sub,
+  scale,
+  dot,
+  cross,
+  length,
+  normalize,
+  distance,
+  lerp,
+  quat,
+  quatFromEuler,
+  quatToEuler,
+  quatFromAxisAngle,
+  quatMultiply,
+  quatInverse,
+  quatRotate,
+  quatSlerp,
+  quatLookAt,
+  composeTransforms,
+  transformPoint,
+  transformToMatrix,
+} from "./math";
+
+/**
+ * The whole shared vocabulary, re-exported wholesale.
+ *
+ * `contract.ts` *is* the package's type surface — it exists precisely so that
+ * the engine, the framework classes, the built-in components, and a validator
+ * cannot drift apart — and re-exporting it as a list would add another place
+ * for a type to be forgotten in. The contract module holds no runtime values,
+ * so nothing but types crosses.
+ */
+export type * from "./contract";
