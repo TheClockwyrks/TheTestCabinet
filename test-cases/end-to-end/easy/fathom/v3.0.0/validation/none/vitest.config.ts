@@ -49,6 +49,12 @@ export default defineConfig({
     // simulation, each of them a crossing into the page; generous here, and still
     // seconds in practice.
     testTimeout: 120_000,
-    hookTimeout: 60_000,
+    // The same ceiling as a check, rather than half of it. `beforeEach` here opens
+    // a page of the shared browser, loads the built site into it and waits for the
+    // build to install its surface — real work, and work that competes with
+    // whatever else the host is running. A hook budget sized for a quiet machine
+    // fails a perfectly good build as "hook timed out", which says nothing about
+    // the build at all.
+    hookTimeout: 120_000,
   },
 });

@@ -39,5 +39,12 @@ export default defineConfig({
     // observed, which costs a passing suite nothing and still stops a validator
     // that hangs far inside the runner's own cap on the whole run.
     testTimeout: 180_000,
+    // The same ceiling on a hook as on a check, rather than vitest's own 10 s
+    // default. `beforeEach` here constructs the engine, loads every seeded sheet
+    // and runs the build's `initialize` — real work, and work that competes with
+    // whatever else the host is running. A hook budget sized for a quiet machine
+    // fails a perfectly good build as "hook timed out", which says nothing about
+    // the build at all.
+    hookTimeout: 180_000,
   },
 });
