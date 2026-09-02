@@ -321,18 +321,26 @@ async function bracketDraws(h: Harness): Promise<Brackets> {
       .map((drone) => ["setDronePhase", drone.id, "formation"] as const),
   );
 
-  const { readings } = await h.trials(DRAWS * 2, {
-    stage: (round, last, edges) => [
-      ...(last ?? []).map((id) => ["setDronePhase", id, "formation"] as const),
-      ["setDiveClock", round % 2 === 0 ? edges.low : edges.high] as const,
-    ],
-    read: (snapshot) =>
-      snapshot.drones
-        .filter((drone) => drone.phase === "diving")
-        .map((drone) => drone.id),
-    argument: { low: GAP_MIN - PROBE_MARGIN, high: GAP_MAX + PROBE_MARGIN },
-    operations: ["setDronePhase", "setDiveClock"],
-  });
+  // The reading is named rather than inferred: it appears both as what `read`
+  // hands back and as what the NEXT round's `stage` is given, and a type in both
+  // places is not one TypeScript can work out from the calls alone.
+  const { readings } = await h.trials<number[], { low: number; high: number }>(
+    DRAWS * 2,
+    {
+      stage: (round, last, edges) => [
+        ...(last ?? []).map(
+          (id) => ["setDronePhase", id, "formation"] as const,
+        ),
+        ["setDiveClock", round % 2 === 0 ? edges.low : edges.high] as const,
+      ],
+      read: (snapshot) =>
+        snapshot.drones
+          .filter((drone) => drone.phase === "diving")
+          .map((drone) => drone.id),
+      argument: { low: GAP_MIN - PROBE_MARGIN, high: GAP_MAX + PROBE_MARGIN },
+      operations: ["setDronePhase", "setDiveClock"],
+    },
+  );
 
   const found: Brackets = { early: 0, late: 0 };
   for (const [round, launched] of readings.entries()) {
