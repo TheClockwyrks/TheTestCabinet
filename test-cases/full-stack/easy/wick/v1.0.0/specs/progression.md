@@ -115,7 +115,11 @@ The offers are listed vertically in the order of `offers`, and the item at
 at both ends, and `confirm` accepts the highlighted offer. Each offer shows the
 item's icon, its display name, and a tag: `OFFER_NEW_TEXT` (`NEW`) for an item
 not yet held, otherwise `LEVEL_LABEL` (`LEVEL`) followed by the level the item
-would become. Lamp oil is never held, so its tag is `NEW`.
+would become. Lamp oil is never held, so its tag is `NEW`. Beneath the offer
+list the overlay shows, on one line, the description of the offer at
+`menuIndex`: a weapon's from `WEAPON_DESCRIPTIONS`, a passive's from
+`PASSIVE_DESCRIPTIONS`, and lamp oil's `LAMP_OIL_DESCRIPTION`. `specs/ui.md`
+fixes the text of each.
 
 Accepting an offer applies it on the spot:
 

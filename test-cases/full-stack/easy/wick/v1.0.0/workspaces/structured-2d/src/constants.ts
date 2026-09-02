@@ -77,6 +77,9 @@ export const CONTACT_COOLDOWN = 0.5;
 /** The least health any contact hit removes, whatever the armor. */
 export const MIN_DAMAGE_TAKEN = 1;
 
+/** Seconds the hurt flash runs after a contact hit. */
+export const HURT_FLASH = 0.3;
+
 // ---- Derived stats (specs/passives.md) -----------------------------------
 
 /**
@@ -129,6 +132,9 @@ export const LAMP_OIL_NAME = "Lamp Oil";
 /** The health lamp-oil restores, capped at maxHp. */
 export const LAMP_OIL_HEAL = 30;
 
+/** The one line the level-up overlay shows for lamp oil. */
+export const LAMP_OIL_DESCRIPTION = "Restores 30 health and fills no slot.";
+
 // ---- Weapon identities (specs/weapons.md, specs/evolutions.md) -----------
 
 /** The ten base weapons, in this order. */
@@ -179,6 +185,27 @@ export const WEAPON_NAMES: Readonly<Record<WeaponId, string>> = {
   chandelier: "Chandelier",
   corona: "Corona",
   blaze: "Blaze",
+};
+
+/** The one line the almanac and the level-up overlay show for each weapon. */
+export const WEAPON_DESCRIPTIONS: Readonly<Record<WeaponId, string>> = {
+  taper: "A slash in the way you face, striking everything the arc covers.",
+  ember: "A bolt at the nearest enemy, spent on the first thing it hits.",
+  pin: "A fan of darts at the nearest enemy, each one piercing.",
+  lantern: "Lanterns that circle the lamp and burn what they pass through.",
+  halo: "A ring of light around the lamp that pulses on its own rhythm.",
+  "oil-splash":
+    "Puddles scattered nearby that burn everything standing in them.",
+  spark: "Strikes on random enemies within range of the lamp.",
+  shard: "A shard that bounces off the edges of the view and keeps going.",
+  sconce: "A boomerang that slows, turns, and comes back to the lamp.",
+  flare: "A burst that catches every enemy around the lamp at once.",
+  pyre: "Taper transformed: a wider slash that feeds the lamp as it lands.",
+  beacon: "Ember transformed: a faster bolt that carries through a crowd.",
+  hail: "Pin transformed: a wider fan of darts that pierce further.",
+  chandelier: "Lantern transformed: lanterns that never go out.",
+  corona: "Halo transformed: a wider ring that feeds the lamp as it pulses.",
+  blaze: "Oil Splash transformed: puddles that burn hotter and faster.",
 };
 
 /** The `pierce` value of a projectile that never dies from hits. */
@@ -656,6 +683,20 @@ export const PASSIVES: Readonly<Record<PassiveId, Passive>> = {
   lure: { name: "Lure", maxLevel: 5 },
 };
 
+/** The one line the almanac and the level-up overlay show for each passive. */
+export const PASSIVE_DESCRIPTIONS: Readonly<Record<PassiveId, string>> = {
+  wick: "Every tool you carry does more damage.",
+  oil: "Every tool you carry fires more often.",
+  glass: "Every shape your tools make covers more ground.",
+  brass: "Armor: every hit against you takes less health.",
+  mirror: "Your tools make one more of whatever they make.",
+  bellows: "The lamplighter walks faster.",
+  tallow: "The lamp holds more health.",
+  tinder: "The lamp recovers health as the night goes on.",
+  soot: "Gems are worth more experience.",
+  lure: "Gems are drawn to the lamp from further away.",
+};
+
 /** Everything a level-up overlay can offer. */
 export type OfferId = WeaponId | PassiveId | typeof LAMP_OIL_ID;
 
@@ -753,6 +794,20 @@ export const BLAZE_PULSE = 0.2;
 export const GEM_TIERS = ["small", "medium", "large"] as const;
 
 export type GemTier = (typeof GEM_TIERS)[number];
+
+/** The display name of each gem tier. */
+export const GEM_NAMES: Readonly<Record<GemTier, string>> = {
+  small: "Small Gem",
+  medium: "Medium Gem",
+  large: "Large Gem",
+};
+
+/** The one line the almanac shows for each gem tier. */
+export const GEM_DESCRIPTIONS: Readonly<Record<GemTier, string>> = {
+  small: "The experience a common death leaves behind.",
+  medium: "A heavier gem, worth more toward the next level.",
+  large: "The heaviest gem, left by the heaviest of the dark.",
+};
 
 /** The xp each tier grants, before xpMul. */
 export const GEM_VALUES: Readonly<Record<GemTier, number>> = {
@@ -941,6 +996,23 @@ export const ENEMIES: Readonly<Record<EnemyId, Enemy>> = {
   },
 };
 
+/** The one line the almanac shows for each enemy. */
+export const ENEMY_DESCRIPTIONS: Readonly<Record<EnemyId, string>> = {
+  moth: "The first thing the light draws. Slow, weak, and never alone.",
+  bat: "Quicker than a moth and just as thin.",
+  rat: "Low and steady, and it takes more than one hit.",
+  gnat: "Drifts in a straight line and never turns. Arrives in swarms.",
+  beetle: "Armored and slow, and it hurts more than it looks like it should.",
+  wisp: "Weaves as it comes, so it never quite arrives where you expect.",
+  spider: "Fast and tough, and it closes the distance quickly.",
+  crow: "Fast, and it hits hard for its size.",
+  shade: "Heavy and slow, and it leaves a larger gem behind.",
+  hound: "The heaviest of the common dark, and the fastest of the heavy.",
+  mothwing: "An elite: a great moth that drops a chest when it falls.",
+  owl: "An elite: silent, heavy, and it drops a chest when it falls.",
+  dark: "The night itself, from nine minutes on. It outlasts almost anything.",
+};
+
 /** Enemies a Flare burst leaves untouched. */
 export const FLARE_IMMUNE: readonly EnemyId[] = ["dark"];
 
@@ -1038,6 +1110,20 @@ export const PICKUP_KINDS = ["chest", "bread", "draft"] as const;
 
 export type PickupKind = (typeof PICKUP_KINDS)[number];
 
+/** The display name of each pickup. */
+export const PICKUP_NAMES: Readonly<Record<PickupKind, string>> = {
+  chest: "Chest",
+  bread: "Bread",
+  draft: "Draft",
+};
+
+/** The one line the almanac shows for each pickup. */
+export const PICKUP_DESCRIPTIONS: Readonly<Record<PickupKind, string>> = {
+  chest: "Opens beside the lamp and transforms a tool at its top level.",
+  bread: "Restores 30 health to the lamplighter who walks over it.",
+  draft: "Draws every gem in the night to the lamp at once.",
+};
+
 /** A pickup is collected within `PICKUP_ITEM_RADIUS + PLAYER_RADIUS`. */
 export const PICKUP_ITEM_RADIUS = 16;
 
@@ -1059,7 +1145,27 @@ export const TITLE_TEXT = "WICK";
 export const TAGLINE_TEXT = "KEEP THE LIGHT";
 
 /** The title menu, in this order. */
-export const TITLE_ITEMS = ["LIGHT THE LAMP", "HOW TO PLAY"] as const;
+export const TITLE_ITEMS = [
+  "LIGHT THE LAMP",
+  "THE ALMANAC",
+  "HOW TO PLAY",
+] as const;
+
+/** The almanac screen's heading. */
+export const ALMANAC_TEXT = "THE ALMANAC";
+
+/** The almanac's tab bar, in this order. */
+export const ALMANAC_TABS = [
+  "TOOLS",
+  "TRINKETS",
+  "ENEMIES",
+  "PICKUPS",
+] as const;
+
+export type AlmanacTab = (typeof ALMANAC_TABS)[number];
+
+/** Entry rows the almanac's list shows at once. */
+export const ALMANAC_ROWS = 10;
 
 /** The level-up overlay's heading. */
 export const LEVEL_UP_TEXT = "THE LAMP BURNS BRIGHTER";
@@ -1068,6 +1174,9 @@ export const LEVEL_UP_TEXT = "THE LAMP BURNS BRIGHTER";
 export const CHEST_TEXT = "A CHEST OPENS";
 
 export const PAUSED_TEXT = "PAUSED";
+
+/** The pause menu, in this order. */
+export const PAUSE_ITEMS = ["RESUME", "MAIN MENU"] as const;
 
 /** The two end screens' headings. */
 export const FALLEN_TEXT = "THE LIGHT WENT OUT";
@@ -1118,6 +1227,9 @@ export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   pause: ["KeyP"],
   mute: ["KeyM"],
 };
+
+/** Logical units of wheel travel that scroll the almanac's list by one row. */
+export const WHEEL_ROW = 100;
 
 // ---- Audio cues (specs/ui.md) --------------------------------------------
 

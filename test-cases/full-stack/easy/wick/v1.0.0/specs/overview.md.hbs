@@ -36,7 +36,7 @@ The specification spans several files under `specs/`.
 | `specs/passives.md` | The ten passives and the derived stats they feed. |
 | `specs/progression.md` | Experience, levels, slots, the level-up offers, and the two overlays. |
 | `specs/enemies.md` | The enemy roster, their behaviors, and the spawn director. |
-| `specs/controls.md` | The key actions and what each screen reads of them. |
+| `specs/controls.md` | The key actions, the pointer, and what each screen reads of them. |
 | `specs/state.md` | What the game's state carries. |
 | `specs/instrumentation.md` | The debugging and automation surface, and the snapshot it reports. |
 | `specs/ui.md` | The screens, the HUD, and the audio cues. |
@@ -48,24 +48,25 @@ Read all of them and build the game they describe as one cohesive whole.
 ## The runtime
 
 This game stands on no engine, so the runtime under it is yours to write: the
-frame loop and the delta time it measures, the canvas fit, the keyboard, audio
-cues including the ones that loop, loading the produced sprites and sounds, and
-the debug overlay. Where this specification speaks of the runtime it means that
-layer, and it states only what Wick needs from it. How the layer is structured
-is yours to decide.
+frame loop and the delta time it measures, the canvas fit, the keyboard, the
+pointer read through that same fit, audio cues including the ones that loop,
+loading the produced sprites and sounds, and the debug overlay. Where this
+specification speaks of the runtime it means that layer, and it states only
+what Wick needs from it. How the layer is structured is yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
 ## The runtime
 
 The game is built on the {{engine.name}} engine, which documents itself in the
 `engine/` directory at the root of this repository. It owns the frame loop and
-the delta time the game is given, the input actions the lamplighter and the
-menus are driven by, audio cues including the ones that loop, asset loading,
-the canvas fit, and the debug overlay. Read its documentation before you start.
-This specification states only what is specific to Wick.
+the delta time the game is given, the input actions and the pointer the
+lamplighter and the menus are driven by, audio cues including the ones that
+loop, asset loading, the canvas fit, and the debug overlay. Read its
+documentation before you start. This specification states only what is specific
+to Wick.
 
-The game is played from the keyboard alone. The engine hands `update` each
-action as a held value and as a press edge; `specs/controls.md` states what
-Wick does with them.
+The engine hands `update` each action as a held value and as a press edge, and
+reports the pointer in the stage's own coordinates along with its buttons and
+its wheel travel. `specs/controls.md` states what Wick does with them.
 {{else}}
 ## The runtime
 
@@ -75,10 +76,10 @@ as much as a runtime: the game is written as subclasses of its classes, a game
 instance, a game mode, actors and their components, and the controllers that
 drive them, and the engine constructs, ticks, and renders them in a fixed
 order. It owns the frame loop and the delta time the game is given, rendering
-and the camera, the canvas fit, the input actions the lamplighter and the
-menus are driven by, audio cues including the ones that loop, asset loading,
-and the debug overlay. Read its documentation before you start. This
-specification states only what is specific to Wick.
+and the camera, the canvas fit, the input actions and the pointer the
+lamplighter and the menus are driven by, audio cues including the ones that
+loop, asset loading, and the debug overlay. Read its documentation before you
+start. This specification states only what is specific to Wick.
 
 The logical design field handed to the engine is the stage, and the camera
 follows the lamplighter at zoom `1`, so a world point draws exactly where the
@@ -102,9 +103,9 @@ exists yet.
 
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours: the frame loop and the
-canvas fit, keyboard input, audio, asset loading, the diagnostics overlay, the
-`window.__wick` debug and automation surface, the figures this specification
-fixes, and the game itself.
+canvas fit, keyboard and pointer input, audio, asset loading, the diagnostics
+overlay, the `window.__wick` debug and automation surface, the figures this
+specification fixes, and the game itself.
 
 The game's state is yours to shape. `specs/state.md` states what it must carry,
 and `specs/instrumentation.md` states the one contract fixed over it.
@@ -309,30 +310,34 @@ Produce a complete, polished, playable game that runs entirely in a browser,
 and the art and sound it plays. This is a broad build: a scrolling world under
 a camera fixed on the lamplighter, sixteen weapons each with its own targeting
 and effect, ten passives, thirteen enemies on a ten-minute spawn schedule, a
-level-up economy with slots and evolutions, several screens and overlays, and a
-produced set of sprites and sounds. Aim for a game a person would enjoy
-playing, where a crowd closing in is legible and a new tool visibly changes the
-fight.
+level-up economy with slots and evolutions, several screens and overlays, an
+almanac of everything in the night, and a produced set of sprites and sounds.
+Aim for a game a person would enjoy playing, where a crowd closing in is
+legible and a new tool visibly changes the fight.
 
 ### Hard requirements
 
 {{#if (eq engine.slug "none")}}
 - Write the runtime the game stands on: the frame loop and its delta time, the
-  canvas fit, keyboard input, audio with looping cues, asset loading, and the
-  debug overlay.
+  canvas fit, keyboard and pointer input, audio with looping cues, asset
+  loading, and the debug overlay.
 {{else if (eq engine.slug "simple-2d")}}
-- Build on the {{engine.name}} engine, taking the frame loop, the input
-  actions, audio with looping cues, asset loading, the canvas fit, and the
-  debug overlay from it.
+- Build on the {{engine.name}} engine, taking the frame loop, the input actions
+  and the pointer, audio with looping cues, asset loading, the canvas fit, and
+  the debug overlay from it.
 {{else}}
 - Build on the {{engine.name}} engine, taking the frame loop, rendering and the
-  camera, the input actions, audio with looping cues, asset loading, the canvas
-  fit, and the debug overlay from it, and writing the game inside its framework
-  of game modes, actors, components, and controllers.
+  camera, the input actions and the pointer, audio with looping cues, asset
+  loading, the canvas fit, and the debug overlay from it, and writing the game
+  inside its framework of game modes, actors, components, and controllers.
 {{/if}}
 - Ship the whole night: the ten weapons, the six evolutions, the ten passives,
   the thirteen enemies, the spawn schedule from the first moth to the Dark, and
   dawn at `DAWN_TIME` (`600`) seconds.
+- Ship the almanac: a screen that browses every tool, trinket, enemy, and
+  pickup in the game, each shown with its picture and its description.
+- Drive every menu with the mouse as well as the keyboard, as
+  `specs/controls.md` states.
 - Render real graphics on the canvas: the world scrolling under the camera, a
   sprite for every actor and effect, and the HUD, drawn as sprites, shapes, and
   text. A text-only or character-cell rendering does not meet this.

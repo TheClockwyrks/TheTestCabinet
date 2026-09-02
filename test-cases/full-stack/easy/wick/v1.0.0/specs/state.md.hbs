@@ -14,17 +14,22 @@ yours to decide.
 Whatever its shape, the state carries the following, because the rest of this
 specification is written against them:
 
-- The screen the game is showing, one of `title`, `howto`, `playing`,
-  `levelup`, `chest`, `paused`, `fallen`, or `dawn`, and the highlighted index
-  of whichever vertical menu that screen shows.
+- The screen the game is showing, one of `title`, `howto`, `almanac`,
+  `playing`, `levelup`, `chest`, `paused`, `fallen`, or `dawn`, and the
+  highlighted index of whichever vertical menu that screen shows.
+- The tab the almanac is showing, as an index into `ALMANAC_TABS`, and the
+  index of the first entry row its list shows, both held outside the run. Each
+  is `0` on entering every screen, and each stays `0` on every screen but
+  `almanac`.
 - The run clock, as a whole count of ticks since the run started at `TICK_HZ`
   (`60`) ticks per second, and the frame-time remainder waiting for the next
   whole tick, which grows on `playing` alone: the delta time left unconsumed
   when the screen leaves `playing` is discarded, so the remainder is `0` on
   every other screen.
-- The lamplighter: its world position, its facing (`left` or `right`), and its
-  health. Maximum health, armor, move speed, recovery, and pickup radius are
-  derived from the held passives rather than stored.
+- The lamplighter: its world position, its facing (`left` or `right`), its
+  health, and the seconds left of its hurt flash. Maximum health, armor, move
+  speed, recovery, and pickup radius are derived from the held passives rather
+  than stored.
 - The loadout: up to `WEAPON_SLOTS` (`6`) weapons, each with its id, its level,
   and the seconds until it next fires, in slot order; and up to `PASSIVE_SLOTS`
   (`6`) passives, each with its id and its level, in slot order.
@@ -60,13 +65,13 @@ specification is written against them:
 - Whether audio is muted, and the state of the seeded random generator every
   random draw comes from.
 
-Off the run, on `title` and `howto`, the run's fields hold their idle values:
-tick `0`, level `1`, no experience, no kills, the lamplighter at the world
-origin facing right with `BASE_MAX_HP` (`100`) health, no weapons, no passives,
-nothing alive, nothing dropped, no offers, no level-ups earned, no chest
-result, the spawn timer at `0`, no events fired, and the next id `0`. The
-`fallen` and `dawn` screens keep the run that just ended, since they report its
-time, level, and kills.
+Off the run, on `title`, `howto`, and `almanac`, the run's fields hold their
+idle values: tick `0`, level `1`, no experience, no kills, the lamplighter at
+the world origin facing right with `BASE_MAX_HP` (`100`) health and its hurt
+flash at `0`, no weapons, no passives, nothing alive, nothing dropped, no
+offers, no level-ups earned, no chest result, the spawn timer at `0`, no events
+fired, and the next id `0`. The `fallen` and `dawn` screens keep the run that
+just ended, since they report its time, level, and kills.
 {{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` exports the state the game is written against. This section is
 that declaration: every name below is exported from `src/game.ts`, declared
@@ -94,6 +99,7 @@ export type { EnemyId, GemTier, OfferId, PassiveId, PickupKind, WeaponId };
 export type Screen =
   | "title"
   | "howto"
+  | "almanac"
   | "playing"
   | "levelup"
   | "chest"
@@ -206,6 +212,7 @@ export interface RunState {
   readonly xp: number;
   readonly kills: number;
   readonly player: PlayerState;
+  readonly hurtFlash: number;
   readonly weapons: readonly WeaponSlot[];
   readonly passives: readonly PassiveSlot[];
   readonly enemies: readonly EnemyState[];
@@ -225,6 +232,8 @@ export interface RunState {
 export interface WickState {
   readonly screen: Screen;
   readonly menuIndex: number;
+  readonly almanacTab: number;
+  readonly almanacScroll: number;
   readonly run: RunState;
   readonly accumulator: number;
   readonly simTime: number;
@@ -270,6 +279,7 @@ export type { EnemyId, GemTier, OfferId, PassiveId, PickupKind, WeaponId };
 export type Screen =
   | "title"
   | "howto"
+  | "almanac"
   | "playing"
   | "levelup"
   | "chest"
@@ -378,6 +388,7 @@ export interface RunState {
   xp: number;
   kills: number;
   player: PlayerState;
+  hurtFlash: number;
   weapons: WeaponSlot[];
   passives: PassiveSlot[];
   enemies: EnemyState[];
@@ -397,6 +408,8 @@ export interface RunState {
 export class WickState extends GameState {
   screen: Screen;
   menuIndex: number;
+  almanacTab: number;
+  almanacScroll: number;
   run: RunState;
   accumulator: number;
   simTime: number;
@@ -596,6 +609,9 @@ The run in progress or just ended.
   `× (level − 1)`.
 - `kills`: how many enemies have died this run.
 - `player`: the lamplighter.
+- `hurtFlash`: a timer as `specs/world.md` defines one, the seconds left of
+  the lamplighter's hurt flash: `HURT_FLASH` (`0.3`) on a tick a contact hit
+  lands, counting down every tick, and `0` while no flash is running.
 - `weapons`, `passives`: the loadout, in slot order.
 - `enemies`, `projectiles`, `zones`, `gems`, `pickups`: everything alive or
   lying on the field, each list ascending by id.
@@ -621,15 +637,16 @@ The run in progress or just ended.
 
 ## The idle run
 
-`run` holds the values below whenever `screen` is `title` or `howto`:
-`initialize` and `reset` build them, and leaving a run for the title restores
-them. The `fallen` and `dawn` screens keep the run that just ended, since they
-report its time, level, and kills.
+`run` holds the values below whenever `screen` is `title`, `howto`, or
+`almanac`: `initialize` and `reset` build them, and leaving a run for the title
+restores them. The `fallen` and `dawn` screens keep the run that just ended,
+since they report its time, level, and kills.
 
 | Field | Idle value |
 | --- | --- |
 | `tick`, `level`, `xp`, `kills` | `0`, `1`, `0`, `0` |
 | `player` | `{ x: 0, y: 0, facing: "right", hp: BASE_MAX_HP }` |
+| `hurtFlash` | `0` |
 | `weapons`, `passives` | empty |
 | `enemies`, `projectiles`, `zones`, `gems`, `pickups` | empty |
 | `offers` | empty |
@@ -660,8 +677,14 @@ fields posed and read back by reading them.
 - `menuIndex`: the highlighted item on whichever vertical menu `screen` is
   showing. It is `0` on entering every screen, and on a screen with no menu it
   stays `0`.
-- `run`: the run in progress or just ended, and the idle run on `title` and
-  `howto`.
+- `almanacTab`: the index into `ALMANAC_TABS` of the tab the almanac is
+  showing. It is `0` on entering every screen, and on every screen but
+  `almanac` it stays `0`.
+- `almanacScroll`: the index of the first entry row the almanac's list shows.
+  It is `0` on entering every screen and on every tab change, and on every
+  screen but `almanac` it stays `0`.
+- `run`: the run in progress or just ended, and the idle run on `title`,
+  `howto`, and `almanac`.
 - `accumulator`: the frame time waiting for the next whole tick, in seconds,
   at least `0` and below `TICK_DT`. It grows on `playing` alone: the delta
   time left unconsumed when the screen leaves `playing` is discarded, so it
