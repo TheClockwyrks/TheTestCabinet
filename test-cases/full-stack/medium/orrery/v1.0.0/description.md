@@ -62,8 +62,14 @@ run selects. On an engine run the project also carries the runtime and the
 case-owned modules that name every figure the specification fixes and stand the
 engine up, and the run writes the game and its debug surface against them. On an
 engineless run the project carries no source at all, and the run writes the
-runtime as well as the game. Pointer handling belongs to the build under either
-engine. There are no assets and no reference mockups. The specification fixes
-the geometry, the rules, the ten Extras challenges, and the campaign's
-obligations exactly, and leaves the sky's appearance to the build, drawn
-entirely in code.
+runtime as well as the game. Pointer handling belongs to the build under every
+engine.
+
+Orrery ships no pre-made assets and declares no reference mockups. The run image
+puts the 2D asset-generation tools on the model's `PATH`, and the model produces
+the motes, the filaments, the sigil engravings, the instruction glyphs, the part
+pieces, the rise and set aperture sheets, three particle systems and the game's
+sound with them before wiring the committed files into the build. The
+specification fixes the geometry, the rules, the ten Extras challenges, and the
+campaign's obligations exactly; the palette, the type, and the look of the sky
+are the build's.
