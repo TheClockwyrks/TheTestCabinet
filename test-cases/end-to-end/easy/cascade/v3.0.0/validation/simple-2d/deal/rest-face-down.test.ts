@@ -29,8 +29,8 @@
 // buried cards are all face-down passes here and fails there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TABLEAU_COLUMNS } from "../../src/constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { TABLEAU_COLUMNS } from "../constants";
 import {
   captureStill,
   cardSpec,

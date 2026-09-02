@@ -2,9 +2,10 @@
 //
 // THE RULE. specs/deal.md deals the shuffled deck to `TABLEAU_COLUMNS` (`7`)
 // columns, left to right, so the tableau a deal produces is seven columns and not
-// six, eight, or ten. `TABLEAU_COLUMNS` is imported from `src/constants.ts`, the
-// module the build was seeded with, so what this reads back is the figure the
-// build was handed rather than a number written out here.
+// six, eight, or ten. `TABLEAU_COLUMNS` comes from this project's own
+// `constants.ts`, which transcribes it from specs/deal.md, rather than from the
+// `src/constants.ts` the build writes: a build that dealt six columns and called
+// six its `TABLEAU_COLUMNS` would otherwise be measured against its own mistake.
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. The NUMBER of columns, and nothing
 // about what is in them: how many cards each column receives is
@@ -18,8 +19,8 @@
 // put there. Nothing else is posed: this item concerns the deal alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TABLEAU_COLUMNS } from "../../src/constants";
 import { assertLength } from "../assert";
+import { TABLEAU_COLUMNS } from "../constants";
 import {
   captureStill,
   createHarness,

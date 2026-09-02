@@ -20,8 +20,8 @@
 // describe.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_COUNT } from "../../src/constants";
 import { assertLength } from "../assert";
+import { FOUNDATION_COUNT } from "../constants";
 import {
   captureStill,
   createHarness,

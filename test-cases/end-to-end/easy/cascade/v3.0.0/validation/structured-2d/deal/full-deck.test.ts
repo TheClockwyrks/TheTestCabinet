@@ -17,8 +17,9 @@
 // two Aces of spades and no Ace of hearts fails naming both.
 //
 // THE ROSTER IS THE DECK ITSELF. `fullDeck()` is the fifty-two suit-and-rank pairs
-// specs/deal.md defines, built from the `SUITS` and the ranks `src/constants.ts`
-// carries, so the pairs looked for here are the pairs the build was handed.
+// specs/deal.md defines, built from the `SUITS` and the ranks this project's
+// own `constants.ts` transcribes from that file, so the pairs looked for here
+// are the specification's rather than the build's.
 //
 // FACES ARE NOT READ HERE, and neither is which pile a card landed on: those are
 // `deal/lowest-face-up`, `deal/rest-face-down`, `deal/stock-face-down`,
@@ -26,8 +27,8 @@
 // the cards, in one direction.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
+import { DECK_SIZE } from "../constants";
 import {
   captureStill,
   cardKey,

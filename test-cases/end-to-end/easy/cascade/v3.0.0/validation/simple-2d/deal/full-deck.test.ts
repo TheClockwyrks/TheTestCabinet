@@ -22,8 +22,8 @@
 // the cards, in one direction.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, RANK_MAX, RANK_MIN, SUITS } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
+import { DECK_SIZE, RANK_MAX, RANK_MIN, SUITS } from "../constants";
 import {
   captureStill,
   createHarness,

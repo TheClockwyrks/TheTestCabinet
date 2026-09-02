@@ -21,8 +21,8 @@
 // cards separately.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TABLEAU_COLUMNS } from "../../src/constants";
 import { assertEqual, fail } from "../assert";
+import { TABLEAU_COLUMNS } from "../constants";
 import {
   captureStill,
   cardKey,

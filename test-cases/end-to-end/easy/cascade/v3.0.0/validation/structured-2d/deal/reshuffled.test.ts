@@ -29,8 +29,8 @@
 // the same share.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEAL_TABLEAU_CARDS } from "../../src/constants";
 import { assertGreaterThan } from "../assert";
+import { DEAL_TABLEAU_CARDS } from "../constants";
 import {
   captureStill,
   cardKey,

@@ -20,8 +20,8 @@
 // column named rather than with a count.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TABLEAU_COLUMNS } from "../../src/constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { TABLEAU_COLUMNS } from "../constants";
 import {
   captureStill,
   cardKey,

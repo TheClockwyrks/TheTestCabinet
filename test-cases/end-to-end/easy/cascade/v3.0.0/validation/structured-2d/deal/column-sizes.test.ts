@@ -22,8 +22,8 @@
 // at all is `deal/seven-columns`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEAL_TABLEAU_CARDS, TABLEAU_COLUMNS } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
+import { DEAL_TABLEAU_CARDS, TABLEAU_COLUMNS } from "../constants";
 import {
   captureStill,
   createHarness,

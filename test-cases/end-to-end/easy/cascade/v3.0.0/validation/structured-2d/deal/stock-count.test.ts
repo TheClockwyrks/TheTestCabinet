@@ -6,16 +6,18 @@
 // any other size gives the player a different game: too few and hands become
 // unwinnable that should not be, too many and cards are missing from the table.
 //
-// `DEAL_STOCK_CARDS` is imported from `src/constants.ts`, the module the build was
-// seeded with, so this reads back the figure the build was handed.
+// `DEAL_STOCK_CARDS` comes from this project's own `constants.ts`, which
+// transcribes it from specs/deal.md. The build writes an `src/constants.ts` of
+// its own; reading the figure out of THAT would hold a build's stock against
+// its own claim about its stock, which every build survives.
 //
 // WHAT IT LEAVES ALONE. The count alone. That every one of those cards is
 // face-down is `deal/stock-face-down`, and that the fifty-two cards on the table
 // are one of each is `deal/full-deck`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEAL_STOCK_CARDS } from "../../src/constants";
 import { assertLength } from "../assert";
+import { DEAL_STOCK_CARDS } from "../constants";
 import {
   captureStill,
   createHarness,

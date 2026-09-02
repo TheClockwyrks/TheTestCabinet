@@ -32,8 +32,8 @@
 // the whole point and `openTable` resets to the default one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEAL_TABLEAU_CARDS } from "../../src/constants";
 import { assertGreaterThan } from "../assert";
+import { DEAL_TABLEAU_CARDS } from "../constants";
 import {
   captureStill,
   cardSpec,
