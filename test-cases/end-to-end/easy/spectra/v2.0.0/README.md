@@ -179,6 +179,40 @@ a suite asserts comes from a figure the specs fix, never from a reference build.
 from that engine's reference build of that variant, so a reviewer sees the run's
 evidence and the reference's side by side.
 
+### One suite tree, two variants
+
+`validation/<engine>/` is one tree per engine, shared by both variants: the
+`sortie/` suites run only under `base` and the `overload/` suites only under
+`overload`, and which of them a run executes is decided by the variant's own
+`validation` entries in `variants/*.toml`.
+
+Under `simple-2d` and `structured-2d` the `overload/` suites import `OVERLOAD_AT`
+and its four siblings from the build's own `src/constants.ts`, which is exactly
+where those figures are seeded — but only into the **overload** workspace. So
+`npx tsc -p validation/tsconfig.json` staged into a *base* implementation reports
+`has no exported member 'OVERLOAD_AT'` for every one of those files. That is
+deliberate, and it is the same choice Carom v3.0.0 makes:
+
+- The five figures are Overload's alone. Exporting them from the base workspace
+  would put a sibling mode's constants into a seeded set that otherwise never
+  mentions it, which is the one thing the two variants are built not to do.
+- Restating them inside `validation/` would let the validator's copy and the
+  seeded constant drift, and the seeded constant is the one `specs/overview.md`
+  tells the build is authoritative.
+- Nothing in the pipeline type-checks the tree as a whole. The suites are executed
+  per review item, and an `overload/` suite is never executed against a base
+  build.
+
+So typecheck an engine's validators against an **overload** implementation:
+
+```sh
+npx tsc -p validation/tsconfig.json    # from an overload build's root
+```
+
+Under `none` the question does not arise: that project reads every figure from
+its own `validation/none/constants.ts`, so its tree type-checks against either
+variant.
+
 ### Four captures move between runs
 
 `tcab capture-baselines` writes `1710` files across the six engine/variant
