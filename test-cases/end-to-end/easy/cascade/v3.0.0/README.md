@@ -172,7 +172,14 @@ clears the table and adds back exactly the cards the requirement concerns, one
 card at a time, and closes the faculty gates that would otherwise intrude: the
 automatic flip, win detection, the cascade's launching and the trail's painting.
 Every expected value a suite asserts comes from a figure the specs fix, never
-from a reference build.
+from a reference build or from the build being graded. Each project carries that
+figure in a `constants.ts` of its own, transcribed from `specs/`, and a suite
+imports what it asserts from `"../constants"`. That is a gate and not a
+convention: stage the suite into a reference workspace and `npm run lint`
+refuses any file under `validation/` that reaches into the build's `src/`. The
+two exemptions are `constants.ts`, which may take named bindings from the build
+and here takes none, and `harness.ts`, which stands the build up through its
+entry `../src/game`.
 
 `validation-baseline/<engine>/<variant>/` holds the media the same suites
 captured from that engine's reference build, so a reviewer sees the run's
