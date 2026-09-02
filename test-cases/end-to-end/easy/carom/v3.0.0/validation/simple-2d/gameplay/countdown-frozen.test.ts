@@ -9,7 +9,7 @@
 // and actually launch.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOLD_TIME } from "../../src/constants";
+import { HOLD_TIME } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { WallClock } from "@test-cabinet/simple-2d";
-import { SERVE_SPEED } from "../../src/constants";
+import { SERVE_SPEED } from "../constants";
 import { assertGreaterThan } from "../assert";
 import { ball0, captureStill, createHarness, type Harness } from "../harness";
 

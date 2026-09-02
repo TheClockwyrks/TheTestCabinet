@@ -6,7 +6,7 @@
 // narrowest score that satisfies it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { WIN_LEAD, WIN_SCORE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   arrangeGoal,
