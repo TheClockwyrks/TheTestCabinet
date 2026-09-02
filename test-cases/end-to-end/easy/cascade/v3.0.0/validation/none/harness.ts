@@ -823,16 +823,23 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 const SURFACE_GRACE_FRAMES = 300;
 
 /**
- * The wall-clock ceiling under the frame count above.
+ * The wall-clock ceiling on any one crossing into the page.
  *
- * NOT the deadline — {@link SURFACE_GRACE_FRAMES} is. This catches only the page
- * that renders NOTHING, where no frame ever arrives to count and the wait would
- * otherwise never end: a browser that has wedged rather than a build that is
- * missing an operation. Two minutes because a page that is rendering reaches its
- * three hundred frames long inside it however loaded the host is, so this bound
- * should never be what ends a wait.
+ * NOT A DEADLINE ANY READING RESTS ON. A ceiling exists because a page that has
+ * wedged must cost a check this much and no more; it is drawn where no loaded
+ * host reaches it, so that what ends a wait is the thing being waited for. Two
+ * minutes: the navigation this harness makes is a static bundle off a local
+ * server, and the surface wait under it reaches its {@link SURFACE_GRACE_FRAMES}
+ * long inside two minutes however loaded the host is.
+ *
+ * WHAT IT REPLACES. Playwright's own default is thirty seconds on every crossing
+ * — a navigation, a key press, a click, a `waitForFunction` — and thirty seconds
+ * is generous on an idle host and crossed by a page load on one running many
+ * times its own number of cores. What a crossed deadline costs is not a point but
+ * a check: the harness throws inside `beforeEach`, and the verdict that reaches
+ * the reviewer names nothing the build did.
  */
-const SURFACE_BACKSTOP_MS = 120_000;
+const PAGE_CEILING_MS = 120_000;
 
 /**
  * What a frame-counted wait is waiting for: the two things a page installs that a
@@ -853,7 +860,7 @@ type PageArrival = "surface" | "recorder";
  * {@link SURFACE_GRACE_FRAMES}). It resolves `true` on the frame the thing is
  * first there, and `false` once {@link SURFACE_GRACE_FRAMES} frames have gone by
  * without it — or if the page renders nothing at all for
- * {@link SURFACE_BACKSTOP_MS}, which is the one case no frame count can end.
+ * {@link PAGE_CEILING_MS}, which is the one case no frame count can end.
  *
  * The count is kept on the page under a key of the arrival's own name, so the two
  * waits a harness makes do not share a deadline.
@@ -883,7 +890,7 @@ async function waitInPageFrames(
         return seen >= grace ? "never" : null;
       },
       [arrival, handleName, SURFACE_GRACE_FRAMES] as const,
-      { timeout: SURFACE_BACKSTOP_MS },
+      { timeout: PAGE_CEILING_MS },
     );
     return (await found.jsonValue()) === "there";
   } catch {
@@ -1110,6 +1117,12 @@ export async function createHarness(
   const context = await contextFor(cssWidth, cssHeight, dpr);
   const page = await context.newPage();
   openPages.add(page);
+  // Off Playwright's own thirty seconds and onto this project's ceiling, for
+  // every crossing the harness makes: the navigation below, a key press, a
+  // click, a frame driven inside the page. See `PAGE_CEILING_MS`; the waits whose
+  // deadline belongs in the page's own frames count those instead, and say so.
+  page.setDefaultTimeout(PAGE_CEILING_MS);
+  page.setDefaultNavigationTimeout(PAGE_CEILING_MS);
 
   // Whatever this page throws or logs as an error while THIS harness drives it.
   // The page belongs to one harness, so the log cannot pick up what some other
