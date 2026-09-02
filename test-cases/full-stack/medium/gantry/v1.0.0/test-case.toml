@@ -133,14 +133,16 @@ variants = ["variants/base.toml"]
 # Gantry is DESIGNED for THREE engines — `none`, `simple-3d`, `structured-3d` —
 # and seeds a starter project for each (`workspaces/none`,
 # `workspaces/simple-3d`, `workspaces/structured-3d`; each engine workspace
-# declares its engine in its `package.json` and seeds `src/constants.ts` +
-# `src/main.ts`, leaving the build to write `src/game.ts`). The whole ENGINE
-# MANIFEST FORMAT (`engines` + `[[engine]]` + `[workspaces]`) is PARKED here,
-# not abandoned, for ONE reason — see the `experimental` note: the format makes
-# a case VALIDATOR-RATED, which requires every graded review point below to
-# declare `validation`, `failure_cap`, and `domains`, and the validator projects
-# are not written. The catalogue is not an obstacle: both 3D engines are in
-# `crates/core/src/engine.rs`.
+# declares its engine in its `package.json` and seeds `src/constants.ts`,
+# `src/main.ts`, and a stub `src/game.ts` written against `GantryState` and
+# `GantryDebugApi` — so the seeded project does not compile until the build
+# declares those two types and replaces the stub with the game). The whole
+# ENGINE MANIFEST FORMAT (`engines` + `[[engine]]` + `[workspaces]`) is PARKED
+# here, not abandoned, for ONE reason — see the `experimental` note: the format
+# makes a case VALIDATOR-RATED, which requires every graded review point below
+# to declare `validation`, `failure_cap`, and `domains`, and the validator
+# projects are not written. The catalogue is not an obstacle: both 3D engines
+# are in `crates/core/src/engine.rs`.
 #
 # So the case declares the legacy single `workspace` and stays reviewer-rated.
 # The two engine workspaces, the specs' `engine.slug` branches, and the
@@ -339,7 +341,7 @@ description = "A placement past its material's maximum length is refused, as is 
 [[review.categories.items]]
 id = "obstacle-refused"
 title = "A member through an obstacle is refused"
-description = "A placement whose segment intersects an obstacle box is refused."
+description = "A placement whose segment reaches inside an obstacle box is refused; a segment grazing or lying flush along a face is clear of it."
 [[review.categories.items]]
 id = "budget-enforced"
 title = "The budget is enforced and the cost reads"

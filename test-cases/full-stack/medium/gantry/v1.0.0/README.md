@@ -6,7 +6,8 @@ construction yard: the player rigs a tower crane out of struts, cables, and
 rails on a lattice, mounts a slew ring and a trolley track, writes an
 Orrery-style instruction tape for the crane's four axes, and runs it under a
 per-tick structural simulation. A site is cleared when every load has been set
-down on its pad; the score is the crane's cost plus the tape's running time.
+down on its pad; the score is the crane's cost and the tape's running time,
+ranked by cost with time breaking ties.
 
 `gantry` is the catalog slug and the game's in-fiction title. The name, the
 yard, the material and site rosters, and the crane itself are original to The
@@ -39,8 +40,9 @@ simulation carried across a large surface rather than of any single hard idea.
 - **No randomness anywhere.** The same structure and the same tape give the same
   run, tick for tick.
 - **Speed is bought with steel.** Faster slew means centrifugal load and wider
-  swing, and the score is cost plus time, so a build that gets the statics right
-  and the choreography wrong is visibly broken in play.
+  swing, and a score is a cost and a time — cost first, time the tie-break — so
+  a build that gets the statics right and the choreography wrong is visibly
+  broken in play.
 
 ## Engines
 
@@ -107,20 +109,19 @@ for every run:
 
 ## Assets and media
 
-This is a full-stack case, so the game ships no pre-made art: `test-case.toml`
-declares no `assets` list, and the build produces every model and sound it draws
-and plays. The build must be self-contained — it bundles the committed produced
-files and runs with the generation binaries absent, so a build that regenerates
-its assets at load time fails.
+This is a full-stack case, so the game ships no pre-made art:
+`test-case.toml` declares no `assets` list, and the build produces every model
+and sound it draws and plays. The build must be self-contained — it bundles the
+committed produced files and runs with the generation binaries absent, so a
+build that regenerates its assets at load time fails.
 
 No reference mockup is seeded either. This version declares no `[[reference]]`
 views, no `[[proof]]` artifacts and no `[[check]]` comparisons: nothing shows
 the model a picture of the finished game, and every requirement reaches it as
-prose.
-What the specs fix about the look is what must be visible — a strut, a cable and
-a rail told apart by form, a member's utilization read on a monotone ramp, a
-load visibly hanging and swinging true to the simulation — and how it is drawn
-belongs to the build.
+prose. What the specs fix about the look is what must be visible — a strut, a
+cable and a rail told apart by form, a member's utilization read on a monotone
+ramp, a load visibly hanging and swinging true to the simulation — and how it
+is drawn belongs to the build.
 
 ## Where the case stands
 
@@ -175,35 +176,76 @@ version.
   does not yet have in any form.
 
 The numbers pass this list used to call for is **done**. Every site in
-`specs/sites.md` has a worked crane and tape that clears it inside its budget,
-inside par cost and inside par time, with no member breaking and peak
-utilization between `0.81` and `0.93`; the par figures are set from those
-builds.
+`specs/sites.md` has a worked crane and a tape that clears it inside its budget,
+inside par cost and inside par time, with no member breaking:
 
-Site 4's delivery pad moved from `(16, 2, 6)` to `(14, 2, 6)` in that pass, and
-it is worth being exact about why. The longer reach demands an eighteen-unit jib
-off the four-anchor square, and of roughly 25,000 cranes searched at that reach
-not one held it: the best reached utilization `1.216`, and the rest either
-exceeded the budget or collapsed on the first slew tick. That is what was
-measured, not what was proved. No crane clearing `(16, 2, 6)` was found, and
-none was shown not to exist. At `(14, 2, 6)` the worked crane costs `4992.4`
-against the site's `5200` budget, clears in `44.10 s` against par time `70`, and
-peaks at utilization `0.909`. The pad is the only figure that moved on this
-site; the budget stayed at `5200`.
+| Site | Cost | Budget | Par cost | Clear | Par time | Peak utilization |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 First Lift | `2238.9` | `3000` | `2400` | `16.63 s` | `18` | `0.870` |
+| 2 Turnabout | `2278.9` | `3600` | `2400` | `52.35 s` | `55` | `0.868` |
+| 3 Over the Wall | `3369.6` | `4000` | `3550` | `37.92 s` | `40` | `0.908` |
+| 4 Long Reach | `4992.4` | `5600` | `5250` | `44.10 s` | `47` | `0.909` |
+| 5 High Shelf | `3982.6` | `4800` | `4200` | `95.87 s` | `101` | `0.814` |
+| 6 Heavy Haul | `4507.8` | `6000` | `4750` | `101.57 s` | `107` | `0.932` |
 
-Site 3's budget moved from `3600` to `4000` in the follow-up pass, and for the
-opposite reason: nothing about the site changed, only the room it leaves. The
-wall is eight units tall, so a crate carried over it needs its underside at
-`y 8`, its hook at `y 10`, and — with `HOIST_MIN` `1` — a trolley at `y 11` or
-higher, which puts the ring at `y 10` and fixes the tower at three braced
-levels. That floor is real: among the tower and arm variants searched at that
-height the leanest build that clears costs `3329.6` and peaks at utilization
-`0.977`, and the worked crane costs `3369.6`, so a `3600` budget left a player
-`230` to be wrong with. Going around the wall rather than over it is not the
-escape it looks like — the wall stops two units short of the envelope at each
-end, but every tape that tried that gap struck the wall on the swing. The
-budget is now `4000`, `630.4` above the worked crane, and par cost stays
-`3500`.
+Peak utilization runs from `0.814` at Site 5 to `0.932` at Site 6, so every
+worked crane is loaded hard and none of them is near breaking.
+
+The figures were measured with a dependency-free node simulation of the specs —
+the two solves, the slack-cable iteration, the breakage cascade, the pendulum,
+the axis controller, the tape — written against `specs/` alongside these
+passes. That simulation is not in this tree, so the table is the record of a
+measurement rather than something a reader can re-run today; the reference
+implementations listed above are what will make it reproducible, and they need
+the same core.
+
+Par is set from that table by one rule, both halves alike: **par cost is 1.05x
+the worked crane's cost rounded up to the next `50`, and par time is 1.05x its
+clear time rounded up to the next whole second.** Four of the six par costs
+already followed it. Site 3's (`3500` to `3550`) and Site 4's (`5150` to
+`5250`) were brought onto it, and every par time was reset from about 1.5x the
+clear time, a scale that left the time half of a score nearly free to beat
+while the cost half sat a few percent above the leanest crane found.
+
+Site 4's delivery pad moved from `(16, 2, 6)` to `(14, 2, 6)`, and it is worth
+being exact about why, because only part of what was measured then survives.
+What can still be measured is a two-crane probe with the target put back at
+`(16, 2, 6)`: the worked crane's sixteen-unit jib cannot reach that pad at
+all, because the trolley has no station for the point and there is therefore
+no tape to run, and the eighteen-unit jib that does reach it costs `5268.6`
+and collapses at `t = 0.02 s` with one member broken, at any budget. A wider
+search over cranes at that reach was run and turned up nothing that held the
+load, but it left no artifact, so it is recorded here as a claim rather than as
+a figure. No crane clearing `(16, 2, 6)` was found; none was shown not to
+exist. At `(14, 2, 6)` the worked crane clears with `0.909` peak utilization.
+
+Site 4's budget then moved from `5200` to `5600`, for the same reason Site 3's
+moved below: room, not need. At `5200` the site left `207.6` over the worked
+crane, and it was the only one of the six whose budget refused an ordinary
+variation of its own crane. The measurement was eleven variants of each site's
+worked crane — the crane itself and ten ordinary perturbations of it: denser
+jib bays, a four-wide jib, no cross-brace at the tip, an extra counterweight,
+one fewer, plan bracing, body bracing, stays carried further in, a longer
+counter-jib, two more units of jib. Site 4 rejected three of them on cost alone
+(`5431.2`, `5297.9`, `5268.6`); no other site rejected any. At `5600` it
+rejects none, seven of the eleven clear, and the budget stands `607.6` over the
+cheapest of them and `302.1` over the dearest. Par cost follows the rule above
+to `5250`. The pad and the budget are the only figures that moved on this
+site.
+
+Site 3's budget moved from `3600` to `4000` for the same reason: nothing about
+the site changed, only the room it leaves. The wall is eight units tall, so a
+crate carried over it needs its underside at `y 8`, its hook at `y 10`, and —
+with `HOIST_MIN` `1` — a trolley at `y 11` or higher, which puts the ring at
+`y 10` and fixes the tower at three braced levels. That floor is real: among
+the tower and arm variants searched at that height the leanest build that
+clears costs `3329.6` and peaks at utilization `0.977`, and the worked crane
+costs `3369.6`, so a `3600` budget left a player `230` to be wrong with. Going
+around the wall rather than over it is not the escape it looks like — the wall
+stops two units short of the envelope at each end, but every tape that tried
+that gap struck the wall on the swing. The budget is now `4000`, `630.4` over
+the worked crane and `99.9` over the dearest of those eleven variants that
+still clears, which puts the two sites in one band. Par cost is `3550`.
 
 ## Versioning
 

@@ -241,7 +241,7 @@ picks none.
 | `clearBest(index)` | Returns site `index` to having no recorded score. |
 | `setCamera(yaw, pitch, dist)` | Sets the orbit camera's pose, within the limits `specs/controls.md` fixes. |
 | `startRun` | Poses the `run` action: the same refusals, the same `run-start`, and the same first tick as `specs/program.md` states. |
-| `abortRun` | Poses the abort, ending a running run with no verdict and returning to the build screen. |
+| `abortRun` | Poses the abort, ending a running run with no verdict: `run` goes back to its idle placeholder and the build screen returns. |
 
 `openSite` carries the effects `specs/state.md` states for opening a site, and
 it is the surface's way onto any site without playing to it. A site opened this
@@ -254,17 +254,20 @@ in progress. `startRun` is refused exactly as the action is, leaving the state
 as it was; `check` says why it would refuse. A run that begins is the ordinary
 run, and its verdict comes from the ticks that follow.
 
-`reset` restores every field the snapshot reports to its title-screen value: the
-`title` screen with `menuIndex` `0`, site `0` open, every site uncleared with no
-recorded score, every site's stored structure and tape emptied, the open site's
-loads and obstacles back to the ones `specs/sites.md` gives it, the strut tool,
-no pending node, an empty history, the camera at its start pose, no check result
-showing, an idle run, and `simTime` at `0`. Two things are deliberately
-untouched, because neither is the game's own: the mute bit, which is a player
-preference, and the whole of `pointer`, which every update reads afresh from
-outside the game, so there is nothing in it for `reset` to put back. Because
-`reset` restores exactly those fields, anything else the build keeps across
-frames is derived from them.
+`reset` restores every field the snapshot reports to its title-screen value, bar
+one: the `title` screen with `menuIndex` `0`, site `0` open, every site
+uncleared with no recorded score, every site's stored structure and tape
+emptied, the open site's loads and obstacles back to the ones `specs/sites.md`
+gives it, the strut tool, no pending node, an empty history, the camera at its
+start pose, the pointer at the origin with no press live, its press origin at
+zero and no drag, no check result showing, an idle run, and `simTime` at `0`.
+The pointer goes back whole, the press origin and the drag bit included: those
+two are the game's own record of a press it has been following rather than
+anything the next update reads afresh from outside, so nothing but `reset`
+clears them. The one field left alone is `muted`, the game's readable copy of a
+mute bit it does not own (`specs/state.md`), which `reset` leaves as it stands
+rather than turning a player's preference off. Because `reset` restores exactly
+those fields, anything else the build keeps across frames is derived from them.
 
 ### The structure
 
@@ -516,10 +519,10 @@ value each rests at.
 | --- | --- |
 | `pendingNode` | `null` until a first node is held, and again once it is placed or cleared |
 | `historyDepth` | `0` on a site opened and not yet edited |
-| `pointer` | `{ x: 0, y: 0, down: false, pressX: 0, pressY: 0, dragging: false }` before the pointer has been used |
+| `pointer` | `{ x: 0, y: 0, down: false, pressX: 0, pressY: 0, dragging: false }` before the pointer has been used, and again after `reset` |
 | `pick` | `{ node: null, member: null }` on every screen but `build`, and where nothing is in range |
 | `checkResult` | `null` while the build screen is showing no check result |
-| `run` | the idle placeholder `specs/state.md` gives it, whenever no run is in progress |
+| `run` | the idle placeholder `specs/state.md` gives it before a site's first run, and again whenever a site is opened, a run is aborted, or `reset` is called; otherwise the run last started, left as it ended until the next one starts |
 
 - `site.name`, `site.envelope`, `site.anchors`, `site.budget`, and `site.par`
   are the open site's own figures, read by `siteIndex` against
@@ -546,8 +549,9 @@ value each rests at.
   (`specs/rigging.md`).
 - `run.forces` is the latest solve's, in member-id order, and covers the
   members still intact.
-- `muted` mirrors the runtime's mute bit, and `simTime` accumulates every
-  update's delta time whatever the screen.
+- `muted` is the game's readable copy of the mute bit `specs/state.md`
+  declares, and `simTime` accumulates every update's delta time whatever the
+  screen.
 
 Every field is read straight off the game's own state or derived from it at the
 call, so what the snapshot reports is what the game holds. Every field an

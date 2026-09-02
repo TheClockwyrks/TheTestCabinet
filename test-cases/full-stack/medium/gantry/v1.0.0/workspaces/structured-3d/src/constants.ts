@@ -1,7 +1,10 @@
 // Gantry — canonical constants. Supplied with the project. Do not edit.
 //
 // Every figure the specification fixes is named here exactly once, so no number
-// in this build is a guess and no spec value is left to interpretation.
+// in this build is a guess and no spec value is left to interpretation. Where
+// the specification names the constant that holds a value, that is the name it
+// carries here; where the specification fixes a value without naming a holder,
+// this file names one.
 //
 // World values are in the game's own units on the right-handed frame
 // `specs/world.md` defines: x and z horizontal, y up, the ground at y = 0.
@@ -123,8 +126,10 @@ export const PLACE_VEL_TOL = 0.6;
 // ---- The solve (specs/statics.md) ----------------------------------------
 
 /**
- * A factorization pivot below this fraction of the assembled matrix's largest
- * diagonal entry marks the system singular: a mechanism, and a collapse.
+ * A factorization pivot at or below this fraction of the largest diagonal entry
+ * of the supported system — what is left of the assembled matrix once the
+ * support rows and columns are gone — marks the system singular: a mechanism,
+ * and a collapse.
  */
 export const SINGULAR_TOL = 1e-8;
 
@@ -312,6 +317,15 @@ export interface LoadPose {
 /** The three load classes, whose dimensions `specs/world.md` fixes. */
 export type LoadClass = "crate" | "container" | "drum";
 
+/**
+ * Each class's box, as width by height by depth at yaw 0 (`specs/world.md`).
+ */
+export const LOAD_CLASS_DIMENSIONS: Readonly<Record<LoadClass, Vec3>> = {
+  crate: { x: 2, y: 2, z: 2 },
+  container: { x: 4, y: 2, z: 2 },
+  drum: { x: 2, y: 3, z: 2 },
+};
+
 /** One load a site asks for: where it stands, and where it is wanted. */
 export interface SiteLoad {
   readonly class: LoadClass;
@@ -363,7 +377,7 @@ export const SITES: readonly Site[] = [
       { x: 2, y: 0, z: 2 },
     ],
     budget: 3000,
-    par: { cost: 2400, time: 25 },
+    par: { cost: 2400, time: 18 },
     loads: [
       {
         class: "crate",
@@ -388,7 +402,7 @@ export const SITES: readonly Site[] = [
       { x: 2, y: 0, z: 2 },
     ],
     budget: 3600,
-    par: { cost: 2400, time: 80 },
+    par: { cost: 2400, time: 55 },
     loads: [
       {
         class: "crate",
@@ -419,7 +433,7 @@ export const SITES: readonly Site[] = [
       { x: 2, y: 0, z: 2 },
     ],
     budget: 4000,
-    par: { cost: 3500, time: 60 },
+    par: { cost: 3550, time: 40 },
     loads: [
       {
         class: "crate",
@@ -443,8 +457,8 @@ export const SITES: readonly Site[] = [
       { x: 0, y: 0, z: 2 },
       { x: 2, y: 0, z: 2 },
     ],
-    budget: 5200,
-    par: { cost: 5150, time: 70 },
+    budget: 5600,
+    par: { cost: 5250, time: 47 },
     loads: [
       {
         class: "container",
@@ -469,7 +483,7 @@ export const SITES: readonly Site[] = [
       { x: 2, y: 0, z: 2 },
     ],
     budget: 4800,
-    par: { cost: 4200, time: 145 },
+    par: { cost: 4200, time: 101 },
     loads: [
       {
         class: "container",
@@ -505,7 +519,7 @@ export const SITES: readonly Site[] = [
       { x: 4, y: 0, z: 4 },
     ],
     budget: 6000,
-    par: { cost: 4750, time: 155 },
+    par: { cost: 4750, time: 107 },
     loads: [
       {
         class: "drum",

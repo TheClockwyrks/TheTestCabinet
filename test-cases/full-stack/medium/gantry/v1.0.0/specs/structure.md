@@ -92,7 +92,9 @@ enforced the moment a rail member is placed; the rest are checked whenever the
 structure is readied, under Readiness below. The last two rules speak of the
 arm and the slew axis, and a crane without a ring has neither, so the track is
 judged only on a crane that has one: with no ring the track rules go unchecked
-and `invalid-rail` is not raised.
+and `invalid-rail` is not raised. A crane that has a ring and no rail members
+raises `no-rail` alone, for the same reason from the other side: with no rails
+there is no track to judge, so no track rule is broken.
 
 ### Counterweights
 
@@ -169,7 +171,7 @@ identifier, reported wherever readiness is reported:
 | --- | --- |
 | `no-ring` | The crane has no slew ring. |
 | `no-rail` | The crane has no rail members. |
-| `invalid-rail` | The crane has a ring, and its rail members break one of the track rules above. |
+| `invalid-rail` | The crane has a ring and rail members, and they break one of the track rules above. |
 | `disconnected-members` | Some member belongs to neither the tower nor the arm: it has no member path to an anchor or to a flange node. |
 
 A structure with no readiness issues is ready to run. Whether it stands is the

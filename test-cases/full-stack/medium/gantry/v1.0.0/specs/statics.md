@@ -92,7 +92,8 @@ there, since it carries ring mass and, on the bottom flange, the force carried
 across. A node that no intact member ends at and no flange puts there belongs
 to neither solve: a counterweight left on such a node applies nothing, and a
 member joined to neither the arm nor the tower carries no force and no weight.
-Both have fallen with what held them.
+Both have fallen with what held them. Such a member is still intact, and it
+reports zero force and zero utilization wherever member forces are reported.
 
 Each solve is the standard direct stiffness method over its members. Every
 node has three displacement unknowns. A member from node `p` to node `q` with
@@ -154,15 +155,28 @@ A structure that cannot resist its loads has no equilibrium: the supported
 system `K u = F` is singular. The supported system is what is left once the
 support rows and columns are gone, and it is symmetric, so it is factored
 symmetrically and without pivoting: `K = L D L^T` with `L` unit lower
-triangular and `D` diagonal, eliminating the unknowns in the order the system
-holds them and exchanging no row and no column. The pivots are the diagonal
-entries of `D`. The system is singular when a pivot's magnitude falls below
-`SINGULAR_TOL` (`1e-8`) times the largest diagonal entry of that same
-supported `K`, and the factorization stops there. A singular solve, in either
-the arm or the tower, at any point in the slack-cable iteration or the
-breakage sequence, ends the run as `collapse`. An under-braced 3D truss is the
-ordinary way to get here: a flat frame with nothing resisting out-of-plane
-motion is a mechanism even though every member is sound.
+triangular and `D` diagonal, eliminating the unknowns node by node in ascending
+order of lattice position, by `x`, then `y`, then `z`, and within a node in the
+order `x`, `y`, `z`, exchanging no row and no column. Arm nodes are ordered by
+their lattice positions and not by where the slew angle stands them, so the
+order is the same at every angle. The pivots are the diagonal entries of `D`.
+
+The system is singular when a pivot's magnitude is at or below `SINGULAR_TOL`
+(`1e-8`) times the largest diagonal entry of that same supported `K`, and the
+factorization stops there. The threshold is relative to that system's own
+largest diagonal, which settles the two extremes as well as the ordinary case.
+A supported system that has unknowns and no stiffness anywhere has a largest
+diagonal of `0` and a first pivot of `0`, so it is singular: that is the tower
+solve of a crane no intact member joins to the bottom flange or to an anchor,
+which stands on nothing. A supported system with no unknowns left, every node
+of it a support, has no pivots to test and is regular; its displacements are
+all zero.
+
+A singular solve, in either the arm or the tower, at any point in the
+slack-cable iteration or the breakage sequence, ends the run as `collapse`. An
+under-braced 3D truss is the ordinary way to get here: a flat frame with
+nothing resisting out-of-plane motion is a mechanism even though every member
+is sound.
 
 ## Utilization and breakage
 
@@ -178,7 +192,8 @@ and a slack cable's utilization `0`. Utilization is the readout the run screen
 colors members by (`specs/ui.md`).
 
 After both solves, every member whose utilization exceeds `1` breaks: all of
-them are removed at once, permanently for the rest of the run. Both solves then
+them are removed at once, permanently for the rest of the run, and they join
+the run's list of broken members in ascending member-id order. Both solves then
 run again at the same tick, over the members still intact, with the lumped
 masses and the applied forces recomputed for them, in the same order and under
 the same checks. Repeat until a pass breaks nothing or a pass fails. Breakage
@@ -214,8 +229,10 @@ its top are both clear of it:
   load whose bottom face rests exactly on `y = 0` is on the ground, not through
   it.
 
-The hook, the cable, waiting loads, and placed loads collide with nothing, and
-the structure never collides with itself or with a load.
+Those three are the whole of it. The hook, the cable, the trolley, the slew
+ring, the counterweights, the anchor mounts, waiting loads, and placed loads
+collide with nothing, and the structure never collides with itself or with a
+load.
 
 ## The failure causes
 

@@ -142,7 +142,7 @@ these cues:
 | `run-start` | a run starts |
 | `attach` | a load attaches |
 | `placed` | a load is set down on its pad |
-| `creak` | a member's utilization reaches `CREAK_THRESHOLD` (`0.8`) on a tick having been below it on the tick before, and no member creaks on a run's first tick; at most one `creak` per `CREAK_COOLDOWN` (`0.5`) run-clock seconds across the structure, so a run's creaks fall on the same ticks at every watch speed |
+| `creak` | a member's utilization reaches `CREAK_THRESHOLD` (`0.8`) on a tick having been below it on the tick before, and no member creaks on a run's first tick; at most one `creak` across the structure per `CREAK_COOLDOWN` (`0.5`) run-clock seconds, counted in whole ticks from the tick the last one played: the first tick eligible again is `CREAK_COOLDOWN * TICK_HZ` (`30`) ticks after that one, and a tick that has an eligible member but falls inside the cooldown plays nothing and starts no new cooldown. The gate is a tick count, so a run's creaks fall on the same ticks at every watch speed |
 | `break` | a tick breaks one or more members, once for the tick |
 | `collapse` | a run fails as `collapse` or `ring-overload` |
 | `complete` | a run clears the site |

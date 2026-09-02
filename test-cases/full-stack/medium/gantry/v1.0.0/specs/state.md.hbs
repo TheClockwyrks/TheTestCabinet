@@ -86,7 +86,8 @@ target, and a rate.
 
 ### The run
 
-The run in progress, or the idle placeholder between runs:
+The run in progress, the run last ended, or the idle placeholder before the
+first:
 
 - Its phase, one of `idle`, `running`, `cleared`, and `failed`, and its failure
   cause, or none, from the vocabulary `specs/statics.md` closes with.
@@ -121,14 +122,31 @@ The run in progress, or the idle placeholder between runs:
 - `simTime`, accumulating every update's delta time in seconds, whatever the
   screen.
 
-## The idle run
+## The idle run and a finished one
 
-Between runs the run carries its idle placeholder: phase `idle`, no cause, a
-zero tick, step index, and speed index, no live step, the four axes at the
-run-start posture `specs/program.md` fixes with no command and zero rate, a
-zero pivot, a bob at the origin with zero velocity, no attachment, and an empty
-load, force, and broken list. Every field is present whatever the screen, so
-the snapshot never reports a gap.
+The idle placeholder is phase `idle`, no cause, a zero tick, step index, and
+speed index, no live step, the four axes at the run-start posture
+`specs/program.md` fixes with no command and zero rate, a zero pivot, a bob at
+the origin with zero velocity, no attachment, and an empty load, force, and
+broken list. It is what the run carries before the first run of a site, and
+what opening a site, aborting a run, and a `reset` put back.
+
+A run that ends is left as it ended until the next one starts: its verdict, its
+cause, its clock, and its broken list stay readable while the results screen
+shows a cleared run's figures and while a failed run's screen shows its cause
+(`specs/program.md`, `specs/ui.md`), and going back to the build screen leaves
+them as they are. That broken list belongs to the run that broke them; the
+structure itself is untouched, so the build screen and its check read every
+member. Every field is present whatever the screen, so the snapshot never
+reports a gap.
+
+## What a site opening does
+
+Opening a site sets the site index, keeps that site's stored structure and
+tape, fills the open site with copies of that site's loads and obstacles,
+empties the undo history, clears the pending node and the shown check result,
+returns the camera to its start pose, and returns the run to its idle
+placeholder.
 
 ## What is derived
 
@@ -139,7 +157,7 @@ to the state as it stands.
 | --- | --- |
 | The crane's cost | The structure's members, ring, and counterweights (`specs/structure.md`) |
 | The readiness issues | The structure and the site (`specs/structure.md`) |
-| The intact members | The structure's, less the run's broken ids |
+| The members a run solves over | The structure's, less the run's broken ids |
 | The rail track, its origin, and its length | The intact rail members (`specs/structure.md`) |
 | The rotated arm, the trolley point, and the pivot within a tick | The slew and trolley values and the structure (`specs/statics.md`) |
 | The run clock | `tick / TICK_HZ` seconds |
@@ -158,7 +176,7 @@ to the state as it stands.
 - What you add beside them holds either data you can rebuild from them, or the
   bookkeeping of what the build presents: the sounds it plays and the picture
   it draws, which no figure this specification fixes depends on. A `reset`
-  restores the facts above to their title-screen values, as
+  restores the facts above to their title-screen values, `muted` aside, as
   `specs/instrumentation.md` states, so those are the whole of the
   authoritative state.
 - Rendering reads the state and writes nothing, and whether an edit is accepted
@@ -278,7 +296,7 @@ export type FailCause =
   | "command-out-of-range"
   | "loads-unplaced";
 
-/** The run in progress, or the idle placeholder between runs. */
+/** The run in progress, the run last ended, or the idle placeholder. */
 export interface RunState {
   phase: RunPhase;
   /** The failure cause; null unless phase is "failed". */
@@ -440,13 +458,15 @@ until the structure changes (`specs/structure.md`, `specs/ui.md`). It is
 - `issues` — what would refuse a run, empty when nothing would.
 - `cost`, `budget` — the crane's cost and the site's budget.
 - `stable` — whether the structure stands.
-- `members` — each intact member's force and utilization, in member-id order,
-  and empty where an issue left the structure unsolved.
+- `members` — each intact member's force and utilization, in member-id order;
+  empty exactly when the structure does not stand, whether a readiness issue
+  refused the solve or a solve went singular (`specs/structure.md`).
 
 ## `PointerState`
 
-Where the pointer is and what the press being held has done so far, as the
-frame read it from the engine.
+Where the pointer is and what the press being held has done so far. The frame
+reads the position and the hold from the engine; what the press has done since
+it went down is the state's own.
 
 - `x`, `y` — the pointer position in the stage's logical units, the units a
   pick radius is measured in.
@@ -460,10 +480,11 @@ frame read it from the engine.
 
 ## `RunState`
 
-The run in progress, and the idle placeholder whenever none is.
+The run in progress, the run last ended, or the idle placeholder before the
+first.
 
-- `phase` — `"idle"` between runs, `"running"` while the tape plays,
-  `"cleared"` and `"failed"` once it has ended.
+- `phase` — `"idle"` with no run to report, `"running"` while the tape plays,
+  and `"cleared"` or `"failed"` once one has ended.
 - `cause` — the failure cause, and `null` unless `phase` is `"failed"`.
 - `tick` — ticks since the run started. The run clock is `tick / TICK_HZ`
   seconds.
@@ -497,7 +518,13 @@ The idle placeholder is `phase` `"idle"`, `cause` `null`, `tick`, `speedIndex`,
 and `stepIndex` `0`, `stepLive` `false`, the four axes at the run-start posture
 `specs/program.md` fixes with zero rate and no command, `pivot` and both parts
 of `bob` the zero vector, `attached` `null`, and `loads`, `forces`, and
-`broken` empty.
+`broken` empty. It is what `run` carries before the first run of a site, and
+what opening a site, `abortRun`, and a `reset` put back. A run that ends is
+left as it ended until the next one starts, so the results screen and a failed
+run's screen both read their figures off it (`specs/ui.md`), and going back to
+the build screen leaves them as they are. Its `broken` belongs to the run that
+broke those members; the structure itself is untouched, so the build screen and
+its check read every member.
 
 ## `GantryState`
 
@@ -526,9 +553,10 @@ the fields posed and read back by reading them.
 - `checkResult` — the check result the build screen is showing, or `null`.
 - `camera` — the orbit camera's pose, which persists across the three yard
   screens and returns to its start pose when a site is opened.
-- `pointer` — the pointer as of this frame, refreshed from the engine on every
-  update.
-- `run` — the run in progress, or its idle placeholder.
+- `pointer` — the pointer as of this frame: `x`, `y`, and `down` refreshed
+  from the engine on every update, and `pressX`, `pressY`, and `dragging` the
+  state's own, carried from the frame the press went down.
+- `run` — the run in progress, the run last ended, or the idle placeholder.
 - `muted` — the game's readable copy of the engine's mute bit, which every
   `update` carries into the state it returns. The engine owns muting, and this
   field is what the debug surface reports.
@@ -540,7 +568,7 @@ the fields posed and read back by reading them.
 Opening a site sets `siteIndex`, keeps that site's stored structure and tape,
 fills `site` with copies of that site's loads and obstacles, empties `history`,
 clears `pendingNode` and `checkResult`, returns the camera to its start pose,
-and leaves `run` at its idle placeholder. `initialize` builds the title-screen
+and returns `run` to its idle placeholder. `initialize` builds the title-screen
 state with site `0` opened this way: the `title` screen with `menuIndex` `0`,
 every site uncleared with no recorded score and an empty structure and tape,
 the `strut` tool, and `simTime` `0`.
@@ -554,7 +582,7 @@ them, so they answer to the state as it stands.
 | --- | --- |
 | The crane's cost | `sites[siteIndex].structure` (`specs/structure.md`) |
 | The readiness issues | That structure and the site (`specs/structure.md`) |
-| The intact members | That structure's members, less `run.broken` |
+| The members a run solves over | That structure's members, less `run.broken` |
 | The rail track, its origin, and its length | The intact rail members (`specs/structure.md`) |
 | The rotated arm, the trolley point, and the tick's pivot | `run.axes` and the structure (`specs/statics.md`) |
 | The run clock | `run.tick / TICK_HZ` seconds |
@@ -577,9 +605,9 @@ The declaration above is what the debug surface reads and poses.
 - Fields you add hold either data you can rebuild from the declared ones, or
   the bookkeeping of what the build presents: the sounds it plays and the
   picture it draws, which no figure this specification fixes depends on. A
-  `reset` restores the declared fields to their title-screen values, as
-  `specs/instrumentation.md` states, so those fields are the whole of the
-  authoritative state.
+  `reset` restores the declared fields to their title-screen values, `muted`
+  aside, as `specs/instrumentation.md` states, so those fields are the whole of
+  the authoritative state.
 - The state is handed over read-only, as `DeepReadonly<GantryState>`, to
   `update`, to `render`, to every diagnostic source, and to every operation of
   the debug surface. `update` and the surface's poses return a new
@@ -710,7 +738,7 @@ export type FailCause =
   | "command-out-of-range"
   | "loads-unplaced";
 
-/** The run in progress, or the idle placeholder between runs. */
+/** The run in progress, the run last ended, or the idle placeholder. */
 export interface RunState {
   phase: RunPhase;
   /** The failure cause; null unless phase is "failed". */
@@ -918,13 +946,15 @@ until the structure changes (`specs/structure.md`, `specs/ui.md`). It is
 - `issues` — what would refuse a run, empty when nothing would.
 - `cost`, `budget` — the crane's cost and the site's budget.
 - `stable` — whether the structure stands.
-- `members` — each intact member's force and utilization, in member-id order,
-  and empty where an issue left the structure unsolved.
+- `members` — each intact member's force and utilization, in member-id order;
+  empty exactly when the structure does not stand, whether a readiness issue
+  refused the solve or a solve went singular (`specs/structure.md`).
 
 ## `PointerState`
 
-Where the pointer is and what the press being held has done so far, as the
-player controller read it from the engine in the current frame.
+Where the pointer is and what the press being held has done so far. The player
+controller reads the position and the hold from the engine each tick; what the
+press has done since it went down is the state's own.
 
 - `x`, `y` — the pointer position in the stage's logical units, the units a
   pick radius is measured in.
@@ -938,10 +968,11 @@ player controller read it from the engine in the current frame.
 
 ## `RunState`
 
-The run in progress, and the idle placeholder whenever none is.
+The run in progress, the run last ended, or the idle placeholder before the
+first.
 
-- `phase` — `"idle"` between runs, `"running"` while the tape plays,
-  `"cleared"` and `"failed"` once it has ended.
+- `phase` — `"idle"` with no run to report, `"running"` while the tape plays,
+  and `"cleared"` or `"failed"` once one has ended.
 - `cause` — the failure cause, and `null` unless `phase` is `"failed"`.
 - `tick` — ticks since the run started. The run clock is `tick / TICK_HZ`
   seconds.
@@ -971,8 +1002,13 @@ The run in progress, and the idle placeholder whenever none is.
 - `broken` — the ids of the members broken so far this run, in the order they
   broke.
 
-The initializer above is the idle placeholder, and a run that ends leaves the
-run it ran in place until the next one starts.
+The initializer above is the idle placeholder: what `run` carries before the
+first run of a site, and what opening a site, `abortRun`, and a `reset` put
+back. A run that ends is left as it ended until the next one starts, so the
+results screen and a failed run's screen both read their figures off it
+(`specs/ui.md`), and going back to the build screen leaves them as they are.
+Its `broken` belongs to the run that broke those members; the structure itself
+is untouched, so the build screen and its check read every member.
 
 ## `GantryState`
 
@@ -1001,9 +1037,10 @@ reading them.
 - `checkResult` — the check result the build screen is showing, or `null`.
 - `camera` — the orbit camera's pose, which persists across the three yard
   screens and returns to its start pose when a site is opened.
-- `pointer` — the pointer as of this frame, refreshed by the player controller
-  every tick.
-- `run` — the run in progress, or its idle placeholder.
+- `pointer` — the pointer as of this frame: `x`, `y`, and `down` refreshed by
+  the player controller every tick, and `pressX`, `pressY`, and `dragging` the
+  state's own, carried from the tick the press went down.
+- `run` — the run in progress, the run last ended, or the idle placeholder.
 - `muted` — the game's readable copy of the engine's mute bit. The engine owns
   muting; the mode's tick copies the bit into this field every frame, so the
   initializer is what it holds for the moment between the world opening and the
@@ -1016,7 +1053,7 @@ reading them.
 Opening a site sets `siteIndex`, keeps that site's stored structure and tape,
 fills `site` with copies of that site's loads and obstacles, empties `history`,
 clears `pendingNode` and `checkResult`, returns the camera to its start pose,
-and leaves `run` at its idle placeholder. The initializers above are the state
+and returns `run` to its idle placeholder. The initializers above are the state
 with site `0` opened this way.
 
 `GantryState` extends the engine's `GameState`, so an instance also carries the
@@ -1034,7 +1071,7 @@ them, so they answer to the state as it stands.
 | --- | --- |
 | The crane's cost | `sites[siteIndex].structure` (`specs/structure.md`) |
 | The readiness issues | That structure and the site (`specs/structure.md`) |
-| The intact members | That structure's members, less `run.broken` |
+| The members a run solves over | That structure's members, less `run.broken` |
 | The rail track, its origin, and its length | The intact rail members (`specs/structure.md`) |
 | The rotated arm, the trolley point, and the tick's pivot | `run.axes` and the structure (`specs/statics.md`) |
 | The run clock | `run.tick / TICK_HZ` seconds |
@@ -1062,7 +1099,7 @@ The declaration above is what the debug surface reads and poses.
   it, and the debug surface's poses arrange it at the call. Rendering reads it
   and writes nothing, and whether an edit is accepted and what a tick does are
   decided from the state and the site alone.
-- A `reset` restores the declared fields to the initializers above, as
-  `specs/instrumentation.md` states, so those fields are the whole of the
-  authoritative state.
+- A `reset` restores the declared fields to the initializers above, `muted`
+  aside, as `specs/instrumentation.md` states, so those fields are the whole of
+  the authoritative state.
 {{/if}}

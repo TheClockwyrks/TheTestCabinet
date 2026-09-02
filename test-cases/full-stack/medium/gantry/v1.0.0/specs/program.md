@@ -45,7 +45,9 @@ earlier step ran is out of range when its own step starts if the track has
 since fallen short of it, and a `trolley` command already running is judged
 again the same way at the top of every tick: the first tick that finds the
 track no longer reaching its target ends the run as `command-out-of-range`,
-before any axis moves.
+before any axis moves. Both checks read the track the rail members still intact
+form at the moment the check is made, so a rail breaking on one tick has
+shortened the range by the top of the next.
 
 ## Axis motion
 
@@ -82,17 +84,18 @@ same motion tick for tick.
 
 During a run, each tick performs the following, in order. The first failure a
 tick reaches ends the run with that cause and the later stages of that tick do
-not run.
+not run. A tick that ends the run counts like any other, whatever stage it
+reached and whether it ended cleared or failed, so the run clock the run ends
+on is that tick's own number over `TICK_HZ`.
 
 1. The tape: a live move step whose axes have all arrived completes, and a
-   live `trolley` command whose target the track no longer reaches ends the
-   run as `command-out-of-range`. If no step is live, this tick takes the next
-   one: an action step executes (`specs/rigging.md`), a move step issues its
-   commands to their axes. A tick that finds no live step and no step left to
-   take is the tick the run ends on: cleared if every load is `placed`,
-   otherwise failed as `loads-unplaced`. That tick counts like any other and
-   runs none of the stages below, so the run clock the run ends on is that
-   tick's own number over `TICK_HZ`.
+   live `trolley` command whose target the track the intact rails now form no
+   longer reaches ends the run as `command-out-of-range`. If no step is live,
+   this tick takes the next one: an action step executes (`specs/rigging.md`),
+   a move step issues its commands to their axes. A tick that finds no live
+   step and no step left to take is the tick the run ends on: cleared if every
+   load is `placed`, otherwise failed as `loads-unplaced`. It runs none of the
+   stages below.
 2. Axis motion: advance every commanded axis under the controller above.
 3. Geometry: the track, from the rail members that remain
    (`specs/structure.md`), then the arm rotation, the trolley point, and the

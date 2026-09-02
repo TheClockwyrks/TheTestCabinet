@@ -7,8 +7,10 @@ substituted, moved, or resized. The terms are the ones `specs/world.md`
 defines, and each `From` and `To` below is a load's lift point, `(x, y, z)`,
 followed by its yaw in degrees.
 
-Par figures are a target to beat, shown beside a clear's score; they gate
-nothing.
+Par figures are targets to beat, shown beside a clear's score; they gate
+nothing. Cost and time are set to the same standard, a few percent above what a
+lean crane and a well-drilled tape achieve on the site, so neither half of a
+score is the easy one.
 
 ## Site 1 — First Lift
 
@@ -17,7 +19,7 @@ nothing.
 | Envelope | `x -8..12`, `y 0..16`, `z -8..12` |
 | Anchors | `(0,0,0)`, `(2,0,0)`, `(0,0,2)`, `(2,0,2)` |
 | Budget | `3000` |
-| Par | cost `2400`, time `25` |
+| Par | cost `2400`, time `18` |
 
 | Load | Class | Mass | From | To |
 | --- | --- | --- | --- | --- |
@@ -32,7 +34,7 @@ No obstacles. One crate, a quarter turn around the yard.
 | Envelope | `x -10..12`, `y 0..16`, `z -10..12` |
 | Anchors | `(0,0,0)`, `(2,0,0)`, `(0,0,2)`, `(2,0,2)` |
 | Budget | `3600` |
-| Par | cost `2400`, time `80` |
+| Par | cost `2400`, time `55` |
 
 | Load | Class | Mass | From | To |
 | --- | --- | --- | --- | --- |
@@ -48,7 +50,7 @@ No obstacles. Two crates, each straight across the yard.
 | Envelope | `x -10..12`, `y 0..18`, `z -8..8` |
 | Anchors | `(0,0,0)`, `(2,0,0)`, `(0,0,2)`, `(2,0,2)` |
 | Budget | `4000` |
-| Par | cost `3500`, time `60` |
+| Par | cost `3550`, time `40` |
 
 | Load | Class | Mass | From | To |
 | --- | --- | --- | --- | --- |
@@ -66,8 +68,8 @@ One crate whose path crosses the wall: the lift goes up, over, and down.
 | --- | --- |
 | Envelope | `x -10..20`, `y 0..20`, `z -8..8` |
 | Anchors | `(0,0,0)`, `(2,0,0)`, `(0,0,2)`, `(2,0,2)` |
-| Budget | `5200` |
-| Par | cost `5150`, time `70` |
+| Budget | `5600` |
+| Par | cost `5250`, time `47` |
 
 | Load | Class | Mass | From | To |
 | --- | --- | --- | --- | --- |
@@ -83,7 +85,7 @@ quarter on the way.
 | Envelope | `x -12..12`, `y 0..18`, `z -8..8` |
 | Anchors | `(0,0,0)`, `(2,0,0)`, `(0,0,2)`, `(2,0,2)` |
 | Budget | `4800` |
-| Par | cost `4200`, time `145` |
+| Par | cost `4200`, time `101` |
 
 | Load | Class | Mass | From | To |
 | --- | --- | --- | --- | --- |
@@ -94,8 +96,8 @@ quarter on the way.
 | --- | --- | --- |
 | Platform | `(-9, 0, -2)` | `(4, 6, 4)` |
 
-A container set down on top of the platform, turned to fit it, and a crate
-placed on the ground beside it.
+A container set down on top of the platform, turned a quarter as its target
+pose asks, and a crate placed on the ground beside it.
 
 ## Site 6 — Heavy Haul
 
@@ -104,7 +106,7 @@ placed on the ground beside it.
 | Envelope | `x -10..18`, `y 0..20`, `z -8..8` |
 | Anchors | `(0,0,0)`, `(2,0,0)`, `(4,0,0)`, `(0,0,2)`, `(2,0,2)`, `(4,0,2)`, `(0,0,4)`, `(2,0,4)`, `(4,0,4)` |
 | Budget | `6000` |
-| Par | cost `4750`, time `155` |
+| Par | cost `4750`, time `107` |
 
 | Load | Class | Mass | From | To |
 | --- | --- | --- | --- | --- |

@@ -91,16 +91,15 @@ game and does not restate the engine.
 
 Build the game inside the engine's framework rather than beside it. The engine
 owns the frame loop and the delta time it hands each tick, rendering and the
-camera, the canvas fit, collision detection, the input actions, the pointer,
-the audio cues, asset loading and decoding, and the on-screen debug overlay,
-and the game is written as subclasses of its classes: a game instance, a game
-mode and the game state it names, actors and their components, and the
-controllers that drive them. The engine constructs, ticks, and renders them in
-a fixed order. The framework's state is live: the game
-state the mode holds is written in place rather than replaced, and a tick
-advances the fields it moves rather than returning a new value. What remains
-yours is the game itself: its rules, its state, and everything it puts on
-screen through the engine's render components.
+camera, the canvas fit, collision detection, the input actions, the pointer, the
+audio cues, asset loading and decoding, and the on-screen debug overlay, and the
+game is written as subclasses of its classes: a game instance, a game mode and
+the game state it names, actors and their components, and the controllers that
+drive them. The engine constructs, ticks, and renders them in a fixed order. The
+framework's state is live: the game state the mode holds is written in place
+rather than replaced, and a tick advances the fields it moves rather than
+returning a new value. What remains yours is the game itself: its rules, its
+state, and everything it puts on screen through the engine's render components.
 {{/if}}
 
 ## What to read first
