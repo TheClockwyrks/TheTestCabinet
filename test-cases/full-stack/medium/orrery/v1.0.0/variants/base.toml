@@ -19,10 +19,19 @@ description = "The full machine-building game: the build's own Campaign course a
 # spec, and no spec of any other kind, to put here. If you came to this file to
 # add one, it almost certainly belongs in `test-case.toml` as a common spec.
 
-# No `showcase` yet. The curated catalog presentation — a player-facing
-# description and a carousel led by sustained real play captured from one of the
-# reference builds below — lands in the change that adds `showcase/base/` and its
-# capture driver.
+# The curated catalog presentation: the description a case page carries and the
+# carousel the catalog's preview stage plays. It is captured from a reference
+# build below rather than authored by hand — one unbroken half-minute of real
+# play, driven through the game's own keyboard and pointer by
+# `showcase/capture/base.showcase-capture.test.ts`, plus three stills from the
+# same take. Nothing here is seeded and no run ever loads it, so it costs a run
+# nothing; resolution does hard-fail on a missing or malformed entry, which is
+# why `tcab capture-baselines orrery v1.0.0 --dry-run` is the cheap check on it.
+#
+# Not to be confused with the SEEDED `specs/showcase.md`, which asks a build for
+# a showcase of its own inside the repository it writes. That one is part of what
+# a run delivers; this one is how the case is presented before anyone runs it.
+showcase = "showcase/base"
 
 # The authored, *correct* playable build of this variant, one directory per
 # supported engine, because the build a reference demonstrates differs under each.
