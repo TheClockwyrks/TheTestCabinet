@@ -36,7 +36,7 @@
 // frame — a score of `0`, three ships — reads as.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_H, FIELD_W, WAVE_BANNER_TIME } from "../../src/constants";
+import { FIELD_H, FIELD_W, WAVE_BANNER_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -25,7 +25,7 @@
 // reading, and no rock, saucer or halo reaches the disc either.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BULLET_R } from "../../src/constants";
+import { BULLET_R } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

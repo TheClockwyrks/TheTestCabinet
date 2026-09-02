@@ -61,7 +61,7 @@
 // happened.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP, INVULN_TIME } from "../../src/constants";
+import { FACE_UP, INVULN_TIME } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

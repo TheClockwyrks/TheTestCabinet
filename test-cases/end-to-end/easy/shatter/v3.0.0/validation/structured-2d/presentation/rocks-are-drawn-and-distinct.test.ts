@@ -32,7 +32,7 @@
 // at `SHIP_SPOT`, `640` from the rock, so neither reading can reach the other body.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SHIP_R } from "../../src/constants";
+import { ROCK_RADIUS, SHIP_R } from "../constants";
 import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";
 import {
   captureStill,

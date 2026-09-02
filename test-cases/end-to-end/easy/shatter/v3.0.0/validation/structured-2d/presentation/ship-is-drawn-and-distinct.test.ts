@@ -25,7 +25,7 @@
 // out to `180`, `specs/field.md` — reaches the disc being read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_R } from "../../src/constants";
+import { SHIP_R } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -42,7 +42,7 @@
 // neither the flame nor the respawn blink is on the frame: this reads the hull.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,

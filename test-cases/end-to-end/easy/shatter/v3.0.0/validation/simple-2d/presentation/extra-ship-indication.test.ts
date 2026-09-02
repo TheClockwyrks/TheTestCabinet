@@ -49,7 +49,7 @@
 // drawn identically on every frame read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { EXTRA_LIFE_STEP, SCORE_SMALL, START_LIVES } from "../../src/constants";
+import { EXTRA_LIFE_STEP, SCORE_SMALL, START_LIVES } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

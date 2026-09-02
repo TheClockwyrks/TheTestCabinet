@@ -49,7 +49,7 @@
 // describes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_H, FIELD_W } from "../../src/constants";
+import { FIELD_H, FIELD_W } from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,

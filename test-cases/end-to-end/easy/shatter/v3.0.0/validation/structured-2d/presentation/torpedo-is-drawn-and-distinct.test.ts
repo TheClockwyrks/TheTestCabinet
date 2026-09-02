@@ -30,7 +30,7 @@
 // the reading would be of the path rather than of the round.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BULLET_R, TORPEDO_R } from "../../src/constants";
+import { BULLET_R, TORPEDO_R } from "../constants";
 import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";
 import type { Vec } from "../geometry";
 import {

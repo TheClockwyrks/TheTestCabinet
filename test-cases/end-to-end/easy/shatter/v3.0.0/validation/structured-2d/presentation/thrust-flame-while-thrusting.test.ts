@@ -52,7 +52,7 @@
 // No grace is running, so the respawn blink is not on the frame.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP } from "../../src/constants";
+import { FACE_UP } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import { type Vec } from "../geometry";
 import {

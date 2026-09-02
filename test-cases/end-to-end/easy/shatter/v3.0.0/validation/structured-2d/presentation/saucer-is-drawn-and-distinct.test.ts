@@ -30,7 +30,7 @@
 // (`specs/field.md`), and the rock stands `316` away at `ROCK_SPOT`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SAUCER_R } from "../../src/constants";
+import { ROCK_RADIUS, SAUCER_R } from "../constants";
 import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";
 import {
   captureStill,

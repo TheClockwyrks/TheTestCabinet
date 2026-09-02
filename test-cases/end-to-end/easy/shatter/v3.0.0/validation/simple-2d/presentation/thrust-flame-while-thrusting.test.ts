@@ -41,7 +41,7 @@
 // frame.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP } from "../../src/constants";
+import { FACE_UP } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

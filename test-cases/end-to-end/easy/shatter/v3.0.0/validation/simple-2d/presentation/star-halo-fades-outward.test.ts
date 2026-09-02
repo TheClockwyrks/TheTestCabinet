@@ -43,7 +43,7 @@
 // remove — is parked in the far upper corner, `573` away, where no ring reaches it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_R, HALO_R } from "../../src/constants";
+import { CORE_R, HALO_R } from "../constants";
 import {
   assertGreaterThan,
   assertLessThan,

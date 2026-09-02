@@ -52,7 +52,7 @@ import {
   MUZZLE_SPEED,
   SCORE_SMALL,
   START_LIVES,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { type Vec } from "../geometry";
 import {

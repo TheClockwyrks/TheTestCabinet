@@ -33,7 +33,7 @@
 // which is what lets `star-halo-fades-outward` read a ramp off a build free to draw
 // its halo with any texture it likes.
 
-import { FIELD_W } from "../../src/constants";
+import { FIELD_W } from "../constants";
 import { wrapPoint, type Vec } from "../geometry";
 import {
   colorDistance,

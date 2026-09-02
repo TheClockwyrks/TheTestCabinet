@@ -12,7 +12,7 @@
 // The distances are stated in each entry so a later reader can check the arithmetic
 // without re-deriving it.
 
-import { FIELD_H, FIELD_W, HALO_R } from "../../src/constants";
+import { FIELD_H, FIELD_W, HALO_R } from "../constants";
 import { STAR, wrappedDistance, type Vec } from "../geometry";
 import type { Rgb } from "../harness";
 import { colorAt, luminance, type Painted } from "./ink";

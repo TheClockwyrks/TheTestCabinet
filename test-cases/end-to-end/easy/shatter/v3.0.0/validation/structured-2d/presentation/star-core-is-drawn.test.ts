@@ -40,7 +40,7 @@
 // one body no scenario can remove is nowhere near the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_R } from "../../src/constants";
+import { CORE_R } from "../constants";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import { STAR } from "../geometry";
 import {
