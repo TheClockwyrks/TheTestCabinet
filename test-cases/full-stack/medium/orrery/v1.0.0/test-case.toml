@@ -7138,7 +7138,7 @@ description = "A torn fault, raised at the start of the motion step rather than 
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "audio/halt-cue-on-a-torn-fault.test.ts", outputs = [
-  { id = "torn-halt", name = "The halt cue on a torn fault", kind = "video" },
+  { id = "torn-halt", name = "The halt cue on a torn fault", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "halt-cue-sounds-once-per-fault"
@@ -7259,7 +7259,7 @@ description = "CUES.music is looping on every frame while sim.status is running.
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "audio/bed-keeps-looping-while-running.test.ts", outputs = [
-  { id = "bed-running", name = "The bed looping through a live run", kind = "video" },
+  { id = "bed-running", name = "The bed looping through a live run", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "bed-keeps-looping-while-paused"
