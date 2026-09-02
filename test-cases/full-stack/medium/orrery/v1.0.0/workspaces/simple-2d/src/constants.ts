@@ -270,6 +270,12 @@ export const CAMPAIGN_MAX = 16;
 export const CAMPAIGN_OPENER_PARTS = 3;
 export const CAMPAIGN_FINALE_PARTS = 8;
 
+/**
+ * A challenge's reference solution completes its run within this many cycles
+ * of the run's start.
+ */
+export const CAMPAIGN_REFERENCE_CYCLES = 600;
+
 /** The Extras shelf, laid out in specs/challenges.md. */
 export const EXTRA_COUNT = 10;
 

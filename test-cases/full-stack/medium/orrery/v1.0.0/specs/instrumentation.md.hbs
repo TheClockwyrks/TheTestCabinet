@@ -336,14 +336,15 @@ feeds each frame. No frame need pass between them, so a whole machine can be
 placed from code without advancing the game at all.
 {{/if}}
 
-The three sound nothing, as every pose does, so an edit one of them commits
-plays no cue. Every cue of `specs/ui.md` is played from a frame.
+The three sound nothing at the call, as every pose does. The cue of an edit
+one of them commits sounds on the next frame advanced, because every cue of
+`specs/ui.md` is played from a frame.
 
 ### The run
 
 | Operation | Effect |
 | --- | --- |
-| `startRun()` | Runs the game's run-start sequence of `specs/simulation.md`: every arm and wheel at its rest pose holding nothing, every wheel's six fixtures placed, the settle, `sim.cycle` at `0`, `sim.speed` at `DEFAULT_SPEED_INDEX` (`1`), and `sim.status` `running`. The readiness condition the `play` action applies is not applied, so a run starts on a machine with no rise and no set placed. |
+| `startRun()` | Runs the game's run-start sequence of `specs/simulation.md`: every arm and wheel at its rest pose holding nothing, every wheel's six fixtures placed, the settle, `sim.cycle` at `0`, `sim.fraction` at `0`, `sim.speed` at `DEFAULT_SPEED_INDEX` (`1`), every set's tally at `0`, `sim.fault` `null`, and `sim.status` `running`. The readiness condition the `play` action applies is not applied, so a run starts on a machine with no rise and no set placed. |
 | `stopRun()` | Returns `sim` to `null` and the machine to the editor, exactly as the run-stop sequence of `specs/simulation.md` does. |
 | `setPaused(paused)` | Moves `sim.status` between `running` and `paused`, exactly as the `play` toggle moves it. It throws while the status is `faulted` or `complete`. |
 | `setSpeed(index)` | Sets `sim.speed` to `index`, `0` to `3`. |

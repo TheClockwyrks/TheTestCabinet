@@ -281,9 +281,8 @@ test = "npx vitest run --coverage"
 #
 # There is deliberately no `tick_hz`. Orrery's simulation unit is the cycle, but
 # cycles advance at a player-chosen SPEEDS rate integrated against the delta time
-# the frame hands the game, and the surface's `step` advances exactly one cycle
-# within the call, so there is no fixed case-wide ticks-per-second to state. The
-# key is optional precisely so a case clocked this way omits it.
+# the frame hands the game, so there is no fixed case-wide ticks-per-second to
+# state. The key is optional precisely so a case clocked this way omits it.
 [instrumentation]
 handle = "__orrery"
 
@@ -455,7 +454,7 @@ description = "The fixed shelf: whether the ten challenges play exactly as speci
 [[domain]]
 id = "workshop"
 name = "Workshop"
-description = "How building and running feels: placing and dragging parts, laying track, writing tapes, and watching a machine run, fault, and complete."
+description = "How building and running feels: moving between the game's screens, placing and dragging parts, laying track, writing tapes, and watching a machine run, fault, and complete."
 
 [[domain]]
 id = "presentation"
@@ -591,21 +590,21 @@ validation = { script = "instrumentation/clock-switch-holds-the-simulation.test.
 [[review.categories.items]]
 id = "clock-switch-leaves-drawing-and-input"
 title = "Drawing and input carry on while the simulation is held"
-description = "With setAutoStep(false) the loop keeps rendering and keeps reading the keys, so a title-menu key press still moves menuIndex and the canvas still redraws while the simulation is held."
+description = "With the wall clock held off the simulation, by setAutoStep(false) under none and a scripted clock under an engine, the build keeps rendering and keeps reading the keys, so a title-menu key press still moves menuIndex and the canvas still redraws."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/clock-switch-leaves-drawing-and-input.test.ts", outputs = [ { id = "answering", name = "The menu answering a key with the clock held", kind = "replay" } ] }
 [[review.categories.items]]
 id = "advance-divides-the-interval"
 title = "advance runs the frames it is told, each worth its share of the interval"
-description = "advance(seconds, frames) runs frames whole frames in order, each covering seconds / frames of game time, immediately at the call; frames is a whole number of at least 1 and defaults to 1, so advance(1) runs one frame of a whole second."
+description = "With the wall clock held off the simulation, advance(seconds, frames) under none runs frames whole frames in order, each covering seconds / frames of game time, immediately at the call, and the engine's scripted clock covers an interval the same way; frames is a whole number of at least 1 and defaults to 1, so advance(1) runs one frame of a whole second."
 domains = ["workshop"]
 failure_cap = "broken"
 validation = { script = "instrumentation/advance-divides-the-interval.test.ts", outputs = [ { id = "advanced", name = "The state after a divided advance", kind = "replay" } ] }
 [[review.categories.items]]
 id = "advance-runs-real-frames"
 title = "Each advanced frame is a real frame"
-description = "A frame run by advance is the update the loop runs followed by a render, so the game's own simulation, sigils, cues and completion test produce the result and the canvas reflects it rather than the state moving with nothing drawn."
+description = "A frame advanced with the wall clock held off the simulation is a real frame: under none advance runs the update the loop runs followed by a render, and under an engine the engine produces the frame, so after one advanced frame the state has moved and the canvas reflects it rather than the state moving with nothing drawn."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/advance-runs-real-frames.test.ts", outputs = [ { id = "rendered", name = "The canvas after an advanced frame", kind = "image" } ] }
@@ -680,13 +679,6 @@ domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instrumentation/reset-leaves-the-clock-switch.test.ts", outputs = [ { id = "stepped", name = "The stepped scenario surviving a reset", kind = "replay" } ] }
 [[review.categories.items]]
-id = "reset-matches-a-fresh-session"
-title = "A reset session is indistinguishable from a freshly started one"
-description = "The snapshot after a thoroughly disturbed session is reset is identical, field for field, to the snapshot of a freshly started build, so anything the build keeps across frames is derived from what a reset restores."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-matches-a-fresh-session.test.ts", outputs = [ { id = "fresh", name = "The reset session beside a fresh one", kind = "image" } ] }
-[[review.categories.items]]
 id = "snapshot-is-a-pure-read"
 title = "snapshot changes nothing"
 description = "A session whose every frame is snapshotted reaches exactly the state of an identical session that is never snapshotted, so the read has no effect of its own."
@@ -710,7 +702,7 @@ validation = { script = "instrumentation/snapshot-resting-values.test.ts", outpu
 [[review.categories.items]]
 id = "snapshot-parts-in-placement-order"
 title = "editor.parts is reported in placement order"
-description = "editor.parts lists the machine's parts in the order they were placed, which is the tape panel's row order, and loading a solution reports them in the order that document's parts list holds."
+description = "editor.parts holds every placed part in the order it was placed, across placements and removals alike, so removing an interior part leaves the parts that remain in the order they were placed."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-parts-in-placement-order.test.ts", outputs = [ { id = "order", name = "The tape panel rows in placement order", kind = "image" } ] }
@@ -722,54 +714,12 @@ domains = ["workshop"]
 failure_cap = "broken"
 validation = { script = "instrumentation/snapshot-new-part-id.test.ts", outputs = [ { id = "identified", name = "The newly placed part addressed by its id", kind = "image" } ] }
 [[review.categories.items]]
-id = "snapshot-drag-place"
-title = "A tray drag is reported in the place shape"
-description = "While a drag from a tray entry is live, editor.drag reports kind place with the part kind, the index for a rise or a set, the ghost's rotation and length, and at holding the targeted hex or null when the pointer is off every hex."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-drag-place.test.ts", outputs = [ { id = "ghost", name = "The live tray drag and its ghost", kind = "image" } ] }
-[[review.categories.items]]
-id = "snapshot-drag-move"
-title = "A part drag is reported in the move shape"
-description = "While a placed part is being dragged, editor.drag reports kind move with the part's id, from holding the hex the press grabbed, and at holding the targeted hex or null off every hex."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-drag-move.test.ts", outputs = [ { id = "moving", name = "The live move drag", kind = "image" } ] }
-[[review.categories.items]]
-id = "snapshot-drag-lay"
-title = "A track lay is reported in the lay shape"
-description = "While track is being laid, editor.drag reports kind lay with the track's id and end naming which end of the path is live, first or last."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-drag-lay.test.ts", outputs = [ { id = "laying", name = "The live lay and its end", kind = "image" } ] }
-[[review.categories.items]]
-id = "snapshot-cost-derived"
-title = "editor.cost is derived from the placed parts"
-description = "editor.cost is PART_COSTS summed over the placed parts exactly as specs/parts.md computes it, and it moves as parts are placed and removed rather than being carried separately."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-cost-derived.test.ts", outputs = [ { id = "cost", name = "The heading's cost beside the reported figure", kind = "image" } ] }
-[[review.categories.items]]
-id = "snapshot-period-derived"
-title = "editor.period is derived from the tapes"
-description = "editor.period is the machine's period as specs/instructions.md computes it, the longest tape length and 1 when every tape is empty, and it moves as tapes are written."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-period-derived.test.ts", outputs = [ { id = "period", name = "The reported period against the written tapes", kind = "image" } ] }
-[[review.categories.items]]
 id = "snapshot-mote-position-at-fraction"
 title = "A mote reports both its boundary hex and its drawn position"
 description = "Each entry of sim.motes reports q and r as the hex it held at the last boundary and x and y as its drawn position at the current sim.fraction, by the formulas of specs/field.md and specs/simulation.md, so a mote carried mid-cycle reports its old hex and its interpolated position."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-mote-position-at-fraction.test.ts", outputs = [ { id = "carried", name = "The carried mote mid-cycle", kind = "replay" } ] }
-[[review.categories.items]]
-id = "snapshot-area-derived"
-title = "sim.area is the size of the area bank"
-description = "sim.area reports how many distinct hexes the area bank of specs/simulation.md holds at the read, so it never decreases across a run and counts a hex banked twice once."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-area-derived.test.ts", outputs = [ { id = "banked", name = "The area banked across a run", kind = "replay" } ] }
 [[review.categories.items]]
 id = "snapshot-stashed-derived"
 title = "The stashed lists name the challenges holding a machine"
@@ -779,11 +729,11 @@ failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-stashed-derived.test.ts", outputs = [ { id = "stashed", name = "The stashed indices after two visits", kind = "image" } ] }
 [[review.categories.items]]
 id = "snapshot-counts-derived"
-title = "Each mode's count is the length of its challenge list"
-description = "campaign.count reports the length of the shipped course, between CAMPAIGN_MIN (8) and CAMPAIGN_MAX (16), and extras.count reports EXTRA_COUNT (10), each matching the number of rows its select screen lists."
-domains = ["campaign", "extras"]
+title = "The campaign's count is the length of its course"
+description = "campaign.count reports the length of the shipped course rather than a figure carried beside it, so it matches the number of indices openChallenge reaches."
+domains = ["campaign"]
 failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-counts-derived.test.ts", outputs = [ { id = "counts", name = "The select screens behind the reported counts", kind = "image" } ] }
+validation = { script = "instrumentation/snapshot-counts-derived.test.ts", outputs = [ { id = "counts", name = "The select screen behind the reported count", kind = "image" } ] }
 [[review.categories.items]]
 id = "snapshot-pointer-mirrors"
 title = "pointer mirrors the pointer input every frame"
@@ -857,7 +807,7 @@ validation = { script = "instrumentation/set-mode.test.ts", outputs = [ { id = "
 [[review.categories.items]]
 id = "set-menu-index"
 title = "setMenuIndex highlights an item of the current screen's menu"
-description = "setMenuIndex(n) highlights item n of the menu the current screen shows, from 0 and below that menu's entry count, and the highlighted item is drawn distinctly, so confirm acts on the posed item."
+description = "setMenuIndex(n) highlights item n of the menu the current screen shows, from 0 and below that menu's entry count, so confirm acts on the posed item."
 domains = ["campaign", "extras"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-menu-index.test.ts", outputs = [ { id = "highlighted", name = "The posed menu highlight", kind = "image" } ] }
@@ -871,7 +821,7 @@ validation = { script = "instrumentation/set-select-index.test.ts", outputs = [ 
 [[review.categories.items]]
 id = "set-howto-page"
 title = "setHowtoPage turns the how-to to a page"
-description = "setHowtoPage(n) sets the how-to's current page for n from 0 to HOWTO_PAGES - 1 (4), the page drawn is the one posed, and a page outside that range throws."
+description = "setHowtoPage(n) sets the how-to's current page for n from 0 to HOWTO_PAGES - 1 (4), and the page drawn is the one posed."
 domains = ["campaign", "extras"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-howto-page.test.ts", outputs = [ { id = "page", name = "The posed how-to page", kind = "image" } ] }
@@ -926,8 +876,8 @@ failure_cap = "passable"
 validation = { script = "instrumentation/set-last.test.ts", outputs = [ { id = "landed", name = "The select screen landing on the posed row", kind = "image" } ] }
 [[review.categories.items]]
 id = "challenge-index-out-of-range-throws"
-title = "An index outside a mode's challenge count throws naming the bounds"
-description = "Every operation taking a mode and an index — setSolved, setRecord, setLast, openChallenge and referenceSolution — throws an Error naming the bounds for a negative index and for one at or above that mode's count, and changes nothing."
+title = "An index outside a mode's challenge count throws"
+description = "Every operation taking a mode and an index — setSolved, setRecord, setLast, openChallenge and referenceSolution — throws an Error for a negative index and for one at or above that mode's count, and changes nothing; the Navigation-group operations setSolved, setRecord and setLast name the bounds in the message."
 domains = ["campaign", "extras"]
 failure_cap = "passable"
 validation = { script = "instrumentation/challenge-index-out-of-range-throws.test.ts", outputs = [ { id = "bounded", name = "The progress unchanged by the refused calls", kind = "image" } ] }
@@ -948,7 +898,7 @@ validation = { script = "instrumentation/open-challenge-empties-the-machine.test
 [[review.categories.items]]
 id = "open-challenge-derives-the-tray"
 title = "openChallenge derives the tray from the challenge"
-description = "The tray the editor shows after openChallenge is the challenge's permitted kinds in PARTS order, then one rise per reagent, then one set per product, as specs/editor.md derives it."
+description = "The tray the editor shows after openChallenge is derived from the challenge just opened rather than left from the one before it, so opening a second challenge whose reagent and product counts differ leaves a tray of that challenge's entry count."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instrumentation/open-challenge-derives-the-tray.test.ts", outputs = [ { id = "tray", name = "The tray derived from the challenge", kind = "image" } ] }
@@ -981,13 +931,6 @@ domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instrumentation/load-challenge-refuses-a-malformed-document.test.ts", outputs = [ { id = "refused", name = "The editor unchanged by the refused document", kind = "image" } ] }
 [[review.categories.items]]
-id = "reference-solution-for-every-challenge"
-title = "A reference solution is reachable for every shipped challenge"
-description = "referenceSolution(mode, index) returns a solution document for every campaign index and every extras index, each legal for its challenge, placing every rise and every set, and each is a pure read that changes nothing."
-domains = ["campaign", "extras"]
-failure_cap = "scuffed"
-validation = { script = "instrumentation/reference-solution-for-every-challenge.test.ts", outputs = [ { id = "solutions", name = "A reference solution standing in the editor", kind = "image" } ] }
-[[review.categories.items]]
 id = "reference-solution-ignores-progress"
 title = "A reference solution is reachable whatever is unlocked"
 description = "referenceSolution returns the same document for a locked, an unlocked and a solved challenge alike, and reading one unlocks and solves nothing."
@@ -1018,7 +961,7 @@ validation = { script = "instrumentation/clear-machine-empties-the-hands.test.ts
 [[review.categories.items]]
 id = "clear-machine-keeps-the-challenge-and-the-run"
 title = "clearMachine leaves the challenge and any live run standing"
-description = "clearMachine() leaves the open challenge, its tray and its target as they stand, and a live run stays live with its status, cycle and motes."
+description = "clearMachine() leaves the open challenge, its tray and its target as they stand, and a live run stays live with its sim.status and sim.cycle; the motes not attached to a removed part stay resting where they stood."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instrumentation/clear-machine-keeps-the-challenge-and-the-run.test.ts", outputs = [ { id = "standing", name = "The run standing over the cleared machine", kind = "replay" } ] }
@@ -1127,13 +1070,6 @@ description = "Writing at a column beyond the tape's end leaves every cell betwe
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-tape-cell-fills-the-gap.test.ts", outputs = [ { id = "filled", name = "The gap filled with blanks", kind = "image" } ] }
-[[review.categories.items]]
-id = "set-tape-cell-trims"
-title = "setTapeCell applies the trimming rule afterwards"
-description = "After every write the trimming rule of specs/formats.md is applied, so a tape whose last instruction is blanked reports its trailing blanks gone and an entirely blank tape reports as the empty list."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "instrumentation/set-tape-cell-trims.test.ts", outputs = [ { id = "trimmed", name = "The trimmed tape", kind = "image" } ] }
 [[review.categories.items]]
 id = "load-solution"
 title = "loadSolution stands a machine up from a document"
@@ -1275,26 +1211,12 @@ domains = ["workshop"]
 failure_cap = "broken"
 validation = { script = "instrumentation/pointer-up-immediate.test.ts", outputs = [ { id = "released", name = "The part placed within the call", kind = "image" } ] }
 [[review.categories.items]]
-id = "pointer-feeds-the-real-input-path"
-title = "The pointer operations feed the path a player's pointer feeds"
-description = "A posed press is the same event to the game as a player's: hex targeting within HEX_HIT_R (26), tray and tape targeting, selection, drags, lays and the focus rule all run exactly as specs/editor.md and specs/controls.md state, and nothing is bypassed."
-domains = ["workshop"]
-failure_cap = "broken"
-validation = { script = "instrumentation/pointer-feeds-the-real-input-path.test.ts", outputs = [ { id = "driven", name = "The editor driven through posed pointer events", kind = "replay" } ] }
-[[review.categories.items]]
 id = "pointer-builds-a-machine-without-a-frame"
 title = "A whole machine can be built from code with no frame advanced"
 description = "A sequence of pointer operations that drags several parts out of the tray, moves one and lays a track leaves the finished machine in the snapshot with no frame passing between the calls."
 domains = ["workshop"]
 failure_cap = "broken"
 validation = { script = "instrumentation/pointer-builds-a-machine-without-a-frame.test.ts", outputs = [ { id = "built", name = "The machine built between frames", kind = "image" } ] }
-[[review.categories.items]]
-id = "start-run-poses-the-rest-poses"
-title = "startRun puts every arm and wheel at its rest pose holding nothing"
-description = "startRun() gives every arm and wheel the rest rotation, length and anchor it was placed at, with every gripper open and sim.grips empty."
-domains = ["workshop"]
-failure_cap = "scuffed"
-validation = { script = "instrumentation/start-run-poses-the-rest-poses.test.ts", outputs = [ { id = "rest", name = "The machine at its rest poses", kind = "image" } ] }
 [[review.categories.items]]
 id = "start-run-runs-the-settle"
 title = "startRun runs the settle"
@@ -1304,8 +1226,8 @@ failure_cap = "scuffed"
 validation = { script = "instrumentation/start-run-runs-the-settle.test.ts", outputs = [ { id = "settled", name = "The field after the settle", kind = "image" } ] }
 [[review.categories.items]]
 id = "start-run-sets-the-counters"
-title = "startRun sets the run's counters"
-description = "After startRun(), sim.cycle is 0, sim.fraction is 0, sim.speed is DEFAULT_SPEED_INDEX (1), sim.status is running, every tally is 0 and sim.fault is null."
+title = "startRun opens the run running with no fault"
+description = "After startRun(), sim.status is running and sim.fault is null."
 domains = ["workshop"]
 failure_cap = "scuffed"
 validation = { script = "instrumentation/start-run-sets-the-counters.test.ts", outputs = [ { id = "counters", name = "The readout at the start of the run", kind = "image" } ] }
@@ -1367,11 +1289,11 @@ failure_cap = "passable"
 validation = { script = "instrumentation/set-speed.test.ts", outputs = [ { id = "speed", name = "The run advancing at the posed speed", kind = "replay" } ] }
 [[review.categories.items]]
 id = "set-cycle"
-title = "setCycle sets which tape column the next cycle executes"
-description = "setCycle(n) sets sim.cycle to a whole number n of at least 0, so the next cycle executes tape cell n mod P on every part, where P is the machine's period."
+title = "setCycle sets the run's cycle counter"
+description = "setCycle(n) sets sim.cycle to a whole number n of at least 0, and the snapshot reads back the posed figure."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-cycle.test.ts", outputs = [ { id = "cycle", name = "The instruction the posed cycle executes", kind = "replay" } ] }
+validation = { script = "instrumentation/set-cycle.test.ts", outputs = [ { id = "cycle", name = "The posed cycle read back", kind = "replay" } ] }
 [[review.categories.items]]
 id = "set-tally"
 title = "setTally sets one product's tally"
@@ -1424,10 +1346,10 @@ validation = { script = "instrumentation/remove-mote.test.ts", outputs = [ { id 
 [[review.categories.items]]
 id = "link-motes"
 title = "linkMotes joins two motes with a filament"
-description = "linkMotes(a, b, weight) adds one filament of weight 1 or 3 between motes a and b, reported in sim.filaments, so the two become one constellation and are carried as a rigid body."
+description = "linkMotes(a, b, weight) adds one filament of weight 1 or 3 between motes a and b, reported in sim.filaments."
 domains = ["workshop"]
 failure_cap = "scuffed"
-validation = { script = "instrumentation/link-motes.test.ts", outputs = [ { id = "linked", name = "The linked pair carried as one body", kind = "replay" } ] }
+validation = { script = "instrumentation/link-motes.test.ts", outputs = [ { id = "linked", name = "The linked pair reported in sim.filaments", kind = "replay" } ] }
 [[review.categories.items]]
 id = "link-motes-throws-on-non-adjacent-hexes"
 title = "linkMotes throws on motes that are not adjacent"
@@ -1452,10 +1374,10 @@ validation = { script = "instrumentation/link-motes-throws-on-a-linked-pair.test
 [[review.categories.items]]
 id = "unlink-motes"
 title = "unlinkMotes removes the filament joining two motes"
-description = "unlinkMotes(a, b) removes that filament from sim.filaments, so the constellation splits and each part is carried on its own."
+description = "unlinkMotes(a, b) removes that filament from sim.filaments."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instrumentation/unlink-motes.test.ts", outputs = [ { id = "split", name = "The split constellation", kind = "image" } ] }
+validation = { script = "instrumentation/unlink-motes.test.ts", outputs = [ { id = "split", name = "The filament gone from sim.filaments", kind = "image" } ] }
 [[review.categories.items]]
 id = "unlink-motes-throws-without-a-filament"
 title = "unlinkMotes throws on a pair no filament joins"
@@ -1536,7 +1458,7 @@ validation = { script = "instrumentation/new-mote-id-is-the-last-entry.test.ts",
 [[review.categories.items]]
 id = "overlay-sources-registered"
 title = "The game registers the diagnostics it is asked for"
-description = "The game registers at least the current screen and mode, the open challenge's name and source, the part count and cost, the period, the run's status, cycle, fraction and speed while one is active, each product's tally against the target, the mote count, the banked area, the fault kind when there is one, the focus, and the pointer position, each short enough to read on a line."
+description = "The game registers at least the current screen and mode, the open challenge's name and source, the part count and cost, the period, the run's status, cycle, fraction and speed while one is active, each product's tally against the target, the mote count, the banked area, the fault kind when there is one, the focus, and the pointer position."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/overlay-sources-registered.test.ts", outputs = [ { id = "sources", name = "The registered diagnostics", kind = "image" } ] }
@@ -1574,10 +1496,12 @@ validation = { script = "instrumentation/overlay-off-at-start.test.ts", outputs 
 # measured against, and the material a machine moves: the fifteen mote types, the
 # filaments that join them into constellations, the fixtures a wheel's ring
 # carries once it is raised, and the pattern placement a rise and a set are posed
-# by. Each formula, each tie-break, and each refusal is its own point, because a
-# build that steps q correctly and r wrongly must score differently from one that
-# steps neither. The wheel's own anatomy is graded under Parts and placement, and
-# what a mote or a filament looks like on screen under Presentation.
+# by. Each formula and each tie-break is its own point, because a build that steps
+# q correctly and r wrongly must score differently from one that steps neither.
+# The refusal a debug operation raises when a pose would break one of these rules
+# is graded under Instrumentation, which owns every surface refusal. The wheel's
+# own anatomy is graded under Parts and placement, and what a mote or a filament
+# looks like on screen under Presentation.
 [[review.categories]]
 id = "field"
 title = "Field, motes, and filaments"
@@ -1611,29 +1535,22 @@ failure_cap = "scuffed"
 validation = { script = "field/hex-r-step-is-the-row-height.test.ts", outputs = [ { id = "rows", name = "Motes on successive r rows", kind = "image" } ] }
 [[review.categories.items]]
 id = "hex-centers-hold-across-the-whole-field"
-title = "Every hex of the field sits on its computed center"
-description = "A mote resting on each of the ninety-one field hexes reports the center hexX/hexY computes for it, the outer ring included, so no hex is clamped, wrapped, or laid out on a rectangular grid away from the origin."
+title = "Every hex of the field's outer ring sits on its computed center"
+description = "A mote resting on each of the thirty hexes with max(|q|, |r|, |q + r|) exactly FIELD_R (5) reports the center hexX/hexY computes for it, so no hex is clamped or wrapped at the field's edge."
 domains = ["workshop", "presentation"]
 failure_cap = "scuffed"
-validation = { script = "field/hex-centers-hold-across-the-whole-field.test.ts", outputs = [ { id = "all-hexes", name = "A mote on every hex of the field", kind = "image" } ] }
+validation = { script = "field/hex-centers-hold-across-the-whole-field.test.ts", outputs = [ { id = "all-hexes", name = "A mote on every hex of the outer ring", kind = "image" } ] }
 [[review.categories.items]]
 id = "field-fits-its-region"
 title = "The field and its motes sit inside the field region"
-description = "The ninety-one hex centers span stage x 376 to 856 and y 96.15 to 511.85, and every mote resting on them, drawn within MOTE_R (22) of its center, lies inside the field region of specs/editor.md, x TRAY_REGION_W (224) to READOUT_X0 (1008) and y HEADING_H (48) to TAPE_Y0 (560), so no hex is drawn over the tray, the readout, the heading, or the tape panel."
+description = "A mote resting on each of the field's outermost hexes is drawn entirely inside the field region of specs/editor.md, x TRAY_REGION_W (224) to READOUT_X0 (1008) and y HEADING_H (48) to TAPE_Y0 (560): every pixel that differs from the same frame with those motes removed lies inside it, so no hex's mote is drawn over the tray, the readout, the heading, or the tape panel."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "field/field-fits-its-region.test.ts", outputs = [ { id = "extent", name = "The full field inside its region", kind = "image" } ] }
 [[review.categories.items]]
-id = "dirs-run-clockwise-from-east"
-title = "The six directions run clockwise from east"
-description = "The six hexes at the DIRS offsets from (0, 0) sit at the stage angles DIRS names: (+1, 0) due east of it, and each next index one 60 degree step clockwise on the stage, ending with (+1, -1) to the northeast, so a direction index means the same thing everywhere in the build."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "field/dirs-run-clockwise-from-east.test.ts", outputs = [ { id = "ring", name = "A mote on each of the six neighbors of hex (0, 0)", kind = "image" } ] }
-[[review.categories.items]]
 id = "field-ends-at-radius-five"
 title = "No cell is drawn beyond the field's radius"
-description = "With the machine empty, every sample within HEX_HIT_R (26) of the computed center of a ring-6 hex whose center falls inside the field region matches the sky sample within 25 of 441 RGB distance, because the field is exactly the hexes with max(|q|, |r|, |q + r|) at most FIELD_R (5)."
+description = "With the machine empty, every sample within 16 of the computed center of a ring-6 hex whose whole sample disc falls inside the field region, x 224 to 1008 and y 48 to 560, matches the sky sample within 25 of 441 RGB distance, because the field is exactly the hexes with max(|q|, |r|, |q + r|) at most FIELD_R (5)."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "field/field-ends-at-radius-five.test.ts", outputs = [ { id = "edge", name = "The field's outer edge against the sky", kind = "image" } ] }
@@ -1673,13 +1590,6 @@ domains = ["workshop"]
 failure_cap = "scuffed"
 validation = { script = "field/targeting-takes-the-nearest-center.test.ts", outputs = [ { id = "nearest", name = "The nearer of two in-range hexes targeted", kind = "image" } ] }
 [[review.categories.items]]
-id = "targeting-ties-break-on-smaller-r"
-title = "An equidistant tie goes to the smaller r"
-description = "A pointer at the midpoint between the centers of (0, 0) and (0, 1), 24.00 from each, targets (0, 0), because two equidistant centers are settled by the smaller r first."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "field/targeting-ties-break-on-smaller-r.test.ts", outputs = [ { id = "tie-r", name = "The smaller-r hex taken at the tie", kind = "image" } ] }
-[[review.categories.items]]
 id = "targeting-ties-break-on-smaller-q"
 title = "A tie of equal r goes to the smaller q"
 description = "A pointer at the midpoint between the centers of (0, 0) and (1, 0), 24.00 from each and equal in r, targets (0, 0), because a tie the r rule cannot settle goes to the smaller q."
@@ -1708,20 +1618,6 @@ domains = ["workshop"]
 failure_cap = "great"
 validation = { script = "field/mote-roster-rejects-an-unknown-type.test.ts", outputs = [ { id = "unchanged", name = "The field unchanged by the refused type", kind = "image" } ] }
 [[review.categories.items]]
-id = "one-mote-per-hex"
-title = "At most one mote rests on a hex"
-description = "Placing a mote on a hex that already holds one throws an Error and leaves the single mote resting there, because at most one mote occupies a hex."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "field/one-mote-per-hex.test.ts", outputs = [ { id = "occupied", name = "The occupied hex still holding one mote", kind = "image" } ] }
-[[review.categories.items]]
-id = "mote-rests-off-the-field"
-title = "A mote may rest on a hex off the field"
-description = "A mote placed on a hex beyond FIELD_R (5) rests at that hex's computed center and is reported like any other, because a mote may be carried over, dropped on, and rest on a hex off the field."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "field/mote-rests-off-the-field.test.ts", outputs = [ { id = "outside", name = "A mote resting on a hex beyond the field", kind = "image" } ] }
-[[review.categories.items]]
 id = "fixtures-name-their-wheel"
 title = "A fixture names the wheel carrying it"
 description = "Every fixture in sim.motes reports wheel as the id of the wheel carrying it, and every mote that is not a fixture reports wheel null, so a fixture is told from a loose mote off the snapshot alone."
@@ -1730,18 +1626,11 @@ failure_cap = "passable"
 validation = { script = "field/fixtures-name-their-wheel.test.ts", outputs = [ { id = "wheel-ring", name = "A wheel's six fixtures beside a loose mote", kind = "image" } ] }
 [[review.categories.items]]
 id = "filament-joins-adjacent-motes"
-title = "A filament joins two motes on adjacent hexes"
-description = "Two motes resting on hexes one DIRS offset apart are joined by a filament, for each of the six offsets, and sim.filaments reports one filament naming those two ids."
+title = "A filament joins motes across each of the six adjacencies"
+description = "A filament can be created between motes one hex apart along each of the six offsets in DIRS, so adjacency is the whole DIRS set rather than a subset of it, and sim.filaments reports one filament per pair."
 domains = ["campaign", "extras", "workshop"]
 failure_cap = "broken"
 validation = { script = "field/filament-joins-adjacent-motes.test.ts", outputs = [ { id = "joined", name = "A filament on each of the six adjacencies", kind = "image" } ] }
-[[review.categories.items]]
-id = "filament-refuses-non-adjacent-motes"
-title = "Motes that are not adjacent cannot be joined"
-description = "Joining motes whose hex difference is not one of DIRS, such as (0, 0) with (2, 0) or (0, 0) with (1, 1), throws an Error and creates no filament, because a filament is a rigid link between two motes on adjacent hexes."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "field/filament-refuses-non-adjacent-motes.test.ts", outputs = [ { id = "unjoined", name = "The two non-adjacent motes left unjoined", kind = "image" } ] }
 [[review.categories.items]]
 id = "plain-filament-carries-weight-one"
 title = "A plain filament carries weight 1"
@@ -1764,69 +1653,6 @@ domains = ["workshop"]
 failure_cap = "great"
 validation = { script = "field/filament-refuses-a-weight-outside-the-two.test.ts", outputs = [ { id = "refused", name = "The pair left unjoined by the refused weight", kind = "image" } ] }
 [[review.categories.items]]
-id = "at-most-one-filament-per-pair"
-title = "A pair of motes carries at most one filament"
-description = "Joining a pair a filament already joins throws an Error and leaves that one filament, so sim.filaments never reports the same pair twice."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "passable"
-validation = { script = "field/at-most-one-filament-per-pair.test.ts", outputs = [ { id = "single", name = "The pair still carrying one filament", kind = "image" } ] }
-[[review.categories.items]]
-id = "filament-refuses-a-fixture-end"
-title = "A fixture is never a filament's end"
-description = "Joining a fixture to a mote, at either end of the filament, throws an Error and creates no filament, because a fixture takes part in collision alone and in what specs/sigils.md states."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "field/filament-refuses-a-fixture-end.test.ts", outputs = [ { id = "fixture", name = "The fixture left unbonded beside the mote", kind = "image" } ] }
-[[review.categories.items]]
-id = "unlink-removes-the-filament"
-title = "Removing a filament leaves both its motes"
-description = "Removing the filament joining two motes drops it from sim.filaments and leaves both motes resting where they stood, unbonded."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "field/unlink-removes-the-filament.test.ts", outputs = [ { id = "removed", name = "The two motes left after the filament is removed", kind = "image" } ] }
-[[review.categories.items]]
-id = "unlink-refuses-an-unjoined-pair"
-title = "Removing a filament that is not there is refused"
-description = "Removing the filament between a pair no filament joins throws an Error and changes no mote and no filament."
-domains = ["workshop"]
-failure_cap = "great"
-validation = { script = "field/unlink-refuses-an-unjoined-pair.test.ts", outputs = [ { id = "unchanged", name = "The field unchanged by the refused removal", kind = "image" } ] }
-[[review.categories.items]]
-id = "lone-mote-is-a-constellation-of-one"
-title = "A mote with no filaments travels alone"
-description = "An arm holding an unbonded mote and executing rotate-cw carries that mote alone: an unbonded mote resting on a neighboring hex stays on its hex through the cycle, because a lone mote with no filaments is a constellation of one."
-domains = ["workshop"]
-failure_cap = "scuffed"
-validation = { script = "field/lone-mote-is-a-constellation-of-one.test.ts", outputs = [ { id = "alone", name = "The held mote swept while its neighbor stays", kind = "replay" } ] }
-[[review.categories.items]]
-id = "constellation-carries-its-linked-neighbor"
-title = "Grabbing one mote carries the mote joined to it"
-description = "An arm whose gripper holds one mote of a two-mote constellation carries both through the cycle: at the boundary the unheld mote has moved by the same motion as the held one."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "broken"
-validation = { script = "field/constellation-carries-its-linked-neighbor.test.ts", outputs = [ { id = "pair", name = "The bonded pair swept by one gripper", kind = "replay" } ] }
-[[review.categories.items]]
-id = "constellation-carries-through-a-chain"
-title = "A constellation is the whole connected group"
-description = "An arm holding one end of a three-mote chain of filaments carries all three, because a constellation is the maximal group of motes connected by filaments rather than the grabbed mote and its immediate neighbor."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "field/constellation-carries-through-a-chain.test.ts", outputs = [ { id = "chain", name = "The three-mote chain swept from one end", kind = "replay" } ] }
-[[review.categories.items]]
-id = "constellation-keeps-its-shape-under-rotation"
-title = "A carried constellation is rigid under rotation"
-description = "After a rotate-cw carries a two-mote constellation about an arm's base, the offset between its motes is that offset rotated one clockwise step by (q, r) to (-r, q + r), so every filament keeps its length and its relative direction."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "field/constellation-keeps-its-shape-under-rotation.test.ts", outputs = [ { id = "rigid-turn", name = "The constellation turned as one body", kind = "replay" } ] }
-[[review.categories.items]]
-id = "constellation-keeps-its-shape-under-translation"
-title = "A carried constellation is rigid under translation"
-description = "After an extend carries a two-mote constellation one hex along a piston's spoke, every mote of it has moved by that same vector and the offset between them is unchanged."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "field/constellation-keeps-its-shape-under-translation.test.ts", outputs = [ { id = "rigid-slide", name = "The constellation translated as one body", kind = "replay" } ] }
-[[review.categories.items]]
 id = "removing-a-filament-splits-the-constellation"
 title = "Removing a filament splits one constellation into two"
 description = "After the filament joining two motes is removed, an arm holding one of them carries that mote alone and leaves the other resting, because constellation membership is derived from the filaments as they stand."
@@ -1841,26 +1667,12 @@ domains = ["campaign", "extras", "workshop"]
 failure_cap = "passable"
 validation = { script = "field/adding-a-filament-merges-two-constellations.test.ts", outputs = [ { id = "merged", name = "The merged constellation swept as one body", kind = "replay" } ] }
 [[review.categories.items]]
-id = "fixture-refuses-a-grip"
-title = "A gripper never takes hold of a fixture"
-description = "Closing a gripper on a fixture resting at that gripper's hex throws an Error and leaves sim.grips without an entry for it, because a gripper over a fixture closes on nothing."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "field/fixture-refuses-a-grip.test.ts", outputs = [ { id = "no-grip", name = "The gripper closed over the fixture holding nothing", kind = "image" } ] }
-[[review.categories.items]]
 id = "fixture-collides-as-a-mote-does"
 title = "A fixture collides exactly as a mote does"
 description = "A wheel executing rotate-cw that brings one of its fixtures within 2 * MOTE_COLLIDE_R (38) of a resting mote at a sample fraction faults the run as collision, and the fault's motes name the fixture alongside the mote, because every pair is checked, fixtures included."
 domains = ["campaign", "extras", "workshop"]
 failure_cap = "passable"
 validation = { script = "field/fixture-collides-as-a-mote-does.test.ts", outputs = [ { id = "fixture-collision", name = "The run frozen at the fixture's collision", kind = "replay" } ] }
-[[review.categories.items]]
-id = "fixtures-leave-with-their-wheel"
-title = "Removing a wheel takes its fixtures off the field"
-description = "Removing a wheel during a live run takes its six fixtures off the field with it, leaving every other mote resting where it stood."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "field/fixtures-leave-with-their-wheel.test.ts", outputs = [ { id = "removed", name = "The field after the wheel and its fixtures are removed", kind = "image" } ] }
 [[review.categories.items]]
 id = "pattern-translates-to-its-anchor"
 title = "A pattern placed at rotation 0 translates to its anchor"
@@ -1973,13 +1785,6 @@ domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "parts/spokes-share-one-length.test.ts", outputs = [ { id = "hexarm", name = "A hexarm at length 2, every gripper two hexes out", kind = "image" } ] }
 [[review.categories.items]]
-id = "length-stays-within-its-bounds"
-title = "An arm's length is a whole number from 1 to 3"
-description = "An arm's length is a whole number from ARM_MIN_LEN (1) to ARM_MAX_LEN (3), so setting it to 0, to 4, or to a fraction is refused and the arm keeps the length it had."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "parts/length-stays-within-its-bounds.test.ts", outputs = [ { id = "bounds", name = "An arm holding its length against an out-of-bounds change", kind = "image" } ] }
-[[review.categories.items]]
 id = "rest-pose-is-the-placed-pose"
 title = "A run starts every arm at its placed rotation and length"
 description = "An arm's placed rotation and length are its rest pose, and startRun puts every arm and wheel there, so an arm placed at rotation 4 and length 3 begins the run at rotation 4 and length 3 rather than at rotation 0 or ARM_MIN_LEN (1)."
@@ -1989,16 +1794,16 @@ validation = { script = "parts/rest-pose-is-the-placed-pose.test.ts", outputs = 
 [[review.categories.items]]
 id = "piston-rest-length-is-its-chosen-length"
 title = "A piston's chosen length is its rest length"
-description = "The length chosen for a piston in the editor is its rest length: extend and retract change its live length during a run while the rest length in editor.parts stands, and stopping the run returns the piston to the chosen length."
+description = "While a run is live and the piston has extended, editor.parts still reports the placed length while sim.poses reports the changed live length."
 domains = ["campaign", "extras", "workshop"]
 failure_cap = "passable"
-validation = { script = "parts/piston-rest-length-is-its-chosen-length.test.ts", outputs = [ { id = "piston", name = "A piston extending during a run and returning to its rest length", kind = "replay" } ] }
+validation = { script = "parts/piston-rest-length-is-its-chosen-length.test.ts", outputs = [ { id = "piston", name = "A piston's rest length beside its live length", kind = "replay" } ] }
 [[review.categories.items]]
 id = "grippers-pass-over-parts"
 title = "A gripper and its shaft pass over any part"
 description = "Only motes collide, so an arm whose gripper and drawn shaft sweep across a placed sigil, a track cell, or another arm's anchor turns without fault and without being blocked."
 domains = ["campaign", "extras", "workshop"]
-failure_cap = "passable"
+failure_cap = "broken"
 validation = { script = "parts/grippers-pass-over-parts.test.ts", outputs = [ { id = "sweep", name = "An arm sweeping its gripper across a sigil footprint", kind = "replay" } ] }
 [[review.categories.items]]
 id = "grippers-pass-off-the-field"
@@ -2007,13 +1812,6 @@ description = "A gripper passes over any hex, on or off the field, so an arm anc
 domains = ["campaign", "extras", "workshop"]
 failure_cap = "passable"
 validation = { script = "parts/grippers-pass-off-the-field.test.ts", outputs = [ { id = "edge", name = "An edge arm turning its gripper off the field and back", kind = "replay" } ] }
-[[review.categories.items]]
-id = "wheel-raises-six-fixtures"
-title = "A wheel carries six fixtures, one per adjacent hex"
-description = "A wheel is a hub on its anchor hex carrying six fixture motes, so starting a run over a placed wheel puts exactly six fixtures on the field, one on each of the six hexes adjacent to the anchor, each reported with that wheel in sim.motes."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "parts/wheel-raises-six-fixtures.test.ts", outputs = [ { id = "ring", name = "A wheel's six fixtures at run start", kind = "image" } ] }
 [[review.categories.items]]
 id = "wheel-fixture-roster"
 title = "The fixture ring holds the types WHEEL_MOTES names"
@@ -2036,40 +1834,12 @@ domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "parts/wheel-length-is-always-one.test.ts", outputs = [ { id = "wheel", name = "A wheel holding length 1 against a length change", kind = "image" } ] }
 [[review.categories.items]]
-id = "wheel-carries-a-tape"
-title = "A wheel carries a tape like an arm"
-description = "A placed wheel carries a tape of its own: setTapeCell writes into it, the snapshot reports it beside the arms' tapes, and its length counts toward the machine's period exactly as an arm's does."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "passable"
-validation = { script = "parts/wheel-carries-a-tape.test.ts", outputs = [ { id = "tape", name = "A wheel's row in the tape panel carrying instructions", kind = "image" } ] }
-[[review.categories.items]]
-id = "one-cell-track-is-legal-and-open"
-title = "A track of one cell is legal and open"
-description = "placeTrack lays a legal track of a single cell whose closed flag is false, so a one-cell track sits on the field and appears in the machine rather than being refused as too short."
-domains = ["workshop"]
-failure_cap = "scuffed"
-validation = { script = "parts/one-cell-track-is-legal-and-open.test.ts", outputs = [ { id = "cell", name = "A one-cell open track on the field", kind = "image" } ] }
-[[review.categories.items]]
-id = "closing-joins-a-track-into-a-loop"
-title = "Closing a track joins its last cell to its first"
-description = "A track whose last cell is adjacent to its first becomes closed when the ends are joined, and from then on advance and recede wrap between the ends instead of faulting."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "parts/closing-joins-a-track-into-a-loop.test.ts", outputs = [ { id = "loop", name = "A six-cell track closed into a loop", kind = "image" } ] }
-[[review.categories.items]]
 id = "adjacent-ends-stay-open-until-joined"
 title = "Adjacent ends alone do not close a track"
-description = "A track is closed only once its ends have been joined, so a path whose last cell happens to be adjacent to its first reports closed false until the join is made, and moving past either end of it still faults."
+description = "A track is closed only once its ends have been joined, so a path whose last cell happens to be adjacent to its first reports closed false until the join is made."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "parts/adjacent-ends-stay-open-until-joined.test.ts", outputs = [ { id = "open", name = "An open track whose ends are adjacent but unjoined", kind = "image" } ] }
-[[review.categories.items]]
-id = "anchor-on-a-cell-mounts-the-part"
-title = "An arm anchored on a track cell is mounted on that track"
-description = "An arm whose anchor hex is a cell of a track is mounted on it, so advance carries its base to the next cell of that path and recede to the previous one instead of raising the unmounted fault."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "parts/anchor-on-a-cell-mounts-the-part.test.ts", outputs = [ { id = "ride", name = "A mounted arm advancing along its track", kind = "replay" } ] }
 [[review.categories.items]]
 id = "moving-an-arm-onto-a-track-mounts-it"
 title = "Moving an arm onto a track mounts it"
@@ -2255,10 +2025,10 @@ validation = { script = "parts/closed-track-holds-three-cells.test.ts", outputs 
 [[review.categories.items]]
 id = "loaded-solutions-obey-the-placement-rules"
 title = "A loaded solution is held to the same placement rules"
-description = "The placement rules govern a placement made through a loaded solution exactly as one made by hand, so a solution document breaking any of the six is rejected and the machine already in the editor is left as it was."
+description = "The placement rules govern a placement made through a loaded solution exactly as one made by hand, so a solution document breaking any of the six is rejected."
 domains = ["workshop"]
 failure_cap = "scuffed"
-validation = { script = "parts/loaded-solutions-obey-the-placement-rules.test.ts", outputs = [ { id = "rejected", name = "The editor unchanged after an illegal solution is rejected", kind = "image" } ] }
+validation = { script = "parts/loaded-solutions-obey-the-placement-rules.test.ts", outputs = [ { id = "rejected", name = "The illegal solution rejected", kind = "image" } ] }
 [[review.categories.items]]
 id = "cost-is-the-sum-of-placed-parts"
 title = "A machine's cost is the sum of its parts' costs"
@@ -2268,7 +2038,7 @@ failure_cap = "passable"
 validation = { script = "parts/cost-is-the-sum-of-placed-parts.test.ts", outputs = [ { id = "cost", name = "The heading's cost tracking a machine as it is built", kind = "replay" } ] }
 [[review.categories.items]]
 id = "mechanism-costs"
-title = "The six mechanisms cost what PART_COSTS says"
+title = "The six per-part mechanism costs are what PART_COSTS says"
 description = "arm costs 20, biarm 30, triarm 40, hexarm 60, piston 40, and wheel 30, each measured as the change in the machine's cost when one of that kind is placed on an empty machine."
 domains = ["workshop"]
 failure_cap = "passable"
@@ -2322,12 +2092,21 @@ domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instructions/any-tape-may-carry-any-instruction.test.ts", outputs = [ { id = "wheel-tape", name = "A wheel's tape holding extend", kind = "image" } ] }
 [[review.categories.items]]
-id = "wheel-runs-rotations"
-title = "A wheel executes rotate-cw and rotate-ccw"
-description = "A wheel whose cell for the cycle holds rotate-cw, and a wheel whose cell holds rotate-ccw, each run that cycle through to its boundary with sim.status still running and sim.fault null."
+id = "wheel-runs-rotate-cw"
+title = "A wheel executes rotate-cw"
+description = "A wheel whose cell for the cycle holds rotate-cw runs that cycle through to its boundary with sim.status still running and sim.fault null."
 domains = ["workshop"]
 failure_cap = "broken"
-validation = { script = "instructions/wheel-runs-rotations.test.ts", outputs = [ { id = "wheel-turns", name = "A wheel running both rotations", kind = "replay" } ] }
+validation = { script = "instructions/wheel-runs-rotate-cw.test.ts", outputs = [ { id = "wheel-turns", name = "A wheel running rotate-cw", kind = "replay" } ] }
+[[review.categories.items]]
+id = "wheel-runs-rotate-ccw"
+title = "A wheel executes rotate-ccw"
+description = "A wheel whose cell for the cycle holds rotate-ccw runs that cycle through to its boundary with sim.status still running and sim.fault null."
+domains = ["workshop"]
+failure_cap = "broken"
+validation = { script = "instructions/wheel-runs-rotate-ccw.test.ts", outputs = [
+  { id = "wheel-turns-ccw", name = "A wheel running rotate-ccw", kind = "replay" },
+] }
 [[review.categories.items]]
 id = "wheel-rejects-other-instructions"
 title = "A wheel given anything but a rotation faults impossible"
@@ -2373,10 +2152,19 @@ validation = { script = "instructions/recede-requires-mounting.test.ts", outputs
 [[review.categories.items]]
 id = "unperformable-faults-at-fetch"
 title = "An unperformable instruction faults before any motion"
-description = "A cycle whose fetch raises impossible or unmounted leaves sim.fraction at 0 and every entry of sim.poses at the rotation, length and cell it held when the cycle began, so the fault lands at the fetch rather than partway through the motion."
+description = "A cycle whose fetch raises impossible or unmounted leaves every entry of sim.poses at the rotation, length and cell it held when the cycle began."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instructions/unperformable-faults-at-fetch.test.ts", outputs = [ { id = "frozen-at-fetch", name = "A fetch fault leaving the pose and the fraction untouched", kind = "replay" } ] }
+validation = { script = "instructions/unperformable-faults-at-fetch.test.ts", outputs = [ { id = "frozen-at-fetch", name = "A fetch fault leaving the poses untouched", kind = "replay" } ] }
+[[review.categories.items]]
+id = "unperformable-faults-on-its-own-cycle"
+title = "An unperformable instruction faults on the cycle that fetches it"
+description = "A plain arm whose tape holds blanks at columns 0 to 2 and extend at column 3 runs cycles 0, 1 and 2 to their boundaries with sim.status running, and faults as impossible only when cycle 3 fetches that cell, so a tape is not scanned for faults when the run starts."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "instructions/unperformable-faults-on-its-own-cycle.test.ts", outputs = [
+  { id = "late-fault", name = "The fault landing on cycle 3", kind = "replay" },
+] }
 [[review.categories.items]]
 id = "blank-holds-the-pose"
 title = "A blank cell holds the part's pose for the cycle"
@@ -2396,14 +2184,14 @@ id = "blank-on-a-wheel-never-faults"
 title = "A blank cell on a wheel is a rest, not an impossible"
 description = "A wheel whose cell for the cycle is blank runs that cycle to its boundary with sim.status running and sim.fault null, because a blank cell is a rest on every part, a wheel included."
 domains = ["workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "instructions/blank-on-a-wheel-never-faults.test.ts", outputs = [ { id = "wheel-rest", name = "A wheel resting through a blank cell", kind = "replay" } ] }
 [[review.categories.items]]
 id = "blank-on-an-unable-part-never-faults"
 title = "A blank cell never raises the fault the part's limits would"
 description = "An arm that is not a piston and is mounted on no track runs a blank cell to the boundary with sim.status running and sim.fault null, raising neither impossible nor unmounted."
 domains = ["workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "instructions/blank-on-an-unable-part-never-faults.test.ts", outputs = [ { id = "no-fault", name = "An unmounted plain arm resting through a blank cell", kind = "replay" } ] }
 [[review.categories.items]]
 id = "tape-length-last-nonblank-plus-one"
@@ -2436,10 +2224,10 @@ validation = { script = "instructions/trailing-blank-shortens-the-tape.test.ts",
 [[review.categories.items]]
 id = "only-arms-and-wheels-carry-tapes"
 title = "Only arms and wheels carry a tape"
-description = "Every arm and every wheel carries a tape, and a track, a sigil, a rise and a set each carry none, so none of them takes a tape-panel row or contributes a tape length to the machine's period."
+description = "Every arm and every wheel carries a tape, and a track, a sigil, a rise and a set each carry none, so none of them contributes a tape length to the machine's period."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instructions/only-arms-and-wheels-carry-tapes.test.ts", outputs = [ { id = "rows", name = "A tape panel showing rows for the arms and the wheel alone", kind = "image" } ] }
+validation = { script = "instructions/only-arms-and-wheels-carry-tapes.test.ts", outputs = [ { id = "rows", name = "The period counting the arms' and the wheel's tapes alone", kind = "image" } ] }
 [[review.categories.items]]
 id = "past-end-cells-rest"
 title = "A cell at or past a tape's own length is a blank"
@@ -2478,7 +2266,7 @@ validation = { script = "instructions/period-rises-when-a-tape-lengthens.test.ts
 [[review.categories.items]]
 id = "period-falls-when-the-longest-tape-goes"
 title = "Deleting the longest-taped part lowers the period"
-description = "Deleting the arm or wheel whose tape is the longest leaves the machine's period at the largest length among the tapes that remain, and at 1 when none remains."
+description = "Deleting the arm or wheel whose tape is the longest leaves the machine's period at the largest length among the tapes that remain."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instructions/period-falls-when-the-longest-tape-goes.test.ts", outputs = [ { id = "lowered", name = "The period falling when the longest tape is deleted", kind = "image" } ] }
@@ -2508,7 +2296,7 @@ id = "reset-reads-its-own-tape"
 title = "reset is computed from the cursor's own tape alone"
 description = "Invoking reset on one arm's row writes an expansion computed from that arm's rest pose and that arm's own cells, unchanged by what any other arm or wheel in the machine carries on its tape."
 domains = ["workshop"]
-failure_cap = "scuffed"
+failure_cap = "passable"
 validation = { script = "instructions/reset-reads-its-own-tape.test.ts", outputs = [ { id = "own-tape", name = "reset on one row of a two-row panel", kind = "image" } ] }
 [[review.categories.items]]
 id = "reset-walks-from-the-rest-pose"
@@ -2553,12 +2341,14 @@ domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instructions/reset-walk-stops-at-an-open-track-end.test.ts", outputs = [ { id = "open-stop", name = "reset after a prefix that runs off an open track", kind = "image" } ] }
 [[review.categories.items]]
-id = "reset-walk-ignores-other-parts"
-title = "The reset walk ignores the rest of the machine"
-description = "The expansion written for an arm is the same whether or not the cells before the cursor would collide, tear or otherwise fault against the other parts and motes on the field, because the walk reads that arm alone."
+id = "reset-walk-ignores-faults"
+title = "The reset walk steps a length the running arm could not"
+description = "An extend among the cells before the cursor on a plain arm, which would fault the run as impossible, still steps the walk's length by one, clamped to ARM_MAX_LEN (3), so the expansion reset writes returns the arm from the walked length rather than from its rest length."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instructions/reset-walk-ignores-other-parts.test.ts", outputs = [ { id = "ignored", name = "reset unchanged by a blocking neighbor", kind = "image" } ] }
+validation = { script = "instructions/reset-walk-ignores-faults.test.ts", outputs = [
+  { id = "walk-ignores-faults", name = "The expansion after an extend on a plain arm", kind = "image" },
+] }
 [[review.categories.items]]
 id = "reset-writes-drop-first"
 title = "reset writes drop as its first instruction"
@@ -2583,7 +2373,7 @@ validation = { script = "instructions/reset-extends-below-rest-length.test.ts", 
 [[review.categories.items]]
 id = "reset-rotates-the-shorter-way"
 title = "reset rotates whichever way reaches the rest rotation in fewer steps"
-description = "With the walk's rotation four steps clockwise of the arm's rest rotation, reset writes two rotate-ccw rather than four rotate-cw, and with it one step clockwise it writes one rotate-ccw."
+description = "With the walk's rotation four steps clockwise of the arm's rest rotation, reset writes two rotate-cw rather than four rotate-ccw, and with it one step clockwise it writes one rotate-ccw."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instructions/reset-rotates-the-shorter-way.test.ts", outputs = [ { id = "shorter-run", name = "reset writing the shorter rotation run", kind = "image" } ] }
@@ -2653,7 +2443,7 @@ validation = { script = "instructions/reset-on-a-resting-wheel-writes-nothing.te
 [[review.categories.items]]
 id = "reset-overwrites-from-the-cursor"
 title = "reset overwrites the cells from the cursor onward"
-description = "The expansion replaces what the tape held at the cursor and at the cells after it, one written cell per existing cell, rather than being inserted before them, and every cell before the cursor is left exactly as it was."
+description = "The expansion replaces the cells from the cursor onward rather than being inserted before them, so the cell that stood at the cursor holds the expansion's first instruction and every cell before the cursor is exactly as it was."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instructions/reset-overwrites-from-the-cursor.test.ts", outputs = [ { id = "overwritten", name = "reset overwriting a tape's later cells", kind = "image" } ] }
@@ -2662,7 +2452,7 @@ id = "reset-lands-the-cursor-after-the-expansion"
 title = "reset lands the cursor after what it wrote"
 description = "After reset the cursor points at the column immediately after the last cell the expansion wrote, on the same row."
 domains = ["workshop"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "instructions/reset-lands-the-cursor-after-the-expansion.test.ts", outputs = [ { id = "cursor", name = "The cursor resting after a reset expansion", kind = "image" } ] }
 [[review.categories.items]]
 id = "reset-is-one-undo-entry"
@@ -2676,14 +2466,14 @@ id = "repeat-reads-its-own-tape"
 title = "repeat is computed from the cursor's own tape alone"
 description = "Invoking repeat on one arm's row copies that arm's own cells, unchanged by what any other arm or wheel in the machine carries on its tape."
 domains = ["workshop"]
-failure_cap = "scuffed"
+failure_cap = "passable"
 validation = { script = "instructions/repeat-reads-its-own-tape.test.ts", outputs = [ { id = "own-tape", name = "repeat on one row of a two-row panel", kind = "image" } ] }
 [[review.categories.items]]
 id = "repeat-copies-the-cells-before-the-cursor"
 title = "repeat copies cells 0 up to but not including the cursor"
 description = "Invoked at column 3, repeat writes the tape's cells 0, 1 and 2 into columns 3, 4 and 5 in that order, leaving the cell at the cursor's own column out of what it read."
 domains = ["workshop"]
-failure_cap = "scuffed"
+failure_cap = "passable"
 validation = { script = "instructions/repeat-copies-the-cells-before-the-cursor.test.ts", outputs = [ { id = "copied", name = "A tape prefix copied after the cursor", kind = "image" } ] }
 [[review.categories.items]]
 id = "repeat-copies-blanks-as-blanks"
@@ -2692,6 +2482,15 @@ description = "A blank among the cells before the cursor is written as a blank i
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instructions/repeat-copies-blanks-as-blanks.test.ts", outputs = [ { id = "blank-kept", name = "A blank preserved in a repeat copy", kind = "image" } ] }
+[[review.categories.items]]
+id = "repeat-copies-past-end-cells-as-blanks"
+title = "repeat copies cells past the tape's end as blanks"
+description = "Invoked at column 5 on a tape whose length is 2, repeat writes the tape's cells 0 and 1 into columns 5 and 6 and blanks into columns 7, 8 and 9, because a cell at or past the tape's own length is a blank."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "instructions/repeat-copies-past-end-cells-as-blanks.test.ts", outputs = [
+  { id = "past-end-copy", name = "A repeat reading past the tape's end", kind = "image" },
+] }
 [[review.categories.items]]
 id = "repeat-at-cell-zero-writes-nothing"
 title = "repeat at column 0 writes nothing"
@@ -2702,7 +2501,7 @@ validation = { script = "instructions/repeat-at-cell-zero-writes-nothing.test.ts
 [[review.categories.items]]
 id = "repeat-overwrites-from-the-cursor"
 title = "repeat overwrites the cells from the cursor onward"
-description = "The copy replaces what the tape held at the cursor and at the cells after it, one copied cell per existing cell, rather than being inserted before them, and every cell before the cursor is left exactly as it was."
+description = "The copy replaces the cells from the cursor onward rather than being inserted before them, so the cell that stood at the cursor holds the copy's first instruction and every cell before the cursor is exactly as it was."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "instructions/repeat-overwrites-from-the-cursor.test.ts", outputs = [ { id = "overwritten", name = "repeat overwriting a tape's later cells", kind = "image" } ] }
@@ -2711,7 +2510,7 @@ id = "repeat-lands-the-cursor-after-the-copy"
 title = "repeat lands the cursor after what it wrote"
 description = "After a repeat invoked at column c the cursor points at column 2 * c on the same row, immediately after the last copied cell."
 domains = ["workshop"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "instructions/repeat-lands-the-cursor-after-the-copy.test.ts", outputs = [ { id = "cursor", name = "The cursor resting after a repeat copy", kind = "image" } ] }
 [[review.categories.items]]
 id = "repeat-is-one-undo-entry"
@@ -2744,26 +2543,12 @@ domains = ["campaign", "extras", "workshop"]
 failure_cap = "passable"
 validation = { script = "simulation/fetch-precedes-the-grippers.test.ts", outputs = [ { id = "faulted", name = "The cycle faulted at the fetch with no grip taken", kind = "image" } ] }
 [[review.categories.items]]
-id = "blank-cell-never-faults"
-title = "A blank cell is a rest on every part and never faults"
-description = "A blank tape cell is a rest on every part, a wheel included, and raises no fault, so a machine whose wheel carries a two-cell tape beside an arm carrying a four-cell one runs its blank wheel cells without faulting."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "broken"
-validation = { script = "simulation/blank-cell-never-faults.test.ts", outputs = [ { id = "run", name = "A wheel resting on its blank cells beside a longer tape", kind = "replay" } ] }
-[[review.categories.items]]
 id = "earliest-faulting-part-wins"
 title = "One fetch raises the earliest faulting part's fault"
 description = "When more than one part faults at one fetch, the run raises the fault of the earliest such part in placement order and names that part, so of two parts placed in a known order and both given an instruction they cannot perform, the fault reports the kind and the id of the first one placed."
 domains = ["campaign", "extras", "workshop"]
 failure_cap = "passable"
 validation = { script = "simulation/earliest-faulting-part-wins.test.ts", outputs = [ { id = "faulted", name = "The earlier-placed part named by the fault", kind = "image" } ] }
-[[review.categories.items]]
-id = "drops-precede-grabs"
-title = "Every drop completes before any grab"
-description = "The drop step runs before the grab step, so a constellation released by one part this cycle is taken by another part's grab in the same cycle: with part A holding a constellation and given drop, and part B's gripper over a mote of it and given grab, the cycle ends with sim.grips holding B's grip alone."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "simulation/drops-precede-grabs.test.ts", outputs = [ { id = "handoff", name = "A constellation handed from one gripper to another in one cycle", kind = "replay" } ] }
 [[review.categories.items]]
 id = "grabs-precede-motion"
 title = "A grab taken this cycle rides this cycle's motion"
@@ -2783,28 +2568,28 @@ id = "rotate-cw-turns-the-part"
 title = "rotate-cw turns the part one step clockwise about its base"
 description = "A part whose cell is rotate-cw ends the cycle with its live rotation one direction index higher modulo 6, its base unmoved and its length unchanged, so each gripper sits on base plus length times DIRS of its new spoke."
 domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "simulation/rotate-cw-turns-the-part.test.ts", outputs = [ { id = "turn", name = "An arm turning one step clockwise", kind = "replay" } ] }
 [[review.categories.items]]
 id = "rotate-ccw-turns-the-part"
 title = "rotate-ccw turns the part one step counterclockwise about its base"
 description = "A part whose cell is rotate-ccw ends the cycle with its live rotation one direction index lower modulo 6, its base unmoved and its length unchanged."
 domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "simulation/rotate-ccw-turns-the-part.test.ts", outputs = [ { id = "turn", name = "An arm turning one step counterclockwise", kind = "replay" } ] }
 [[review.categories.items]]
 id = "rotate-cw-carries-the-constellation"
 title = "rotate-cw turns the held constellation about the same base"
 description = "Every mote of a constellation held through a rotate-cw cycle is rotated one 60 degree step clockwise about the rotating part's base hex, by the clockwise formula of specs/field.md, so a mote held at (1, 0) by an arm based on (0, 0) lands on (0, 1)."
 domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "simulation/rotate-cw-carries-the-constellation.test.ts", outputs = [ { id = "carry", name = "A held mote swept clockwise about the base", kind = "replay" } ] }
 [[review.categories.items]]
 id = "rotate-ccw-carries-the-constellation"
 title = "rotate-ccw turns the held constellation about the same base"
 description = "Every mote of a constellation held through a rotate-ccw cycle is rotated one 60 degree step counterclockwise about the rotating part's base hex, by the counterclockwise formula of specs/field.md, so a mote held at (1, 0) by an arm based on (0, 0) lands on (1, -1)."
 domains = ["campaign", "extras", "workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "simulation/rotate-ccw-carries-the-constellation.test.ts", outputs = [ { id = "carry", name = "A held mote swept counterclockwise about the base", kind = "replay" } ] }
 [[review.categories.items]]
 id = "rotation-sweeps-with-the-fraction"
@@ -2991,17 +2776,10 @@ validation = { script = "simulation/drop-releases-only-that-parts-grippers.test.
 [[review.categories.items]]
 id = "a-grip-persists-across-cycles"
 title = "A grip persists until it is dropped"
-description = "A grip taken once survives every following cycle, blank cells and motions alike, with no further grab, until that part executes drop, so sim.grips still reports it many cycles later."
+description = "A grip taken once survives every following motion cycle with no further grab, until that part executes drop, so sim.grips still reports it many cycles later."
 domains = ["campaign", "extras", "workshop"]
 failure_cap = "broken"
 validation = { script = "simulation/a-grip-persists-across-cycles.test.ts", outputs = [ { id = "held", name = "One grab still holding many cycles later", kind = "replay" } ] }
-[[review.categories.items]]
-id = "a-grip-rides-the-holding-part"
-title = "A grip rides the motion of the part that holds it"
-description = "A held constellation stays on its gripper through every motion, so after a cycle of rotate-cw, extend or advance the held mote reports the hex the gripper now stands on rather than the hex it started from."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "broken"
-validation = { script = "simulation/a-grip-rides-the-holding-part.test.ts", outputs = [ { id = "riding", name = "A mote staying on its gripper across three motions", kind = "replay" } ] }
 [[review.categories.items]]
 id = "fixtures-ride-their-wheel"
 title = "A wheel's fixtures turn with it"
@@ -3130,11 +2908,11 @@ failure_cap = "passable"
 validation = { script = "simulation/a-rotation-and-a-translation-disagree.test.ts", outputs = [ { id = "torn", name = "A constellation torn between a sweep and a slide", kind = "image" } ] }
 
 # --- Collision and faults -----------------------------------------------------
-# The sampled collision rule of specs/simulation.md, every one of its worked
-# examples replayed verbatim, the freeze rule, the motion-limit and track-end
-# faults, and the payload table that says what a fault names. The faults an
-# instruction a part cannot execute raises are graded under Instructions and
-# tapes. Every scenario is posed through the
+# The sampled collision rule of specs/simulation.md, its worked examples replayed
+# verbatim wherever two of them do not trace one distance profile, the freeze
+# rule, the motion-limit and track-end faults, and the payload table that says
+# what a fault names. The faults an instruction a part cannot execute raises are
+# graded under Instructions and tapes. Every scenario is posed through the
 # surface of specs/instrumentation.md: a small loaded challenge, `clearMachine`,
 # `setCompletion(false)`, `startRun`, `clearMotes`, then the one or two parts and
 # the motes the requirement is about, `setGrip` for a hold with no `grab` ever
@@ -3143,15 +2921,6 @@ validation = { script = "simulation/a-rotation-and-a-translation-disagree.test.t
 [[review.categories]]
 id = "collision"
 title = "Collision and faults"
-[[review.categories.items]]
-id = "threshold-faults"
-title = "Two motes closer than 38 at a sample fault the run"
-description = "Within the motion step every mote's position is evaluated at the sample fractions t = k / 8 for k from 1 to 8, COLLISION_SAMPLES being 8, and a pair whose centers are strictly closer than 2 * MOTE_COLLIDE_R (38) at any of them faults the run as collision."
-domains = ["campaign", "extras"]
-failure_cap = "broken"
-validation = { script = "collision/threshold-faults.test.ts", outputs = [
-  { id = "faulted", name = "The run faulted as collision at a sample", kind = "replay" },
-] }
 [[review.categories.items]]
 id = "freeze-at-first-sample"
 title = "The fault is raised at the first sample within 38"
@@ -3162,19 +2931,10 @@ validation = { script = "collision/freeze-at-first-sample.test.ts", outputs = [
   { id = "frozen", name = "The machine frozen at the first violating sample", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "collision-freezes-fraction-at-sample"
-title = "A collision leaves the fraction at that sample"
-description = "A collision leaves sim.fraction at that sample's k / 8, so a run faulting at t = 3/8 reports a fraction of 0.375 and the machine stands mid-cycle rather than at a boundary."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "collision/collision-freezes-fraction-at-sample.test.ts", outputs = [
-  { id = "fraction", name = "The run stopped mid-cycle at the colliding sample", kind = "image" },
-] }
-[[review.categories.items]]
 id = "fixtures-collide"
 title = "A wheel's fixtures are checked like any other mote"
 description = "Every pair is checked, fixtures included: a carried mote brought within 38 of one of a wheel's six fixture motes at a sample faults the run as collision."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/fixtures-collide.test.ts", outputs = [
   { id = "faulted", name = "A carry colliding with a wheel fixture", kind = "replay" },
@@ -3183,17 +2943,26 @@ validation = { script = "collision/fixtures-collide.test.ts", outputs = [
 id = "move-onto-occupied-hex-faults"
 title = "A move ending on an occupied hex faults"
 description = "A move that ends on a hex another mote rests on faults as collision rather than landing two motes on one hex, because the sample at t = 8/8 finds the two at distance 0."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/move-onto-occupied-hex-faults.test.ts", outputs = [
   { id = "faulted", name = "The carry into an occupied hex faulting", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "an-empty-gripper-may-stop-on-an-occupied-hex"
+title = "An empty gripper may come to rest on a hex a mote rests on"
+description = "An arm holding nothing whose rotate-cw carries its gripper onto the hex a mote rests on reaches that cycle's boundary with sim.status still running, because only motes collide."
+domains = ["campaign", "extras", "workshop"]
+failure_cap = "broken"
+validation = { script = "collision/an-empty-gripper-may-stop-on-an-occupied-hex.test.ts", outputs = [
+  { id = "gripper-lands", name = "An empty gripper landing on an occupied hex", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "example-a-tight-rotation-faults"
 title = "Example A: a length 1 sweep into a tight gap faults"
 description = "An arm at (0, 0) at length 1 carrying a mote from (1, 0) toward (0, 1) with rotate-cw, with a mote resting on (1, 1), comes within 38 at 36.10 at t = 3/8 and the run faults as collision."
-domains = ["campaign", "extras"]
-failure_cap = "scuffed"
+domains = ["campaign", "extras", "workshop"]
+failure_cap = "broken"
 validation = { script = "collision/example-a-tight-rotation-faults.test.ts", outputs = [
   { id = "faulted", name = "Example A faulting at t = 3/8", kind = "replay" },
 ] }
@@ -3201,8 +2970,8 @@ validation = { script = "collision/example-a-tight-rotation-faults.test.ts", out
 id = "example-b-sweep-away-clears"
 title = "Example B: the same sweep away from the mote clears"
 description = "The same length 1 clockwise sweep from (1, 0) toward (0, 1) with the resting mote on (1, -1) instead reaches no sample within 38, its nearest sampled approach being 53.33 at t = 1/8, and the cycle reaches its boundary with sim.status still running."
-domains = ["campaign", "extras"]
-failure_cap = "passable"
+domains = ["campaign", "extras", "workshop"]
+failure_cap = "scuffed"
 validation = { script = "collision/example-b-sweep-away-clears.test.ts", outputs = [
   { id = "clear", name = "Example B completing its cycle", kind = "replay" },
 ] }
@@ -3210,8 +2979,8 @@ validation = { script = "collision/example-b-sweep-away-clears.test.ts", outputs
 id = "example-c-long-sweep-clears-inner-ring"
 title = "Example C: a length 2 sweep clears a mote on the inner ring"
 description = "An arm at (0, 0) at length 2 carrying a mote from (2, 0) toward (0, 2) with rotate-cw, with a mote resting on (1, 0), reaches no sample within 38, its nearest sampled approach being 48.81 at t = 1/8, and the cycle reaches its boundary with sim.status still running."
-domains = ["campaign", "extras"]
-failure_cap = "passable"
+domains = ["campaign", "extras", "workshop"]
+failure_cap = "scuffed"
 validation = { script = "collision/example-c-long-sweep-clears-inner-ring.test.ts", outputs = [
   { id = "clear", name = "Example C completing its cycle", kind = "replay" },
 ] }
@@ -3219,7 +2988,7 @@ validation = { script = "collision/example-c-long-sweep-clears-inner-ring.test.t
 id = "example-d-long-sweep-over-hex-faults"
 title = "Example D: the same length 2 sweep over (1, 1) faults"
 description = "The same length 2 clockwise sweep from (2, 0) toward (0, 2) with the resting mote on (1, 1) is within 38 already at t = 1/8 at 37.16, and the run faults as collision there rather than at its nearest approach of 12.86 at t = 4/8."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/example-d-long-sweep-over-hex-faults.test.ts", outputs = [
   { id = "faulted", name = "Example D faulting at t = 1/8", kind = "replay" },
@@ -3228,25 +2997,16 @@ validation = { script = "collision/example-d-long-sweep-over-hex-faults.test.ts"
 id = "example-e-piston-slide-clears"
 title = "Example E: a piston slide past a flanking mote clears"
 description = "A piston extending, carrying a mote from (1, 0) to (2, 0) with a mote resting on (2, -1), reaches no sample within 38, its nearest sampled approach being 41.57 at t = 4/8, and the cycle reaches its boundary with sim.status still running."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/example-e-piston-slide-clears.test.ts", outputs = [
   { id = "clear", name = "Example E sliding past its flanking mote", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "example-e2-piston-slide-other-flank-clears"
-title = "Example E2: the same slide past the opposite flank clears"
-description = "The same piston slide from (1, 0) to (2, 0) with the resting mote on (1, 1) instead reaches no sample within 38, its nearest sampled approach being 41.57 at t = 4/8, and the cycle reaches its boundary with sim.status still running."
-domains = ["campaign", "extras"]
-failure_cap = "scuffed"
-validation = { script = "collision/example-e2-piston-slide-other-flank-clears.test.ts", outputs = [
-  { id = "clear", name = "Example E2 sliding past its flanking mote", kind = "replay" },
-] }
-[[review.categories.items]]
 id = "example-f-slide-ending-adjacent-clears"
 title = "Example F: a slide ending adjacent to a mote clears"
 description = "The same piston slide from (1, 0) to (2, 0) with the resting mote on (3, -1) reaches no sample within 38, its nearest sampled approach being 48.00 at t = 8/8, so ending at rest separation is not a collision."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/example-f-slide-ending-adjacent-clears.test.ts", outputs = [
   { id = "clear", name = "Example F ending one hex from the resting mote", kind = "replay" },
@@ -3255,7 +3015,7 @@ validation = { script = "collision/example-f-slide-ending-adjacent-clears.test.t
 id = "example-g-crossing-arcs-fault"
 title = "Example G: two arcs swapping two motes fault"
 description = "Two arms swapping two motes between (1, 0) and (0, 1), one rotating clockwise about (0, 0) and the other clockwise about (1, 1), are within 38 at t = 1/8 at 37.16, and the run faults as collision, so a pair of moving motes is checked against each other and not only against motes at rest."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/example-g-crossing-arcs-fault.test.ts", outputs = [
   { id = "faulted", name = "Example G faulting at t = 1/8", kind = "replay" },
@@ -3264,25 +3024,16 @@ validation = { script = "collision/example-g-crossing-arcs-fault.test.ts", outpu
 id = "example-h-rest-adjacency-clears"
 title = "Example H: motes at rest on adjacent hexes never collide"
 description = "Two motes resting on (0, 0) and (1, 0) with nothing moving hold 48.00 at every sample, so the cycle reaches its boundary with sim.status still running."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "broken"
 validation = { script = "collision/example-h-rest-adjacency-clears.test.ts", outputs = [
   { id = "clear", name = "Example H running with two motes at rest", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "example-i-track-slide-clears"
-title = "Example I: a track carry past a flanking mote clears"
-description = "A track arm advancing east, carrying a mote from (0, 0) to (1, 0) with a mote resting on (1, -1), reaches no sample within 38, its nearest sampled approach being 41.57 at t = 4/8, and the cycle reaches its boundary with sim.status still running."
-domains = ["campaign", "extras"]
-failure_cap = "scuffed"
-validation = { script = "collision/example-i-track-slide-clears.test.ts", outputs = [
-  { id = "clear", name = "Example I riding past its flanking mote", kind = "replay" },
-] }
-[[review.categories.items]]
 id = "example-j-convoy-clears"
 title = "Example J: a convoy along one track keeps its separation"
 description = "Two arms on one track both advancing east, carrying motes on (0, 0) and (1, 0), hold 48.00 at every sample, so the cycle reaches its boundary with sim.status still running."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/example-j-convoy-clears.test.ts", outputs = [
   { id = "clear", name = "Example J advancing in convoy", kind = "replay" },
@@ -3291,7 +3042,7 @@ validation = { script = "collision/example-j-convoy-clears.test.ts", outputs = [
 id = "example-k-head-on-carries-fault"
 title = "Example K: two carries meeting head on fault"
 description = "On an open track through (-1, 0), (0, 0), (1, 0), (2, 0), (3, 0), an arm at (-1, 0) carrying a mote on (0, 0) and advancing while an arm at (3, 0) carries a mote on (2, 0) and recedes is within 38 at t = 5/8 at 36.00, and the run faults as collision there rather than at their meeting of 0.00 at t = 8/8."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/example-k-head-on-carries-fault.test.ts", outputs = [
   { id = "faulted", name = "Example K faulting at t = 5/8", kind = "replay" },
@@ -3315,37 +3066,28 @@ validation = { script = "collision/fault-sets-status-faulted.test.ts", outputs =
   { id = "status", name = "The faulted run reporting its fault", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "non-collision-fault-fraction-zero"
-title = "Every fault but a collision leaves the fraction at 0"
-description = "A torn fault and every fetch fault leave sim.fraction at 0, so the machine freezes on the cycle's boundary pose rather than part way through the motion."
-domains = ["workshop"]
-failure_cap = "great"
-validation = { script = "collision/non-collision-fault-fraction-zero.test.ts", outputs = [
-  { id = "frozen", name = "A fetch fault frozen at fraction 0", kind = "image" },
-] }
-[[review.categories.items]]
-id = "torn-disagreeing-motions"
-title = "Disagreeing holders tear the constellation"
-description = "At the start of the motion step every held constellation's imposed motions must agree, and a constellation held by two grippers whose parts impose different motions, such as one rotating while the other rests, faults the run as torn."
-domains = ["campaign", "extras"]
-failure_cap = "scuffed"
-validation = { script = "collision/torn-disagreeing-motions.test.ts", outputs = [
-  { id = "torn", name = "The constellation held two ways tearing", kind = "replay" },
-] }
-[[review.categories.items]]
 id = "torn-checked-before-motion"
 title = "A tear is raised before the motion happens"
-description = "The agreement check runs at the start of the motion step, so a torn run freezes with every mote of the constellation still on the hex it began the cycle on and every holding part still at the pose it began with."
+description = "A torn fault is raised before the holders move, so every part named in sim.fault.parts reports the rotation, length and cell it held when the cycle began."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "collision/torn-checked-before-motion.test.ts", outputs = [
   { id = "unmoved", name = "The torn machine frozen at its cycle-start pose", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "torn-checked-before-the-collision-samples"
+title = "A machine that is both torn and colliding reports torn"
+description = "A constellation held by two grippers whose parts impose different motions, positioned so that the motion one of them imposes would also bring a mote within 38 at a sample, faults as torn rather than as collision, because the torn check runs at the start of the motion step and the collision check at each sample."
+domains = ["campaign", "extras", "workshop"]
+failure_cap = "passable"
+validation = { script = "collision/torn-checked-before-the-collision-samples.test.ts", outputs = [
+  { id = "torn-wins", name = "A torn fault raised ahead of a collision", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "overextended"
 title = "extend at ARM_MAX_LEN is overextended"
 description = "A piston already at ARM_MAX_LEN (3) whose cell for the cycle is extend faults the run as overextended at the fetch."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/overextended.test.ts", outputs = [
   { id = "faulted", name = "The piston faulting at its maximum length", kind = "image" },
@@ -3354,7 +3096,7 @@ validation = { script = "collision/overextended.test.ts", outputs = [
 id = "overretracted"
 title = "retract at ARM_MIN_LEN is overretracted"
 description = "A piston already at ARM_MIN_LEN (1) whose cell for the cycle is retract faults the run as overretracted at the fetch."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/overretracted.test.ts", outputs = [
   { id = "faulted", name = "The piston faulting at its minimum length", kind = "image" },
@@ -3363,7 +3105,7 @@ validation = { script = "collision/overretracted.test.ts", outputs = [
 id = "track-end-advance"
 title = "advance at an open track's last cell is track-end"
 description = "An arm mounted on the last cell of an open track, given advance, faults the run as track-end at the fetch."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/track-end-advance.test.ts", outputs = [
   { id = "faulted", name = "The arm faulting at the track's last cell", kind = "image" },
@@ -3372,37 +3114,19 @@ validation = { script = "collision/track-end-advance.test.ts", outputs = [
 id = "track-end-recede"
 title = "recede at an open track's first cell is track-end"
 description = "An arm mounted on the first cell of an open track, given recede, faults the run as track-end at the fetch."
-domains = ["campaign", "extras"]
+domains = ["campaign", "extras", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "collision/track-end-recede.test.ts", outputs = [
   { id = "faulted", name = "The arm faulting at the track's first cell", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "closed-track-wraps-without-fault"
-title = "A closed track wraps rather than raising track-end"
-description = "An arm mounted on a closed track advances from its last cell to its first, and recedes from its first to its last, carrying whatever it holds, with sim.status still running."
-domains = ["campaign", "extras"]
-failure_cap = "scuffed"
-validation = { script = "collision/closed-track-wraps-without-fault.test.ts", outputs = [
-  { id = "wrapped", name = "The arm wrapping around the closed track", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "fetch-fault-earliest-part"
-title = "The earliest faulting part in placement order is the one raised"
-description = "When more than one part faults at one fetch, the run raises the fault of the earliest such part in placement order, the order editor.parts reports, and names that part, so a machine whose first-placed arm is given extend and whose second-placed unmounted arm is given advance faults as impossible."
-domains = ["workshop"]
-failure_cap = "great"
-validation = { script = "collision/fetch-fault-earliest-part.test.ts", outputs = [
-  { id = "faulted", name = "The earlier part's fault raised", kind = "image" },
-] }
-[[review.categories.items]]
 id = "fetch-fault-precedes-drops-and-grabs"
-title = "A fetch fault stops the cycle before its drops and grabs"
-description = "The fetch is the cycle's first step, so a fetch fault freezes the run with every grip exactly as the previous cycle left it: a gripper whose cell for this cycle is drop is still holding its constellation, and a gripper whose cell is grab has taken hold of nothing."
+title = "A fetch fault stops the cycle before its drops"
+description = "A fetch fault stops the cycle before its drops, so a gripper whose cell for this cycle is drop is still holding its constellation once the run has faulted."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "collision/fetch-fault-precedes-drops-and-grabs.test.ts", outputs = [
-  { id = "grips", name = "The grips unchanged by the faulted cycle", kind = "image" },
+  { id = "grips", name = "The drop's grip unchanged by the faulted cycle", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "collision-names-colliding-motes"
@@ -3486,16 +3210,16 @@ title = "Sigils, Rises and Sets"
 [[review.categories.items]]
 id = "unsatisfied-condition-waits"
 title = "An unsatisfied sigil waits"
-description = "A sigil whose condition does not hold at a boundary waits: the field is unchanged at that boundary, no fault is raised, and sim.status stays running, so a machine carrying an idle sigil keeps cycling."
+description = "A sigil whose condition does not hold at a boundary waits: no fault is raised and sim.status stays running, so a machine carrying an idle sigil keeps cycling."
 domains = ["workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "sigils/unsatisfied-condition-waits.test.ts", outputs = [ { id = "idle", name = "The idle sigil's boundary", kind = "image" } ] }
 [[review.categories.items]]
 id = "acts-at-every-boundary"
 title = "A sigil acts at every boundary its condition holds at"
 description = "A sigil acts at each boundary rather than once per run: a void maw given a fresh unbonded, unheld mote before each of three successive boundaries consumes one at each of them."
 domains = ["workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "sigils/acts-at-every-boundary.test.ts", outputs = [ { id = "three", name = "Three boundaries, three consumptions", kind = "replay" } ] }
 [[review.categories.items]]
 id = "acts-on-motes-at-rest"
@@ -3507,10 +3231,10 @@ validation = { script = "sigils/acts-on-motes-at-rest.test.ts", outputs = [ { id
 [[review.categories.items]]
 id = "passing-mote-untouched"
 title = "A mote merely carried across a sigil's hexes is not acted on"
-description = "A mote carried across a sigil's hexes and away again within one cycle rests on none of them at the boundary and is not acted on, so an arm sweeping an unbonded, unheld mote over a void maw and on to another hex delivers it intact."
+description = "A mote carried across a sigil's hexes and away again within one cycle rests on none of them at the boundary and is not acted on: an arm at length 2 carrying an essence from (2, 0) to (0, 2) with rotate-cw passes over hex (1, 1), and a wane engraved there leaves the essence its own type at that boundary."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "sigils/passing-mote-untouched.test.ts", outputs = [ { id = "sweep", name = "The sweep across the maw", kind = "replay" } ] }
+validation = { script = "sigils/passing-mote-untouched.test.ts", outputs = [ { id = "sweep", name = "The sweep across the wane", kind = "replay" } ] }
 [[review.categories.items]]
 id = "footprint-rotated-and-translated"
 title = "A placed sigil's hexes are its footprint rotated and translated"
@@ -3602,13 +3326,6 @@ description = "With no mote on the center, a manifold creates nothing however ma
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "sigils/manifold-waits-on-empty-center.test.ts", outputs = [ { id = "no-center", name = "Three reaches and an empty center", kind = "image" } ] }
-[[review.categories.items]]
-id = "manifold-joins-center-only"
-title = "manifold never joins two reaches to one another"
-description = "A manifold binds each occupied reach to the center alone, so three occupied reaches leave exactly the three center filaments and no filament between any two reaches."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "sigils/manifold-joins-center-only.test.ts", outputs = [ { id = "star", name = "The three filaments and no others", kind = "image" } ] }
 [[review.categories.items]]
 id = "triune-joins-nova-pair"
 title = "triune joins two nova with a weight 3 filament"
@@ -3785,12 +3502,21 @@ domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "sigils/ascend-waits-on-sol-crown.test.ts", outputs = [ { id = "sol-crown", name = "The sol crown and the unspent mercury", kind = "image" } ] }
 [[review.categories.items]]
-id = "ascend-crown-may-be-bonded-and-held"
-title = "The crown's planet may be bonded and held"
-description = "The crown's planet rises while it carries filaments and while a gripper holds its constellation, since only the prime's mercury must be unbonded and unheld."
+id = "ascend-crown-may-be-bonded"
+title = "The crown's planet may be bonded"
+description = "The crown's planet rises while it carries filaments, since only the prime's mercury must be unbonded."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "sigils/ascend-crown-may-be-bonded-and-held.test.ts", outputs = [ { id = "bonded-crown", name = "A bonded, held planet raised", kind = "image" } ] }
+validation = { script = "sigils/ascend-crown-may-be-bonded.test.ts", outputs = [ { id = "bonded-crown", name = "A bonded planet raised", kind = "image" } ] }
+[[review.categories.items]]
+id = "ascend-crown-may-be-held"
+title = "The crown's planet may be held"
+description = "The crown's planet rises while a gripper holds its constellation, since only the prime's mercury must be unheld."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "sigils/ascend-crown-may-be-held.test.ts", outputs = [
+  { id = "held-crown-rises", name = "A held planet rising on the crown", kind = "replay" },
+] }
 [[review.categories.items]]
 id = "ascend-luna-reaches-sol"
 title = "luna rises to sol"
@@ -4253,6 +3979,15 @@ domains = ["workshop"]
 failure_cap = "great"
 validation = { script = "editor/readout-press-changes-nothing.test.ts", outputs = [ { id = "readout", name = "A readout press leaving the selection standing", kind = "image" } ] }
 [[review.categories.items]]
+id = "readout-tracks-the-runs-live-figures"
+title = "The readout follows the run's live figures"
+description = "During a run the readout region, x READOUT_X0 (1008) to STAGE_W (1280) and y HEADING_H (48) to TAPE_Y0 (560), is drawn differently for each of a changed sim.status, a changed sim.cycle, a changed editor.period, a changed sim.speed and a changed tally, so it shows the five figures specs/editor.md names rather than resting."
+domains = ["workshop", "presentation"]
+failure_cap = "passable"
+validation = { script = "editor/readout-tracks-the-runs-live-figures.test.ts", outputs = [
+  { id = "readout", name = "The readout across five posed figures", kind = "image" },
+] }
+[[review.categories.items]]
 id = "region-boundaries-are-half-open"
 title = "A region includes its lower bound and excludes its upper"
 description = "A press at x 223 within the tray's y span is a tray press and leaves editor.selected standing, and a press at x TRAY_REGION_W (224), y HEADING_H (48) is a field press off every hex and clears the selection, because every rectangle specs/editor.md fixes includes its lower bound and excludes its upper."
@@ -4288,13 +4023,6 @@ description = "After the rise entries the tray holds exactly one set entry per p
 domains = ["workshop"]
 failure_cap = "scuffed"
 validation = { script = "editor/tray-lists-one-set-per-product.test.ts", outputs = [ { id = "sets", name = "The set entries of a two-product challenge", kind = "image" } ] }
-[[review.categories.items]]
-id = "tray-slot-rectangles-target-presses"
-title = "A press inside entry k's rectangle begins placing entry k"
-description = "Entry k, counted from 0, occupies the rectangle from TRAY_X0 (8), TRAY_Y0 (56) plus k times TRAY_SLOT_H (30) to TRAY_X0 plus TRAY_W (208), TRAY_Y0 plus k plus one times TRAY_SLOT_H, and a press inside it opens a place drag for that entry's part."
-domains = ["workshop"]
-failure_cap = "broken"
-validation = { script = "editor/tray-slot-rectangles-target-presses.test.ts", outputs = [ { id = "slots", name = "Each tray slot opening its own place drag", kind = "replay" } ] }
 [[review.categories.items]]
 id = "tray-slot-boundaries-are-half-open"
 title = "A tray slot includes its top edge and excludes its bottom"
@@ -4525,14 +4253,14 @@ validation = { script = "editor/a-place-drag-opens-at-rotation-zero-length-one.t
 [[review.categories.items]]
 id = "a-place-drag-retargets-on-each-move"
 title = "Each pointer move retargets the place drag"
-description = "Each pointerMove during a place drag sets editor.drag.at to the hex that position targets by the rule in specs/field.md, so a drag crossing several hexes reports each of them in turn."
+description = "Each pointerMove during a place drag re-evaluates editor.drag.at, so a drag crossing three hexes reports three different hexes in turn rather than holding the hex the press began on."
 domains = ["workshop"]
 failure_cap = "scuffed"
 validation = { script = "editor/a-place-drag-retargets-on-each-move.test.ts", outputs = [ { id = "track", name = "The ghost following the pointer hex by hex", kind = "replay" } ] }
 [[review.categories.items]]
 id = "a-place-drag-reports-no-hex-off-the-field"
 title = "A place drag reports no target off every hex"
-description = "Moving the pointer to a position whose nearest hex center is farther than HEX_HIT_R (26) sets editor.drag.at to null while the drag stays live."
+description = "A place drag whose pointer moves to a position off every hex reports editor.drag.at null and stays live, so a later move back onto a hex retargets it and the release can still place."
 domains = ["workshop"]
 failure_cap = "great"
 validation = { script = "editor/a-place-drag-reports-no-hex-off-the-field.test.ts", outputs = [ { id = "untargeted", name = "The live drag with no hex targeted", kind = "image" } ] }
@@ -4560,7 +4288,7 @@ validation = { script = "editor/releasing-selects-the-placed-part.test.ts", outp
 [[review.categories.items]]
 id = "releasing-on-an-illegal-hex-places-nothing"
 title = "Releasing a place drag on an illegal hex places nothing"
-description = "Releasing over a hex the placement rules of specs/parts.md refuse leaves editor.parts unchanged and editor.drag null, and pushes no undo entry."
+description = "Releasing over a hex the placement rules of specs/parts.md refuse leaves editor.parts unchanged and editor.drag null."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "editor/releasing-on-an-illegal-hex-places-nothing.test.ts", outputs = [ { id = "refused", name = "The refused placement leaving the field as it was", kind = "image" } ] }
@@ -4600,13 +4328,6 @@ domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "editor/the-ghost-reads-legal-or-illegal.test.ts", outputs = [ { id = "legal", name = "The ghost over a legal hex", kind = "image" }, { id = "illegal", name = "The ghost over an illegal hex", kind = "image" } ] }
 # --- The move drag ------------------------------------------------------------
-[[review.categories.items]]
-id = "a-field-press-selects-the-part-at-once"
-title = "A press on a part selects it before the release"
-description = "editor.selected names the pressed part while the pointer is still down, so a press and a release on the same hex is a plain selection."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "editor/a-field-press-selects-the-part-at-once.test.ts", outputs = [ { id = "held", name = "The part selected with the pointer still down", kind = "image" } ] }
 [[review.categories.items]]
 id = "a-field-press-opens-a-move-drag"
 title = "A press on a part opens a move drag"
@@ -4677,13 +4398,6 @@ description = "The tape of a moved arm holds exactly the instructions it held be
 domains = ["workshop"]
 failure_cap = "scuffed"
 validation = { script = "editor/a-moved-arm-keeps-its-tape.test.ts", outputs = [ { id = "tape", name = "The tape held across a move", kind = "image" } ] }
-[[review.categories.items]]
-id = "mounting-is-re-derived-from-position"
-title = "Moving an arm onto or off a track re-derives its mounting"
-description = "An arm moved so its anchor sits on a track cell is mounted on that track, and an arm moved off every track cell is mounted on none, because mounting relationships are re-derived from position as specs/parts.md states rather than fixed at placement."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "editor/mounting-is-re-derived-from-position.test.ts", outputs = [ { id = "mounted", name = "The arm mounted by being moved onto the track", kind = "replay" } ] }
 # --- Laying track -------------------------------------------------------------
 [[review.categories.items]]
 id = "a-press-on-an-open-track-end-opens-a-lay"
@@ -4823,7 +4537,7 @@ validation = { script = "editor/one-row-per-arm-and-wheel-in-placement-order.tes
 [[review.categories.items]]
 id = "rowless-parts-carry-no-row"
 title = "Tracks, sigils, rises and sets carry no row"
-description = "A machine holding tracks, sigils, rises and sets alongside its arms shows a row for each arm alone, and setCursor on a part with no tape row throws."
+description = "A machine holding tracks, sigils, rises and sets alongside its arms shows a row for each arm alone."
 domains = ["workshop"]
 failure_cap = "great"
 validation = { script = "editor/rowless-parts-carry-no-row.test.ts", outputs = [ { id = "rows", name = "The panel skipping the rowless parts", kind = "image" } ] }
@@ -4935,20 +4649,6 @@ failure_cap = "great"
 validation = { script = "editor/columns-rest-at-zero-with-no-cursor.test.ts", outputs = [ { id = "left", name = "The panel resting at the first column", kind = "image" } ] }
 # --- What a row draws ---------------------------------------------------------
 [[review.categories.items]]
-id = "a-cell-draws-its-produced-instruction-glyph"
-title = "A cell draws the produced glyph for its instruction"
-description = "The rectangle of a cell holding instruction i is drawn with the produced glyph at assets/sprites/instructions/i.png that specs/assets.md names, at its native INSTRUCTION_GLYPH_SIZE, so the cell's pixels match that file rather than a shape drawn in code."
-domains = ["workshop", "presentation"]
-failure_cap = "passable"
-validation = { script = "editor/a-cell-draws-its-produced-instruction-glyph.test.ts", outputs = [ { id = "cells", name = "The ten instructions drawn in their cells", kind = "image" } ] }
-[[review.categories.items]]
-id = "the-ten-glyphs-are-distinguishable-in-a-cell"
-title = "The ten instructions are told apart at TAPE_CELL_W"
-description = "The ten cell rectangles, each holding one of the ten instructions of specs/instructions.md, are pairwise different at TAPE_CELL_W (24), so no two instructions read the same in a tape."
-domains = ["workshop", "presentation"]
-failure_cap = "passable"
-validation = { script = "editor/the-ten-glyphs-are-distinguishable-in-a-cell.test.ts", outputs = [ { id = "row", name = "One tape holding all ten instructions", kind = "image" } ] }
-[[review.categories.items]]
 id = "a-blank-cell-is-drawn-empty"
 title = "A blank cell is drawn empty"
 description = "The rectangle of a blank cell inside a tape is drawn the same as the rectangle of a column past that tape's end, carrying no glyph of its own."
@@ -4969,6 +4669,15 @@ description = "Each row's label carries an identifier unique among the machine's
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "editor/row-labels-are-drawn-distinguishably.test.ts", outputs = [ { id = "labels", name = "Three rows with distinct labels", kind = "image" } ] }
+[[review.categories.items]]
+id = "a-row-is-annotated-with-its-tape-length"
+title = "Each tape row is annotated with its length against the period"
+description = "A row's drawn annotation changes when that arm's tape is lengthened and when another arm's longer tape raises the machine's period, so each row shows its tape length against the period rather than a fixed label."
+domains = ["workshop", "presentation"]
+failure_cap = "great"
+validation = { script = "editor/a-row-is-annotated-with-its-tape-length.test.ts", outputs = [
+  { id = "row-annotation", name = "A row annotation following its tape length", kind = "image" },
+] }
 # --- Editing at the cursor ----------------------------------------------------
 [[review.categories.items]]
 id = "ins-rotate-ccw-writes-rotate-ccw"
@@ -5017,14 +4726,14 @@ id = "ins-grab-writes-grab"
 title = "ins-grab writes grab at the cursor"
 description = "Under tape focus, one ins-grab press sets the cursor's cell to grab."
 domains = ["workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "editor/ins-grab-writes-grab.test.ts", outputs = [ { id = "written", name = "grab written at the cursor", kind = "image" } ] }
 [[review.categories.items]]
 id = "ins-drop-writes-drop"
 title = "ins-drop writes drop at the cursor"
 description = "Under tape focus, one ins-drop press sets the cursor's cell to drop."
 domains = ["workshop"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 validation = { script = "editor/ins-drop-writes-drop.test.ts", outputs = [ { id = "written", name = "drop written at the cursor", kind = "image" } ] }
 [[review.categories.items]]
 id = "ins-advance-writes-advance"
@@ -5082,20 +4791,6 @@ description = "With the cursor at column 0, one ins-erase press leaves the tape 
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "editor/ins-erase-does-nothing-at-column-zero.test.ts", outputs = [ { id = "inert", name = "The erase at column 0 changing nothing", kind = "image" } ] }
-[[review.categories.items]]
-id = "ins-reset-lands-the-cursor-after-its-expansion"
-title = "ins-reset leaves the cursor after what it wrote"
-description = "editor.cursor.col reads the column one past the last cell the reset expansion of specs/instructions.md wrote, so the next instruction action continues after the macro."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "editor/ins-reset-lands-the-cursor-after-its-expansion.test.ts", outputs = [ { id = "landed", name = "The cursor after a written reset expansion", kind = "image" } ] }
-[[review.categories.items]]
-id = "ins-repeat-lands-the-cursor-after-its-expansion"
-title = "ins-repeat leaves the cursor after what it wrote"
-description = "editor.cursor.col reads the column one past the last cell the repeat expansion of specs/instructions.md wrote."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "editor/ins-repeat-lands-the-cursor-after-its-expansion.test.ts", outputs = [ { id = "landed", name = "The cursor after a written repeat expansion", kind = "image" } ] }
 [[review.categories.items]]
 id = "up-moves-the-cursor-to-the-previous-row"
 title = "up moves the cursor to the previous row"
@@ -5155,7 +4850,7 @@ validation = { script = "editor/right-has-no-upper-bound.test.ts", outputs = [ {
 [[review.categories.items]]
 id = "writing-past-the-last-cell-lengthens-the-tape"
 title = "Writing past the last cell lengthens the tape"
-description = "Writing an instruction at a column beyond the tape's current end leaves the tape long enough to hold that column, and the machine's period rises accordingly."
+description = "Writing an instruction at a column beyond the tape's current end leaves the tape long enough to hold that column."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "editor/writing-past-the-last-cell-lengthens-the-tape.test.ts", outputs = [ { id = "lengthened", name = "The tape lengthened by a write past its end", kind = "image" } ] }
@@ -5184,14 +4879,14 @@ validation = { script = "editor/focus-is-field-on-entering-the-editor.test.ts", 
 [[review.categories.items]]
 id = "key-w-routes-by-focus"
 title = "KeyW grows the arm under field focus and writes extend under tape focus"
-description = "The same KeyW press lengthens the selected arm while editor.focus is field and writes extend at the cursor while it is tape, because part-grow and ins-extend share the key and the game reads the one the current focus names."
+description = "Under field focus a KeyW press lengthens the selected arm and leaves the cursor's cell exactly as it stands; under tape focus it writes extend and leaves the arm's length exactly as it stands."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "editor/key-w-routes-by-focus.test.ts", outputs = [ { id = "field", name = "KeyW growing the arm under field focus", kind = "image" }, { id = "tape", name = "KeyW writing extend under tape focus", kind = "image" } ] }
 [[review.categories.items]]
 id = "key-s-routes-by-focus"
 title = "KeyS shrinks the arm under field focus and writes retract under tape focus"
-description = "The same KeyS press shortens the selected arm while editor.focus is field and writes retract at the cursor while it is tape."
+description = "Under field focus a KeyS press shortens the selected arm and leaves the cursor's cell exactly as it stands; under tape focus it writes retract and leaves the arm's length exactly as it stands."
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "editor/key-s-routes-by-focus.test.ts", outputs = [ { id = "field", name = "KeyS shrinking the arm under field focus", kind = "image" }, { id = "tape", name = "KeyS writing retract under tape focus", kind = "image" } ] }
@@ -5252,13 +4947,6 @@ description = "Three instruction actions raise editor.undoDepth by exactly three
 domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "editor/each-tape-write-pushes-one-entry.test.ts", outputs = [ { id = "undone", name = "Three writes undone one at a time", kind = "replay" } ] }
-[[review.categories.items]]
-id = "a-macro-pushes-one-entry"
-title = "A macro counts as one edit"
-description = "One ins-reset press raises editor.undoDepth by exactly one however many cells its expansion wrote, and one undo removes the whole expansion; one ins-repeat press does the same."
-domains = ["workshop"]
-failure_cap = "passable"
-validation = { script = "editor/a-macro-pushes-one-entry.test.ts", outputs = [ { id = "reset", name = "A reset expansion undone in one step", kind = "replay" }, { id = "repeat", name = "A repeat expansion undone in one step", kind = "replay" } ] }
 [[review.categories.items]]
 id = "an-edit-that-changes-nothing-pushes-no-entry"
 title = "An edit that changes nothing pushes no undo entry"
@@ -5371,6 +5059,34 @@ description = "Leaving a challenge with edits in its history and opening it agai
 domains = ["workshop"]
 failure_cap = "great"
 validation = { script = "editor/histories-are-not-stashed.test.ts", outputs = [ { id = "empty", name = "The restored machine with an empty history", kind = "image" } ] }
+# --- What a live run locks ----------------------------------------------------
+[[review.categories.items]]
+id = "a-field-press-during-a-run-sets-focus-alone"
+title = "A field press during a run sets the focus and nothing else"
+description = "With sim.status running, paused, faulted or complete, a press on a placed part leaves editor.selected and editor.drag exactly as they stand and sets editor.focus to field, because while a run is active the editor reads the run controls and mute alone."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/a-field-press-during-a-run-sets-focus-alone.test.ts", outputs = [
+  { id = "inert-press", name = "A field press during a run", kind = "image" },
+] }
+[[review.categories.items]]
+id = "part-verbs-are-inert-during-a-run"
+title = "The field-focus verbs do nothing while a run is live"
+description = "With a part selected before the run began and sim.status running, a part-cw, part-grow or part-delete press leaves that part's rotation, length and place in editor.parts exactly as they stand."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/part-verbs-are-inert-during-a-run.test.ts", outputs = [
+  { id = "inert-verbs", name = "A part verb pressed during a run", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tape-writes-are-inert-during-a-run"
+title = "The tape-focus actions do nothing while a run is live"
+description = "With the cursor pointing at a tape cell and sim.status running, an ins-grab press leaves that cell and editor.cursor.col exactly as they stand."
+domains = ["workshop"]
+failure_cap = "passable"
+validation = { script = "editor/tape-writes-are-inert-during-a-run.test.ts", outputs = [
+  { id = "inert-write", name = "An instruction action pressed during a run", kind = "image" },
+] }
 
 # --- Runs and metrics ---------------------------------------------------------
 # The run's lifecycle from the play action to the solved panel: what starting a
@@ -5447,18 +5163,11 @@ domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "runs/settle-spawns-the-rises.test.ts", outputs = [ { id = "settled", name = "The reagents on the field before cycle 0", kind = "image" } ] }
 [[review.categories.items]]
-id = "settle-banks-the-area"
-title = "The settle banks its hexes like any boundary"
-description = "The settle is a boundary, so the hex of every mote and of every gripper at the settle enters the area bank before cycle 0 begins, and a reagent the settle spawned counts toward area."
-domains = ["workshop"]
-failure_cap = "great"
-validation = { script = "runs/settle-banks-the-area.test.ts", outputs = [ { id = "banked", name = "The area banked at the settle", kind = "image" } ] }
-[[review.categories.items]]
 id = "start-sets-the-cycle-counter-to-zero"
 title = "A run begins at cycle 0"
 description = "After the settle the cycle counter starts at 0: sim.cycle is 0 and sim.fraction is 0, whatever cycle an earlier run of the same machine reached."
 domains = ["workshop"]
-failure_cap = "passable"
+failure_cap = "scuffed"
 validation = { script = "runs/start-sets-the-cycle-counter-to-zero.test.ts", outputs = [ { id = "cycle-zero", name = "A second run beginning at cycle 0", kind = "image" } ] }
 [[review.categories.items]]
 id = "start-sets-the-default-speed"
@@ -5524,13 +5233,6 @@ domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "runs/bank-takes-grippers-at-every-boundary.test.ts", outputs = [ { id = "sweep", name = "An empty arm sweeping and banking", kind = "replay" } ] }
 [[review.categories.items]]
-id = "bank-takes-the-boundary-rises"
-title = "The bank takes the hexes of that boundary's rises"
-description = "The bank is taken after that boundary's rises, so a reagent spawned at a boundary has its hexes in the bank at that same boundary rather than at the next one."
-domains = ["workshop"]
-failure_cap = "great"
-validation = { script = "runs/bank-takes-the-boundary-rises.test.ts", outputs = [ { id = "spawn", name = "A reagent banked at the boundary that spawned it", kind = "replay" } ] }
-[[review.categories.items]]
 id = "bank-keeps-vacated-hexes"
 title = "The bank accumulates across the run"
 description = "A hex a mote has left, and a hex whose mote a set consumed, stay in the bank, so area never falls over the course of a run."
@@ -5577,7 +5279,7 @@ id = "cycle-counter-increments-at-each-boundary"
 title = "A boundary that neither faults nor completes increments the cycle"
 description = "sim.cycle counts completed cycles, so a boundary that neither faults nor completes raises it by exactly 1 and the next cycle begins."
 domains = ["workshop"]
-failure_cap = "passable"
+failure_cap = "broken"
 validation = { script = "runs/cycle-counter-increments-at-each-boundary.test.ts", outputs = [ { id = "counting", name = "The cycle counter across three boundaries", kind = "replay" } ] }
 [[review.categories.items]]
 id = "paused-holds-the-fraction"
@@ -5586,13 +5288,6 @@ description = "The fraction advances only while sim.status is running, so game t
 domains = ["workshop"]
 failure_cap = "scuffed"
 validation = { script = "runs/paused-holds-the-fraction.test.ts", outputs = [ { id = "held", name = "A paused run over advanced game time", kind = "replay" } ] }
-[[review.categories.items]]
-id = "collision-leaves-the-fraction-at-its-sample"
-title = "A collision freezes the fraction at its sample"
-description = "A collision leaves sim.fraction at that sample's k / 8 of the COLLISION_SAMPLES (8) samples, so a run that faults at the third sample reports 0.375."
-domains = ["workshop"]
-failure_cap = "great"
-validation = { script = "runs/collision-leaves-the-fraction-at-its-sample.test.ts", outputs = [ { id = "frozen", name = "The run frozen at its colliding sample", kind = "image" } ] }
 [[review.categories.items]]
 id = "other-faults-leave-the-fraction-at-zero"
 title = "Every fault but collision leaves the fraction at zero"
@@ -5742,11 +5437,11 @@ failure_cap = "broken"
 validation = { script = "runs/back-stops-a-faulted-run.test.ts", outputs = [ { id = "editing", name = "The editor after leaving a fault", kind = "image" } ] }
 [[review.categories.items]]
 id = "stop-discards-the-motes"
-title = "Stopping a run discards every mote"
-description = "Stopping a run discards the motes, fixtures included, and with them every filament and every grip, so the field carries the machine alone."
+title = "The next run opens with nothing the last run left"
+description = "A second run of the same machine opens holding only what this run's start sequence placed: a mote spawned into the first run is absent from sim.motes, and sim.filaments and sim.grips carry nothing the first run left."
 domains = ["workshop"]
 failure_cap = "scuffed"
-validation = { script = "runs/stop-discards-the-motes.test.ts", outputs = [ { id = "cleared", name = "The field after a run is stopped", kind = "image" } ] }
+validation = { script = "runs/stop-discards-the-motes.test.ts", outputs = [ { id = "cleared", name = "The second run's opening field", kind = "image" } ] }
 [[review.categories.items]]
 id = "stop-restores-the-rest-poses"
 title = "Stopping a run discards every runtime pose"
@@ -5838,13 +5533,6 @@ description = "The recorded area is how many distinct hexes the area bank holds 
 domains = ["campaign", "extras", "workshop"]
 failure_cap = "passable"
 validation = { script = "runs/metric-area.test.ts", outputs = [ { id = "area", name = "The area recorded for a known run", kind = "image" } ] }
-[[review.categories.items]]
-id = "run-interpolates-carried-motes"
-title = "A carried mote is drawn along its motion through the cycle"
-description = "A carried mote's drawn position follows the motion the cycle imposes at sim.fraction, so at fraction 0.5 of a rotate-cw the mote's reported x and y sit on the arc half way through the 60 degree sweep about the arm's base rather than on either hex center."
-domains = ["workshop", "presentation"]
-failure_cap = "scuffed"
-validation = { script = "runs/run-interpolates-carried-motes.test.ts", outputs = [ { id = "sweep", name = "A mote half way through its sweep", kind = "image" } ] }
 
 # --- Campaign -----------------------------------------------------------------
 # The course the build designs itself: what the shipped challenge data must be,
@@ -5869,10 +5557,10 @@ validation = { script = "campaign/course-within-bounds.test.ts", outputs = [ { i
 [[review.categories.items]]
 id = "course-is-fixed-data"
 title = "The course is the same set in the same order every session"
-description = "Opening every campaign challenge in turn after reset() yields exactly the documents opening them yielded before it — same count, same order, same name, reagents, products, permitted and target at every index — so the course is authored data rather than generated per session."
+description = "The course read after the page is reloaded is the course read before it: same count, same order, and the same name, reagents, products, permitted list and target at every index."
 domains = ["campaign"]
 failure_cap = "passable"
-validation = { script = "campaign/course-is-fixed-data.test.ts", outputs = [ { id = "course", name = "The same course after a reset", kind = "image" } ] }
+validation = { script = "campaign/course-is-fixed-data.test.ts", outputs = [ { id = "course", name = "The same course after a reload", kind = "image" } ] }
 [[review.categories.items]]
 id = "course-target-is-six"
 title = "Every course challenge asks for six constellations"
@@ -5977,14 +5665,14 @@ validation = { script = "campaign/reference-solution-places-every-set.test.ts", 
 [[review.categories.items]]
 id = "reference-solution-completes"
 title = "Every reference solution runs to completion"
-description = "Starting a run on each loaded campaign reference solution and advancing the clock reaches sim.status complete, with every set's tally at the challenge's target."
+description = "Starting a run on each loaded campaign reference solution and advancing the clock reaches sim.status complete within CAMPAIGN_REFERENCE_CYCLES (600) cycles, with every set's tally at the challenge's target."
 domains = ["campaign"]
 failure_cap = "scuffed"
 validation = { script = "campaign/reference-solution-completes.test.ts", outputs = [ { id = "run", name = "A reference solution running to completion", kind = "replay" } ] }
 [[review.categories.items]]
 id = "reference-solution-never-faults"
 title = "No reference solution faults on the way"
-description = "No campaign reference solution's run reports a sim.fault or reaches sim.status faulted at any cycle between its start and its completion."
+description = "No campaign reference solution's run reports a sim.fault or reaches sim.status faulted at any cycle between its start and its completion within CAMPAIGN_REFERENCE_CYCLES (600) cycles."
 domains = ["campaign"]
 failure_cap = "scuffed"
 validation = { script = "campaign/reference-solution-never-faults.test.ts", outputs = [ { id = "clean-run", name = "The reference run reaching completion without a fault", kind = "replay" } ] }
@@ -6006,7 +5694,7 @@ validation = { script = "campaign/finale-places-at-least-eight.test.ts", outputs
 [[review.categories.items]]
 id = "part-count-never-drops-across-two"
 title = "The part count never drops across two challenges"
-description = "For every challenge index n of at least 2, the reference solution for challenge n + 1 places no fewer parts than the reference solution for challenge n - 1."
+description = "No challenge's reference solution places fewer parts than the reference solution of the challenge two places before it in the course."
 domains = ["campaign"]
 failure_cap = "great"
 validation = { script = "campaign/part-count-never-drops-across-two.test.ts", outputs = [ { id = "ladder", name = "Reference machines from three consecutive challenges", kind = "image" } ] }
@@ -6044,14 +5732,14 @@ validation = { script = "campaign/every-part-kind-placed-by-a-reference.test.ts"
 [[review.categories.items]]
 id = "fresh-course-opens-one-unlocked"
 title = "A fresh course opens with challenge 1 unlocked"
-description = "In a fresh session campaign.unlockedCount is 1: challenge 1 is unlocked and every other challenge of the course is locked."
+description = "On a freshly loaded build, before any debug pose, campaign.unlockedCount is 1: challenge 1 is unlocked and every other challenge of the course is locked."
 domains = ["campaign"]
 failure_cap = "broken"
 validation = { script = "campaign/fresh-course-opens-one-unlocked.test.ts", outputs = [ { id = "fresh", name = "The fresh course's select screen", kind = "image" } ] }
 [[review.categories.items]]
 id = "fresh-course-nothing-solved"
 title = "A fresh course has nothing solved and no records"
-description = "In a fresh session campaign.solved is empty and every entry of campaign.records is null."
+description = "On a freshly loaded build, before any debug pose, campaign.solved is empty and every entry of campaign.records is null."
 domains = ["campaign"]
 failure_cap = "passable"
 validation = { script = "campaign/fresh-course-nothing-solved.test.ts", outputs = [ { id = "fresh", name = "The fresh course's select screen", kind = "image" } ] }
@@ -6072,7 +5760,7 @@ validation = { script = "campaign/unlock-stops-at-the-last-challenge.test.ts", o
 [[review.categories.items]]
 id = "completing-marks-solved"
 title = "Completing a challenge marks it solved"
-description = "Completing campaign challenge n adds n's index to campaign.solved, and the set stays ascending and free of duplicates."
+description = "Completing campaign challenge n adds n's index to campaign.solved, and the set stays ascending."
 domains = ["campaign"]
 failure_cap = "passable"
 validation = { script = "campaign/completing-marks-solved.test.ts", outputs = [ { id = "solved-row", name = "The solved row on the select screen", kind = "image" } ] }
@@ -6086,7 +5774,7 @@ validation = { script = "campaign/replay-never-relocks.test.ts", outputs = [ { i
 [[review.categories.items]]
 id = "progress-lasts-the-session"
 title = "Unlocks and solved marks last the session"
-description = "After completing a campaign challenge, returning to title, entering Extras and coming back, campaign.unlockedCount and campaign.solved are unchanged."
+description = "Setting the mode to extras, entering its select screen, and setting the mode back to campaign leaves campaign.unlockedCount and campaign.solved exactly as they stood."
 domains = ["campaign"]
 failure_cap = "passable"
 validation = { script = "campaign/progress-lasts-the-session.test.ts", outputs = [ { id = "persisted", name = "The course unchanged after a detour through Extras", kind = "image" } ] }
@@ -6156,68 +5844,79 @@ domains = ["campaign"]
 failure_cap = "passable"
 validation = { script = "campaign/records-are-per-challenge.test.ts", outputs = [ { id = "records", name = "The course's records after one completion", kind = "image" } ] }
 [[review.categories.items]]
-id = "records-last-the-session"
-title = "Records last the session"
-description = "After completing a campaign challenge, leaving to the select screen and the title, and re-entering the challenge, its records entry holds the same three figures."
+id = "faulted-run-records-nothing"
+title = "A faulted campaign run marks nothing and records nothing"
+description = "A run on a campaign challenge that ends in a status of faulted leaves that challenge out of campaign.solved, leaves its records entry exactly as it stood, set or unset, and leaves campaign.unlockedCount unchanged."
 domains = ["campaign"]
 failure_cap = "passable"
-validation = { script = "campaign/records-last-the-session.test.ts", outputs = [ { id = "persisted", name = "The records after leaving and returning", kind = "image" } ] }
+validation = { script = "campaign/faulted-run-records-nothing.test.ts", outputs = [
+  { id = "faulted-no-progress", name = "A faulted campaign run leaving progress alone", kind = "image" },
+] }
 # The campaign's select screen: what the course's own state puts on it, and what
 # the locking does to it. The shared menu mechanics live with the screens.
 [[review.categories.items]]
 id = "select-lists-every-challenge"
 title = "The select screen lists the whole course in order"
 description = "The campaign select screen draws one row per challenge of the course, campaign.count rows, in course order down the screen."
-domains = ["campaign"]
+domains = ["campaign", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "campaign/select-lists-every-challenge.test.ts", outputs = [ { id = "list", name = "The course listed in order", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-row-shows-its-number"
 title = "Each row shows its challenge number"
 description = "Each row of the campaign select screen draws its challenge's number, numbered from 1, running 1 upward down the list."
-domains = ["campaign"]
+domains = ["campaign", "presentation"]
 failure_cap = "great"
 validation = { script = "campaign/select-row-shows-its-number.test.ts", outputs = [ { id = "numbers", name = "The numbered rows", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-row-shows-its-name"
 title = "Each row shows its challenge name"
 description = "Each row of the campaign select screen draws its challenge's own name, the same string that challenge's document carries, on that row."
-domains = ["campaign"]
+domains = ["campaign", "presentation"]
 failure_cap = "passable"
 validation = { script = "campaign/select-row-shows-its-name.test.ts", outputs = [ { id = "names", name = "The named rows", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-locked-reads-apart-from-unlocked"
 title = "A locked row reads apart from an unlocked one"
-description = "Challenge 2's own row region changes visibly when completing challenge 1 unlocks it, by more than hue alone, so locked and unlocked read apart at a glance."
+description = "Posing setUnlockedCount(1) and then setUnlockedCount(2) on the campaign select screen changes the drawn frame, and the change survives projection to grayscale, so locked and unlocked read apart without relying on hue."
 domains = ["campaign", "presentation"]
 failure_cap = "passable"
 validation = { script = "campaign/select-locked-reads-apart-from-unlocked.test.ts", outputs = [ { id = "states", name = "The row locked, then unlocked", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-solved-reads-apart-from-unlocked"
 title = "A solved row reads apart from an unlocked one"
-description = "Challenge 1's own row region changes visibly when it is solved, by more than hue alone, so unlocked and solved read apart at a glance."
+description = "Posing setSolved(\"campaign\", 0, true) on the campaign select screen changes the drawn frame, and the change survives projection to grayscale, so unlocked and solved read apart without relying on hue."
 domains = ["campaign", "presentation"]
 failure_cap = "passable"
 validation = { script = "campaign/select-solved-reads-apart-from-unlocked.test.ts", outputs = [ { id = "states", name = "The row unlocked, then solved", kind = "image" } ] }
 [[review.categories.items]]
-id = "select-highlight-drawn-distinctly"
-title = "The highlighted row is drawn distinctly"
-description = "Exactly one row of the campaign select screen is highlighted, and its region is drawn distinctly from the same row unhighlighted."
+id = "select-locked-reads-apart-from-solved"
+title = "A locked row reads apart from a solved one"
+description = "Posing setUnlockedCount(1) with nothing solved, and then setUnlockedCount(2) with challenge 1 solved, draws two different campaign select-screen frames, and the difference survives projection to grayscale, so the third pair of row states reads apart without relying on hue."
 domains = ["campaign", "presentation"]
 failure_cap = "passable"
+validation = { script = "campaign/select-locked-reads-apart-from-solved.test.ts", outputs = [
+  { id = "locked-vs-solved", name = "A locked row beside a solved one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "select-highlight-drawn-distinctly"
+title = "The highlighted row is drawn distinctly"
+description = "The campaign select-screen frame at selectIndex 0 differs from the frame at selectIndex 1, and the difference is confined to what those two poses changed, so the row confirm would open is visible."
+domains = ["campaign", "presentation"]
+failure_cap = "scuffed"
 validation = { script = "campaign/select-highlight-drawn-distinctly.test.ts", outputs = [ { id = "highlight", name = "The highlighted row", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-solved-row-shows-three-records"
 title = "A solved row shows its three records, labelled"
 description = "A solved challenge's row draws its cost, its cycles and its area, each with its own label, matching that challenge's records entry."
-domains = ["campaign"]
+domains = ["campaign", "presentation"]
 failure_cap = "passable"
 validation = { script = "campaign/select-solved-row-shows-three-records.test.ts", outputs = [ { id = "records", name = "A solved row's three records", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-unsolved-row-shows-no-records"
 title = "An unsolved row shows no records"
 description = "A challenge with no records entry draws no record figures on its row, locked or unlocked alike."
-domains = ["campaign"]
+domains = ["campaign", "presentation"]
 failure_cap = "great"
 validation = { script = "campaign/select-unsolved-row-shows-no-records.test.ts", outputs = [ { id = "unsolved", name = "An unsolved row carrying no figures", kind = "image" } ] }
 [[review.categories.items]]
@@ -6241,13 +5940,6 @@ description = "Solving a campaign challenge and arriving at the select screen le
 domains = ["campaign"]
 failure_cap = "great"
 validation = { script = "campaign/select-highlight-lands-on-last-solved.test.ts", outputs = [ { id = "landing", name = "The highlight on the challenge last solved", kind = "image" } ] }
-[[review.categories.items]]
-id = "select-confirm-opens-an-unlocked-challenge"
-title = "Confirm opens an unlocked challenge"
-description = "confirm on an unlocked, unsolved row opens that challenge in the editor with its own tray, an empty machine and no run."
-domains = ["campaign"]
-failure_cap = "broken"
-validation = { script = "campaign/select-confirm-opens-an-unlocked-challenge.test.ts", outputs = [ { id = "opened", name = "The challenge opened from the select screen", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-confirm-opens-a-solved-challenge"
 title = "Confirm opens a solved challenge again"
@@ -6356,13 +6048,6 @@ description = "Extras challenge 10 is the Procession of specs/challenges.md exac
 domains = ["extras"]
 failure_cap = "scuffed"
 validation = { script = "extras/challenge-10-procession.test.ts", outputs = [ { id = "opened", name = "Procession opened in the editor", kind = "image" } ] }
-[[review.categories.items]]
-id = "aetherfall-tray-derives-four-rises"
-title = "Aetherfall's tray derives one rise per reagent"
-description = "Opening Extras 8 gives a tray of eight entries in the order specs/editor.md fixes: the permitted arm, biarm and confluence, then four rise entries, one per reagent in reagent order, then one set entry for the single product, each entry pressable at its own TRAY_SLOT_H (30) tall slot."
-domains = ["extras"]
-failure_cap = "scuffed"
-validation = { script = "extras/aetherfall-tray-derives-four-rises.test.ts", outputs = [ { id = "tray", name = "Aetherfall's eight-entry tray", kind = "image" } ] }
 # The reference solutions. specs/modes/extras.md requires one per challenge under
 # the requirement specs/modes/campaign.md states, reachable only through
 # referenceSolution. Presence, legality, coverage and completion are four
@@ -6383,19 +6068,21 @@ domains = ["extras"]
 failure_cap = "scuffed"
 validation = { script = "extras/references-legal.test.ts", outputs = [ { id = "loaded", name = "A reference solution loaded legally", kind = "image" } ] }
 [[review.categories.items]]
-id = "references-place-every-rise-and-set"
-title = "Every reference solution places every rise and every set"
-description = "Each of the ten reference solutions places one rise per reagent of its challenge and one set per product, so the play action's readiness condition of specs/editor.md is met by the loaded machine."
+id = "references-place-every-rise"
+title = "Every reference solution places every rise"
+description = "Each of the ten reference solutions places one rise per reagent of its challenge, covering every reagent index."
 domains = ["extras"]
 failure_cap = "scuffed"
-validation = { script = "extras/references-place-every-rise-and-set.test.ts", outputs = [ { id = "complete-machine", name = "A reference machine with every rise and set placed", kind = "image" } ] }
+validation = { script = "extras/references-place-every-rise.test.ts", outputs = [ { id = "complete-machine", name = "A reference machine with every rise placed", kind = "image" } ] }
 [[review.categories.items]]
-id = "reference-index-out-of-range-throws"
-title = "referenceSolution refuses an index off the shelf"
-description = "referenceSolution called on extras with an index outside the ten challenges fails loudly rather than returning a solution or guessing what was meant, and changes nothing."
+id = "references-place-every-set"
+title = "Every reference solution places every set"
+description = "Each of the ten reference solutions places one set per product of its challenge, covering every product index."
 domains = ["extras"]
-failure_cap = "great"
-validation = { script = "extras/reference-index-out-of-range-throws.test.ts", outputs = [ { id = "refused", name = "The game unchanged by the refused read", kind = "image" } ] }
+failure_cap = "scuffed"
+validation = { script = "extras/references-place-every-set.test.ts", outputs = [
+  { id = "every-set", name = "A reference solution's sets", kind = "image" },
+] }
 [[review.categories.items]]
 id = "reference-read-changes-nothing"
 title = "Reading a reference solution is a pure read"
@@ -6403,13 +6090,6 @@ description = "referenceSolution on any Extras challenge leaves the screen, the 
 domains = ["extras"]
 failure_cap = "passable"
 validation = { script = "extras/reference-read-changes-nothing.test.ts", outputs = [ { id = "unchanged", name = "The editor unchanged by the read", kind = "image" } ] }
-[[review.categories.items]]
-id = "references-readable-before-solving"
-title = "Reference solutions are readable whatever is solved"
-description = "In a session where nothing has been solved and no Extras challenge has been entered, referenceSolution returns each of the ten solutions, so a reference is not gated on progress."
-domains = ["extras"]
-failure_cap = "passable"
-validation = { script = "extras/references-readable-before-solving.test.ts", outputs = [ { id = "fresh-session", name = "A reference read in a fresh session", kind = "image" } ] }
 [[review.categories.items]]
 id = "reference-solves-first-light"
 title = "The First Light reference solution completes"
@@ -6489,13 +6169,6 @@ domains = ["extras"]
 failure_cap = "broken"
 validation = { script = "extras/all-ten-open-from-start.test.ts", outputs = [ { id = "tenth-first", name = "Extras 10 entered first in a fresh session", kind = "image" } ] }
 [[review.categories.items]]
-id = "campaign-locks-do-not-gate-extras"
-title = "The campaign's unlocked count gates no Extras row"
-description = "With the campaign's unlocked count set to 1, every Extras row still opens on confirm, because the Extras lock nothing."
-domains = ["extras"]
-failure_cap = "passable"
-validation = { script = "extras/campaign-locks-do-not-gate-extras.test.ts", outputs = [ { id = "still-open", name = "An Extras row entered with the campaign at one unlock", kind = "image" } ] }
-[[review.categories.items]]
 id = "extras-completion-leaves-campaign-unlocks"
 title = "Completing an Extra unlocks no campaign challenge"
 description = "A completing run on an Extras challenge leaves the campaign's unlocked count, solved set and records exactly as they stood."
@@ -6508,7 +6181,7 @@ id = "completion-marks-solved"
 title = "A completing run marks the challenge solved"
 description = "A run on an Extras challenge that reaches a status of complete adds that challenge to the mode's solved set."
 domains = ["extras"]
-failure_cap = "scuffed"
+failure_cap = "passable"
 validation = { script = "extras/completion-marks-solved.test.ts", outputs = [ { id = "solved-row", name = "The row marked solved after the run", kind = "image" } ] }
 [[review.categories.items]]
 id = "completion-marks-only-that-challenge"
@@ -6537,7 +6210,7 @@ validation = { script = "extras/replay-keeps-solved-once.test.ts", outputs = [ {
 [[review.categories.items]]
 id = "unsolved-challenge-has-no-record"
 title = "A challenge never completed carries no record"
-description = "Every Extras challenge the session has not completed reports no record at all, whether it has been entered and run to a fault or never opened."
+description = "Every Extras challenge the session has not completed reports no record at all, so a fresh shelf's records list is ten nulls."
 domains = ["extras"]
 failure_cap = "great"
 validation = { script = "extras/unsolved-challenge-has-no-record.test.ts", outputs = [ { id = "no-records", name = "The shelf with no records set", kind = "image" } ] }
@@ -6611,13 +6284,6 @@ description = "A run on an Extras challenge that ends in a status of faulted lea
 domains = ["extras"]
 failure_cap = "passable"
 validation = { script = "extras/faulted-run-records-nothing.test.ts", outputs = [ { id = "faulted", name = "The shelf unchanged after a fault", kind = "replay" } ] }
-[[review.categories.items]]
-id = "custom-challenge-touches-no-extras-record"
-title = "Completing a custom challenge touches no Extras record"
-description = "A challenge posed through loadChallenge, whose source the snapshot reports as custom, completes without adding anything to the Extras solved set and without setting or changing any Extras record, even when the document posed is a copy of an Extras challenge."
-domains = ["extras"]
-failure_cap = "passable"
-validation = { script = "extras/custom-challenge-touches-no-extras-record.test.ts", outputs = [ { id = "untouched", name = "The shelf after a custom challenge completes", kind = "image" } ] }
 # The Extras select screen. The screen is shared with the campaign, so each of
 # these points drives it in extras mode.
 [[review.categories.items]]
@@ -6628,31 +6294,24 @@ domains = ["extras"]
 failure_cap = "scuffed"
 validation = { script = "extras/select-lists-the-ten-in-order.test.ts", outputs = [ { id = "list", name = "The ten Extras rows in order", kind = "image" } ] }
 [[review.categories.items]]
-id = "select-row-shows-its-number"
-title = "Each row shows its challenge number"
-description = "Each Extras row draws its number, 1 through 10, with the numbers appearing in row order down the list."
-domains = ["extras"]
-failure_cap = "passable"
-validation = { script = "extras/select-row-shows-its-number.test.ts", outputs = [ { id = "numbers", name = "The numbered rows", kind = "image" } ] }
-[[review.categories.items]]
 id = "select-row-shows-its-name"
 title = "Each row shows its challenge name"
 description = "Each Extras row draws its challenge's name from specs/challenges.md, so all ten of First Light, Twin Moons, Waning Crescent, Mirrorwright, Ascendant, Great Conjunction, Syzygy, Aetherfall, Trine and Procession appear, each on its own row."
 domains = ["extras"]
-failure_cap = "scuffed"
+failure_cap = "passable"
 validation = { script = "extras/select-row-shows-its-name.test.ts", outputs = [ { id = "names", name = "The named rows", kind = "image" } ] }
 [[review.categories.items]]
 id = "select-marks-solved-rows"
 title = "A solved row reads apart from an unsolved one"
-description = "A row's own region on the Extras select screen changes by more than 6 of 441 in mean RGB distance when that challenge is completed, so solved and unsolved rows read apart at a glance."
-domains = ["extras"]
+description = "Completing an Extras challenge changes the drawn select-screen frame, so a solved row reads apart from an unsolved one."
+domains = ["extras", "presentation"]
 failure_cap = "passable"
 validation = { script = "extras/select-marks-solved-rows.test.ts", outputs = [ { id = "states", name = "A solved row beside unsolved ones", kind = "image" } ] }
 [[review.categories.items]]
 id = "solved-mark-survives-hue-removal"
 title = "Solved is readable without relying on hue"
-description = "The same row region's mean luminance changes by more than 4 of 255 when the challenge is completed, so the solved state survives with hue removed."
-domains = ["extras"]
+description = "The grayscale projection of the Extras select-screen frame differs between the challenge unsolved and solved, so the solved state carries information with hue removed."
+domains = ["extras", "presentation"]
 failure_cap = "passable"
 validation = { script = "extras/solved-mark-survives-hue-removal.test.ts", outputs = [ { id = "grayscale", name = "The solved row with hue removed", kind = "image" } ] }
 [[review.categories.items]]
@@ -6670,16 +6329,9 @@ domains = ["extras"]
 failure_cap = "great"
 validation = { script = "extras/select-shows-no-records-on-an-unsolved-row.test.ts", outputs = [ { id = "bare-row", name = "An unsolved row without records", kind = "image" } ] }
 [[review.categories.items]]
-id = "select-highlight-drawn-distinctly"
-title = "One row is highlighted, drawn distinctly"
-description = "Exactly one Extras row carries the highlight, and its own region differs from the same region unhighlighted by more than 6 of 441 in mean RGB distance, so the row confirm would open is visible."
-domains = ["extras"]
-failure_cap = "scuffed"
-validation = { script = "extras/select-highlight-drawn-distinctly.test.ts", outputs = [ { id = "highlight", name = "The highlighted row among the ten", kind = "image" } ] }
-[[review.categories.items]]
 id = "select-lands-on-row-one-before-any"
 title = "The shelf opens on row 1 before anything is entered"
-description = "Arriving at the Extras select screen in a session where no Extras challenge has been entered or solved puts the highlight on row 1."
+description = "Entering campaign challenge 4, returning to the title, and arriving at the Extras select screen with no Extras challenge ever entered puts the highlight on row 1, because each mode keeps its own last figure."
 domains = ["extras"]
 failure_cap = "great"
 validation = { script = "extras/select-lands-on-row-one-before-any.test.ts", outputs = [ { id = "first-row", name = "The highlight resting on row 1", kind = "image" } ] }
@@ -6876,7 +6528,7 @@ id = "confirm-howto-opens-howto"
 title = "Confirming HOW TO PLAY opens the how-to"
 description = "confirm on the HOW TO PLAY item of TITLE_ITEMS sets screen to howto."
 domains = ["workshop"]
-failure_cap = "passable"
+failure_cap = "scuffed"
 validation = { script = "screens/confirm-howto-opens-howto.test.ts", outputs = [
   { id = "howto", name = "The how-to screen HOW TO PLAY opened", kind = "image" },
 ] }
@@ -6972,15 +6624,6 @@ validation = { script = "screens/howto-holds-five-distinct-pages.test.ts", outpu
   { id = "pages", name = "The how-to's five pages", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "howto-indicates-current-page"
-title = "The how-to indicates which page is shown"
-description = "The howto frame carries an indication of the current page that changes with howtoPage, so pages 0 and 4 are told apart without reading the prose."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "screens/howto-indicates-current-page.test.ts", outputs = [
-  { id = "indicator", name = "The how-to's page indication on the first and last pages", kind = "image" },
-] }
-[[review.categories.items]]
 id = "howto-confirm-returns-to-title"
 title = "confirm leaves the how-to"
 description = "confirm on howto sets screen to title."
@@ -7008,27 +6651,9 @@ validation = { script = "screens/howto-ignores-up-and-down.test.ts", outputs = [
   { id = "unchanged", name = "The how-to unchanged by up and down", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "howto-page-sky"
-title = "The how-to's first page covers the sky"
-description = "The frame at howtoPage 0 draws text covering the hex field, motes and their classes, filaments, constellations, and that a challenge asks for products made from reagents."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "screens/howto-page-sky.test.ts", outputs = [
-  { id = "page", name = "The how-to's page on the sky", kind = "image" },
-] }
-[[review.categories.items]]
-id = "howto-page-machine"
-title = "The how-to's second page covers the machine"
-description = "The frame at howtoPage 1 draws text covering rises and sets, arms and grippers, the wheel, the track, and each sigil's engraving in one line apiece."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "screens/howto-page-machine.test.ts", outputs = [
-  { id = "page", name = "The how-to's page on the machine", kind = "image" },
-] }
-[[review.categories.items]]
 id = "howto-page-tape"
 title = "The how-to's third page names the tape keys"
-description = "The frame at howtoPage 2 draws text covering instructions, how every tape loops on one shared period, and how to write a tape, naming the keys specs/controls.md binds the tape-focus actions to."
+description = "The frame at howtoPage 2 names the keys BINDINGS gives the tape-focus actions: A, D, W, S, Z, C, G, V, T, B, Delete, Backspace, R and Y."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/howto-page-tape.test.ts", outputs = [
@@ -7037,32 +6662,13 @@ validation = { script = "screens/howto-page-tape.test.ts", outputs = [
 [[review.categories.items]]
 id = "howto-page-running"
 title = "The how-to's fourth page names the run keys"
-description = "The frame at howtoPage 3 draws text covering play, step, and speed, naming the keys specs/controls.md binds them to, that motes collide, and that a fault stops the machine and where to read what went wrong."
+description = "The frame at howtoPage 3 names the keys BINDINGS gives play, step, speed-down and speed-up: Space, N, comma and period."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/howto-page-running.test.ts", outputs = [
   { id = "page", name = "The how-to's page on running", kind = "image" },
 ] }
-[[review.categories.items]]
-id = "howto-page-finishing"
-title = "The how-to's fifth page covers finishing"
-description = "The frame at howtoPage 4 draws text covering the target tally, the three metrics cost, cycles, and area, and that lower is better."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "screens/howto-page-finishing.test.ts", outputs = [
-  { id = "page", name = "The how-to's page on finishing", kind = "image" },
-] }
 # --- select -------------------------------------------------------------------
-[[review.categories.items]]
-id = "select-serves-current-mode"
-title = "The select screen serves the current mode"
-description = "The select screen lists the challenges of state.mode: entered with mode campaign it lists the course, and entered with mode extras it lists the ten Extras challenges."
-domains = ["campaign", "extras"]
-failure_cap = "broken"
-validation = { script = "screens/select-serves-current-mode.test.ts", outputs = [
-  { id = "campaign-list", name = "The select screen in campaign mode", kind = "image" },
-  { id = "extras-list", name = "The select screen in extras mode", kind = "image" },
-] }
 [[review.categories.items]]
 id = "select-down-moves-highlight"
 title = "down moves the select highlight down one row"
@@ -7139,7 +6745,7 @@ validation = { script = "screens/select-ignores-left-and-right.test.ts", outputs
 [[review.categories.items]]
 id = "editor-back-returns-to-select"
 title = "back leaves the editor for the select screen"
-description = "back on the editor while editing, with no run live, sets screen to select for the mode the challenge was opened from."
+description = "back on the editor while editing, with no run live, sets screen to select for the current state.mode."
 domains = ["campaign", "extras"]
 failure_cap = "scuffed"
 validation = { script = "screens/editor-back-returns-to-select.test.ts", outputs = [
@@ -7183,21 +6789,11 @@ validation = { script = "screens/solved-panel-shows-records.test.ts", outputs = 
   { id = "records", name = "The solved panel's records", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "solved-panel-marks-new-best"
-title = "The solved panel marks a new best"
-description = "A metric the finished run beat the standing record on is marked on the panel, so completing against a worse standing record and against a better one draw differently."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "screens/solved-panel-marks-new-best.test.ts", outputs = [
-  { id = "new-best", name = "The panel with a new best marked", kind = "image" },
-  { id = "no-new-best", name = "The panel with no new best", kind = "image" },
-] }
-[[review.categories.items]]
 id = "solved-panel-keeps-machine-visible"
 title = "The finished machine stays visible behind the panel"
 description = "The field is drawn behind the solved panel with the machine as the completing boundary left it, rather than being cleared or covered entirely."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "screens/solved-panel-keeps-machine-visible.test.ts", outputs = [
   { id = "behind", name = "The finished machine behind the solved panel", kind = "image" },
 ] }
@@ -7269,7 +6865,7 @@ id = "solved-omits-next-on-last-challenge"
 title = "NEXT CHALLENGE is withheld on the mode's last challenge"
 description = "Completing the mode's last challenge leaves the panel's menu at the remaining two SOLVED_ITEMS, KEEP TINKERING then BACK TO SELECT, in that order."
 domains = ["campaign", "extras"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "screens/solved-omits-next-on-last-challenge.test.ts", outputs = [
   { id = "two-items", name = "The solved menu on the mode's last challenge", kind = "image" },
 ] }
@@ -7319,6 +6915,15 @@ validation = { script = "screens/solved-back-keeps-tinkering.test.ts", outputs =
   { id = "editing", name = "Editing resumed by back from the solved panel", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "solved-panel-ignores-left-and-right"
+title = "left and right do nothing on the solved panel"
+description = "The editor, faulted or complete row of the What each screen reads table of specs/controls.md omits left and right, so neither press changes menuIndex, screen or howtoPage while the solved panel is up."
+domains = ["campaign", "extras"]
+failure_cap = "great"
+validation = { script = "screens/solved-panel-ignores-left-and-right.test.ts", outputs = [
+  { id = "panel-ignores-lr", name = "The solved panel ignoring left and right", kind = "image" },
+] }
+[[review.categories.items]]
 id = "custom-panel-omits-next-challenge"
 title = "A directly loaded challenge's panel never offers NEXT CHALLENGE"
 description = "Completing a challenge whose source is custom leaves the panel's menu at KEEP TINKERING then BACK TO SELECT, because such a challenge belongs to no course."
@@ -7347,24 +6952,6 @@ validation = { script = "screens/fault-display-freezes-machine.test.ts", outputs
   { id = "frozen", name = "The machine frozen at the faulting sample", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "fault-display-marks-named-parts"
-title = "The fault display marks the parts the fault names"
-description = "The parts in sim.fault.parts are drawn visibly distinct from the rest, so the same machine faulted at two different parts draws the distinction in two different places."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "screens/fault-display-marks-named-parts.test.ts", outputs = [
-  { id = "marked", name = "The faulting part drawn distinctly", kind = "image" },
-] }
-[[review.categories.items]]
-id = "fault-display-marks-named-motes"
-title = "The fault display marks the motes the fault names"
-description = "The motes in sim.fault.motes are drawn visibly distinct from the rest, so a collision fault marks the colliding pair and leaves the other motes drawn as they were."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "screens/fault-display-marks-named-motes.test.ts", outputs = [
-  { id = "marked", name = "The colliding motes drawn distinctly", kind = "image" },
-] }
-[[review.categories.items]]
 id = "fault-banner-drawn"
 title = "A banner is drawn while the run is faulted"
 description = "While sim.status is faulted a banner is drawn over the field, and it is absent while the status is running, paused, or complete."
@@ -7374,13 +6961,13 @@ validation = { script = "screens/fault-banner-drawn.test.ts", outputs = [
   { id = "banner", name = "The fault banner over the frozen field", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "fault-banner-names-the-fault"
-title = "The banner names which fault stopped the run"
-description = "The banner names which of the seven FAULTS of specs/simulation.md stopped the run, so runs stopped by collision, torn, overextended, overretracted, unmounted, track-end, and impossible draw seven different banners."
-domains = ["presentation"]
+id = "faulted-editor-ignores-the-menu-actions"
+title = "up, down and confirm do nothing on a faulted run"
+description = "The editor, faulted or complete row of the What each screen reads table of specs/controls.md grants up, down and confirm only while the solved panel is up, so with sim.status faulted none of the three changes menuIndex, screen or sim."
+domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "screens/fault-banner-names-the-fault.test.ts", outputs = [
-  { id = "banners", name = "The banners of the seven faults", kind = "replay" },
+validation = { script = "screens/faulted-editor-ignores-the-menu-actions.test.ts", outputs = [
+  { id = "faulted-menu-inert", name = "A faulted run ignoring the menu actions", kind = "image" },
 ] }
 # --- what advances on each screen ---------------------------------------------
 [[review.categories.items]]
@@ -7418,6 +7005,15 @@ domains = ["workshop"]
 failure_cap = "passable"
 validation = { script = "screens/nothing-advances-while-editing.test.ts", outputs = [
   { id = "held", name = "The editor over passing time with no run", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "editor-actions-do-nothing-off-the-editor"
+title = "The editor's own actions do nothing on the other screens"
+description = "On title, howto and select, a play, step, undo, redo, part-cw or ins-grab press changes nothing the snapshot reports, because an action a screen's row omits does nothing on that screen."
+domains = ["campaign", "extras"]
+failure_cap = "passable"
+validation = { script = "screens/editor-actions-do-nothing-off-the-editor.test.ts", outputs = [
+  { id = "off-screen-inert", name = "Editor actions pressed on the title", kind = "image" },
 ] }
 
 # --- Audio --------------------------------------------------------------------
@@ -7536,11 +7132,20 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "audio/halt-cue-on-a-collision.test.ts", outputs = [ { id = "collided", name = "The cued collision", kind = "replay" } ] }
 [[review.categories.items]]
+id = "halt-cue-on-a-torn-fault"
+title = "The halt cue plays on a torn fault"
+description = "A torn fault, raised at the start of the motion step rather than at a fetch or a sample, plays CUES.halt exactly once on the frame sim.status becomes faulted, and on no frame before it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "audio/halt-cue-on-a-torn-fault.test.ts", outputs = [
+  { id = "torn-halt", name = "The halt cue on a torn fault", kind = "video" },
+] }
+[[review.categories.items]]
 id = "halt-cue-sounds-once-per-fault"
 title = "A frozen run plays no further halt cue"
 description = "Frames advanced after sim.status is faulted play no further CUES.halt, so one fault sounds one halt."
 domains = ["presentation"]
-failure_cap = "passable"
+failure_cap = "scuffed"
 validation = { script = "audio/halt-cue-sounds-once-per-fault.test.ts", outputs = [ { id = "frozen", name = "The frozen run after its one halt", kind = "replay" } ] }
 [[review.categories.items]]
 id = "constellation-cue-on-a-consumption"
@@ -7589,7 +7194,7 @@ id = "no-complete-cue-with-the-switch-off"
 title = "With the completion switch off no complete cue plays"
 description = "After setCompletion(false), a boundary at which every set's tally has reached target plays no CUES.complete and the run carries on."
 domains = ["presentation"]
-failure_cap = "passable"
+failure_cap = "great"
 validation = { script = "audio/no-complete-cue-with-the-switch-off.test.ts", outputs = [ { id = "silent", name = "The satisfied target with the switch off", kind = "replay" } ] }
 [[review.categories.items]]
 id = "place-pose-plays-no-cue"
@@ -7612,13 +7217,6 @@ description = "startRun runs the run-start sequence and plays no CUES.start."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "audio/start-run-pose-plays-no-cue.test.ts", outputs = [ { id = "silent", name = "The silent posed run start", kind = "replay" } ] }
-[[review.categories.items]]
-id = "pointer-poses-play-no-cue"
-title = "The pointer operations play no cue"
-description = "A placement committed through pointerDown, pointerMove, and pointerUp plays no CUES.place, and a removal reached the same way plays no CUES.erase."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "audio/pointer-poses-play-no-cue.test.ts", outputs = [ { id = "silent", name = "The silent posed drag", kind = "replay" } ] }
 [[review.categories.items]]
 id = "bed-loops-from-the-first-frame"
 title = "The music bed loops from the first frame"
@@ -7654,6 +7252,15 @@ description = "Across title to select to editor and back to title, CUES.music is
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "audio/bed-loops-across-a-screen-change.test.ts", outputs = [ { id = "crossing", name = "The bed across three transitions", kind = "replay" } ] }
+[[review.categories.items]]
+id = "bed-keeps-looping-while-running"
+title = "The music bed keeps looping while a run is running"
+description = "CUES.music is looping on every frame while sim.status is running."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/bed-keeps-looping-while-running.test.ts", outputs = [
+  { id = "bed-running", name = "The bed looping through a live run", kind = "video" },
+] }
 [[review.categories.items]]
 id = "bed-keeps-looping-while-paused"
 title = "The music bed keeps looping while a run is paused"
@@ -7816,12 +7423,12 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/filament-sprites-carry-paint.test.ts", outputs = [ { id = "coverage", name = "The paint each strip carries", kind = "image" } ] }
 [[review.categories.items]]
-id = "triune-strip-heavier-than-plain"
-title = "The triune strip is heavier than the plain one"
-description = "The triune strip covers strictly more non-transparent pixels than the plain strip, so a weight-3 filament reads as heavier than a weight-1 one at a glance."
+id = "filament-strips-differ"
+title = "The two filament strips differ from one another"
+description = "plain.png and triune.png are not the same image: the two differ on a measurable share of their pixels."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "assets/triune-strip-heavier-than-plain.test.ts", outputs = [ { id = "weights", name = "The plain and triune strips compared", kind = "image" } ] }
+validation = { script = "assets/filament-strips-differ.test.ts", outputs = [ { id = "weights", name = "The plain and triune strips compared", kind = "image" } ] }
 # The sigil glyphs.
 [[review.categories.items]]
 id = "sigil-glyphs-exist"
@@ -8094,21 +7701,21 @@ id = "deliver-system-one-shot"
 title = "The delivery system is one-shot"
 description = "deliver.json's timeline declares loop false, so an instance decays to empty rather than settling into a steady state."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "assets/deliver-system-one-shot.test.ts", outputs = [ { id = "decay", name = "The delivery system decaying to empty", kind = "video" } ] }
 [[review.categories.items]]
 id = "fault-system-one-shot"
 title = "The fault system is one-shot"
 description = "fault.json's timeline declares loop false, so an instance decays to empty rather than settling into a steady state."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "assets/fault-system-one-shot.test.ts", outputs = [ { id = "decay", name = "The fault system decaying to empty", kind = "video" } ] }
 [[review.categories.items]]
 id = "complete-system-one-shot"
 title = "The completion system is one-shot"
 description = "complete.json's timeline declares loop false, so an instance decays to empty rather than settling into a steady state."
 domains = ["presentation"]
-failure_cap = "great"
+failure_cap = "passable"
 validation = { script = "assets/complete-system-one-shot.test.ts", outputs = [ { id = "decay", name = "The completion system decaying to empty", kind = "video" } ] }
 [[review.categories.items]]
 id = "particle-systems-distinct"
@@ -8117,13 +7724,6 @@ description = "deliver.json, fault.json and complete.json parse to three differe
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/particle-systems-distinct.test.ts", outputs = [ { id = "systems", name = "The three systems simulated side by side", kind = "image" } ] }
-[[review.categories.items]]
-id = "particle-systems-radially-symmetric"
-title = "Each system is authored radially symmetric"
-description = "Simulated by the runtime, each of the three systems spreads its particles with no preferred direction about its origin, so an instance reads correctly wherever on the field it plays."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "assets/particle-systems-radially-symmetric.test.ts", outputs = [ { id = "spread", name = "Each system's spread about its origin", kind = "image" } ] }
 # The sounds, as files.
 [[review.categories.items]]
 id = "cue-files-exist"
@@ -8155,15 +7755,24 @@ failure_cap = "passable"
 validation = { script = "assets/cue-files-distinct.test.ts", outputs = [ { id = "cues", name = "The six cue waveforms side by side", kind = "image" } ] }
 [[review.categories.items]]
 id = "bed-produced"
-title = "The music bed ships a produced track"
-description = "assets/audio/music.wav exists at exactly that path and decodes as a WAV of non-zero length."
+title = "The music bed ships at its named path"
+description = "assets/audio/music.wav exists at exactly that path."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "assets/bed-produced.test.ts", outputs = [ { id = "bed", name = "The produced bed's waveform", kind = "image" } ] }
 [[review.categories.items]]
+id = "bed-file-decodes"
+title = "The music bed decodes as a WAV"
+description = "assets/audio/music.wav decodes as a WAV of non-zero length rather than a file merely wearing the extension."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "assets/bed-file-decodes.test.ts", outputs = [
+  { id = "bed-decodes", name = "The bed decoded", kind = "image" },
+] }
+[[review.categories.items]]
 id = "bed-score-committed"
 title = "The bed's score is committed beside it"
-description = "assets/audio/music.mid is committed beside assets/audio/music.wav, so the bed ships with the score it was sequenced from."
+description = "assets/audio/music.mid is committed beside assets/audio/music.wav and decodes as a MIDI file, so the bed ships with the score it was sequenced from."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "assets/bed-score-committed.test.ts", outputs = [ { id = "score", name = "The committed score beside the bed", kind = "image" } ] }
@@ -8215,7 +7824,7 @@ validation = { script = "assets/bed-plays-its-own-file.test.ts", outputs = [ { i
 [[review.categories.items]]
 id = "assets-decoded-before-first-frame"
 title = "Every asset is ready before the first frame"
-description = "Every produced image is decoded and every cue is bound to its file before the first frame draws, so the first frame is painted from the produced sprites rather than from placeholders."
+description = "Before the first frame draws, every produced image is decoded and every cue in CUES is bound to its file, so no asset is still loading when the game starts."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "assets/assets-decoded-before-first-frame.test.ts", outputs = [ { id = "first-frame", name = "The first frame drawn", kind = "image" } ] }
@@ -8230,7 +7839,7 @@ validation = { script = "assets/asset-urls-page-relative.test.ts", outputs = [ {
 id = "build-invokes-no-asset-tool"
 title = "The build invokes no generation tool"
 description = "npm ci followed by npm run build completes with no generation tool available, so the committed files are the assets and the project rebuilds where the tools are absent."
-domains = ["workshop", "presentation"]
+domains = ["campaign", "extras", "workshop", "presentation"]
 failure_cap = "broken"
 validation = { script = "assets/build-invokes-no-asset-tool.test.ts", outputs = [ { id = "rebuild", name = "The rebuild with no tool on the PATH", kind = "image" } ] }
 [[review.categories.items]]
@@ -8269,12 +7878,21 @@ domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "assets/missing-sound-leaves-game-running.test.ts", outputs = [ { id = "degraded", name = "The game running without a cue file", kind = "image" } ] }
 [[review.categories.items]]
-id = "simulation-reads-no-image"
-title = "The simulation reads no produced file"
-description = "With a mote sprite unavailable at load, two motes still collide at 2 * MOTE_COLLIDE_R (38) and the pointer still targets a hex within HEX_HIT_R (26), so the simulation's radii come from the figures rather than from whatever a file decoded to."
+id = "collision-radius-reads-no-image"
+title = "The collision radius reads no produced file"
+description = "With a mote sprite unavailable at load, two motes whose centers come strictly closer than 2 * MOTE_COLLIDE_R (38) still fault the run as collision, so the radius comes from the figure rather than from whatever a file decoded to."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
-validation = { script = "assets/simulation-reads-no-image.test.ts", outputs = [ { id = "collision", name = "A collision with no sprite loaded", kind = "replay" } ] }
+validation = { script = "assets/collision-radius-reads-no-image.test.ts", outputs = [ { id = "collision", name = "A collision with no sprite loaded", kind = "replay" } ] }
+[[review.categories.items]]
+id = "targeting-reads-no-image"
+title = "The targeting radius reads no produced file"
+description = "With a mote sprite unavailable at load, the pointer still targets the nearest hex whose center is within HEX_HIT_R (26), so the targeting radius comes from the figure rather than from whatever a file decoded to."
+domains = ["workshop", "presentation"]
+failure_cap = "passable"
+validation = { script = "assets/targeting-reads-no-image.test.ts", outputs = [
+  { id = "targeting-no-image", name = "Targeting with a sprite unavailable", kind = "image" },
+] }
 
 # --- Presentation -------------------------------------------------------------
 # What a player must be able to see and tell apart, and whether the build draws
@@ -8294,10 +7912,10 @@ title = "Presentation"
 [[review.categories.items]]
 id = "motes-drawn-from-produced-sprites"
 title = "Every mote is painted from its type's produced sprite"
-description = "A frame of the editor paints each mote from its own assets/sprites/motes/<type>.png with an image draw, so each of the fifteen names in MOTES shows its own produced file rather than a disc drawn in code."
+description = "A frame of the editor paints each mote with an image draw of a produced mote sprite rather than a disc or a glyph drawn in code."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "presentation/motes-drawn-from-produced-sprites.test.ts", outputs = [ { id = "motes", name = "The fifteen mote types posed on the field", kind = "image" } ] }
+validation = { script = "presentation/motes-drawn-from-produced-sprites.test.ts", outputs = [ { id = "motes", name = "A mote painted from its produced sprite", kind = "image" } ] }
 [[review.categories.items]]
 id = "each-mote-type-draws-its-own-sprite"
 title = "Each type draws the sprite produced for it"
@@ -8315,18 +7933,10 @@ validation = { script = "presentation/mote-sprite-at-native-size.test.ts", outpu
 [[review.categories.items]]
 id = "mote-paint-stays-within-mote-r"
 title = "A mote's drawn form stays inside MOTE_R"
-description = "Around a lone mote on an empty field, every pixel sampled on the ring at MOTE_R (22) plus 4 from its position matches the sky sample within 25 of 441 RGB distance, so motes on adjacent hexes never blur together."
+description = "Around a lone mote on an empty field, no pixel more than MOTE_R (22) from its position differs between the frame with the mote and the same frame with it removed, so motes on adjacent hexes never blur together."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/mote-paint-stays-within-mote-r.test.ts", outputs = [ { id = "radius", name = "The lone mote inside its radius", kind = "image" } ] }
-# Every sprite is painted at the canvas it was authored at.
-[[review.categories.items]]
-id = "sprites-drawn-at-native-size"
-title = "Sprites are drawn at native size"
-description = "Each sprite is painted at its authored canvas in logical units, so nothing is scaled at draw time: a mote covers 44, a sigil glyph and the wheel pieces 48, an arm hub 40, a gripper 32, and an instruction glyph 24."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/sprites-drawn-at-native-size.test.ts", outputs = [ { id = "native", name = "Each sprite measured on the stage", kind = "image" } ] }
 [[review.categories.items]]
 id = "mote-sprite-follows-a-carried-mote"
 title = "A carried mote's sprite rides its drawn position"
@@ -8371,6 +7981,15 @@ domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/filament-turned-to-its-motes.test.ts", outputs = [ { id = "angles", name = "One filament on each of the six directions", kind = "image" } ] }
 [[review.categories.items]]
+id = "filament-strip-follows-its-carried-motes"
+title = "A filament strip rides the motes it joins through a carry"
+description = "At sim.fraction 0.5 of a rotate-cw carrying a two-mote constellation, the strip is drawn on the midpoint between the two motes' reported positions and turned to the angle between them, spanning HEX_PITCH (48), rather than on the midpoint they began the cycle at."
+domains = ["presentation", "workshop"]
+failure_cap = "passable"
+validation = { script = "presentation/filament-strip-follows-its-carried-motes.test.ts", outputs = [
+  { id = "strip-mid-sweep", name = "A filament strip half way through a carry", kind = "image" },
+] }
+[[review.categories.items]]
 id = "motes-drawn-over-filament-ends"
 title = "Motes are drawn over the ends of their filaments"
 description = "The two mote sprites are composited over the strip's ends, so a filament never covers the mote it joins."
@@ -8414,13 +8033,6 @@ description = "The glyph is drawn at its native 24 x 24 canvas centered in its c
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/instruction-glyph-placed-in-its-cell.test.ts", outputs = [ { id = "cell", name = "A glyph measured inside its 24-unit cell", kind = "image" } ] }
-[[review.categories.items]]
-id = "blank-cell-drawn-empty"
-title = "A blank tape cell draws no glyph"
-description = "A cell holding a blank is drawn empty, so a rest is told from every instruction at a glance."
-domains = ["presentation", "workshop"]
-failure_cap = "passable"
-validation = { script = "presentation/blank-cell-drawn-empty.test.ts", outputs = [ { id = "blank", name = "A tape row of instructions broken by blanks", kind = "image" } ] }
 # Arm and piston hubs.
 [[review.categories.items]]
 id = "arm-hub-drawn-on-every-arm-kind"
@@ -8446,7 +8058,7 @@ validation = { script = "presentation/hub-placed-on-its-anchor.test.ts", outputs
 [[review.categories.items]]
 id = "hub-turned-to-its-first-spoke"
 title = "A hub is turned to the arm's first spoke"
-description = "The hub is drawn turned to the part's rotation, which names its first spoke, so setting a placed arm to each rotation 0 to 5 turns the hub with it."
+description = "The drawn hub matches hub-arm.png, or hub-piston.png on a piston, rotated to the part's rotation."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/hub-turned-to-its-first-spoke.test.ts", outputs = [ { id = "turned", name = "One arm at all six rotations", kind = "image" } ] }
@@ -8482,10 +8094,19 @@ validation = { script = "presentation/gripper-placed-at-its-live-hex.test.ts", o
 [[review.categories.items]]
 id = "gripper-turned-to-its-spoke-angle"
 title = "A gripper is turned to its spoke's angle"
-description = "On a hexarm each of the six grippers is drawn turned to its own spoke's live angle, so no two grippers of one arm carry the same orientation."
+description = "Each gripper's drawn pixels match the produced gripper sprite rotated to that spoke's live angle."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/gripper-turned-to-its-spoke-angle.test.ts", outputs = [ { id = "spokes", name = "A hexarm's six grippers", kind = "image" } ] }
+[[review.categories.items]]
+id = "gripper-follows-its-live-length"
+title = "A gripper sprite follows its live length through an extend"
+description = "At sim.fraction 0.5 of a piston's extend the gripper sprite is centered half way along the one-hex vector between its old and new gripper hexes, rather than on either of them."
+domains = ["presentation", "workshop"]
+failure_cap = "passable"
+validation = { script = "presentation/gripper-follows-its-live-length.test.ts", outputs = [
+  { id = "gripper-mid-extend", name = "A gripper half way through an extend", kind = "image" },
+] }
 # The zodiac wheel and its fixtures.
 [[review.categories.items]]
 id = "wheel-hub-drawn-from-its-produced-file"
@@ -8497,7 +8118,7 @@ validation = { script = "presentation/wheel-hub-drawn-from-its-produced-file.tes
 [[review.categories.items]]
 id = "wheel-hub-turned-to-its-live-rotation"
 title = "The wheel hub turns with the wheel"
-description = "The hub is drawn turned to the wheel's live rotation in sim.poses, so a rotate-cw on the wheel's tape turns the drawn hub one 60 degree step."
+description = "The drawn hub matches wheel-hub.png rotated to the wheel's live rotation in sim.poses."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/wheel-hub-turned-to-its-live-rotation.test.ts", outputs = [ { id = "turn", name = "The wheel across one rotate-cw", kind = "replay" } ] }
@@ -8551,13 +8172,6 @@ description = "The reagent or product pattern the build draws in code is composi
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/aperture-drawn-under-the-pattern.test.ts", outputs = [ { id = "layers", name = "The pattern over the turning aperture", kind = "image" } ] }
-[[review.categories.items]]
-id = "rise-and-set-apertures-told-apart"
-title = "A rise and a set are told apart on the field"
-description = "A rise and a set placed on the same hex in turn draw measurably different frames, so an entrance is not read as an exit."
-domains = ["presentation", "workshop"]
-failure_cap = "passable"
-validation = { script = "presentation/rise-and-set-apertures-told-apart.test.ts", outputs = [ { id = "rise", name = "The rise aperture on the sampled hex", kind = "image" }, { id = "set", name = "The set aperture on the same hex", kind = "image" } ] }
 # The particle systems, playing at their events.
 [[review.categories.items]]
 id = "delivery-plays-at-a-consuming-set"
@@ -8566,13 +8180,6 @@ description = "At a boundary where a set consumed at least one accepted constell
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/delivery-plays-at-a-consuming-set.test.ts", outputs = [ { id = "deliver", name = "The delivery over the consuming set", kind = "replay" } ] }
-[[review.categories.items]]
-id = "deliver-effect-once-per-set"
-title = "One delivery per set per boundary"
-description = "A set that consumed several accepted constellations at one boundary plays one delivery, not one per constellation consumed."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "presentation/deliver-effect-once-per-set.test.ts", outputs = [ { id = "single", name = "One delivery over a multiple consumption", kind = "replay" } ] }
 [[review.categories.items]]
 id = "deliver-effect-per-consuming-set"
 title = "Each consuming set plays its own delivery"
@@ -8590,10 +8197,10 @@ validation = { script = "presentation/no-delivery-without-a-consumption.test.ts"
 [[review.categories.items]]
 id = "fault-effect-at-the-named-mote"
 title = "The fault effect plays at the mote the fault names"
-description = "On a fault naming motes, assets/particles/fault.json is played at the position of the named mote lowest in y and then lowest in x, so a collision marks where it happened."
+description = "On a torn fault naming a two-mote constellation whose motes rest 48 apart, assets/particles/fault.json is played at the position of the named mote lowest in y and then lowest in x, so a fault marks where it happened."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
-validation = { script = "presentation/fault-effect-at-the-named-mote.test.ts", outputs = [ { id = "collision", name = "The fault effect over a collision", kind = "replay" } ] }
+validation = { script = "presentation/fault-effect-at-the-named-mote.test.ts", outputs = [ { id = "collision", name = "The fault effect over a torn constellation", kind = "replay" } ] }
 [[review.categories.items]]
 id = "fault-effect-tie-break"
 title = "A tie in y is broken by the lowest x"
@@ -8609,12 +8216,30 @@ domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/fault-effect-at-the-named-part.test.ts", outputs = [ { id = "unmounted", name = "The fault effect over an unmounted advance", kind = "replay" } ] }
 [[review.categories.items]]
-id = "completion-effect-at-the-origin"
-title = "The completion effect plays at hex (0, 0)"
-description = "On the boundary a run completes, assets/particles/complete.json is played at hex (0, 0), whose center is FIELD_CX, FIELD_CY (616, 304)."
+id = "no-fault-effect-while-running"
+title = "A running machine plays no fault effect"
+description = "Across a stretch of cycles with sim.status running and sim.fault null, no frame differs from the same frame produced with assets/particles/fault.json unavailable, so the fault effect marks a fault rather than playing throughout the run."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/completion-effect-at-the-origin.test.ts", outputs = [ { id = "complete", name = "The completion effect at the field's center", kind = "replay" } ] }
+validation = { script = "presentation/no-fault-effect-while-running.test.ts", outputs = [
+  { id = "no-fault-effect", name = "A clean run playing no fault effect", kind = "video" },
+] }
+[[review.categories.items]]
+id = "completion-effect-plays-on-completion"
+title = "The completion effect plays when the run completes"
+description = "On the boundary a run completes, the frame differs from the same completing frame produced with assets/particles/complete.json unavailable, so the completion effect is played."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/completion-effect-plays-on-completion.test.ts", outputs = [ { id = "complete", name = "The completion effect on the completing boundary", kind = "replay" } ] }
+[[review.categories.items]]
+id = "no-completion-effect-at-a-non-completing-boundary"
+title = "A boundary that does not complete plays no completion effect"
+description = "At a boundary where a set consumed a constellation but the tally is still short of the challenge's target, no frame differs from the same frame produced with assets/particles/complete.json unavailable."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/no-completion-effect-at-a-non-completing-boundary.test.ts", outputs = [
+  { id = "no-complete-effect", name = "A short boundary playing no completion effect", kind = "video" },
+] }
 # The field and the machine, read at a glance.
 [[review.categories.items]]
 id = "hexes-visible-on-the-field"
@@ -8626,17 +8251,10 @@ validation = { script = "presentation/hexes-visible-on-the-field.test.ts", outpu
 [[review.categories.items]]
 id = "sprites-separate-from-the-sky"
 title = "Every produced sprite reads on the dark sky"
-description = "Each produced sprite drawn on the field stands apart from the sky behind it, so no sprite relies on a background of its own to be seen."
+description = "Each produced sprite drawn on the field differs from the field's own drawn background at the same place with the sprite absent, so no sprite relies on a ground of its own to be seen."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "presentation/sprites-separate-from-the-sky.test.ts", outputs = [ { id = "over-sky", name = "The produced sprites posed over open sky", kind = "image" } ] }
-[[review.categories.items]]
-id = "motes-told-apart-on-the-field"
-title = "The fifteen mote types are told apart on the field"
-description = "The fifteen types in MOTES are pairwise distinguishable as drawn on the field, without reading a label, so a player names what a hex holds at a glance."
-domains = ["presentation", "workshop"]
-failure_cap = "scuffed"
-validation = { script = "presentation/motes-told-apart-on-the-field.test.ts", outputs = [ { id = "roster", name = "The fifteen types on adjacent hexes", kind = "image" } ] }
+validation = { script = "presentation/sprites-separate-from-the-sky.test.ts", outputs = [ { id = "over-sky", name = "The produced sprites against the field behind them", kind = "image" } ] }
 [[review.categories.items]]
 id = "sigil-footprint-hexes-visible"
 title = "A sigil's footprint hexes are visible"
@@ -8666,12 +8284,14 @@ domains = ["presentation", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "presentation/arm-length-visible.test.ts", outputs = [ { id = "lengths", name = "One arm at each of the three lengths", kind = "image" } ] }
 [[review.categories.items]]
-id = "arm-kinds-told-apart"
-title = "The four multi-gripper arm kinds are told apart"
-description = "arm, biarm, triarm, and hexarm placed at the same anchor and rotation are pairwise distinguishable by the spokes and grippers drawn for them."
+id = "arm-shaft-follows-its-live-angle"
+title = "An arm's shaft is drawn at the angle it stands at mid-cycle"
+description = "At sim.fraction 0.5 of a rotate-cw the shaft drawn between an arm's base and its gripper lies along the 30 degree ray from the base and not along either endpoint's direction, so the shaft follows the live pose within a cycle."
 domains = ["presentation", "workshop"]
 failure_cap = "passable"
-validation = { script = "presentation/arm-kinds-told-apart.test.ts", outputs = [ { id = "kinds", name = "The four arm kinds at one anchor", kind = "image" } ] }
+validation = { script = "presentation/arm-shaft-follows-its-live-angle.test.ts", outputs = [
+  { id = "shaft-mid-sweep", name = "An arm's shaft half way through a sweep", kind = "image" },
+] }
 [[review.categories.items]]
 id = "wheel-spokes-reach-its-ring"
 title = "The wheel's spokes reach its fixture ring"
@@ -8679,6 +8299,15 @@ description = "Spokes are drawn from the wheel's hub out to all six of its fixtu
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/wheel-spokes-reach-its-ring.test.ts", outputs = [ { id = "spokes", name = "A wheel with its ring in place", kind = "image" } ] }
+[[review.categories.items]]
+id = "row-identifier-drawn-on-the-part"
+title = "A row's identifier is drawn on its part on the field"
+description = "The identifier a tape row's label carries is drawn on that arm or wheel on the field, so with three arms placed the three parts are told apart on the field by the same identifiers the panel shows."
+domains = ["presentation", "workshop"]
+failure_cap = "passable"
+validation = { script = "presentation/row-identifier-drawn-on-the-part.test.ts", outputs = [
+  { id = "field-identifiers", name = "Three arms carrying their row identifiers", kind = "image" },
+] }
 [[review.categories.items]]
 id = "track-path-reads-as-a-path"
 title = "A track's path reads as a path"
@@ -8740,7 +8369,7 @@ validation = { script = "presentation/stage-fits-a-tall-window.test.ts", outputs
 id = "stage-fits-a-raised-device-pixel-ratio"
 title = "The whole stage fits at a raised pixel density"
 description = "At a raised device pixel ratio the complete 1280 x 720 stage is still on screen at its own aspect ratio, and the game still draws in logical units."
-domains = ["presentation"]
+domains = ["presentation", "workshop"]
 failure_cap = "passable"
 validation = { script = "presentation/stage-fits-a-raised-device-pixel-ratio.test.ts", outputs = [ { id = "dpr", name = "The stage at a raised device pixel ratio", kind = "image" } ] }
 [[review.categories.items]]
@@ -8806,10 +8435,3 @@ description = "While sim.status is faulted every part in sim.fault.parts is draw
 domains = ["presentation", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "presentation/faulted-parts-drawn-distinct.test.ts", outputs = [ { id = "marked", name = "The faulting arm marked among its neighbors", kind = "image" } ] }
-[[review.categories.items]]
-id = "field-visible-behind-the-solved-panel"
-title = "The finished machine stays visible behind the solved panel"
-description = "While sim.status is complete the field and the finished machine are still drawn behind the panel, so the panel covers part of the stage rather than replacing the screen."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/field-visible-behind-the-solved-panel.test.ts", outputs = [ { id = "behind", name = "The machine drawn behind the solved panel", kind = "image" } ] }

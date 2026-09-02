@@ -26,7 +26,8 @@ Every challenge of the course satisfies all of the following:
   distinct from every other challenge's in the course.
 - It is solvable: the build ships a reference solution for it, in the
   solution format, that is legal, places every rise and set, and whose run
-  completes without faulting. The reference solutions are part of the build
+  completes without faulting within `CAMPAIGN_REFERENCE_CYCLES` (`600`)
+  cycles of the run's start. The reference solutions are part of the build
   and are reachable only through the surface `specs/instrumentation.md`
   defines.
 - Difficulty rises across the course. The reference solution for challenge
