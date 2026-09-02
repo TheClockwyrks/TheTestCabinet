@@ -31,7 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual } from "../assert";
-import { SONAR_RANGE_BASE } from "../../src/constants";
+import { SONAR_RANGE_BASE } from "../constants";
 import { poseMaze } from "../fixtures";
 import {
   captureStill,

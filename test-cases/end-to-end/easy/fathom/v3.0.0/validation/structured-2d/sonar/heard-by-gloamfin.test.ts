@@ -42,7 +42,7 @@ import {
   assertLessThanOrEqual,
   fail,
 } from "../assert";
-import { GLOAMFIN_HEAR, SONAR_WAVE_SPEED, TICK_HZ } from "../../src/constants";
+import { GLOAMFIN_HEAR, SONAR_WAVE_SPEED, TICK_HZ } from "../constants";
 import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,

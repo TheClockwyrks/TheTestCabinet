@@ -42,7 +42,7 @@ import {
   SONAR_MARK_TIME,
   SONAR_WAVE_SPEED,
   TICK_HZ,
-} from "../../src/constants";
+} from "../constants";
 import { poseSonarSense, spawnPredator } from "../fixtures";
 import {
   captureReplay,
