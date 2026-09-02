@@ -23,11 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ROCK_SPEED_MAX, ROCK_SPEED_MIN } from "../../src/constants";
-import {
-  assertBetween,
-  assertEqual,
-  assertGreaterThan,
-} from "../assert";
+import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,

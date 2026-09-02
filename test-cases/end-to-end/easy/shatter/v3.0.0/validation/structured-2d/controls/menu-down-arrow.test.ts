@@ -101,15 +101,11 @@ it("moves the highlight down by one entry when ArrowDown is pressed on a menu", 
     "the entries specs/ui.md gives the pause menu, which this item's two " +
       "figures rest on",
   );
-  assertEqual(
-    quiet.screen,
-    "paused",
-    "the screen the menu was posed on",
-  );
+  assertEqual(quiet.screen, "paused", "the screen the menu was posed on");
   assertEqual(
     pressed.screen,
     "paused",
-    `the screen still showing after one press of ${KEY} — a menu input `+
+    `the screen still showing after one press of ${KEY} — a menu input ` +
       "moves the highlight and does nothing else, so a build that leaves " +
       "the pause menu on it has answered the wrong action " +
       "(specs/controls.md, specs/ui.md)",
