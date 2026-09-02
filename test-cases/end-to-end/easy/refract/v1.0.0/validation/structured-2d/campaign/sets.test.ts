@@ -10,8 +10,8 @@
 // here. Where exactly a label sits beside its row is the build's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SET_LABELS } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { SET_LABELS } from "../constants";
 import {
   captureStill,
   createHarness,

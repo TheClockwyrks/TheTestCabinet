@@ -12,7 +12,7 @@
 // third time. Every board stays unlocked and solved throughout.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CAMPAIGN_LENGTH } from "../../src/constants";
+import { CAMPAIGN_LENGTH } from "../notation";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
