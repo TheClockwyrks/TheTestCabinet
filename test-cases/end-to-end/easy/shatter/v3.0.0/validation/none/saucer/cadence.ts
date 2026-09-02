@@ -7,8 +7,9 @@
 // this group therefore wants the same three things — open a game with the game's
 // own arrival running, catch the next arrival, catch the next shot — and each of
 // them is a compound the debug surface deliberately does not carry, so it is built
-// once here. The last section holds what a WAIT costs when it is measured in tens
-// of thousands of ticks, which two of these checks are.
+// once here. Each of those waits is measured in thousands of ticks and reads a
+// handful of numbers, so each is swept inside the page rather than a round trip at
+// a time; the section under `Sweeps that run inside the page` says why.
 //
 // IT LIVES IN THE GROUP RATHER THAN IN `../harness.ts` because nothing outside
 // `saucer` waits on the saucer's cadence: every other group that wants a saucer
@@ -61,19 +62,36 @@ export async function openSaucerGame(h: Harness, seed?: number): Promise<void> {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Catching an arrival                                                         */
+/* Sweeps that run inside the page                                             */
 /* -------------------------------------------------------------------------- */
-
-/** How long a wait for an arrival runs before the scenario is declared unreachable. */
-const ARRIVAL_CEILING_TICKS = ticksFor(90);
-
-/** What a caught arrival is: the saucer as first seen, and when it was seen. */
-export interface Arrival {
-  saucer: SaucerView;
-  /** Ticks of game time from the start of the wait to the sample that caught it. */
-  ticks: number;
-  snapshot: ShatterSnapshot;
-}
+//
+// THE SAUCER'S SCENARIOS READ A LOT OF TICKS AND ALMOST NOTHING OFF EACH ONE.
+// `at-most-one-at-a-time` needs the reported saucer id on EVERY tick of two minutes
+// of game time — 14 400 of them — because what it is looking for is the tick
+// reporting no saucer between two visits, and a stride that stepped over that tick
+// would fail a conformant build. `avoids-the-core` needs the saucer's centre every
+// eight ticks of fifty-four crossings. The three aim items need the tick each of
+// sixty shots was fired on. And every wait for an arrival covers eighteen to
+// thirty-five seconds of game time to read one id.
+//
+// A CROSSING INTO THE PAGE PER SAMPLE IS WHAT COSTS, NOT THE TICKS. The simulation
+// runs twelve thousand ticks in a handful of milliseconds; a round trip to ask for
+// the state after each one costs a few milliseconds each, and on a host running a
+// model's build under the suite it costs several times that. Sampled that way,
+// these checks run for minutes and are decided by how loaded the machine was,
+// which is not a verdict about a build.
+//
+// SO THE LOOP GOES WHERE THE STATE IS. Every `trace` helper in this file calls the
+// BUILD'S OWN `advance` and the BUILD'S OWN `snapshot()` — the same two operations
+// {@link Harness.skip} and {@link Harness.snapshot} call, in the same order, at the
+// same stride, stopping on the same sample — and returns only what the check reads.
+// Nothing is simulated here, nothing is posed here, and no tick is fabricated: what
+// is saved is the round trip and nothing else. Every other check in this group
+// drives through the harness, because every other check reads few enough samples to
+// pay for them.
+//
+// A build whose surface cannot answer is reported as the surface fault it is,
+// rather than as an exception thrown out of the page.
 
 /** What a page-side sweep hands back: what it read, or why it could not read. */
 interface Traced<T> {
@@ -87,6 +105,21 @@ function requireTrace<T>(traced: Traced<T>): T {
     failSurface(traced.fault ?? "the surface answered a sweep with nothing");
   }
   return traced.read;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Catching an arrival                                                         */
+/* -------------------------------------------------------------------------- */
+
+/** How long a wait for an arrival runs before the scenario is declared unreachable. */
+const ARRIVAL_CEILING_TICKS = ticksFor(90);
+
+/** What a caught arrival is: the saucer as first seen, and when it was seen. */
+export interface Arrival {
+  saucer: SaucerView;
+  /** Ticks of game time from the start of the wait to the sample that caught it. */
+  ticks: number;
+  snapshot: ShatterSnapshot;
 }
 
 /**
@@ -170,14 +203,10 @@ export async function nextArrival(
 ): Promise<Arrival> {
   const stride = options.stride ?? 1;
   const maxTicks = options.maxTicks ?? ARRIVAL_CEILING_TICKS;
-  // THE SWEEP RUNS INSIDE THE PAGE, for the reason the section below states at
-  // length. A wait for an arrival covers eighteen to thirty-five seconds of game
-  // time and reads one id off each sample, so at any stride the cost is round
-  // trips rather than ticks: sixteen arrivals under four seeds is nine hundred
-  // crossings, and on a host also running a model's build that is what decides
-  // how long these items take. The loop calls the BUILD's own `advance` and the
-  // BUILD's own `snapshot()`, in the same order and at the same stride a sweep
-  // through the harness calls them, and stops on the same sample.
+  // THE SWEEP RUNS INSIDE THE PAGE, for the reason the section above states at
+  // length: sixteen arrivals under four seeds is nine hundred round trips, and on
+  // a host also running a model's build that is what decides how long these items
+  // take.
   const found = await traceNextArrival(h, afterId, stride, maxTicks);
   if (!found.hit) {
     fail(
@@ -288,8 +317,8 @@ export async function nextVolley(
 
   if (leadIn > 0) await h.skip(leadIn);
 
-  // THE SWEEP RUNS INSIDE THE PAGE, for the reason the section below this one
-  // states at length: a tick at a time is the only sampling that cannot step over
+  // THE SWEEP RUNS INSIDE THE PAGE, for the reason the section above states at
+  // length: a tick at a time is the only sampling that cannot step over
   // a shot, and a crossing per tick makes what the three aim items cost a fact
   // about the host rather than about the build. The loop calls the BUILD's own
   // `advance(1)` and the BUILD's own `snapshot()`, in the same order a sweep
@@ -336,36 +365,6 @@ export async function sampleEvery(
   });
   return swept.hit;
 }
-
-/* -------------------------------------------------------------------------- */
-/* Sampling that runs inside the page                                          */
-/* -------------------------------------------------------------------------- */
-//
-// TWO CHECKS IN THIS GROUP READ A LOT OF TICKS AND ALMOST NOTHING OFF EACH ONE.
-// `at-most-one-at-a-time` needs the reported saucer id on EVERY tick of two minutes
-// of game time — 14 400 of them — because what it is looking for is the tick
-// reporting no saucer between two visits, and a stride that stepped over that tick
-// would fail a conformant build. `avoids-the-core` needs the saucer's centre every
-// eight ticks of fifty-four crossings. Neither reads anything else, and both are
-// measured in tens of thousands of ticks.
-//
-// A CROSSING INTO THE PAGE PER SAMPLE IS WHAT COSTS, NOT THE TICKS. The simulation
-// runs twelve thousand ticks in a handful of milliseconds; a round trip to ask for
-// the state after each one costs a few milliseconds each, and on a host running a
-// model's build under the suite it costs several times that. Sampled that way,
-// those two checks run for minutes and are decided by how loaded the machine was,
-// which is not a verdict about a build.
-//
-// SO THE LOOP GOES WHERE THE STATE IS. Both helpers below call the BUILD'S OWN
-// `advance(1)` and the BUILD'S OWN `snapshot()` — the same two operations
-// {@link Harness.skip} and {@link Harness.snapshot} call, in the same order — and
-// return only the handful of numbers the check reads. Nothing is simulated here,
-// nothing is posed here, and no tick is fabricated: what is saved is the round
-// trip and nothing else. Every other check in this group drives through the
-// harness, because every other check reads few enough samples to pay for them.
-//
-// A build whose surface cannot answer is reported as the surface fault it is,
-// rather than as an exception thrown out of the page.
 
 /** Every moment the reported saucer id changed, and what it changed to. */
 export interface VisitTrace {

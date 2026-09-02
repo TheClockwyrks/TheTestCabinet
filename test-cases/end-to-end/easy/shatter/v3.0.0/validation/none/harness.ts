@@ -2705,12 +2705,12 @@ function clearCalls(torpedoes: boolean): SurfaceCall[] {
  * It poses no rock, no bullet and no saucer: a check adds exactly what its
  * requirement concerns.
  *
- * THE WHOLE POSE IS ONE CROSSING. Nineteen atomic operations in the order above,
- * handed over together ({@link Harness.batch}) rather than nineteen round trips
- * into the page. Every suite in this project opens with this, so what it costs is
- * paid two hundred and seven times a run, on a host that is also running a model's
- * build; and since the game is off the wall clock throughout, a build cannot tell
- * the two apart.
+ * THE WHOLE POSE IS ONE CROSSING. Eighteen atomic operations on a `base` build and
+ * twenty on `warhead`, in the order above, handed over together
+ * ({@link Harness.batch}) rather than one round trip into the page apiece. Nearly
+ * every scenario in this project opens with this, so what it costs is paid a couple
+ * of hundred times a run on a host that is also running a model's build; and since
+ * the game is off the wall clock throughout, a build cannot tell the two apart.
  */
 export async function startPlaying(
   h: Harness,
