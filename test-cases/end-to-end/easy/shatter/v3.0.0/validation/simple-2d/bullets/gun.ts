@@ -25,7 +25,7 @@
 // NO THRESHOLD LIVES HERE. What counts as the nose, and how near the launch
 // velocity must fall to the specified vector, are each check's own figures.
 
-import { TICK_DT } from "../../src/constants";
+import { TICK_DT } from "../constants";
 import { separation, wrap, type Point } from "../geometry";
 import { keyFor, type Harness } from "../harness";
 

@@ -46,7 +46,7 @@
 // neither reading is clipped where the other is not.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BULLET_R, TICK_DT, TRAIL_TICKS } from "../../src/constants";
+import { BULLET_R, TICK_DT, TRAIL_TICKS } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import {
   captureReplay,

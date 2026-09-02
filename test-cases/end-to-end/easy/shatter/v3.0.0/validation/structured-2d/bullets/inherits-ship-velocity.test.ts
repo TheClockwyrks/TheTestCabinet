@@ -30,7 +30,7 @@
 // than on the sum.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP, MUZZLE_SPEED } from "../../src/constants";
+import { FACE_UP, MUZZLE_SPEED } from "../constants";
 import { assertCloseTo, assertLength, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

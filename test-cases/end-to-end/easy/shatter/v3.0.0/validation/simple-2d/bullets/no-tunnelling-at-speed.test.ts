@@ -49,7 +49,7 @@ import {
   ROCK_RADIUS,
   SHIP_MAX,
   TICK_DT,
-} from "../../src/constants";
+} from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureReplay,

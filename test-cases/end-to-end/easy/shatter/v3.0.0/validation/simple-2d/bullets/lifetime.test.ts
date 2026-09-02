@@ -32,7 +32,7 @@
 // rounds no interaction at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BULLET_LIFE, MUZZLE_SPEED, STAR_X } from "../../src/constants";
+import { BULLET_LIFE, MUZZLE_SPEED, STAR_X } from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,

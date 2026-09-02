@@ -43,7 +43,7 @@
 // Every one of those is outside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL_TICKS, TICK_HZ } from "../../src/constants";
+import { FIRE_INTERVAL_TICKS, TICK_HZ } from "../constants";
 import { assertBetween } from "../assert";
 import {
   captureStill,

@@ -28,7 +28,7 @@
 // the reading that is `0.17` units per second, one sixtieth of the bound.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, MUZZLE_SPEED } from "../../src/constants";
+import { DEG, MUZZLE_SPEED } from "../constants";
 import { assertCloseTo, assertLength, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

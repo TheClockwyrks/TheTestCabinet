@@ -39,12 +39,7 @@
 // band is read four units either side of the lane rather than on one row.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BULLET_R,
-  MUZZLE_SPEED,
-  TICK_DT,
-  TRAIL_TICKS,
-} from "../../src/constants";
+import { BULLET_R, MUZZLE_SPEED, TICK_DT, TRAIL_TICKS } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { reachAlong, trailLane, type ReachOptions } from "./lane";

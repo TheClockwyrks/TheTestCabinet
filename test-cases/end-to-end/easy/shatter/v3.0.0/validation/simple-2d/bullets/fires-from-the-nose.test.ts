@@ -30,7 +30,7 @@
 // reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, SHIP_R } from "../../src/constants";
+import { DEG, SHIP_R } from "../constants";
 import {
   assertGreaterThan,
   assertLength,

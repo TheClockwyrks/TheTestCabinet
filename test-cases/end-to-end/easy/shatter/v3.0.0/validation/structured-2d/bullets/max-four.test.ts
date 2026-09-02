@@ -30,11 +30,7 @@
 // core over the span it is measured across.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FIRE_INTERVAL_TICKS,
-  MAX_BULLETS,
-  MUZZLE_SPEED,
-} from "../../src/constants";
+import { FIRE_INTERVAL_TICKS, MAX_BULLETS, MUZZLE_SPEED } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

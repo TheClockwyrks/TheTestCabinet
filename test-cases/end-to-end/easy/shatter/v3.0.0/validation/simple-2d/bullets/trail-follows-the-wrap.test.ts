@@ -53,7 +53,7 @@ import {
   MUZZLE_SPEED,
   TICK_DT,
   TRAIL_TICKS,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertGreaterThan,
   assertLessThan,
