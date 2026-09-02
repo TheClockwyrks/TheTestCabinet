@@ -37,11 +37,15 @@
 //     speed. Drag can only ever take speed away (`specs/ship.md`), so a rise is
 //     thrust that never stopped.
 //
-// THE RATE IS NOT THE REQUIREMENT. `flight/thrust-accelerates` decides that a
-// second of thrust from rest leaves the ship at `SHIP_THRUST` less drag, within
-// five percent, and `flight/thrust-along-facing` decides the direction it acts in.
-// Asserting either here would cost one build two items for one fault, so what this
-// asserts is that the key moved a ship that was standing still.
+// THE RATE IS NOT THE REQUIREMENT, BUT A FLOOR IS. `flight/thrust-accelerates`
+// decides that a second of thrust from rest leaves the ship at `SHIP_THRUST` less
+// drag, within five percent, and `flight/thrust-along-facing` decides the
+// direction it acts in. Asserting either here would cost one build two items for
+// one fault. So what this asserts about the size of the burn is a floor HALF of
+// it (`THRUST_FLOOR`): a build near the stated acceleration clears it by nearly a
+// factor of two, while a build that merely moved a ship that was standing still —
+// which is all a bare `AT_REST` reading would ask, and which the check's own
+// rounding allowance for the QUIET lead already grants — does not.
 //
 // WHAT THIS DOES NOT DECIDE. The acceleration figure, the direction thrust acts
 // in, the drag that bleeds the coast off (`flight/drag-halves-in-three-seconds`),
@@ -78,7 +82,25 @@ const ACROSS_THE_FIELD = 0;
 const LEAD_TICKS = ticksFor(0.25);
 
 /** The burn, in ticks: half a second of held thrust. */
-const HOLD_TICKS = ticksFor(0.5);
+const HOLD_SECONDS = 0.5;
+const HOLD_TICKS = ticksFor(HOLD_SECONDS);
+/**
+ * The least speed the burn must reach, in units per second.
+ *
+ * HALF of what `SHIP_THRUST` (`480` units per second squared) is worth over the
+ * held span before drag takes its share — the drag `specs/ship.md` fixes
+ * (`SHIP_DRAG_HALFLIFE`, `3.0` seconds) leaves about ninety-five per cent of it —
+ * so a build within the five per cent `flight/thrust-accelerates` allows clears
+ * this by nearly a factor of two, and a build that merely nudged the ship does
+ * not.
+ *
+ * WHY NOT `AT_REST`. Reading only that the ship is no longer standing still is met
+ * by a build with no such binding at all: a hundredth of a unit per second is the
+ * allowance this same check makes for the QUIET lead, so a ship that never
+ * thrusts and merely rounds its velocity satisfies both halves. The floor is what
+ * makes the reading mean "the key accelerated the ship".
+ */
+const THRUST_FLOOR = 0.5 * SHIP_THRUST * HOLD_SECONDS;
 
 /** The coast driven after the key comes up, in ticks. */
 const COAST_TICKS = ticksFor(0.25);
@@ -141,7 +163,7 @@ it("accelerates the ship while ArrowUp is held, and stops thrusting on release",
   );
   assertGreaterThan(
     burn.ended,
-    AT_REST,
+    THRUST_FLOOR,
     `the ship's speed in units per second after ${String(HOLD_TICKS)} ticks ` +
       `with ${KEY} held, from a standstill — ArrowUp drives the up action, ` +
       "which thrusts while the game is being played (specs/controls.md), and " +

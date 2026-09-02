@@ -27,10 +27,15 @@
 // clear of the star, and the star never pulls the ship (`specs/ship.md`) so
 // nothing else touches its velocity.
 //
-// THE RATE IS NOT THE REQUIREMENT. `flight/thrust-accelerates` decides the figure
-// and `flight/thrust-along-facing` the direction; asserting either here would cost
-// one build two items for one fault. What this asserts is that the key moved a
-// ship that was standing still, and that the build reported thrust while it did.
+// THE RATE IS NOT THE REQUIREMENT, BUT A FLOOR IS. `flight/thrust-accelerates`
+// decides the figure and `flight/thrust-along-facing` the direction; asserting
+// either here would cost one build two items for one fault. So what this asserts
+// about the size of the burn is a floor HALF of it (`THRUST_FLOOR`), which a
+// build near the stated acceleration clears by nearly a factor of two. A bare
+// reading that the key moved a ship that was standing still would not do: the
+// allowance this same check makes for the QUIET lead is a hundredth of a unit per
+// second, so a build with no `KeyW` binding whose velocity merely rounds would
+// satisfy it. The build reporting thrust while it burned is the item's too.
 //
 // WHAT THIS DOES NOT DECIDE. The acceleration figure, the direction thrust acts
 // in, that thrust stops on release (`controls/thrust-up`, whose item states that
@@ -38,6 +43,7 @@
 // itself.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { SHIP_THRUST } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -65,7 +71,25 @@ const ACROSS_THE_FIELD = 0;
 const LEAD_TICKS = ticksFor(0.25);
 
 /** The burn, in ticks: half a second of held thrust, as its arrow twin burns. */
-const HOLD_TICKS = ticksFor(0.5);
+const HOLD_SECONDS = 0.5;
+const HOLD_TICKS = ticksFor(HOLD_SECONDS);
+/**
+ * The least speed the burn must reach, in units per second.
+ *
+ * HALF of what `SHIP_THRUST` (`480` units per second squared) is worth over the
+ * held span before drag takes its share — the drag `specs/ship.md` fixes
+ * (`SHIP_DRAG_HALFLIFE`, `3.0` seconds) leaves about ninety-five per cent of it —
+ * so a build within the five per cent `flight/thrust-accelerates` allows clears
+ * this by nearly a factor of two, and a build that merely nudged the ship does
+ * not.
+ *
+ * WHY NOT `AT_REST`. Reading only that the ship is no longer standing still is met
+ * by a build with no such binding at all: a hundredth of a unit per second is the
+ * allowance this same check makes for the QUIET lead, so a ship that never
+ * thrusts and merely rounds its velocity satisfies both halves. The floor is what
+ * makes the reading mean "the key accelerated the ship".
+ */
+const THRUST_FLOOR = 0.5 * SHIP_THRUST * HOLD_SECONDS;
 
 /**
  * The speed a ship posed at rest may report, in units per second.
@@ -114,7 +138,7 @@ it("accelerates the ship while KeyW is held", async () => {
   );
   assertGreaterThan(
     burn.ended,
-    AT_REST,
+    THRUST_FLOOR,
     `the ship's speed in units per second after ${String(HOLD_TICKS)} ticks ` +
       `with ${KEY} held, from a standstill — KeyW drives the same up action ` +
       "ArrowUp does (specs/controls.md), which thrusts while the game is being " +

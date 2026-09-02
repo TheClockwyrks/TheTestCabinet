@@ -8,7 +8,7 @@
 // along the current facing" — and says the ship has no reverse thruster, so the
 // acceleration goes ALONG the facing and never against it.
 //
-// THE KEY IS A REAL ONE. `holdFor` dispatches a `KeyboardEvent`-shaped event at the
+// THE KEY IS A REAL ONE. The hold dispatches a `KeyboardEvent`-shaped event at the
 // very event target the engine attached its own `keydown` and `keyup` listeners to,
 // which the engine's input contract states drives an action exactly as a player's
 // key does. Under this engine `specs/controls.md` puts the keyboard on the engine's
@@ -43,6 +43,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { BINDINGS, SHIP_THRUST, TICK_DT } from "../../src/constants";
 import {
   assertContains,
+  assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
@@ -54,7 +55,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { alongFacing, holdFor } from "./drive";
+import { alongFacing } from "./drive";
 
 /** The key this item decides, and the action `specs/controls.md` binds it to. */
 const KEY = "ArrowUp";
@@ -76,6 +77,26 @@ const HOLD_TICKS = ticksFor(HOLD_SECONDS);
  * this one's.
  */
 const THRUST_FLOOR = 0.5 * SHIP_THRUST * HOLD_SECONDS;
+
+/** The quiet stretch driven before the key goes down, in ticks. */
+const LEAD_TICKS = ticksFor(0.25);
+
+/**
+ * The speed a ship posed at rest may report over that quiet stretch, in units per
+ * second.
+ *
+ * `startPlaying` leaves the velocity at exactly `(0, 0)`, and `specs/ship.md`
+ * leaves nothing but thrust able to add to it — drag multiplies, and the star
+ * never pulls the ship — so a ship with no thrust key down stays at exactly rest.
+ * A hundredth of a unit per second is the allowance for a build that carries its
+ * velocity through a rounding of its own.
+ *
+ * WHY THE LEAD IS READ AT ALL. Without it, a build that accelerates the ship of
+ * its own accord and never binds this key satisfies the burn below: the speed
+ * along the facing has the required size for reasons that have nothing to do with
+ * ArrowUp.
+ */
+const AT_REST = 0.01;
 
 /** Ticks with nothing held after the key comes up. */
 const COAST_TICKS = ticksFor(0.5);
@@ -138,13 +159,36 @@ it("accelerates the ship along its facing while ArrowUp is held, and stops on re
   h.debug.setShipAngle(FACE_ACROSS);
   const posed = h.snapshot();
 
-  await holdFor(h, KEY, HOLD_TICKS);
-  const thrust = h.snapshot();
+  await h.advance(LEAD_TICKS);
+  const led = h.snapshot();
+
+  h.hold(KEY);
+  const thrust = await (async () => {
+    try {
+      await h.advance(HOLD_TICKS);
+      return h.snapshot();
+    } finally {
+      h.release(KEY);
+    }
+  })();
   captureStill(h, "thrust");
 
   await h.advance(COAST_TICKS);
   const coasted = h.snapshot();
 
+  assertLessThanOrEqual(
+    speedOf(led.ship),
+    AT_REST,
+    `the ship's speed in units per second after ${String(LEAD_TICKS)} ticks ` +
+      `with no key down, before the hold — a ship posed at rest stays at rest ` +
+      `(specs/ship.md)`,
+  );
+  assertEqual(
+    led.ship.thrusting,
+    false,
+    `whether the build reported thrust on the tick before ${KEY} went down — ` +
+      `thrust is applied only while the key is held (specs/controls.md)`,
+  );
   assertGreaterThan(
     alongFacing(thrust.ship, posed.ship.angle),
     THRUST_FLOOR,
@@ -154,5 +198,12 @@ it("accelerates the ship along its facing while ArrowUp is held, and stops on re
     speedOf(coasted.ship),
     speedOf(thrust.ship) + STOPPED_TOL,
     "the ship's speed half a second after ArrowUp came up",
+  );
+  assertEqual(
+    thrust.ship.thrusting,
+    true,
+    `the build's own thrusting flag on the last tick of the ${KEY} hold — ` +
+      `thrust is applied for as long as the key is down (specs/controls.md), ` +
+      `and specs/ui.md keys the drawn flame and the held cue off this field`,
   );
 });

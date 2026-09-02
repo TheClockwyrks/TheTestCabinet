@@ -24,8 +24,8 @@
 // `controls/rotate-left-arrow`, where `specs/controls.md`'s hold rule is graded.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLessThan } from "../assert";
-import { KEYS_LEFT, SHIP_TURN } from "../constants";
+import { assertLessThan, assertLessThanOrEqual } from "../assert";
+import { DEG, KEYS_LEFT, SHIP_TURN } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -61,6 +61,35 @@ const SAMPLE_TICKS = 4;
  */
 const TURN_FLOOR = 0.25 * SHIP_TURN * HOLD_SECONDS;
 
+/** The quiet stretch driven before the key goes down, in ticks. */
+const LEAD_TICKS = ticksFor(0.25);
+
+/**
+ * How far the facing may move across that quiet stretch, in radians.
+ *
+ * One degree, which is less than half of the `2.5` degrees a single tick of
+ * `SHIP_TURN` (`300` degrees per second, at `TICK_HZ`) would turn.
+ * `specs/ship.md` moves the facing by rotation alone — the star never pulls the
+ * ship — so a ship with no turn key down does not turn at all, and this is the
+ * allowance for a build that rounds or renormalizes its angle.
+ *
+ * WHY THE LEAD IS READ AT ALL. Without it, a build that spins the ship on its own
+ * and never binds this key at all satisfies the turn below: the accumulated turn
+ * has the required size and sign for reasons that have nothing to do with KeyA.
+ */
+const STOPPED_TURN = 1 * DEG;
+
+/**
+ * The furthest a single sample step of the hold may go the WRONG way, in radians.
+ *
+ * Zero, to the width of the floating-point noise the wrapped-difference
+ * arithmetic in `turn.ts` carries. `specs/ship.md` fixes the held turn as CONSTANT and
+ * in one direction, so no step of it reverses; a total of the right sign alone
+ * would be reached by a build that swung the ship one way and part of the way
+ * back.
+ */
+const WRONG_WAY = 1e-9;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -74,14 +103,29 @@ afterEach(async () => {
 it("turns the ship counter-clockwise while KeyA is held", async () => {
   await startPlaying(h);
 
+  const lead = await heldTurn(h, undefined, LEAD_TICKS, SAMPLE_TICKS);
   const held = await heldTurn(h, KEY, HOLD_TICKS, SAMPLE_TICKS);
   await captureStill(h, "turn");
 
   // Counter-clockwise is the DECREASING direction (specs/overview.md), so the
   // accumulated turn is negative, and the floor is on its size.
+  assertLessThanOrEqual(
+    Math.abs(lead.turned),
+    STOPPED_TURN,
+    `radians the facing moved over ${String(LEAD_TICKS)} ticks with no key ` +
+      `down, before the hold — the ship turns only while a turn key is held ` +
+      `(specs/controls.md)`,
+  );
   assertLessThan(
     held.turned,
     -TURN_FLOOR,
     "the counter-clockwise turn KeyA held for a second (radians)",
+  );
+  assertLessThanOrEqual(
+    held.mostClockwise,
+    WRONG_WAY,
+    `the largest clockwise turn any single sample of the ${KEY} hold ` +
+      `made, in radians — a held turn is at a CONSTANT rate in one ` +
+      `direction (specs/ship.md)`,
   );
 });

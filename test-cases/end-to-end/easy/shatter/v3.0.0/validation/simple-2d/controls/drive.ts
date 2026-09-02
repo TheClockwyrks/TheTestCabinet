@@ -8,6 +8,15 @@
 // wants them, so they live beside the checks that do rather than in the shared file
 // every other group agent is also editing.
 //
+// WHAT `heldTurn` HANDS BACK, BEYOND THE TOTAL. Each sample's own signed step, and
+// the extremes among them. `specs/ship.md` fixes a held turn as CONSTANT and in
+// one direction, so no step of a conformant hold goes the other way — and the
+// total alone cannot say that: a build that swung the ship one way and part of the
+// way back reaches a total of the right sign, as does one whose facing is stepped
+// by a rounding rather than by a rate. Omitting the key reads the same span with
+// nothing held, which is how the rotation items establish the facing is still
+// before a key reaches it.
+//
 // THEY MEASURE AND ASSERT NOTHING. How long a key is held, what counts as having
 // turned, and how far a released ship may still drift are each item's own figures,
 // derived in the item that holds them. (Harness rule 2: helpers fix geometry and
@@ -40,17 +49,25 @@ export async function holdFor(
   }
 }
 
-/** What a held turn came to: the winding-aware total, and the facing it ended on. */
+/** What a turn came to: the winding-aware total, the steps, and the facing it ended on. */
 export interface HeldTurn {
-  /** The signed turn accumulated across the hold, in radians, clockwise positive. */
+  /** The signed turn accumulated across the span, in radians, clockwise positive. */
   turned: number;
+  /** Each sample step's signed turn, in radians. Positive is CLOCKWISE. */
+  steps: number[];
+  /** The largest single step's turn, signed. Positive is CLOCKWISE. */
+  mostClockwise: number;
+  /** The smallest single step's turn, signed. Negative is COUNTER-CLOCKWISE. */
+  mostCounterClockwise: number;
   /** The facing the last sample read, in radians. */
   angle: number;
 }
 
 /**
  * Hold `code` down for `ticks` real ticks, sampling the facing every `sample`
- * ticks, and hand back the turn those samples add up to.
+ * ticks, and hand back the turn those samples add up to — or, where `code` is
+ * omitted, read the same span with NOTHING held, which is how the four rotation
+ * items establish that the facing is still before a key reaches it.
  *
  * WHY AN ACCUMULATION RATHER THAN A SUBTRACTION. `specs/ship.md` turns the ship at
  * `SHIP_TURN` (`300` degrees per second) while a turn key is held, so the second
@@ -68,24 +85,30 @@ export interface HeldTurn {
  */
 export async function heldTurn(
   h: Harness,
-  code: string,
+  code: string | undefined,
   ticks: number,
   sample: number,
 ): Promise<HeldTurn> {
-  h.hold(code);
+  if (code !== undefined) h.hold(code);
   let angle = h.snapshot().ship.angle;
-  let turned = 0;
+  const steps: number[] = [];
   try {
     for (let done = 0; done < ticks; done += sample) {
       await h.advance(Math.min(sample, ticks - done));
       const now = h.snapshot().ship.angle;
-      turned += angleBetween(angle, now);
+      steps.push(angleBetween(angle, now));
       angle = now;
     }
   } finally {
-    h.release(code);
+    if (code !== undefined) h.release(code);
   }
-  return { turned, angle };
+  return {
+    turned: steps.reduce((sum, step) => sum + step, 0),
+    steps,
+    mostClockwise: steps.length === 0 ? 0 : Math.max(...steps),
+    mostCounterClockwise: steps.length === 0 ? 0 : Math.min(...steps),
+    angle,
+  };
 }
 
 /**

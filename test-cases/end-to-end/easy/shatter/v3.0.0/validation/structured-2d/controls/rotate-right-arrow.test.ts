@@ -17,11 +17,21 @@
 // bound key, which would grade `ArrowRight` and `KeyD` as one thing; the whole
 // point of this item and of `controls/rotate-d` is that they are two.
 //
-// THE DIRECTION IS THE REQUIREMENT, NOT THE RATE. `flight/turn-rate-right` decides
-// that a held `right` turns `SHIP_TURN` (`300` degrees) in a second, within three
-// percent, and asserting a rate here as well would cost one build two items for
-// one fault. So what this asserts is a SIGN: the accumulated turn is clockwise,
-// and no single tick of the hold went the other way.
+// THE DIRECTION IS THE REQUIREMENT; THE RATE IS NOT, BUT A FLOOR IS.
+// `flight/turn-rate-right` decides that a held `right` turns `SHIP_TURN`
+// (`300` degrees) in a second, within three percent, and asserting THAT here as
+// well would cost one build two items for one fault. So what this asserts about
+// the size of the turn is a floor a QUARTER of it: a build anywhere near the
+// stated rate clears `TURN_FLOOR` by a factor of four, and one whose rate is
+// wrong still fails there rather than here.
+//
+// WHY A FLOOR AND NOT A BARE SIGN. A sign alone — a turn merely greater than
+// zero — is met by a build with no such binding at all: the facing need only end
+// a hair off where it started, and the very rounding drift this check ALLOWS
+// across the quiet lead (`STOPPED_TURN`, a whole degree) is more than enough to
+// carry it. The floor is what makes the reading mean "ArrowRight turned the ship"
+// rather than "the facing moved". The SIGN remains the point: the accumulated
+// turn is clockwise, and no single tick of the hold went the other way.
 //
 // CLOCKWISE IS A POSITIVE TURN. `specs/overview.md` fixes the field's y axis
 // running down and angles measured clockwise from `+x`, so a clockwise swing
@@ -56,7 +66,19 @@ const KEY = "ArrowRight";
 const LEAD_TICKS = ticksFor(0.25);
 
 /** The hold, in ticks: the one second the item names. */
-const HOLD_TICKS = ticksFor(1);
+const HOLD_SECONDS = 1;
+const HOLD_TICKS = ticksFor(HOLD_SECONDS);
+/**
+ * The least turn that counts as having turned at all, in radians.
+ *
+ * A QUARTER of the turn the held second is worth at the `SHIP_TURN` (`300`
+ * degrees per second) `specs/ship.md` fixes, so a build anywhere near the rate
+ * `flight/turn-rate-right` requires clears it by a factor of four, and a build whose
+ * facing merely creeps — by a rounding, a renormalization, or a turn at a token
+ * fraction of the stated rate — does not. Reading the DIRECTION alone would pass
+ * every one of those.
+ */
+const TURN_FLOOR = 0.25 * SHIP_TURN * HOLD_SECONDS;
 
 /** The quiet stretch driven after the key comes up, in ticks. */
 const COAST_TICKS = ticksFor(0.25);
@@ -114,7 +136,7 @@ it("turns the ship clockwise while ArrowRight is held, and stops on release", as
   );
   assertGreaterThan(
     held.total,
-    0,
+    TURN_FLOOR,
     `radians the facing turned over ${String(HOLD_TICKS)} ticks with ${KEY} ` +
       "held, signed clockwise-positive: the right key turns CLOCKWISE " +
       "(specs/ship.md), which raises a facing measured clockwise from +x " +
