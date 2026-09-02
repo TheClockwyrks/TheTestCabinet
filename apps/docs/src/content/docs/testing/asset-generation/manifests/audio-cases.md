@@ -48,11 +48,13 @@ case.
   alone.
 
 `sample_pack` and `instrument_bank` are each a `name@version` identifying a
-palette baked into the run-container image, never a path in this repository. The
-`music` image bakes every instrument bank, so `instrument_bank` selects which one
-a case plays. See
+palette baked into the run-container image, never a path in this repository. A
+pack is committed under `containers/sample-packs/` as a collection of clip ids,
+and its audio is assembled from the clip store at image-build time. The `music`
+image bakes every instrument bank, so `instrument_bank` selects which one a case
+plays. See
 [the sample library](/testing/asset-generation/audio-binaries/#the-sample-library)
-for the packs and banks that ship.
+for how a palette is defined and which packs and banks ship.
 
 Core emits the rendered `clip.wav`, and for a `music` case a portable `clip.mid`
 score, to paths it provides. Neither is manifest-declared. Because the asset is a

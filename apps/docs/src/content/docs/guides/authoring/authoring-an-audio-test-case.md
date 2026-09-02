@@ -217,9 +217,11 @@ tcab seed   --test-case spectra-laser --version v1.0.0 --variant base
 manifest problems including a missing `[audio]` field, a `sample_pack` on a
 non-`sfx-sample` case, and an `instrument_bank` on a non-`music` case. `seed`
 writes the seeded repository to disk so you can read exactly what the model
-would receive and confirm it is self-contained. Confirm any named palette is a
-published, pinned `name@version` in
-`containers/sample-packs/packs.lock.json`. Lint the specs with
+would receive and confirm it is self-contained. Confirm any named palette's
+`name@version` against the `name` and `version` in
+`containers/sample-packs/<pack>.toml`, and that every object the pack needs is
+published with `node scripts/build-sample-pack.mjs <pack> --check`, which reads
+the committed manifests and needs no credentials. Lint the specs with
 `npm run lint:specs`, then exercise the case end to end with
 [Run a Test Case](/quickstarts/development/run-a-test-case/).
 

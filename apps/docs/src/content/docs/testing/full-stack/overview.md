@@ -37,9 +37,11 @@ Each binary is the same tool the corresponding
 [asset-generation](/testing/asset-generation/overview/) case uses, invoked as a
 CLI whose `--help` states its operations. A run seeds no operations schema. The
 linked pages are the authoritative reference for each tool's operations, output,
-and previews. `sfx-sample` mixes over the baked `combat-core` sample pack and
-`music` sequences over the baked `gm-lite` instrument bank, exactly as their
-asset-generation counterparts do.
+and previews.
+
+The image bakes the `combat-core` sample pack and every instrument bank. A config
+that names no palette gets `combat-core` for `sfx-sample` and `gm-lite` for
+`music`, and a config may name any other baked bank instead.
 
 The image carries the 2D tooling only. Because it inherits base-wasm, a
 full-stack build may author its simulation core in Rust and compile it to a

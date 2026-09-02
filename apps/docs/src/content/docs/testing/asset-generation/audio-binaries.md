@@ -136,6 +136,7 @@ description.
 - `add-sample --name <lib-sample> --t <ms>` places a library clip as a layer on
   the timeline, with optional `--gain <db>`, `--pitch <semitones>`,
   `--trim <in,out>`, `--fade-in <ms>`, `--fade-out <ms>`, and `--reverse`.
+  `--name` must be a sample the library carries; any other name is an error.
 - The full `add-voice` vocabulary from `sfx-synth` supplies glue and sweeteners
   between the sampled layers.
 - The filters, waveshaping, and reverb, delay, and compressor effects from
@@ -164,13 +165,16 @@ recorded clips.
 
 - `set-tempo --bpm <n>` and `set-time-signature --num --den` fix the clip's tempo
   and meter.
+- `list-instruments [--tag <t>]` and `instrument-info --name <n>` browse the
+  baked bank the way `list-samples` and `sample-info` browse a sample library.
+  Both record nothing.
 - `define-track --name <n> --instrument <inst>` declares an instrument voice. The
   instrument is either a synth waveform (`sine`, `square`, `saw`, `triangle`,
   `noise`) or a sample-based instrument named from the baked
   [instrument bank](#the-sample-library). A melodic bank instrument is
   pitch-shifted per note from the note it was recorded at, and a percussion
-  instrument plays at its native pitch. A bank name with no baked audio renders
-  as a mellow triangle, so a run still produces a clip.
+  instrument plays at its native pitch. An `--instrument` matching neither a
+  synth waveform nor a bank instrument is an error.
 - `add-note --track <n> --pitch <C4|midi-number> --t <beats> --dur <beats>` adds
   a note event, with an optional `--velocity 1..127`.
 - `set-track-fx --track <n>` sets per-track processing: `--gain <db>`,
@@ -203,17 +207,47 @@ operation, and it is never recorded. The recorded operation log and the emitted
 
 `sfx-sample`'s sample library and `music`'s instrument bank are baked into their
 run-container image at image-build time, the fixed palette each tool ships with.
-A run container is isolated and offline, so nothing is fetched at run time and
-the library the model browses with `list-samples` is already present in the
-image.
+A run container is isolated and offline, so the library the model browses with
+`list-samples` or `list-instruments` is already present in the image. A case
+names the palette it expects in its `[audio]` table, a `sample_pack` or
+`instrument_bank` of the form `name@version`, never a repo path.
 
-The audio files themselves live outside this repo. What the repo commits is a
-pack manifest, `containers/sample-packs/<pack>.toml`, listing for each entry its
-stable `name`, `tags`, `description`, `license`, a source `url`, and a `sha256`
-content hash. The `license` must be CC0 or otherwise permissive, so that produced
-clips are freely usable in test cases and published runs. The shipped palettes
-are sourced from [Freesound](https://freesound.org) CC0 clips through its free
-token API; `containers/sample-packs/README.md` records the sourcing details.
+The named palette is checked against the image when the tool loads it: the baked
+pack's own `name` and `version` must equal the ref the case pins, and a palette
+the image does not bake is an error naming the palettes it does carry. Every
+entry's baked audio is checked with it, and must decode at the pack's declared
+sample rate and run for the length the entry declares, so a bake disagreeing with
+its own manifest fails at load rather than rendering a sound the model was told
+something else about. Each image also records the palette a run gets when its
+config names none, which is what the audio tools use inside a
+[full-stack](/testing/full-stack/overview/) run, where the model writes its own
+config.
+
+A clip is one audio source, identified by the sha256 of its original source
+bytes. `containers/sample-packs/clips.toml` commits one entry per clip recording
+the facts intrinsic to the recording: its `license`, its `source_url` and any
+upstream id for provenance, and for a pitched recording the MIDI note it was
+recorded at (`root_note`). The `license` must be CC0 or otherwise permissive, so
+that produced clips are freely usable in test cases and published runs. The
+shipped palettes are sourced from [Freesound](https://freesound.org) CC0 clips.
+
+How a clip is presented belongs to the pack that uses it, so two packs may name
+one clip differently: `gm-lite` calls a recording `trombone` where `cinematic`
+calls it `low_brass`. A pack manifest, `containers/sample-packs/<pack>.toml`, is
+a collection of clip ids plus the `[normalize]` profile every clip in it is
+rendered through, covering sample rate, channels, loudness, true peak, silence
+trim, and duration cap. Each `[[entry]]` names a `clip` id and carries that
+pack's presentation of it: `name`, `tags`, `description`, `pitched`, and an
+optional `root_note` override. The source url and the content hash are facts of
+the clip and live in the registry.
+
+Clip bytes live in a Test Cabinet object store holding each clip's original
+source and, per normalize profile, the normalized wav rendered from it. An image
+build bakes one shared clip directory plus a per-pack manifest pointing into it,
+so a clip two packs share is stored and baked once and the baked palette is
+immutable and versioned with the image. Updating a library is a new pack version
+plus an image rebuild. `containers/sample-packs/README.md` covers how a clip is
+ingested and how a pack is published and baked.
 
 The library must be a palette of elemental ingredients. An entry is a single
 layer, a sub-bass body, a dry metal impact, a debris tail, a mechanical reload
@@ -230,27 +264,10 @@ primitives is the reasoning under test.
 
 An instrument bank is named by its instrument (`grand_piano`, `violin`), because
 a `music` case measures composition rather than identification. Each melodic
-entry records the MIDI note it was recorded at (`root_note`) so the sequencer
-pitch-shifts it correctly across a track's notes; percussion entries set
-`pitched = false` and play native.
-
-A pack is a separately-versioned, content-addressed artifact stored in a private
-object-storage bucket. `scripts/build-sample-pack.mjs` fetches the sources named
-in the manifest, verifies each `sha256`, normalizes them for sample rate,
-loudness, trim, and format, assembles the pack, and records its pin in
-`containers/sample-packs/packs.lock.json`. `scripts/curate-instrument-bank.mjs`
-curates the instrument banks. The image build resolves that pin, mints a
-short-lived presigned URL, and bakes the verified tarball in, so the baked palette
-is immutable and versioned with the image. Updating a library is a new pack
-version plus an image rebuild.
-
-A case names which baked pack or bank it expects in its `[audio]` table, a
-`sample_pack` or `instrument_bank` of the form `name@version`, never a repo path.
-The `music` image bakes every instrument bank as a per-name subdirectory, so the
-named `instrument_bank` selects which palette a run plays; an `sfx-sample` run
-bakes its one sample pack. Three instrument banks ship: `gm-lite`, a broad
-general-MIDI palette; `cinematic`, epic orchestral with sectioned strings, brass,
-mixed choir, and orchestral percussion; and `synthwave`, analog synths, pads, FM
-bells, and an electronic drum machine. A `music` case picks one to match its
-genre. `containers/sample-packs/README.md` covers how a pack or bank is curated,
-published, and baked.
+entry resolves a `root_note` so the sequencer pitch-shifts it correctly across a
+track's notes; percussion entries set `pitched = false` and play native. Three
+instrument banks ship: `gm-lite`, a broad general-MIDI palette; `cinematic`, epic
+orchestral with sectioned strings, brass, mixed choir, and orchestral percussion;
+and `synthwave`, analog synths, pads, FM bells, and an electronic drum machine.
+The `music` image bakes every bank, so a case picks one to match its genre; an
+`sfx-sample` image bakes the one sample pack its case names.

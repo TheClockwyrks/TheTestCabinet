@@ -15,7 +15,7 @@ is the authoritative manifest schema, and
 is the full procedure.
 
 An `sfx-sample` or `music` case names a `name@version` palette baked into its run
-image. The published pins live in `containers/sample-packs/packs.lock.json`;
+image. A pack declares its version in `containers/sample-packs/<pack>.toml`;
 [Publish an Audio Sample Pack](/quickstarts/authoring/publish-an-audio-sample-pack/)
 adds a new one.
 

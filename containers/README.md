@@ -86,7 +86,7 @@ The full set is whatever [`build.sh`](#building) builds; the notable ones:
   `sfx-sample` binary **and the baked-in sample pack** (see
   [the sample library](#the-sample-library-and-instrument-bank) below);
 - the **music** image, which every music run (`asset_kind = "music"`) executes in
-  — the base image plus the baked-in `music` binary and the baked-in instrument
+  — the base image plus the baked-in `music` binary and every baked-in instrument
   bank;
 - the **adversarial** image, which every
   [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
@@ -149,7 +149,7 @@ containers/
 ├── tools/Dockerfile            # the shared asset-tooling BUILDER: every asset binary compiled in ONE
 │                               #   cargo pass, exported as a `scratch` image. Not a run image and never
 │                               #   published — the asset images below `COPY --from` it (see Building)
-├── full-stack-2d/Dockerfile    # the full-stack run image: base-wasm plus the six 2D asset binaries + audio packs
+├── full-stack-2d/Dockerfile    # the full-stack run image: base-wasm plus the six 2D asset binaries + every audio pack
 ├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
 ├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
 │                               #   responses-as-code programs may need, under /opt/gg (purs+esbuild,
@@ -186,10 +186,10 @@ containers/
 ├── particle-3d/Dockerfile      # the base image plus the baked-in `particle-3d` binary
 ├── sfx-synth/Dockerfile        # the base image plus the baked-in `sfx-synth` binary
 ├── sfx-sample/Dockerfile       # the base image plus the baked-in `sfx-sample` binary + sample pack
-├── music/Dockerfile            # the base image plus the baked-in `music` binary + instrument bank
-├── sample-packs/               # per-pack manifests (name/tags/license/sha256); the audio
-│                               #   files are NOT committed — a pack is a content-addressed
-│                               #   artifact the sfx-sample/music image builds pin by digest
+├── music/Dockerfile            # the base image plus the baked-in `music` binary + every instrument bank
+├── sample-packs/               # the clip registry (clips.toml), one <pack>.toml per pack, and
+│                               #   objects.lock.json; the audio is NOT committed — clip bytes live
+│                               #   in the audio object store and are staged into /opt/audio at build
 ├── adversarial/                # the base image plus the wasm toolchain + Foray tooling
 │   ├── Dockerfile              #   (foray CLI, references + map, controller buildkit)
 │   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
@@ -427,8 +427,9 @@ a single-sprite case draws with `draw`, a sprite-sheet case draws with
   **`sfx-synth`** / **`sfx-sample`** / **`music`** binary, the
   [audio](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
   tool a run uses to render a `.wav`. The `sfx-sample` and `music` images
-  additionally bake in a **sample pack** / **instrument bank** — the tool's fixed
-  palette (see [the sample library](#the-sample-library-and-instrument-bank)).
+  additionally bake in a **sample pack** / **instrument bank** under `/opt/audio`
+  — the tool's fixed palette (see
+  [the sample library](#the-sample-library-and-instrument-bank)).
 
 Each meshing image bakes in its one binary the same way `sprite`/`voxel` do; the
 `-animation` images add the rigging/F-curve authoring that
@@ -498,36 +499,57 @@ allowlist too.
 ## The sample library and instrument bank
 
 The [`sfx-sample`](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
-tool mixes over a **sample library** and the `music` tool plays a **instrument
-bank** — the fixed audio palette each ships with, exactly as `draw` ships with its
-drawing logic. Because a run container is isolated and offline, the palette is
-**baked into the image at build time**; nothing is fetched at run time.
+tool mixes over a sample library and the `music` tool plays an instrument bank —
+the fixed audio palette each ships with, exactly as `draw` ships with its drawing
+logic. Because a run container is isolated and offline, the palette is **baked
+into the image at build time**; nothing is fetched at run time.
 
 The audio files themselves are **not committed to this repository**. What lives
-here is a per-pack **manifest** under `sample-packs/` (one `<pack>.toml` per pack)
-that lists each sample's stable `name`, `tags`, `description`, **`license`** — which
-must be CC0 or otherwise permissive so a produced clip is freely usable in a test
-case and a published run — its source URL, and a **`sha256`** content hash. The
-pack itself is a **separately-versioned, content-addressed artifact** (an
-object-storage tarball / OCI artifact) assembled by
-[`scripts/build-sample-pack.mjs`](../scripts/build-sample-pack.mjs), which fetches
-the sources the manifest names, verifies each hash, normalizes them (sample rate,
-loudness, trim, format), and packs them. The `sfx-sample` and `music` image builds
-**pin a pack version by digest** and bake it in, so updating the palette is a new
-pack version plus an image rebuild — versioned immutably with the image, and a case
-names the pack it expects (`sample_pack` / `instrument_bank`) rather than any path
-in this repo.
+under `sample-packs/` is the metadata: `clips.toml`, the registry naming every
+ingested audio clip by the sha256 of its source bytes and recording its license
+(CC0 or otherwise permissive, so a produced clip is freely usable in a test case
+and a published run); one `<pack>.toml` per pack, listing the clip ids that pack
+exposes with the `name`, `tags`, and `description` a model browses; and
+`objects.lock.json`, pinning the published bytes. The clip bytes live in a private
+audio object store, both as originals and as the normalized output of each pack's
+normalization profile, so a build downloads finished audio rather than
+re-normalizing it. See [`sample-packs/README.md`](sample-packs/README.md) for the
+registry, manifest, and publishing details.
 
-The **`music` image bakes every instrument bank** (`gm-lite`, plus the
-domain-tailored **`cinematic`** and **`synthwave`** banks) as a per-name
-subdirectory under `/opt/instrument-banks/`, so a case's
-`instrument_bank = "<name>@<version>"` **selects** which palette the run plays
-(resolved by `select_pack_dir` in `crates/audio-core/src/config.rs`);
-`build.sh`'s `build_music_image` presigns and passes each bank. An `sfx-sample`
-image still bakes its single sample pack. Adding a bank is: extend the `BANKS`
-registry in [`scripts/curate-instrument-bank.mjs`](../scripts/curate-instrument-bank.mjs),
-curate + publish it, then add its build args + subdir to `music/Dockerfile` and
-`build_music_image`.
+`build.sh` stages the image's audio tree with
+[`scripts/stage-audio-image.mjs`](../scripts/stage-audio-image.mjs), which presigns
+and verifies each object against `objects.lock.json`, then the Dockerfile copies
+that tree to `/opt/audio`:
+
+```
+/opt/audio/
+  clips/<clip-id>.<profile-id>.wav      one file per clip + profile, shared across packs
+  packs/<pack-name>/pack.toml           the loader manifest; entries point into clips/
+```
+
+Packs therefore share clip files instead of each carrying its own copy, and an
+unpublished clip is a build error rather than a silently empty palette.
+
+Every image that bakes audio points `TCAB_SAMPLE_PACK_DIR` and/or
+`TCAB_INSTRUMENT_BANK_DIR` at `/opt/audio/packs`, the root the per-pack
+subdirectories sit under, so a case's `sample_pack` / `instrument_bank` selects
+which palette the run reads (resolved by `select_pack_dir` in
+`crates/audio-core/src/config.rs`). A named palette the image does not bake is a
+load error, never a fallback to another one. `TCAB_SAMPLE_PACK` and
+`TCAB_INSTRUMENT_BANK` name the palette a run gets when its config names none,
+which is how the tools resolve a palette in a full-stack run. The `music` image
+bakes every instrument bank (`gm-lite`, `cinematic`, `synthwave`); the
+full-stack-2d image bakes every bank as well, plus the sample pack.
+
+A case names the pack it expects (`sample_pack` / `instrument_bank`) rather than
+any path in this repo, so updating a palette is a new pack version plus an image
+rebuild. The loader checks the ref against the baked pack's own `name` and
+`version`, so a case pinned to a version the image does not carry fails the run
+instead of rendering against a different palette.
+
+Adding a bank is: extend the `BANKS` registry in
+[`scripts/curate-instrument-bank.mjs`](../scripts/curate-instrument-bank.mjs),
+ingest and publish it, then add it to the pack list `build.sh` stages.
 
 ## Adversarial image
 
