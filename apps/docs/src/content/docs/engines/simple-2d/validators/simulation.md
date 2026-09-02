@@ -19,6 +19,7 @@ simulated time, whatever the machine running the suite is doing.
 
 ```ts
 import { ConstantClock } from "@test-cabinet/simple-2d";
+import { FIELD_H, FIELD_W } from "../constants";
 import { createHarness } from "../harness";
 
 it("a ball leaving the right edge scores for player one", async () => {

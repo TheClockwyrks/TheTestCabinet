@@ -14,7 +14,7 @@ Dispatching a keyboard-shaped event at that target drives an action exactly as a
 player's key does.
 
 ```ts
-import { KEYS } from "../src/constants";
+import { KEYS } from "./constants";
 
 function keyEvent(type: "keydown" | "keyup", code: string): Event {
   return Object.assign(new Event(type), { code, repeat: false });
@@ -33,10 +33,10 @@ export function release(h: Harness, action: string): void {
 }
 ```
 
-A check drives by action name, and `constants.ts` resolves the name to the codes
-the case fixed for it. The names and the codes are the case's, so a build that
-bound an action to a different key is caught by the check that expected the
-action to respond.
+A check drives by action name, and the project's own `constants.ts` resolves the
+name to the codes the case fixed for it. The names and the codes are the case's,
+so a build that bound an action to a different key is caught by the check that
+expected the action to respond.
 
 ## Holds and taps
 

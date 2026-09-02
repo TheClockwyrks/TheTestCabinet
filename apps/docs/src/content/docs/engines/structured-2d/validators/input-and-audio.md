@@ -14,7 +14,7 @@ Dispatching a keyboard-shaped event at that target drives an action exactly as a
 player's key does.
 
 ```ts
-import { KEYS } from "../src/constants";
+import { KEYS } from "./constants";
 import type { Harness } from "./harness";
 
 function keyEvent(type: "keydown" | "keyup", code: string): Event {
@@ -158,7 +158,7 @@ collects the cues of one window by subscribing before the act and unsubscribing
 after it.
 
 ```ts
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 
 const cues: string[] = [];
 const off = engine.events.on("cue:played", ({ cue }) => cues.push(cue));

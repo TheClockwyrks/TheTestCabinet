@@ -25,6 +25,7 @@ workspace/
   vitest.config.ts
   src/            the build
   validation/     the case's suites
+    constants.ts
     harness.ts
     debug.ts
     gameplay/scoring-p1.test.ts
@@ -73,6 +74,41 @@ coverage.
 The environment is `node`. The engine takes every measurement it needs from the
 surface the harness supplies, so the suites need no DOM.
 
+## The figures a check asserts
+
+The project states its own figures in `constants.ts` at its root, transcribed
+from the case's rendered specifications under the names those specifications
+use. A suite imports each figure it asserts from there: `./constants` from the
+project root, `../constants` from a suite one directory down.
+
+```ts
+// validation/constants.ts
+
+/** The logical design size (specs/overview.md). */
+export const FIELD_W = 1280;
+export const FIELD_H = 720;
+
+/** The paddle's travel speed, in units per second (specs/paddles.md). */
+export const PADDLE_SPEED = 720;
+
+/* ---- What the specification leaves to the build ------------------------- */
+//
+// Read to drive the build, never compared against. `specs/controls.md` requires
+// a touch layout carrying the four movement actions and names none, so the
+// layout the build registered is the build's own choice.
+
+export { LAYOUT } from "../src/constants";
+```
+
+The build is seeded a `src/constants.ts` of its own, holding the same figures
+under the same names. `constants.ts` is the only file in the project that
+reaches that module, and it reaches it for the values the specification leaves
+to the build, which a check reads to drive the build. A figure a check asserts is
+transcribed instead: a figure read from the build asserts the build against
+itself, which every build passes, including one whose paddle travels at some
+other speed. The rule and the reasoning behind it are in
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
+
 ## The harness
 
 The harness builds an engine headlessly: a canvas from `@napi-rs/canvas`, which
@@ -90,7 +126,7 @@ import {
   type Game,
   type SurfaceMetrics,
 } from "@test-cabinet/simple-2d";
-import { FIELD_H, FIELD_W } from "../src/constants";
+import { FIELD_H, FIELD_W } from "./constants";
 import { game, type State } from "../src/game";
 import type { BallPatch, Debug, Mode, Snapshot } from "./debug";
 
@@ -241,14 +277,15 @@ A suite imports the build, so a case fixes three module paths and what each one
 exports. That contract is stated in the case's specification and is what gives
 every build of the case the same shape to check.
 
-| Module             | Supplied by | Holds                                                                                                                                           |
-| ------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/constants.ts` | The case    | The logical design size, the palette, the action names with the keys they bind, the cue names, and every tunable the specification fixes.       |
-| `src/game.ts`      | The build   | The `State` type the case declares and the `Game` the engine drives, whose `initialize` returns `[state, surface]` to the instrumentation spec. |
-| `src/main.ts`      | The case    | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it.                                                |
+| Module | Owned by | Holds |
+| --- | --- | --- |
+| `src/constants.ts` | The build | The build's copy of the logical design size, the palette, the action names with the keys they bind, the cue names, and every tunable the specification fixes. It is seeded with the workspace and the build imports it. |
+| `src/game.ts` | The build | The `State` type the case declares and the `Game` the engine drives, whose `initialize` returns `[state, surface]` to the instrumentation spec. |
+| `src/main.ts` | The case | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it. |
 
-A suite imports `constants.ts` for the numbers and names its assertions are
-stated in and `game.ts` for the game it drives. `main.ts` belongs to the built
+A suite imports `game.ts` for the game it drives, and takes every figure it
+asserts from the project's own
+[`constants.ts`](#the-figures-a-check-asserts). `main.ts` belongs to the built
 page, and a suite constructs its own engine instead. The surface reaches a suite
 only through `engine.debug`, typed by the suite's own declaration of the spec,
 and is driven through `engine.apply` and `engine.state`.
