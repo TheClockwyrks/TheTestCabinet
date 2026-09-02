@@ -26,7 +26,7 @@
 // so each radius is read two ticks after the brightness that produced it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD } from "../../src/constants";
+import { BRIGHT_HOLD } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {

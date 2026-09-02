@@ -50,7 +50,7 @@ import {
   FLARE_CHARGE,
   FLARE_INTERVAL,
   FLARE_RADIUS,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

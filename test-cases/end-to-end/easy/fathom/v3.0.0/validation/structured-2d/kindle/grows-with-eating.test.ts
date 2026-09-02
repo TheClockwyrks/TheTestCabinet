@@ -36,7 +36,7 @@ import {
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { KINDLE_VISION_GAIN, KINDLE_VISION_MIN, windowRadius } from "./circle";
-import { BRIGHT_HOLD } from "../../src/constants";
+import { BRIGHT_HOLD } from "../constants";
 
 /** The board: a three-tile corridor the forager is parked on, and nothing else. */
 const ART = ["H.."] as const;
