@@ -31,7 +31,7 @@
 // scores, which is `scoring/plankton`'s and `amber/drifter-score`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAMEOVER_ITEMS, START_LIVES } from "../../src/constants";
+import { GAMEOVER_ITEMS, START_LIVES } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

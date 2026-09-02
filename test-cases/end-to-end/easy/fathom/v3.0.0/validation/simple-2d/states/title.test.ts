@@ -33,7 +33,7 @@
 // anything.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
+import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { MENU_DOWN_KEY, assertDrew, frameOps, opDiff } from "./screens";

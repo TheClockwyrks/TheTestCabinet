@@ -37,7 +37,7 @@
 // fixes the wording of.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_HZ } from "../../src/constants";
+import { TICK_HZ } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

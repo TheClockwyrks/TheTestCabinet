@@ -32,7 +32,7 @@
 // the predator poses come from `specs/instrumentation.md`, and every key it
 // presses is one `specs/movement.md` binds.
 
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertMatches } from "../assert";
 import { callsTo, DIR_KEY, type DrawCall, type Harness } from "../harness";
 import type { FathomSnapshot } from "../surface";
