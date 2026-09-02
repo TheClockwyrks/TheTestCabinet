@@ -79,9 +79,12 @@ const MIN_ELAPSED_MS = WINDOW_MS * 0.8;
 /**
  * How much `simTime` must gain across the window: half a second.
  *
- * A third of the `1.5` seconds the window really spends, so the same third-pace
- * allowance applies to the clock as to the floor. It is five times the tenth of a
- * second `waves/pause-freezes-the-floor` allows a PAUSED clock to drift by, so a
+ * A third of the `1.5` seconds the window really spends, and the same figure the
+ * other two engines' copies of this point hold. A build running at the wall
+ * clock's pace gains the whole `1.5`; the floor leaves room for a frame loop that
+ * starts late, for a build that clamps a long frame's delta, and for a host that
+ * gave the loop a fraction of the time it asked for. It is five times the tenth of
+ * a second `waves/pause-freezes-the-floor` allows a PAUSED clock to drift by, so a
  * game that is merely leaking a frame or two cannot pass here.
  */
 const MIN_CLOCK_GAIN = 0.5;
