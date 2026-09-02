@@ -36,7 +36,7 @@
 // the item is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual, fail } from "../assert";
 import { angleGap, headingOf, speedOf } from "../geometry";
 import {

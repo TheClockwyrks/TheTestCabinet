@@ -56,7 +56,7 @@
 // `field/wrap-carries-velocity` is the item for that.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_MAX } from "../../src/constants";
+import { SHIP_MAX } from "../constants";
 import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import { DEG } from "../geometry";
 import {

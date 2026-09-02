@@ -21,7 +21,7 @@
 // `(v + SHIP_THRUST * TICK_DT) * that`. {@link keptOver} and {@link burnFromRest}
 // are those two sentences and nothing else.
 
-import { SHIP_DRAG_HALFLIFE, SHIP_THRUST, TICK_DT } from "../../src/constants";
+import { SHIP_DRAG_HALFLIFE, SHIP_THRUST, TICK_DT } from "../constants";
 import { angleDelta } from "../geometry";
 import {
   holdAction,

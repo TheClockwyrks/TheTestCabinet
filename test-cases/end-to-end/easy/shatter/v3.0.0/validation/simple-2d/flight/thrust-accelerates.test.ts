@@ -39,7 +39,7 @@
 // push it off and take the very velocity being read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_DRAG_HALFLIFE, SHIP_THRUST, TICK_DT } from "../../src/constants";
+import { SHIP_DRAG_HALFLIFE, SHIP_THRUST, TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { speedOf } from "../geometry";
 import {

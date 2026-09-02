@@ -47,7 +47,7 @@
 // world gates.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, FACE_UP, SHIP_DRAG_HALFLIFE, TICK_DT } from "../../src/constants";
+import { DEG, FACE_UP, SHIP_DRAG_HALFLIFE, TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

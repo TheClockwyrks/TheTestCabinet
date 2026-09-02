@@ -33,7 +33,7 @@
 // velocity, and no key is held.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, SHIP_DRAG_HALFLIFE } from "../../src/constants";
+import { DEG, SHIP_DRAG_HALFLIFE } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { speedOf } from "../geometry";
 import {

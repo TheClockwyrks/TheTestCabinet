@@ -40,7 +40,7 @@
 // velocity stays at zero and the drag and the cap have nothing to act on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_TURN } from "../../src/constants";
+import { SHIP_TURN } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { degrees } from "../geometry";
 import {

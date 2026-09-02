@@ -48,7 +48,7 @@
 // does.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_DRAG_HALFLIFE, STAR_Y } from "../../src/constants";
+import { SHIP_DRAG_HALFLIFE, STAR_Y } from "../constants";
 import { assertCloseTo, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

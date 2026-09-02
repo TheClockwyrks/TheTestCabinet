@@ -55,7 +55,7 @@
 // drag touches this reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { assertCloseTo, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

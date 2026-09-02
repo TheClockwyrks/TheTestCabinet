@@ -52,7 +52,7 @@
 // check never reads the facing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP } from "../../src/constants";
+import { FACE_UP } from "../constants";
 import { assertCloseTo, assertLessThanOrEqual } from "../assert";
 import { DEG } from "../geometry";
 import {

@@ -33,7 +33,7 @@
 // counter-clockwise on this key reads `-300` and is `600` out. A build that turns
 // only on the press edge rather than for as long as the key is held —
 // `specs/controls.md` reads rotation as a hold — reads `+2.5`. A build that takes
-// `SHIP_TURN` for a rate in DEGREES, when `src/constants.ts` gives it in radians,
+// `SHIP_TURN` for a rate in DEGREES, when `../constants` gives it in radians,
 // reads `+5.2`. A build at a fifth of the rate reads `+60`. The bound is `9`.
 //
 // WHY 3 PERCENT IS HONEST. The review item states 3 percent of `SHIP_TURN`, which
@@ -52,7 +52,7 @@
 // `flight/rotation-keeps-velocity`'s item, not this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_TURN } from "../../src/constants";
+import { SHIP_TURN } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { DEG } from "../geometry";
 import {
