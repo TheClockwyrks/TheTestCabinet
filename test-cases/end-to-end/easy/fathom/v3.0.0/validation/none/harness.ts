@@ -579,6 +579,30 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 const SURFACE_TIMEOUT_MS = 60_000;
 
 /**
+ * The ceiling on every operation PLAYWRIGHT itself times against the page.
+ *
+ * WHY THIS CONSTANT EXISTS. Playwright's library defaults leave a deadline on
+ * anything it has to wait for — a navigation, a screenshot — and that default is
+ * thirty seconds. Nothing here asked for it, so nothing here reasoned about it,
+ * and it is the same mistake {@link SURFACE_TIMEOUT_MS} was raised to correct:
+ * every one of those waits is a wait on the HOST, not a claim about the build.
+ * `page.goto` runs in the `beforeEach` of every check file in this project, so a
+ * host that took a moment too long to serve a static file does not cost one point
+ * — it fails the hook, and every point the file decides reads `ran=false`, which
+ * tells a reviewer nothing at all. `page.screenshot` is the same shape one still
+ * at a time: a build whose canvas the compositor was slow to hand over is a build
+ * failed for the load average.
+ *
+ * A MINUTE, for the reason the surface ceiling is a minute. The wait ends the
+ * instant the page is served or the frame is captured, so a healthy build pays
+ * none of it however high it is set, and this project holds four pages of one
+ * browser open at once on a machine that is also running a model's build. It sits
+ * inside the hook and test budgets `vitest.config.ts` states, so a page that
+ * genuinely never loads still fails here rather than on the runner.
+ */
+const PAGE_DEADLINE_MS = 60_000;
+
+/**
  * The most recorded frames one driven run closes while a capture is keeping them.
  *
  * The same 300 a written recording holds ({@link MAX_REPLAY_FRAMES}), because a
@@ -797,6 +821,11 @@ export async function createHarness(
   page.on("console", (message) => {
     if (message.type() === "error") pageErrors.push(message.text());
   });
+
+  // Off Playwright's own thirty-second defaults before anything is asked of the
+  // page: those are deadlines on the host, and this project sets its own.
+  page.setDefaultTimeout(PAGE_DEADLINE_MS);
+  page.setDefaultNavigationTimeout(PAGE_DEADLINE_MS);
 
   await page.goto(inject("fathomUrl"), { waitUntil: "load" });
 
