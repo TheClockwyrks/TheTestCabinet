@@ -191,14 +191,13 @@ function dragOut(state: OrreryState): Record<string, unknown> | null {
 function simOut(state: OrreryState): Record<string, unknown> | null {
   const sim = state.sim;
   if (sim === null) return null;
-  const parts = state.editor.parts;
   return {
     status: sim.status,
     cycle: sim.cycle,
     fraction: sim.fraction,
     speed: sim.speed,
     motes: sim.motes.map((mote) => {
-      const at = moteStagePosition(mote, sim, parts);
+      const at = moteStagePosition(mote, sim);
       return {
         id: mote.id,
         q: mote.q,

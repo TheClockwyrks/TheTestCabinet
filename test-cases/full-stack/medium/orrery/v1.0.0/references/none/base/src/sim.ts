@@ -298,13 +298,18 @@ function beginCycle(context: SimContext): CyclePlan {
   return sim.pending;
 }
 
-/** Freeze the run at the fraction its fault names. */
+/**
+ * Freeze the run at the fraction its fault names. The cycle's plan is KEPT, so
+ * the frozen frame draws every mote where the fault found it: a collision at
+ * `k / 8` leaves the two motes that met on the arc rather than back on the
+ * hexes they left (specs/simulation.md "A fault freezes the run where it
+ * stood"). Nothing advances afterwards, so the plan is never resumed.
+ */
 function raiseFault(context: SimContext, plan: CyclePlan): void {
   const { sim } = context;
   if (plan.fault === null) return;
   sim.status = "faulted";
   sim.fault = plan.fault.fault;
-  sim.pending = null;
   context.cue(CUES.halt);
 }
 

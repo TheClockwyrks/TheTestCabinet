@@ -271,6 +271,11 @@ export interface CyclePlan {
   readonly fault: { readonly fault: Fault; readonly fraction: number } | null;
   /** Land every mote on the hex the motion step leaves it on. */
   land(): void;
+  /**
+   * Where mote `mote` is drawn at fraction `t` of this cycle, and `null` for a
+   * mote this cycle resolved no motion for, which rests on its own hex.
+   */
+  position(mote: number, t: number): { x: number; y: number } | null;
 }
 
 /** The whole of a run, and `null` while editing (specs/state.md). */

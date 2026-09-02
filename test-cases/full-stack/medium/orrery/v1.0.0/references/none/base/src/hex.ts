@@ -56,6 +56,14 @@ export function addHex(a: Hex, b: Hex): Hex {
   return { q: a.q + b.q, r: a.r + b.r };
 }
 
+/**
+ * The opposite of an axial offset, kept canonical: negating `0` would leave
+ * `-0`, which compares equal but reads differently in a deep comparison.
+ */
+export function negHex(offset: Hex): Hex {
+  return { q: canonical(-offset.q), r: canonical(-offset.r) };
+}
+
 /** The difference of two axial coordinates, `a - b`. */
 export function subHex(a: Hex, b: Hex): Hex {
   return { q: a.q - b.q, r: a.r - b.r };
