@@ -22,13 +22,7 @@
 //                  avoidance is often one-sided and a weave reroll can discard
 //                  it intermittently
 
-import {
-  FIELD_H,
-  FIELD_W,
-  SAUCER_R,
-  SAUCER_SPEED,
-  STAR_Y,
-} from "./constants";
+import { FIELD_H, FIELD_W, SAUCER_R, SAUCER_SPEED, STAR_Y } from "./constants";
 import { driftOver, pullAt, type Vec } from "./geometry";
 
 /* -------------------------------------------------------------------------- */
