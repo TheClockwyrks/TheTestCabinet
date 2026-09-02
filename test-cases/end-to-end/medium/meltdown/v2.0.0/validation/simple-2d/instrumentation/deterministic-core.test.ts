@@ -31,6 +31,18 @@
 //     whole `60` on the divided one, which is `41` units apart — eighty times the
 //     bound below.
 //
+// AND BOTH READINGS ARE VACUOUS UNTIL THE WALKER HAS MOVED. A build whose units
+// stand still gains the second on either clock and leaves the walker in the
+// identical place on both, so it satisfies every line above while simulating no
+// motion at all — a dead floor agrees with itself perfectly. So each leg's travel
+// is held to a floor FIRST, and only then are the two legs compared. The floor is
+// a quarter of the `60` logical units specs/surge.md gives a Mote in a second: far
+// enough above zero that a build inching a walker along cannot clear it, and far
+// enough below `60` that it decides nothing about the speed, which is
+// `surge/walks-at-its-speed`'s question rather than this one. It is the same
+// quarter-of-the-specified-figure floor the engineless and structured-2d copies of
+// this point hold.
+//
 // THE ROW IS OPEN AND THE ROUTE IS STRAIGHT. The walker is posed five tiles into
 // the left corridor, whose route to the right exhaust runs straight east across
 // an empty floor (specs/floor.md, specs/mazing.md), so the second's travel is a
@@ -43,7 +55,11 @@
 
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertLessThanOrEqual } from "../assert";
+import {
+  assertCloseTo,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   TICK_HZ,
   TICK_MS,
@@ -71,6 +87,18 @@ const SECOND_MS = 1000;
 const POSITION_UNITS = 0.5;
 
 /**
+ * The least a leg's second must have carried the walker, in logical units.
+ *
+ * A quarter of the `60` logical units a Mote covers in a second
+ * (specs/surge.md). Everything else this point reads is an AGREEMENT — between
+ * two clocks, and between a clock and the second it was handed — and a build that
+ * never moved agrees with itself on both. This is the reading that makes the
+ * agreement mean something, and it is deliberately far below `60` so that it
+ * decides nothing about the speed itself.
+ */
+const MIN_TRAVEL = 15;
+
+/**
  * How closely each leg's `simTime` must gain the second, as decimal places.
  *
  * Six places is `5e-7`. The gain is a sum of deltas the clock reported exactly,
@@ -78,10 +106,14 @@ const POSITION_UNITS = 0.5;
  */
 const CLOCK_DIGITS = 6;
 
-/** Where each leg's walker ended, and what its clock gained getting there. */
+/**
+ * Where each leg's walker ended, how far it travelled getting there, and what its
+ * clock gained over the same window.
+ */
 interface Leg {
   x: number;
   y: number;
+  travel: number;
   clockGain: number;
 }
 
@@ -90,12 +122,14 @@ async function coverASecond(harness: Harness, frames: number): Promise<Leg> {
   startRun(harness);
   const walker = poseWalkerOn(harness, "mote", WALK.col, WALK.row);
   const opened = harness.snapshot();
+  const from = unitOf(opened, walker);
   await harness.advance(frames);
   const closed = harness.snapshot();
-  const unit = unitOf(closed, walker);
+  const to = unitOf(closed, walker);
   return {
-    x: unit.x,
-    y: unit.y,
+    x: to.x,
+    y: to.y,
+    travel: Math.hypot(to.x - from.x, to.y - from.y),
     clockGain: closed.simTime - opened.simTime,
   };
 }
@@ -136,6 +170,18 @@ it("covers one second identically as one frame and as 120", async () => {
     (TICK_HZ * TICK_MS) / 1000,
     CLOCK_DIGITS,
     `simTime gained by one second covered as ${TICK_HZ} frames`,
+  );
+
+  // Both legs actually walked: a floor that never moved would agree vacuously.
+  assertGreaterThan(
+    whole.travel,
+    MIN_TRAVEL,
+    "logical units the second carried the walker, covered as a single frame",
+  );
+  assertGreaterThan(
+    divided.travel,
+    MIN_TRAVEL,
+    `logical units the second carried the walker, covered as ${TICK_HZ} frames`,
   );
 
   assertLessThanOrEqual(
