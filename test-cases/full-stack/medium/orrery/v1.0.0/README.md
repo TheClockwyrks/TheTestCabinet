@@ -122,19 +122,28 @@ absent. `specs/assets.md` also lists what stays drawn in code.
 
 ## Validation
 
-This case is on the engine format, so it is validator-rated: each of the 1115
+This case is on the engine format, so it is validator-rated: each of the 1058
 review items across 15 categories is one observable behavior, cut so a validator
 can decide it by posing the scenario through the instrumentation surface and
 reading it back, and each carries the scoring domains its failure lowers and the
 failure cap it applies.
 
-The validator suites and the reference implementations do **not** exist yet.
-Every item already declares its suite path in its `validation` key, at
-`<category>/<id>.test.ts`, so the case does not resolve until
-`validation/<engine>/` ships one Vitest project per engine holding those suites.
-`references/<engine>/base/` and the variant's `[reference_implementation]` table
-land in the same change, and are what `tcab capture-baselines` drives to
-synthesize the baseline half of every item's validation media.
+The reference implementations ship under `references/<engine>/base/` — one
+authored, correct build per supported engine, named by the `base` variant's
+`[reference_implementation]` table. None is ever seeded into a run: each is the
+answer, held to the same four toolchain gates a run is, and each is what
+`tcab capture-baselines` drives to synthesize the baseline half of every item's
+validation media for its engine. Because this is a full-stack case, each also
+produced its own sprites, aperture sheets, particle systems and audio during
+authoring and committed them under `assets/`; its `ASSET-LAYOUT.md` maps every
+produced file to the specification line that asks for it, and its
+`scripts/gen-*.sh` are the one-time production pass, never part of the build.
+
+The validator suites do **not** exist yet. Every item already declares its suite
+path in its `validation` key, at `<category>/<id>.test.ts`, so the case does not
+resolve until `validation/<engine>/` ships one Vitest project per engine holding
+those suites — captured against the three reference builds, with the same
+relative suite path running under all three engines.
 
 ## Versioning
 

@@ -20,20 +20,28 @@ description = "The full machine-building game: the build's own Campaign course a
 # add one, it almost certainly belongs in `test-case.toml` as a common spec.
 
 # No `showcase` yet. The curated catalog presentation — a player-facing
-# description and a carousel led by sustained real play captured from a reference
-# build — lands with the reference builds below.
+# description and a carousel led by sustained real play captured from one of the
+# reference builds below — lands in the change that adds `showcase/base/` and its
+# capture driver.
 
-# No `[reference_implementation]` yet. The authored correct builds — one directory
-# per supported engine, by convention `references/none/base`,
-# `references/simple-2d/base` and `references/structured-2d/base` — do not exist
-# for this version, and a declared path that does not resolve refuses the whole
-# case. The table lands in the same change as the builds, naming EXACTLY the three
-# engines `test-case.toml` supports, exactly as Kessler's base variant declares
-# its three. Each of those builds is also what `tcab capture-baselines` drives to
-# synthesize the baseline half of every review item's validation media for its
-# engine, and each PRODUCES its own asset set during authoring and commits it
-# beside itself, because this is a full-stack case and `npm ci && npm run build`
-# must be self-contained.
+# The authored, *correct* playable build of this variant, one directory per
+# supported engine, because the build a reference demonstrates differs under each.
+# This table names EXACTLY the three engines `test-case.toml` supports; the
+# resolver checks both directions, so an engine without a reference and a
+# reference without an engine each refuse the whole case. No reference directory
+# is ever seeded into a run: each is the authored answer, built with the case's
+# own `[build]` commands and held to the same four toolchain gates a run is, and
+# each is what `tcab capture-baselines` drives to synthesize the baseline half of
+# every review item's validation media for its engine. This is a full-stack case,
+# so each of these builds also PRODUCED its own sprites, aperture sheets,
+# particle systems and audio during authoring — one pass by hand through its
+# `scripts/gen-*.sh`, mapped in its `ASSET-LAYOUT.md` — and committed them beside
+# itself under `assets/`. The build itself only loads them, so `npm ci &&
+# npm run build` is self-contained and runs with the generation binaries absent.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
 
 # No `[workspaces]` override. This is the only variant, so the case's own
 # `[workspaces]` table names the three starter projects directly, one per engine,
