@@ -232,7 +232,7 @@ source = "specs/ui.md"
 source = "specs/sites.md"
 
 [[spec]]
-source = "specs/assets.md"
+source = "specs/assets.md.hbs"
 
 # No `[[reference]]`, no `[[check]]`, and no `[[proof]]`. Gantry fixes no
 # palette, no models, and no scene styling: every build is expected to look

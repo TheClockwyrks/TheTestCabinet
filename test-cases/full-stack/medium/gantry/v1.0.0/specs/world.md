@@ -29,9 +29,11 @@ between two lattice nodes, and parts occupy lattice nodes, as
 
 Each site fixes a build envelope: an axis-aligned box, stated as inclusive
 coordinate ranges on each axis. Every lattice node used by the structure lies
-inside the envelope, so the envelope bounds where the crane may be built. It
-bounds nothing at run time: once the tape runs, the arm swings wherever its
-geometry takes it, envelope or not.
+inside the envelope, so the envelope bounds where the crane may be built. Every
+envelope stands on the ground, its `y` range running from `0` up, so structure
+may sit on the ground plane and never reaches below it. The envelope bounds
+nothing at run time: once the tape runs, the arm swings wherever its geometry
+takes it, envelope or not.
 
 ## Anchors
 
@@ -45,15 +47,20 @@ the ground.
 ## Obstacles
 
 An obstacle is a fixed axis-aligned box, stated as a minimum corner and a size
-per axis. Obstacles block building and moving alike:
+per axis. An obstacle blocks only where something reaches inside it: a body
+meets an obstacle when the two overlap over a positive interval on every axis,
+so a segment grazing a face and a box resting flush against one are both clear
+of it. Contact is not collision. This one rule governs every obstacle test in
+the game: the editor's, the structure's during a run, and the carried load's.
 
-- The editor refuses a member whose segment passes through an obstacle
+- The editor refuses a member whose segment reaches inside an obstacle
   (`specs/structure.md`).
-- During a run, a member sweeping through an obstacle or a load carried into
+- During a run, a member sweeping inside an obstacle or a load carried inside
   one ends the run, as `specs/statics.md` states.
 
-An obstacle's top face is solid ground for a load: a pad may sit on top of an
-obstacle, which is how a site asks for a lift onto a platform.
+An obstacle's top face is therefore solid ground for a load: a pad may sit on
+top of an obstacle, and a load set down on that pad rests on the face without
+reaching inside the box, which is how a site asks for a lift onto a platform.
 
 ## Loads
 

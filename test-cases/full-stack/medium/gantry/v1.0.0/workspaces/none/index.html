@@ -16,6 +16,10 @@
         The canvas simply fills the window. Fitting the fixed 1280x720 logical
         stage inside it — the uniform scale, the centered letterbox, and the
         device pixel ratio — is the build's own work, so there is no sizing here.
+
+        `touch-action: none` keeps the browser from claiming a drag across the
+        canvas as a scroll or a zoom, which matters because the yard is orbited
+        and built on by pressing and dragging over the stage.
       */
       #stage {
         display: block;

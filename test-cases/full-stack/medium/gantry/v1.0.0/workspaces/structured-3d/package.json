@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Gantry — a 3D crane-building puzzle driven by an instruction tape under a structural simulation, built on the Simple 3D engine, that runs entirely in the browser.",
+  "description": "Gantry — a 3D crane-building puzzle driven by an instruction tape under a structural simulation, built on the Structured 3D engine, that runs entirely in the browser.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
@@ -14,7 +14,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/simple-3d": "file:./.tcab/engine/@test-cabinet/simple-3d",
+    "@test-cabinet/structured-3d": "file:./.tcab/engine/@test-cabinet/structured-3d",
     "three": "~0.182.0"
   },
   "devDependencies": {

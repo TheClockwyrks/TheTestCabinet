@@ -1,44 +1,80 @@
 # Gantry — Debug and automation surface
 
 {{#if (eq engine.slug "none")}}
-Gantry carries a debugging and automation surface, `window.__gantry`, so the
-game can be driven and inspected from code without moving a real pointer or
-waiting on real time.
+Gantry carries a debugging and automation surface, `window.__gantry`, so a site
+can be posed and read from code without moving a real pointer or waiting on
+real time.
 
 You implement it. Every operation this file specifies is a deliverable, and the
 build installs the finished surface on `window.__gantry` as soon as the game
 has initialized. Every scenario driven from code reaches the game through it,
 so it is present and exactly as specified here.
 
-Each operation is a read or a pose of the game's state. A pose arranges the
-game, and the game's own rules run from there exactly as they do in play: an
-edit posed through the surface passes the same placement rules a click does,
-and a run started through it is the same run the `run` action starts.
+Each operation is a reading or a pose. A pose sets one thing and leaves the
+rest of the game as it stands, so a caller that wants several things arranged
+makes several calls, in the order it wants them, and nothing it does not ask
+for happens. A pose arranges the yard through the same systems play uses: a
+posed edit passes the placement rules a click passes, a posed tape step passes
+the rules the tape editor applies, and a run started through the surface is the
+run the `run` action starts. A pose establishes a precondition and never an
+outcome; what happens next comes from advancing the real simulation.
 
 The surface is inert during normal play, doing nothing until something calls
 it.
-{{else}}
-Gantry carries a debugging and automation surface so the game can be driven
-and inspected from code without moving a real pointer or waiting on real time.
+{{else if (eq engine.slug "simple-3d")}}
+Gantry carries a debugging and automation surface so a site can be posed and
+read from code without moving a real pointer or waiting on real time.
 
 You implement it. Every operation this file specifies is a deliverable, and the
 build's `initialize` returns the finished surface beside the state it built, as
 the pair `[state, debug]`. The engine returns that same value from
 `engine.debug`, and it is reached that way alone: nothing is installed on the
 page. Every scenario driven from code reaches the game through it, so it is
-present and exactly as specified here.
+present and exactly as specified here. `src/game.ts` declares and exports its
+type, `GantryDebugApi`.
 
 Each operation is a reading or a pose of `GantryState`, written in the shape of
 `update`, because the engine holds the state by value and nothing holds a
 writable one. A pose takes the current state, as `DeepReadonly<GantryState>`,
 and returns the next `GantryState`; a reading takes the state the same way and
-returns what it read. A caller drives a pose through the engine's `apply`, as
-`engine.apply((s) => debug.startRun(s))`, and a reading against the engine's
-current state, as `debug.snapshot(engine.state)`. A posed edit passes the same
-placement rules a click does, and a run started through the surface is the same
-run the `run` action starts. Where the surface's implementation lives under
-`src/` is yours to decide; `src/game.ts` declares and exports its type,
-`GantryDebugApi`.
+returns what it read. A pose sets one thing and leaves the rest of the game as
+it stands, so a caller that wants several things arranged makes several calls,
+in the order it wants them, and nothing it does not ask for happens. A pose
+arranges the yard through the same systems play uses: a posed edit passes the
+placement rules a click passes, a posed tape step passes the rules the tape
+editor applies, and a run started through the surface is the run the `run`
+action starts. A pose establishes a precondition and never an outcome; what
+happens next comes from advancing the real simulation.
+
+A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setTool(s, "cable"))`, and takes a reading against
+the engine's current state, as `debug.snapshot(engine.state)`.
+
+The surface is inert during normal play, doing nothing until something calls
+it.
+{{else}}
+Gantry carries a debugging and automation surface so a site can be posed and
+read from code without moving a real pointer or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it
+and returns it from `engine.debug`, and it is reached that way alone: nothing
+is installed on the page. Every scenario driven from code reaches the game
+through it, so it is present and exactly as specified here. `src/game.ts`
+declares and exports its type, `GantryDebugApi`.
+
+Each operation is a reading or a pose acting on the live world at the moment of
+the call. A pose sets one thing and leaves the rest of the game as it stands,
+so a caller that wants several things arranged makes several calls, in the
+order it wants them, and nothing it does not ask for happens. A pose arranges
+the yard through the same systems play uses: a posed edit passes the placement
+rules a click passes, a posed tape step passes the rules the tape editor
+applies, and a run started through the surface is the run the `run` action
+starts. A pose establishes a precondition and never an outcome; what happens
+next comes from advancing the real simulation. Gantry runs in one world for the
+whole session and every screen is a value of the screen field, so a pose that
+changes the screen takes effect at the call rather than riding a level
+transition.
 
 The surface is inert during normal play, doing nothing until something calls
 it.
@@ -54,32 +90,40 @@ Two more properties make it driveable from code:
 - Render-free core. Game state advances from ticks and input alone,
   independent of the canvas, of the renderer, and of wall-clock time. The
   dependency runs one way: the simulation reads nothing from the renderer, and
-  whether an edit is accepted is decided from the structure and the site
-  alone.
-- Silent refusal as data. A pose the rules refuse leaves the state exactly as
-  it was, so a scenario reads the outcome of any pose back from `snapshot` and
-  `check` rather than from a return value.
+  whether an edit is accepted is decided from the structure and the site alone.
+- Silent refusal as data. A pose the game's own rules refuse leaves the state
+  exactly as it was, so a caller reads the outcome of any pose back from
+  `snapshot` rather than from a return value.
 
 ## What the runtime provides instead
 
 {{#if (eq engine.slug "none")}}
-The keyboard, the pointer, and the overlay belong to the runtime layer beneath
-the game, and the surface carries no operation for the registered actions or
-for the overlay. That layer delivers the actions the game registers from the
-key bindings `specs/controls.md` fixes, it reports the pointer position in the
-stage's logical units along with the press and release edges, and it draws and
-toggles the debug overlay.
+The keyboard, the pointer, the clock, and the overlay all belong to the runtime
+layer beneath the game, and nothing outside this build owns any of them. The
+surface is therefore what takes the game off real time and advances it, through
+`setAutoStep` and `advance`, and what delivers a raw pointer or key act, through
+the input operations below. It carries no operation for the registered actions
+themselves: a caller presses the key `specs/controls.md` binds to an action and
+the game reads the action exactly as it does for a player.
 
-The clock is the exception, because nothing outside this build owns it. The
-surface is what takes the game off real time and advances it, through
-`setAutoStep` and `advance` below.
+The camera and the projection that turns a world position into a point on the
+stage are the runtime layer's too, so `project` below is the reading that
+answers where a lattice node, a member end, or the hook is drawn.
 {{else}}
-The clock, the keyboard, the pointer, and the overlay belong to the
-{{engine.name}} engine, which documents them in the `engine/` directory at the
-root of this repository, and the surface carries no operation for any of them.
-The engine advances the game frame by frame and can take it off real time, it
-drives the actions the game registers, it reports the pointer position in the
-stage's logical units, and it draws and toggles the debug overlay.
+The clock, the keyboard, the pointer, the camera's projection, and the overlay
+belong to the {{engine.name}} engine, which documents them in the `engine/`
+directory at the root of this repository, and the surface carries no operation
+for any of them. The engine advances the game frame by frame and can take it
+off real time, it reports the pointer position in the stage's logical units
+along with the press and release edges, it delivers the actions the game
+registers, it draws and toggles the debug overlay, and it projects a world
+position to the point on the stage it is drawn at.
+
+A caller reaching a control therefore dispatches a real pointer or key event at
+the engine's surface and advances a frame, and the game handles it exactly as
+it handles a player's. A caller that needs the stage point a lattice node, a
+member end, or the hook is drawn at projects that world position through the
+engine's camera.
 {{/if}}
 
 What the overlay shows is Gantry's, under Diagnostics below.
@@ -87,139 +131,74 @@ What the overlay shows is Gantry's, under Diagnostics below.
 ## The operations
 
 The surface carries `version` (`GANTRY_DEBUG_VERSION`, `1`), a plain number,
-and the operations below. Values are plain numbers, strings, booleans, and
-plain objects. A position is `{ x, y, z }` in world units, and every angle is
-in degrees.
-{{#if (eq engine.slug "none")}}
-{{else}}
+and the operations below. Every argument is a plain number, string, or boolean:
+a world position is passed as its three coordinates in order, an angle is in
+degrees, and an `id` is a member's identifier as `snapshot` reports it. Values
+come back as plain numbers, strings, booleans, and plain objects.
 
+{{#if (eq engine.slug "none")}}
+Each operation takes only the parameters its table names, and an operation whose
+name carries no parameter list takes none. A pose returns nothing; a reading
+returns what it read and changes nothing.
+{{else if (eq engine.slug "simple-3d")}}
 Each operation's first parameter is the current state,
-`DeepReadonly<GantryState>`. A pose returns the next `GantryState`, built from
-the one it was handed, which it leaves as it was; a reading returns what it
-read. The headings below name the parameters that follow the state.
+`DeepReadonly<GantryState>`, before the parameters its table names, so an
+operation whose name carries no parameter list takes the state alone. A pose
+returns the next `GantryState`, built from the one it was handed, which it
+leaves as it was; a reading returns what it read.
+{{else}}
+Each operation takes only the parameters its table names, and an operation whose
+name carries no parameter list takes none. Each acts on the live world the
+moment it is called. A pose returns nothing; a reading returns what it read and
+changes nothing.
 {{/if}}
 
+Three rules cover every operation below.
+
+- An argument outside the domain its operation states is invalid, and the call
+  fails loudly rather than guessing what was meant. So is an index no site,
+  load, or tape step carries, and an `id` no member carries.
+- A pose that stands for something a player does commits through the same rule
+  the player's act passes, so it is refused wherever that act is refused and
+  changes nothing when it is. The refusal is silent and readable in the
+  snapshot: no member appears, no cost is spent, no step joins the tape, and no
+  run begins.
+- Each pose applies on the screens its section names and does nothing on any
+  other, exactly as the control it stands for does.
+
 {{#if (eq engine.slug "none")}}
-### `setAutoStep(enabled)`
+### The clock
 
-Takes the game off real time, and gives it back. `setAutoStep(false)` stops
-the frame loop advancing a running run from the wall clock, so the simulation
-moves only when `advance` says so. `setAutoStep(true)` returns it to running
-itself, which is how a build starts and how it is played.
+| Operation | Effect |
+| --- | --- |
+| `setAutoStep(enabled)` | Takes the game off real time and gives it back. `setAutoStep(false)` stops the frame loop advancing the game from the wall clock, so it changes only when `advance` says so. `setAutoStep(true)` returns it to running itself, which is how a build starts and how it is played. Drawing is unaffected either way. |
+| `advance(ticks)` | Runs `ticks` whole frames, immediately and in order, each covering `1 / TICK_HZ` seconds of elapsed time and each followed by a render. `ticks` defaults to `1`. |
 
-Drawing is unaffected either way: the loop keeps rendering, so the canvas
-shows the state the most recent tick left.
+A frame is a real frame, the same one the loop runs. During a run at watch speed
+`1` a frame covers exactly one tick of the pipeline `specs/program.md` fixes, so
+`advance(n)` runs `n` ticks. The watch speed scales what a frame covers exactly
+as it scales a real frame, so a scenario counting ticks leaves the speed where a
+run starts it. Off the run screen nothing ticks, and the frame is still real:
+the input delivered since the last frame is read, the camera moves against that
+elapsed time, and the scene is drawn.
 
-### `advance(ticks)`
-
-Runs `ticks` whole simulation ticks, immediately and in order, each the full
-tick pipeline `specs/program.md` fixes, followed by a render. `ticks` defaults
-to `1`. It applies while a run is in progress and does nothing on other
-screens, where nothing ticks.
-
-Advancing while the game is still stepping automatically adds to what the
-wall clock is already doing, so a scenario that must be reproducible calls
+Advancing while the game is still stepping automatically adds to what the wall
+clock is already doing, so a scenario that must be reproducible calls
 `setAutoStep(false)` first.
 
 {{/if}}
-{{#if (eq engine.slug "none")}}
-### `reset()`
-{{else}}
-### `reset(state)`
-{{/if}}
+### Readings
 
-Restores every declared field of the game's state to its title-screen value:
-the title screen with its first item highlighted, site `0` open, every site's
-progress cleared and its stored structure and tape empty, the strut tool, no
-pending node, an empty history, the camera at its start pose, an idle run, and
-`simTime` at `0`. `muted` is deliberately untouched: muting is a player
-preference the runtime owns.
+| Operation | Returns |
+| --- | --- |
+| `snapshot` | The plain object under Snapshot shape below. |
+| `check` | The static check of `specs/structure.md`, computed on the spot. |
 
-Because it restores exactly the declared fields, any state of your own that a
-frame depends on is derivable from them.
-
-{{#if (eq engine.slug "none")}}
-### `snapshot()`
-
-A pure read of the state, returned as the plain object under Snapshot shape
-below. It changes nothing.
-
-### `openSite(index)`
-{{else}}
-### `snapshot(state)`
-
-A pure reading of `state`, returned as the plain object under Snapshot shape
-below. It returns no state, because it poses nothing.
-
-### `openSite(state, index)`
-{{/if}}
-
-Poses opening site `index`, counted from `0`, exactly as entering it from the
-select screen does, locked or not: the build screen, that site's stored
-structure and tape, a cleared history, no pending node, and the camera at its
-start pose. It is the surface's way onto any site without playing to it.
-
-{{#if (eq engine.slug "none")}}
-### `addMember(a, b, material)`, `removeMember(id)`
-### `setRing(corner)`, `clearRing()`
-### `addCounterweight(node)`, `removeCounterweight(node)`
-{{else}}
-### `addMember(state, a, b, material)`, `removeMember(state, id)`
-### `setRing(state, corner)`, `clearRing(state)`
-### `addCounterweight(state, node)`, `removeCounterweight(state, node)`
-{{/if}}
-
-Pose single structure edits on the build screen, entering the same rule
-pipeline the build tools feed, so every refusal in `specs/structure.md`
-applies unchanged: a refused edit leaves the structure exactly as it was. Each
-successful edit pushes history exactly as a click would. `addMember` assigns
-the structure's next member id; `removeMember` takes the id to remove. They
-apply on the build screen alone.
-
-{{#if (eq engine.slug "none")}}
-### `setStructure(doc)`
-{{else}}
-### `setStructure(state, doc)`
-{{/if}}
-
-Poses a whole structure at once, on the build screen. `doc` is
-`{ members, ring, counterweights }`: `members` a list of
-`{ a, b, material }`, `ring` a `{ corner }` or `null`, and `counterweights` a
-list of nodes. The document is applied by replacing the site's structure with
-an empty one and posing the ring, then each member in order, then each
-counterweight, through the same rules as above; member ids are assigned in
-list order starting at `0`. If any element is refused, the whole pose is
-refused and the structure the call found stays exactly as it was. A successful
-pose replaces the undo history with the single structure it replaced.
-
-This is the surface's main lever for the crane itself: it puts a chosen
-structure on the site without clicking it together.
-
-{{#if (eq engine.slug "none")}}
-### `setProgram(doc)`
-{{else}}
-### `setProgram(state, doc)`
-{{/if}}
-
-Poses a whole tape, on the build or program screen. `doc` is the list of
-steps, in the shape `specs/state.md` gives them. Each command must name a real
-axis and carry a rate greater than `0` and at most the axis's max rate, and
-each move at least one command, exactly as the tape editor enforces; a
-document breaking any of that is refused whole, leaving the tape as it was.
-Targets are accepted as written and judged at run time
-(`specs/program.md`).
-
-{{#if (eq engine.slug "none")}}
-### `check()`
-{{else}}
-### `check(state)`
-{{/if}}
-
-A pure reading: the editor's static check, computed on the spot. It reports
+`check` reports exactly what the `check` action reports, in this shape:
 
 ```js
 {
-  issues: ["no-ring", ...],   // the readiness issues, empty when ready
+  issues: ["no-ring", ...],   // what would refuse a run, empty when nothing would
   cost: <number>,
   budget: <number>,
   stable: <boolean>,
@@ -227,55 +206,241 @@ A pure reading: the editor's static check, computed on the spot. It reports
 }
 ```
 
-With any readiness issue, `stable` is `false` and `members` is empty. With a
-ready structure it runs the two solves of `specs/statics.md` at the run-start
-posture, `slew` `0`, `trolley` `0`, `hoist` `HOIST_START`, the bare hook
-hanging at rest, and no motion: `stable` reports whether both solves are
-regular, and `members` carries each intact member's static force and
-utilization, in member-id order. Nothing breaks and nothing fails during a
-check; a utilization above `1` is simply reported.
-
+`stable` is whether the structure stands and `members` is in member-id order.
+`specs/structure.md` fixes the issues, the solve the check runs, and what a
+structure with an issue reports. The reading is pure: it computes the check and
+returns it, and it displays nothing, so the result the build screen is showing
+is untouched.
 {{#if (eq engine.slug "none")}}
-### `startRun()`, `abortRun()`
-{{else}}
-### `startRun(state)`, `abortRun(state)`
+
+| Operation | Returns |
+| --- | --- |
+| `project(x, y, z)` | The point on the stage the world position `(x, y, z)` is drawn at, through the camera as it stands, as `{ x, y, visible }`. |
+
+`x` and `y` are logical stage units, and `visible` is whether the position lies
+in front of the camera and inside the stage. It is a pure reading and moves
+nothing. Because `specs/controls.md` fixes how a click picks rather than how the
+yard is drawn, this is how a caller finds the point a node is drawn at without
+knowing the projection: a press and release at a visible node's projected point
+picks that node, and one `NODE_PICK_PX` away from every node picks none.
 {{/if}}
 
-`startRun` poses the `run` action: the same refusals, the same `run-start`,
-and the same first tick as `specs/program.md` states. A refused start leaves
-the state as it was; `check` says why it would refuse. `abortRun` poses the
-abort, ending a running run with no verdict and returning to the build
-screen.
+### The run and the screens
+
+| Operation | Effect |
+| --- | --- |
+| `reset` | Returns the game to its title state, as below. |
+| `setScreen(screen)` | Moves to a named screen, exactly as reaching it in play does. `screen` is one of the seven identifiers of `specs/ui.md`. |
+| `setMenuIndex(index)` | Sets the highlighted entry of the menu on the screen showing, counted from `0`. |
+| `openSite(index)` | Opens site `index`, counted from `0`, exactly as entering it from the select screen does, locked or not. |
+| `setCleared(index, cleared)` | Sets whether site `index` has been cleared this session, and with it which sites are open. |
+| `setBest(index, cost, time)` | Records `{ cost, time }` as site `index`'s best score, whatever it held. |
+| `clearBest(index)` | Returns site `index` to having no recorded score. |
+| `setCamera(yaw, pitch, dist)` | Sets the orbit camera's pose, within the limits `specs/controls.md` fixes. |
+| `startRun` | Poses the `run` action: the same refusals, the same `run-start`, and the same first tick as `specs/program.md` states. |
+| `abortRun` | Poses the abort, ending a running run with no verdict and returning to the build screen. |
+
+`openSite` carries the effects `specs/state.md` states for opening a site, and
+it is the surface's way onto any site without playing to it. A site opened this
+way carries the loads and obstacles `specs/sites.md` gives it, so a caller that
+wants a different set poses it with the site operations below.
+
+The first eight of these apply on every screen. `startRun` applies on the build
+and program screens, where the `run` action does, and `abortRun` while a run is
+in progress. `startRun` is refused exactly as the action is, leaving the state
+as it was; `check` says why it would refuse. A run that begins is the ordinary
+run, and its verdict comes from the ticks that follow.
+
+`reset` restores every field the snapshot reports to its title-screen value: the
+`title` screen with `menuIndex` `0`, site `0` open, every site uncleared with no
+recorded score, every site's stored structure and tape emptied, the open site's
+loads and obstacles back to the ones `specs/sites.md` gives it, the strut tool,
+no pending node, an empty history, the camera at its start pose, no press live,
+no check result showing, an idle run, and `simTime` at `0`. Two fields are
+deliberately untouched, because both belong to the runtime rather than to the
+game: the mute bit, which is a player preference, and the pointer's position.
+Because `reset` restores exactly those fields, anything else the build keeps
+across frames is derived from them.
+
+### The structure
+
+| Operation | Effect |
+| --- | --- |
+| `clearStructure` | Empties the open site's structure: every member, the ring, and every counterweight go, and the undo history is pushed exactly as one edit pushes it. |
+| `addMember(ax, ay, az, bx, by, bz, material)` | Places a member between the two lattice nodes, of `"strut"`, `"cable"`, or `"rail"`. |
+| `removeMember(id)` | Removes the member carrying that id. |
+| `setRing(x, y, z)` | Places the slew ring by its base corner at that lattice node. |
+| `clearRing` | Removes the ring. |
+| `addCounterweight(x, y, z)` | Places a counterweight on that lattice node. |
+| `removeCounterweight(x, y, z)` | Removes the counterweight on that lattice node. |
+| `setTool(tool)` | Selects a build tool, as the tool actions do. |
+| `setPendingNode(x, y, z)` | Holds that lattice node as the pending first node of a member placement, as a first click does. |
+| `clearPendingNode` | Clears the pending node without placing, as `back` does. |
+
+These pose single edits on the build screen, entering the rule pipeline the
+build tools feed, so every refusal in `specs/structure.md` applies unchanged and
+a refused edit leaves the structure exactly as it was. Each edit that lands
+pushes the undo history exactly as a click would. `addMember` assigns the
+structure's next member id.
+
+`clearStructure` empties the structure as opening a site with nothing built
+leaves it, so the next member placed after it takes id `0` and a posed crane's
+ids run upward in the order its members were added. It is refused by nothing:
+removal is always allowed.
+
+A caller that wants a whole crane poses it as the sequence of edits that builds
+it, which is what puts it under the same rules a player builds under.
+
+### The tape
+
+| Operation | Effect |
+| --- | --- |
+| `clearProgram` | Empties the open site's tape. |
+| `addMoveStep(axis, target, rate)` | Appends a move step carrying one command: drive `axis` to `target` at `rate`. |
+| `addCommand(index, axis, target, rate)` | Adds a command to the move step at `index`. |
+| `addActionStep(action)` | Appends an action step, `"attach"` or `"release"`. |
+| `removeStep(index)` | Removes the step at `index`. |
+
+An `axis` is `"slew"`, `"trolley"`, `"hoist"`, or `"grip"`. These pose tape
+edits on the program screen, which is where the tape editor lives
+(`specs/controls.md`), and each passes the rules that editor applies
+(`specs/program.md`): a rate at most the axis's max rate and greater than `0`,
+and at most one command per axis in a step. A command on an axis its step
+already commands is refused, as is a command added to an action step. Targets
+are accepted as written and judged when the step starts.
+
+### The site
+
+| Operation | Effect |
+| --- | --- |
+| `clearLoads` | Removes every load from the open site. |
+| `addLoad(cls, mass, x, y, z, yaw)` | Appends a load of class `"crate"`, `"container"`, or `"drum"`, of that mass, starting at rest with its lift point at `(x, y, z)` and that yaw. Its target pose starts equal to its starting pose. |
+| `setLoadTarget(index, x, y, z, yaw)` | Sets the target pose of the load at `index`, which is the pad it must be set down on. |
+| `clearObstacles` | Removes every obstacle from the open site. |
+| `addObstacle(x, y, z, w, h, d)` | Appends an obstacle: the axis-aligned box with minimum corner `(x, y, z)` and size `(w, h, d)`. |
+
+The site poses apply on the build and program screens, with no run in progress.
+They are what lets a scenario hold only what it is about: a caller clears the
+loads and the obstacles and adds back exactly the ones its requirement
+concerns, so a check on a lift runs against one load and a check on a member
+striking a wall runs against one obstacle. The loads a run carries are the ones
+standing when it starts, index-aligned with them, and `openSite` and `reset`
+both put the site's authored set back.
+
+Loads and obstacles are the site's, not the structure's, so posing them refuses
+nothing and changes nothing that is built: a member standing where an obstacle
+is posed stays where it is, and the run that follows ends as
+`structure-struck-obstacle` on the tick the collision test reaches it. The
+editor's refusals govern edits to the structure, and posing the site is not one
+of those.
+
+### The run in progress
+
+| Operation | Effect |
+| --- | --- |
+| `setAxis(axis, value)` | Sets an axis's value, leaving it stopped with no live command. |
+| `setAxisRate(axis, rate)` | Sets an axis's signed rate, leaving its value and its command as they are. |
+| `setBob(x, y, z)` | Puts the pendulum bob at a world position. |
+| `setBobVelocity(vx, vy, vz)` | Sets the bob's velocity. |
+| `setLoadPose(index, x, y, z, yaw)` | Puts a load's lift point at a world position, at that yaw. |
+| `setLoadPhase(index, phase)` | Sets a load's phase to `"waiting"`, `"attached"`, `"placed"`, or `"lost"`. |
+| `setSpeedIndex(index)` | Sets the watch speed to that index into `RUN_SPEEDS`. |
+
+These pose the run while one is in progress. Each sets what it names and leaves
+the rest of the run as it stands, and none of them reaches a verdict: the run's
+own rules decide clearing, breakage, and every failure on the ticks that
+follow.
+
+`setLoadPhase` to `"attached"` hangs that load on the hook exactly as a
+successful `attach` leaves it, without the candidate search and without the
+`attach-missed` verdict, and it is refused while another load is attached. The
+grip's value is left as it is, so a caller that wants the hook square on the
+load sets the grip too. Every other phase takes the load off the hook and leaves
+it at the pose it holds. A `"placed"` load sits where it is for the rest of the
+run, as `specs/world.md` states.
+
+`setAxis` takes any value the axis can hold. The ranges in `specs/program.md`
+are what a step's target is judged against when the step starts, not a bound on
+the axis itself.
+
+`setBob` puts the bob where it is asked for, so a caller that wants a bob the
+cable can hold sets the hoist axis to the distance it left between the pivot and
+the bob. The pendulum's own constraint runs on the next tick either way.
 
 {{#if (eq engine.slug "none")}}
-A typical scenario calls `openSite`, `setStructure`, and `setProgram` to pose
-the site wanted, `startRun` with `setAutoStep(false)`, then `advance` through
-the run, reading verdicts, forces, and poses from `snapshot()` as it goes.
-{{else}}
-A typical scenario applies `openSite`, `setStructure`, and `setProgram`
-through `engine.apply`, applies `startRun`, steps the engine's own clock
-through the run, and reads verdicts, forces, and poses from
-`debug.snapshot(engine.state)` as it goes.
-{{/if}}
+### Input
 
+These feed the same input path the runtime layer feeds, so a posed press and a
+player's press are the same event to the game. Nothing is bypassed: the click
+and orbit rules, the pick radii, the tool behavior, and the screen restrictions
+all run exactly as they do for a player. Beyond the pointer position
+`pointerMove` moves, they set no state of their own: what each changes is
+whatever the act it delivers changes.
+
+| Operation | Effect |
+| --- | --- |
+| `pointerMove(x, y)` | Moves the pointer to a logical stage position. |
+| `pointerDown(x, y)` | A press at a logical stage position. It moves the pointer there first, so a press needs no `pointerMove` before it. |
+| `pointerUp` | A release at the position the pointer is at. |
+| `keyDown(code)` | Presses a key down. `code` is a standard `KeyboardEvent.code`. A one-shot action it fires on the current screen applies, and a held action stays held until `keyUp`. |
+| `keyUp(code)` | Releases a key. |
+
+Each delivers one act, and a caller that wants a gesture made of several
+delivers them in order: a click is a `pointerDown` followed by a `pointerUp`,
+and an orbit drag is a `pointerDown`, one or more `pointerMove` calls, and a
+`pointerUp`. A build is free to act on an event as it arrives or on the frame
+that reads it, so a caller that needs the game to have consumed one runs a frame
+after it.
+
+{{/if}}
 ## Snapshot shape
 
+{{#if (eq engine.slug "simple-3d")}}
 `snapshot` returns:
+{{else}}
+`snapshot()` returns:
+{{/if}}
 
 ```js
 {
   version: 1,
   screen: "title" | "howto" | "select" | "build" | "program" | "run" | "results",
-  menuIndex: <number>,
-  siteIndex: <number>,
+  menuIndex: <number>,             // the highlighted menu entry, from 0
+  siteIndex: <number>,             // the open, or last open, site, from 0
   cleared: [<boolean>],            // one per site
   best: [{ cost, time } | null],   // one per site
+  site: {                          // the open site, as it currently stands
+    name: <string>,
+    envelope: { min: { x, y, z }, max: { x, y, z } },
+    anchors: [{ x, y, z }],
+    budget: <number>,
+    par: { cost: <number>, time: <number> },
+    loads: [
+      {
+        cls: "crate" | "container" | "drum",
+        mass: <number>,
+        from: { pos: { x, y, z }, yaw: <number> },
+        to:   { pos: { x, y, z }, yaw: <number> },
+      },
+    ],
+    obstacles: [{ min: { x, y, z }, size: { x, y, z } }],
+  },
   tool: "strut" | "cable" | "rail" | "ring" | "counterweight" | "delete",
   pendingNode: { x, y, z } | null,
+  historyDepth: <number>,          // edits the open site can still undo
   camera: { yaw, pitch, dist },
+  pointer: {
+    x: <number>, y: <number>,      // logical stage units
+    down: <boolean>,               // a press is live
+    dragging: <boolean>,           // the live press has passed CLICK_SLOP
+  },
+  pick: {                          // what a click at the pointer would take
+    node: { x, y, z } | null,
+    member: <id> | null,
+  },
   structure: {
-    members: [{ id, a, b, material }],
-    ring: { corner } | null,
+    members: [{ id, a: { x, y, z }, b: { x, y, z }, material }],
+    ring: { corner: { x, y, z } } | null,
     counterweights: [{ x, y, z }],
     cost: <number>,
     issues: [<string>],            // the readiness issues, empty when ready
@@ -284,12 +449,19 @@ through the run, and reads verdicts, forces, and poses from
     { kind: "move", commands: [{ axis, target, rate }] },
     { kind: "action", action: "attach" | "release" },
   ],
+  checkResult: {                   // what the build screen is showing, or null
+    issues: [<string>],
+    cost: <number>,
+    budget: <number>,
+    stable: <boolean>,
+    members: [{ id, force, utilization }],
+  } | null,
   run: {
     phase: "idle" | "running" | "cleared" | "failed",
     cause: <string> | null,
     tick: <number>,
     time: <number>,                // tick / TICK_HZ, seconds
-    speedIndex: <number>,
+    speedIndex: <number>,          // into RUN_SPEEDS
     stepIndex: <number>,
     axes: {
       slew:    { value, rate, command: { target, rate } | null },
@@ -298,42 +470,78 @@ through the run, and reads verdicts, forces, and poses from
       grip:    { value, rate, command: { target, rate } | null },
     },
     bob: { pos: { x, y, z }, vel: { x, y, z } },
-    attached: <number> | null,
+    attached: <number> | null,     // the attached load's index
     loads: [{ phase, pos: { x, y, z }, yaw }],
     forces: [{ id, force, utilization }],
-    broken: [<number>],
+    broken: [<number>],            // member ids, in the order they broke
   },
   muted: <boolean>,
   simTime: <number>,
 }
 ```
 
-The shape is fixed, and every field is present whatever the screen.
-`structure` and `program` report the open site's; `run` reports its idle
-placeholder whenever no run is in progress, exactly as `specs/state.md` gives
-it. `structure.cost` and `structure.issues` are derived from the rules in
-`specs/structure.md`, `run.forces` is the latest solve in member-id order, and
-`run.loads` is index-aligned with the site's load list. `muted` mirrors the
-runtime's mute bit and `simTime` accumulates every update's delta time,
-whatever the screen.
+The shape is fixed and every field is present whatever the screen. `site`,
+`structure`, and `program` report the open site's, and `run.loads` is
+index-aligned with `site.loads`. A field the current screen does not use reports
+the value it is holding rather than going missing, and the table below gives the
+value each rests at.
+
+| Field | Resting value |
+| --- | --- |
+| `pendingNode` | `null` until a first node is held, and again once it is placed or cleared |
+| `historyDepth` | `0` on a site opened and not yet edited |
+| `pointer` | `{ x: 0, y: 0, down: false, dragging: false }` before the pointer has been moved |
+| `pick` | `{ node: null, member: null }` on every screen but `build`, and where nothing is in range |
+| `checkResult` | `null` while the build screen is showing no check result |
+| `run` | the idle placeholder `specs/state.md` gives it, whenever no run is in progress |
+
+- `structure.cost` and `structure.issues` are derived from the rules in
+  `specs/structure.md`, so `issues` is empty exactly when the structure is
+  ready.
+- `pick` is the node candidate and the member candidate a click at the pointer's
+  current position would take, decided by the pick radii and the tie-breaks
+  `specs/controls.md` fixes. Either is `null` when nothing is in range.
+- `pointer.dragging` is false whenever no press is live, and turns true on the
+  move that carries a live press past `CLICK_SLOP`, which is the move that makes
+  it an orbit drag rather than a click.
+- `checkResult` is the result the build screen is currently showing, exactly as
+  the `check` action left it. The `check` reading never sets it.
+- `run.forces` is the latest solve's, in member-id order, and covers the
+  members still intact.
+- `muted` mirrors the runtime's mute bit, and `simTime` accumulates every
+  update's delta time whatever the screen.
+
+Every field is read straight off the game's own state or derived from it at the
+call, so what the snapshot reports is what the game holds. Every field an
+operation above sets is reported here, so a call is checked by setting a value
+and reading it back.
 
 ## Diagnostics
 
-The runtime's debug overlay shows the values the game registers with it as
-diagnostic sources. Register at least the current screen and site, the
-structure's member count, cost, and readiness issue count, the run's phase,
-step index, clock, and cause, each axis's value, the bob's position, the
-highest current utilization and the broken-member count, and the camera pose.
-Keep each one short enough to read on a line, and keep every source a pure
-read, so watching the overlay leaves the game as it is.
+The debug overlay shows the values the game registers with it as diagnostic
+sources. Register at least the current screen and site, the structure's member
+count, cost, and readiness issue count, the run's phase, step index, clock, and
+cause, each axis's value, the bob's position, the highest current utilization
+and the broken-member count, and the camera pose. Keep each one short enough to
+read on a line, and keep every source a pure read, so watching the overlay
+leaves the game as it is.
 
 {{#if (eq engine.slug "none")}}
 The overlay is part of the runtime layer you write. It draws the registered
 sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
-`Backquote`), and it reads the game without changing it.
-{{else}}
+`Backquote`), it is off until toggled, and it reads the game without changing
+it. Keep it visually plain and clearly separate from the game's own display.
+{{else if (eq engine.slug "simple-3d")}}
 Registering those values is the whole of Gantry's part, through
-`InitApi.diagnostics`. Each source is called with the state current at the
-read, as `DeepReadonly<GantryState>`, and reads off that argument. Drawing the
-panel, toggling it, and keeping it read-only are the engine's.
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<GantryState>`, and reads off that argument. Drawing the panel,
+showing and hiding it with the backtick key (`KeyboardEvent.code` `Backquote`),
+and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Gantry's part, through the world's
+diagnostics in the game mode's `beginPlay`. Each source is a function of no
+arguments, called at each read; read the live state at the call, through the
+world the mode holds, so the panel reports the frame being drawn. Drawing the
+panel and showing and hiding it with the backtick key (`KeyboardEvent.code`
+`Backquote`) are the engine's.
 {{/if}}

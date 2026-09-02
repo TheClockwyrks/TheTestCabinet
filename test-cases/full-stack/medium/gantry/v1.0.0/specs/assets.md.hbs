@@ -28,8 +28,8 @@ sculpts an opaque-color voxel volume and its `render` meshes it to the `.glb`
 the game loads, drawing a preview PNG beside it to check your work; the audio
 tools record voices, layers, or notes and render a PCM `.wav`. `sfx-sample`
 draws on a baked sample pack and `music` on a baked instrument bank, both
-both browsed through their help; `music` emits a portable `.mid` beside the
-`.wav` you play.
+browsed through their help; `music` emits a portable `.mid` beside the `.wav`
+you play.
 
 ## The models
 
@@ -65,6 +65,7 @@ at its pose, waiting, hanging, or placed.
 
 ## Consuming a model
 
+{{#if (eq engine.slug "none")}}
 `@test-cabinet/voxel-runtime` is already a dependency of the project; import
 it like any other. Decode each committed `.glb` with its `parseGlb`, which
 returns the mesh as plain typed arrays with per-vertex colors, and render it
@@ -78,21 +79,82 @@ site is served from a sub-path as well as from a root, so import each `.glb`
 and `.wav` through the bundler (or resolve it with `new URL(...,
 import.meta.url)`) and use the URL that comes back. The project's Vite config
 already emits relative URLs.
+{{else if (eq engine.slug "simple-3d")}}
+The {{engine.name}} engine loads the models and decodes them. Its asset loader
+resolves every path under one root, `assets/`, relative to the page the build
+is served from, and its model loader decodes glTF 2.0, which is what `voxel`
+writes, so a committed `.glb` comes back as the node tree, meshes, and
+per-vertex colors the file carries. Load each model through that loader rather
+than fetching a URL of your own, writing the path relative to that root, and
+place a copy of what comes back in the engine's scene for each subject it
+draws. No part of the
+build decodes glTF itself, and nothing else fetches an asset.
+
+The built site serves every produced file under that root, so a path the
+loader resolves reaches the file at whatever base path the site is served
+from. The engine's own documentation is the authoritative API.
+{{else}}
+The {{engine.name}} engine loads the models and decodes them. Its asset loader
+resolves every path under one root, `ASSET_ROOT` (`assets/`), relative to the
+page the build is served from, and its model loader decodes glTF 2.0, which is
+what `voxel` writes, so a committed `.glb` comes back as the node tree,
+meshes, and per-vertex colors the file carries. Load each model through that
+loader rather than fetching a URL of your own, writing the path relative to
+that root, and draw it with a model component, which clones the loaded model
+onto the actor it belongs to, so one load backs every copy of that part on
+screen. No part of
+the build decodes glTF itself, and nothing else fetches an asset.
+
+The built site serves every produced file under that root, so a path the
+loader resolves reaches the file at whatever base path the site is served
+from. The engine's own documentation is the authoritative API.
+{{/if}}
 
 ## The sound
 
-Produce a distinct sound for every cue in `specs/ui.md`, with `sfx-synth`
-and/or `sfx-sample` as suits each: the editor's `place` and `delete`, the
-`run-start`, the `attach` clunk and the `placed` set-down, the `creak`, the
-`break`, the `collapse`, the `complete`, the `fail`, and the `motor` loop that
-runs while an axis moves, authored to loop cleanly. Produce the music bed with
-`music`: a steady, unhurried machine-yard piece under the title and select
-screens.
+Produce one `.wav` per cue in `specs/ui.md`, with `sfx-synth` and
+`sfx-sample` as suits each:
 
-Play the `.wav`s through the runtime's audio path, keyed to the cues exactly
-as `specs/ui.md` states. Sound reads the yard's character, so hold it to the
-same bar as the models: cues that are felt rather than noticed, a `collapse`
-with real weight, and a loop that does not fatigue at four-times watch speed.
+| Cue | Tool | What it is |
+| --- | --- | --- |
+| `place` | `sfx-synth` | A part seating: a short, dry clack. |
+| `delete` | `sfx-synth` | A part coming away, lighter than `place`. |
+| `run-start` | `sfx-synth` or `sfx-sample` | The yard's signal that the tape is about to run. |
+| `attach` | `sfx-sample` | The clunk of the hook taking a load. |
+| `placed` | `sfx-sample` | A load's weight settling onto its pad. |
+| `creak` | `sfx-sample` | Steel complaining under load. |
+| `break` | `sfx-sample` | A member letting go: a hard snap. |
+| `collapse` | `sfx-sample` | The whole crane coming down, with real weight. |
+| `complete` | `sfx-synth` or `sfx-sample` | The site cleared. |
+| `fail` | `sfx-synth` | The run ended badly. |
+| `motor` | `sfx-synth` or `sfx-sample` | The drive turning, authored to loop cleanly. |
+
+Produce the music bed with `music`: a steady, unhurried machine-yard piece
+under the title and select screens, its `.mid` committed beside the `.wav` the
+game plays.
+
+Sound reads the yard's character, so hold it to the same bar as the models:
+cues that are felt rather than noticed, a `collapse` with real weight, and a
+loop that does not fatigue at four-times watch speed.
+
+{{#if (eq engine.slug "none")}}
+Load each `.wav` the same page-relative way as every other produced file,
+decode it with the Web Audio API, and play it on the event `specs/ui.md`
+names, `motor` as the one loop. Sound does not start before the player's first
+interaction with the page, and `mute` silences the whole bus.
+{{else if (eq engine.slug "simple-3d")}}
+Bind each `.wav` to its cue name through the engine's audio, which loads and
+decodes the file through the same asset loader, and play the cue by name on
+the event `specs/ui.md` names, `motor` as the one loop the engine starts and
+stops. The engine owns the first-interaction unlock and the mute bit, which
+the state mirrors (`specs/state.md`).
+{{else}}
+Bind each `.wav` to its cue name through the engine's audio, which loads and
+decodes the file through the same asset loader, and play the cue by name from
+the world on the event `specs/ui.md` names, `motor` as the one loop the world
+starts and stops. The engine owns the first-interaction unlock and the mute
+bit, which the state mirrors (`specs/state.md`).
+{{/if}}
 
 ## What is drawn in code
 

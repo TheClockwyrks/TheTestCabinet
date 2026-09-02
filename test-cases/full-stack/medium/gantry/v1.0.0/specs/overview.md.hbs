@@ -42,24 +42,67 @@ keyboard and the pointer, audio cues, and the debug overlay. Where this
 specification speaks of the runtime it means that layer, and it states only what
 Gantry needs from it. How the layer is structured is yours to decide.
 
-Rendering is also yours. The project ships `three` as a dependency for the 3D
-scene and `@test-cabinet/voxel-runtime` for loading the models the build
+Rendering is also yours. `three` is a dependency of the project for the 3D
+scene, and `@test-cabinet/voxel-runtime` for decoding the models the build
 produces; how the scene is put together on top of them is your design.
-{{else}}
+{{else if (eq engine.slug "simple-3d")}}
 ## The runtime
 
 The game is built on the {{engine.name}} engine, which documents itself in the
 `engine/` directory at the root of this repository. It owns the frame loop and
-the delta time the game is given, the input actions the menus and camera are
-driven by, the pointer, audio cues, asset loading, the canvas fit, and the debug
-overlay. Read its documentation before you start. This specification states only
-what is specific to Gantry.
+the delta time the game is given, the canvas fit, the input actions the menus
+and the camera are driven by, the pointer, audio cues, loading the produced
+files and decoding them, and the debug overlay. Read its documentation before
+you start. This specification states only what is specific to Gantry.
 
-Rendering is the game's. The project ships `three` as a dependency for the 3D
-scene and `@test-cabinet/voxel-runtime` for loading the models the build
-produces; how the scene is put together on top of them is your design. The
-pointer reaches the game from the engine in the stage's logical units, with its
-press and release edges; `specs/controls.md` states what Gantry does with them.
+The engine holds the game's state, by value: each frame it hands `update` the
+current state read-only and keeps what `update` returns as the next, so a frame
+builds the next state from the current one rather than writing into it.
+
+The picture is the game's, built through the engine's. The engine owns the
+renderer, the retained scene it draws, the camera it draws through, and the 2D
+screen layer it composites over that picture; the game fills that scene, poses
+that camera, and draws the readouts on that layer, all from the state it was
+handed. `three` is a dependency of the project and the engine's peer, so the
+engine and the game's own code share the one copy. The pointer reaches the game
+from the engine in the stage's logical units, with its press and release edges;
+`specs/controls.md` states what Gantry does with them.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework
+as much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode and the game state it names, actors and their components,
+and the controllers that drive them, and the engine constructs, ticks, and
+renders them in a fixed order. It owns the frame loop and the delta time each
+tick is given, rendering and the camera, the canvas fit, collision detection,
+the input actions the menus and the camera are driven by, the pointer, audio
+cues, loading the produced files and decoding them, and the debug overlay. Read
+its documentation before you start. This specification states only what is
+specific to Gantry.
+
+The framework's state is live. A game state, an actor's transform, a component's
+offset, and the world's camera are objects the game writes into, so a tick
+advances the fields it moves in place rather than returning a replacement.
+
+The picture is the engine's. What is drawn is described as render components on
+actors, which the engine collects and draws each frame: meshes, lights, and the
+produced models in world space, a game-built `three` subtree for geometry Gantry
+draws itself, and text, shapes, sprites, and direct drawing on the screen layer
+over them. The camera is the world's own, which the game poses. `three` is a
+dependency of the project and the engine's peer, so the engine and the game's
+own code share the one copy. The pointer reaches the game through a player
+controller, already in the stage's logical units and carrying its press and
+release edges, and the world camera casts a point on the stage into a ray
+through the yard; `specs/controls.md` states what Gantry does with them.
+
+The engine detects collisions between the colliders a game declares and reports
+the pairs; deciding what a report means is the game's. Gantry decides its own
+failures without it: every cause in the vocabulary `specs/statics.md` fixes,
+the two obstacle strikes and the ground strike included, is settled by the
+tests that file states, at the stage of the tick `specs/program.md` puts them
+in, over the structure and the load as that stage found them.
 {{/if}}
 
 ## The project you build in
@@ -72,7 +115,8 @@ fixed and supplied.
 {{#if (eq engine.slug "none")}}
 ### What you implement
 
-Everything under `src/`. The directory does not exist yet.
+Everything under `src/`, and everything under `assets/`. Neither directory
+exists yet.
 
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours: the frame loop and the
@@ -86,45 +130,45 @@ and `specs/instrumentation.md` states the one contract fixed over it.
 ### What stays as it is
 
 - `index.html`, the page and the canvas the stage is fitted into.
+- `.tcab/`, holding the vendored `@test-cabinet/voxel-runtime` that
+  `package.json` resolves that dependency from.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
   `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
 
-`package.json` takes one kind of change: a dependency you genuinely need, added
-along with the updated `package-lock.json`. Its existing entries and scripts stay
-as they are.
+`package.json` takes one kind of change: a dependency you genuinely need,
+added along with the updated `package-lock.json`. Its existing entries and
+scripts stay as they are.
 
 ### Every figure comes from this specification
 
 Every number, identifier, key binding, cue name, and piece of screen copy this
-specification fixes is stated here under a name. Name each one once in a module
-of your own and read it from there, rather than restating a value at each use.
-Anything this specification does not name is yours to decide.
+specification fixes is stated here under a name. Anything this specification
+does not name is yours to decide.
 
 ### Your own tests
 
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured
 over `src/`. A test drives the game over its own clock for a counted number of
-ticks, so it needs no browser and no WebGL. Cover the parts of the game a person
-cannot see at a glance: the placement rules that accept or refuse an edit, the
-solve and the member forces it reports, the breakage cascade, the axis motion
-profiles, the pendulum update, and the attach and release verdicts.
-{{else}}
+ticks, so it needs no browser and no WebGL, and `@napi-rs/canvas` is installed
+for a test that wants a real 2D context to draw through.
+{{else if (eq engine.slug "simple-3d")}}
 ### What you implement
 
-`src/game.ts`, and any new modules you add beside it under `src/`.
+`src/game.ts`, any new modules you add beside it under `src/`, and everything
+under `assets/`, which does not exist yet.
 
 `src/game.ts` exports `game`, a `Game<GantryState, GantryDebugApi>`:
 `initialize` builds the state and the debug surface once and returns them
 together as `[state, debug]`, `update` takes the current state as a read-only
 view (`DeepReadonly<GantryState>`) and returns the next state, advanced against
 the frame's delta time in seconds, and `render` is handed that next state,
-read-only again, and draws it. The engine holds the state by value and replaces
-it with what each `update` returns, so a frame builds the next state from the
-current one rather than writing into it, and nothing but `update` and the debug
-surface's poses advances the game. All three functions throw `"not implemented"`
-as they stand. Implement them, and split the work across new files under `src/`
-however suits you.
+read-only again, and draws it into the engine's scene and over its screen layer.
+The engine holds the state by value and replaces it with what each `update`
+returns, so a frame builds the next state from the current one rather than
+writing into it, and nothing but `update` and the debug surface's poses advances
+the game. All three functions throw `"not implemented"` as they stand. Implement
+them.
 
 `src/game.ts` also declares and exports `GantryState` and the types it is built
 from, exactly as `specs/state.md` states them, and `GantryDebugApi`, the debug
@@ -138,38 +182,117 @@ uses.
 
 ### What stays as it is
 
-- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
-  binds `game` to it, and runs.
+- `src/main.ts`, the entry point. It stands the engine up over the page's
+  canvas, binds `game` to it, and runs.
 - `src/constants.ts`, holding every figure this specification fixes.
 - `index.html`, the page and the canvas the engine fits the stage into.
-- `.tcab/`, holding the vendored engine that `package.json` resolves the
+- `.tcab/`, holding the vendored engine that `package.json` resolves that
   dependency from.
 - `engine/`, the engine's own documentation.
 - The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
   `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
 
-`package.json` takes one kind of change: a dependency you genuinely need, added
-along with the updated `package-lock.json`. Its existing entries and scripts stay
-as they are.
+`package.json` takes one kind of change: a dependency you genuinely need,
+added along with the updated `package-lock.json`. Its existing entries and
+scripts stay as they are.
 
 ### Every figure comes from `src/constants.ts`
 
 Every number, identifier, key binding, cue name, and piece of screen copy this
-specification fixes is exported from `src/constants.ts` under the name this
-specification gives it. Import it and use it. Where a spec states a value it also
-names the constant that holds it, and the constant is authoritative. Anything
-this specification does not name is yours to decide.
+specification fixes is exported from `src/constants.ts`, under the name this
+specification gives it wherever it gives one. Import it and use it, and where
+the two could differ the constant is authoritative. The file also names what
+this specification states without naming a holder for it: the actions Gantry
+registers, the bindings they are registered against, the cue names, the
+keyboard layout the engine is created with, and the one root every produced
+file is loaded under. Anything neither the file nor this specification fixes is
+yours to decide.
 
 ### Your own tests
 
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured
-over `src/`. A test stands the engine up over its own canvas and clock and
-advances the game a counted number of ticks, so it needs no browser and no
-WebGL. Cover the parts of the game a person cannot see at a glance: the
-placement rules that accept or refuse an edit, the solve and the member forces
-it reports, the breakage cascade, the axis motion profiles, the pendulum update,
-and the attach and release verdicts.
+over `src/`. The engine renders through WebGL and takes a `webgl2` context from
+the canvas the moment it is created, and Node has none, so the engine itself
+does not stand up there and a test exercises the game's own code directly.
+`@napi-rs/canvas` is installed for a test that wants a real 2D context to draw
+through.
+{{else}}
+### What you implement
+
+`src/game.ts`, any new modules you add beside it under `src/`, and everything
+under `assets/`, which does not exist yet.
+
+`src/game.ts` declares and exports `GantryState`, the class the whole of the
+game's authoritative state is held in, a subclass of the engine's `GameState`
+carrying every field `specs/state.md` fixes, and `GantryDebugApi`, the debug and
+automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` exports `game`, a `GameDefinition<GantryDebugApi>`: the game
+instance class, a level registry holding the single level the game runs in, and
+`startLevel` naming it. The engine opens that one level and the game never opens
+another; every screen is a value of the state's `screen` field, so the world,
+its mode, and its game state live for the whole session. The instance's
+`initialize` registers the actions against their bindings, defines the cues,
+loads the produced models and sounds, and returns the debug surface, which the
+engine holds and hands back from `engine.debug`. The level's game mode runs the
+screens and the rules: its `gameStateClass` is `GantryState`, so the engine
+builds that state when the world opens; its `beginPlay` adds a single player
+possessing nothing, whose controller is where the frame's actions and the
+pointer are read, and registers the diagnostic sources
+`specs/instrumentation.md` lists. As seeded, the definition is a stub whose
+instance's `initialize` throws `"not implemented"`. Implement it.
+
+`GantryState` is the whole of the authoritative game. The actors, components,
+and controllers you write draw it and drive it and hold nothing authoritative
+of their own, so the yard is described rather than repainted: the ground and
+the light, the lattice and envelope aids, the members colored by utilization,
+the hoist cable, the pads, the loads and the produced models, and every readout
+over them are render components on actors.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the whole canvas
+is cleared to each frame, so the letterbox bars around the stage match the
+yard's sky. The seeded stub exports a placeholder; replace it with the color
+your yard uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's
+  canvas, binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `.tcab/`, holding the vendored engine that `package.json` resolves that
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need,
+added along with the updated `package-lock.json`. Its existing entries and
+scripts stay as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts`, under the name this
+specification gives it wherever it gives one. Import it and use it, and where
+the two could differ the constant is authoritative. The file also names what
+this specification states without naming a holder for it: the actions Gantry
+registers, the bindings they are registered against, the cue names, the
+keyboard layout the engine is created with, and the one root every produced
+file is loaded under. Anything neither the file nor this specification fixes is
+yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured
+over `src/`. The engine renders through WebGL and takes a `webgl2` context from
+the canvas the moment it is created, and Node has none, so the engine itself
+does not stand up there and a test exercises the game's own code directly.
+`@napi-rs/canvas` is installed for a test that wants a real 2D context to draw
+through.
 {{/if}}
 
 ### The checks the repository passes
@@ -215,9 +338,15 @@ satisfying.
 {{#if (eq engine.slug "none")}}
 - Write the runtime the game stands on: the frame loop and its delta time, the
   canvas fit, keyboard and pointer input, audio, and the debug overlay.
+{{else if (eq engine.slug "simple-3d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the canvas fit,
+  the input actions, the pointer, audio, asset loading, and the debug overlay
+  from it, and building the picture into the scene it renders.
 {{else}}
-- Build on the {{engine.name}} engine, taking the frame loop, the input
-  actions, the pointer, audio, and the debug overlay from it.
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the
+  canvas fit, the input actions, the pointer, audio, asset loading, and the
+  debug overlay from it, and writing the game inside its framework of game
+  modes, actors, components, and controllers.
 {{/if}}
 - Ship all six sites, reachable in order from the site select.
 - Render a real 3D scene on the canvas: the yard, the lattice aids, the crane's
@@ -231,8 +360,11 @@ satisfying.
 {{#if (eq engine.slug "none")}}
 - Hold the game's whole state in one value, the one the frame loop advances and
   the debug surface reads.
-{{else}}
+{{else if (eq engine.slug "simple-3d")}}
 - Hold the game's whole state in `GantryState`, as `specs/state.md` declares it.
+{{else}}
+- Hold the game's whole authoritative state in `GantryState`, the world's game
+  state, as `specs/state.md` declares it.
 {{/if}}
 - Replace the starter `README.md` with one explaining what the game is, how to
   install dependencies, how to run it in development, how to produce the static
@@ -240,16 +372,8 @@ satisfying.
 
 ## Code quality
 
-The code is written as for a long-lived codebase shared with human developers.
-
-- Modules are split by concern, and each has one responsibility.
-- Every fixed figure is named once and imported where it is used.
-- Logic appears once; no two places implement the same rule.
-- The tree carries no dead code, no commented-out code, and no leftover
-  debugging output.
-- Comments explain intent where the code cannot.
-- The type-check, lint, and format checks pass.
-- Unit tests cover the simulation.
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
 
 ## Units, ticks, and the stage
 

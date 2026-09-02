@@ -37,8 +37,12 @@ its previous position `P_prev`, and the tick's cable length `L`:
    `vr = vr * (1 - SWING_DAMPING * dt)` with `SWING_DAMPING` (`0.05`).
 7. Recompose: `v = vP + vr`.
 
+On a run's first tick, `P_prev` is the pivot at the run's starting posture
+(`specs/program.md`).
+
 The bob's acceleration for the tick is `a = (v - v_prev) / dt`, with `v_prev`
-its velocity at the end of the previous tick, and zero on a run's first tick.
+its velocity at the end of the previous tick. On a run's first tick the
+acceleration is zero, whatever velocity the steps above leave.
 
 ## Cable tension and snapping
 
@@ -69,13 +73,15 @@ load attached the grip turns the bare hook, visibly and to no other effect.
 `attach` is one of the tape's actions (`specs/program.md`). When it executes:
 
 - The candidate is the `waiting` load whose lift point is nearest the hook
-  point, if that distance is at most `ATTACH_RADIUS` (`0.8`).
+  point, ties going to the one the site lists first, if that distance is at
+  most `ATTACH_RADIUS` (`0.8`).
 - With no candidate, the run ends as `attach-missed`.
 - With a candidate, the load becomes `attached`: the grip's axis value is set
   to the load's current yaw, so the hook seizes the load squarely and the
   load's yaw is thereafter the grip's value; the bob's mass includes the
-  load's from the next pendulum tick on; and the bob's position and velocity
-  carry on unchanged. The `attach` cue plays.
+  load's from this tick's pendulum step on, which runs later in the tick than
+  the action does; and the bob's position and velocity carry on unchanged. The
+  `attach` cue plays.
 
 One load is attached at a time; `attach` while a load is attached ends the run
 as `attach-missed`, since there is no free hook to attach with.
@@ -91,10 +97,16 @@ load's pose is judged against its own target pose:
 | Yaw | the wrapped difference between load yaw and target yaw at most `PLACE_YAW_TOL` (`10`) degrees |
 | Speed | the bob's speed at most `PLACE_VEL_TOL` (`0.6`) |
 
+The wrapped difference between two yaws is the shorter way round the circle:
+their difference in degrees brought into `0` up to but not including `360`,
+then subtracted from `360` when it comes out above `180`. It is never negative
+and never above `180`, so a load `2` degrees short of its target yaw and one
+`2` degrees past it are both `2` degrees off.
+
 If all three hold, the load is `placed`: it leaves the hook, sits at exactly
 its target pose for the rest of the run, and the `placed` cue plays. The bob's
-mass drops back to the hook's from the next pendulum tick on, and its position
-and velocity carry on unchanged.
+mass drops back to the hook's from this tick's pendulum step on, and its
+position and velocity carry on unchanged.
 
 If any test fails, the load is dropped and `lost`, and the run ends as
 `release-misplaced`. `release` with nothing attached ends the run the same

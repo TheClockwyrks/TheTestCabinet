@@ -1,21 +1,180 @@
 # Gantry — The game's state
 
 {{#if (eq engine.slug "none")}}
-The game's whole state lives in one value: the one the frame loop advances and
-the debug surface (`specs/instrumentation.md`) poses and reads. Its shape is
-yours to design, and this file states what it must carry, because the rest of
-the specification and the snapshot in `specs/instrumentation.md` are written
-against these facts.
-{{else}}
-The game's whole state is `GantryState`, declared and exported from
-`src/game.ts` exactly as below, together with the types it is built from. The
-engine holds the state by value: `update` and the debug surface's poses take a
-read-only view and return the next state, so nothing ever writes into a held
-one. The comments are part of the declaration's meaning; carry them into the
-build.
+The build owns the shape of the game's state entirely. It is the one value the
+frame loop advances, and how it is organized is yours to decide.
+
+The contract fixed over it is the debugging and automation surface
+(`specs/instrumentation.md`). Every operation that surface carries is a reading
+or a pose of the running game, so the state holds what those operations read,
+honors what they pose, and returns to its title-screen values when the
+surface's `reset` is called. This file states what it must carry, because the
+rest of the specification and that surface's snapshot are written against these
+facts.
+
+## What the state carries
+
+### The session
+
+- The screen the game is showing, one of `title`, `howto`, `select`, `build`,
+  `program`, `run`, and `results`, and the highlighted entry of whichever menu
+  that screen shows, counted from `0`. The snapshot reports the second as
+  `menuIndex`.
+- The site the yard screens are showing, counted from `0`, which is `0` before
+  any site has been opened.
+- Per site: whether it has ever been cleared this session, and the best score
+  recorded on it, a `cost` and a `time`, or none before the first clear. The
+  two are set independently: a site can be marked cleared without a score and
+  can carry a score without being marked cleared.
+- Per site: the structure and the tape authored on it, which persist across
+  visits for the session.
+
+### The open site
+
+- The loads standing in the yard, in the order the site lists them, each with
+  its class (`crate`, `container`, or `drum`), its mass, its starting pose, and
+  its target pose, a pose being a position and a yaw in degrees.
+- The obstacles in the yard, each an axis-aligned box given as its minimum
+  corner and its size on each axis.
+
+Both are the open site's own copies, taken from the fixed set `specs/sites.md`
+gives when the site is opened, so nothing the state holds points into that set
+and a load posed on one site is not carried onto the next. The site's name,
+envelope, anchors, budget, and par figures are not carried: they are the site's
+own figures, read by the site index from that same fixed set.
+
+### The structure being built
+
+- The members: each with an id unique for the life of the site's structure, its
+  two lattice nodes, and its material.
+- The next member id to assign. Removing a member never gives its id back, so
+  this does not follow from the members; emptying the structure whole returns
+  it to `0` (`specs/instrumentation.md`).
+- The slew ring by its base corner, or none.
+- The nodes carrying a counterweight.
+
+### The editor
+
+- The selected build tool, one of `strut`, `cable`, `rail`, `ring`,
+  `counterweight`, and `delete`.
+- The pending first node of a member placement, or none.
+- The undo history for the open site: the structure as it stood before each
+  structure-changing edit since the site was opened, oldest first. The snapshot
+  reports its depth as `historyDepth`.
+- The result the static check is showing on the build screen, or none: the
+  issues that would refuse a run, the cost, the budget, whether the structure
+  stands, and each intact member's force and utilization in member-id order
+  (`specs/structure.md`). It is the result the `check` action left, and it goes
+  back to none as soon as the structure changes, so what is shown always
+  describes the structure on screen.
+
+### The tape
+
+The ordered steps, each a move carrying one or more commands, at most one per
+axis, or an `attach` or `release` action. A command names an axis, an absolute
+target, and a rate.
+
+### The camera and the pointer
+
+- The orbit camera's yaw, pitch, and distance.
+- The pointer position, in the stage's logical units, and whether a press is
+  live; where the live press began, in those same units; and whether that press
+  has passed `CLICK_SLOP`, which is what makes it an orbit drag rather than a
+  click (`specs/controls.md`). The origin and that bit cannot be read back from
+  the pointer's current position, so a press that began as a click and a press
+  that has become a drag are told apart by what the state kept.
+
+### The run
+
+The run in progress, or the idle placeholder between runs:
+
+- Its phase, one of `idle`, `running`, `cleared`, and `failed`, and its failure
+  cause, or none, from the vocabulary `specs/statics.md` closes with.
+- The tick count, from which the run clock is `tick / TICK_HZ` seconds, and the
+  watch-speed index into `RUN_SPEEDS`.
+- The tape step the run is on, counted from `0`, and whether that step is live:
+  taken, and not yet complete. A move step is live from the tick that issues
+  its commands until the tick that finds every one of its axes arrived; an
+  action step is complete on the tick it is taken, so it is never live at the
+  top of a tick (`specs/program.md`). Which of the two a tick does with the
+  step it is on cannot be read off the axes, since a move whose commands have
+  all cleared and a move not yet issued leave the axes alike.
+- Each of the four axes: its value, its signed rate, and its live command's
+  target and rate, or none.
+- The pivot the cable hangs from, at the most recent tick's geometry. The
+  pendulum reads it as the previous pivot on the tick after
+  (`specs/rigging.md`), and it cannot be recomputed from the axes once a rail
+  has broken, because the track it was taken along is gone.
+- The pendulum bob's position and velocity.
+- The attached load's index, or none.
+- Each load's run state, index-aligned with the open site's loads: its phase,
+  one of `waiting`, `attached`, `placed`, and `lost`, its lift point's current
+  position, and its yaw.
+- The latest solve's force and utilization per intact member, in member-id
+  order.
+- The ids of the members broken so far this run, in the order they broke.
+
+### The frame
+
+- `muted`, the game's readable copy of the runtime's mute bit, refreshed on
+  every update.
+- `simTime`, accumulating every update's delta time in seconds, whatever the
+  screen.
+
+## The idle run
+
+Between runs the run carries its idle placeholder: phase `idle`, no cause, a
+zero tick, step index, and speed index, no live step, the four axes at the
+run-start posture `specs/program.md` fixes with no command and zero rate, a
+zero pivot, a bob at the origin with zero velocity, no attachment, and an empty
+load, force, and broken list. Every field is present whatever the screen, so
+the snapshot never reports a gap.
+
+## What is derived
+
+These are read off the facts above rather than kept beside them, so they answer
+to the state as it stands.
+
+| Fact | Read from |
+| --- | --- |
+| The crane's cost | The structure's members, ring, and counterweights (`specs/structure.md`) |
+| The readiness issues | The structure and the site (`specs/structure.md`) |
+| The intact members | The structure's, less the run's broken ids |
+| The rail track, its origin, and its length | The intact rail members (`specs/structure.md`) |
+| The rotated arm, the trolley point, and the pivot within a tick | The slew and trolley values and the structure (`specs/statics.md`) |
+| The run clock | `tick / TICK_HZ` seconds |
+| Whether a site is open | Site `0` is open, and site `n + 1` is open once site `n` is cleared (`specs/ui.md`) |
+| The site's name, envelope, anchors, budget, and par | The site index, against `specs/sites.md` |
+| The node or member a click would take | The pointer position and the camera (`specs/controls.md`) |
+| Whether the pointer's press is a click or a drag so far | The press origin and the drag bit above |
+
+## The contract
+
+- The state is the whole of the authoritative game. Every value the game
+  carries from one frame to the next lives in it; nothing is kept in a
+  module-level variable or a closure.
+- Every fact above is present from the moment the game has initialized, so a
+  frame never finds one missing.
+- What you add beside them holds either data you can rebuild from them, or the
+  bookkeeping of what the build presents: the sounds it plays and the picture
+  it draws, which no figure this specification fixes depends on. A `reset`
+  restores the facts above to their title-screen values, as
+  `specs/instrumentation.md` states, so those are the whole of the
+  authoritative state.
+- Rendering reads the state and writes nothing, and whether an edit is accepted
+  and what a tick does are decided from the state and the site alone.
+{{else if (eq engine.slug "simple-3d")}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is a value the engine holds and every frame replaces: `update`
+and the debug surface's poses are handed it as `DeepReadonly<GantryState>` and
+return the next `GantryState`, so a frame builds the next state from the
+current one rather than writing into it. `SiteLoad` and `Obstacle` are the site
+table's own record types, which `src/constants.ts` exports beside `SITES`, so
+the open site's loads and obstacles are held in the shape the table gives them.
 
 ```ts
-/** A position, in world units; lattice positions carry lattice coordinates. */
+/** A position, in world units; a lattice node carries lattice coordinates. */
 export interface Vec3 {
   x: number;
   y: number;
@@ -32,10 +191,10 @@ export interface Member {
   material: MaterialName;
 }
 
-/** What the player has built on the current site. */
+/** What the player has built on a site. */
 export interface Structure {
   members: Member[];
-  /** The next member id to assign; never reused within a site. */
+  /** The next member id to assign; a removed member's is never given back. */
   nextMemberId: number;
   /** The slew ring, by its base corner (specs/structure.md), or none yet. */
   ring: { corner: Vec3 } | null;
@@ -56,6 +215,38 @@ export type Step =
   | { kind: "move"; commands: Command[] }
   | { kind: "action"; action: "attach" | "release" };
 
+/** What the open site puts in the yard (specs/sites.md). */
+export interface SiteState {
+  loads: SiteLoad[];
+  obstacles: Obstacle[];
+}
+
+/** A structure's readiness issue (specs/structure.md). */
+export type ReadinessIssue =
+  | "no-ring"
+  | "no-rail"
+  | "invalid-rail"
+  | "disconnected-members";
+
+/** What would refuse a run: a readiness issue, or an empty tape. */
+export type StartIssue = ReadinessIssue | "empty-program";
+
+/** One member's solved force and utilization (specs/statics.md). */
+export interface MemberForce {
+  id: number;
+  force: number;
+  utilization: number;
+}
+
+/** What the static check reported (specs/structure.md). */
+export interface CheckResult {
+  issues: StartIssue[];
+  cost: number;
+  budget: number;
+  stable: boolean;
+  members: MemberForce[];
+}
+
 /** One axis during a run. `command` is null when no command is live on it. */
 export interface AxisState {
   value: number;
@@ -65,7 +256,7 @@ export interface AxisState {
 
 export type LoadPhase = "waiting" | "attached" | "placed" | "lost";
 
-/** One load during a run, index-aligned with the site's load list. */
+/** One load during a run, index-aligned with the open site's loads. */
 export interface LoadState {
   phase: LoadPhase;
   /** The lift point's current position (specs/world.md). */
@@ -96,17 +287,26 @@ export interface RunState {
   tick: number;
   /** Index into RUN_SPEEDS. */
   speedIndex: number;
-  /** The index of the live tape step; the tape's length once all are done. */
+  /** The tape step the run is on; the tape's length once all are done. */
   stepIndex: number;
-  axes: { slew: AxisState; trolley: AxisState; hoist: AxisState; grip: AxisState };
+  /** Whether that step is live: taken, and not yet complete. */
+  stepLive: boolean;
+  axes: {
+    slew: AxisState;
+    trolley: AxisState;
+    hoist: AxisState;
+    grip: AxisState;
+  };
+  /** The point the cable hangs from, at the latest tick's geometry. */
+  pivot: Vec3;
   /** The pendulum bob: the hook point (specs/rigging.md). */
   bob: { pos: Vec3; vel: Vec3 };
   /** The attached load's index, or null. */
   attached: number | null;
   loads: LoadState[];
-  /** The latest solve's force and utilization per intact member. */
-  forces: { id: number; force: number; utilization: number }[];
-  /** The ids of members broken so far this run. */
+  /** The latest solve's, in member-id order, over the members still intact. */
+  forces: MemberForce[];
+  /** The ids of members broken so far this run, in the order they broke. */
   broken: number[];
 }
 
@@ -121,6 +321,20 @@ export interface Camera {
   yaw: number;
   pitch: number;
   dist: number;
+}
+
+/** The pointer, as the frame read it (specs/controls.md). */
+export interface PointerState {
+  /** The pointer position, in the stage's logical units. */
+  x: number;
+  y: number;
+  /** Whether a press is live. */
+  down: boolean;
+  /** Where the live press began, in those same units. */
+  pressX: number;
+  pressY: number;
+  /** Whether the live press has passed CLICK_SLOP, so it is an orbit drag. */
+  dragging: boolean;
 }
 
 export type Screen =
@@ -142,26 +356,31 @@ export type Tool =
 
 export interface GantryState {
   screen: Screen;
-  /** The highlighted item of the current screen's menu. */
+  /** The highlighted entry of the current screen's menu. */
   menuIndex: number;
-  /** The open (or last open) site, counted from 0. */
+  /** The site the yard screens show, counted from 0. */
   siteIndex: number;
-  /** Per site: whether it has ever been cleared this session. */
+  /** Per site: whether it has been cleared this session. */
   cleared: boolean[];
-  /** Per site: the best recorded score, or null before the first clear. */
+  /** Per site: the best recorded score, or null with none recorded. */
   best: (Score | null)[];
-  /** Per site: the authored structure and tape, persisting across visits. */
+  /** Per site: the structure and tape authored on it, kept across visits. */
   sites: { structure: Structure; program: Step[] }[];
+  /** The open site's loads and obstacles. */
+  site: SiteState;
   /** The selected build tool. */
   tool: Tool;
   /** The held first node of a member placement, or null. */
   pendingNode: Vec3 | null;
   /**
-   * The undo stack for the open site: the structure as it was before each
+   * The undo stack for the open site: the structure as it stood before each
    * structure-changing edit since the site was opened, oldest first.
    */
   history: Structure[];
+  /** The check result the build screen is showing, or null. */
+  checkResult: CheckResult | null;
   camera: Camera;
+  pointer: PointerState;
   run: RunState;
   /** The runtime's mute bit, mirrored every update. */
   muted: boolean;
@@ -169,52 +388,684 @@ export interface GantryState {
   simTime: number;
 }
 ```
-{{/if}}
 
-{{#if (eq engine.slug "none")}}
-## What the state carries
+## The type aliases
 
-- The current screen, one of `title`, `howto`, `select`, `build`, `program`,
-  `run`, or `results`, and the highlighted index of that screen's menu.
-- The open site's index, and per site: whether it has ever been cleared this
-  session, the best recorded score (`cost` and `time`, or none before the
-  first clear), and the authored structure and tape, persisting across visits
-  within the session.
-- A structure: its members, each carrying an id unique for the life of the
-  site's structure, its two lattice nodes, and its material; the ring by its
-  base corner, or none; and the counterweight nodes.
-- The tape: the ordered steps, each a move of per-axis commands or an
-  `attach`/`release` action.
-- The build screen's tool, the pending first node of a member placement, and
-  the undo history for the open site.
-- The camera's yaw, pitch, and distance.
-- The run: its phase (`idle`, `running`, `cleared`, `failed`) and failure
-  cause; the tick count; the watch-speed index; the live step index; each
-  axis's value, rate, and live command; the pendulum bob's position and
-  velocity; the attached load's index; each load's phase (`waiting`,
-  `attached`, `placed`, `lost`), lift-point position, and yaw; the latest
-  solve's force and utilization per intact member; and the ids of members
-  broken this run.
-- `muted`, mirroring the runtime's mute bit, and `simTime`, accumulating every
-  update's delta time in seconds.
+`MaterialName` names the three materials `specs/structure.md` gives and
+`AxisName` the four axes `specs/program.md` gives. `Screen` is the top-level
+state machine and every build carries all seven; `Tool` names the six build
+tools. `ReadinessIssue` is the
+four issues `specs/structure.md` names and `StartIssue` adds the one a tape can
+raise, so `StartIssue` is exactly the set a refused start lists. `LoadPhase`
+and `RunPhase` name where a load and a run stand, and `FailCause` is the closed
+vocabulary of failures `specs/statics.md` collects.
 
-The failure causes are the fixed vocabulary `specs/statics.md` closes with.
-Anything else a frame needs is derivable from these facts.
-{{else}}
-## How it advances
+## `Structure`
 
-`initialize` builds the complete initial state: the title screen with
-`menuIndex` `0`, every site's `cleared` false, `best` null, and empty
-structure and tape, the strut tool, no pending node, the camera at its start
-pose, an idle run, `muted` mirroring the engine, and `simTime` `0`. The idle
-`RunState` carries `phase` `"idle"`, `cause` null, zeroed tick and indices,
-the axes at the run-start posture (`specs/program.md`) with no command, the
-bob at rest, no attachment, an empty `loads`, `forces`, and `broken`.
+What is built on one site, and `{ members: [], nextMemberId: 0, ring: null,
+counterweights: [] }` on a site nothing has been built on.
+
+- `members` — every member, each carrying the id it was assigned.
+- `nextMemberId` — the id the next member takes. Removing a member never gives
+  its id back, so this does not follow from `members`: removing the
+  highest-numbered member leaves it where it is. Emptying the structure whole
+  returns it to `0` (`specs/instrumentation.md`).
+- `ring` — the slew ring by its base corner, from which its eight flange nodes
+  and its slew axis follow (`specs/structure.md`), or `null` with no ring.
+- `counterweights` — the nodes carrying one, at most one per node.
+
+## `SiteState`
+
+What the open site puts in the yard, copied out of the fixed set
+`specs/sites.md` gives when the site is opened.
+
+- `loads` — the site's loads, in the order that file lists them, each with its
+  class, its mass, the pose it starts at, and the pose it is wanted at. The
+  build screen draws them at `from` and their pads at `to`, and a run's
+  `run.loads` is index-aligned with this list.
+- `obstacles` — the site's obstacles, each the axis-aligned box it fills.
+
+The state owns these all the way down: opening a site copies the site's loads,
+their poses, its obstacles, and their corners and sizes, so nothing here points
+into the fixed set and posing a load on one site leaves every other site as it
+was. The site's name, envelope, anchors, budget, and par figures are not
+carried; they are read by `siteIndex` against `specs/sites.md`.
+
+## `CheckResult`
+
+What the `check` action last reported, and what the build screen is showing
+until the structure changes (`specs/structure.md`, `specs/ui.md`). It is
+`null` whenever nothing is showing.
+
+- `issues` — what would refuse a run, empty when nothing would.
+- `cost`, `budget` — the crane's cost and the site's budget.
+- `stable` — whether the structure stands.
+- `members` — each intact member's force and utilization, in member-id order,
+  and empty where an issue left the structure unsolved.
+
+## `PointerState`
+
+Where the pointer is and what the press being held has done so far, as the
+frame read it from the runtime layer.
+
+- `x`, `y` — the pointer position in the stage's logical units, the units a
+  pick radius is measured in.
+- `down` — whether a press is live.
+- `pressX`, `pressY` — where that press began, which decides whether it is
+  still a click. They rest where the last press began and are read while `down`.
+- `dragging` — `false` whenever no press is live, and `true` from the move
+  that carries a live press past `CLICK_SLOP` (`6`) until it is released. That
+  move is the one that makes the press an orbit drag rather than a click, and
+  once it is a drag it stays one.
+
+## `RunState`
+
+The run in progress, and the idle placeholder whenever none is.
+
+- `phase` — `"idle"` between runs, `"running"` while the tape plays,
+  `"cleared"` and `"failed"` once it has ended.
+- `cause` — the failure cause, and `null` unless `phase` is `"failed"`.
+- `tick` — ticks since the run started. The run clock is `tick / TICK_HZ`
+  seconds.
+- `speedIndex` — the watch speed, as an index into `RUN_SPEEDS`.
+- `stepIndex` — the tape step the run is on, counted from `0`, which reaches
+  the tape's length once every step is complete. The run screen shows it as
+  `step m / n` with `m` one greater (`specs/ui.md`).
+- `stepLive` — whether the step at `stepIndex` has been taken and is not yet
+  complete. A move step is live from the tick that issues its commands until
+  the tick that finds every one of its axes arrived; an action step is taken,
+  executed, and complete on one tick, so it is never live at the top of one
+  (`specs/program.md`). A move whose commands have all cleared and a move not
+  yet issued leave the axes alike, so this does not follow from them.
+- `axes` — the four axes, each carrying its value, its signed rate, and the
+  command live on it, or `null` with none.
+- `pivot` — the point the cable hangs from, at the geometry of the most recent
+  tick. The pendulum reads it as `P_prev` on the tick after
+  (`specs/rigging.md`), and a rail breaking takes away the track it was
+  measured along, so it does not follow from the axes.
+- `bob` — the pendulum bob's position and velocity. The hook point and any
+  attached load's lift point are both `bob.pos`.
+- `attached` — the index of the load on the hook, or `null`. One load is
+  attached at a time.
+- `loads` — one entry per load of `site.loads`, in the same order.
+- `forces` — the latest solve's force and utilization for each member still
+  intact, in member-id order.
+- `broken` — the ids of the members broken so far this run, in the order they
+  broke.
+
+The idle placeholder is `phase` `"idle"`, `cause` `null`, `tick`, `speedIndex`,
+and `stepIndex` `0`, `stepLive` `false`, the four axes at the run-start posture
+`specs/program.md` fixes with zero rate and no command, `pivot` and both parts
+of `bob` the zero vector, `attached` `null`, and `loads`, `forces`, and
+`broken` empty.
+
+## `GantryState`
+
+The whole of Gantry's state. Every field is present from the moment
+`initialize` returns, and every one is plain data: numbers, strings, booleans,
+and containers of them, so a site is posed by building a state that differs in
+the fields posed and read back by reading them.
+
+- `screen` — the screen currently shown.
+- `menuIndex` — the highlighted entry of whichever menu `screen` shows.
+- `siteIndex` — the site the build, program, and run screens show, counted
+  from `0`, and `0` before any site has been opened.
+- `cleared` — one entry per site, `true` once that site has been cleared this
+  session.
+- `best` — one entry per site: the best score recorded on it, or `null` with
+  none. It is set apart from `cleared`, so a site may carry one without the
+  other.
+- `sites` — one entry per site: the structure and tape authored on it, which
+  stay as they are while other sites are played and while runs are made.
+- `site` — the open site's loads and obstacles.
+- `tool` — the selected build tool.
+- `pendingNode` — the first node of a member placement being held, or `null`.
+- `history` — the undo stack for the open site, oldest first. `undo` pops it,
+  and it empties when a site is opened. The snapshot reports its depth as
+  `historyDepth`.
+- `checkResult` — the check result the build screen is showing, or `null`.
+- `camera` — the orbit camera's pose, which persists across the three yard
+  screens and returns to its start pose when a site is opened.
+- `pointer` — the pointer as of this frame, refreshed from the runtime layer
+  on every update.
+- `run` — the run in progress, or its idle placeholder.
+- `muted` — the game's readable copy of the runtime's mute bit, which every
+  `update` carries into the state it returns. The runtime owns muting, and this
+  field is what the debug surface reports.
+- `simTime` — accumulated simulation time, in seconds. Every `update` adds its
+  `dt`, whatever the screen, the menus included.
+
+## What a site opening does
 
 Opening a site sets `siteIndex`, keeps that site's stored structure and tape,
-clears `history` and `pendingNode`, resets the camera to its start pose, and
-leaves the run idle. Every figure a frame needs beyond these fields is
-derived: the cost from the structure, the track from the rail members, the
-world geometry from the slew angle, and the readiness issues from the rules in
-`specs/structure.md`.
+fills `site` with copies of that site's loads and obstacles, empties `history`,
+clears `pendingNode` and `checkResult`, returns the camera to its start pose,
+and leaves `run` at its idle placeholder. `initialize` builds the title-screen
+state with site `0` opened this way: the `title` screen with `menuIndex` `0`,
+every site uncleared with no recorded score and an empty structure and tape,
+the `strut` tool, and `simTime` `0`.
+
+## What is derived
+
+Ten facts the game shows are read off the fields above rather than kept beside
+them, so they answer to the state as it stands.
+
+| Fact | Read from |
+| --- | --- |
+| The crane's cost | `sites[siteIndex].structure` (`specs/structure.md`) |
+| The readiness issues | That structure and the site (`specs/structure.md`) |
+| The intact members | That structure's members, less `run.broken` |
+| The rail track, its origin, and its length | The intact rail members (`specs/structure.md`) |
+| The rotated arm, the trolley point, and the tick's pivot | `run.axes` and the structure (`specs/statics.md`) |
+| The run clock | `run.tick / TICK_HZ` seconds |
+| Whether a site is open | Site `0`, and site `n + 1` once site `n` is cleared (`specs/ui.md`) |
+| The site's name, envelope, anchors, budget, and par | `siteIndex`, against `specs/sites.md` |
+| The node or member a click would take | `pointer` and `camera` (`specs/controls.md`) |
+| The bob's previous velocity | `run.bob.vel` as the tick found it |
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+- `initialize` builds the whole state in one go, so every field is present by
+  the time a frame can observe it, and none of them is optional.
+- The state handed to `update` is the whole of the game, and the state `update`
+  returns is the whole of the next frame. Every value the game carries from one
+  frame to the next lives in it; nothing is kept in a module-level variable or
+  a closure.
+- Fields you add hold either data you can rebuild from the declared ones, or
+  the bookkeeping of what the build presents: the sounds it plays and the
+  picture it draws, which no figure this specification fixes depends on. A
+  `reset` restores the declared fields to their title-screen values, as
+  `specs/instrumentation.md` states, so those fields are the whole of the
+  authoritative state.
+- The state is handed over read-only, as `DeepReadonly<GantryState>`, to
+  `update`, to `render`, to every diagnostic source, and to every operation of
+  the debug surface. `update` and the surface's poses return a new
+  `GantryState` built from the one they received; `render`, the sources, and
+  `snapshot` return no state.
+{{else}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is the world's game state: a class extending the engine's
+`GameState`, named by the game mode as its `gameStateClass`, so the engine
+builds one instance of it when the world opens and `engine.world.state` is that
+instance. Wherever this specification writes `state.foo`, it means a field of
+that instance.
+
+The game runs in one world for the whole session. The game definition registers
+a single level, the game never opens another, and every screen is a value of
+`screen`, so the state below is built once and lives until the page closes. The
+framework's states are live objects: a tick writes the fields it advances in
+place, and each field initializer below is that field's title-screen value, the
+same value the debug surface's `reset` restores. `GameState` comes from the
+engine's package; `SITES`, `SITE_COUNT`, `HOIST_START`, `CAMERA_START_YAW`,
+`CAMERA_START_PITCH`, and `CAMERA_START_DIST` come from `src/constants.ts`, and
+so do `SiteLoad` and `Obstacle`, the site table's own record types, so the open
+site's loads and obstacles are held in the shape the table gives them.
+
+```ts
+/** A position, in world units; a lattice node carries lattice coordinates. */
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export type MaterialName = "strut" | "cable" | "rail";
+
+/** One member. `id` is unique for the life of a site's structure. */
+export interface Member {
+  id: number;
+  a: Vec3;
+  b: Vec3;
+  material: MaterialName;
+}
+
+/** What the player has built on a site. */
+export interface Structure {
+  members: Member[];
+  /** The next member id to assign; a removed member's is never given back. */
+  nextMemberId: number;
+  /** The slew ring, by its base corner (specs/structure.md), or none yet. */
+  ring: { corner: Vec3 } | null;
+  /** The nodes carrying a counterweight. */
+  counterweights: Vec3[];
+}
+
+export type AxisName = "slew" | "trolley" | "hoist" | "grip";
+
+export interface Command {
+  axis: AxisName;
+  target: number;
+  rate: number;
+}
+
+/** One tape step: a move of one or more axes, or an action. */
+export type Step =
+  | { kind: "move"; commands: Command[] }
+  | { kind: "action"; action: "attach" | "release" };
+
+/** What the open site puts in the yard (specs/sites.md). */
+export interface SiteState {
+  loads: SiteLoad[];
+  obstacles: Obstacle[];
+}
+
+/** A structure's readiness issue (specs/structure.md). */
+export type ReadinessIssue =
+  | "no-ring"
+  | "no-rail"
+  | "invalid-rail"
+  | "disconnected-members";
+
+/** What would refuse a run: a readiness issue, or an empty tape. */
+export type StartIssue = ReadinessIssue | "empty-program";
+
+/** One member's solved force and utilization (specs/statics.md). */
+export interface MemberForce {
+  id: number;
+  force: number;
+  utilization: number;
+}
+
+/** What the static check reported (specs/structure.md). */
+export interface CheckResult {
+  issues: StartIssue[];
+  cost: number;
+  budget: number;
+  stable: boolean;
+  members: MemberForce[];
+}
+
+/** One axis during a run. `command` is null when no command is live on it. */
+export interface AxisState {
+  value: number;
+  rate: number;
+  command: { target: number; rate: number } | null;
+}
+
+export type LoadPhase = "waiting" | "attached" | "placed" | "lost";
+
+/** One load during a run, index-aligned with the open site's loads. */
+export interface LoadState {
+  phase: LoadPhase;
+  /** The lift point's current position (specs/world.md). */
+  pos: Vec3;
+  yaw: number;
+}
+
+export type RunPhase = "idle" | "running" | "cleared" | "failed";
+
+export type FailCause =
+  | "collapse"
+  | "ring-overload"
+  | "cable-snap"
+  | "structure-struck-obstacle"
+  | "load-struck-obstacle"
+  | "load-struck-ground"
+  | "attach-missed"
+  | "release-misplaced"
+  | "command-out-of-range"
+  | "loads-unplaced";
+
+/** The run in progress, or the idle placeholder between runs. */
+export interface RunState {
+  phase: RunPhase;
+  /** The failure cause; null unless phase is "failed". */
+  cause: FailCause | null;
+  /** Ticks since the run started; the run clock is tick / TICK_HZ. */
+  tick: number;
+  /** Index into RUN_SPEEDS. */
+  speedIndex: number;
+  /** The tape step the run is on; the tape's length once all are done. */
+  stepIndex: number;
+  /** Whether that step is live: taken, and not yet complete. */
+  stepLive: boolean;
+  axes: {
+    slew: AxisState;
+    trolley: AxisState;
+    hoist: AxisState;
+    grip: AxisState;
+  };
+  /** The point the cable hangs from, at the latest tick's geometry. */
+  pivot: Vec3;
+  /** The pendulum bob: the hook point (specs/rigging.md). */
+  bob: { pos: Vec3; vel: Vec3 };
+  /** The attached load's index, or null. */
+  attached: number | null;
+  loads: LoadState[];
+  /** The latest solve's, in member-id order, over the members still intact. */
+  forces: MemberForce[];
+  /** The ids of members broken so far this run, in the order they broke. */
+  broken: number[];
+}
+
+/** A cleared site's recorded score. */
+export interface Score {
+  cost: number;
+  time: number;
+}
+
+/** The orbit camera (specs/controls.md). */
+export interface Camera {
+  yaw: number;
+  pitch: number;
+  dist: number;
+}
+
+/** The pointer, as the frame read it (specs/controls.md). */
+export interface PointerState {
+  /** The pointer position, in the stage's logical units. */
+  x: number;
+  y: number;
+  /** Whether a press is live. */
+  down: boolean;
+  /** Where the live press began, in those same units. */
+  pressX: number;
+  pressY: number;
+  /** Whether the live press has passed CLICK_SLOP, so it is an orbit drag. */
+  dragging: boolean;
+}
+
+export type Screen =
+  | "title"
+  | "howto"
+  | "select"
+  | "build"
+  | "program"
+  | "run"
+  | "results";
+
+export type Tool =
+  | "strut"
+  | "cable"
+  | "rail"
+  | "ring"
+  | "counterweight"
+  | "delete";
+
+export class GantryState extends GameState {
+  screen: Screen = "title";
+  menuIndex = 0;
+
+  siteIndex = 0;
+  cleared: boolean[] = Array.from({ length: SITE_COUNT }, () => false);
+  best: (Score | null)[] = Array.from({ length: SITE_COUNT }, () => null);
+  sites: { structure: Structure; program: Step[] }[] = Array.from(
+    { length: SITE_COUNT },
+    () => ({
+      structure: {
+        members: [],
+        nextMemberId: 0,
+        ring: null,
+        counterweights: [],
+      },
+      program: [],
+    }),
+  );
+
+  site: SiteState = {
+    loads: SITES[0].loads.map((load) => ({
+      ...load,
+      from: { ...load.from },
+      to: { ...load.to },
+    })),
+    obstacles: SITES[0].obstacles.map((box) => ({
+      min: { ...box.min },
+      size: { ...box.size },
+    })),
+  };
+
+  tool: Tool = "strut";
+  pendingNode: Vec3 | null = null;
+  history: Structure[] = [];
+  checkResult: CheckResult | null = null;
+
+  camera: Camera = {
+    yaw: CAMERA_START_YAW,
+    pitch: CAMERA_START_PITCH,
+    dist: CAMERA_START_DIST,
+  };
+
+  pointer: PointerState = {
+    x: 0,
+    y: 0,
+    down: false,
+    pressX: 0,
+    pressY: 0,
+    dragging: false,
+  };
+
+  run: RunState = {
+    phase: "idle",
+    cause: null,
+    tick: 0,
+    speedIndex: 0,
+    stepIndex: 0,
+    stepLive: false,
+    axes: {
+      slew: { value: 0, rate: 0, command: null },
+      trolley: { value: 0, rate: 0, command: null },
+      hoist: { value: HOIST_START, rate: 0, command: null },
+      grip: { value: 0, rate: 0, command: null },
+    },
+    pivot: { x: 0, y: 0, z: 0 },
+    bob: { pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 } },
+    attached: null,
+    loads: [],
+    forces: [],
+    broken: [],
+  };
+
+  muted = false;
+  simTime = 0;
+}
+```
+
+## The type aliases
+
+`MaterialName` names the three materials `specs/structure.md` gives and
+`AxisName` the four axes `specs/program.md` gives. `Screen` is the top-level
+state machine and every build carries all seven; `Tool` names the six build
+tools. `ReadinessIssue` is the
+four issues `specs/structure.md` names and `StartIssue` adds the one a tape can
+raise, so `StartIssue` is exactly the set a refused start lists. `LoadPhase`
+and `RunPhase` name where a load and a run stand, and `FailCause` is the closed
+vocabulary of failures `specs/statics.md` collects.
+
+## `Structure`
+
+What is built on one site, and `{ members: [], nextMemberId: 0, ring: null,
+counterweights: [] }` on a site nothing has been built on. Each site gets its
+own, which is why the initializer above builds one per entry rather than
+sharing a single record.
+
+- `members` — every member, each carrying the id it was assigned.
+- `nextMemberId` — the id the next member takes. Removing a member never gives
+  its id back, so this does not follow from `members`: removing the
+  highest-numbered member leaves it where it is. Emptying the structure whole
+  returns it to `0` (`specs/instrumentation.md`).
+- `ring` — the slew ring by its base corner, from which its eight flange nodes
+  and its slew axis follow (`specs/structure.md`), or `null` with no ring.
+- `counterweights` — the nodes carrying one, at most one per node.
+
+## `SiteState`
+
+What the open site puts in the yard, copied out of `SITES` when the site is
+opened. The initializer above is site `0`'s, the site the game opens on.
+
+- `loads` — the site's loads, in the order `specs/sites.md` lists them, each
+  with its class, its mass, the pose it starts at, and the pose it is wanted
+  at. The build screen draws them at `from` and their pads at `to`, and a run's
+  `run.loads` is index-aligned with this list.
+- `obstacles` — the site's obstacles, each the axis-aligned box it fills.
+
+The state owns these all the way down. A copy reaches every part: the load
+list, each load, each of its two poses, the obstacle list, each obstacle, and
+its corner and size. Spreading a load or a box alone would leave the poses and
+the sizes pointing into `SITES`, and posing a load would then rewrite the site
+table for every later opening of that site, which is why the initializer
+rebuilds each nested record too.
+
+The site's name, envelope, anchors, budget, and par figures are not carried;
+they are read by `siteIndex` against `SITES`.
+
+## `CheckResult`
+
+What the `check` action last reported, and what the build screen is showing
+until the structure changes (`specs/structure.md`, `specs/ui.md`). It is
+`null` whenever nothing is showing.
+
+- `issues` — what would refuse a run, empty when nothing would.
+- `cost`, `budget` — the crane's cost and the site's budget.
+- `stable` — whether the structure stands.
+- `members` — each intact member's force and utilization, in member-id order,
+  and empty where an issue left the structure unsolved.
+
+## `PointerState`
+
+Where the pointer is and what the press being held has done so far, as the
+player controller read it from the engine in the current frame.
+
+- `x`, `y` — the pointer position in the stage's logical units, the units a
+  pick radius is measured in.
+- `down` — whether a press is live.
+- `pressX`, `pressY` — where that press began, which decides whether it is
+  still a click. They rest where the last press began and are read while `down`.
+- `dragging` — `false` whenever no press is live, and `true` from the move
+  that carries a live press past `CLICK_SLOP` (`6`) until it is released. That
+  move is the one that makes the press an orbit drag rather than a click, and
+  once it is a drag it stays one.
+
+## `RunState`
+
+The run in progress, and the idle placeholder whenever none is.
+
+- `phase` — `"idle"` between runs, `"running"` while the tape plays,
+  `"cleared"` and `"failed"` once it has ended.
+- `cause` — the failure cause, and `null` unless `phase` is `"failed"`.
+- `tick` — ticks since the run started. The run clock is `tick / TICK_HZ`
+  seconds.
+- `speedIndex` — the watch speed, as an index into `RUN_SPEEDS`.
+- `stepIndex` — the tape step the run is on, counted from `0`, which reaches
+  the tape's length once every step is complete. The run screen shows it as
+  `step m / n` with `m` one greater (`specs/ui.md`).
+- `stepLive` — whether the step at `stepIndex` has been taken and is not yet
+  complete. A move step is live from the tick that issues its commands until
+  the tick that finds every one of its axes arrived; an action step is taken,
+  executed, and complete on one tick, so it is never live at the top of one
+  (`specs/program.md`). A move whose commands have all cleared and a move not
+  yet issued leave the axes alike, so this does not follow from them.
+- `axes` — the four axes, each carrying its value, its signed rate, and the
+  command live on it, or `null` with none.
+- `pivot` — the point the cable hangs from, at the geometry of the most recent
+  tick. The pendulum reads it as `P_prev` on the tick after
+  (`specs/rigging.md`), and a rail breaking takes away the track it was
+  measured along, so it does not follow from the axes.
+- `bob` — the pendulum bob's position and velocity. The hook point and any
+  attached load's lift point are both `bob.pos`.
+- `attached` — the index of the load on the hook, or `null`. One load is
+  attached at a time.
+- `loads` — one entry per load of `site.loads`, in the same order.
+- `forces` — the latest solve's force and utilization for each member still
+  intact, in member-id order.
+- `broken` — the ids of the members broken so far this run, in the order they
+  broke.
+
+The initializer above is the idle placeholder, and a run that ends leaves the
+run it ran in place until the next one starts.
+
+## `GantryState`
+
+The whole of Gantry's state. Every field is present from the moment the world
+opens, and every one is plain data: numbers, strings, booleans, and containers
+of them, so a site is posed by writing the fields posed and read back by
+reading them.
+
+- `screen` — the screen currently shown.
+- `menuIndex` — the highlighted entry of whichever menu `screen` shows.
+- `siteIndex` — the site the build, program, and run screens show, counted
+  from `0`, and `0` before any site has been opened.
+- `cleared` — one entry per site, `true` once that site has been cleared this
+  session.
+- `best` — one entry per site: the best score recorded on it, or `null` with
+  none. It is set apart from `cleared`, so a site may carry one without the
+  other.
+- `sites` — one entry per site: the structure and tape authored on it, which
+  stay as they are while other sites are played and while runs are made.
+- `site` — the open site's loads and obstacles.
+- `tool` — the selected build tool.
+- `pendingNode` — the first node of a member placement being held, or `null`.
+- `history` — the undo stack for the open site, oldest first. `undo` pops it,
+  and it empties when a site is opened. The snapshot reports its depth as
+  `historyDepth`.
+- `checkResult` — the check result the build screen is showing, or `null`.
+- `camera` — the orbit camera's pose, which persists across the three yard
+  screens and returns to its start pose when a site is opened.
+- `pointer` — the pointer as of this frame, refreshed by the player controller
+  every tick.
+- `run` — the run in progress, or its idle placeholder.
+- `muted` — the game's readable copy of the engine's mute bit. The engine owns
+  muting; the mode's tick copies the bit into this field every frame, so the
+  initializer is what it holds for the moment between the world opening and the
+  first tick, and this field is what the debug surface reports.
+- `simTime` — accumulated simulation time, in seconds. Every frame adds its
+  `dt`, whatever the screen; the game mode's tick is where it accumulates.
+
+## What a site opening does
+
+Opening a site sets `siteIndex`, keeps that site's stored structure and tape,
+fills `site` with copies of that site's loads and obstacles, empties `history`,
+clears `pendingNode` and `checkResult`, returns the camera to its start pose,
+and leaves `run` at its idle placeholder. The initializers above are the state
+with site `0` opened this way.
+
+`GantryState` extends the engine's `GameState`, so an instance also carries the
+framework's own `world`, `players`, `phase`, and `elapsed`. Gantry's own phases
+are `screen` and `run.phase`: the mode never calls `setPhase`, so the
+framework's `phase` stays `"waiting"` and `elapsed` stays `0`. The one player
+the mode adds is `players[0]`, whose controller is where input is read.
+
+## What is derived
+
+Ten facts the game shows are read off the fields above rather than kept beside
+them, so they answer to the state as it stands.
+
+| Fact | Read from |
+| --- | --- |
+| The crane's cost | `sites[siteIndex].structure` (`specs/structure.md`) |
+| The readiness issues | That structure and the site (`specs/structure.md`) |
+| The intact members | That structure's members, less `run.broken` |
+| The rail track, its origin, and its length | The intact rail members (`specs/structure.md`) |
+| The rotated arm, the trolley point, and the tick's pivot | `run.axes` and the structure (`specs/statics.md`) |
+| The run clock | `run.tick / TICK_HZ` seconds |
+| Whether a site is open | Site `0`, and site `n + 1` once site `n` is cleared (`specs/ui.md`) |
+| The site's name, envelope, anchors, budget, and par | `siteIndex`, against `SITES` |
+| The node or member a click would take | `pointer` and the world camera (`specs/controls.md`) |
+| The bob's previous velocity | `run.bob.vel` as the tick found it |
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+- The engine builds the state when the world opens, through the mode's
+  `gameStateClass`, so every field is present by the time a frame can observe
+  it, and none of them is optional.
+- The state is the whole of the authoritative game. Every value the game
+  carries from one frame to the next lives in it; nothing is kept in a
+  module-level variable or a closure, and any field an actor, component, or
+  controller holds of its own is either rebuilt from the declared ones or the
+  bookkeeping of what it presents, which no figure this specification fixes
+  depends on.
+- The state is written only through the paths play runs on: the player
+  controller resolves the frame's input into it, the game mode's tick advances
+  it, and the debug surface's poses arrange it at the call. Rendering reads it
+  and writes nothing, and whether an edit is accepted and what a tick does are
+  decided from the state and the site alone.
+- A `reset` restores the declared fields to the initializers above, as
+  `specs/instrumentation.md` states, so those fields are the whole of the
+  authoritative state.
 {{/if}}
