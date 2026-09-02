@@ -35,8 +35,14 @@
 // the upper portion specs/ui.md puts the HUD in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan } from "../assert";
-import { MUZZLE_SPEED, STAR_Y, TICK_DT, TRAIL_TICKS } from "../constants";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import {
+  BULLET_R,
+  MUZZLE_SPEED,
+  STAR_Y,
+  TICK_DT,
+  TRAIL_TICKS,
+} from "../constants";
 import {
   captureStill,
   createHarness,
@@ -45,7 +51,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { bulletLane, laneChangeNear } from "./lane";
+import { bulletLane, changedColumns, laneChangeNear, laneX } from "./lane";
 
 /** The lane the round is flown along, and where on it the flight begins. */
 const LANE_Y = STAR_Y;
@@ -74,6 +80,22 @@ const DISTINCT_MIN = 12;
 /** How many device columns either side of a station are read as part of it. */
 const STATION_SPREAD = 2;
 
+/**
+ * The most that may be drawn AHEAD of the round along its travel, in units.
+ *
+ * Over six times `BULLET_R` (`3`), which is room for the round's own disc, the
+ * stroke that meets it at the head — `specs/weapons.md` makes the tail "widest and
+ * brightest where it meets the bullet" — and the rounding of a logical unit onto a
+ * device column.
+ *
+ * IT IS THE OTHER HALF OF THE ITEM. The stations below say a tail was drawn
+ * BEHIND; on their own they also pass a build that paints a symmetric glow around
+ * its round, which traces no path at all and tells a player nothing about where
+ * the round has been. `specs/overview.md` calls for a tail along the bullet's
+ * RECENT PATH, which is behind it and nowhere else.
+ */
+const HEAD_ALLOWANCE = 20;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -84,7 +106,7 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("paints a tail along the segment behind a moving round", async () => {
+it("paints a tail along the segment behind a moving round and not ahead of it", async () => {
   await startPlaying(h);
   const id = await poseBullet(h, START_X, LANE_Y, MUZZLE_SPEED, 0);
   await h.advance(RUN_TICKS);
@@ -124,4 +146,24 @@ it("paints a tail along the segment behind a moving round", async () => {
         `bullet leaves a continuous fading tail along its recent path)`,
     );
   }
+
+  // AND NOTHING AHEAD OF IT. Every column the round's drawing changed, measured
+  // along the travel; the furthest one forward of the round decides the bound.
+  let ahead = 0;
+  for (const column of changedColumns(lane.bare, lane.drawn, DISTINCT_MIN)) {
+    const forward = laneX(h, column) - flying.x;
+    if (forward > ahead) ahead = forward;
+  }
+
+  assertLessThanOrEqual(
+    ahead,
+    HEAD_ALLOWANCE,
+    `nothing painted more than ${HEAD_ALLOWANCE} units AHEAD of the round ` +
+      `along its travel — over six times BULLET_R (${BULLET_R}), which is ` +
+      `room for the round's own disc and the stroke that meets it at the head ` +
+      `(specs/weapons.md: the tail is widest and brightest where it meets the ` +
+      `bullet, and traces the bullet's RECENT path, which is behind it); the ` +
+      `furthest forward column the flight changed stood ${ahead.toFixed(1)} ` +
+      `units ahead of the round at x = ${flying.x.toFixed(1)}`,
+  );
 });
