@@ -20,12 +20,7 @@
 // The score each check asserts is `specs/scoring.md`'s own whole number, asserted
 // in the check, exactly.
 
-import {
-  ROCK_SPEED_MAX,
-  SAUCER_R,
-  STAR_X,
-  type RockSize,
-} from "../../src/constants";
+import { ROCK_SPEED_MAX, SAUCER_R, STAR_X, type RockSize } from "../constants";
 import { fail } from "../assert";
 import { distance, type Point } from "../geometry";
 import {

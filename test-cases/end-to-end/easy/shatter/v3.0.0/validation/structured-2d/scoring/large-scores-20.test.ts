@@ -26,7 +26,7 @@
 // variants. What a chipping hit pays is `armor`'s item, not this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_LARGE } from "../../src/constants";
+import { SCORE_LARGE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

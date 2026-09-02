@@ -25,7 +25,7 @@
 // this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_SAUCER } from "../../src/constants";
+import { SCORE_SAUCER } from "../constants";
 import { assertEqual, assertNull, assertTrue } from "../assert";
 import {
   captureStill,

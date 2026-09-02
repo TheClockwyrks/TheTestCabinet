@@ -27,7 +27,7 @@
 // figure is paid "on the destruction alone, however many hits it took".
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_MEDIUM } from "../../src/constants";
+import { SCORE_MEDIUM } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

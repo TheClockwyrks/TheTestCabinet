@@ -25,7 +25,7 @@
 // it, and this check reads the same event in both checklists.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_SMALL } from "../../src/constants";
+import { SCORE_SMALL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
