@@ -27,7 +27,7 @@
 // `waves/wave-one-spawns-four`'s; and the opening score, which is `scoring`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, START_LIVES, TITLE_ITEMS } from "../../src/constants";
+import { BINDINGS, START_LIVES, TITLE_ITEMS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,

@@ -33,7 +33,7 @@
 // field and nothing but the respawn decided its velocity.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_MAX } from "../../src/constants";
+import { SHIP_MAX } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

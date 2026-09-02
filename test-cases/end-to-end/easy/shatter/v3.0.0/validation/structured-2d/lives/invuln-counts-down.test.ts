@@ -29,7 +29,7 @@
 // differ by exactly that and are both conformant.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { INVULN_TIME, TICK_DT } from "../../src/constants";
+import { INVULN_TIME, TICK_DT } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

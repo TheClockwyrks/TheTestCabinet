@@ -4,7 +4,7 @@
 // point facing `FACE_UP`", and `specs/ship.md` fixes `FACE_UP` as `-90` degrees,
 // "straight up". The specs quote angles in degrees clockwise from the positive `x`
 // axis and the debug surface reports radians, so the figure is converted once in
-// `src/constants.ts` and this compares radians with radians. The position and the
+// `../constants` and this compares radians with radians. The position and the
 // speed are their own items; this one reads the FACING alone.
 //
 // THE SHIP DIES FACING SOMEWHERE ELSE, which is the whole of what makes this
@@ -25,7 +25,7 @@
 // rotation, so no build that faces its next ship anywhere else survives it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, FACE_UP } from "../../src/constants";
+import { DEG, FACE_UP } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { angleGap, degrees } from "../geometry";
 import {

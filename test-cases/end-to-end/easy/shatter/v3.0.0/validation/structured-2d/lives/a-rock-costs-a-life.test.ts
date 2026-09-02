@@ -29,7 +29,7 @@
 // generous is not flattered by a `46`-unit body.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, START_LIVES } from "../../src/constants";
+import { ROCK_RADIUS, START_LIVES } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import { createHarness, rockById, ticksFor, type Harness } from "../harness";
 import { poseClosingRock, poseDuel, watchContact } from "./duel";

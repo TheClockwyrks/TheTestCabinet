@@ -32,7 +32,7 @@
 // is a real opening with a real wave 1 behind it, which is what the still shows.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES } from "../../src/constants";
+import { START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -34,12 +34,7 @@
 // (`specs/instrumentation.md`), and the respawn grace is posed separately, so
 // what the contact does here is decided by the game's own collision rules.
 
-import {
-  ROCK_RADIUS,
-  SAUCER_BULLET_R,
-  SAUCER_R,
-  SHIP_R,
-} from "../../src/constants";
+import { ROCK_RADIUS, SAUCER_BULLET_R, SAUCER_R, SHIP_R } from "../constants";
 import { fail } from "../assert";
 import {
   distanceToSegment,

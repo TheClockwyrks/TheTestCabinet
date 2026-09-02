@@ -28,7 +28,7 @@
 // build that resolves the same overlap on tick after tick.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_R, SAUCER_SPEED, SHIP_R } from "../../src/constants";
+import { SAUCER_R, SAUCER_SPEED, SHIP_R } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

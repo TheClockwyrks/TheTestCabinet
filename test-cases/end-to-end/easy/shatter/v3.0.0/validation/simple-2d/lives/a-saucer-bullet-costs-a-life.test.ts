@@ -26,11 +26,7 @@
 // `a-rock-costs-a-life`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  SAUCER_BULLET_R,
-  SAUCER_BULLET_SPEED,
-  SHIP_R,
-} from "../../src/constants";
+import { SAUCER_BULLET_R, SAUCER_BULLET_SPEED, SHIP_R } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

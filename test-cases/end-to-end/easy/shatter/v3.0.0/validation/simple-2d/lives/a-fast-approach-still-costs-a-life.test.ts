@@ -45,7 +45,7 @@ import {
   SHIP_MAX,
   SHIP_R,
   TICK_DT,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

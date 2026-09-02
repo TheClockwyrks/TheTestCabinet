@@ -32,7 +32,7 @@
 // (`respawn-only-with-lives-left`, which requires that none does).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAFE_X, SAFE_Y } from "../../src/constants";
+import { SAFE_X, SAFE_Y } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { distance } from "../geometry";
 import {

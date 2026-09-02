@@ -38,7 +38,7 @@
 // decides the requirement without that hazard.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAFE_X, SAFE_Y } from "../../src/constants";
+import { SAFE_X, SAFE_Y } from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import { wrappedDistance, type Vec } from "../geometry";
 import {

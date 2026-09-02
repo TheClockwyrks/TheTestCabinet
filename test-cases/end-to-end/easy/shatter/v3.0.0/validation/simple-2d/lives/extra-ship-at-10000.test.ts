@@ -30,7 +30,7 @@
 // spawns nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { EXTRA_LIFE_STEP, SCORE_SMALL } from "../../src/constants";
+import { EXTRA_LIFE_STEP, SCORE_SMALL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

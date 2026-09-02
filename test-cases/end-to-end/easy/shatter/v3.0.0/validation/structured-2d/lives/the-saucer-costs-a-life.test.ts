@@ -24,7 +24,7 @@
 // a tick runs — and the field holds the ship and the saucer and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_R, START_LIVES } from "../../src/constants";
+import { SAUCER_R, START_LIVES } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import { createHarness, ticksFor, type Harness } from "../harness";
 import { poseClosingSaucer, poseDuel, watchContact } from "./duel";

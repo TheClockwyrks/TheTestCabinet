@@ -35,7 +35,7 @@
 // ship's contact test is off, so nothing but the kill can move either counter.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { EXTRA_LIFE_STEP, SCORE_SMALL } from "../../src/constants";
+import { EXTRA_LIFE_STEP, SCORE_SMALL } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

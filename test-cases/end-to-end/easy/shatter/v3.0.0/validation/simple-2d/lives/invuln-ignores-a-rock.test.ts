@@ -31,7 +31,7 @@
 // exit is caught by any of the three.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SHIP_R } from "../../src/constants";
+import { ROCK_RADIUS, SHIP_R } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { distance } from "../geometry";
 import {

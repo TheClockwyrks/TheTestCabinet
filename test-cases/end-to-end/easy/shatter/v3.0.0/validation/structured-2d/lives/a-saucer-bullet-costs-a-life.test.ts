@@ -23,7 +23,7 @@
 // a tick runs — and the field holds the ship and the one round and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_BULLET_R, START_LIVES } from "../../src/constants";
+import { SAUCER_BULLET_R, START_LIVES } from "../constants";
 import { assertEqual, assertNull, assertTrue } from "../assert";
 import {
   createHarness,

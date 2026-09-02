@@ -28,7 +28,7 @@
 // caught the second still passes this item and fails that one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { EXTRA_LIFE_STEP, SCORE_SMALL } from "../../src/constants";
+import { EXTRA_LIFE_STEP, SCORE_SMALL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

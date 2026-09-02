@@ -32,7 +32,7 @@
 // placement, which at rest moves it by nothing at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAFE_X, SAFE_Y, START_LIVES } from "../../src/constants";
+import { SAFE_X, SAFE_Y, START_LIVES } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

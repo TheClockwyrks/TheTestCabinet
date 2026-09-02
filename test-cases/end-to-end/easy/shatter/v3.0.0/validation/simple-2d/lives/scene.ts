@@ -23,13 +23,7 @@
 // world it arranged.
 
 import { fail } from "../assert";
-import {
-  FACE_UP,
-  ROCK_RADIUS,
-  SAFE_X,
-  SAFE_Y,
-  SHIP_R,
-} from "../../src/constants";
+import { FACE_UP, ROCK_RADIUS, SAFE_X, SAFE_Y, SHIP_R } from "../constants";
 import { angleGap, distance, wrap, type Point } from "../geometry";
 import {
   colorDistance,

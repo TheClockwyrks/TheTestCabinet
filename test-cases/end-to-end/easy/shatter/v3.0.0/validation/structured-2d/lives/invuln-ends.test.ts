@@ -33,7 +33,7 @@
 // one life, for the reason `lives/a-rock-costs-a-life` states.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, START_LIVES, TICK_HZ } from "../../src/constants";
+import { ROCK_RADIUS, START_LIVES, TICK_HZ } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

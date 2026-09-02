@@ -41,7 +41,7 @@
 // no respawn grace, and the field holds nothing but the two bodies.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SHIP_R, START_LIVES, TICK_DT } from "../../src/constants";
+import { ROCK_RADIUS, SHIP_R, START_LIVES, TICK_DT } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { speedOf, wrappedDistance } from "../geometry";
 import {

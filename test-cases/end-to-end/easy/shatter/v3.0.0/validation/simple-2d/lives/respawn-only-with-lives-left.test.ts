@@ -42,7 +42,7 @@
 // `presentation` items are built on — so a patch within it holds no body.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAFE_X, SAFE_Y } from "../../src/constants";
+import { SAFE_X, SAFE_Y } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

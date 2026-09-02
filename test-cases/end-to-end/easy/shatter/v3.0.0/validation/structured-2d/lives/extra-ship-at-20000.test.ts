@@ -29,7 +29,7 @@
 // shut, and the ship's contact test is off.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { EXTRA_LIFE_STEP, SCORE_SMALL } from "../../src/constants";
+import { EXTRA_LIFE_STEP, SCORE_SMALL } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

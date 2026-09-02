@@ -39,7 +39,7 @@ import {
   SAFE_Y,
   START_LIVES,
   TICK_DT,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual, assertTrue } from "../assert";
 import { type Vec } from "../geometry";
 import {

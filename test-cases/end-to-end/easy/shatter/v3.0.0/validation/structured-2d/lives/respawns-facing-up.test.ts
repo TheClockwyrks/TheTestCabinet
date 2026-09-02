@@ -25,7 +25,7 @@
 // rule that is an assignment of a constant.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP, SAFE_X, SAFE_Y, START_LIVES } from "../../src/constants";
+import { FACE_UP, SAFE_X, SAFE_Y, START_LIVES } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

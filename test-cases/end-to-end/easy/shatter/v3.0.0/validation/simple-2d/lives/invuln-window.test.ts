@@ -29,7 +29,7 @@
 // item. Together they are a two-hundredth of `INVULN_TIME`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { INVULN_TIME, TICK_DT } from "../../src/constants";
+import { INVULN_TIME, TICK_DT } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
