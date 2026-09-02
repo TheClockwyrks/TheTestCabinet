@@ -42,7 +42,7 @@ import {
   PREDATOR_SPEED,
   TICK_HZ,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { poseSightLine, spawnPredator } from "../fixtures";
 import { tileGap } from "../maze";
 import { captureReplay, createHarness, type Harness } from "../harness";

@@ -43,7 +43,7 @@ import {
   PREDATOR_SPEED,
   TICK_HZ,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { tileCenter } from "../maze";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import { FathomSnapshot } from "../surface";
