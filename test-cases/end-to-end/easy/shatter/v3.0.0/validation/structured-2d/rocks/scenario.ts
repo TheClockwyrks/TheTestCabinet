@@ -40,7 +40,7 @@ import {
   ROCK_RADIUS,
   STAR_X,
   STAR_Y,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import { QUIET_CORNER } from "../fixtures";
 import {
@@ -290,8 +290,8 @@ export async function fireOne(
  * A BOUND ON A SCENARIO, NOT A THRESHOLD. `specs/collision.md` has one round
  * destroy a rock under `base`, and `specs/rocks.md` gives a `warhead` Large
  * `ROCK_HEALTH.large` (`3`) hits of armor before the one that destroys it — a
- * figure `armor/health-large-3` grades, and one this group cannot even import,
- * since a `base` build's `src/constants.ts` does not carry it. Five is the larger
+ * figure `armor/health-large-3` grades, and one this group deliberately does not
+ * import, so that nothing here reads as the requirement. Five is the larger
  * of the two with room for a build that resolves a hit a tick late, and small
  * enough that a build whose rounds do not destroy what they strike fails here
  * naming the rule rather than spinning.

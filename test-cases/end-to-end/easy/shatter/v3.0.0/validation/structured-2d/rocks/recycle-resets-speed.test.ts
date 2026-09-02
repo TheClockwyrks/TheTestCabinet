@@ -34,7 +34,7 @@
 // is NOT reset with its speed, which is `armor/recycling-resets-speed-not-health`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_SPEED_MAX, ROCK_SPEED_MIN, TICK_HZ } from "../../src/constants";
+import { ROCK_SPEED_MAX, ROCK_SPEED_MIN, TICK_HZ } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import { pullAt, speedOf } from "../geometry";
 import {

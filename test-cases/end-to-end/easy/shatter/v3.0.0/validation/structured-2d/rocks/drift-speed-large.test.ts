@@ -46,7 +46,7 @@ import {
   WAVE_BANNER_TIME,
   WAVE_SPEED_CAP,
   WAVE_SPEED_STEP,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertGreaterThan, assertTrue } from "../assert";
 import { speedOf } from "../geometry";
 import {

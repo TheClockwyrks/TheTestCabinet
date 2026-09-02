@@ -38,7 +38,7 @@
 // `saucer/bullet-harms-only-the-ship`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, ROCK_SPEED_MAX } from "../../src/constants";
+import { ROCK_RADIUS, ROCK_SPEED_MAX } from "../constants";
 import {
   assertEqual,
   assertLength,

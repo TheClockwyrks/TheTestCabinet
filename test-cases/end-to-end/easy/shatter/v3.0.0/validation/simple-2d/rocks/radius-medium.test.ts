@@ -38,7 +38,7 @@
 // flight and it has carried past the column its rock stands in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BULLET_R, ROCK_RADIUS } from "../../src/constants";
+import { BULLET_R, ROCK_RADIUS } from "../constants";
 import { assertGreaterThan, assertUndefined } from "../assert";
 import {
   bulletById,

@@ -38,7 +38,7 @@
 // which is `rocks/fragment-velocity-carries-the-parent`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPLIT_KICK } from "../../src/constants";
+import { SPLIT_KICK } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { FRAGMENT_FAN } from "../fixtures";
 import { DEG, angleBetween, headingOf } from "../geometry";

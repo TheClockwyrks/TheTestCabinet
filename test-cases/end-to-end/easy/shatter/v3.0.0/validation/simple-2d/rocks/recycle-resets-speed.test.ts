@@ -30,7 +30,7 @@
 // pass on by mistake.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_SPEED_MAX, ROCK_SPEED_MIN } from "../../src/constants";
+import { ROCK_SPEED_MAX, ROCK_SPEED_MIN } from "../constants";
 import { assertBetween } from "../assert";
 import { speedOf } from "../geometry";
 import {

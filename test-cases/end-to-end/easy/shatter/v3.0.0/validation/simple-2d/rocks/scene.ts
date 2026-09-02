@@ -27,7 +27,7 @@ import {
   MUZZLE_SPEED,
   STAR_X,
   STAR_Y,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import {
   directDistanceToStar,
@@ -153,8 +153,9 @@ export const FAN_DRIFT: Point = { x: -60, y: -60 };
  * health and only the hit that takes it to `0` destroys it, a Large's
  * `ROCK_HEALTH.large` (`3`) being the most any size carries (`specs/rocks.md`).
  *
- * The figure is written here rather than imported because ONE script serves both
- * checklists and a `base` build's `src/constants.ts` carries no armor table at all.
+ * The figure is written here rather than imported so that nothing reads it as the
+ * requirement: ONE script serves both checklists, and under `base` there is no
+ * armor at all.
  * It is a CEILING ON THE ROUNDS A DRIVE SENDS and never an assertion about armor —
  * `armor/health-large-3` is the item that grades the figure, and a build that wants
  * a fourth round must fail there rather than quietly here.

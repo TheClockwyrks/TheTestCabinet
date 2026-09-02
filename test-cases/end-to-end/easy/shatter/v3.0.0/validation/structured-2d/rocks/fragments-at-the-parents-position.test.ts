@@ -35,7 +35,7 @@
 // naming the split rather than crashing this script.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT } from "../../src/constants";
+import { TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { FRAGMENT_FAN, QUIET_PULL } from "../fixtures";
 import { speedOf, wrappedDistance } from "../geometry";

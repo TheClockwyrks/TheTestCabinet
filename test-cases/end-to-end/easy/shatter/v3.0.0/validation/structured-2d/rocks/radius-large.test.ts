@@ -37,7 +37,7 @@
 // exactly because that number differs between the variants.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BULLET_R, ROCK_RADIUS } from "../../src/constants";
+import { BULLET_R, ROCK_RADIUS } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

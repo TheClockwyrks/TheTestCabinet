@@ -37,7 +37,7 @@
 // can produce, so a build with no recycling in it fails rather than being read as one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_SPEED_MAX, ROCK_SPEED_MIN } from "../../src/constants";
+import { ROCK_SPEED_MAX, ROCK_SPEED_MIN } from "../constants";
 import { assertBetween } from "../assert";
 import { speedOf } from "../geometry";
 import {

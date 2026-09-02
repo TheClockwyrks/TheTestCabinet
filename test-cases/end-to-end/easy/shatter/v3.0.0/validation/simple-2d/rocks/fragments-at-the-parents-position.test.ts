@@ -28,7 +28,7 @@
 // it on the way in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT } from "../../src/constants";
+import { TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { distance, speedOf } from "../geometry";
 import {

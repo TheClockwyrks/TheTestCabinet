@@ -44,7 +44,7 @@ import {
   WAVE_MIN_STAR_DIST,
   WAVE_SPEED_CAP,
   WAVE_SPEED_STEP,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertGreaterThanOrEqual, fail } from "../assert";
 import { gravityMagnitude, speedOf } from "../geometry";
 import {

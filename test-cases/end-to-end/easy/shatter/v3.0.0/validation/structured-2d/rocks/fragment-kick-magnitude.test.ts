@@ -27,7 +27,7 @@
 // torpedo's much harder `TORPEDO_SCATTER`, which is `detonation/harder-scatter`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPLIT_KICK } from "../../src/constants";
+import { SPLIT_KICK } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { FRAGMENT_FAN } from "../fixtures";
 import {

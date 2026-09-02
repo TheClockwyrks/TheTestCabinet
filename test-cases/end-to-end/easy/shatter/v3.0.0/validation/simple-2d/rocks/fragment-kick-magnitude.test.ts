@@ -28,7 +28,7 @@
 // scenario and a reviewer comparing their evidence is comparing like with like.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPLIT_KICK } from "../../src/constants";
+import { SPLIT_KICK } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

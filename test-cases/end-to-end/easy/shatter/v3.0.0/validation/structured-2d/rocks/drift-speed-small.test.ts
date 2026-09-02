@@ -38,7 +38,7 @@
 // how the wave multiplier scales a spawn, which is `waves/speed-scales-per-wave`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_SPEED_MAX, ROCK_SPEED_MIN } from "../../src/constants";
+import { ROCK_SPEED_MAX, ROCK_SPEED_MIN } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import { speedOf } from "../geometry";
 import {
