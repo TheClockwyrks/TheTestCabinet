@@ -32,7 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
-import { CARD_H, CARD_W, TOP_ROW_Y, WASTE_X } from "../../src/constants";
+import { CARD_H, CARD_W, TOP_ROW_Y, WASTE_X } from "../constants";
 import {
   ACE,
   FIVE,

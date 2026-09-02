@@ -28,13 +28,13 @@
 // only that the fan clears what sits either side of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_X, STOCK_X, TOP_ROW_Y, WASTE_X } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
   assertLessThan,
 } from "../assert";
+import { FOUNDATION_X, STOCK_X, TOP_ROW_Y, WASTE_X } from "../constants";
 import {
   CARD_BOX_TOLERANCE,
   cardBoxes,

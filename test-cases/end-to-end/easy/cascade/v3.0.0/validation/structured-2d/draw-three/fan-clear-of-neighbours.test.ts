@@ -52,7 +52,7 @@ import {
   STOCK_X,
   TOP_ROW_Y,
   WASTE_X,
-} from "../../src/constants";
+} from "../constants";
 import {
   ACE,
   FIVE,

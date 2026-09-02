@@ -33,8 +33,8 @@
 // what the table draws.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_W, FOUNDATION_X, TOP_ROW_Y, WASTE_X } from "../../src/constants";
 import { assertBetween, assertEqual, assertLength } from "../assert";
+import { CARD_W, FOUNDATION_X, TOP_ROW_Y, WASTE_X } from "../constants";
 import {
   CARD_BOX_TOLERANCE,
   cardBoxes,

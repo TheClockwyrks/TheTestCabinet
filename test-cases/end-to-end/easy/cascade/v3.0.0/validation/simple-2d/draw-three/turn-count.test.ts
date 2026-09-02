@@ -12,13 +12,13 @@
 // leaves two and three. Five is also more than the turn count, so this is the
 // ordinary turn rather than the short-stock turn `draw-three/turn-remainder` decides.
 //
-// THE FIGURE IS WRITTEN OUT RATHER THAN IMPORTED. `src/constants.ts` is supplied
-// with the project and carries `TURN_COUNT` already, but this item's requirement is
-// the literal three ("the stock loses three and the waste gains three"), so reading
-// the figure back out of the build's own module would let a build that edited the
-// file it was told not to edit turn one card and pass. The literal is written here
-// for the same reason `draw-three/deal-mode-reported` writes it: those two are the
-// only points in this suite that hold the count against the specification, and every
+// THE FIGURE IS WRITTEN OUT RATHER THAN IMPORTED. The build writes its own
+// `src/constants.ts` and puts a `TURN_COUNT` in it, but this item's requirement
+// is the literal three ("the stock loses three and the waste gains three"), so
+// reading the figure back out of that module would let a build that turns one
+// card and calls it `TURN_COUNT` pass. The literal is written here for the same
+// reason `draw-three/deal-mode-reported` writes it: those two are the only
+// points in this suite that hold the count against the specification, and every
 // other check may size itself to the figure the build reports.
 //
 // THE COUNTS ALONE ARE DECIDED HERE. Which card ended up on top is `stock.turn-order`,
