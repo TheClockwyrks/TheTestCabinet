@@ -12,10 +12,19 @@
 // about 2075 units per second, and climbs toward it monotonically from the
 // moment the burn starts: 693 within the first twentieth of a second, 768 by the
 // end of the span. The drag alone cannot stop it and neither can anything else on
-// an empty field. So a build with no clamp is over the bound at the first sample
-// and stays over it, which is why sampling every `SAMPLE_TICKS` rather than every
-// tick can hide nothing: the key is held for the whole span, so a breach persists
-// rather than flashing between two readings.
+// an empty field. So a build with no clamp is over the bound at the first tick
+// and stays over it.
+//
+// BUT THE READING IS EVERY TICK, BECAUSE THE ITEM'S WORD IS NEVER. That argument
+// holds for a build with NO clamp and says nothing about one whose clamp misses:
+// a build that applies it on every second tick crosses the cap and comes back
+// inside it, and a reading taken every few ticks can only say "not at the moments
+// it looked". Every tick the snapshot can report is read instead.
+//
+// AND THE BURN IS PROVED TO BE ONE. A ship posed at `SHIP_MAX` and left to coast
+// never reads above the cap, so a build that answers none of the thrust key clears
+// the bound below by doing nothing. The ship must still be reporting thrust when
+// the burn ends, and the pose must have landed on the cap before it began.
 //
 // WHY ONE UNIT PER SECOND. The item's own figure, and the smallest honest one: a
 // conformant build clamps to `SHIP_MAX` exactly, and the only reading between
