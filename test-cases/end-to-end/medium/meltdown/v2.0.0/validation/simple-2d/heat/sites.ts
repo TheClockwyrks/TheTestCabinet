@@ -19,7 +19,7 @@
 // encodes — six clear tiles on both axes, so nothing conducts by accident — is
 // the heat model's constraint and no other group's.
 
-import { LEFT_VENT_ROWS } from "../../src/constants";
+import { LEFT_VENT_ROWS } from "../constants";
 import type { Tile } from "../geometry";
 
 /**

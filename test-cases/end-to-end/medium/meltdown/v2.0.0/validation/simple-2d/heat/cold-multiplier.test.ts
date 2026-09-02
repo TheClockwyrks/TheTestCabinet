@@ -11,7 +11,7 @@
 // by the time the fire clock came round.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MIN_HEAT_MULT } from "../../src/constants";
+import { MIN_HEAT_MULT } from "../constants";
 import { assertCloseTo } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { oneShotDamage } from "./one-shot";

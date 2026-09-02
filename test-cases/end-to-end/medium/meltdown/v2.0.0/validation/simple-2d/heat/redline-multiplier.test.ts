@@ -13,7 +13,7 @@
 // that sits this high.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_HEAT_MULT } from "../../src/constants";
+import { MAX_HEAT_MULT } from "../constants";
 import { assertCloseTo } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { oneShotDamage } from "./one-shot";

@@ -23,7 +23,7 @@
 // Nothing here holds a tolerance: it is the specification's own table, typed, and
 // two lookups.
 
-import { TOWER_DEFS, emitterStats, type EmitterDef } from "../../src/constants";
+import { TOWER_DEFS, emitterStats, type EmitterDef } from "../constants";
 import { fail } from "../assert";
 import {
   towerById,

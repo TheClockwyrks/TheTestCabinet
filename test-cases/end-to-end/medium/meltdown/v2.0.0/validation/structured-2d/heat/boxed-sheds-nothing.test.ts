@@ -25,7 +25,7 @@
 // hundred rather than by a whisker.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BASE_K, RAD_K, TRIP_HEAT } from "../../src/constants";
+import { BASE_K, RAD_K, TRIP_HEAT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -26,7 +26,7 @@
 // other.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BASE_K, RAD_K } from "../../src/constants";
+import { BASE_K, RAD_K } from "../constants";
 import { assertCloseTo, assertGreaterThan } from "../assert";
 import {
   captureStill,
