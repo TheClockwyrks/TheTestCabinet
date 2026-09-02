@@ -250,8 +250,9 @@ TCAB_VALIDATION_MEDIA_DIR=/tmp/orrery-media \
 `dist/` must be built (`npm run build` in the reference) because the project
 serves the built site.
 
-**`tcab validate` cannot be used until every item's script exists.** The case
-resolves as a whole, so a single missing file refuses the whole command:
+**Every item's script exists in all three projects, so the case resolves and
+`tcab validate` runs it.** The case resolves as a whole, so a single missing file
+would refuse the whole command:
 
 ```
 test case `orrery@v1.0.0` is invalid: review category `instrumentation` item
@@ -259,9 +260,9 @@ test case `orrery@v1.0.0` is invalid: review category `instrumentation` item
 not a file in engine `none`'s validator project (`validation/none/`)
 ```
 
-Until then the staging recipe above is how a directory of suites is run, and
-`TCAB_VALIDATION_MEDIA_DIR` is how its declared outputs are collected and looked
-at — one file per output, at
+The staging recipe above is how one directory of suites is run without going
+through the runner, and `TCAB_VALIDATION_MEDIA_DIR` is how its declared outputs
+are collected and looked at — one file per output, at
 `$TCAB_VALIDATION_MEDIA_DIR/validation/<suite path>/<output id>.{png,json.gz}`.
 
 The `none` project's `validation/tsconfig.json` extends `../tsconfig.json`, which

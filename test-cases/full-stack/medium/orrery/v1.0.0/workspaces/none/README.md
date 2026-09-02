@@ -80,6 +80,7 @@ entries and scripts alone.
   pass. The same four commands are run over the repository you leave behind.
 - The assets `specs/assets.md` asks for are produced and committed under
   `assets/`, and the game loads them.
+- The `showcase/` directory `specs/showcase.md` asks for is present.
 - **Replace this file** with the `README.md` `specs/overview.md` asks the
   finished build to ship: what the game is, how to install it, how to run it in
   development, how to produce the production build, and the controls.

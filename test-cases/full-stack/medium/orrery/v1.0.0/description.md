@@ -25,6 +25,16 @@ collectively exercising every sigil and mechanism in the game, and each shipped
 with a working reference solution. A build has to solve its own puzzles and the
 specification's alike.
 
+The model also makes the game's own art and sound, during the build, with the
+asset-generation tools on the run image's `PATH`. Fifteen mote sprites, the
+filaments, the twelve engraved sigils, the ten instruction glyphs and the part
+pieces are drawn; the rises and sets open and close as real aperture sheets; the
+delivery, completion and fault effects are produced particle systems played
+through the particle runtime; and six cues and a seamlessly looping music bed are
+produced too, then wired into the game. The finished repository ships a showcase
+of its own beside its source: a description of the game and a short carousel of
+media the build captures from itself playing.
+
 ## Why it is a benchmark
 
 Orrery is a simulation case first. The cycle is a fixed pipeline: fetch, drops,
@@ -47,6 +57,13 @@ editing gestures on fixed challenges and then step loaded machines cycle by
 cycle through every sigil, fault, and metric. The campaign requirement closes
 the loop: a build must design puzzles and then prove them solvable with
 solutions its own debug surface hands over.
+
+On top of that correctness sits a full production pass, and the two are graded
+apart. A machine that runs perfectly under code-drawn placeholders and a handsome
+sky over a sweep that mishandles its collision samples both fall short; the run
+is rated on Campaign, Extras, the workshop the game is operated through, and the
+presentation the case hands entirely to the build, and its overall rating is the
+worst of the four.
 
 The look is left open. Orrery fixes the geometry, the rosters, and legibility,
 so fifteen mote types read at a glance, triune filaments read heavier than
@@ -73,3 +90,9 @@ sound with them before wiring the committed files into the build. The
 specification fixes the geometry, the rules, the ten Extras challenges, and the
 campaign's obligations exactly; the palette, the type, and the look of the sky
 are the build's.
+
+Every point on the checklist is decided by a validator: `1058` review items
+across `15` categories, each one observable behavior posed through the game's own
+instrumentation surface and read back, and each with a suite in the validator
+project of every engine the case supports. The reviewer's judgement goes into the
+per-domain ratings of visuals, polish and feel.

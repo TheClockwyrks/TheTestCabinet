@@ -9,7 +9,8 @@ them. It ships a single `base` variant carrying both modes, the build's own
 Campaign course and the fixed ten-challenge Extras shelf. On top of building the
 game, the model must produce every sprite the field shows, the rise and set
 aperture sheets, three particle systems, six cues and a seamless music bed, with
-the asset-generation tools on the run image's `PATH`.
+the asset-generation tools on the run image's `PATH`, and must present the
+finished result in a `showcase/` directory it captures from its own game.
 
 `orrery` is the catalog slug for this lineage of machine-building puzzle cases.
 The case is inspired by programmable factory puzzlers and is not a clone of any
@@ -47,11 +48,11 @@ sweep that mishandles its collision samples both fall short.
 
 Orrery is designed for three engines, and seeds a different project for each:
 
-| Engine          | What the seeded project supplies                                                                                                                                                                                                                              |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `none`          | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the frame loop, the canvas fit, pointer and keyboard input, audio, the overlay and the `window.__orrery` surface, and then the game on top of it.        |
-| `simple-2d`     | The Simple 2D package, vendored at seed time, plus `src/constants.ts` (every figure the specification fixes) and `src/main.ts`. The build writes `src/game.ts`. Its `initialize` returns the debug surface beside the state as `[state, debug]`.              |
-| `structured-2d` | The Structured 2D package, vendored the same way, plus the same two case-owned modules. The build writes `src/game.ts`: the game definition the engine drives, its mode, its state and its actors, and the debug surface its instance's `initialize` returns. |
+| Engine          | What the seeded project supplies                                                                                                                                                                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`          | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the frame loop, the canvas fit, pointer and keyboard input, audio, the overlay and the `window.__orrery` surface, and then the game on top of it.                    |
+| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` (every figure the specification fixes) and `src/main.ts`. The build writes `src/game.ts`. Its `initialize` returns the debug surface beside the state as `[state, debug]`.   |
+| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored the same way, plus the same two case-owned modules. The build writes `src/game.ts`: the game definition the engine drives, its mode, its state and its actors, and the debug surface `initialize` returns. |
 
 The simulation is case-owned math on every engine — no engine collider stands in
 for the sampled sweep — and the asset-production pass is common to all three. No
@@ -72,20 +73,27 @@ Orrery ships one variant:
 
 Every spec is common. Campaign and Extras are modes the player picks from the
 title menu rather than variant axes, so both mode specs are seeded into every
-run; the specs branch only on the engine.
+run; the specs branch only on the engine. `variants/base.toml` carries the two
+things the variant owns beyond its name: the `[reference_implementation]` table
+naming one reference per supported engine, and `showcase = "showcase/base"`, the
+catalog presentation described below.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                                 |
-| ---------------- | -------------- | ----------------------------------------------------------------------- |
-| `specs/`         | Yes            | The spec handed to the model, by concern.                               |
-| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                           |
-| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).                       |
-| `description.md` | No             | The site-facing introduction on the case's detail page.                 |
-| `changelog.md`   | No             | This version's entry in the case's changelog.                           |
-| `README.md`      | No             | This overview.                                                          |
+| Path                   | Seeded to run? | Purpose                                                                 |
+| ---------------------- | -------------- | ----------------------------------------------------------------------- |
+| `specs/`               | Yes            | The spec handed to the model, by concern.                               |
+| `workspaces/`          | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
+| `references/`          | No             | The authored, correct build, one directory per engine. Never seeded.    |
+| `validation/`          | No             | The validator projects deciding every review item, `<engine>/`.         |
+| `validation-baseline/` | No             | The baseline media, captured from each reference build.                 |
+| `showcase/`            | No             | The variant's catalog media, and the driver that recorded it.           |
+| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                           |
+| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
+| `variants/`            | No             | One TOML file per variant (listed in `variants`).                       |
+| `description.md`       | No             | The site-facing introduction on the case's detail page.                 |
+| `changelog.md`         | No             | This version's entry in the case's changelog.                           |
+| `README.md`            | No             | This overview.                                                          |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run:
@@ -108,6 +116,27 @@ for every run:
 | `instrumentation.md` | The debug and automation surface, the snapshot, and the diagnostics overlay.    |
 | `ui.md`              | The screens, the HUD, and the audio cues.                                       |
 | `assets.md`          | The production contract for the art and sound the build must make.              |
+| `showcase.md`        | The showcase directory the finished build ships beside its source.              |
+
+## Two things are called a showcase
+
+They are unrelated, and the case carries both.
+
+- **The run's showcase** is `specs/showcase.md`, a seeded spec like any other. It
+  asks the build for a `showcase/` directory inside the game repository it
+  writes: a player-facing description and a short carousel of media the build
+  captures from its own running game. It is part of what a run delivers. No
+  review item grades it, so it earns nothing on the checklist; a reviewer reads
+  it on the run's Play page.
+- **The case's showcase** is `showcase/base/`, which no run ever sees. It is the
+  media the catalog's preview stage and this case's detail page present to a
+  visitor, registered by `showcase = "showcase/base"` on `variants/base.toml`.
+  The take is one unbroken half-minute of real play — the title menu, the Extras
+  shelf, a machine built on the field with the pointer and the instruction keys,
+  and the run that completes the challenge — recorded against
+  `references/structured-2d/base` by `showcase/capture/`, with three stills drawn
+  from the same take. `showcase/capture/README.md` documents the driver and how
+  to re-record it.
 
 ## Assets and media
 
@@ -120,30 +149,52 @@ run with the binaries on the run image's `PATH` and committed into the build, so
 `npm ci && npm run build` is self-contained and runs with the generation binaries
 absent. `specs/assets.md` also lists what stays drawn in code.
 
+## The reference implementations
+
+`references/<engine>/base/` holds one authored, correct build per supported
+engine, named by the `base` variant's `[reference_implementation]` table. None is
+ever seeded into a run: each is the answer, held to the same four toolchain gates
+a run is, and each is what `tcab capture-baselines` drives to synthesize the
+baseline half of every review item's validation media for its engine.
+
+Each ships a thirteen-challenge Campaign of its own design beside the ten fixed
+Extras, and solves all twenty-three with reference solutions its own debug
+surface hands back. Each carries its own unit suites over its own source, all
+passing: `709` under `none`, `727` under `simple-2d`, `710` under
+`structured-2d`.
+
+Because this is a full-stack case, each reference also produced its own sprites,
+aperture sheets, particle systems and audio during authoring and committed them
+under `assets/`. Its `ASSET-LAYOUT.md` maps every produced file to the
+specification line that asks for it, and its `scripts/gen-*.sh` are the one-time
+production pass, never part of the build.
+
 ## Validation
 
-This case is on the engine format, so it is validator-rated: each of the 1058
-review items across 15 categories is one observable behavior, cut so a validator
-can decide it by posing the scenario through the instrumentation surface and
-reading it back, and each carries the scoring domains its failure lowers and the
-failure cap it applies.
+This case is on the engine format, so it is validator-rated: each of the `1058`
+review items across `15` categories is one observable behavior, cut so a
+validator can decide it by posing the scenario through the instrumentation
+surface and reading it back, and each carries the scoring domains its failure
+lowers and the failure cap it applies.
 
-The reference implementations ship under `references/<engine>/base/` — one
-authored, correct build per supported engine, named by the `base` variant's
-`[reference_implementation]` table. None is ever seeded into a run: each is the
-answer, held to the same four toolchain gates a run is, and each is what
-`tcab capture-baselines` drives to synthesize the baseline half of every item's
-validation media for its engine. Because this is a full-stack case, each also
-produced its own sprites, aperture sheets, particle systems and audio during
-authoring and committed them under `assets/`; its `ASSET-LAYOUT.md` maps every
-produced file to the specification line that asks for it, and its
-`scripts/gen-*.sh` are the one-time production pass, never part of the build.
+`validation/` holds one Vitest project per engine — `validation/none/`,
+`validation/simple-2d/` and `validation/structured-2d/` — with a suite per review
+item at the `<category>/<id>.test.ts` path the item's `validation` key declares.
+The `none` suites drive the built site in Chromium through `window.__orrery`; the
+two engine projects run in process against the vendored engine and reach the
+surface through `engine.debug`. A suite deciding one item is the same text in all
+three projects: only `harness.ts`, `surface.ts` and the Vitest configuration
+differ per engine. All `1058` pass against all three references.
+`validation/README.md` documents the harness vocabulary and how to stage a
+project beside a reference to run it by hand.
 
-The validator suites do **not** exist yet. Every item already declares its suite
-path in its `validation` key, at `<category>/<id>.test.ts`, so the case does not
-resolve until `validation/<engine>/` ships one Vitest project per engine holding
-those suites — captured against the three reference builds, with the same
-relative suite path running under all three engines.
+Every expected value a suite asserts comes from a figure the specs fix or from
+the spec-derived oracle beside the harness — `constants.ts`, `field.ts`,
+`parts.ts`, `formats.ts` and `challenges.ts` — never from a reference build.
+
+`validation-baseline/<engine>/base/` holds the media the same suites captured
+from that engine's reference build, so a reviewer sees the run's evidence and the
+reference's side by side.
 
 ## Versioning
 
