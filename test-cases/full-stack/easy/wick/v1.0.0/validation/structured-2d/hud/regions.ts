@@ -1,7 +1,8 @@
 // hud — how a shape the HUD drew is measured off two frames of pixels.
 //
-// Nothing here asserts anything. `specs/ui.md` fixes no palette, no font, no
-// layout, and no styling for the HUD, so nothing in this directory may look
+// Nothing here asserts anything. `specs/ui.md` fixes no palette, no font, and
+// no styling for the HUD, and leaves its layout to the build past the
+// placements the HUD table itself states, so nothing in this directory may look
 // for a colour, a coordinate, or a size: what a bar, a pip, or a cooldown
 // state IS, to a script, is the region of the canvas that CHANGED when the
 // one figure the point is about changed and nothing else did. These functions
@@ -229,15 +230,15 @@ export function changedIn(mask: Mask, rect: Rect): number {
 }
 
 /**
- * How many separate marks the changed pixels inside `rect` form: connected
- * regions, counted with the eight neighbours a drawn shape holds together
- * through, and only those of at least `minArea` pixels so a stray edge pixel
- * left by antialiasing is not a mark of its own.
+ * Every separate mark the changed pixels inside `rect` form, as the box each
+ * one covers: connected regions, taken with the eight neighbours a drawn shape
+ * holds together through, and only those of at least `minArea` pixels so a
+ * stray edge pixel left by antialiasing is not a mark of its own.
  */
-export function marksIn(mask: Mask, rect: Rect, minArea: number): number {
+export function markBoxesIn(mask: Mask, rect: Rect, minArea: number): Rect[] {
   const seen = new Uint8Array(mask.width * mask.height);
   const stack: number[] = [];
-  let marks = 0;
+  const marks: Rect[] = [];
   const left = Math.max(0, rect.x);
   const top = Math.max(0, rect.y);
   const right = Math.min(mask.width, rect.x + rect.w);
@@ -250,12 +251,20 @@ export function marksIn(mask: Mask, rect: Rect, minArea: number): number {
       stack.length = 0;
       stack.push(start);
       let area = 0;
+      let minX = col;
+      let maxX = col;
+      let minY = row;
+      let maxY = row;
       while (stack.length > 0) {
         const at = stack[stack.length - 1];
         stack.pop();
         area += 1;
         const y = Math.floor(at / mask.width);
         const x = at - y * mask.width;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
         for (let dy = -1; dy <= 1; dy += 1) {
           for (let dx = -1; dx <= 1; dx += 1) {
             const ny = y + dy;
@@ -268,10 +277,54 @@ export function marksIn(mask: Mask, rect: Rect, minArea: number): number {
           }
         }
       }
-      if (area >= minArea) marks += 1;
+      if (area >= minArea) {
+        marks.push({
+          x: minX,
+          y: minY,
+          w: maxX - minX + 1,
+          h: maxY - minY + 1,
+        });
+      }
     }
   }
   return marks;
+}
+
+/**
+ * How many separate marks the changed pixels inside `rect` form: connected
+ * regions, counted with the eight neighbours a drawn shape holds together
+ * through, and only those of at least `minArea` pixels so a stray edge pixel
+ * left by antialiasing is not a mark of its own.
+ */
+export function marksIn(mask: Mask, rect: Rect, minArea: number): number {
+  return markBoxesIn(mask, rect, minArea).length;
+}
+
+/** Clear every pixel `rect` covers, so what it holds is left out of a reading. */
+export function withoutRect(mask: Mask, rect: Rect): Mask {
+  const on = Uint8Array.from(mask.on);
+  const left = Math.max(0, rect.x);
+  const top = Math.max(0, rect.y);
+  const right = Math.min(mask.width, rect.x + rect.w);
+  const bottom = Math.min(mask.height, rect.y + rect.h);
+  for (let row = top; row < bottom; row += 1) {
+    for (let col = left; col < right; col += 1) on[row * mask.width + col] = 0;
+  }
+  return { width: mask.width, height: mask.height, on };
+}
+
+/** The rows `boxes` span together, or `null` where there are none. */
+export function rowsSpanned(
+  boxes: readonly Rect[],
+): { y: number; h: number } | null {
+  if (boxes.length === 0) return null;
+  let top = boxes[0].y;
+  let bottom = boxes[0].y + boxes[0].h;
+  for (const box of boxes) {
+    if (box.y < top) top = box.y;
+    if (box.y + box.h > bottom) bottom = box.y + box.h;
+  }
+  return { y: top, h: bottom - top };
 }
 
 /** The whole canvas, read back as pixels. */

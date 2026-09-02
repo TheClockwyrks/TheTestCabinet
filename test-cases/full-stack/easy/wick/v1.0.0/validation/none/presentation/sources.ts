@@ -144,9 +144,11 @@ export async function primeSources(
  * answers `-1`, which is what a point about a drawn frame fails on.
  *
  * With `mirrored`, each file is compared REFLECTED across its vertical axis,
- * which is what tells a build that pre-renders a mirrored copy of a sprite from
- * one that mirrors it through the transform: `specs/assets.md` allows either
- * ("produce one facing and mirror it in code, or produce both").
+ * which is what tells a build that draws a mirrored copy of a sprite it produced
+ * itself from one that mirrors it through the transform. `specs/assets.md` states
+ * its mirrored pictures as reflections of a produced file — "the lamplighter
+ * drawn facing left is that sprite reflected across its vertical axis" — and
+ * leaves the route to either build.
  */
 export async function sourceIndex(
   h: Harness,

@@ -1310,6 +1310,22 @@ export const DRAFT_COUNT_RANGE: readonly [number, number] = [3, 45];
 export const BAR_SHARE_TOLERANCE = 0.2;
 
 /**
+ * How far the left edge of one band of a bar may sit from the left edge of
+ * another band of the same bar, as a share of that bar's full width: a
+ * fiftieth.
+ *
+ * specs/ui.md draws each bar "filled from its left edge, its filled width
+ * `hp / maxHp` of the bar's width", so two fills of one bar read against the
+ * SAME lower fill both begin where that lower fill ends, and the two bands
+ * share that column whatever border, rounding, or end-cap a build draws around
+ * its fill. A fiftieth of the width admits a build that antialiases one fill's
+ * right edge differently from the other's, and stays an order below the fifth
+ * of a width a bar anchored on its right edge, or one that empties as its value
+ * rises, displaces the second band by.
+ */
+export const BAR_EDGE_TOLERANCE = 0.02;
+
+/**
  * The level a scenario poses through `isolate` so no gain its kills produce
  * crosses a threshold and opens an overlay mid-scenario: at level 50,
  * xpToNext is 495 (specs/progression.md), beyond any experience a bounded

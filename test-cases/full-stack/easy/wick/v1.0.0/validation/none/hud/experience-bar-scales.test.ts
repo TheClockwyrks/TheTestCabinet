@@ -1,10 +1,10 @@
-// hud/experience-bar-scales — the experience bar's filled width scales with the
-// experience.
+// hud/experience-bar-scales — the experience bar fills from its left edge by the
+// share of the level that is earned.
 //
 // THE REQUIREMENT. `specs/ui.md` — "`playing`", the HUD table: "Experience | A
-// bar whose filled width scales with `xp / xpToNext`, labeled with `LEVEL_LABEL`
-// (`LEVEL`) and the current level". This point decides the scaling; the label is
-// `hud/level-label-drawn`.
+// bar filled from its left edge, its filled width `xp / xpToNext` of the bar's
+// width, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level". This point
+// decides the fill; the label is `hud/level-label-drawn`.
 //
 // THE FIGURES. `xpToNext` is `XP_BASE` (`5`) `+ XP_STEP` (`10`) `x (level - 1)`
 // (specs/instrumentation.md — "Snapshot shape"), so the level posed at `2` puts
@@ -23,20 +23,31 @@
 // the specification names is what the pair of readings pins.
 //
 // HOW A BAR IS MEASURED WITHOUT KNOWING WHERE IT IS. As in
-// `hud/health-bar-scales`: `specs/ui.md` fixes no palette, no layout, and no
-// styling, so three frames are drawn a `setXp` apart with nothing else changed,
-// and the filled width at an `xp` is the widest SOLID block of pixels that frame
-// changed against the frame at an empty bar. A fill is a filled shape and a
-// redrawn figure is strokes with background between them, so the block is the
-// fill. Measuring against the empty frame rather than the full one leaves a build
-// free to recolour the fill as it grows.
+// `hud/health-bar-scales`: `specs/ui.md` fixes no palette and no styling and
+// leaves each screen's layout to the build, so three frames are drawn a `setXp`
+// apart with nothing else changed, and the fill at an `xp` is the widest SOLID
+// block of pixels that frame changed against the frame at an empty bar. A fill is
+// a filled shape and a redrawn figure is strokes with background between them, so
+// the block is the fill. Measuring against the empty frame rather than the full
+// one leaves a build free to recolour the fill as it grows.
 //
-// THE TOLERANCE. `FILL_TOL`, five hundredths of the full width, for the reason
+// WHERE THE FILL BEGINS. The width alone cannot tell a bar filled from its left
+// edge from one anchored on its right edge or one that empties as the experience
+// rises, since all three draw the same widths. The row now has the fill start at
+// the bar's left edge at every `xp`, so the block at four fifths of a level and
+// the block at a full level begin at the same column, and a bar filled the other
+// way round starts its four-fifths block a fifth of the way along.
+//
+// THE TOLERANCES. `FILL_TOL`, five hundredths of the full width, for the reason
 // `hud/health-bar-scales` states: the specification fixes the share and leaves
 // the bar's size, its border, and its rounding to the build, and five hundredths
 // of any legible bar is several pixels while every deviation this has to catch —
 // a bar that does not scale, one that scales by area, one drawn in thirds — is
-// tenths away.
+// tenths away. `EDGE_TOL`, the same five hundredths, on the gap between the two
+// blocks' left columns: both blocks are read off the same bar drawn by the same
+// build, so a border drawn over the fill's edge, a rounded corner, and a fill
+// rounded to whole pixels move one against the other by a pixel or two, while a
+// bar filled from the other edge puts a fifth of the width between them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { xpToNext } from "../constants";
@@ -75,6 +86,12 @@ const MOST = XP_MOST / TO_NEXT;
 
 /** How far the measured share may sit from the share the specification fixes. */
 const FILL_TOL = 0.05;
+
+/**
+ * How far apart the two fills' left columns may sit, as a share of the full
+ * fill's width, before the fill is not one anchored at the bar's left edge.
+ */
+const EDGE_TOL = 0.05;
 
 /** How wide the full fill must be for the reading to have found a bar at all. */
 const BAR_MIN = 16;
@@ -130,11 +147,20 @@ it("fills four fifths of the experience bar at four fifths of a level", async ()
     BAR_MIN_H,
     `the height of the experience bar's fill at ${TO_NEXT} of ${TO_NEXT}, in pixels`,
   );
+  const mostFill = fill(most);
   assertNear(
-    fill(most).w / wide,
+    mostFill.w / wide,
     MOST,
     FILL_TOL,
     `the share of the experience bar filled at xp ${XP_MOST} of ${TO_NEXT} (its full fill is ${wide} pixels wide)`,
+  );
+  assertNear(
+    (mostFill.x - bar.x) / wide,
+    0,
+    EDGE_TOL,
+    `the share of the experience bar between the left edge of its fill at xp ` +
+      `${XP_MOST} of ${TO_NEXT} (column ${mostFill.x}) and the left edge of its ` +
+      `fill at xp ${TO_NEXT} of ${TO_NEXT} (column ${bar.x})`,
   );
 
   // The same full bar, one level on, where the next level costs more.

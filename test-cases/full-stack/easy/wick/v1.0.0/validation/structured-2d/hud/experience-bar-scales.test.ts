@@ -1,8 +1,9 @@
-// hud/experience-bar-scales — the experience bar's filled width scales with `xp`.
+// hud/experience-bar-scales — the experience bar fills from its left edge by
+// `xp`.
 //
 // THE REQUIREMENT. `specs/ui.md` — "`playing`", the HUD table: "Experience | A
-// bar whose filled width scales with `xp / xpToNext`, labeled with `LEVEL_LABEL`
-// (`LEVEL`) and the current level".
+// bar filled from its left edge, its filled width `xp / xpToNext` of the bar's
+// width, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level".
 //
 // THE FIGURE, AND WHERE IT COMES FROM. `specs/progression.md` gives the curve
 // `xpToNext(level) = XP_BASE + XP_STEP × (level − 1)` and tables it: level `2`
@@ -10,8 +11,9 @@
 // fifths of the bar, and one at `15` has filled all of it.
 //
 // HOW A FILL IS MEASURED WITHOUT KNOWING WHERE THE BAR IS. `specs/ui.md` fixes
-// no palette, no layout, and no styling, so nothing here may look for a colour
-// or a coordinate. What a fill IS, to a script, is the region that changed when
+// no palette and no styling, and leaves the HUD's layout to the build past the
+// placements its own table states, so nothing here may look for a colour or a
+// coordinate. What a fill IS, to a script, is the region that changed when
 // the experience changed and nothing else did: the band between two fills of one
 // bar is a filled shape running the height of the bar, so `hud/regions.ts` takes
 // the tallest unbroken block of changed pixels for the bar's rows and reads the
@@ -26,22 +28,39 @@
 // health readout, the clock and the kill count are the same in each, since only
 // `xp` was posed.
 //
-// THE TOLERANCE. `HUD_BAR_RATIO_TOL` (`0.1`) around the four fifths the spec
+// WHICH END THE FILL GREW FROM. The bar the empty frame drew is filled to
+// nothing, so both bands ARE the fill itself, and a bar "filled from its left
+// edge" puts the two of them on the same column with only their right edges
+// apart. The two left edges are therefore read as well as the two widths, which
+// is what separates the picture the row states from its reflection: a bar
+// anchored on its right edge and a bar that empties as the experience rises both
+// draw the four fifths and the whole at the same two WIDTHS, and put the shorter
+// band's left edge a fifth of the way along the bar.
+//
+// THE TOLERANCES. `HUD_BAR_RATIO_TOL` (`0.1`) around the four fifths the spec
 // figure gives. A bar drawn with a border, an inset, or a rounded end loses a
 // pixel or two at each end of each band, far under the tolerance at any width a
 // legible bar is drawn at; a bar that ignores `xp`, that fills to a fixed width,
-// or that snaps between empty and full is nowhere near it.
+// or that snaps between empty and full is nowhere near it. `HUD_BAR_LEFT_TOL`
+// (`0.1` of the bar's own width) between the two left edges, which the same
+// border or inset moves by the same pixel or two.
 //
 // WHY EACH FRAME GETS A HARNESS OF ITS OWN. The three frames then sit at the
 // same tick, the same simulated time and the same run state, and differ in the
 // one figure this point is about.
 
 import { afterEach, it } from "vitest";
-import { HUD_BAR_RATIO_TOL, TICK_HZ, xpToNext } from "../constants";
+import {
+  HUD_BAR_LEFT_TOL,
+  HUD_BAR_RATIO_TOL,
+  TICK_HZ,
+  xpToNext,
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
   assertNear,
 } from "../assert";
 import {
@@ -125,5 +144,13 @@ it("fills the experience bar in proportion to xp", async () => {
     PART_SHARE,
     HUD_BAR_RATIO_TOL,
     `the share of the bar filled at ${PART} of ${WHOLE} experience (${partly.w} device pixels of ${filled.w})`,
+  );
+
+  assertLessThanOrEqual(
+    Math.abs(partly.x - filled.x) / filled.w,
+    HUD_BAR_LEFT_TOL,
+    `how far apart the two bands begin, as a share of the bar's width (the ` +
+      `band at ${PART} experience begins at column ${partly.x}, the band at ` +
+      `${WHOLE} at column ${filled.x})`,
   );
 });

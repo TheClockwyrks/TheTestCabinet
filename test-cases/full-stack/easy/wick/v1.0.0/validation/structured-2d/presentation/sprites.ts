@@ -37,6 +37,7 @@ import {
   blitCenter,
   blitsNear,
   producedBytes,
+  readPng,
   type Blit,
   type Harness,
 } from "../harness";
@@ -54,6 +55,24 @@ import {
  * no sprite can be claimed by its neighbour.
  */
 export const SPRITE_TOL = 2;
+
+/** The alpha a pixel of a produced file carries where it hides what is behind it. */
+const OPAQUE = 255;
+
+/**
+ * How far apart, as a share of the worse of them, the two readings a picture's
+ * orientation is decided by may sit and still be read as equal.
+ *
+ * `specs/assets.md` fixes which way the produced lamplighter sprite faces and
+ * leaves its art to the build, so a sprite drawn symmetric about its vertical
+ * axis fits its own reflection exactly and no reading can say which way round
+ * it was laid down. That is what `"either"` answers, and the margin is what
+ * carries a NEARLY symmetric sprite into the same answer rather than deciding
+ * it on the noise a resampled draw leaves. A tenth is far above that noise: a
+ * picture laid down as authored matches its own pixels exactly and reads zero
+ * against a reflection that fits worse by the whole contrast of the art.
+ */
+const FACING_MARGIN = 0.1;
 
 /**
  * How far a drawn extent may sit from the extent the specification gives it,
@@ -214,4 +233,88 @@ export function lastDrawnFrom(
 ): Blit | null {
   const found = drawnFrom(h, blits, files, x, y, tolerance);
   return found.length === 0 ? null : found[found.length - 1];
+}
+
+/**
+ * Which way round a picture was laid on the canvas, against the produced file
+ * the blit drew it from.
+ *
+ * `"right"` where the pixels on the canvas fit the file's own as it was
+ * authored, `"left"` where they fit that picture reflected across its vertical
+ * axis, and `"either"` where the two fit equally well, which a sprite symmetric
+ * about that axis does whichever way a build laid it down. `null` where the
+ * file did not decode, or where it holds no pixel this reading can stand on.
+ *
+ * HOW IT IS READ. The blit reports the box the picture landed in, so the
+ * canvas is sampled at the centre of each of the file's own pixels mapped into
+ * that box, and each sample is compared against the file's pixel there and
+ * against the file's pixel mirrored about the file's vertical centre. Only the
+ * pixels opaque in BOTH readings are used: everywhere else the picture lets the
+ * world behind it through, so the canvas holds a blend rather than the file's
+ * colour, and the two readings must stand on the same pixels to be comparable.
+ * The comparison is the mean over those pixels of the largest distance any one
+ * colour channel took, so a build that draws the picture at another size, or
+ * lands its destination between device pixels, moves both readings together
+ * rather than either alone.
+ */
+export async function drawnFacing(
+  h: Harness,
+  blit: Blit,
+): Promise<"right" | "left" | "either" | null> {
+  const { image } = await readPng(blit.id);
+  if (image === null) return null;
+  const left = Math.floor(blit.x);
+  const top = Math.floor(blit.y);
+  const wide = Math.ceil(blit.x + blit.w) - left;
+  const high = Math.ceil(blit.y + blit.h) - top;
+  if (wide <= 0 || high <= 0) return null;
+  const drawn = h.pixelRect(left, top, wide, high);
+  let asAuthored = 0;
+  let asReflected = 0;
+  let read = 0;
+  for (let v = 0; v < image.height; v += 1) {
+    for (let u = 0; u < image.width; u += 1) {
+      const here = (v * image.width + u) * 4;
+      const there = (v * image.width + (image.width - 1 - u)) * 4;
+      if (image.pixels[here + 3] < OPAQUE || image.pixels[there + 3] < OPAQUE) {
+        continue;
+      }
+      const col = Math.min(
+        wide - 1,
+        Math.max(
+          0,
+          Math.floor(blit.x + ((u + 0.5) * blit.w) / image.width) - left,
+        ),
+      );
+      const row = Math.min(
+        high - 1,
+        Math.max(
+          0,
+          Math.floor(blit.y + ((v + 0.5) * blit.h) / image.height) - top,
+        ),
+      );
+      const at = (row * drawn.width + col) * 4;
+      let authored = 0;
+      let reflected = 0;
+      for (let channel = 0; channel < 3; channel += 1) {
+        const sample = drawn.data[at + channel];
+        authored = Math.max(
+          authored,
+          Math.abs(sample - image.pixels[here + channel]),
+        );
+        reflected = Math.max(
+          reflected,
+          Math.abs(sample - image.pixels[there + channel]),
+        );
+      }
+      asAuthored += authored;
+      asReflected += reflected;
+      read += 1;
+    }
+  }
+  if (read === 0) return null;
+  const apart = Math.abs(asAuthored - asReflected);
+  const worse = Math.max(asAuthored, asReflected);
+  if (apart <= FACING_MARGIN * worse) return "either";
+  return asAuthored < asReflected ? "right" : "left";
 }

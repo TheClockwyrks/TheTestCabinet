@@ -1,23 +1,36 @@
-// hud/health-bar-scales — the health bar's filled width scales with the health.
+// hud/health-bar-scales — the health bar fills from its left edge by the share
+// of the health that is left.
 //
 // THE REQUIREMENT. `specs/ui.md` — "`playing`", the HUD table: "Health | A bar
-// whose filled width scales with `hp / maxHp`, with both numbers beside it".
-// This point decides that scaling at a quarter of the health: a quarter of the
-// bar's full width, and no more.
+// filled from its left edge, its filled width `hp / maxHp` of the bar's width,
+// with both numbers beside it". This point decides that one picture at a quarter
+// of the health: a fill that begins where the bar begins, whatever the health,
+// and runs a quarter of the bar's width, and no further.
 //
-// HOW A BAR IS MEASURED WITHOUT KNOWING WHERE IT IS. `specs/ui.md` — "Wick fixes
-// no palette, no font, no layout, and no styling for any screen" — so the fill is
-// found rather than looked for. Three frames are drawn a `setHp` apart with
-// nothing else changed, and the filled width at an `hp` is the widest SOLID block
-// of pixels that frame changed against the frame at an all but empty bar. A fill
-// is a filled shape, so its block is the fill itself; the numbers beside it are
-// strokes with background between them, so the largest block inside a redrawn
-// number is one stem a few pixels wide.
+// HOW A BAR IS MEASURED WITHOUT KNOWING WHERE IT IS. `specs/ui.md` —
+// "Presentation": "Wick fixes no palette, no font, and no styling for any
+// screen, and each screen's layout is yours except where a table below places one
+// element relative to another" — so the fill is found rather than looked for.
+// Three frames are drawn a `setHp` apart with nothing else changed, and the fill
+// at an `hp` is the widest SOLID block of pixels that frame changed against the
+// frame at an all but empty bar. A fill is a filled shape, so its block is the
+// fill itself; the numbers beside it are strokes with background between them, so
+// the largest block inside a redrawn number is one stem a few pixels wide.
 //
 // Each fill is measured against the EMPTY frame rather than against the full one
 // because a build is free to recolour its bar as the health falls: whatever
 // colour the fill takes, it differs from the empty track underneath it, so the
 // block is the fill's own width either way.
+//
+// WHERE THE FILL BEGINS, AND WHY THE WIDTH ALONE DECIDES NOTHING. A bar anchored
+// on its right edge and a bar that empties from the left as the health rises both
+// draw the compliant picture reflected, and every WIDTH read off either is the
+// width a conformant bar draws. What separates them is the column the block
+// begins at: the row the table now fixes has the fill start at the bar's left
+// edge at every health, so the block at a quarter of the health and the block at
+// full health begin at the same column and differ only in where they end. A bar
+// filled the other way round starts its quarter-full block three quarters of the
+// way along.
 //
 // THE FIGURES. `maxHp` is `BASE_MAX_HP` (`100`) while no Tallow is held and
 // `BASE_MAX_HP + TALLOW_HP_PER_LEVEL x tallow` when one is
@@ -38,13 +51,22 @@
 // reads it as `0.4375`, seven times the tolerance away. The denominator the
 // specification names is what the pair of readings pins.
 //
-// THE TOLERANCE. `FILL_TOL`, five hundredths of the full width. The
+// THE TOLERANCES. `FILL_TOL`, five hundredths of the full width. The
 // specification fixes the ratio and leaves the bar's size, its border, and its
 // rounding to the build, so the allowance covers a fill rounded to whole pixels
 // inside a border drawn over its own edge: five hundredths of any legible bar is
 // several pixels. It sits far below every deviation it has to catch — a bar that
 // does not scale reads `1`, one that scales by area reads `0.5`, and one drawn in
 // thirds reads `0.33`.
+//
+// `EDGE_TOL`, the same five hundredths, on the gap between the two blocks' left
+// columns, and for the same reasons: the specification fixes the edge the fill
+// starts at and leaves the border that may be drawn over it, the corner that may
+// be rounded off it, and the rounding to whole pixels to the build, and none of
+// those moves one block's left column against the other's by more than a pixel or
+// two, since both blocks are read off the same bar drawn by the same build. It
+// sits fifteen times below the three quarters of the width a bar filled from the
+// other edge puts between them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BASE_MAX_HP, PASSIVES, maxHpOf } from "../constants";
@@ -84,6 +106,12 @@ const HP_EMPTY = 0.01;
 
 /** How far the measured share may sit from the share the specification fixes. */
 const FILL_TOL = 0.05;
+
+/**
+ * How far apart the two fills' left columns may sit, as a share of the full
+ * fill's width, before the fill is not one anchored at the bar's left edge.
+ */
+const EDGE_TOL = 0.05;
 
 /**
  * How wide the full fill must be for the reading to have found a bar at all, in
@@ -135,11 +163,20 @@ it("fills a quarter of the health bar at a quarter of the health", async () => {
     BAR_MIN_H,
     `the height of the health bar's fill at hp ${BASE_MAX_HP} of ${BASE_MAX_HP}, in pixels`,
   );
+  const quarterFill = fill(quarter);
   assertNear(
-    fill(quarter).w / wide,
+    quarterFill.w / wide,
     QUARTER,
     FILL_TOL,
     `the share of the health bar filled at hp ${HP_QUARTER} of ${BASE_MAX_HP} (its full fill is ${wide} pixels wide)`,
+  );
+  assertNear(
+    (quarterFill.x - bar.x) / wide,
+    0,
+    EDGE_TOL,
+    `the share of the health bar between the left edge of its fill at hp ` +
+      `${HP_QUARTER} of ${BASE_MAX_HP} (column ${quarterFill.x}) and the left ` +
+      `edge of its fill at hp ${BASE_MAX_HP} of ${BASE_MAX_HP} (column ${bar.x})`,
   );
 
   // The same quarter, against a maximum a Tallow raised.

@@ -8,13 +8,16 @@
 // authoring guide has live beside the checks rather than inside any one of them.
 //
 // WHY THE HUD IS READ OFF PIXELS AND BLITS RATHER THAN OFF DRAW CALLS.
-// specs/ui.md: "Wick fixes no palette, no font, no layout, and no styling for
-// any screen." A bar may be a `fillRect`, a `roundRect`, or a blitted image; a
-// slot may be a frame, a disc, or nothing at all. What the specification does
-// fix is that a bar's FILLED WIDTH scales with its ratio, that a held item
-// shows its PRODUCED ICON, and that a slot's PICTURE changes with its cooldown
-// state, so every reading here is of a width, of a produced file's blit, or of
-// a rectangle's pixels, and never of a shape a build chose to draw with.
+// specs/ui.md: "Wick fixes no palette, no font, and no styling for any screen,
+// and each screen's layout is yours except where a table below places one
+// element relative to another." A bar may be a `fillRect`, a `roundRect`, or a
+// blitted image; a slot may be a frame, a disc, or nothing at all. What the
+// specification does fix is that a bar is filled FROM ITS LEFT EDGE by its
+// ratio, that a held item shows its PRODUCED ICON with its pips in a row
+// outside the square the icon is drawn in, and that a slot's PICTURE changes
+// with its cooldown state, so every reading here is of a width, of a column, of
+// a produced file's blit, or of a rectangle's pixels, and never of a shape a
+// build chose to draw with.
 //
 // HOW TWO FRAMES ARE MADE COMPARABLE. Every point below poses its scene through
 // {@link isolate}, which resets first, so both frames of a pair are drawn on the
@@ -63,16 +66,17 @@ export const SLOT_PAD = ICON_SIZE;
  * How far a pip count read off two poses may fall from the count the levels
  * state: two fifths of one pip.
  *
- * specs/ui.md draws a held item "with one pip per level held" and fixes no
- * arrangement for the pips, so a count is read as an AREA. The pixels by which
- * a slot at level `k` differs from the same slot at level `1` are the marks the
- * two poses do not share, and for one mark repeated that area is `k - 1` marks
- * whether the row grows to the right, to the left, or out from its middle, as
- * long as both counts are odd and the middle mark is shared. Reading levels 1,
- * 3, and 5 therefore gives exactly twice the area at 5 that it gives at 3 under
- * every one of those arrangements, and only a mark's own edge pixels sit
- * between that figure and a build's. Two fifths of a mark admits those and
- * still refuses a slot that ignores its level or spells the level out.
+ * specs/ui.md draws a held item "with one pip per level held" and puts "the
+ * pips in a row", fixing no end of that row for the count to grow from, so an
+ * area is what two levels compare. The pixels by which a slot at level `k`
+ * differs from the same slot at level `1` are the marks the two poses do not
+ * share, and for one mark repeated that area is `k - 1` marks whether the row
+ * grows to the right, to the left, or out from its middle, as long as both
+ * counts are odd and the middle mark is shared. Reading levels 1, 3, and 5
+ * therefore gives exactly twice the area at 5 that it gives at 3 under every
+ * one of those arrangements, and only a mark's own edge pixels sit between that
+ * figure and a build's. Two fifths of a mark admits those and still refuses a
+ * slot that ignores its level or spells the level out.
  */
 export const PIP_RATIO_TOLERANCE = 0.4;
 
@@ -221,6 +225,146 @@ export function overlaps(a: Box, b: Box): boolean {
   return (
     a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
   );
+}
+
+/* --------------------------- Marks in a region ---------------------------- */
+//
+// A COUNT of separate marks, where every reading above takes a width or an
+// area. specs/ui.md places "the pips in a row outside the square the icon is
+// drawn in and the only marks that row gains over a slot holding nothing", so a
+// point can count the pips a slot draws against a slot holding nothing rather
+// than only weigh the pixels two levels do not share. The table places the row
+// against the icon and fixes nothing about where the row sits, so the row is
+// located off the frames themselves and never off a fixed offset.
+
+/** Which pixels of two equally shaped readings differ, one byte a pixel. */
+export interface Mask {
+  width: number;
+  height: number;
+  /** `1` where the two readings differ. */
+  on: Uint8Array;
+}
+
+/** A rectangle of a reading, in the device pixels the reading was read in. */
+export interface PixelBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** A band of rows of a reading, both ends inclusive. */
+export interface RowSpan {
+  top: number;
+  bottom: number;
+}
+
+/**
+ * How small a connected region still counts as a mark a player sees: two
+ * pixels.
+ *
+ * specs/ui.md has each held item show "one pip per level held" over a slot on a
+ * `1280 x 720` stage, so a pip is a mark drawn to be counted at a glance and is
+ * at least a couple of pixels across. Two pixels is below any such mark and
+ * above the single pixel an antialiased edge leaves behind.
+ */
+export const MARK_MIN_AREA = 2;
+
+/** Where two readings of one rectangle differ, pixel for pixel. */
+export function differenceMask(a: PixelRect, b: PixelRect): Mask {
+  sameShape(a, b);
+  const on = new Uint8Array(a.width * a.height);
+  for (let i = 0; i < on.length; i += 1) {
+    on[i] = pixelDiffers(a, b, i) ? 1 : 0;
+  }
+  return { width: a.width, height: a.height, on };
+}
+
+/** `mask` with every pixel inside `box` cleared. */
+export function withoutBox(mask: Mask, box: PixelBox): Mask {
+  const on = new Uint8Array(mask.on);
+  const left = Math.max(0, Math.floor(box.x));
+  const top = Math.max(0, Math.floor(box.y));
+  const right = Math.min(mask.width, Math.ceil(box.x + box.w));
+  const bottom = Math.min(mask.height, Math.ceil(box.y + box.h));
+  for (let row = top; row < bottom; row += 1) {
+    on.fill(0, row * mask.width + left, row * mask.width + right);
+  }
+  return { width: mask.width, height: mask.height, on };
+}
+
+/** The band of rows holding a changed pixel, or `null` where none do. */
+export function rowSpanOf(mask: Mask): RowSpan | null {
+  let top = -1;
+  let bottom = -1;
+  for (let row = 0; row < mask.height; row += 1) {
+    const base = row * mask.width;
+    for (let col = 0; col < mask.width; col += 1) {
+      if (mask.on[base + col] === 0) continue;
+      if (top < 0) top = row;
+      bottom = row;
+      break;
+    }
+  }
+  return top < 0 ? null : { top, bottom };
+}
+
+/**
+ * How many separate marks the changed pixels inside `span` form: connected
+ * regions, counted through the eight neighbours a drawn shape holds together
+ * through, and only those of at least `minArea` pixels, so a stray edge pixel
+ * left by antialiasing is not a mark of its own.
+ */
+export function marksInRows(
+  mask: Mask,
+  span: RowSpan,
+  minArea: number,
+): number {
+  const seen = new Uint8Array(mask.width * mask.height);
+  const stack: number[] = [];
+  const top = Math.max(0, span.top);
+  const bottom = Math.min(mask.height - 1, span.bottom);
+  let marks = 0;
+  for (let row = top; row <= bottom; row += 1) {
+    for (let col = 0; col < mask.width; col += 1) {
+      const start = row * mask.width + col;
+      if (mask.on[start] === 0 || seen[start] === 1) continue;
+      seen[start] = 1;
+      stack.length = 0;
+      stack.push(start);
+      let area = 0;
+      while (stack.length > 0) {
+        const at = stack.pop() as number;
+        area += 1;
+        const y = Math.floor(at / mask.width);
+        const x = at - y * mask.width;
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            const ny = y + dy;
+            const nx = x + dx;
+            if (ny < top || ny > bottom || nx < 0 || nx >= mask.width) continue;
+            const next = ny * mask.width + nx;
+            if (mask.on[next] === 0 || seen[next] === 1) continue;
+            seen[next] = 1;
+            stack.push(next);
+          }
+        }
+      }
+      if (area >= minArea) marks += 1;
+    }
+  }
+  return marks;
+}
+
+/** Where the stage rectangle `box` falls inside a reading taken over `read`. */
+export function pixelBoxOf(h: Harness, read: Box, box: Box): PixelBox {
+  const { scale } = h.viewport();
+  return {
+    x: (box.x - read.x) * scale,
+    y: (box.y - read.y) * scale,
+    w: box.w * scale,
+    h: box.h * scale,
+  };
 }
 
 /** The produced item `path` names, or `null` for a file that is no icon. */

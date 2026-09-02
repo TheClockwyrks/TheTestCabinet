@@ -170,19 +170,19 @@ export function changedIn(mask: Mask, rect: Rect): number {
 }
 
 /**
- * How many separate marks the changed pixels inside `rect` form: connected
- * regions, counted through the eight neighbours a drawn shape holds together
- * through, and only those of at least `minArea` pixels, so a stray edge pixel
- * left by antialiasing is not a mark of its own.
+ * Every mark the changed pixels inside `rect` form, as the rectangle each one
+ * covers: connected regions, walked through the eight neighbours a drawn shape
+ * holds together through, and only those of at least `minArea` pixels, so a
+ * stray edge pixel left by antialiasing is not a mark of its own.
  */
-export function marksIn(mask: Mask, rect: Rect, minArea: number): number {
+export function markBoxesIn(mask: Mask, rect: Rect, minArea: number): Rect[] {
   const seen = new Uint8Array(mask.width * mask.height);
   const stack: number[] = [];
   const left = Math.max(0, rect.x);
   const top = Math.max(0, rect.y);
   const right = Math.min(mask.width, rect.x + rect.w);
   const bottom = Math.min(mask.height, rect.y + rect.h);
-  let marks = 0;
+  const marks: Rect[] = [];
   for (let row = top; row < bottom; row += 1) {
     for (let col = left; col < right; col += 1) {
       const start = row * mask.width + col;
@@ -191,11 +191,19 @@ export function marksIn(mask: Mask, rect: Rect, minArea: number): number {
       stack.length = 0;
       stack.push(start);
       let area = 0;
+      let minX = col;
+      let maxX = col;
+      let minY = row;
+      let maxY = row;
       while (stack.length > 0) {
         const at = stack.pop() as number;
         area += 1;
         const y = Math.floor(at / mask.width);
         const x = at - y * mask.width;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
         for (let dy = -1; dy <= 1; dy += 1) {
           for (let dx = -1; dx <= 1; dx += 1) {
             const ny = y + dy;
@@ -208,10 +216,46 @@ export function marksIn(mask: Mask, rect: Rect, minArea: number): number {
           }
         }
       }
-      if (area >= minArea) marks += 1;
+      if (area >= minArea) {
+        marks.push({
+          x: minX,
+          y: minY,
+          w: maxX - minX + 1,
+          h: maxY - minY + 1,
+        });
+      }
     }
   }
   return marks;
+}
+
+/**
+ * How many separate marks the changed pixels inside `rect` form: the count of
+ * {@link markBoxesIn}.
+ */
+export function marksIn(mask: Mask, rect: Rect, minArea: number): number {
+  return markBoxesIn(mask, rect, minArea).length;
+}
+
+/**
+ * The band of ROWS the marks inside `rect` occupy: as wide as `rect` and as tall
+ * as the marks reach, or a zero-height band where there are none.
+ *
+ * What locates a row of marks whose place the specification leaves to the build.
+ * A row is read off the marks themselves rather than looked for at a coordinate,
+ * so a build that draws its pips above its icon, below it, or beside it is read
+ * the same way.
+ */
+export function markBandIn(mask: Mask, rect: Rect, minArea: number): Rect {
+  const marks = markBoxesIn(mask, rect, minArea);
+  if (marks.length === 0) return { x: rect.x, y: rect.y, w: rect.w, h: 0 };
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const mark of marks) {
+    if (mark.y < top) top = mark.y;
+    if (mark.y + mark.h > bottom) bottom = mark.y + mark.h;
+  }
+  return { x: rect.x, y: top, w: rect.w, h: bottom - top };
 }
 
 /**

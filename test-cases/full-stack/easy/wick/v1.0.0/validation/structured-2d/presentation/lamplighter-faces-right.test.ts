@@ -1,27 +1,32 @@
-// presentation/lamplighter-faces-right — with `facing` `"right"`, the
-// lamplighter's sprite is laid down unreflected, the way the produced file is
-// authored.
+// presentation/lamplighter-faces-right — with `facing` `"right"`, the picture
+// the lamplighter is laid on the stage as is the produced sprite as authored.
 //
-// WHERE THE REQUIREMENT COMES FROM. `specs/world.md`, Facing: `facing` "starts
-// as `"right"`" and "the lamplighter's sprite is drawn facing the same way".
-// `specs/assets.md`, Animation: "The sprite faces the way `facing` says:
-// produce one facing and mirror it in code, or produce both", and its sprite
-// table produces one lamplighter idle and one six-frame walk sheet, so one
-// facing is drawn as authored and the other is the mirror of it. The authored
-// facing is the run's own starting facing, `"right"`, so the right-facing frame
-// carries no reflection and the left-facing one does.
+// WHERE THE REQUIREMENT COMES FROM. `specs/assets.md`, Animation: "The produced
+// idle sprite faces right, and the lamplighter drawn facing left is that sprite
+// reflected across its vertical axis." `specs/world.md`, Facing: `facing`
+// "starts as `"right"`" and "the lamplighter's sprite is drawn facing the same
+// way". So the lamplighter a frame draws while `facing` is `"right"` is the
+// produced file's own picture, the way it was authored.
 //
-// WHAT IS READ. The transform in force at the blit. A reflection across the
-// vertical axis is a negative determinant — the sprite component's
-// `offset.scaleX` of `-1` composed into the transform the engine draws under
-// (`specs/overview.md`: "The facing mirror lives on the lamplighter's own
-// sprite component") — so an unreflected sprite is a positive determinant. It
-// is read on the produced lamplighter file blitted at the stage centre
-// `specs/ui.md` puts the lamplighter at, within `SPRITE_TOL` (2 device pixels)
-// of it.
+// WHAT IS READ. The PICTURE on the canvas, not the transform that put it there.
+// `presentation/sprites.ts` samples the canvas over the box the blit landed in
+// and compares what it holds against the produced file's own pixels and against
+// those pixels reflected, answering which of the two the frame laid down. A
+// build is free to reach the reflected picture however it likes, so a reading of
+// the transform's sign would decide the build's design rather than the picture a
+// player sees, and would fail a build whose left-facing lamplighter is a
+// reflected copy it prepared for itself.
 //
-// THE BOUND. None: a sign. This suite reads the RIGHT direction alone; the
-// left-facing frame is its own item.
+// WHICH FILE IT IS READ AGAINST. The one the blit drew from, which the harness
+// attributes to the produced tree. A still lamplighter draws the idle sprite the
+// Animation bullet pins, and a build that draws something else there is failed
+// by `presentation/lamplighter-idle-when-still`, which is that requirement's own
+// point.
+//
+// THE BOUND. None on the picture: which of the two it fits. The two readings are
+// taken as equal within `FACING_MARGIN`, so a sprite drawn symmetric about its
+// vertical axis is read as `"either"` and passes, since nothing on the canvas
+// can tell which way round such a picture was laid.
 //
 // THE WORLD, AND WHY. An isolated world holding nothing, with `facing` posed
 // through `setFacing`, which `specs/instrumentation.md` makes a pose of that
@@ -29,7 +34,7 @@
 // is held, so the idle sprite is what the frame draws.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertFalse, assertNotNull } from "../assert";
+import { assertNotEqual, assertNotNull } from "../assert";
 import { STAGE_CX, STAGE_CY } from "../constants";
 import {
   blitsNearStage,
@@ -39,7 +44,7 @@ import {
   type Blit,
   type Harness,
 } from "../harness";
-import { LAMPLIGHTER_FILES, SPRITE_TOL } from "./sprites";
+import { LAMPLIGHTER_FILES, SPRITE_TOL, drawnFacing } from "./sprites";
 
 let h: Harness;
 
@@ -51,7 +56,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("lays the lamplighter's sprite down unreflected while facing right", async () => {
+it("lays the lamplighter down as its sprite is authored while facing right", async () => {
   isolate(h);
   h.debug.setFacing("right");
 
@@ -63,9 +68,16 @@ it("lays the lamplighter's sprite down unreflected while facing right", async ()
   const sprite = drawn.length === 0 ? null : drawn[drawn.length - 1];
   assertNotNull(sprite, "a produced lamplighter sprite while facing right");
 
-  assertFalse(
-    (sprite as Blit).mirrored,
-    "the lamplighter's sprite drawn reflected across its vertical axis while " +
-      "facing right",
+  const facing = await drawnFacing(h, sprite as Blit);
+  assertNotNull(
+    facing,
+    "the way round the picture the frame laid on the stage reads",
+  );
+  assertNotEqual(
+    facing,
+    "left",
+    "the picture the lamplighter was laid down as while facing right, which " +
+      "is the produced sprite as authored (or a sprite symmetric about its " +
+      "vertical axis, which reads as either)",
   );
 });

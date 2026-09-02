@@ -1322,6 +1322,21 @@ export const DROP_PAIR_BATCH = 20;
 export const HUD_BAR_RATIO_TOL = 0.1;
 
 /**
+ * How far apart, as a share of the bar's whole width, the left edges of two
+ * bands read off the same near-empty frame may sit and still be one bar
+ * "filled from its left edge" (`specs/ui.md`, the HUD table).
+ *
+ * A bar anchored at its left edge grows to the right alone, so both bands
+ * begin where the near-empty frame's fill ended and only their right edges
+ * differ: a conformant bar puts them on the same column, and the only thing
+ * that can move one of them is a border, an inset, or a rounded end, which is
+ * a pixel or two on a bar legible at the 1280 x 720 stage. A tenth of the
+ * bar's width is far past any of those, and half of the fifth of the width the
+ * smallest reflection of a fill moves a band's left edge by.
+ */
+export const HUD_BAR_LEFT_TOL = 0.1;
+
+/**
  * How far one channel may drift before two decoded pixels count as
  * different, when two produced files are compared: a PNG is lossless, so a
  * file shipped twice differs by exactly nothing, and eight levels of 255 is

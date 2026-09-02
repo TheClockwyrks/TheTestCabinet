@@ -76,13 +76,14 @@ const identified = new WeakMap<Harness, Map<string, number>>();
  * the index of the file each drew.
  *
  * A source is matched as the file was produced first and REFLECTED second, in
- * that order, because `specs/assets.md` lets a build mirror a sprite either by
- * reflecting it as it blits or by producing a reflected copy of its own — "The
- * sprite faces the way `facing` says: produce one facing and mirror it in code,
- * or produce both", and an enemy's sprite "may be mirrored across its vertical
- * axis to face the sign of its heading's `x`". The upright pass runs first, so a
- * sheet whose frames happen to be reflections of one another is still indexed by
- * the file it actually drew.
+ * that order, because `specs/assets.md` states its mirrored pictures as
+ * reflections of a produced file and fixes no route to them: "the lamplighter
+ * drawn facing left is that sprite reflected across its vertical axis", and an
+ * enemy's sprite "may be mirrored across its vertical axis to face the sign of
+ * its heading's `x`". A build may reflect as it blits or draw a reflected copy it
+ * produced itself, so both are matched. The upright pass runs first, so a sheet
+ * whose frames happen to be reflections of one another is still indexed by the
+ * file it actually drew.
  */
 export async function drawsOf(
   h: Harness,
@@ -232,13 +233,14 @@ export function stageOf(snapshot: WickSnapshot, at: XY): XY {
 /* -------------------------------------------------------------------------- */
 //
 // `specs/world.md` — "Facing": "the lamplighter's sprite is drawn facing the same
-// way" as `facing`. `specs/assets.md` leaves the build two ways to do it:
-// "produce one facing and mirror it in code, or produce both", and it allows an
-// enemy's sprite to be "mirrored across its vertical axis to face the sign of its
-// heading's `x`" the same way. Both are read here, because both are conformant: a
-// build that reflects through the transform reports a negative destination width,
-// and one that pre-renders a reflected copy draws a source whose pixels are the
-// produced file reflected.
+// way" as `facing`, and `specs/assets.md` fixes the picture that draws: "the
+// lamplighter drawn facing left is that sprite reflected across its vertical
+// axis", with an enemy's sprite free to be "mirrored across its vertical axis to
+// face the sign of its heading's `x`" the same way. How a build reaches the
+// reflected picture is left to it, so both routes are read here: a build that
+// reflects through the transform reports a negative destination width, and one
+// that draws a reflected copy it produced itself draws a source whose pixels are
+// the produced file reflected.
 
 /** Which way round a sprite reached the canvas, relative to its produced file. */
 export type Orientation = "upright" | "mirrored" | "either" | "unknown";

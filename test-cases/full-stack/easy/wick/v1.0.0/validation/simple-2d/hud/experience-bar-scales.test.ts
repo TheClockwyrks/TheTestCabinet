@@ -1,13 +1,14 @@
-// hud/experience-bar-scales — the experience bar's filled width scales with
-// xp / xpToNext.
+// hud/experience-bar-scales — the experience bar is filled from its left edge,
+// its filled width xp / xpToNext of the bar's width.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("`playing`", the HUD table):
-// "Experience | A bar whose filled width scales with `xp / xpToNext`, labeled
-// with `LEVEL_LABEL` (`LEVEL`) and the current level". specs/progression.md
-// gives `xpToNext(level) = XP_BASE + XP_STEP × (level - 1)` with `XP_BASE` `5`
-// and `XP_STEP` `10`, so the run is posed at level 2, where `xpToNext` is `15`.
-// The fill at xp `12` of `15` is four fifths of the full width, and the fill at
-// xp `0` is nothing.
+// "Experience | A bar filled from its left edge, its filled width
+// `xp / xpToNext` of the bar's width, labeled with `LEVEL_LABEL` (`LEVEL`) and
+// the current level". specs/progression.md gives
+// `xpToNext(level) = XP_BASE + XP_STEP × (level - 1)` with `XP_BASE` `5` and
+// `XP_STEP` `10`, so the run is posed at level 2, where `xpToNext` is `15`. The
+// fill at xp `12` of `15` is four fifths of the full width and starts from the
+// same left edge the full fill starts from, and the fill at xp `0` is nothing.
 //
 // THE WORLD. Three isolated `playing` runs at level 2, each posed through
 // `isolate`, which resets first: nothing alive, nothing on the ground, no
@@ -24,14 +25,26 @@
 // frame moves with `xp`, and a run rather than a pixel count is read for the
 // reason health-bar-scales states.
 //
-// TOLERANCE. BAR_SHARE_TOLERANCE, a fifth of the bar's full width, which admits
-// any border, rounding, or end-cap a build draws around its fill. A bar that
-// does not move with `xp` reads nothing filled at xp 12 and misses by four
-// fifths.
+// WHY THE TWO BANDS' LEFT COLUMN IS READ AS WELL. Their widths are the same for
+// a bar filled from its left edge and for the reflection of that bar, so a
+// build filling from the right edge, or emptying from the left as the
+// experience rises, reads the same four fifths. Both bands are read against the
+// EMPTY bar, which the specification leaves nothing filled of, so both begin at
+// the bar's own left edge, and only a bar whose fills grow the other way starts
+// the shorter of them a fifth of the way along.
+//
+// TOLERANCE. BAR_SHARE_TOLERANCE for the share, a fifth of the bar's full
+// width, which admits any border, rounding, or end-cap a build draws around its
+// fill. A bar that does not move with `xp` reads nothing filled at xp 12 and
+// misses by four fifths. BAR_EDGE_TOLERANCE for the two bands' left column, a
+// fiftieth of the full width, which is the slack a build's own antialiasing of
+// one fill's right edge leaves; a bar anchored the other way displaces the
+// shorter band by a fifth of the width.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertWithin } from "../assert";
 import {
+  BAR_EDGE_TOLERANCE,
   BAR_SHARE_TOLERANCE,
   FIGURE_TOLERANCE,
   XP_BASE,
@@ -65,7 +78,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("fills about four fifths of the experience bar at xp 12 of 15", async () => {
+it("fills the experience bar from its left edge, about four fifths of it at xp 12 of 15", async () => {
   const posed = isolate(h, { level: LEVEL });
   assertWithin(
     posed.run.xpToNext,
@@ -97,12 +110,18 @@ it("fills about four fifths of the experience bar at xp 12 of 15", async () => {
     0,
     `pixels differing between the frame at xp 0 and the frame at xp ${NEEDED}`,
   );
-  const filled = diffRunInRow(empty, part, whole.row).width;
+  const filled = diffRunInRow(empty, part, whole.row);
 
   assertWithin(
-    filled / whole.width,
+    filled.width / whole.width,
     PART / NEEDED,
     BAR_SHARE_TOLERANCE,
     `the share of the bar filled at xp ${PART} of ${NEEDED}`,
+  );
+  assertWithin(
+    (filled.x - whole.x) / whole.width,
+    0,
+    BAR_EDGE_TOLERANCE,
+    `where the band filled by xp ${PART} begins, against where the band filled by xp ${NEEDED} begins`,
   );
 });
