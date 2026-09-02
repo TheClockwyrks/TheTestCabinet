@@ -68,8 +68,8 @@
 // reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, emitterStats, heatMultiplier } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { TOWER_DEFS, emitterStats, heatMultiplier } from "../constants";
 import {
   captureStill,
   createHarness,

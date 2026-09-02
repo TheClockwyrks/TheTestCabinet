@@ -34,8 +34,8 @@
 // Send at all times during a run, so this one is never null.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BUILD_PHASE_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { BUILD_PHASE_TIME } from "../constants";
 import {
   captureStill,
   createHarness,

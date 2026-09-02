@@ -38,8 +38,8 @@
 // paying for a countdown that was never running.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

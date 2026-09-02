@@ -12,8 +12,8 @@
 // tower on the floor pose one with `poseTower`, which costs nothing and runs no
 // check — so none of these belongs in the shared harness.
 
-import { TOWER_DEFS, type EmitterDef, type TowerType } from "../constants";
 import { fail } from "../assert";
+import { TOWER_DEFS, type EmitterDef, type TowerType } from "../constants";
 import { lastTower, type BuildSnapshot, type Harness } from "../harness";
 
 /**

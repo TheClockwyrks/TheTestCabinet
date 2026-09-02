@@ -32,8 +32,8 @@
 // its cost; posing the plain case keeps this point to the listing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, TOWER_TYPES } from "../constants";
 import { assertDeepEqual, assertLength, assertTrue } from "../assert";
+import { TOWER_DEFS, TOWER_TYPES } from "../constants";
 import {
   captureStill,
   createHarness,

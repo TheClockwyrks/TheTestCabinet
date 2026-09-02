@@ -28,8 +28,8 @@
 // `floor.tile-map`. Nothing here asserts a shape, a label or an outline.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { tileCX, tileCY } from "../constants";
 import { isEmitter, sizeOf } from "../geometry";
 import {
   captureStill,

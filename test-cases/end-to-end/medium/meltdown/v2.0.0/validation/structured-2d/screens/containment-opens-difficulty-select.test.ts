@@ -27,8 +27,8 @@
 // confirms the row the case's own copy calls Containment.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_ITEMS } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
+import { MODE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -37,8 +37,8 @@
 // driven is the `1` to `2` step and the cost is that step's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, UPGRADE_COST_MULT } from "../constants";
 import { assertEqual } from "../assert";
+import { TOWER_DEFS, UPGRADE_COST_MULT } from "../constants";
 import {
   captureStill,
   createHarness,

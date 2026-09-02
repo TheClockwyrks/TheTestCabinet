@@ -34,6 +34,7 @@
 // wall and the floor read is `casing-reads-as-a-wall`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual } from "../assert";
 import {
   BOTTOM_EXHAUST_COLS,
   CASING,
@@ -45,7 +46,6 @@ import {
   tileCX,
   tileCY,
 } from "../constants";
-import { assertGreaterThanOrEqual } from "../assert";
 import type { Point } from "../geometry";
 import {
   captureStill,

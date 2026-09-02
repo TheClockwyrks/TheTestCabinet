@@ -31,6 +31,7 @@
 // otherwise." Both halves are read, on one floor, by moving the phase.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
 import {
   DIFFICULTY_TABLE,
   MODE_TABLE,
@@ -38,7 +39,6 @@ import {
   type DifficultyName,
   type ModeName,
 } from "../constants";
-import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,

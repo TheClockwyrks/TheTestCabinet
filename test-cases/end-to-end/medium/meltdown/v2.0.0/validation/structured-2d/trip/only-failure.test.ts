@@ -43,12 +43,12 @@
 // thousands of frames together.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_TIME } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
+import { TRIP_TIME } from "../constants";
 import {
   captureStill,
   createHarness,

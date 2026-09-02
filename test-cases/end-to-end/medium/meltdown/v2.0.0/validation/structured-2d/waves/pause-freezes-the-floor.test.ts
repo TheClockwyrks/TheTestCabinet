@@ -59,8 +59,8 @@
 // a build that never moves anything fails the running leg.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { BINDINGS } from "../constants";
 import {
   captureReplay,
   clockGain,

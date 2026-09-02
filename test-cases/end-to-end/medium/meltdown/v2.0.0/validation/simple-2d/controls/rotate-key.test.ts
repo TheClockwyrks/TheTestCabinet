@@ -37,8 +37,8 @@
 // touch the held preview while the four presses are read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, TOWER_DEFS } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

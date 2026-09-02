@@ -36,8 +36,8 @@
 // driven is the `1` to `2` step and the cost is that step's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, TOWER_DEFS, upgradeCost } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, TOWER_DEFS, upgradeCost } from "../constants";
 import {
   captureStill,
   createHarness,

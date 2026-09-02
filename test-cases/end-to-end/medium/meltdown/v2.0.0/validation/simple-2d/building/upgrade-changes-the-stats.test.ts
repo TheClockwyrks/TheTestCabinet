@@ -68,19 +68,19 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  MAX_LEVEL,
-  TILE,
-  emitterStats,
-  footprintCentre,
-  heatMultiplier,
-} from "../constants";
-import {
   assertBetween,
   assertEqual,
   assertGreaterThan,
   assertNull,
   fail,
 } from "../assert";
+import {
+  MAX_LEVEL,
+  TILE,
+  emitterStats,
+  footprintCentre,
+  heatMultiplier,
+} from "../constants";
 import { sizeOf } from "../geometry";
 import {
   captureStill,

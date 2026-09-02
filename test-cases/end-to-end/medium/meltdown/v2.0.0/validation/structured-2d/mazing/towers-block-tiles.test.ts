@@ -40,8 +40,8 @@
 // the floor exactly as it does for a walker.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import { LEFT_VENT_ROWS } from "../constants";
 import {
   captureStill,
   createHarness,

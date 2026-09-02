@@ -36,8 +36,8 @@
 // tower walling exactly as specs/mazing.md says a tower of any kind does.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROWS, tileCX, tileCY } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { ROWS, tileCX, tileCY } from "../constants";
 import { sizeOf } from "../geometry";
 import {
   TICK_HZ,

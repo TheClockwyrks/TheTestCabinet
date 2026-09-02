@@ -33,8 +33,8 @@
 // it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileCX, tileCY, tileLeft, tileTop } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { TILE, tileCX, tileCY, tileLeft, tileTop } from "../constants";
 import {
   captureStill,
   colorDistance,

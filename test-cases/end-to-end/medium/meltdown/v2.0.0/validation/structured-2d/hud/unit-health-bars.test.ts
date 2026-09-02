@@ -39,8 +39,8 @@
 // is the common case, is decided here outright.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileCX, tileCY } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
+import { TILE, tileCX, tileCY } from "../constants";
 import {
   captureStill,
   createHarness,

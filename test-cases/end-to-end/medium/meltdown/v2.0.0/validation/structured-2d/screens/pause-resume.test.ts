@@ -38,8 +38,8 @@
 // fair reading of what its RESUME row does.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../constants";
 import { assertEqual, assertLength } from "../assert";
+import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

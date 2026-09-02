@@ -46,8 +46,8 @@
 // the centre be the footprint's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
+import { TILE } from "../constants";
 import {
   captureStill,
   createHarness,

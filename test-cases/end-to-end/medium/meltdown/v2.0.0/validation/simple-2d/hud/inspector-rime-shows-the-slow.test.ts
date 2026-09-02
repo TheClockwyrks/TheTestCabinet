@@ -45,8 +45,8 @@
 // build countdown and no next-wave preview.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RIME_SLOW_CEIL } from "../constants";
 import { assertTrue } from "../assert";
+import { RIME_SLOW_CEIL } from "../constants";
 import {
   captureStill,
   createHarness,

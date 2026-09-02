@@ -45,13 +45,13 @@
 // onslaught reads the base times six only in the first leg.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertTrue } from "../assert";
 import {
   HUNDRED_HP_SCALE,
   HUNDRED_UNITS,
   SURGE_DEFS,
   WAVE_SPAWN_INTERVAL,
 } from "../constants";
-import { assertCloseTo, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,

@@ -25,8 +25,8 @@
 // them the same way whatever it holds.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileLeft, tileTop } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { TILE, tileLeft, tileTop } from "../constants";
 import {
   captureStill,
   createHarness,

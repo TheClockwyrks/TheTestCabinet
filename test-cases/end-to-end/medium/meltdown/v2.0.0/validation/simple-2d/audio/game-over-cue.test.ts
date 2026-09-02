@@ -20,8 +20,8 @@
 // says nothing about it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
+import { CUES } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -43,13 +43,13 @@
 // rounded its interval to a frame would read short at the checkpoint.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
 } from "../assert";
+import { TILE } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -27,8 +27,8 @@
 // destination rather than a keyboard.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
+import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

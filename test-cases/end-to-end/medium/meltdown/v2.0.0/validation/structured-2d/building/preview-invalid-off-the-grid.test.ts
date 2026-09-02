@@ -19,8 +19,8 @@
 // for below would run three columns and three rows past the last tile.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ROWS } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
+import { COLS, ROWS } from "../constants";
 import {
   captureStill,
   createHarness,

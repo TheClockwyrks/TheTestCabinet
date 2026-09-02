@@ -33,8 +33,8 @@
 // tower of any kind does.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import { LEFT_VENT_ROWS } from "../constants";
 import {
   captureReplay,
   createHarness,

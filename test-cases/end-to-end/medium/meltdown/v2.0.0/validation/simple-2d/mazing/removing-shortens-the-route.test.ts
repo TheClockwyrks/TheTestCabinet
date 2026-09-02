@@ -27,8 +27,8 @@
 // the only faculty this requirement exercises.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
+import { LEFT_VENT_ROWS } from "../constants";
 import {
   captureStill,
   createHarness,

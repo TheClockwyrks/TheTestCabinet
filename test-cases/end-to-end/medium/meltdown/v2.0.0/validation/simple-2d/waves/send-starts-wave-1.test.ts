@@ -35,8 +35,8 @@
 // AFTER the one being prepared for reads wave `2`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

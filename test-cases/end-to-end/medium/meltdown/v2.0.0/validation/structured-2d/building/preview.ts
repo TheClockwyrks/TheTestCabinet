@@ -12,13 +12,13 @@
 // one with `poseTower`, which costs nothing and runs no check — so none of these
 // belongs in the shared harness.
 
+import { fail } from "../assert";
 import {
   TOWER_DEFS,
   type EmitterDef,
   type Face,
   type TowerType,
 } from "../constants";
-import { fail } from "../assert";
 import type {
   BuildSnapshot,
   Harness,

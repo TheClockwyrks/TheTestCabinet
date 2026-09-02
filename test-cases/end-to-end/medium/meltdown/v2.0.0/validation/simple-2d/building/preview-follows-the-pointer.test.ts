@@ -32,6 +32,7 @@
 //   a different tile from the one the formula gives at six of the nine readings.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   COLS,
   FLOOR_X0,
@@ -41,7 +42,6 @@ import {
   tileLeft,
   tileTop,
 } from "../constants";
-import { assertEqual } from "../assert";
 import { sizeOf } from "../geometry";
 import {
   captureStill,

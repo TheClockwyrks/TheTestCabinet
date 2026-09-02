@@ -30,8 +30,8 @@
 // requirement, not this one's; this is the pause menu's row.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, PAUSE_ITEMS } from "../constants";
 import { assertEqual, assertLength } from "../assert";
+import { BINDINGS, PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

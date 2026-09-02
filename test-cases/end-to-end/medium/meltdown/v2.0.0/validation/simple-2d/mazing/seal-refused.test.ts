@@ -34,8 +34,8 @@
 // "whatever kind of tower it is", and nothing here fires at anything.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROWS } from "../constants";
 import { assertEqual, assertLength } from "../assert";
+import { ROWS } from "../constants";
 import { sizeOf } from "../geometry";
 import {
   captureStill,

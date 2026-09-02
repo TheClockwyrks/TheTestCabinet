@@ -46,8 +46,8 @@
 // conformant build reads `("opening", 0, 0)` at every one of them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BUILD_PHASE_TIME } from "../constants";
 import { assertEqual } from "../assert";
+import { BUILD_PHASE_TIME } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -22,8 +22,8 @@
 // rest on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, ENDING_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, ENDING_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -45,8 +45,8 @@
 // happened at any point in the window.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_HEAT } from "../constants";
 import { assertEqual } from "../assert";
+import { TRIP_HEAT } from "../constants";
 import {
   boxIn,
   captureStill,

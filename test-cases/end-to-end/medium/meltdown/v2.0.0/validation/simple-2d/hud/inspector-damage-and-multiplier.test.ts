@@ -54,8 +54,8 @@
 // `wave`, so the strip carries no build countdown and no next-wave preview.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, emitterStats, heatMultiplier } from "../constants";
 import { assertTrue } from "../assert";
+import { TOWER_DEFS, emitterStats, heatMultiplier } from "../constants";
 import {
   captureStill,
   createHarness,

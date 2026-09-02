@@ -26,8 +26,8 @@
 // cannot start Wave 1 underneath the reading and take the tower's freshness with it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../constants";
 import { assertEqual } from "../assert";
+import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

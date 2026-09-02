@@ -41,8 +41,8 @@
 // instead and fails the precondition rather than the invariant.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
+import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

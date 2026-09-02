@@ -49,8 +49,8 @@
 // there and passes here, and each item names its own defect.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOTTLENECK_ZONE, TOWER_DEFS } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
+import { BOTTLENECK_ZONE, TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

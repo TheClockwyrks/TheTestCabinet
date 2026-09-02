@@ -49,8 +49,8 @@
 // player can SEE it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
+import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

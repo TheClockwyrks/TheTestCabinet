@@ -33,8 +33,8 @@
 // the key's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -25,12 +25,12 @@
 // would pass on a change that had nothing to do with affordability.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
+import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

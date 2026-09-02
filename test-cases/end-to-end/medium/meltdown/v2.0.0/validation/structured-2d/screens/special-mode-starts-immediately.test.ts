@@ -34,8 +34,8 @@
 // than a confirm posted on top of the last leg's run.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODES, MODE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { MODES, MODE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

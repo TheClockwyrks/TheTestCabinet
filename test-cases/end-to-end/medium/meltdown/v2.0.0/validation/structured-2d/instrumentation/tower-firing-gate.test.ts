@@ -32,8 +32,8 @@
 // and neither tower can reach the other's mark.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

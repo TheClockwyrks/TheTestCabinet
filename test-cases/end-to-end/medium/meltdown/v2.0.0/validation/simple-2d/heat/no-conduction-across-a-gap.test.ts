@@ -23,8 +23,8 @@
 // One frame, so no reading is taken at a heat an earlier frame had already moved.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BASE_K, RAD_K, TRIP_HEAT } from "../constants";
 import { assertCloseTo } from "../assert";
+import { BASE_K, RAD_K, TRIP_HEAT } from "../constants";
 import { sizeOf } from "../geometry";
 import {
   captureStill,

@@ -28,8 +28,8 @@
 // head of that file states the whole of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORGE_SETPOINT } from "../constants";
 import { assertCloseTo } from "../assert";
+import { FORGE_SETPOINT } from "../constants";
 import {
   captureStill,
   createHarness,

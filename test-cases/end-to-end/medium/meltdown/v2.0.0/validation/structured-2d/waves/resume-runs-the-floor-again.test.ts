@@ -44,8 +44,8 @@
 // reading below reports as the unit the build lost.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

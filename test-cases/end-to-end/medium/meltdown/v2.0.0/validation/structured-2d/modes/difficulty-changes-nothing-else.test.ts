@@ -45,8 +45,8 @@
 // it by whole hp.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTIES, START_LIVES } from "../constants";
 import { assertCloseTo, assertEqual, assertNull, assertTrue } from "../assert";
+import { DIFFICULTIES, START_LIVES } from "../constants";
 import {
   captureStill,
   createHarness,

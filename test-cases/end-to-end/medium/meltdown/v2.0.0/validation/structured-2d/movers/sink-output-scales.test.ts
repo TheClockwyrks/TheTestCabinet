@@ -27,8 +27,8 @@
 // place. The note at the head of that file states the whole of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SINK_OUTPUT, TRIP_HEAT } from "../constants";
 import { assertCloseTo } from "../assert";
+import { SINK_OUTPUT, TRIP_HEAT } from "../constants";
 import {
   captureStill,
   createHarness,

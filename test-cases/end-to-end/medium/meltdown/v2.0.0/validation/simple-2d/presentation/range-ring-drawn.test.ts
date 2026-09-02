@@ -37,6 +37,7 @@
 // `valid-and-invalid-previews-read-apart`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   COLS,
   ROWS,
@@ -46,7 +47,6 @@ import {
   tileCX,
   tileCY,
 } from "../constants";
-import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import { footprintCentreOf, onGrid, type Point } from "../geometry";
 import {
   captureStill,

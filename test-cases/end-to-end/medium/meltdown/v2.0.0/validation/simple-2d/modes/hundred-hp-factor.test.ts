@@ -46,8 +46,8 @@
 // of `1`, is two hundred hit points away for a Mote.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUNDRED_HP_SCALE, SURGE_DEFS } from "../constants";
 import { assertCloseTo, assertGreaterThan } from "../assert";
+import { HUNDRED_HP_SCALE, SURGE_DEFS } from "../constants";
 import { captureStill, createHarness, seconds, type Harness } from "../harness";
 import { beginOnslaught, ONSLAUGHT_TICKS, watchOnslaught } from "./run";
 

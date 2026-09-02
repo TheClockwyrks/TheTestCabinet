@@ -51,6 +51,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+  assertTrue,
+} from "../assert";
+import {
   STAGE_H,
   STAGE_W,
   TILE,
@@ -59,12 +65,6 @@ import {
   tileLeft,
   tileTop,
 } from "../constants";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-  assertTrue,
-} from "../assert";
 import { sizeOf, type Point, type Tile } from "../geometry";
 import {
   captureStill,

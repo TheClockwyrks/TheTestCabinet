@@ -33,13 +33,13 @@
 // `mazing/tower-lengthens-the-route` carry that one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, RIGHT_EXHAUST_ROWS } from "../constants";
 import {
   assertContains,
   assertEqual,
   assertGreaterThanOrEqual,
   fail,
 } from "../assert";
+import { COLS, RIGHT_EXHAUST_ROWS } from "../constants";
 import { tileAt } from "../geometry";
 import {
   captureReplay,

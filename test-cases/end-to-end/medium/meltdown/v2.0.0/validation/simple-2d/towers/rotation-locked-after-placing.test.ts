@@ -39,8 +39,8 @@
 // specification fixes the ORDER `radiatorFaces` lists them in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
+import { BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

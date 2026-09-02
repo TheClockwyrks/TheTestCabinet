@@ -27,8 +27,8 @@
 // other input could have moved.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENDING_ITEMS } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { ENDING_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { loseTheRun, winTheRun } from "./ending";
 

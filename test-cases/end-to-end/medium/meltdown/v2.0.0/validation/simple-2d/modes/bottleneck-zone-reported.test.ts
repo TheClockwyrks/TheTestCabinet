@@ -36,13 +36,13 @@
 // reviewer opens is the zone the build marked on it (modes/run.ts).
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import {
   BOTTLENECK_ZONE,
   LEFT_VENT_ROWS,
   RIGHT_EXHAUST_ROWS,
   TOP_VENT_COLS,
 } from "../constants";
-import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { drawOpening, poseMode } from "./run";
 

@@ -32,8 +32,8 @@
 // preview sits on a quiet anchor, clear of both vent-to-exhaust corridors.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../constants";
 import { assertEqual } from "../assert";
+import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

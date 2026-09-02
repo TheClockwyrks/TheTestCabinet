@@ -36,8 +36,8 @@
 // screen", and live play is where a player reaches for it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

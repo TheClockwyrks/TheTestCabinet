@@ -33,8 +33,8 @@
 // `trips-at-100`'s single requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_HEAT, TRIP_TIME } from "../constants";
 import { assertCloseTo } from "../assert";
+import { TRIP_HEAT, TRIP_TIME } from "../constants";
 import {
   captureStill,
   clockGain,

@@ -40,12 +40,12 @@
 // `build-zone-drawn`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertNotNull,
 } from "../assert";
+import { TOWER_DEFS } from "../constants";
 import { sizeOf } from "../geometry";
 import {
   captureStill,

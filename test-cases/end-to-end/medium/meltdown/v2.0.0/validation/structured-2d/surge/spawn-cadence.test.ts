@@ -44,7 +44,6 @@
 // reads intervals that are not all the same, and the failure names the pair.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_SPAWN_INTERVAL } from "../constants";
 import {
   assertBetween,
   assertEqual,
@@ -52,6 +51,7 @@ import {
   assertLessThanOrEqual,
   assertTrue,
 } from "../assert";
+import { WAVE_SPAWN_INTERVAL } from "../constants";
 import {
   TICK_HZ,
   captureStill,

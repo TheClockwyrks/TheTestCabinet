@@ -40,8 +40,8 @@
 // tolerance: `specs/modes.md` fixes them exactly.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTIES, DIFFICULTY_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { DIFFICULTIES, DIFFICULTY_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

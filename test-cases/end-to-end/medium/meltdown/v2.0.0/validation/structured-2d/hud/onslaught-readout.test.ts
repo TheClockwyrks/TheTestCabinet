@@ -33,8 +33,8 @@
 // leg.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTY_TABLE, HUD_WAVE_LABEL, MODE_TABLE } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { DIFFICULTY_TABLE, HUD_WAVE_LABEL, MODE_TABLE } from "../constants";
 import {
   captureStill,
   createHarness,

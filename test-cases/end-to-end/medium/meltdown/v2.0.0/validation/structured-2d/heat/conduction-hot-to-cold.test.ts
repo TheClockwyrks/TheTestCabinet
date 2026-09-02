@@ -25,8 +25,8 @@
 // What is left is one flow across one contact, and both ends of it are read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COND_K } from "../constants";
 import { assertCloseTo } from "../assert";
+import { COND_K } from "../constants";
 import {
   captureStill,
   createHarness,

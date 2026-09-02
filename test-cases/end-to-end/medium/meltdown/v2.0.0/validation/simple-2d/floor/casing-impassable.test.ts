@@ -35,6 +35,7 @@
 // the casing held.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   COLS,
   FLOOR_H,
@@ -47,7 +48,6 @@ import {
   tileCX,
   tileCY,
 } from "../constants";
-import { assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,

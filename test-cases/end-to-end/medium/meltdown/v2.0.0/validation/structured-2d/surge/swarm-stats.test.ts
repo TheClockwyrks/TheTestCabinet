@@ -44,8 +44,8 @@
 // the smallest unit free reads `0`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
+import { SURGE_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

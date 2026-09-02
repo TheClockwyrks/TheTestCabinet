@@ -32,6 +32,7 @@
 // encodes — a gun with a mark parked in it, and a crowd of marks that never dies
 // and never leaks — is what the trip items share and no other group's.
 
+import { fail } from "../assert";
 import {
   COLS,
   ROWS,
@@ -40,7 +41,6 @@ import {
   emitterStats,
   type EmitterDef,
 } from "../constants";
-import { fail } from "../assert";
 import {
   footprintCenter,
   poseTarget,

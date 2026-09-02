@@ -39,8 +39,8 @@
 // route length is a figure the same floor produces twice.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOTTLENECK_ZONE } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
+import { BOTTLENECK_ZONE } from "../constants";
 import {
   captureStill,
   createHarness,

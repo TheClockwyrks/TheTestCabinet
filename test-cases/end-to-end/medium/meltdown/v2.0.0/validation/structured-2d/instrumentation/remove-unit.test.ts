@@ -26,8 +26,8 @@
 // this reading is the call.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
+import { SURGE_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

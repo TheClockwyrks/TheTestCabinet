@@ -49,6 +49,7 @@
 // rosters and shuts the world gate, so each drive's emitter is a new one with a
 // fire clock at zero on a floor holding nothing else.
 
+import { fail } from "../assert";
 import {
   BASE_K,
   RAD_K,
@@ -60,7 +61,6 @@ import {
   moverOutput,
   type EmitterDef,
 } from "../constants";
-import { fail } from "../assert";
 import { sizeOf, tileAt, type Point, type Tile } from "../geometry";
 import {
   TICK_HZ,

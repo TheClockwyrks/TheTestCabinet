@@ -24,8 +24,8 @@
 // it cares about and then says, in its own terms, how much of that region has to
 // answer for the reading to hold.
 
-import { TILE, tileLeft, tileTop } from "../constants";
 import { fail } from "../assert";
+import { TILE, tileLeft, tileTop } from "../constants";
 import type {
   Face,
   Harness,

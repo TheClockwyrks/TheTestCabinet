@@ -39,6 +39,7 @@
 // the check never asked for. `poseGun` opens with `startRun`, which empties the
 // tower roster, so each scenario's emitter is a new one with a fire clock at zero.
 
+import { fail } from "../assert";
 import {
   RIME_SLOW_CEIL,
   TILE,
@@ -48,7 +49,6 @@ import {
   heatMultiplier,
   type EmitterDef,
 } from "../constants";
-import { fail } from "../assert";
 import {
   TICK_HZ,
   posePinnedTower,

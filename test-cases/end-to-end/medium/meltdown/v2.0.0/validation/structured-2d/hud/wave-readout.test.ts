@@ -20,8 +20,8 @@
 // nothing, and clears nothing" (specs/instrumentation.md).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTY_TABLE, HUD_WAVE_LABEL } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { DIFFICULTY_TABLE, HUD_WAVE_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -32,8 +32,8 @@
 // screen while the press is read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertEqual, assertNull } from "../assert";
+import { BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

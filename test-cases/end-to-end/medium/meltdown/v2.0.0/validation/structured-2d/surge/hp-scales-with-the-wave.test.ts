@@ -35,8 +35,8 @@
 // units already on the floor rather than the hp of a unit released now reads `40`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS, hpScale } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
+import { SURGE_DEFS, hpScale } from "../constants";
 import {
   captureStill,
   createHarness,

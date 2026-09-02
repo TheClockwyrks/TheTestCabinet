@@ -20,8 +20,8 @@
 // `screens.special-mode-starts-immediately`, and nothing is confirmed here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { MODE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

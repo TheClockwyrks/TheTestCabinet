@@ -67,7 +67,6 @@
 // so no death interrupts the count.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_LEVEL, TILE, emitterStats, heatMultiplier } from "../constants";
 import {
   assertBetween,
   assertEqual,
@@ -75,6 +74,7 @@ import {
   assertNull,
   fail,
 } from "../assert";
+import { MAX_LEVEL, TILE, emitterStats, heatMultiplier } from "../constants";
 import {
   captureStill,
   createHarness,

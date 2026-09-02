@@ -24,8 +24,8 @@
 // THE TITLE MENU, from a reset, with the screen and the row both posed outright.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { TITLE_ITEMS } from "../constants";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 
 /** The key specs/controls.md binds `up` to, as a `KeyboardEvent.code`. */

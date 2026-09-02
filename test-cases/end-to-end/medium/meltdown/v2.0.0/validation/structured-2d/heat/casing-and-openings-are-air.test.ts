@@ -26,8 +26,8 @@
 // another, and all three are idle, so no gun adds heat while the loss is read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BASE_K, RAD_K, TRIP_HEAT } from "../constants";
 import { assertCloseTo } from "../assert";
+import { BASE_K, RAD_K, TRIP_HEAT } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -23,6 +23,7 @@
 // Local to this group on purpose. Nothing outside `screens/` poses a bare menu or
 // reads a menu row's pixels, so none of it belongs in the shared harness.
 
+import { fail } from "../assert";
 import {
   DIFFICULTY_ITEMS,
   ENDING_ITEMS,
@@ -31,7 +32,6 @@ import {
   STAGE_W,
   TITLE_ITEMS,
 } from "../constants";
-import { fail } from "../assert";
 import type { Point } from "../geometry";
 import {
   drawnTextSpans,

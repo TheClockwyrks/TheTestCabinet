@@ -49,8 +49,8 @@
 // money on hand reads `0`. Each is a different step from `8`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { INTEREST_RATE } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { INTEREST_RATE } from "../constants";
 import {
   captureStill,
   createHarness,

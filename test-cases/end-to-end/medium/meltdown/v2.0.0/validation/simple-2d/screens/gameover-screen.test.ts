@@ -27,8 +27,8 @@
 // `screens.play-again-focused`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENDING_ITEMS } from "../constants";
 import { assertContains, assertEqual, assertNotEqual } from "../assert";
+import { ENDING_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

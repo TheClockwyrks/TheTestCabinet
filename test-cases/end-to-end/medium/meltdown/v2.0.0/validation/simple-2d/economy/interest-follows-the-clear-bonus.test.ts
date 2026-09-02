@@ -44,12 +44,12 @@
 // distinguishing figure is `9`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertTrue } from "../assert";
 import {
   INTEREST_RATE,
   WAVE_CLEAR_BASE,
   WAVE_CLEAR_PER_WAVE,
 } from "../constants";
-import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,

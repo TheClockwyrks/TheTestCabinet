@@ -18,8 +18,8 @@
 // the fire cue, and what is read here is the death cue and its frame alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
+import { CUES } from "../constants";
 import {
   captureStill,
   createHarness,

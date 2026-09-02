@@ -41,6 +41,7 @@
 // `valid-and-invalid-previews-read-apart`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   TILE,
   TOWER_DEFS,
@@ -49,7 +50,6 @@ import {
   tileCX,
   tileCY,
 } from "../constants";
-import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   colorDistance,

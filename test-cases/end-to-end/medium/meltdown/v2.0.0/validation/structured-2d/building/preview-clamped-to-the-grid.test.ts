@@ -19,8 +19,8 @@
 // are the largest and the smallest, because the clamp bites hardest at 4x4.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ROWS } from "../constants";
 import { assertBetween } from "../assert";
+import { COLS, ROWS } from "../constants";
 import {
   captureStill,
   createHarness,

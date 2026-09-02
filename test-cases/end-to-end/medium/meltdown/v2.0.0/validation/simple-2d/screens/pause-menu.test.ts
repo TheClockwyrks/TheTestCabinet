@@ -31,8 +31,8 @@
 // build's own clock. This item is about the picture.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
   colorDistance,

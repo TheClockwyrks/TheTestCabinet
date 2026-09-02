@@ -43,8 +43,8 @@
 // Only `(invalid, no tower, 149)` passes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, type TowerType } from "../constants";
 import { assertEqual, assertLength, assertTrue } from "../assert";
+import { TOWER_DEFS, type TowerType } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -31,8 +31,8 @@
 // equality.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTY_TABLE } from "../constants";
 import { assertEqual } from "../assert";
+import { DIFFICULTY_TABLE } from "../constants";
 import {
   captureStill,
   createHarness,

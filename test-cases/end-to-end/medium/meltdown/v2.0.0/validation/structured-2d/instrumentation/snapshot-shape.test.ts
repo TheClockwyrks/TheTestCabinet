@@ -35,7 +35,6 @@
 // is why the still is captured before the press rather than after it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTIES, MODES, SURGE_TYPES, TOWER_TYPES } from "../constants";
 import {
   assertBetween,
   assertContains,
@@ -47,6 +46,7 @@ import {
   assertNotNull,
   assertTrue,
 } from "../assert";
+import { DIFFICULTIES, MODES, SURGE_TYPES, TOWER_TYPES } from "../constants";
 import {
   captureStill,
   createHarness,

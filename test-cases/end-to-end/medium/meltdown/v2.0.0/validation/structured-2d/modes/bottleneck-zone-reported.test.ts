@@ -37,8 +37,8 @@
 // that left the mode on "the whole floor" reads `null`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOTTLENECK_ZONE, LEFT_VENT_ROWS, TOP_VENT_COLS } from "../constants";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
+import { BOTTLENECK_ZONE, LEFT_VENT_ROWS, TOP_VENT_COLS } from "../constants";
 import {
   captureStill,
   createHarness,

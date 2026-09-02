@@ -17,8 +17,8 @@
 // It reads no snapshot and holds no tolerance: it is the specification's own
 // table, typed.
 
-import { TOWER_DEFS, emitterStats, type EmitterDef } from "../constants";
 import { fail } from "../assert";
+import { TOWER_DEFS, emitterStats, type EmitterDef } from "../constants";
 import type { TowerType } from "../harness";
 
 /** The emitter specs/towers.md tabulates under `type`. */

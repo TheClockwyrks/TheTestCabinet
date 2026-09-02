@@ -19,7 +19,6 @@
 // null type or a stale footprint.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ROWS } from "../constants";
 import {
   assertBetween,
   assertContains,
@@ -28,6 +27,7 @@ import {
   assertNull,
   assertTrue,
 } from "../assert";
+import { COLS, ROWS } from "../constants";
 import { sizeOf } from "../geometry";
 import {
   captureStill,

@@ -41,6 +41,7 @@
 // one and hangs the large one over the wall.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import {
   CASING,
   COLS,
@@ -51,7 +52,6 @@ import {
   tileCX,
   tileCY,
 } from "../constants";
-import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,

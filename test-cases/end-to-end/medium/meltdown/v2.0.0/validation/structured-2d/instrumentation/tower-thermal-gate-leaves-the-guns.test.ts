@@ -40,13 +40,13 @@
 // death and no re-acquisition interrupts the fire clock.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_HEAT_MULT, MIN_HEAT_MULT, TOWER_DEFS } from "../constants";
 import {
   assertCloseTo,
   assertEqual,
   assertGreaterThan,
   assertLessThan,
 } from "../assert";
+import { MAX_HEAT_MULT, MIN_HEAT_MULT, TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -51,6 +51,7 @@
 // both rosters and shuts the world gate, so each drive's emitter is a new one with
 // a fire clock at zero on a floor holding nothing else.
 
+import { fail } from "../assert";
 import {
   BASE_K,
   MAX_HEAT_MULT,
@@ -66,7 +67,6 @@ import {
   moverOutput,
   type EmitterDef,
 } from "../constants";
-import { fail } from "../assert";
 import {
   TICK_HZ,
   footprintCenter,

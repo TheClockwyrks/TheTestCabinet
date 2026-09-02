@@ -25,8 +25,8 @@
 // needs nothing posed to reach. The screen and the row are both posed outright.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { TITLE_ITEMS } from "../constants";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 
 /** The key specs/controls.md binds `down` to, as a `KeyboardEvent.code`. */

@@ -62,8 +62,8 @@
 // been delivered, so the clock is required to have gained.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertDeepEqual, assertGreaterThan, assertNull } from "../assert";
+import { BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

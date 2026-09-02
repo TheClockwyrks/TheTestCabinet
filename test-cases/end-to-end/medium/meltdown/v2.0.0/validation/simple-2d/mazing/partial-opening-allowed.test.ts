@@ -28,8 +28,8 @@
 // condition of specs/building.md plays no part in the verdict.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS } from "../constants";
 import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
+import { LEFT_VENT_ROWS } from "../constants";
 import { sizeOf } from "../geometry";
 import {
   captureStill,

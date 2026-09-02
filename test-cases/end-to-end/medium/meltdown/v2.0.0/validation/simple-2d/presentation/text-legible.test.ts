@@ -42,8 +42,8 @@
 // pick out of its own background.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_H, STAGE_W } from "../constants";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { STAGE_H, STAGE_W } from "../constants";
 import {
   createHarness,
   captureStill,

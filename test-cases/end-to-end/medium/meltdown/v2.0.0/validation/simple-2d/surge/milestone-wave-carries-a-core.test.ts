@@ -39,12 +39,12 @@
 // halfway wave down reads a Core one wave early at Easy and at Medium.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_CYCLE, WAVE_OPENING, milestoneWaves } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertNotEqual,
 } from "../assert";
+import { WAVE_CYCLE, WAVE_OPENING, milestoneWaves } from "../constants";
 import {
   captureReplay,
   createHarness,

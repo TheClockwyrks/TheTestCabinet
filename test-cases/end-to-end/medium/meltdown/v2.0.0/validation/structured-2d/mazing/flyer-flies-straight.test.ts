@@ -40,8 +40,8 @@
 // `mazing/flyer-ignores-walls`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS, tileCX, tileCY } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
+import { SURGE_DEFS, tileCX, tileCY } from "../constants";
 import {
   TICK_HZ,
   captureReplay,

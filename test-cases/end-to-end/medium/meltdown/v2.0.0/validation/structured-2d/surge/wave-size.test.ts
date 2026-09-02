@@ -50,8 +50,8 @@
 // wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { waveSize } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { waveSize } from "../constants";
 import {
   captureStill,
   createHarness,

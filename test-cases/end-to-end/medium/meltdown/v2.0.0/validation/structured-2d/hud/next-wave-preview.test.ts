@@ -30,8 +30,8 @@
 // this one decides that a build phase draws one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTY_TABLE, waveSize, waveType } from "../constants";
 import { assertEqual, assertNull, assertTrue } from "../assert";
+import { DIFFICULTY_TABLE, waveSize, waveType } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -60,6 +60,14 @@
 
 import { afterEach, it } from "vitest";
 import {
+  assertCloseTo,
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+  assertNotNull,
+  assertTrue,
+} from "../assert";
+import {
   COLS,
   ROWS,
   STAGE_H,
@@ -68,14 +76,6 @@ import {
   tileCX,
   tileCY,
 } from "../constants";
-import {
-  assertCloseTo,
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-  assertNotNull,
-  assertTrue,
-} from "../assert";
 import { sizeOf, type Point } from "../geometry";
 import {
   captureStill,

@@ -26,8 +26,8 @@
 // FOR, which is the thing the build controls.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../constants";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
+import { CUES } from "../constants";
 import {
   captureStill,
   createHarness,

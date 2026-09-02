@@ -33,8 +33,8 @@
 // snapshot the two poses alone produced.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTY_TABLE } from "../constants";
 import { assertEqual } from "../assert";
+import { DIFFICULTY_TABLE } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { drawOpening, poseMode } from "./run";
 

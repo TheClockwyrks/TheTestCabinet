@@ -23,13 +23,13 @@
 // of the build rather than of the scenario.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   assertLength,
 } from "../assert";
+import { CUES } from "../constants";
 import {
   captureStill,
   createHarness,

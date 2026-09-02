@@ -38,6 +38,7 @@
 // at all: the opening runs are skipped, not inspected.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   BOTTOM_EXHAUST_COLS,
   CASING,
@@ -51,7 +52,6 @@ import {
   tileCX,
   tileCY,
 } from "../constants";
-import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   colorDistance,

@@ -30,8 +30,8 @@
 // sameness means nothing until each reading is known to have moved.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BASE_K } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { BASE_K } from "../constants";
 import {
   captureStill,
   createHarness,

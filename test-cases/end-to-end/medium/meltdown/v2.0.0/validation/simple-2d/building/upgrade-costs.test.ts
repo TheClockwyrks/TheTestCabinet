@@ -28,8 +28,8 @@
 // specification.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, upgradeCost } from "../constants";
 import { assertEqual } from "../assert";
+import { TOWER_DEFS, upgradeCost } from "../constants";
 import {
   captureStill,
   createHarness,

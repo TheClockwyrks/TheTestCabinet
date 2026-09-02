@@ -36,9 +36,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { milestoneWaves } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseWaveReady, typeOfWave, watchRelease, wavesIn } from "./release";
-import { milestoneWaves } from "../constants";
 
 /**
  * The waves the cycle governs in a 20-wave run: 9 through 19, less the milestone.

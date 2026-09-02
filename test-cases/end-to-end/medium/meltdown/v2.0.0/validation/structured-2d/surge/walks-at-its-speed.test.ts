@@ -45,8 +45,8 @@
 // all reads `0`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS, TILE } from "../constants";
 import { assertBetween, assertGreaterThan, assertNotNull } from "../assert";
+import { SURGE_DEFS, TILE } from "../constants";
 import {
   captureStill,
   clockGain,

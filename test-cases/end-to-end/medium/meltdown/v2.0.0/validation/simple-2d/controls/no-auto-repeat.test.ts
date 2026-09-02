@@ -42,8 +42,8 @@
 // rather than the first one in the file.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, MODE_ITEMS, TOWER_DEFS, upgradeCost } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, MODE_ITEMS, TOWER_DEFS, upgradeCost } from "../constants";
 import {
   captureStill,
   createHarness,

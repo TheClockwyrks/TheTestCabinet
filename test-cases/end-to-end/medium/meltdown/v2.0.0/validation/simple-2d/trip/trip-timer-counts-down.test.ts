@@ -27,8 +27,8 @@
 // line on its first shot, a seventh of a second in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_TIME } from "../constants";
 import { assertCloseTo, assertTrue } from "../assert";
+import { TRIP_TIME } from "../constants";
 import {
   captureStill,
   createHarness,

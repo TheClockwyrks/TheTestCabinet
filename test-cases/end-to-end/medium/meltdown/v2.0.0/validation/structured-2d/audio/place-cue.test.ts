@@ -22,7 +22,6 @@
 // past the Arc's cost, so the refusal is the blocked tiles and not the purse.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,
@@ -30,6 +29,7 @@ import {
   assertLength,
   fail,
 } from "../assert";
+import { CUES } from "../constants";
 import {
   captureStill,
   createHarness,

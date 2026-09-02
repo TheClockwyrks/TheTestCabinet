@@ -24,8 +24,8 @@
 // first.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_HEAT_MULT } from "../constants";
 import { assertCloseTo } from "../assert";
+import { MAX_HEAT_MULT } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { oneShotDamage } from "./one-shot";
 import { figuresOf, redlineOf } from "./roster";

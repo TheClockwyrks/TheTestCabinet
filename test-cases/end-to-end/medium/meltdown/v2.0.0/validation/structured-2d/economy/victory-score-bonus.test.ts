@@ -57,12 +57,12 @@
 // LOST reads `-500`. The distinguishing figure is `500`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   DIFFICULTY_TABLE,
   MODE_TABLE,
   SCORE_VICTORY_PER_LIFE,
 } from "../constants";
-import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,

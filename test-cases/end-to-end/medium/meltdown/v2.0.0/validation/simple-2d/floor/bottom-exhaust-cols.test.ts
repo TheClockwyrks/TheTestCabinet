@@ -36,6 +36,7 @@
 // columns 0 and 49 are the far ends of the same wall.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   BOTTOM_EXHAUST_COLS,
   COLS,
@@ -46,7 +47,6 @@ import {
   tileCY,
   tileTop,
 } from "../constants";
-import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,

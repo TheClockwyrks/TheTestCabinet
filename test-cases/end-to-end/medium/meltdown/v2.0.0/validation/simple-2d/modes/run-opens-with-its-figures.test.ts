@@ -36,8 +36,8 @@
 // notices.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, DIFFICULTY_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, DIFFICULTY_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseMode } from "./run";
 

@@ -34,6 +34,7 @@
 // 35 are the far ends of the same wall.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   COLS,
   RIGHT_EXHAUST_ROWS,
@@ -43,7 +44,6 @@ import {
   tileCY,
   tileLeft,
 } from "../constants";
-import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,

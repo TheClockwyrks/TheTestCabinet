@@ -32,6 +32,7 @@
 // control. No other group in this suite reads the panel, so a helper in
 // `harness.ts` would be a helper seventeen groups could not use.
 
+import { fail } from "../assert";
 import {
   PANEL_W,
   PANEL_X,
@@ -41,7 +42,6 @@ import {
   type EmitterDef,
   type TowerType,
 } from "../constants";
-import { fail } from "../assert";
 import {
   colorDistance,
   drawnTextSpans,

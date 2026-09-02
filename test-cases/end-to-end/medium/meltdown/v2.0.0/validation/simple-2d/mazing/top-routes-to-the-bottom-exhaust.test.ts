@@ -34,13 +34,13 @@
 // point decides only where the crossing ends.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOTTOM_EXHAUST_COLS, ROWS } from "../constants";
 import {
   assertContains,
   assertEqual,
   assertGreaterThanOrEqual,
   fail,
 } from "../assert";
+import { BOTTOM_EXHAUST_COLS, ROWS } from "../constants";
 import { tileAt } from "../geometry";
 import {
   captureStill,

@@ -36,6 +36,7 @@
 // `valid-and-invalid-previews-read-apart`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThanOrEqual } from "../assert";
 import {
   BOTTLENECK_ZONE,
   tileCX,
@@ -43,7 +44,6 @@ import {
   tileLeft,
   tileTop,
 } from "../constants";
-import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   colorDistance,

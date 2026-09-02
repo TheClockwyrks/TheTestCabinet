@@ -22,8 +22,8 @@
 // would have behind it rather than over the untouched fields of a title screen.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { MENUS, poseMenu } from "./menu";
 

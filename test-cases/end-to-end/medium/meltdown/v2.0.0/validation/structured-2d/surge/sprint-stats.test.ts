@@ -45,8 +45,8 @@
 // unit as the most costly leak reads lives falling by more than one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
+import { SURGE_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

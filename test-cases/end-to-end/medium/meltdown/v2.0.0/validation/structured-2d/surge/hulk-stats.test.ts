@@ -44,8 +44,8 @@
 // not `7`; one that gave the heavy unit flight reads `flying` true.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
+import { SURGE_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

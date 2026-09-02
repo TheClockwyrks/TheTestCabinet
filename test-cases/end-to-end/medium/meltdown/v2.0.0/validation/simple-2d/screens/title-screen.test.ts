@@ -39,8 +39,8 @@
 // by its own label wherever the build put it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
   colorDistance,

@@ -24,8 +24,8 @@
 // hp or the bounty reads neither `1` nor `2`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { SURGE_DEFS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { livesLostTo } from "./roster";
 

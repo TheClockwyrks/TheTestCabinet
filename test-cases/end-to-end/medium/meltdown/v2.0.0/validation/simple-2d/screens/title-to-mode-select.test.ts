@@ -23,8 +23,8 @@
 // surface.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, TITLE_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseMenu } from "./menu";
 

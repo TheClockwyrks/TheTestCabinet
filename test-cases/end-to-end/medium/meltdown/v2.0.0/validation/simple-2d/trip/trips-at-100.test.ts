@@ -29,8 +29,8 @@
 // item about the trip while being wrong about where it is.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_HEAT, TRIP_TIME } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
+import { TRIP_HEAT, TRIP_TIME } from "../constants";
 import {
   captureStill,
   createHarness,

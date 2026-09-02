@@ -45,13 +45,13 @@
 // requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
 } from "../assert";
+import { TILE } from "../constants";
 import {
   captureStill,
   createHarness,

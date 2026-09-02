@@ -43,8 +43,8 @@
 // whole `0.6` late; one that halves or doubles the interval reads `0.3` or `1.2`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_SPAWN_INTERVAL } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
+import { WAVE_SPAWN_INTERVAL } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseWaveReady, watchRelease } from "./release";
 

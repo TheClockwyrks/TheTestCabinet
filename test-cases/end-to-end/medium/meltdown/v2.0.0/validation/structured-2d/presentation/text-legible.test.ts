@@ -53,8 +53,8 @@
 // `hud.mute-read` owns.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_H, STAGE_W } from "../constants";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   colorDistance,

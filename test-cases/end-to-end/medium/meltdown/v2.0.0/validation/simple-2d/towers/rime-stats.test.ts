@@ -50,13 +50,13 @@
 // trip are the rest of what makes it the odd row, and both are read here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
 } from "../assert";
+import { TILE } from "../constants";
 import {
   captureStill,
   createHarness,

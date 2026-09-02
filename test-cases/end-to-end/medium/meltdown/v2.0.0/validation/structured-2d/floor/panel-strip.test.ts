@@ -56,6 +56,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
+import {
   COLS,
   FLOOR_X0,
   FLOOR_X1,
@@ -68,11 +73,6 @@ import {
   tileCX,
   tileCY,
 } from "../constants";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-} from "../assert";
 import {
   captureStill,
   colorDistance,

@@ -33,8 +33,8 @@
 // goes, and has told the player more rather than less.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RIME_SLOW_CEIL } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { RIME_SLOW_CEIL } from "../constants";
 import {
   captureStill,
   createHarness,

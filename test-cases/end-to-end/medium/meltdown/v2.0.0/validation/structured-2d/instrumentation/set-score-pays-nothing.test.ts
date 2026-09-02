@@ -30,6 +30,7 @@
 // wave underneath the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLength } from "../assert";
 import {
   DIFFICULTY_TABLE,
   SCORE_VICTORY_PER_LIFE,
@@ -37,7 +38,6 @@ import {
   START_LIVES,
   SURGE_DEFS,
 } from "../constants";
-import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,

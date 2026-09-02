@@ -39,13 +39,13 @@
 // happens to report.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_LEVEL } from "../constants";
 import {
   assertBetween,
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
 } from "../assert";
+import { MAX_LEVEL } from "../constants";
 import {
   TICK_HZ,
   captureStill,

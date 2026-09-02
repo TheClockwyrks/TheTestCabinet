@@ -31,13 +31,13 @@
 // there to catch.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLength,
   assertNotNull,
 } from "../assert";
+import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

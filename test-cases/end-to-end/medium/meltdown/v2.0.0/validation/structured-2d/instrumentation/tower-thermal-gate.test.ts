@@ -37,8 +37,8 @@
 // the faculty this gate is supposed to leave alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BASE_K, FORGE_SETPOINT } from "../constants";
 import { assertGreaterThan, assertLessThan } from "../assert";
+import { BASE_K, FORGE_SETPOINT } from "../constants";
 import {
   captureStill,
   createHarness,

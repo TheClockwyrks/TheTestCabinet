@@ -32,8 +32,8 @@
 // does.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS, SURGE_DEFS, tileCX, tileCY } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { LEFT_VENT_ROWS, SURGE_DEFS, tileCX, tileCY } from "../constants";
 import {
   TICK_HZ,
   captureReplay,

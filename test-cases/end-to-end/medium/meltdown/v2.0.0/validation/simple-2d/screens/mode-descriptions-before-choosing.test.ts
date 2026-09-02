@@ -37,8 +37,8 @@
 // is the same five frames without a second item's behaviour underneath them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_ITEMS } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { MODE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

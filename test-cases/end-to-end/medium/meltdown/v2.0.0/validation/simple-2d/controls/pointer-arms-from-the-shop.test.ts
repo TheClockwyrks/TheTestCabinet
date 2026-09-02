@@ -40,8 +40,8 @@
 // tap.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../constants";
 import { assertEqual, assertNull } from "../assert";
+import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   clickControl,

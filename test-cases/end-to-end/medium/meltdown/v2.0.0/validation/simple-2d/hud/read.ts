@@ -26,8 +26,8 @@
 // an action — and two small local files are cheaper than a shared one both
 // groups have to agree about while their agents write them side by side.
 
-import { PANEL_X, STAGE_H, STAGE_W } from "../constants";
 import { fail } from "../assert";
+import { PANEL_X, STAGE_H, STAGE_W } from "../constants";
 import {
   colorDistance,
   drawFrame,

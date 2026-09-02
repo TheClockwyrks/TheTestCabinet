@@ -27,8 +27,8 @@
 // point per kill reads `1`. Each is a different number from `3`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { SURGE_DEFS } from "../constants";
 import {
   captureStill,
   createHarness,

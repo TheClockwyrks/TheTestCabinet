@@ -51,8 +51,8 @@
 // decides that the panel says so.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, TOWER_TYPES } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { TOWER_DEFS, TOWER_TYPES } from "../constants";
 import {
   captureStill,
   createHarness,

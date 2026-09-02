@@ -45,8 +45,8 @@
 // are drawn and that both are live.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_HEAT_MULT, MIN_HEAT_MULT } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
+import { MAX_HEAT_MULT, MIN_HEAT_MULT } from "../constants";
 import {
   captureStill,
   createHarness,

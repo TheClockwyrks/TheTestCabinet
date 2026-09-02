@@ -31,8 +31,8 @@
 // the wave it happened on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_CYCLE } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { WAVE_CYCLE } from "../constants";
 import {
   captureStill,
   createHarness,

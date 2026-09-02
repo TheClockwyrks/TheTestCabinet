@@ -34,6 +34,7 @@
 // nothing but the eight keys touches the held preview.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   ACTIONS,
   BINDINGS,
@@ -41,7 +42,6 @@ import {
   TOWER_TYPES,
   type ActionName,
 } from "../constants";
-import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,

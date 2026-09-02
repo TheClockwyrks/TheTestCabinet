@@ -25,8 +25,8 @@
 // this item is the route from the list into a run.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, MODES, MODE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, MODES, MODE_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseMenu } from "./menu";
 
