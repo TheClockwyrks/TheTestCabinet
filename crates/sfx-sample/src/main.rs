@@ -15,7 +15,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use test_cabinet_audio_core::clap_ext;
-use test_cabinet_audio_core::config::{self, AudioConfig};
+use test_cabinet_audio_core::config::{self, AudioConfig, PackKind};
 use test_cabinet_audio_core::effect::FilterType;
 use test_cabinet_audio_core::record;
 use test_cabinet_audio_core::runner;
@@ -360,7 +360,7 @@ fn run(cli: Cli) -> Result<(), String> {
             return Ok(());
         }
         Command::ListSamples { tag } => {
-            let library = runner::load_library(&config);
+            let library = runner::load_library(&config, PackKind::SamplePack)?;
             let entries = library.list(tag.as_deref());
             if entries.is_empty() {
                 println!("(no samples in the baked library)");
@@ -378,7 +378,7 @@ fn run(cli: Cli) -> Result<(), String> {
             return Ok(());
         }
         Command::SampleInfo { name } => {
-            let library = runner::load_library(&config);
+            let library = runner::load_library(&config, PackKind::SamplePack)?;
             match library.info(&name) {
                 Some(e) => println!(
                     "name: {}\ntags: {}\nduration_ms: {:.0}\ndescription: {}",
@@ -392,7 +392,7 @@ fn run(cli: Cli) -> Result<(), String> {
             return Ok(());
         }
         Command::Render => {
-            let library = runner::load_library(&config);
+            let library = runner::load_library(&config, PackKind::SamplePack)?;
             let count = runner::render_sfx(&config, Some(&library))?;
             println!(
                 "rendered {} operation{} to {}",

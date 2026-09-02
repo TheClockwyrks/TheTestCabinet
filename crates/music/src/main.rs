@@ -2,9 +2,11 @@
 //! and meter — rendered to a PCM `.wav` and emitted alongside a portable `.mid` score.
 //!
 //! `music` works in the abstract symbolic layer (pitches, beats, durations) rather than
-//! shaping raw DSP. Each subcommand is one operation and **only records**; `render`
-//! mixes the sequenced tracks down to the `.wav`, draws the piano-roll (plus waveform +
-//! spectrogram) preview, and emits the portable `.mid`. See
+//! shaping raw DSP. Each authoring subcommand is one operation and **only records**;
+//! `render` mixes the sequenced tracks down to the `.wav`, draws the piano-roll (plus
+//! waveform + spectrogram) preview, and emits the portable `.mid`. The
+//! `list-instruments` / `instrument-info` browse commands query the baked instrument
+//! bank and record nothing. See
 //! `apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md`.
 
 use std::path::PathBuf;
@@ -12,7 +14,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use test_cabinet_audio_core::clap_ext;
-use test_cabinet_audio_core::config::{self, AudioConfig};
+use test_cabinet_audio_core::config::{self, AudioConfig, PackKind};
 use test_cabinet_audio_core::music::{self, MusicOp};
 use test_cabinet_audio_core::record;
 use test_cabinet_audio_core::runner;
@@ -28,7 +30,7 @@ struct Cli {
     /// Path to the seeded config JSON (`sample_rate`, `channels`, `max_duration_ms`,
     /// the fixed `seed`, the instrument-bank name/dir, and the log / preview / `.wav` /
     /// `.mid` paths, plus an optional `live` block). Read by `init`, every operation,
-    /// and `render`.
+    /// `render`, and the browse commands.
     #[arg(long, default_value = "music.config.json", global = true)]
     config: PathBuf,
     #[command(subcommand)]
@@ -53,6 +55,21 @@ enum Command {
         /// The beat unit (a power of two: 4 = quarter, 8 = eighth …).
         #[arg(long)]
         den: u8,
+    },
+    /// List the baked bank instruments (optionally filtered by `--tag`), reading each
+    /// instrument's stable name, tags, whether it is pitched or percussion, and its
+    /// description. Records nothing.
+    ListInstruments {
+        /// Only instruments carrying this tag.
+        #[arg(long)]
+        tag: Option<String>,
+    },
+    /// Print one bank instrument's name, tags, pitch behavior, and description.
+    /// Records nothing.
+    InstrumentInfo {
+        /// The instrument name.
+        #[arg(long)]
+        name: String,
     },
     /// Define an instrument track (a synth waveform name, or a bank instrument name).
     DefineTrack {
@@ -111,6 +128,13 @@ struct SetTrackFxArgs {
     env: Option<EnvCurve>,
 }
 
+/// How a bank instrument responds to a note's pitch: a melodic instrument is
+/// transposed from the note it was recorded at, percussion always plays at its native
+/// pitch.
+fn pitch_kind(pitched: bool) -> &'static str {
+    if pitched { "pitched" } else { "percussion" }
+}
+
 fn main() -> ExitCode {
     match run(clap_ext::parse_allowing_negatives::<Cli>()) {
         Ok(()) => ExitCode::SUCCESS,
@@ -129,8 +153,41 @@ fn run(cli: Cli) -> Result<(), String> {
             println!("initialized empty log (run `render` to hear it)");
             return Ok(());
         }
+        Command::ListInstruments { tag } => {
+            let library = runner::load_library(&config, PackKind::InstrumentBank)?;
+            let entries = library.list(tag.as_deref());
+            if entries.is_empty() {
+                println!("(no instruments in the baked bank)");
+            } else {
+                for e in entries {
+                    println!(
+                        "{}  [{}]  {}  {}",
+                        e.name,
+                        e.tags.join(", "),
+                        pitch_kind(e.pitched),
+                        e.description
+                    );
+                }
+            }
+            return Ok(());
+        }
+        Command::InstrumentInfo { name } => {
+            let library = runner::load_library(&config, PackKind::InstrumentBank)?;
+            let Some(e) = library.info(&name) else {
+                return Err(format!("no instrument named `{name}` in the baked bank"));
+            };
+            println!("name: {}", e.name);
+            println!("tags: {}", e.tags.join(", "));
+            println!("kind: {}", pitch_kind(e.pitched));
+            if e.pitched {
+                println!("root_note: {}", e.root_note);
+            }
+            println!("duration_ms: {:.0}", e.duration_ms);
+            println!("description: {}", e.description);
+            return Ok(());
+        }
         Command::Render => {
-            let library = runner::load_library(&config);
+            let library = runner::load_library(&config, PackKind::InstrumentBank)?;
             let count = runner::render_music(&config, Some(&library))?;
             println!(
                 "rendered {} operation{} to {} and {}",

@@ -64,8 +64,9 @@ pub struct AudioConfig {
     /// The baked instrument bank this run plays (`name@version`), for `music`.
     #[serde(default)]
     pub instrument_bank: Option<String>,
-    /// The directory the baked sample/instrument audio and its manifest live in. Absent
-    /// when no pack is baked; the library then degrades to empty.
+    /// The directory the baked sample/instrument audio and its manifest live in,
+    /// overriding the image's baked location. Absent for a run that configures no
+    /// pack and for one that resolves the pack directory from the image.
     #[serde(default)]
     pub pack_dir: Option<PathBuf>,
     /// The live-preview endpoint, when a viewer is observing this run.
@@ -89,55 +90,152 @@ impl AudioConfig {
         self.channels.count() as u16
     }
 
-    /// The directory the baked sample/instrument audio lives in, resolving the
-    /// explicit [`Self::pack_dir`] first and otherwise falling back to the
-    /// `TCAB_INSTRUMENT_BANK_DIR` / `TCAB_SAMPLE_PACK_DIR` environment variable the
-    /// `music` / `sfx-sample` run-container images bake in.
+    /// The palette ref this run reads for `kind`: the config's own `sample_pack` /
+    /// `instrument_bank`, or the image's default palette
+    /// (`TCAB_SAMPLE_PACK` / `TCAB_INSTRUMENT_BANK`) when the config names none.
     ///
-    /// Core seeds only the pack/bank *name* (`sample_pack`/`instrument_bank`) into the
-    /// config, not the on-disk directory, so without this fallback the baked pack would
-    /// never load and the library would silently degrade to empty. A `music` run
-    /// prefers the instrument-bank dir; an `sfx-sample` run the sample-pack dir.
-    ///
-    /// A `music` image bakes **every** instrument bank as a per-name subdirectory under
-    /// the env var's root (`<root>/gm-lite/`, `<root>/cinematic/`, …), so the requested
-    /// `instrument_bank` selects which one this run plays (see `select_pack_dir`). An
-    /// image that bakes a single palette directly at the root still resolves correctly.
-    pub fn resolve_pack_dir(&self) -> Option<PathBuf> {
-        if let Some(dir) = &self.pack_dir {
-            return Some(dir.clone());
-        }
-        let (env_key, name) = if let Some(bank) = &self.instrument_bank {
-            ("TCAB_INSTRUMENT_BANK_DIR", Some(bank.as_str()))
-        } else if let Some(pack) = &self.sample_pack {
-            ("TCAB_SAMPLE_PACK_DIR", Some(pack.as_str()))
-        } else {
-            return None;
+    /// Core seeds the ref into an asset-generation run's config. A full-stack run
+    /// authors its own config and names no palette, so the image's default is what
+    /// gives those runs the library the image bakes.
+    pub fn pack_ref(&self, kind: PackKind) -> Option<String> {
+        let configured = match kind {
+            PackKind::SamplePack => &self.sample_pack,
+            PackKind::InstrumentBank => &self.instrument_bank,
         };
-        let root = std::env::var_os(env_key)
+        if let Some(name) = configured.as_ref().filter(|n| !n.is_empty()) {
+            return Some(name.clone());
+        }
+        std::env::var(kind.default_env())
+            .ok()
             .filter(|v| !v.is_empty())
-            .map(PathBuf::from)?;
-        Some(select_pack_dir(root, name))
+    }
+
+    /// The directory the baked audio for `kind` lives in, resolving the explicit
+    /// [`Self::pack_dir`] first and otherwise selecting the palette
+    /// [`Self::pack_ref`] names under the root the run-container image bakes in
+    /// (`TCAB_SAMPLE_PACK_DIR` / `TCAB_INSTRUMENT_BANK_DIR`).
+    ///
+    /// An image bakes each palette as a per-name subdirectory of that root
+    /// (`<root>/gm-lite/`, `<root>/cinematic/`, …), so the ref selects which one this
+    /// run reads. Returns `Ok(None)` when the run resolves no palette at all, and an
+    /// error when a ref names a palette the image does not bake.
+    pub fn resolve_pack_dir(&self, kind: PackKind) -> Result<Option<PathBuf>, String> {
+        if let Some(dir) = &self.pack_dir {
+            return Ok(Some(dir.clone()));
+        }
+        let Some(name) = self.pack_ref(kind) else {
+            return Ok(None);
+        };
+        let root = std::env::var_os(kind.dir_env())
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .ok_or_else(|| {
+                format!(
+                    "no pack directory resolved: set `pack_dir` in the run config, or \
+                     {} in the run container",
+                    kind.dir_env()
+                )
+            })?;
+        select_pack_dir(root, &name).map(Some)
     }
 }
 
-/// Resolve the concrete pack directory within a baked palette `root`. A run-container
-/// image may bake several palettes as per-name subdirectories (`<root>/<name>/`); when
-/// the requested pack/bank `name` (`name@version`, so the part before `@`) has such a
-/// subdirectory carrying the loader's `pack.toml`, that subdirectory is selected.
-/// Otherwise the `root` itself is the pack directory — a single-palette image, the
-/// original layout — so an older image (or one that bakes just one bank) still works.
-fn select_pack_dir(root: PathBuf, name: Option<&str>) -> PathBuf {
-    if let Some(name) = name {
-        let bank = name.split('@').next().unwrap_or(name);
-        if !bank.is_empty() {
-            let sub = root.join(bank);
-            if sub.join("pack.toml").is_file() {
-                return sub;
-            }
+/// Which baked palette a tool reads: `sfx-sample` mixes over a sample pack and
+/// `music` sequences over an instrument bank. One config shape serves both binaries,
+/// so the binary states which of the two fields and which pair of environment
+/// variables apply to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PackKind {
+    /// `sfx-sample`'s sample pack.
+    SamplePack,
+    /// `music`'s instrument bank.
+    InstrumentBank,
+}
+
+impl PackKind {
+    /// How this palette is named in a diagnostic.
+    pub fn label(self) -> &'static str {
+        match self {
+            PackKind::SamplePack => "sample pack",
+            PackKind::InstrumentBank => "instrument bank",
         }
     }
-    root
+
+    /// The environment variable carrying the root the image's palettes are baked
+    /// under, one per-name subdirectory each.
+    pub fn dir_env(self) -> &'static str {
+        match self {
+            PackKind::SamplePack => "TCAB_SAMPLE_PACK_DIR",
+            PackKind::InstrumentBank => "TCAB_INSTRUMENT_BANK_DIR",
+        }
+    }
+
+    /// The environment variable naming the palette a run gets when its config names
+    /// none.
+    pub fn default_env(self) -> &'static str {
+        match self {
+            PackKind::SamplePack => "TCAB_SAMPLE_PACK",
+            PackKind::InstrumentBank => "TCAB_INSTRUMENT_BANK",
+        }
+    }
+}
+
+/// Resolve the concrete pack directory within a baked palette `root`.
+///
+/// A run-container image bakes each palette as a per-name subdirectory
+/// (`<root>/<name>/`), so a requested pack/bank `name` (`name@version`, so the part
+/// before `@`) selects the subdirectory carrying the loader's `pack.toml`.
+///
+/// A name with no such subdirectory is an error naming the palettes the root does
+/// carry: serving an unrelated palette in its place would render the run against the
+/// wrong samples.
+fn select_pack_dir(root: PathBuf, name: &str) -> Result<PathBuf, String> {
+    let bank = pack_name(name);
+    if bank.is_empty() {
+        return Err(format!("`{name}` names no pack"));
+    }
+    let sub = root.join(bank);
+    if sub.join("pack.toml").is_file() {
+        return Ok(sub);
+    }
+    Err(format!(
+        "no pack `{bank}` baked under {}{}",
+        root.display(),
+        available_palettes(&root)
+    ))
+}
+
+/// The name half of a `name@version` palette ref (the whole ref when it pins no
+/// version).
+pub fn pack_name(reference: &str) -> &str {
+    reference.split('@').next().unwrap_or(reference)
+}
+
+/// The version half of a `name@version` palette ref, absent when the ref pins none.
+pub fn pack_version(reference: &str) -> Option<&str> {
+    reference
+        .split_once('@')
+        .map(|(_, version)| version)
+        .filter(|v| !v.is_empty())
+}
+
+/// A trailing " (available: a, b)" clause naming the palettes baked under `root`, so
+/// a mis-named bank reports what the image actually carries. Empty when the root
+/// lists nothing usable.
+fn available_palettes(root: &Path) -> String {
+    let Ok(read) = std::fs::read_dir(root) else {
+        return String::new();
+    };
+    let mut names: Vec<String> = read
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().join("pack.toml").is_file())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    if names.is_empty() {
+        return String::new();
+    }
+    names.sort();
+    format!(" (available: {})", names.join(", "))
 }
 
 fn default_sample_rate() -> u32 {

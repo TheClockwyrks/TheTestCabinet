@@ -273,24 +273,45 @@ impl SamplePlacement {
         self.t_ms + played
     }
 
-    /// Render this layer into a fresh mono buffer of `clip_samples` samples. Silence
-    /// if the library is absent or the named sample is missing (a graceful degrade so
-    /// runs pass without a baked pack).
+    /// The named sample's mono source audio, paired with the library's own sample
+    /// rate. A placement naming a sample the baked library does not carry is an error
+    /// rather than silence, so a mis-named layer is reported instead of quietly
+    /// dropped.
+    fn source(&self, library: Option<&SampleLibrary>) -> Result<(Vec<f32>, f64), String> {
+        let lib = library.ok_or_else(|| {
+            format!(
+                "add_sample names `{}` but this run has no baked sample library",
+                self.name
+            )
+        })?;
+        if lib.info(&self.name).is_none() {
+            return Err(format!(
+                "no sample named `{}` in the baked library (browse it with `list-samples`)",
+                self.name
+            ));
+        }
+        let src = lib.samples(&self.name).ok_or_else(|| {
+            format!(
+                "sample `{}`: its audio could not be read from the baked library",
+                self.name
+            )
+        })?;
+        if src.is_empty() {
+            return Err(format!("sample `{}` carries no audio", self.name));
+        }
+        Ok((src, lib.sample_rate() as f64))
+    }
+
+    /// Render this layer into a fresh mono buffer of `clip_samples` samples, erroring
+    /// when the baked library does not carry the placed sample.
     fn render(
         &self,
         params: &RenderParams,
         clip_samples: usize,
         library: Option<&SampleLibrary>,
-    ) -> Vec<f32> {
+    ) -> Result<Vec<f32>, String> {
         let mut out = vec![0.0f32; clip_samples];
-        let Some(lib) = library else { return out };
-        let Some(src) = lib.samples(&self.name) else {
-            return out;
-        };
-        if src.is_empty() {
-            return out;
-        }
-        let src_rate = lib.sample_rate() as f64;
+        let (src, src_rate) = self.source(library)?;
         // Trim window in source samples.
         let in_s = self
             .trim_in_ms
@@ -303,7 +324,7 @@ impl SamplePlacement {
             .unwrap_or(src.len())
             .min(src.len());
         if out_s <= in_s {
-            return out;
+            return Ok(out);
         }
         let window: Vec<f32> = if self.reverse {
             src[in_s..out_s].iter().rev().copied().collect()
@@ -343,7 +364,7 @@ impl SamplePlacement {
             }
             out[dst] += (s * gain) as f32;
         }
-        out
+        Ok(out)
     }
 }
 
@@ -561,14 +582,14 @@ impl SfxProject {
 }
 
 /// Mix a folded project down to interleaved PCM at `params`. `library` supplies the
-/// baked samples for any placed layers (pass `None` for a pure-synth render or when
-/// no pack is baked — placed samples then contribute silence). Interleaved by channel;
-/// for stereo, `[l0, r0, l1, r1, …]`.
+/// baked samples for any placed layers, so a pure-synth render passes `None`. A placed
+/// layer naming a sample the library does not carry is an error naming that sample.
+/// Interleaved by channel; for stereo, `[l0, r0, l1, r1, …]`.
 pub fn render_sfx(
     project: &SfxProject,
     params: &RenderParams,
     library: Option<&SampleLibrary>,
-) -> Vec<f32> {
+) -> Result<Vec<f32>, String> {
     let chan = params.channels.count();
     // Clip length = the latest voice/sample end, capped at the format's max.
     let mut end_ms = 0.0f64;
@@ -593,14 +614,14 @@ pub fn render_sfx(
         pan_into(&mut mix, &buf, slot.voice.pan, params);
     }
     for s in &project.samples {
-        let buf = s.render(params, clip_samples, library);
+        let buf = s.render(params, clip_samples, library)?;
         // Samples are placed centered (add-sample carries no pan).
         pan_into(&mut mix, &buf, 0.0, params);
     }
 
     apply_master_fx(&mut mix, &project.master_fx, params);
     normalize_peak(&mut mix);
-    mix
+    Ok(mix)
 }
 
 /// Add a mono voice/layer buffer into the interleaved mix at stereo position `pan`
