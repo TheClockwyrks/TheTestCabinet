@@ -30,7 +30,7 @@
 // board to reveal anything with a flare or a ping.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../../src/constants";
+import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { poseLitWallProbe } from "../fixtures";
 import {

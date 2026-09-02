@@ -42,7 +42,7 @@ import {
   TILE,
   VISION_GAIN,
   VISION_MIN,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

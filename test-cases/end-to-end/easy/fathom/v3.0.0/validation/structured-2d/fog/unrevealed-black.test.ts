@@ -31,7 +31,7 @@
 // pellet on is not something this point has any business turning on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { VISION_GAIN, VISION_MIN } from "../../src/constants";
+import { VISION_GAIN, VISION_MIN } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
