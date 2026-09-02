@@ -1199,8 +1199,16 @@ export function assembleEngine<D = unknown>(
         built = { instance, debug: returned };
         // A destroy that raced the awaits above wins: the engine is torn down,
         // and opening the start level into it would resurrect a world nothing
-        // will ever close.
-        if (destroyed) return instance;
+        // will ever close. The instance is shut down here rather than left
+        // standing, because `destroy` reached the engine before this line
+        // adopted the instance and so found nothing to shut down — and an
+        // instance whose `initialize` ran and whose `shutdown` never does is
+        // exactly the leak `destroy` exists to prevent, whichever side of one
+        // await the two calls landed on.
+        if (destroyed) {
+          instance.shutdown();
+          return instance;
+        }
         await subsystems.worlds.open(game.startLevel, undefined);
         ready = true;
         return instance;
