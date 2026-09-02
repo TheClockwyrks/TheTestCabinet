@@ -45,7 +45,7 @@ import {
   SHARD_HALF,
   SHIP_X_MIN,
   droneSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertBetween,
   assertEqual,

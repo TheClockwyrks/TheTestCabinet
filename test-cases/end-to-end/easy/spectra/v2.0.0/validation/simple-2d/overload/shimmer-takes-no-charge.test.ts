@@ -35,7 +35,7 @@
 // `drones/flux-shimmer-duration`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLUX_SHIMMER, FORM_CENTER_X, fluxHold } from "../../src/constants";
+import { FLUX_SHIMMER, FORM_CENTER_X, fluxHold } from "../constants";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import {
   captureStill,

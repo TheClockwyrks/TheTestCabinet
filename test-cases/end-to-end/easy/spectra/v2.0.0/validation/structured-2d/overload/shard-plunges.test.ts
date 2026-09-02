@@ -39,7 +39,7 @@ import {
   PLAYER_BULLET_HALF,
   SHARD_HALF,
   SHIP_X_MIN,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

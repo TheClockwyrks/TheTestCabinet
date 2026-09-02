@@ -42,7 +42,7 @@ import {
   OVERLOAD_AT,
   OVERLOAD_DIVE_SCALE,
   droneSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertBetween,
   assertEqual,

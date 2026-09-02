@@ -32,7 +32,7 @@
 // `swarm/dive-bends-toward-player`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_TOP, OVERLOAD_AT } from "../../src/constants";
+import { FIELD_TOP, OVERLOAD_AT } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

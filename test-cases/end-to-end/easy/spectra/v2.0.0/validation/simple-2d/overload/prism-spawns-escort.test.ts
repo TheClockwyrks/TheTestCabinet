@@ -30,7 +30,7 @@ import {
   FORM_CENTER_X,
   OVERLOAD_AT,
   OVERLOAD_PRISM_ESCORTS,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

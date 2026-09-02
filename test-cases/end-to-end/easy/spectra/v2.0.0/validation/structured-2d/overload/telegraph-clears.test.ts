@@ -34,7 +34,7 @@ import {
   PLAYER_BULLET_HALF,
   SHARD_HALF,
   SHARD_SIZE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import {
   LANE_CENTER,

@@ -30,7 +30,7 @@ import {
   OVERLOAD_AT,
   PLAYER_BULLET_HALF,
   SHARD_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   LANE_CENTER,

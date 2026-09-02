@@ -22,7 +22,7 @@
 // wave's entry gate, so the only drone standing is the Prism itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X, OVERLOAD_AT } from "../../src/constants";
+import { FORM_CENTER_X, OVERLOAD_AT } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,

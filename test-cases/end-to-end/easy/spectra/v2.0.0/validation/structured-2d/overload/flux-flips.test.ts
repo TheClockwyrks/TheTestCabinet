@@ -35,7 +35,7 @@ import {
   OVERLOAD_AT,
   PLAYER_BULLET_HALF,
   fluxHold,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   LANE_CENTER,

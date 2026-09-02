@@ -38,7 +38,7 @@ import {
   PLAYER_BULLET_HALF,
   SHARD_HALF,
   SWAY_AMP,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   LANE_CENTER,

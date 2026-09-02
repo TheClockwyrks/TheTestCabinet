@@ -39,7 +39,7 @@
 // mismatched shot tips it over.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X, OVERLOAD_AT, SHARD_SIZE } from "../../src/constants";
+import { FORM_CENTER_X, OVERLOAD_AT, SHARD_SIZE } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

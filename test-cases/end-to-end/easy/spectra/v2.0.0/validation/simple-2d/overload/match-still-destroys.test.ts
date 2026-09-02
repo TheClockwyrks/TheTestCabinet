@@ -31,7 +31,7 @@ import {
   OVERLOAD_AT,
   PLAYER_BULLET_SPEED,
   SHARD_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,

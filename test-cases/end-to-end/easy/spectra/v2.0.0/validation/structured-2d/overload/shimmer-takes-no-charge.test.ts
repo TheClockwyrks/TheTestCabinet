@@ -34,7 +34,7 @@ import {
   FLUX_SHIMMER,
   PLAYER_BULLET_HALF,
   fluxHold,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   LANE_CENTER,

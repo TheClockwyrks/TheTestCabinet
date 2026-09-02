@@ -36,7 +36,7 @@ import {
   OVERLOAD_FLUX_SPREAD,
   PLAYER_BULLET_HALF,
   fluxHold,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   LANE_CENTER,

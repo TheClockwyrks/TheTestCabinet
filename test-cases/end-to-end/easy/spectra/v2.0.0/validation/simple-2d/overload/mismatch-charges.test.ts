@@ -29,7 +29,7 @@
 // `overload/mismatch-scores-nothing` and `overload/fills-no-resonance`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X, SHARD_HALF } from "../../src/constants";
+import { FORM_CENTER_X, SHARD_HALF } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,

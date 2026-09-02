@@ -25,7 +25,7 @@
 // mismatch that landed, rather than a bullet that never arrived.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X } from "../../src/constants";
+import { FORM_CENTER_X } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

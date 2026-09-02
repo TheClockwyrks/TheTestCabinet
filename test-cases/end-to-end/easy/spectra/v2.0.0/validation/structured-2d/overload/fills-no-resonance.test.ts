@@ -32,7 +32,7 @@ import {
   PLAYER_BULLET_HALF,
   RESONANCE_MAX,
   SHARD_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   LANE_CENTER,

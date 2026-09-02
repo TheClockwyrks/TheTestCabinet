@@ -34,7 +34,7 @@ import {
   OVERLOAD_AT,
   OVERLOAD_FLUX_SPREAD,
   fluxHold,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

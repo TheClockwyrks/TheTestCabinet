@@ -29,7 +29,7 @@
 // which is `drones/flux-cycle-holds` and `drones/flux-emerges-opposite`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X, OVERLOAD_AT, fluxHold } from "../../src/constants";
+import { FORM_CENTER_X, OVERLOAD_AT, fluxHold } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

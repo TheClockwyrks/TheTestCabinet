@@ -34,7 +34,7 @@ import {
   OVERLOAD_AT,
   PLAYER_BULLET_HALF,
   PRISM_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   LANE_CENTER,

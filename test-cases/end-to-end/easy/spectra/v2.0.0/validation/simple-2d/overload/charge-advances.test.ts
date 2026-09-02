@@ -25,7 +25,7 @@
 // no shell, no shimmer, so the band that mismatches it never moves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X, OVERLOAD_AT } from "../../src/constants";
+import { FORM_CENTER_X, OVERLOAD_AT } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

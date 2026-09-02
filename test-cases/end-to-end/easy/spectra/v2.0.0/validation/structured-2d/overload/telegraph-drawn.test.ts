@@ -32,7 +32,7 @@
 // is the charge.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OVERLOAD_AT, SHARD_SIZE } from "../../src/constants";
+import { OVERLOAD_AT, SHARD_SIZE } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   LANE_CENTER,

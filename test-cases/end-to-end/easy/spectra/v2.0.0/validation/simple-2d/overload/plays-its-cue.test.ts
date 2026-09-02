@@ -48,7 +48,7 @@ import {
   FORM_CENTER_X,
   OVERLOAD_AT,
   PLAYER_BULLET_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -35,7 +35,7 @@ import {
   OVERLOAD_FLUX_SPREAD,
   OVERLOAD_FLUX_SPREAD_ANGLE,
   fluxHold,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertLength } from "../assert";
 import {
   captureStill,
