@@ -42,6 +42,7 @@
 // answers only on the screen it belongs to", and none of the six belongs to `won`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   DEAL_STOCK_CARDS,
   DECK_SIZE,
@@ -49,8 +50,7 @@ import {
   STAGE_H,
   STAGE_W,
   TABLEAU_COLUMNS,
-} from "../../src/constants";
-import { assertEqual, assertGreaterThan, assertLength } from "../assert";
+} from "../constants";
 import {
   captureStill,
   createHarness,

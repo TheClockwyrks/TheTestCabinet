@@ -34,8 +34,8 @@
 // hand is read before anything is concluded from the face beneath it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W, COLUMN_X, TOP_ROW_Y } from "../../src/constants";
 import { assertDeepEqual, assertEqual } from "../assert";
+import { CARD_H, CARD_W, COLUMN_X, TOP_ROW_Y } from "../constants";
 import {
   captureReplay,
   cardOf,

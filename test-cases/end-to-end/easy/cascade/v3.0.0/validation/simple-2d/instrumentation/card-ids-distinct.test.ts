@@ -19,8 +19,8 @@
 // `deal.full-deck`'s point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE } from "../../src/constants";
 import { assertLength } from "../assert";
+import { DECK_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,

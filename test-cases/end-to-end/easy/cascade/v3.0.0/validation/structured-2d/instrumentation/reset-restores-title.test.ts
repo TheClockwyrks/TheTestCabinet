@@ -31,7 +31,6 @@
 // `instrumentation/gates-default-on`. This point reads the declared fields.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_COUNT, TABLEAU_COLUMNS } from "../../src/constants";
 import {
   assertDeepEqual,
   assertEqual,
@@ -40,6 +39,7 @@ import {
   assertNotNull,
   assertNull,
 } from "../assert";
+import { FOUNDATION_COUNT, TABLEAU_COLUMNS } from "../constants";
 import {
   SEVEN,
   captureStill,

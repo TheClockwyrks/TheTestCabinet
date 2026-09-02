@@ -31,8 +31,8 @@
 // `winning.no-win-at-fifty-one`. This point decides that the gate holds it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { DECK_SIZE } from "../constants";
 import {
   captureStill,
   cardsHome,

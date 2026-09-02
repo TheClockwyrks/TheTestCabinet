@@ -36,8 +36,8 @@
 // cascade looks like.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LAUNCH_INTERVAL } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
+import { LAUNCH_INTERVAL } from "../constants";
 import {
   captureReplay,
   createHarness,

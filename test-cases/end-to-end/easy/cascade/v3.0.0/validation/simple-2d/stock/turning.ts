@@ -16,8 +16,8 @@
 // a fifty-two card stock cannot survive fifty-two turns; a build whose turn moves
 // nothing fails here rather than hanging the suite.
 
-import { DECK_SIZE } from "../../src/constants";
 import { fail } from "../assert";
+import { DECK_SIZE } from "../constants";
 import type { Harness } from "../harness";
 
 /**

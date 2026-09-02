@@ -43,8 +43,8 @@
 // trail is most of what there is to look at.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, LAUNCH_INTERVAL } from "../../src/constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { DECK_SIZE, LAUNCH_INTERVAL } from "../constants";
 import {
   captureReplay,
   cardsHome,

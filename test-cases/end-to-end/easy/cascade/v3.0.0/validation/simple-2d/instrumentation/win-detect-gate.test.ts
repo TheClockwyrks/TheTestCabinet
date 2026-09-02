@@ -25,8 +25,8 @@
 // operation is a pose and runs no rule.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
+import { DECK_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,

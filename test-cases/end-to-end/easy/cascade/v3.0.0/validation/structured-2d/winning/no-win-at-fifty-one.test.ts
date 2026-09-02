@@ -39,8 +39,8 @@
 // be sitting in front of, and `winDetect` is the faculty the requirement exercises.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, RANK_MAX } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { DECK_SIZE, RANK_MAX } from "../constants";
 import {
   ALL_SUITS,
   card,

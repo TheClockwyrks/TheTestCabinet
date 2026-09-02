@@ -41,7 +41,6 @@
 // snapshot is read first and the frame is run after it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_SOUND } from "../../src/constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -50,6 +49,7 @@ import {
   assertNotNull,
   assertNull,
 } from "../assert";
+import { HUD_SOUND } from "../constants";
 import {
   captureStill,
   clickAt,

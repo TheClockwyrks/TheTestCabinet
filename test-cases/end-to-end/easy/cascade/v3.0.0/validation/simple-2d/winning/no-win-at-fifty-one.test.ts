@@ -39,8 +39,8 @@
 // be sitting in front of, and `winDetect` is the faculty the requirement exercises.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, RANK_MAX, SUITS } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
+import { DECK_SIZE, RANK_MAX, SUITS } from "../constants";
 import {
   captureStill,
   createHarness,

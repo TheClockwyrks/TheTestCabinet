@@ -45,8 +45,8 @@
 // group's, for its own much longer sweeps.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, LAUNCH_INTERVAL } from "../../src/constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
+import { DECK_SIZE, LAUNCH_INTERVAL } from "../constants";
 import {
   captureReplay,
   createHarness,

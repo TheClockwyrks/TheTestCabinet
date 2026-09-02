@@ -27,7 +27,6 @@
 // after the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SUITS } from "../../src/constants";
 import {
   assertContains,
   assertEqual,
@@ -36,6 +35,7 @@ import {
   assertLength,
   assertNotNull,
 } from "../assert";
+import { SUITS } from "../constants";
 import {
   captureStill,
   cardCenter,

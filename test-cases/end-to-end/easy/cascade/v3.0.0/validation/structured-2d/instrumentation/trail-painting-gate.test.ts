@@ -42,8 +42,8 @@
 // `presentation.face-distinct-from-table`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W } from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { CARD_H, CARD_W } from "../constants";
 import {
   KING,
   captureStill,

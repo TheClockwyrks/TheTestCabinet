@@ -39,8 +39,8 @@
 // that such a waste refuses a move is `stock/no-sets-refuses-move`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W, TOP_ROW_Y, WASTE_X } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
+import { CARD_H, CARD_W, TOP_ROW_Y, WASTE_X } from "../constants";
 import {
   captureStill,
   colorDistance,
