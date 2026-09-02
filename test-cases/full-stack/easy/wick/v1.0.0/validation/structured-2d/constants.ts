@@ -1333,6 +1333,13 @@ export const HUD_BAR_RATIO_TOL = 0.1;
  * a pixel or two on a bar legible at the 1280 x 720 stage. A tenth of the
  * bar's width is far past any of those, and half of the fifth of the width the
  * smallest reflection of a fill moves a band's left edge by.
+ *
+ * A bar CENTRED on its own track moves a band's left edge by only half what a
+ * reflection does — half of what that fill is short by — so this bound tells a
+ * centred bar from a left-anchored one only where the band read is small. The
+ * suites that use it therefore read a left edge off a band around a quarter or
+ * a fifth of the bar, which a centred bar puts more than a third of the bar's
+ * width from its start.
  */
 export const HUD_BAR_LEFT_TOL = 0.1;
 
