@@ -11,6 +11,13 @@ description = "The whole night: every weapon, passive, and enemy, through to daw
 # branches on the variant at all, and the only axis the specs branch on is
 # `engine.slug`.
 
+# The curated presentation this variant shows on the catalog and its case page:
+# a player-facing description and an ordered carousel, captured from the
+# `structured-2d` reference build below by `showcase/capture/`. The leading
+# entry is a replay of one sustained stretch of a real night rather than a
+# moment, and both stills are frames of that same take. Never seeded into a run.
+showcase = "showcase/base"
+
 # The authored, correct builds of this variant, one directory per supported
 # engine, because the build a reference demonstrates differs under each: the
 # engineless one writes its own runtime and `window.__wick`, the Simple 2D one
@@ -29,11 +36,6 @@ description = "The whole night: every weapon, passive, and enemy, through to daw
 none = "references/none/base"
 "simple-2d" = "references/simple-2d/base"
 "structured-2d" = "references/structured-2d/base"
-
-# No `showcase` yet either. The curated catalog presentation, a player-facing
-# description and a carousel led by sustained real play captured from a
-# reference build, lands with `showcase/base/` and its capture driver once the
-# references exist.
 
 # No `[workspaces]` override. This is the only variant, so the case's own
 # `[workspaces]` names its starter projects directly, one per engine.
