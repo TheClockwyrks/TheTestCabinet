@@ -134,26 +134,26 @@ it("names every key BINDINGS binds, as a standalone word, on the howto screen", 
   const drawn = drawnRuns(h);
 
   const keys = boundKeys(carriesTorpedoes(h));
-  const UNMAPPED_KEYS = unmappedKeys(keys);
-  const REQUIRED_WORDS = requiredWords(keys);
+  const unmapped = unmappedKeys(keys);
+  const required = requiredWords(keys);
 
   assertLength(
-    UNMAPPED_KEYS,
+    unmapped,
     0,
     "keys in specs/controls.md's BINDINGS that this check has no required " +
       "word for — specs/ui.md requires the how-to screen to name every key " +
       `specs/controls.md binds, so a binding with no word here would go ` +
-      `ungraded: ${JSON.stringify(UNMAPPED_KEYS)}`,
+      `ungraded: ${JSON.stringify(unmapped)}`,
   );
 
-  for (const word of REQUIRED_WORDS) {
+  for (const word of required) {
     assertMatches(
       drawn,
       standalone(word),
       `the standalone word ${JSON.stringify(word)} among the runs of text the ` +
         "howto screen drew — its controls name every key specs/controls.md " +
         `binds, written as the standalone words ` +
-        `${REQUIRED_WORDS.join(", ")} (specs/ui.md)`,
+        `${required.join(", ")} (specs/ui.md)`,
     );
   }
 });
