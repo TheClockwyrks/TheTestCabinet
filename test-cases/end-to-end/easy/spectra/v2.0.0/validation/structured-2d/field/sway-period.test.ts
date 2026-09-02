@@ -21,7 +21,7 @@
 // reads only WHEN it turns.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SWAY_PERIOD, slotX, slotY } from "../../src/constants";
+import { SWAY_PERIOD, slotX, slotY } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

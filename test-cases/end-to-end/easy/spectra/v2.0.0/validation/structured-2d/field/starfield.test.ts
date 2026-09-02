@@ -48,7 +48,7 @@ import {
   FIELD_TOP,
   SHIP_X_MIN,
   STARFIELD_MIN,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

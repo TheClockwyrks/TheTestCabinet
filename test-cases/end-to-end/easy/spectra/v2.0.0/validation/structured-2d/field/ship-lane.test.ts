@@ -36,7 +36,7 @@
 // at all, which is `presentation/fighter-from-sprite`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_H, SHIP_W, SHIP_Y } from "../../src/constants";
+import { BINDINGS, SHIP_H, SHIP_W, SHIP_Y } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual, fail } from "../assert";
 import {
   captureStill,

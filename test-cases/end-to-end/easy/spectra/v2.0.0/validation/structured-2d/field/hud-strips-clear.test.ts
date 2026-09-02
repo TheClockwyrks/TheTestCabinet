@@ -34,7 +34,7 @@
 // sibling `field/stage-fit`, and what they say, which is `screens/hud-*`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_COLS, FORM_ROWS, SHARD_SIZE } from "../../src/constants";
+import { FORM_COLS, FORM_ROWS, SHARD_SIZE } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

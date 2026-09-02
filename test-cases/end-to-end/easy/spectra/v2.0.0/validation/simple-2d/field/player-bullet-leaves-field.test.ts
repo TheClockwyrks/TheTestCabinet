@@ -27,7 +27,7 @@ import {
   FIELD_TOP,
   PLAYER_BULLET_H,
   PLAYER_BULLET_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

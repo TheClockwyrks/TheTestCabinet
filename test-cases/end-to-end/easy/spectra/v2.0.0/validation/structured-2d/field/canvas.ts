@@ -30,7 +30,7 @@ import {
   HUD_TOP_H,
   STAGE_H,
   STAGE_W,
-} from "../../src/constants";
+} from "../constants";
 import type { Harness, Rgb } from "../harness";
 
 /** A rectangle in logical stage units, by its top-left corner and its extent. */

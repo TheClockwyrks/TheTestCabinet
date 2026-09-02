@@ -55,7 +55,7 @@ import {
   SWAY_AMP,
   slotX,
   slotY,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertBetween,
   assertGreaterThanOrEqual,

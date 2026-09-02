@@ -48,7 +48,7 @@ import {
   SHARD_SIZE,
   STAGE_H,
   STAGE_W,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertGreaterThan,
   assertGreaterThanOrEqual,

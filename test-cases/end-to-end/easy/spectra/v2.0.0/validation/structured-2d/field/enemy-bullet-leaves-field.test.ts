@@ -26,7 +26,7 @@ import {
   ENEMY_BULLET_H,
   ENEMY_BULLET_SPEED,
   FIELD_BOTTOM,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   bulletById,
