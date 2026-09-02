@@ -76,10 +76,17 @@ import {
   type Viewport,
   type World,
 } from "@test-cabinet/structured-2d";
-import { BINDINGS, LAYOUT, STAGE_H, STAGE_W } from "../src/constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { assertEqual, assertTruthy, fail } from "./assert";
-import { CHANNELS, cellCenter, parseBoard, type Board } from "./notation";
+import { BINDINGS, LAYOUT } from "./constants";
+import {
+  CHANNELS,
+  STAGE_H,
+  STAGE_W,
+  cellCenter,
+  parseBoard,
+  type Board,
+} from "./notation";
 import { CAMPAIGN_BOARDS } from "./routes";
 import type { Beams } from "./rules";
 import { solve } from "./solver";

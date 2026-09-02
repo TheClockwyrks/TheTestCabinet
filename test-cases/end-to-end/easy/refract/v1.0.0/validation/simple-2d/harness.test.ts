@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { TITLE_TEXT } from "../src/constants";
+import { TITLE_TEXT } from "./constants";
 import { GEO_3X3 } from "./fixtures";
 import {
   captureReplay,

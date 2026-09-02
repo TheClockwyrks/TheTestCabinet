@@ -69,10 +69,18 @@ import {
   type Viewport,
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
-import { BINDINGS, LAYOUT, STAGE_H, STAGE_W } from "../src/constants";
 import { BACKGROUND, game as build, type RefractState } from "../src/game";
 import { assertEqual, fail } from "./assert";
-import { CHANNELS, NODE_R, cellX, cellY, type Board } from "./notation";
+import { BINDINGS, LAYOUT } from "./constants";
+import {
+  CHANNELS,
+  NODE_R,
+  STAGE_H,
+  STAGE_W,
+  cellX,
+  cellY,
+  type Board,
+} from "./notation";
 import { CAMPAIGN_BOARDS } from "./routes";
 import type { Beams } from "./rules";
 import { solve } from "./solver";
