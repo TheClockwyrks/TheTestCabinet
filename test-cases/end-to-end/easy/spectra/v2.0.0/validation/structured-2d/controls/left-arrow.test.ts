@@ -38,7 +38,7 @@
 // key is held. The only thing on the field that can move the ship is the key.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_SPEED } from "../../src/constants";
+import { SHIP_SPEED } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import {
   captureStill,

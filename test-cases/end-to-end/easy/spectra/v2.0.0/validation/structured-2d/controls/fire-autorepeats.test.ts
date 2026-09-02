@@ -42,7 +42,7 @@
 // the second is one this key fired.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL } from "../../src/constants";
+import { FIRE_INTERVAL } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,
