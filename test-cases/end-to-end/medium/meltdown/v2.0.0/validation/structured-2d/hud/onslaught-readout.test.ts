@@ -37,7 +37,7 @@ import {
   DIFFICULTY_TABLE,
   HUD_WAVE_LABEL,
   MODE_TABLE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

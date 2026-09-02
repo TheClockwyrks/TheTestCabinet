@@ -19,7 +19,7 @@
 // moves nothing but the readout.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_LIVES_LABEL } from "../../src/constants";
+import { HUD_LIVES_LABEL } from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,

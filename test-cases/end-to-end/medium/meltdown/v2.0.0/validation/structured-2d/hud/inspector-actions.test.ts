@@ -34,7 +34,7 @@
 // figures.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { REFUND_RATE, TOWER_DEFS, upgradeCost } from "../../src/constants";
+import { REFUND_RATE, TOWER_DEFS, upgradeCost } from "../constants";
 import { assertEqual, assertNotNull, assertNull, assertTrue } from "../assert";
 import {
   captureStill,

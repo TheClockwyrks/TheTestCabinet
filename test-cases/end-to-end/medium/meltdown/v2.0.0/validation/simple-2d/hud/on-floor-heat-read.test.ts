@@ -34,7 +34,7 @@
 // groups. This point decides that the floor says what a tower's heat is.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, TRIP_HEAT, tileLeft, tileTop } from "../../src/constants";
+import { TILE, TRIP_HEAT, tileLeft, tileTop } from "../constants";
 import { sizeOf } from "../geometry";
 import {
   captureStill,

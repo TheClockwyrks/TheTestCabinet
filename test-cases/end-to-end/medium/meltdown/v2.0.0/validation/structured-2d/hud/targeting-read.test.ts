@@ -44,7 +44,7 @@
 // read, and could make two panels differ for a reason that is not the targeting.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, TOWER_TYPES, type TowerType } from "../../src/constants";
+import { TOWER_DEFS, TOWER_TYPES, type TowerType } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

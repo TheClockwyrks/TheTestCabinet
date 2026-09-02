@@ -43,7 +43,7 @@
 // (specs/instrumentation.md, `controls`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertGreaterThanOrEqual, fail } from "../assert";
 import {
   captureStill,

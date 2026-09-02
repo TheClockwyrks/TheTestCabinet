@@ -33,7 +33,7 @@
 // else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_MONEY_LABEL } from "../../src/constants";
+import { HUD_MONEY_LABEL } from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,

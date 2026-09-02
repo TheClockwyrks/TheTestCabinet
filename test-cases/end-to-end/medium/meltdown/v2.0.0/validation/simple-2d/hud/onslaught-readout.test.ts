@@ -47,7 +47,7 @@
 // `hud.wave-readout`; what The Hundred fields is `modes.the-hundred-*`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_WAVE_LABEL } from "../../src/constants";
+import { HUD_WAVE_LABEL } from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,

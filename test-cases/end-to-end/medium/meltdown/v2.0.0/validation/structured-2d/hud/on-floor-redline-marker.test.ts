@@ -43,7 +43,7 @@
 // empty, so no shot and no neighbour can move it either.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileLeft, tileTop } from "../../src/constants";
+import { TILE, tileLeft, tileTop } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

@@ -41,7 +41,7 @@ import {
   PANEL_X,
   STAGE_H,
   STAGE_W,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,

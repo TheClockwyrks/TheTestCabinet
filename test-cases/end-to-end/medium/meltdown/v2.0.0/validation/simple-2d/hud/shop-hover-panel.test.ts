@@ -58,7 +58,7 @@
 // armed a placement or selected a tower on a hover fails here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MIN_HEAT_MULT, TOWER_DEFS, emitterStats } from "../../src/constants";
+import { MIN_HEAT_MULT, TOWER_DEFS, emitterStats } from "../constants";
 import { assertEqual, assertNull, assertTrue } from "../assert";
 import {
   captureStill,

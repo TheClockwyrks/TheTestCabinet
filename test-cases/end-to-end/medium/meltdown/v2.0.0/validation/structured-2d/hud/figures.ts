@@ -25,7 +25,7 @@ import {
   UPGRADE_FIRE_RATE,
   UPGRADE_RANGE,
   type EmitterDef,
-} from "../../src/constants";
+} from "../constants";
 
 /**
  * The heat multiplier at heat `H` against redline `R` (specs/heat.md, Heat is

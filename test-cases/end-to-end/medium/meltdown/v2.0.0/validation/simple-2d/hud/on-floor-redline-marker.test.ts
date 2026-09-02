@@ -50,7 +50,7 @@ import {
   TRIP_HEAT,
   tileLeft,
   tileTop,
-} from "../../src/constants";
+} from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { sizeOf } from "../geometry";
 import {

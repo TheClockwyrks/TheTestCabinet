@@ -35,7 +35,7 @@
 // is `hud.shop-hover-panel`, and how big an entry must be is `hud.touch-targets`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, TOWER_TYPES } from "../../src/constants";
+import { TOWER_DEFS, TOWER_TYPES } from "../constants";
 import { assertDeepEqual, assertLength, assertTrue } from "../assert";
 import {
   captureStill,
