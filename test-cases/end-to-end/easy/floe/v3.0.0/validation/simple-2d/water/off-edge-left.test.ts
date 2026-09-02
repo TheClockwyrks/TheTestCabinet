@@ -44,7 +44,7 @@
 // and passes this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, TILE, tileCX } from "../../src/constants";
+import { START_LIVES, TILE, tileCX } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

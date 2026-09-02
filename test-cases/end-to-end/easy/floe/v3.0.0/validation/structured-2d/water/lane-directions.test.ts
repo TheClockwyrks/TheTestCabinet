@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertEqual, assertGreaterThan } from "../assert";
-import { WATER_LANES } from "../../src/constants";
+import { WATER_LANES } from "../constants";
 import {
   captureReplay,
   createHarness,

@@ -16,7 +16,7 @@
 // the table by one fails on six.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WATER_LANES } from "../../src/constants";
+import { WATER_LANES } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

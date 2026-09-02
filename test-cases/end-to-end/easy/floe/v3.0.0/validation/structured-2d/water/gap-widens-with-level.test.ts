@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
-import { TILE, WATER_LANES, laneGap } from "../../src/constants";
+import { TILE, WATER_LANES, laneGap } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { floesAlong, layOutLevel, openWaterRuns } from "./harness";
 

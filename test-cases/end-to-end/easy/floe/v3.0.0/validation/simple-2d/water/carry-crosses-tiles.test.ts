@@ -42,7 +42,7 @@
 // — that is `water/raft-spans-are-solid`'s requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { colAt, START_LIVES, TILE, tileCX } from "../../src/constants";
+import { colAt, START_LIVES, TILE, tileCX } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureReplay,

@@ -21,7 +21,7 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { ITEM_LEN, WATER_LANES } from "../../src/constants";
+import { ITEM_LEN, WATER_LANES } from "../constants";
 import {
   captureStill,
   createHarness,

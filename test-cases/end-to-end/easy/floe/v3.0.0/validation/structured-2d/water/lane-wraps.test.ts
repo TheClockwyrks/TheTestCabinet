@@ -34,7 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
-import { STRAIT_W, TILE, WATER_LANES, laneGap } from "../../src/constants";
+import { STRAIT_W, TILE, WATER_LANES, laneGap } from "../constants";
 import {
   captureReplay,
   createHarness,

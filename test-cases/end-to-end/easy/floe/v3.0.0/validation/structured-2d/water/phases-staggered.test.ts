@@ -41,7 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
-import { COLS, WATER_LANES } from "../../src/constants";
+import { COLS, WATER_LANES } from "../constants";
 import {
   captureStill,
   createHarness,

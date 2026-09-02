@@ -32,7 +32,7 @@
 // both edges of the strait, so an empty lane fails here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, WATER_LANES } from "../../src/constants";
+import { COLS, WATER_LANES } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
 import {
   captureStill,

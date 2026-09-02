@@ -32,7 +32,7 @@
 // same shapes, poses its own scenarios through its own file, and the shared
 // harness is edited by every group at once.
 
-import { STRAIT_W, TILE, WATER_BOTTOM, WATER_TOP } from "../../src/constants";
+import { STRAIT_W, TILE, WATER_BOTTOM, WATER_TOP } from "../constants";
 import {
   resetTo,
   type FloeItemSnapshot,

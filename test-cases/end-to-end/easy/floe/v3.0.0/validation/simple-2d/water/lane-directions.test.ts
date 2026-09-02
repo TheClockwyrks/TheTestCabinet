@@ -22,7 +22,7 @@
 // that no wrap can land inside the second being measured (see `midStraitFloe`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WATER_LANES } from "../../src/constants";
+import { WATER_LANES } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

@@ -28,7 +28,7 @@
 // instead (`water/floe-carries`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ITEM_LEN, tileCX } from "../../src/constants";
+import { ITEM_LEN, tileCX } from "../constants";
 import { assertDefined, assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

@@ -31,7 +31,7 @@
 // level is laid out and left alone; the only thing driven is the clock.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { laneGap, STRAIT_W, TILE, WATER_LANES } from "../../src/constants";
+import { laneGap, STRAIT_W, TILE, WATER_LANES } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

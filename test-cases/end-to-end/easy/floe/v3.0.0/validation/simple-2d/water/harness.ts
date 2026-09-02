@@ -26,7 +26,7 @@
 // Neither asserts a verdict and neither carries a tolerance: a check states its
 // own, beside the figure it is a tolerance on.
 
-import { STRAIT_W } from "../../src/constants";
+import { STRAIT_W } from "../constants";
 import { fail } from "../assert";
 import {
   itemsInRow,

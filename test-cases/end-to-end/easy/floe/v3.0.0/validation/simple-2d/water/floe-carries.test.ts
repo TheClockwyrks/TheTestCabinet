@@ -37,7 +37,7 @@
 // inside the measurement and no wrap lands in it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, TILE, tileCX } from "../../src/constants";
+import { START_LIVES, TILE, tileCX } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureReplay,

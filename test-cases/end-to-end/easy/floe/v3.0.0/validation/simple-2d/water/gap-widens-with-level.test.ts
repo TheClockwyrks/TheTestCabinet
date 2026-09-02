@@ -24,7 +24,7 @@
 // row.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { laneGap, WATER_LANES } from "../../src/constants";
+import { laneGap, WATER_LANES } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

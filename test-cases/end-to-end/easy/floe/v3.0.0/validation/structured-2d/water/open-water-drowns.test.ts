@@ -30,7 +30,7 @@
 // nothing beyond it is allowed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, tileCX } from "../../src/constants";
+import { START_LIVES, tileCX } from "../constants";
 import { assertDefined, assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

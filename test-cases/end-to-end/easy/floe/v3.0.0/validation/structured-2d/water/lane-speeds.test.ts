@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertLessThanOrEqual } from "../assert";
-import { TILE, WATER_LANES, laneSpeed } from "../../src/constants";
+import { TILE, WATER_LANES, laneSpeed } from "../constants";
 import {
   captureReplay,
   createHarness,

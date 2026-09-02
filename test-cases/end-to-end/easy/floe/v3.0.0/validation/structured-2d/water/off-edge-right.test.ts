@@ -45,13 +45,7 @@
 // and passes this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  ITEM_LEN,
-  START_LIVES,
-  STRAIT_W,
-  TILE,
-  tileCX,
-} from "../../src/constants";
+import { ITEM_LEN, START_LIVES, STRAIT_W, TILE, tileCX } from "../constants";
 import { assertDefined, assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

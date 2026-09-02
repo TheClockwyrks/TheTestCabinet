@@ -15,7 +15,7 @@
 // graded a quarter of the requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ITEM_LEN, WATER_LANES } from "../../src/constants";
+import { ITEM_LEN, WATER_LANES } from "../constants";
 import {
   assertContains,
   assertEqual,
