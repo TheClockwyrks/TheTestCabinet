@@ -29,7 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SAUCER_R, SAUCER_SPEED, SHIP_R } from "../../src/constants";
-import { assertEqual } from "../assert";
+import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -71,9 +71,21 @@ it("drops the ship count by exactly one when the saucer reaches the ship", async
   h.debug.setSaucerMind(false);
   h.debug.setSaucerGun(false);
 
+  const armed = h.snapshot();
   const lost = await untilLifeLost(h, before);
   captureStill(h, "contact");
 
+  // THE HULL, NOT THE GUN. `setSaucerGun(false)` is asked for above; a build that
+  // ignored it would take the ship with a bullet, and this item would pass on the
+  // pair `a-saucer-bullet-costs-a-life` grades. Both the gate's own readback and an
+  // empty enemy-bullet roster on the tick the life went are what make the hull the
+  // only thing that reached the ship.
+  assertEqual(
+    armed.saucer?.gun,
+    false,
+    "the saucer's gun held on the approach, so the ship can only be taken by " +
+      "its hull (specs/instrumentation.md: setSaucerGun)",
+  );
   assertEqual(
     lost.hit,
     true,
@@ -85,5 +97,12 @@ it("drops the ship count by exactly one when the saucer reaches the ship", async
     `the ships left after the saucer reached the ship, from the ${before} it ` +
       `stood at — the ship and the saucer destroys the ship and costs one life ` +
       `(specs/collision.md, specs/progression.md)`,
+  );
+  assertLength(
+    lost.snapshot.enemyBullets,
+    0,
+    "saucer bullets on the field on the tick the life went — with the gun " +
+      "held there are none, so what reached the ship was the craft itself " +
+      "(specs/collision.md: the ship and the saucer)",
   );
 });
