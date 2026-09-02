@@ -43,7 +43,7 @@
 // inside it — that only a scenario that missed the core entirely trips it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES } from "../../src/constants";
+import { START_LIVES } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -31,7 +31,7 @@ import {
   STAR_X,
   STAR_Y,
   TICK_DT,
-} from "../../src/constants";
+} from "../constants";
 import { assertLessThanOrEqual, fail } from "../assert";
 import { DEG, STAR, directDistance, sweptHit, type Vec } from "../geometry";
 import {

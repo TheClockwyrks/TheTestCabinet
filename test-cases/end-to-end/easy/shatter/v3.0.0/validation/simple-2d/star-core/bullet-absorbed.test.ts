@@ -34,13 +34,7 @@
 // its own item because the review item states both halves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BULLET_R,
-  CORE_R,
-  MUZZLE_SPEED,
-  STAR_X,
-  STAR_Y,
-} from "../../src/constants";
+import { BULLET_R, CORE_R, MUZZLE_SPEED, STAR_X, STAR_Y } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

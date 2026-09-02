@@ -41,7 +41,7 @@
 // fails naming what the core owed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_R, ROCK_RADIUS, STAR_X, STAR_Y } from "../../src/constants";
+import { CORE_R, ROCK_RADIUS, STAR_X, STAR_Y } from "../constants";
 import { assertGreaterThan, fail } from "../assert";
 import {
   captureStill,

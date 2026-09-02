@@ -39,7 +39,7 @@
 // the death without spending a life, and dropped the run to `gameover`, fails too.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES } from "../../src/constants";
+import { START_LIVES } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

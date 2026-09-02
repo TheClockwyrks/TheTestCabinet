@@ -25,7 +25,7 @@ import {
   STAR_X,
   STAR_Y,
   TICK_DT,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import { STAR, distance, type Point } from "../geometry";
 import { type Harness } from "../harness";

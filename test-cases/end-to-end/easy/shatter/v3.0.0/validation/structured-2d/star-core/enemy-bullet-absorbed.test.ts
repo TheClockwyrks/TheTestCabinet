@@ -42,7 +42,7 @@
 // that has to survive a flight past the star to be read at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_BULLET_LIFE, SAUCER_BULLET_SPEED } from "../../src/constants";
+import { SAUCER_BULLET_LIFE, SAUCER_BULLET_SPEED } from "../constants";
 import { assertLength } from "../assert";
 import { DEG } from "../geometry";
 import {

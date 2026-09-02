@@ -34,7 +34,7 @@ import {
   SAUCER_BULLET_SPEED,
   STAR_X,
   STAR_Y,
-} from "../../src/constants";
+} from "../constants";
 import { assertLength } from "../assert";
 import {
   captureStill,

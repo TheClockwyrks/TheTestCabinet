@@ -39,7 +39,7 @@
 // the `detonation` group's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BULLET_LIFE, MUZZLE_SPEED } from "../../src/constants";
+import { BULLET_LIFE, MUZZLE_SPEED } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

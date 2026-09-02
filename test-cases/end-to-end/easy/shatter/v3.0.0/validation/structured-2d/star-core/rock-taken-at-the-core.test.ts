@@ -48,7 +48,7 @@
 // demanding something the specification does not.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_R, ROCK_RADIUS } from "../../src/constants";
+import { CORE_R, ROCK_RADIUS } from "../constants";
 import { assertGreaterThan } from "../assert";
 import { DEG } from "../geometry";
 import {
