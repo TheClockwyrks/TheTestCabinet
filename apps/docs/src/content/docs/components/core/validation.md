@@ -107,11 +107,11 @@ Deciding the run's points means running that project:
   modules by the paths the build itself uses. Staging happens after everything that
   measures the code the model wrote has already measured it.
 - Stage the shared validator harness beside it, at `validation/case-harness/`. The
-  engineless validators of every case that has them are written over one harness —
-  the browser lifecycle, the injected draw-command recorder, the assertions, the
-  replay format — which the repository holds as the `@test-cabinet/case-harness`
-  package. It is TypeScript source vitest transpiles rather than a dependency the
-  tree installs, so it is copied in as a sibling of the case's own harness: one
+  engineless validators of every case that has them are written over one harness,
+  which the repository holds as the `@test-cabinet/case-harness` package: the
+  browser lifecycle, the injected draw-command recorder, the assertions, and the
+  replay format. It is TypeScript source vitest transpiles rather than a dependency
+  the tree installs, so it is copied in as a sibling of the case's own harness: one
   import line then resolves both in the case's `validation/<engine>/` directory and
   in the staged project. It is read from the host package store the seeder vendors
   engine runtimes out of, with a repository-checkout fallback, and a host carrying
@@ -120,7 +120,7 @@ Deciding the run's points means running that project:
   model would read the suites it is measured by.
 - Run vitest over that project from the implementation's repository root, naming
   the project's config explicitly so the build's own config is never the one that
-  runs, naming **the suites this run's variant declares** as vitest's file filters,
+  runs, naming the suites this run's variant declares as vitest's file filters,
   and reading the outcome from the JSON reporter written to a file.
 - Reuse the dependency install the tree already carries, and install only a tree
   nothing prepared.
@@ -130,23 +130,23 @@ Deciding the run's points means running that project:
 A case ships one validator directory per engine, holding the suites of every
 variant, because the variants share nearly all of them. That directory is a
 superset of what any single run is rated on: a suite belonging to another variant
-would fail against a build that was never asked to satisfy it — Carom's `gyre`
+would fail against a build that was never asked to satisfy it. Carom's `gyre`
 suites reach for a debug operation only `gyre`'s workspace seeds, so they fail
 every `base` build for a reason that is not the build's.
 
-The run is therefore scoped by the **checklist**, not by the directory. The
+The run is therefore scoped by the checklist, not by the directory. The
 resolved variant's review items already name exactly the suites that decide its
 points, and those staged paths are handed to vitest as its file filters, so a
-suite no item of this variant names is never loaded — it costs nothing and reports
-nothing. Nothing is asked of the case for this: the manifest's per-variant
+suite no item of this variant names is never loaded, so it costs nothing and
+reports nothing. Nothing is asked of the case for this: the manifest's per-variant
 checklist is the single declaration of which validators apply, and a
 variant-specific suite is skipped by not appearing there. The same scoping applies
 whether the validators are deciding a run's points or being run against a
 reference implementation with `tcab validate --variant`.
 
 If a variant is left with nothing to point vitest at, the run is refused outright
-rather than run unfiltered — an unfiltered run is precisely the whole-directory
-collection the filters exist to prevent — and every point is reported as not
+rather than run unfiltered, since an unfiltered run is the whole-directory
+collection the filters exist to prevent, and every point is reported as not
 having run.
 
 Each test file maps back to the review point whose `validation` path declared it,
@@ -168,16 +168,16 @@ nothing more.
 A validator captures each output its verdict unit declares, in the form the
 manifest gives it.
 
-For a `replay` it arms the engine's draw-command
+For a `replay` it arms the engine's
 [recorder](/components/core/engines/#recording) once its scenario is posed,
 disarms it once the behavior under test has happened, and writes what came back.
-The evidence is therefore the operations the build itself issued over exactly
-the stretch of the scenario the check is about, which nothing outside the suite
-knows the bounds of.
+The evidence is therefore what the build itself submitted to be drawn over
+exactly the stretch of the scenario the check is about, which nothing outside
+the suite knows the bounds of.
 
 For an `image` it encodes the surface as it stands, which is the frame that last
 ran. That is the right form for a point about one picture rather than a stretch
-of motion — which screen the game opened on, what colour it drew a paddle, where
+of motion: which screen the game opened on, what colour it drew a paddle, where
 the letterbox bars fell. A recording of a still screen would be the same frame
 several hundred times over, and a reviewer looking at a menu wants to look at the
 menu.
@@ -189,14 +189,24 @@ different directories cannot collide. Once the run returns, the runner moves
 each declared output to the flat name every consumer of validation media
 addresses and records whether it was there.
 
-A recording is stored and served gzipped, as `<verdict>__<output>.json.gz`. A
-frame names its inherited drawing state and its operations by index into tables
-the whole recording shares, so any frame can be drawn on its own, which is what
-seeking and side-by-side scrubbing are built on. Compression takes what
-repetition remains down to a fraction of its size, so a run's whole set of
-recordings costs a few megabytes. A recording is served as `application/json`
-with `Content-Encoding: gzip`, so the browser inflates the body and the player
-parses the document the recorder produced.
+A 2D engine's recording is stored and served gzipped, as
+`<verdict>__<output>.json.gz`. A frame names its inherited drawing state and its
+operations by index into tables the whole recording shares, so any frame can be
+drawn on its own, which is what seeking and side-by-side scrubbing are built on.
+Compression takes what repetition remains down to a fraction of its size, so a
+run's whole set of 2D recordings costs a few megabytes. A recording in this form
+is served as `application/json` with `Content-Encoding: gzip`, so the browser
+inflates the body and the player parses the document the recorder produced.
+
+A 3D engine writes a `.replay` archive: a zip holding `recording.json` beside
+the binary buffers its frames name by span, the material images the build made
+itself as embedded maps, and every asset file a recorded frame references,
+carried once under the SHA-256 of its bytes. The runner moves it to
+`<verdict>__<output>.replay` and the backend serves it as
+`application/octet-stream`, so the player unzips the body and reads the parts
+back. The document stays small because it holds references and scalars, the
+buffers hold what moved, and the engine ends the recording at the budgets its
+recording page states.
 
 An output that is not there is recorded absent rather than failing anything. The
 assertions decide the point and the media is the evidence beside the verdict, so
@@ -211,7 +221,7 @@ The baseline half is the same suites run against the variant's
 `reference_implementation` for the same engine by
 [`tcab capture-baselines`](/components/cli/overview/#commands), captured once
 into `validation-baseline/<engine>/<variant>/` and served case-scoped. Same
-suites, same scenarios, same form of output — so the difference a reviewer sees
+suites, same scenarios, same form of output, so the difference a reviewer sees
 on screen is a difference between the two builds and nothing else. Every frame
 of a recording is drawable on its own, so the reviewer scrubs the build's
 recording and the reference's in step.

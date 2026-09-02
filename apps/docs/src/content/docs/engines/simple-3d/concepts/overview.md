@@ -34,4 +34,4 @@ builds live beside it rather than in it.
 | [Assets](/engines/simple-3d/concepts/assets/) | The single asset root, path resolution, textures and glTF models as templates, and the load events. |
 | [Diagnostics](/engines/simple-3d/concepts/diagnostics/) | Named sources, reading them back, the renderer's counts, and the overlay drawn on the screen layer in device space. |
 | [Debug Surface](/engines/simple-3d/concepts/debug/) | The object `initialize` returns beside the state, whose poses and readings a build is driven and read through from code. |
-| [Recording](/engines/simple-3d/concepts/recording/) | The scene as submitted, the wrapper over the screen layer's context, per-frame inherited state, and independently drawable frames. |
+| [Recording](/engines/simple-3d/concepts/recording/) | The scene as submitted, referenced assets and embedded content, the archive and its buffers, the projection the scene half is, budgets and coverage gaps, the wrapper over the screen layer's context, per-frame inherited state, and independently drawable frames. |

@@ -31,4 +31,4 @@ subscribes to.
 | [Assets](/engines/structured-3d/concepts/assets/) | The single asset root, path resolution, the texture and model loaders, and the load events. |
 | [Diagnostics](/engines/structured-3d/concepts/diagnostics/) | The instance and world registries, the overlay drawn on the screen layer in device space, and the frame metrics with the renderer's counts. |
 | [Debug Surface](/engines/structured-3d/concepts/debug/) | The object `initialize` returns, whose poses and readings act on the live world and are driven from code. |
-| [Recording](/engines/structured-3d/concepts/recording/) | The scene as submitted, the wrapper over the screen layer's context, per-frame inherited state, and independently drawable frames. |
+| [Recording](/engines/structured-3d/concepts/recording/) | The scene as submitted, referenced assets and embedded content, the archive and its buffers, the projection the scene half is, budgets and coverage gaps, the wrapper over the screen layer's context, per-frame inherited state, and independently drawable frames. |

@@ -888,10 +888,13 @@ the engine discards an edge nothing consumed at the end of the frame.
 A suite holds the engine, so it captures the stretch of a scenario its check is
 about and hands the frames to the reviewer as the verdict's media. The
 [recorder](/engines/simple-3d/apis/recording/) keeps the scene as the build
-submitted it, as draws, lights, and a camera, together with the screen layer's
-operations, and it captures identically under `headless`, so the recording a
-validator emits is the one the same frames would have produced in a browser.
-The verdict unit declares the output as `kind = "replay"` in the case
+submitted it, as draws, lights, scene settings, and a camera, together with the
+screen layer's operations, and it captures identically under `headless`, so the
+recording a validator emits is the one the same frames would have produced in a
+browser. `stopRecording` returns a `Recording` holding the document, the buffers
+the frames name by span, the embedded maps, and every asset the recorded frames
+reference, and `packRecording` builds the `.replay` archive from it. The verdict
+unit declares the output as `kind = "replay"` in the case
 [manifest](/testing/end-to-end/manifests/), and the suite writes it where the
 [validators](/engines/simple-3d/validators/recording/) page specifies.
 
@@ -900,8 +903,7 @@ The verdict unit declares the output as `kind = "replay"` in the case
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
-import type { Recording } from "@test-cabinet/simple-3d";
+import { packRecording, type Recording } from "@test-cabinet/simple-3d";
 
 const WORKSPACE = fileURLToPath(new URL("..", import.meta.url));
 
@@ -912,12 +914,12 @@ export function emitReplay(
 ): void {
   const dir = process.env.TCAB_VALIDATION_MEDIA_DIR;
   if (dir === undefined) return;
-  if (recording.frames.length === 0) return;
+  if (recording.document.frames.length === 0) return;
 
   const staged = relative(WORKSPACE, fileURLToPath(suite));
-  const target = join(dir, staged, `${output}.json.gz`);
+  const target = join(dir, staged, `${output}.replay`);
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, gzipSync(JSON.stringify(recording)));
+  writeFileSync(target, packRecording(recording));
 }
 ```
 
@@ -955,19 +957,21 @@ it("records the frames around a wall reflection", async () => {
   const recording = engine.stopRecording();
   emitReplay(import.meta.url, "bounce", recording);
 
-  expect(recording.format).toBe(RECORDING_FORMAT);
-  expect(recording.width).toBe(FIELD_WIDTH);
-  expect(recording.height).toBe(FIELD_HEIGHT);
-  expect(recording.frames).toHaveLength(24);
-  expect(recording.frames[0].count).toBe(13);
+  const { document } = recording;
+  expect(document.format).toBe(RECORDING_FORMAT);
+  expect(document.width).toBe(FIELD_WIDTH);
+  expect(document.height).toBe(FIELD_HEIGHT);
+  expect(document.frames).toHaveLength(24);
+  expect(document.frames[0].count).toBe(13);
+  expect(document.ended).toBeUndefined();
 
-  for (const frame of recording.frames) {
+  for (const frame of document.frames) {
     expect(frame.draws).toHaveLength(3);
     expect(frame.lights).toHaveLength(1);
-    expect(recording.cameras[frame.camera].projection).toBe("perspective");
+    expect(document.cameras[frame.camera].projection).toBe("perspective");
     expect(frame.screen.ops.length).toBeGreaterThan(0);
   }
-  expect(recording.materials.map((material) => material.color)).toContain(BALL_COLOR);
+  expect(document.materials.map((material) => material.color)).toContain(BALL_COLOR);
   expect(harness.snapshot().ball.vz).toBe(-4);
 });
 ```
@@ -976,9 +980,10 @@ The ball starts 1.6 units from the wall at 4 units per second, so the
 reflection falls 0.4 seconds in, which is the twenty-fourth frame from the pose
 and the twelfth of the recording. Capture begins at the frame after
 `startRecording`, so twenty-four advances are twenty-four frames, counted from
-13. Every frame submits the court, the ball, and the paddle as three draws
-under one light through a perspective camera, and the ball's material is in the
-material table under the color the case fixes.
+13, and an absent `ended` mark states that every one of them was held within
+the archive's budgets. Every frame submits the court, the ball, and the paddle
+as three draws under one light through a perspective camera, and the ball's
+material is in the material table under the color the case fixes.
 
 The recording is written only when `TCAB_VALIDATION_MEDIA_DIR` is set, which
 the runner does and a local `vitest run` does not, so the suite's assertions

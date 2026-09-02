@@ -261,7 +261,8 @@ because a fill's arguments say nothing about where the fill landed, and a claim
 about where a world point appears stays with projection because the scene
 alone says nothing about the camera between it and the stage.
 
-What a frame submitted to be drawn, as one document, is the
+What a frame submitted to be drawn, as one archive, is the
 [recording](/engines/simple-3d/validators/recording/), which carries the
-draws, the lights, the camera, and the screen layer's operations together. A
-check that is about what was drawn across a stretch of frames reads that.
+draws, the lights, the scene settings, the camera, and the screen layer's
+operations together. A check that is about what was drawn across a stretch of
+frames reads that.

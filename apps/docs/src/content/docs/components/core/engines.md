@@ -152,18 +152,28 @@ model-implemented mechanism a verdict leans on.
 
 ## Recording
 
-An engine records the drawing commands a build issues, as an opt-in capture its
-owner arms and disarms. A recording is the operations themselves, frame by
-frame, so replaying it against a fresh drawing surface reproduces the picture
-the build drew.
+An engine records what a build submitted to be drawn, as an opt-in capture its
+owner arms and disarms. For a 2D engine that is the drawing operations
+themselves and for a 3D engine it is the scene the build submitted to be
+rendered, frame by frame, so replaying a recording against a fresh drawing
+surface reproduces the picture the build drew.
 
-Each frame carries the drawing state it inherited alongside its own operations,
-and the recording carries the values its operations draw with, so every
+Each frame carries the drawing state it inherited alongside what it submitted,
+and the recording carries the values those submissions draw with, so every
 reference a frame makes resolves without any earlier frame. That makes every
 frame drawable on its own: a player seeks to any frame without replaying the
 frames before it, and two recordings of the same scenario are scrubbed in step.
 Each engine's own page documents the exact format it writes and the version a
 player checks before drawing anything.
+
+A 3D engine references the assets a build loaded rather than carrying them. Each
+model and texture file a recorded frame references travels once in the
+recording's archive under the SHA-256 of its bytes, and a draw names the
+geometry or image decoded from it. What moved in a frame, the world, bone, and
+instance matrices, travels in binary buffers the frames name by span. When a
+frame would take the recording past one of its budgets the recording ends at the
+frame before it, so every frame it holds is whole and a player shows where and
+why it ended.
 
 Recording is bracketed by the caller rather than by the engine's lifetime, so a
 validator captures the stretch of a scenario its check is about and nothing
@@ -175,8 +185,8 @@ A validator emits a recording as the media of the review item its check backs,
 declared as a `replay` output in the case's
 [manifest](/testing/end-to-end/manifests/). The same suites driven against the
 case's reference implementation produce the baseline recording, so the reviewer
-sees the operations the build issued beside the operations the reference
-issued, scrubbed together.
+sees what the build submitted beside what the reference submitted, scrubbed
+together.
 
 ## The frame
 

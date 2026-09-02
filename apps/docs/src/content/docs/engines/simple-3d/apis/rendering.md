@@ -48,6 +48,10 @@ reader a `DeepReadonly<S>` view, and a three object is mutated in place, so no
 three object lives in the state. A game keeps the objects it created in a
 render-side cache, a module-level `Map` keyed by the ids the state carries, or
 in the scene itself under `object.name`, found with `scene.getObjectByName`.
+Objects that look alike share one geometry and one material, built once at
+module level, so a hundred crates upload one box and one shader and a
+[recording](/engines/simple-3d/apis/recording/) carries one geometry entry and
+one material entry for all of them.
 
 ```ts
 import * as THREE from "three";
@@ -61,6 +65,8 @@ interface State {
   score: number;
 }
 
+const CRATE_GEOMETRY = new THREE.BoxGeometry(1, 1, 1);
+const CRATE_MATERIAL = new THREE.MeshStandardMaterial({ color: "#c8a165" });
 const crates = new Map<number, THREE.Mesh>();
 
 function render(state: DeepReadonly<State>, api: RenderApi): void {
@@ -68,10 +74,7 @@ function render(state: DeepReadonly<State>, api: RenderApi): void {
   for (const crate of state.crates) {
     let mesh = crates.get(crate.id);
     if (mesh === undefined) {
-      mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshStandardMaterial({ color: "#c8a165" }),
-      );
+      mesh = new THREE.Mesh(CRATE_GEOMETRY, CRATE_MATERIAL);
       crates.set(crate.id, mesh);
       api.scene.add(mesh);
     }
@@ -81,7 +84,6 @@ function render(state: DeepReadonly<State>, api: RenderApi): void {
   for (const [id, mesh] of crates) {
     if (!alive.has(id)) {
       api.scene.remove(mesh);
-      mesh.geometry.dispose();
       crates.delete(id);
     }
   }
@@ -92,7 +94,9 @@ A model loaded through [`assets.loadModel`](/engines/simple-3d/apis/assets/)
 is a template. A game places it by cloning it with `cloneModel(model)`, a deep
 clone that keeps a skinned mesh bound to its own skeleton, and adding the clone
 to the scene. The objects a game placed are its own, so it disposes the
-geometries and materials it stops using.
+geometries and materials it stops using; a geometry or material shared across
+objects lives for the game's life, and one an object holds alone is disposed
+when that object is removed.
 
 Lights belong to the scene the same way. A game adds an `AmbientLight`, a
 `DirectionalLight`, or any other three light as an object, positions it, and

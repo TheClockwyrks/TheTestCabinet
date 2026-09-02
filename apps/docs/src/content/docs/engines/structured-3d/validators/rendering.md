@@ -300,8 +300,9 @@ in the screen layer's pixels.
 
 ```ts
 function frameMaterials(recording: Recording) {
-  const frame = recording.frames[0];
-  return frame.draws.map((i) => recording.materials[recording.draws[i].material]);
+  const { document } = recording;
+  const frame = document.frames[0];
+  return frame.draws.map((i) => document.materials[document.draws[i].material]);
 }
 
 engine.renderer.setMode("wireframe");
@@ -340,12 +341,12 @@ overlay on against the same frame with it off.
 ```ts
 engine.startRecording();
 await engine.advance(1);
-const plain = engine.stopRecording().frames[0].draws.length;
+const plain = engine.stopRecording().document.frames[0].draws.length;
 
 engine.renderer.setCollisionOverlay(true);
 engine.startRecording();
 await engine.advance(1);
-const overlaid = engine.stopRecording().frames[0].draws.length;
+const overlaid = engine.stopRecording().document.frames[0].draws.length;
 
 const enabled = world
   .actors()

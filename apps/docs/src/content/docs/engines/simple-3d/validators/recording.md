@@ -5,10 +5,10 @@ title: Recording
 A suite holds the engine it is stepping, so it can capture the frames a build
 drew over exactly the stretch of a scenario its check is about. That capture is
 a [recording](/engines/simple-3d/concepts/recording/): the scene the build
-submitted each frame, as its draws, lights, and camera, and the operations it
-issued against the screen layer, which a player rebuilds and renders to
-reproduce the picture. A verdict unit declares a `replay` output, the suite
-produces it, and the runner collects it as the review item's media.
+submitted each frame, as its draws, lights, scene settings, and camera, and the
+operations it issued against the screen layer, which a player rebuilds and
+renders to reproduce the picture. A verdict unit declares a `replay` output, the
+suite produces it, and the runner collects it as the review item's media.
 
 ## Declaring the output
 
@@ -81,20 +81,37 @@ unbalanced call rather than discarding the frames the check was about.
 The runner creates the run's media directory before vitest starts and names it
 to the suites in the `TCAB_VALIDATION_MEDIA_DIR` environment variable, as an
 absolute path. A suite writes each declared output to
-`$TCAB_VALIDATION_MEDIA_DIR/<its own staged path>/<output id>.json.gz`.
+`$TCAB_VALIDATION_MEDIA_DIR/<its own staged path>/<output id>.replay`.
 
-A recording is a JSON document stored gzipped, which is what the two extensions
-say. A frame names its camera, its lights, its draws, and the screen layer's
-inherited state and operations by index into tables the whole recording shares,
-so a frame is drawable on its own, a static mesh costs one geometry entry
-however many frames draw it, and the frames that repeat each other cost an
-index apiece. What remains is repetitive, because a frame's draws differ from
-their neighbours' by a few matrix entries and the screen layer's operations by
-a few coordinates, and that compresses away. A real capture stores several
-times smaller gzipped, which keeps a run's whole set of recordings to a few
-megabytes. The document inside is the recording exactly as the recorder handed
-it back, and serving keeps that reading: a recording goes out as
-`application/json` with `Content-Encoding: gzip`.
+A recording is a zip archive, which is what the extension names. `stopRecording`
+returns a `Recording` holding the document, the buffers, the embedded maps, and
+the referenced assets, and `packRecording` builds the archive from it. The
+document, `recording.json`, is small: tables of references, scalars, and
+indices, where a frame names its scene entry, camera, lights, draws, and the
+screen layer's inherited state and operations by index into tables the whole
+recording shares, so a frame is drawable on its own and the frames that repeat
+each other cost an index apiece.
+
+The buffers hold what moved. `frames.bin` carries every matrix and morph
+influence the frames name by span, `geometry.bin` the attributes of every
+embedded geometry, and both are shared on their bytes, so a still object costs
+one span for the whole recording and a moving one costs a span per pose. Every
+asset a recorded frame references is carried once, byte for byte, under the
+SHA-256 of its bytes, however many draws and frames name it, and a material
+image the build made itself travels as one PNG per distinct content.
+Serving keeps the archive as it is: a recording goes out as
+`application/octet-stream`.
+
+Four budgets bound the archive, each counted over the bytes it will hold:
+embedded geometry at 16 MB, embedded maps at 16 MB, `frames.bin` at 64 MB, and
+referenced assets at 128 MB. A frame that would take the recording past any of
+them is not recorded and no later frame is either, so every frame the archive
+holds is whole. The document then carries an `ended` mark naming the engine
+frame counter of the first frame not held and the budget it hit, the recorder
+stays armed until `stopRecording`, and a player shows where and why the
+recording ended. A suite that records a scene rewriting its geometry every
+frame, or a build that loads a large set of models, reads the mark to know
+whether the evidence covers the whole section its assertions did.
 
 The staged path is the path the runner handed vitest as a file filter, so a
 suite derives its own from `import.meta.url` and needs no name of its own. Two
@@ -107,8 +124,7 @@ beside its harness:
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
-import type { Recording } from "@test-cabinet/simple-3d";
+import { packRecording, type Recording } from "@test-cabinet/simple-3d";
 
 const WORKSPACE = fileURLToPath(new URL("..", import.meta.url));
 
@@ -119,12 +135,12 @@ export function emitReplay(
 ): void {
   const dir = process.env.TCAB_VALIDATION_MEDIA_DIR;
   if (dir === undefined) return;
-  if (recording.frames.length === 0) return;
+  if (recording.document.frames.length === 0) return;
 
   const staged = relative(WORKSPACE, fileURLToPath(suite));
-  const target = join(dir, staged, `${output}.json.gz`);
+  const target = join(dir, staged, `${output}.replay`);
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, gzipSync(JSON.stringify(recording)));
+  writeFileSync(target, packRecording(recording));
 }
 ```
 
@@ -136,7 +152,7 @@ A capture that closed no frames is left unwritten, and the run reports the
 output absent.
 
 Once vitest returns, the runner moves each declared output to the flat
-`<verdict>__<output>.json.gz` name every consumer of validation media addresses,
+`<verdict>__<output>.replay` name every consumer of validation media addresses,
 and records whether it was there. An output that is not there is recorded absent
 rather than failing anything: the assertions decide the point, and media is the
 evidence beside the verdict.
@@ -150,7 +166,8 @@ folder, at `validation-baseline/<engine>/<variant>/`. The reviewer sees the two
 beside each other.
 
 The engine is in that path because a variant has one reference implementation
-per engine, and the two are different builds.
+per engine, and the two are different builds, so a run is compared against the
+baseline recorded under its own engine.
 
 Both recordings carry the engine's frame counter and its accumulated simulated
 time per frame, and every frame in each is drawn from itself alone, so one
@@ -167,7 +184,7 @@ transition between two states looked like, whether an effect played where it
 should have.
 
 [The scene, the projection, the screen layer's pixels, and its draw-call
-stream](/engines/simple-3d/validators/rendering/) remain how a check states
+stream](/engines/simple-3d/validators/rendering/) are how a check states
 its claim, because a claim needs a value to assert against. Recording is what
 the reviewer looks at afterwards, so a suite records the section its assertions
 cover rather than recording in place of making them.

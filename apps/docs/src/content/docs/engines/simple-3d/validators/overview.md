@@ -38,7 +38,7 @@ therefore reads four things.
 | The scene | `engine.scene`, `engine.camera`, and `engine.view().camera()` | What is in the world, where each object stands, how it is colored, whether it is visible, and where the camera is. |
 | Projection | `engine.view().project(point)` | The logical stage point a world point draws at, and whether it is in view. |
 | The screen layer | The harness's screen canvas, through `getImageData` mapped by the viewport or through a recording proxy over its context | HUD text, readouts, and menus, as pixels or as the operations that drew them. |
-| The recording | `engine.stopRecording()` | The draws, lights, and camera each frame submitted, and the screen layer's operations. |
+| The recording | `engine.stopRecording()` | The draws, lights, scene settings, and camera each frame submitted, and the screen layer's operations. |
 
 A claim about the rendered pixels of the world pass is a browser check outside
 the in-process suite. The in-process suite asserts on the scene, the
@@ -54,4 +54,4 @@ and what the HUD shows.
 | [Simulation](/engines/simple-3d/validators/simulation/) | Stepping with a scripted clock, reading the state back, and asserting on outcomes that survive a change in step size. |
 | [Rendering](/engines/simple-3d/validators/rendering/) | Scene traversal, world positions and material colors, projection through the view, pixel readback from the screen layer, and the recording proxy over its context. |
 | [Input and Audio](/engines/simple-3d/validators/input-and-audio/) | Driving named actions and the pointer, and asserting on the cues a build played and where it placed them. |
-| [Recording](/engines/simple-3d/validators/recording/) | Arming the engine's recorder around a scenario and emitting it as the review item's media. |
+| [Recording](/engines/simple-3d/validators/recording/) | Arming the engine's recorder around a scenario and emitting the `.replay` archive as the review item's media. |

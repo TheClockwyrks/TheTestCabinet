@@ -48,7 +48,7 @@ for a 2D engine, for HUD text, readouts, and menus. Projection is the third
 reading: `world.camera.worldToLogical` gives the logical stage point a world
 point draws at, so a claim about where something appears on screen is checked
 without pixels. A claim about what was drawn reads the recording, whose frames
-carry the scene's draws, lights, and camera as submitted.
+carry the scene's draws, lights, scene settings, and camera as submitted.
 
 The `headless` backend produces no pixels of the 3D picture. The in-process
 suite therefore asserts on the scene, the projection, the recording, and the
@@ -71,4 +71,4 @@ and each pose arranges the live world through the same systems play uses.
 | [World and Actors](/engines/structured-3d/validators/world-and-actors/) | The level open, the match phase, which actors exist, 3D transforms in assertions, which controller holds which pawn, and what a transition produced. |
 | [Rendering](/engines/structured-3d/validators/rendering/) | Render components as data, the scene the pipeline placed, projection through the camera, pixel readback and the recording proxy over the screen layer, and asserting on a render mode. |
 | [Input and Audio](/engines/structured-3d/validators/input-and-audio/) | Dispatching key and pointer events at the harness event target and asserting on the cues a build played, with the world point a positional cue carries. |
-| [Recording](/engines/structured-3d/validators/recording/) | Arming the engine's recorder around a scenario and emitting it as the review item's media. |
+| [Recording](/engines/structured-3d/validators/recording/) | Arming the engine's recorder around a scenario and emitting the `.replay` archive as the review item's media. |

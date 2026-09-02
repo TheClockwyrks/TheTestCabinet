@@ -1172,19 +1172,21 @@ reads the events rather than the sound.
 A suite holds the engine, so it captures the frames a build submitted over
 exactly the stretch of a scenario its check is about, as a
 [recording](/engines/structured-3d/apis/recording/): the scene's draws, lights,
-and camera, and the screen layer's operations, frame by frame. A verdict unit
-declares a `replay` output in the case manifest, the suite writes it, and the
-runner collects it as the review item's media. The
-[recording validators](/engines/structured-3d/validators/recording/) page carries
-the declaration and the baseline.
+scene settings, and camera, and the screen layer's operations, frame by frame.
+`stopRecording` returns a `Recording` holding the document, the buffers the
+frames name by span, the embedded maps, and every asset the recorded frames
+reference, and `packRecording` builds the `.replay` archive from it. A verdict
+unit declares a `replay` output in the case manifest, the suite writes it, and
+the runner collects it as the review item's media. The [recording
+validators](/engines/structured-3d/validators/recording/) page carries the
+declaration and the baseline.
 
 ```ts
 // validation/replay.ts
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
-import type { Recording } from "@test-cabinet/structured-3d";
+import { packRecording, type Recording } from "@test-cabinet/structured-3d";
 
 const WORKSPACE = fileURLToPath(new URL("..", import.meta.url));
 
@@ -1195,21 +1197,21 @@ export function emitReplay(
 ): void {
   const dir = process.env.TCAB_VALIDATION_MEDIA_DIR;
   if (dir === undefined) return;
-  if (recording.frames.length === 0) return;
+  if (recording.document.frames.length === 0) return;
 
   const staged = relative(WORKSPACE, fileURLToPath(suite));
-  const target = join(dir, staged, `${output}.json.gz`);
+  const target = join(dir, staged, `${output}.replay`);
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, gzipSync(JSON.stringify(recording)));
+  writeFileSync(target, packRecording(recording));
 }
 ```
 
 The runner names the run's media directory in `TCAB_VALIDATION_MEDIA_DIR`, and
 a suite writes each declared output to
-`$TCAB_VALIDATION_MEDIA_DIR/<its own staged path>/<output id>.json.gz`, a JSON
-document stored gzipped. The variable is absent when the suites are run by hand,
-and writing nothing then keeps a local `vitest run` to its assertions. A
-capture that closed no frames is left unwritten.
+`$TCAB_VALIDATION_MEDIA_DIR/<its own staged path>/<output id>.replay`, the zip
+archive `packRecording` builds. The variable is absent when the suites are run
+by hand, and writing nothing then keeps a local `vitest run` to its assertions.
+A capture that closed no frames is left unwritten.
 
 ```ts
 // validation/recording.test.ts
@@ -1242,15 +1244,17 @@ it("records the sweep that empties the arena", async () => {
   const recording = engine.stopRecording();
   emitReplay(import.meta.url, "sweep", recording);
 
-  expect(recording.format).toBe(RECORDING_FORMAT);
-  expect(recording.width).toBe(DESIGN_WIDTH);
-  expect(recording.height).toBe(DESIGN_HEIGHT);
-  expect(recording.frames).toHaveLength(60);
-  expect(recording.frames[0].count).toBe(2);
-  expect(recording.frames.at(-1)?.count).toBe(61);
+  const { document } = recording;
+  expect(document.format).toBe(RECORDING_FORMAT);
+  expect(document.width).toBe(DESIGN_WIDTH);
+  expect(document.height).toBe(DESIGN_HEIGHT);
+  expect(document.frames).toHaveLength(60);
+  expect(document.frames[0].count).toBe(2);
+  expect(document.frames.at(-1)?.count).toBe(61);
+  expect(document.ended).toBeUndefined();
 
-  const first = recording.frames[0];
-  expect(recording.cameras[first.camera].projection).toBe("perspective");
+  const first = document.frames[0];
+  expect(document.cameras[first.camera].projection).toBe("perspective");
   expect(first.lights.length).toBeGreaterThan(0);
   expect(first.draws.length).toBeGreaterThanOrEqual(2);
   expect(first.screen.ops.length).toBeGreaterThan(0);
@@ -1262,15 +1266,19 @@ The recorder is armed once the scenario is posed and disarmed once the behavior
 has happened, so the reviewer's evidence opens on the situation the requirement
 describes. Capture begins at the frame after `startRecording`, so the sixty
 frames advanced are the sixty frames recorded, and each carries the engine's
-frame counter, which continued from the one frame the setup ran.
+frame counter, which continued from the one frame the setup ran. An absent
+`ended` mark states that every one of them was held within the archive's
+budgets.
 
 The first frame's `draws` are the objects the pipeline submitted, in scene
-traversal order, at least the orb and the runner; its `lights` are the build's
-light components; its `camera` is the world's camera after it was posed. The
-transition to `summary` happens part way through the stretch and the recorder
-keeps capturing across it, so the later frames carry the summary world's scene
-and screen layer. Capture depends on nothing a renderer does, so the recording
-taken under `headless` is the one the same frames produce in a browser.
+traversal order, at least the orb and the runner, each naming the geometry the
+pipeline built from its `MeshComponent`'s declaration, which the recording
+embeds; its `lights` are the build's light components; its `camera` is the
+world's camera after it was posed. The transition to `summary` happens part way
+through the stretch and the recorder keeps capturing across it, so the later
+frames carry the summary world's scene and screen layer. Capture depends on
+nothing a renderer does, so the recording taken under `headless` is the one the
+same frames produce in a browser.
 
 The recording is taken before the assertions run, so a failing check still hands
 the reviewer the frames that failed it. Call `stopRecording` on every path that

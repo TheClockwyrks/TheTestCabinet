@@ -14,7 +14,7 @@ The package `@test-cabinet/structured-3d` has one entry point.
 
 | Specifier | Provides |
 | --- | --- |
-| `@test-cabinet/structured-3d` | `createEngine`, the framework classes, the built-in components, the clocks, `TOUCH_LAYOUTS`, the viewport functions, the math helpers and constants, `RECORDING_FORMAT`, and every type a game or a validator names. |
+| `@test-cabinet/structured-3d` | `createEngine`, the framework classes, the built-in components, `packRecording`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, the math helpers and constants, `RECORDING_FORMAT`, and every type a game or a validator names. |
 
 `three` is a peer dependency of the package. A build declares `three` itself,
 and the engine, the build, and `@test-cabinet/voxel-runtime/three` share that
@@ -49,4 +49,4 @@ against.
 | [Audio](/engines/structured-3d/apis/audio/) | `CueSpec`, `WorldAudio`, `PlayOptions`, synthesized and file-backed cues, looping, positional playback, and the mute and unlock calls. |
 | [Assets](/engines/structured-3d/apis/assets/) | `loadImage`, `loadTexture`, `loadModel`, `Model`, `loadAudio`, `load`, `resolve`, and the asset root. |
 | [Diagnostics](/engines/structured-3d/apis/diagnostics/) | Source registration on the instance and the world, the values a read returns, `FrameMetrics`, the overlay, and its toggle. |
-| [Recording](/engines/structured-3d/apis/recording/) | The recorder's engine members, `Recording`, `RecordedFrame`, the scene tables, and the screen layer's `DrawState`, `DrawOp`, and `DrawValue`. |
+| [Recording](/engines/structured-3d/apis/recording/) | The recorder's engine members, the `.replay` archive, `Recording` and `packRecording`, `RecordingDocument`, `RecordedFrame`, the asset references and the scene tables, the budgets, and the screen layer's `DrawState`, `DrawOp`, and `DrawValue`. |
