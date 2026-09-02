@@ -26,7 +26,7 @@
 // wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESONANCE_MAX } from "../../src/constants";
+import { RESONANCE_MAX } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

@@ -31,7 +31,7 @@
 // `resonance/discharge-spares-player-bullets`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DISCHARGE_MAX_R, DISCHARGE_TIME } from "../../src/constants";
+import { DISCHARGE_MAX_R, DISCHARGE_TIME } from "../constants";
 import { assertDefined, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

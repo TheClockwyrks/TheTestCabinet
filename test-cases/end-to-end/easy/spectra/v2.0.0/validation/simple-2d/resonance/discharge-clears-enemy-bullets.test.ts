@@ -37,7 +37,7 @@ import {
   FIELD_BOTTOM,
   RESONANCE_MAX,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   captureStill,

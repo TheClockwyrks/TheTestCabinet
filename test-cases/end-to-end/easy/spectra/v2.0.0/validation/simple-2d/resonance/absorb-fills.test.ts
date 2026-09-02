@@ -44,7 +44,7 @@ import {
   RESONANCE_MAX,
   START_LIVES,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

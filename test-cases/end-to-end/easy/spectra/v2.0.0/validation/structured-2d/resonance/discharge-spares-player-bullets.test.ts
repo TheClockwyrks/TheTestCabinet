@@ -42,7 +42,7 @@ import {
   FIELD_TOP,
   MAX_PLAYER_BULLETS,
   PLAYER_BULLET_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertDefined,
   assertEqual,

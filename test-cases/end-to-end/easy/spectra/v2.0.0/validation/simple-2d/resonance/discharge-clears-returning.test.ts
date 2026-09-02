@@ -29,7 +29,7 @@ import {
   RESONANCE_MAX,
   slotX,
   slotY,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   captureStill,

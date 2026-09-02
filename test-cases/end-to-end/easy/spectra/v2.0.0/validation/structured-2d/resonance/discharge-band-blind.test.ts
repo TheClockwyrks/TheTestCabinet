@@ -30,7 +30,7 @@
 // game is `bands`'.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DISCHARGE_MAX_R, DISCHARGE_TIME } from "../../src/constants";
+import { DISCHARGE_MAX_R, DISCHARGE_TIME } from "../constants";
 import { assertEqual, assertLength, assertUndefined } from "../assert";
 import {
   captureStill,

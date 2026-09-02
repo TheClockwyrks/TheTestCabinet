@@ -29,7 +29,7 @@
 // is `resonance/discharge-spends`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESONANCE_MAX } from "../../src/constants";
+import { RESONANCE_MAX } from "../constants";
 import { assertCloseTo } from "../assert";
 import {
   captureStill,

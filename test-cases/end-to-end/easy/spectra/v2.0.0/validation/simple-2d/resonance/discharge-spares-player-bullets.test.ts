@@ -43,7 +43,7 @@ import {
   MAX_PLAYER_BULLETS,
   PLAYER_BULLET_SPEED,
   RESONANCE_MAX,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertLength,

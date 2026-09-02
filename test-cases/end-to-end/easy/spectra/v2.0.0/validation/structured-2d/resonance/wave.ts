@@ -35,7 +35,7 @@ import {
   FIELD_LEFT,
   FIELD_TOP,
   RESONANCE_MAX,
-} from "../../src/constants";
+} from "../constants";
 import {
   SHIP_LANE_Y,
   distanceBetween,

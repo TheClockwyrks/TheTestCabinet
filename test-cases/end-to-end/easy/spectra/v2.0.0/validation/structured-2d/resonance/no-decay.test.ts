@@ -34,7 +34,7 @@ import {
   DISCHARGE_TIME,
   INVERSION_TIME,
   RESONANCE_MAX,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertLength } from "../assert";
 import {
   captureStill,

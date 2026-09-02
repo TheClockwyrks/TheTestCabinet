@@ -29,7 +29,7 @@ import {
   DISCHARGE_MAX_R,
   DISCHARGE_TIME,
   RESONANCE_MAX,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   captureStill,

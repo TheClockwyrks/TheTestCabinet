@@ -26,7 +26,7 @@
 // over the thing it then finds intact. It is read as a PRECONDITION, never as the
 // verdict.
 
-import { BINDINGS, FIELD_LEFT, FIELD_TOP, SHIP_Y } from "../../src/constants";
+import { BINDINGS, FIELD_LEFT, FIELD_TOP, SHIP_Y } from "../constants";
 import { fail } from "../assert";
 import {
   distance,

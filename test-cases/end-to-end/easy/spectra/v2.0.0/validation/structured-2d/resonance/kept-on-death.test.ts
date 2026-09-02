@@ -36,7 +36,7 @@ import {
   RESONANCE_MAX,
   SHIP_HALF,
   START_LIVES,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

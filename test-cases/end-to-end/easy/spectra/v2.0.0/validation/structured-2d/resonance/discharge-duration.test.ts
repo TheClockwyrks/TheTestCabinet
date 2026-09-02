@@ -32,7 +32,7 @@
 // of this directory.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DISCHARGE_TIME } from "../../src/constants";
+import { DISCHARGE_TIME } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

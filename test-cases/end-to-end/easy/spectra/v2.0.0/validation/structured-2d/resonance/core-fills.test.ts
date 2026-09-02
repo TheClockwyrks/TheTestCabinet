@@ -32,7 +32,7 @@ import {
   PRISM_CORE_HALF,
   RESONANCE_KILL,
   RESONANCE_MAX,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual, assertUndefined } from "../assert";
 import {
   LANE_CENTER,

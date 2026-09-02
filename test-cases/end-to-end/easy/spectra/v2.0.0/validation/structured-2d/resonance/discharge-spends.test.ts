@@ -25,7 +25,7 @@
 // is read back is the meter rather than any consequence of the wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESONANCE_MAX } from "../../src/constants";
+import { RESONANCE_MAX } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

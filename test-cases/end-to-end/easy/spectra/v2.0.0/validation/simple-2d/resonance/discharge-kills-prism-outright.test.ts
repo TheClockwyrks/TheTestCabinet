@@ -45,7 +45,7 @@ import {
   PRISM_INVERT_Y,
   RESONANCE_MAX,
   SUBSTEP_MAX,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,

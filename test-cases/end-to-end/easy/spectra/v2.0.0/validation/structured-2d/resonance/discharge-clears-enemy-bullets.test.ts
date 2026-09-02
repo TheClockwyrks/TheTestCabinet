@@ -37,7 +37,7 @@ import {
   ENEMY_BULLET_SPEED,
   FIELD_BOTTOM,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength, assertUndefined } from "../assert";
 import {
   bulletById,

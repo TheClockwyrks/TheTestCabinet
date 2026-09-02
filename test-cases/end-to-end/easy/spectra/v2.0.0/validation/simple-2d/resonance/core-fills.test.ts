@@ -30,7 +30,7 @@ import {
   FORM_CENTER_X,
   RESONANCE_KILL,
   RESONANCE_MAX,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual, assertNull } from "../assert";
 import {
   captureStill,

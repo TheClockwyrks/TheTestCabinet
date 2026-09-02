@@ -27,7 +27,7 @@ import {
   RESONANCE_KILL,
   RESONANCE_MAX,
   SHARD_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertUndefined } from "../assert";
 import {
   LANE_CENTER,
