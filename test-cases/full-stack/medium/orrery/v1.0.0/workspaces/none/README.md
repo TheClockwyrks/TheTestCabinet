@@ -5,9 +5,10 @@ specification under `specs/` describes. Read `specs/overview.md` first; it says
 how the rest of the specification is organized.
 
 This build runs on **no engine**. Nothing here supplies a frame loop, input,
-audio, asset loading, or an overlay, and there is no game code to start from.
-What the project supplies is the toolchain, already configured and installed:
-TypeScript, Vite, Vitest, ESLint and Prettier, wired to the commands below.
+audio, asset loading, or an overlay, and there is no game code to start from and
+no art or sound for it to play. What the project supplies is the toolchain,
+already configured and installed: TypeScript, Vite, Vitest, ESLint and Prettier,
+wired to the commands below.
 
 ## What you own
 
@@ -16,14 +17,14 @@ TypeScript, Vite, Vitest, ESLint and Prettier, wired to the commands below.
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours. You write the runtime a
 browser game needs — the frame loop and the delta time it measures, fitting the
-fixed logical stage onto the canvas, pointer and keyboard input, audio, and the
-diagnostics overlay — and you write the game itself on top of it.
+fixed logical stage onto the canvas, pointer and keyboard input, image loading,
+audio with a looping bed, and the diagnostics overlay — and you write the game
+itself on top of it.
 
 Orrery is operated with the pointer, so the pointer path is part of what you
-build: taking the cursor off the page, mapping its position into the game's
-logical units through the same fit you use to draw, and delivering its movement
-and its press and release edges to the game. `specs/controls.md` and
-`specs/editor.md` state what Orrery does with them.
+build: taking the cursor off the page and delivering its position in the game's
+logical units, with its movement and its press and release edges, to the game.
+`specs/controls.md` and `specs/editor.md` state what Orrery does with them.
 
 You also write the `window.__orrery` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how
@@ -31,14 +32,13 @@ the game is driven from code, so it is present and exactly as specified.
 
 Every figure the specification fixes — the stage, field, and editor geometry,
 the mote and part rosters, the costs, the instruction set, the speeds, the
-action bindings, the cue names, the screen copy — is stated in `specs/`. Name
-them once in your own module and read from it, rather than restating a number
-at each use.
+action bindings, the cue names, the screen copy — is stated in `specs/`, and the
+value stated there is authoritative.
 
 **You also produce every asset the game shows and plays.** Asset-generation
 tools are on your `PATH` while you build here. `specs/assets.md` is the
-contract: what to produce, which tool produces it, the path it lands at, and the
-bar it is held to. The finished files are committed to this repository and
+contract: what to produce, which tool produces it, the path it lands at, and
+how it is wired in. The finished files are committed to this repository and
 loaded at runtime, and `npm run build` never invokes the tools.
 
 `@test-cabinet/particle-runtime` is already a dependency, vendored into this
@@ -75,9 +75,11 @@ entries and scripts alone.
 ## Before you finish
 
 - `npm run build` produces `dist/` with `index.html` at its root, and that
-  directory runs as-is on any static host.
+  directory runs as-is on any static host, at its root and under a sub-path.
 - `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all
   pass. The same four commands are run over the repository you leave behind.
+- The assets `specs/assets.md` asks for are produced and committed under
+  `assets/`, and the game loads them.
 - **Replace this file** with the `README.md` `specs/overview.md` asks the
   finished build to ship: what the game is, how to install it, how to run it in
   development, how to produce the production build, and the controls.

@@ -6,12 +6,13 @@
 // Every gameplay value is in the fixed 1280x720 logical coordinate space
 // defined by `specs/overview.md` (origin top-left, x right, y down). That space
 // is the engine's logical design size: the engine scales and letterboxes it
-// onto the canvas, so no gameplay value here is ever expressed in real pixels
-// and gameplay never leaves logical space. The pointer position the game reads
-// is in these same units, so a hit test against a hex center, a tray slot, or a
-// tape cell needs no conversion. Every canvas size is in pixels, and a sprite
-// is drawn at one unit per pixel, so a canvas `44` wide stands `44` units wide
-// in the world.
+// onto the canvas, and the game leaves the camera at rest, so world units and
+// these logical units coincide, no gameplay value here is ever expressed in
+// real pixels, and gameplay never leaves logical space. The pointer position
+// the game reads is in these same units, so a hit test against a hex center, a
+// tray slot, or a tape cell needs no conversion. Every canvas size is in
+// pixels, and a sprite is drawn at one unit per pixel, so a canvas `44` wide
+// stands `44` units wide in the world.
 //
 // THE LOOK IS NOT HERE, AND THAT IS DELIBERATE. Orrery fixes no palette, no
 // type, no styling, no filament or arm rendering, no background, and no
@@ -598,3 +599,23 @@ export const LOOP_SEAM_TOLERANCE = 0.01;
 
 /** The version the debug surface reports as `version`. */
 export const ORRERY_DEBUG_VERSION = 1;
+
+// ---- The level and the actor tags (specs/overview.md) --------------------
+
+/**
+ * The one level the whole game runs in. `src/game.ts` keys its level registry
+ * and `startLevel` by this name, and the game never opens another level: every
+ * screen is a value of the game state's screen field.
+ */
+export const LEVEL_NAME = "sky";
+
+/** The tag each kind of actor on the field carries. */
+export const TAGS = {
+  field: "field",
+  mote: "mote",
+  filament: "filament",
+  part: "part",
+  effect: "effect",
+} as const;
+
+export type ActorTag = (typeof TAGS)[keyof typeof TAGS];

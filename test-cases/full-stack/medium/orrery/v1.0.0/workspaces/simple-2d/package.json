@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Orrery — a machine-building puzzle of arms, sigils, and celestial motes on a hex field, built on the Simple 2D engine, that runs entirely in the browser.",
+  "description": "Orrery — a machine-building puzzle of arms, sigils, and celestial motes on a hex field, built on the Simple 2D engine, running entirely in the browser, whose art, effects, and audio the build produces itself.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",

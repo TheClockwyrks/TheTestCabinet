@@ -32,7 +32,7 @@
 // handed it over, which is how the game is driven from code
 // (`specs/instrumentation.md`). Because no one holds a writable state, the
 // surface is written in the shape of `update`: a pose takes the current state
-// and returns the next (`loadPuzzle(state, challenge)`), a reading takes the
+// and returns the next (`loadChallenge(state, challenge)`), a reading takes the
 // state and returns what it read (`snapshot(state)`), and a caller drives them
 // through `engine.apply` and `engine.state`. Where its implementation lives
 // under `src/` is your call; the only fixed point is that `initialize` returns
@@ -44,6 +44,14 @@
 // edges — the engine's input documentation, seeded at `engine/`, defines the
 // API, and `specs/controls.md` and `specs/editor.md` state what Orrery does
 // with the three of them.
+//
+// THE ART AND THE SOUND ARE YOURS TO PRODUCE. Orrery ships neither.
+// `specs/assets.md` states which tool on the `PATH` makes each file, where it
+// lands under `assets/`, and the bar it is held to; `src/constants.ts` names
+// the paths. Load the sprites through the engine's asset loader, bind the seven
+// CUES to its cue bus, and play each produced particle system through
+// `@test-cabinet/particle-runtime`'s `./canvas` binding over the context
+// `render` receives.
 
 import type {
   Game,
@@ -73,14 +81,14 @@ export const game: Game<OrreryState, OrreryDebugApi> = {
   /**
    * Runs once, before any frame.
    *
-   * Register every action in ACTIONS against its BINDINGS, define the six CUES,
-   * register the diagnostic sources specs/instrumentation.md lists — each is
-   * handed the state current at the read, so none closes over the state built
-   * here — and build the complete initial state: the title screen, with every
-   * field of OrreryState set, the campaign course data and its reference
-   * solutions among the build's own modules, and every progress field at the
-   * resting values specs/state.md gives them. Return it beside the debug
-   * surface.
+   * Register every action in ACTIONS against its BINDINGS, define the seven
+   * CUES over the produced files, load the produced sprites and particle
+   * systems, register the diagnostic sources specs/instrumentation.md lists —
+   * each is handed the state current at the read, so none closes over the state
+   * built here — and build the complete initial state: the title screen, with
+   * every field of OrreryState set, the campaign course and its reference
+   * solutions, and every progress field at the resting values specs/state.md
+   * gives them. Return it beside the debug surface.
    */
   initialize(_api: InitApi<OrreryState>): [OrreryState, OrreryDebugApi] {
     throw new Error(NOT_IMPLEMENTED);

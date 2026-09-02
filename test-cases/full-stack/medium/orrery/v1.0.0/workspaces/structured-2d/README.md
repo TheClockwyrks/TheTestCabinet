@@ -4,46 +4,51 @@ This repository is the starting point for building **Orrery**, the game the
 specification under `specs/` describes. Read `specs/overview.md` first; it says
 how the rest of the specification is organized.
 
-The project is already wired up. It builds on the **Simple 2D** engine, which
-is installed as an ordinary dependency and documents itself under `engine/` —
-read that alongside the specs. What is missing is the game, and the art and
-sound it plays.
+The project is already wired up. It builds on the **Structured 2D** engine,
+which is installed as an ordinary dependency and documents itself under
+`engine/` — read that alongside the specs. What is missing is the game, and the
+art and sound it plays.
 
 ## What you own
 
 **`src/game.ts`, and any new files you add beside it.**
 
 Start by declaring and exporting `OrreryState`, exactly as `specs/state.md`
-fixes it, and `OrreryDebugApi`, the debug and automation surface
-`specs/instrumentation.md` specifies. The stub in `src/game.ts` is written
-against both names, so the project does not compile until they exist — a fresh
-workspace failing `npm run typecheck` is the starting point, not a broken seed.
+fixes it — a class extending the engine's `GameState` — and `OrreryDebugApi`,
+the debug and automation surface `specs/instrumentation.md` specifies. The stub
+in `src/game.ts` is written against both names, so the project does not compile
+until they exist — a fresh workspace failing `npm run typecheck` is the starting
+point, not a broken seed.
 
-`src/game.ts` then exports `game`, a `Game<OrreryState, OrreryDebugApi>`: three
-functions over that state. `initialize` builds the state and the debug surface
-once and returns them together as `[state, debug]`; `update` takes the current
-state as a read-only view (`DeepReadonly<OrreryState>`, from `ts-essentials`)
-and returns the next state, advanced against the frame's delta time in seconds;
-and `render` is handed that next state, read-only again, and draws it. The
-engine holds the state by value and replaces it with whatever `update` returns,
-so a frame builds the next state from the current one rather than writing into
-it, and the type is what guarantees that rendering changes nothing. All three
-currently throw `"not implemented"`. Implement them.
+`src/game.ts` then exports `game`, a `GameDefinition<OrreryDebugApi>`: the game
+instance class, a level registry holding the single level the game runs in —
+keyed by the `LEVEL_NAME` `src/constants.ts` fixes — and `startLevel` naming it.
+The engine opens that one level and the game never opens another, so the world
+and its game state live for the whole session and every screen is a value of the
+state's `screen` field. The instance's `initialize` registers the actions,
+defines the cues, loads the produced assets, and returns the debug surface. The
+level's game mode runs the screens and the rules, and it adds a single player in
+its `beginPlay`, whose controller is where the actions and the pointer are read.
+The mode's `gameStateClass` is `OrreryState`, and the framework's states are
+live objects, so a tick writes the fields it advances in place. The instance
+currently throws `"not implemented"`. Implement it.
+
+Each actor carries its tag from `TAGS`, and the game leaves the camera at rest,
+so world units and the stage's logical units coincide.
 
 **The pointer comes from the engine.** The machine is built with the pointer,
-and the engine hands the game its position already in logical stage units along
-with its press and release edges — read the engine's input documentation for
-the API. `specs/controls.md` and `specs/editor.md` state what Orrery does with
-the three of them.
+and the player controller reads it from its input reader already in logical
+stage units, as the frame's ordered samples carrying the press and release edges
+— read the engine's input documentation for the API. `specs/controls.md` and
+`specs/editor.md` state what Orrery does with them.
 
 The debug surface is a required deliverable. The engine returns it from
-`engine.debug` exactly as `initialize` handed it over, and that is how the game
-is driven from code, so it is present and exactly as
-`specs/instrumentation.md` specifies. Because nothing holds a writable state,
-its operations are written in the shape of `update`: a pose takes the current
-state and returns the next, and a caller applies it through
-`engine.apply((s) => debug.loadChallenge(s, challenge))`; a reading takes the
-state and returns what it read, as `debug.snapshot(engine.state)`. Nothing is
+`engine.debug` exactly as the instance's `initialize` handed it over, and that
+is how the game is driven from code, so it is present and exactly as
+`specs/instrumentation.md` specifies. Its operations act on the live world at
+the moment they are called: a pose takes only the parameters the specification
+names for it and returns nothing, as `engine.debug.loadChallenge(challenge)`,
+and a reading returns plain data, as `engine.debug.snapshot()`. Nothing is
 published to the page.
 
 `OrreryState` **is a contract**. Keep every field, under the name, type, and
@@ -60,12 +65,16 @@ invokes the tools.
 
 `@test-cabinet/particle-runtime` is already a dependency, vendored into this
 repository and resolved by a `file:` entry in `package.json`. It plays a
-produced `system.json` into a 2D drawing context — the one `render` receives.
-Import it like any other dependency.
+produced `system.json` into a 2D drawing context — the one a component that
+draws directly is handed, since the engine's declarative pipeline does not draw
+particles. Import it like any other dependency.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
-runs them in process, with coverage over `src/`. The engine's documentation
-carries a complete worked example of testing a game this way.
+runs them in process, with coverage over `src/`. A test stands the engine up
+over a canvas from `@napi-rs/canvas`, with a `SurfaceMetrics` and a scripted
+clock of the test's own, then advances the game a counted number of frames with
+`engine.advance`, so it needs no browser. The engine's documentation defines
+every piece of that recipe.
 
 ## What you must not edit
 
@@ -74,7 +83,8 @@ carries a complete worked example of testing a game this way.
 - **`src/constants.ts`** — every figure the specification fixes: the stage,
   field, and editor geometry, the mote and part rosters, the costs, the
   instruction set, the speeds, the action names and bindings, the cue names,
-  the produced-asset paths, and the screen copy. Read from it.
+  the produced-asset paths, the level name and actor tags, and the screen copy.
+  Read from it.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
