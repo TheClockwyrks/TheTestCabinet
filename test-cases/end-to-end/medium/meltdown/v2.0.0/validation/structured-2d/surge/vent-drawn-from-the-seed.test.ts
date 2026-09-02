@@ -43,8 +43,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual, assertLength } from "../assert";
 import {
   captureStill,
-  createHarness,
-  ticksFor,
+  createDriveHarness,
+  driveFrames,
   type Harness,
   type VentName,
 } from "../harness";
@@ -64,15 +64,24 @@ const WAVE = 1;
  * build whose release clock runs a little slow without this point depending on the
  * cadence at all, which `surge/spawn-cadence` decides.
  */
-const WATCH_TICKS = ticksFor(28);
+/*
+ * The window is counted in frames of the long-drive clock (`harness.ts`, The
+ * long-drive clock): the seconds of game time it names are the requirement, how
+ * finely they are diced is this check's to choose, and a thirtieth of a second is
+ * eighteen frames inside one release interval.
+ */
+const WATCH_TICKS = driveFrames(28);
 
-/** Frames between two samples: a twentieth of a second, well inside one interval. */
-const POLL_FRAMES = 6;
+/**
+ * Frames between two samples: two of the long-drive clock's, a fifteenth of a
+ * second, which falls inside one `WAVE_SPAWN_INTERVAL` (`0.6` s) nine times over.
+ */
+const POLL_FRAMES = 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {

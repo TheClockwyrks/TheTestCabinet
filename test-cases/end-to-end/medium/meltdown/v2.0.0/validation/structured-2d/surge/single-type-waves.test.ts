@@ -44,8 +44,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
-  createHarness,
-  ticksFor,
+  createDriveHarness,
+  driveFrames,
   type Harness,
 } from "../harness";
 import { poseWavePhase, watchReleases } from "./scenario";
@@ -64,10 +64,13 @@ const PENDING = 8;
  * leaves room for a build whose clock runs slower than the specification's without
  * the reading depending on the cadence at all, which `surge/spawn-cadence` decides.
  */
-const WATCH_TICKS = ticksFor(8);
+const WATCH_TICKS = driveFrames(8);
 
-/** Frames between two samples: a twentieth of a second. */
-const POLL_FRAMES = 6;
+/**
+ * Frames between two samples: two of the long-drive clock's, a fifteenth of a
+ * second, which falls inside one `WAVE_SPAWN_INTERVAL` (`0.6` s) nine times over.
+ */
+const POLL_FRAMES = 2;
 
 /** The fewest arrivals the reading is taken on, so a short wave cannot pass it. */
 const MIN_RELEASES = 6;
@@ -75,7 +78,7 @@ const MIN_RELEASES = 6;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {

@@ -54,8 +54,8 @@ import { assertEqual, assertTrue } from "../assert";
 import { waveSize } from "../constants";
 import {
   captureStill,
-  createHarness,
-  ticksFor,
+  createDriveHarness,
+  driveFrames,
   type Harness,
 } from "../harness";
 import { armWave, watchReleases } from "./scenario";
@@ -82,15 +82,24 @@ const WAVES = [1, 3, 8, 10] as const;
  * its stated count is caught by the same window, because the extra units land
  * inside it.
  */
-const WATCH_TICKS = ticksFor(24);
+/*
+ * The window is counted in frames of the long-drive clock (`harness.ts`, The
+ * long-drive clock): the seconds of game time it names are the requirement, how
+ * finely they are diced is this check's to choose, and a thirtieth of a second is
+ * eighteen frames inside one release interval.
+ */
+const WATCH_TICKS = driveFrames(24);
 
-/** Frames between two samples: a twentieth of a second. */
-const POLL_FRAMES = 6;
+/**
+ * Frames between two samples: two of the long-drive clock's, a fifteenth of a
+ * second, which falls inside one `WAVE_SPAWN_INTERVAL` (`0.6` s) nine times over.
+ */
+const POLL_FRAMES = 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {

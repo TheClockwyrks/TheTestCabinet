@@ -47,9 +47,9 @@ import {
 import { WAVE_SPAWN_INTERVAL } from "../constants";
 import {
   captureStill,
-  createHarness,
+  createDriveHarness,
+  driveFrames,
   startRun,
-  ticksFor,
   type Harness,
 } from "../harness";
 
@@ -72,7 +72,7 @@ const OPEN_WINDOW = WAVE_SPAWN_INTERVAL * 3;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {
@@ -97,7 +97,7 @@ it("releases nothing over a minute with the gate off, and fills the roster with 
   // ---- The gate closed ---------------------------------------------------
   poseWave(false);
   assertLength(h.snapshot().surge, 0, "precondition: the floor opened empty");
-  await h.advance(ticksFor(QUIET_WINDOW));
+  await h.advance(driveFrames(QUIET_WINDOW));
   captureStill(h, "quiet");
   const quiet = h.snapshot();
 
@@ -115,7 +115,7 @@ it("releases nothing over a minute with the gate off, and fills the roster with 
   // ---- The gate open, on an identical floor ------------------------------
   poseWave(true);
   assertLength(h.snapshot().surge, 0, "precondition: the floor opened empty");
-  await h.advance(ticksFor(OPEN_WINDOW));
+  await h.advance(driveFrames(OPEN_WINDOW));
   captureStill(h, "released");
   const released = h.snapshot();
 

@@ -37,11 +37,11 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
 import {
   captureStill,
-  createHarness,
+  createDriveHarness,
+  driveFrames,
   poseIdleTower,
   poseTower,
   startRun,
-  ticksFor,
   type Harness,
 } from "../harness";
 import { MOVER_SITE, faceAnchor, towerOf } from "./bench";
@@ -67,12 +67,12 @@ const WATCH_SECONDS = 60;
  * often the reading is taken, never how far from `0` a mover's heat may sit — that
  * bound is exact, below.
  */
-const SAMPLE_EVERY = 60;
+const SAMPLE_EVERY = 15;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {
@@ -94,7 +94,7 @@ it("The Forge carries no heat", async () => {
 
   const warmed = await h.until(
     (snapshot) => towerOf(snapshot, mover).heat !== NO_HEAT,
-    { poll: SAMPLE_EVERY, maxFrames: ticksFor(WATCH_SECONDS) },
+    { poll: SAMPLE_EVERY, maxFrames: driveFrames(WATCH_SECONDS) },
   );
   captureStill(h, "cold");
   const closed = h.snapshot();

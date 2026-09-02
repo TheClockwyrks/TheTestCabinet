@@ -56,9 +56,9 @@ import {
 import { LEFT_VENT_ROWS } from "../constants";
 import {
   captureStill,
-  createHarness,
+  createDriveHarness,
   poseIdleTower,
-  ticksFor,
+  driveFrames,
   tileAtPoint,
   towerOn,
   type Harness,
@@ -94,10 +94,19 @@ const PENDING = 24;
  * `0.6`-second cadence are all out inside fifteen seconds; eighteen leaves room for
  * a build whose release clock runs a little slow.
  */
-const WATCH_TICKS = ticksFor(18);
+/*
+ * The window is counted in frames of the long-drive clock (`harness.ts`, The
+ * long-drive clock): the seconds of game time it names are the requirement, how
+ * finely they are diced is this check's to choose, and a thirtieth of a second is
+ * eighteen frames inside one release interval.
+ */
+const WATCH_TICKS = driveFrames(18);
 
-/** Frames between two samples: a twentieth of a second, well inside one interval. */
-const POLL_FRAMES = 6;
+/**
+ * Frames between two samples: two of the long-drive clock's, a fifteenth of a
+ * second, which falls inside one `WAVE_SPAWN_INTERVAL` (`0.6` s) nine times over.
+ */
+const POLL_FRAMES = 2;
 
 /** The fewest left-vent arrivals the reading is taken on. */
 const MIN_ARRIVALS = 4;
@@ -105,7 +114,7 @@ const MIN_ARRIVALS = 4;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {

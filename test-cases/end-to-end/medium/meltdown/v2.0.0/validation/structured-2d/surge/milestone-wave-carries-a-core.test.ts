@@ -38,8 +38,8 @@ import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { DIFFICULTY_TABLE, milestoneWaves } from "../constants";
 import {
   captureReplay,
-  createHarness,
-  ticksFor,
+  createDriveHarness,
+  driveFrames,
   type DifficultyName,
   type Harness,
 } from "../harness";
@@ -55,15 +55,24 @@ const MILESTONE_TYPE = "core";
 const PENDING = 1;
 
 /** Seconds of game time each milestone is watched for: two, over three intervals. */
-const WATCH_TICKS = ticksFor(2);
+/*
+ * The window is counted in frames of the long-drive clock (`harness.ts`, The
+ * long-drive clock): the seconds of game time it names are the requirement, how
+ * finely they are diced is this check's to choose, and a thirtieth of a second is
+ * eighteen frames inside one release interval.
+ */
+const WATCH_TICKS = driveFrames(2);
 
-/** Frames between two samples: a twentieth of a second, which is fine enough here. */
-const POLL_FRAMES = 6;
+/**
+ * Frames between two samples: two of the long-drive clock's, a fifteenth of a
+ * second, which falls inside one `WAVE_SPAWN_INTERVAL` (`0.6` s) nine times over.
+ */
+const POLL_FRAMES = 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {

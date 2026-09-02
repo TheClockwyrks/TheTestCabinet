@@ -43,9 +43,10 @@ import {
 import { WAVE_SPAWN_INTERVAL } from "../constants";
 import {
   captureStill,
-  createHarness,
+  createDriveHarness,
+  driveFrames,
+  driveSeconds,
   startRun,
-  ticksFor,
   type Harness,
 } from "../harness";
 
@@ -53,7 +54,7 @@ import {
 const PENDING = 30;
 
 /** How long the held leg is driven for: a minute of game time. */
-const QUIET_TICKS = ticksFor(60);
+const QUIET_TICKS = driveFrames(60);
 
 /**
  * How long the open leg is driven for: five seconds of game time.
@@ -64,12 +65,12 @@ const QUIET_TICKS = ticksFor(60);
  * the floor at its specified speed, so nothing released has left again by the time
  * the roster is read.
  */
-const RELEASED_TICKS = ticksFor(5);
+const RELEASED_TICKS = driveFrames(5);
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {
@@ -93,7 +94,7 @@ it("releases no unit over a minute with the gate off", async () => {
   assertLength(
     quiet.surge,
     0,
-    `units the run released over ${QUIET_TICKS / ticksFor(1)} seconds with the gate off`,
+    `units the run released over ${driveSeconds(QUIET_TICKS)} seconds with the gate off`,
   );
   assertEqual(
     quiet.wavePending,
@@ -111,7 +112,7 @@ it("fills the roster over the same wave with the gate on", async () => {
   assertGreaterThan(
     released.surge.length,
     0,
-    `units the run released over ${RELEASED_TICKS / ticksFor(1)} seconds with the gate on`,
+    `units the run released over ${driveSeconds(RELEASED_TICKS)} seconds with the gate on`,
   );
   assertLessThan(
     released.wavePending,

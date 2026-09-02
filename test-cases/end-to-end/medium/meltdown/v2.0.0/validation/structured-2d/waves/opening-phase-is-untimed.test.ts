@@ -50,19 +50,19 @@ import { assertEqual } from "../assert";
 import { BUILD_PHASE_TIME } from "../constants";
 import {
   captureStill,
-  createHarness,
-  seconds,
+  createDriveHarness,
+  driveFrames,
+  driveSeconds,
   startRun,
-  ticksFor,
   type Harness,
 } from "../harness";
 import { watchOver } from "./run";
 
 /** The game time the opening phase is held for: a minute. */
-const WATCH_TICKS = ticksFor(60);
+const WATCH_TICKS = driveFrames(60);
 
 /** How often the phase is read, in frames: eight times a second. */
-const POLL = ticksFor(1 / 8);
+const POLL = driveFrames(1 / 8);
 
 /** The timer the opening phase must report, from `specs/waves.md`. */
 const EXPECTED_TIMER = 0;
@@ -79,7 +79,7 @@ const PENDING = 5;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {
@@ -102,13 +102,13 @@ it("holds the opening phase over a minute with the run's own release running", a
   captureStill(h, "opening");
 
   for (const [index, sample] of samples.entries()) {
-    const at = `at ${seconds(index * POLL).toFixed(1)} s of game time`;
+    const at = `at ${driveSeconds(index * POLL).toFixed(1)} s of game time`;
     assertEqual(sample.phase, "opening", `the phase ${at}`);
     assertEqual(
       sample.timer,
       EXPECTED_TIMER,
       `the buildTimer the opening phase reports ${at}, over ` +
-        `${WATCH_TICKS / ticksFor(BUILD_PHASE_TIME)} whole build phases`,
+        `${WATCH_TICKS / driveFrames(BUILD_PHASE_TIME)} whole build phases`,
     );
     assertEqual(sample.surge, 0, `the units on the floor ${at}`);
   }
