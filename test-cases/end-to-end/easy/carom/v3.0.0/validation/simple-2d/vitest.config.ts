@@ -32,15 +32,17 @@ export default defineConfig({
     // Every frame this project advances is a frame the runtime RENDERS, so a
     // check that plays a rally to the speed ceiling costs thousands of real
     // renders, and how long those take is a property of the machine rather than
-    // of the build. The ceilings below are therefore set where a host busy enough
-    // to run these an order of magnitude slower than an idle one still finishes:
-    // a timeout that fails a correct build is a defect in the check.
-    testTimeout: 180_000,
+    // of the build. So the ceiling below is not what the checks cost — it is set
+    // several times above the slowest a correct build has been measured at on a
+    // machine loaded far past anything a run should meet, because a timeout that
+    // fails a correct build is a defect in the check rather than a fact about
+    // the build.
+    testTimeout: 300_000,
     // Left unset, a hook falls back to vitest's own 10 s, which is nothing like
     // the allowance the checks themselves get; a harness is built in a
     // `beforeEach`, so a hook that expires fails the check just as a timeout
     // does.
-    hookTimeout: 180_000,
+    hookTimeout: 300_000,
     // Capped rather than left to the core count, for the same reason the
     // engineless project caps it: the host running this is running a model's
     // build under it, and a project that fans out across every core contends

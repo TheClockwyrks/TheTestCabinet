@@ -49,12 +49,14 @@ export default defineConfig({
     // physics, each of them a crossing into the page, and what a crossing costs
     // is a property of how busy the machine is rather than of the build: the
     // same suites measured on a loaded host take an order of magnitude longer
-    // than on an idle one. The ceilings are therefore set where a host that
-    // slow still finishes, since a timeout that fails a correct build is a
-    // defect in the check. The hook gets the same allowance as the check it
-    // opens: a page is built in a `beforeEach`, and a hook that expires fails
-    // the check just as a timeout does.
-    testTimeout: 180_000,
-    hookTimeout: 180_000,
+    // than on an idle one. So the ceiling is not what the checks cost — it is
+    // set several times above the slowest a correct build has been measured at
+    // on a machine loaded far past anything a run should meet, because a timeout
+    // that fails a correct build is a defect in the check rather than a fact
+    // about the build. The hook gets the same allowance as the check it opens: a
+    // page is built in a `beforeEach`, and a hook that expires fails the check
+    // just as a timeout does.
+    testTimeout: 300_000,
+    hookTimeout: 300_000,
   },
 });
