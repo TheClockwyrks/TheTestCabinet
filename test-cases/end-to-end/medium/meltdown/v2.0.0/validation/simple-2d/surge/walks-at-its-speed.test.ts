@@ -38,7 +38,7 @@
 // tiles per second rather than logical units reads a nineteenth of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../../src/constants";
+import { SURGE_DEFS } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

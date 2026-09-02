@@ -46,7 +46,7 @@
 // one that charged the flyer more to escape reads lives falling by more than one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../../src/constants";
+import { SURGE_DEFS } from "../constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

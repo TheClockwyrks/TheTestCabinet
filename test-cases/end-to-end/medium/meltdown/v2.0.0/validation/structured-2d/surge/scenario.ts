@@ -40,7 +40,7 @@
 // carries what every group needs — the run, the pinned tower, the walker, the
 // stationary target — and this file is what the surge items build out of them.
 
-import { COLS, RIGHT_EXHAUST_ROWS, type SurgeType } from "../../src/constants";
+import { COLS, RIGHT_EXHAUST_ROWS, type SurgeType } from "../constants";
 import { fail } from "../assert";
 import {
   posePinnedTower,

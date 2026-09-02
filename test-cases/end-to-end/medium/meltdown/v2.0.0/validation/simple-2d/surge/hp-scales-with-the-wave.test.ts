@@ -43,7 +43,7 @@
 // before any of that.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS, hpScale } from "../../src/constants";
+import { SURGE_DEFS, hpScale } from "../constants";
 import { assertCloseTo } from "../assert";
 import { tileCentre } from "../geometry";
 import {

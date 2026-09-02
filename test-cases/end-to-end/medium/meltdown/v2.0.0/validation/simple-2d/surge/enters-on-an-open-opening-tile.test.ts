@@ -53,7 +53,7 @@
 // walled rows exactly as often as it did with no wall there at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS } from "../../src/constants";
+import { LEFT_VENT_ROWS } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import { footprintTiles, tileAt, tileKey } from "../geometry";
 import {

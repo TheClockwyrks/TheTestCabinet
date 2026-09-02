@@ -34,7 +34,7 @@
 // catches. Each failure names the difficulty and the wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTY_TABLE, milestoneWaves } from "../../src/constants";
+import { DIFFICULTY_TABLE, milestoneWaves } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureReplay,

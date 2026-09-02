@@ -32,7 +32,7 @@
 //
 // Local to this group on purpose. Nothing outside `surge/` reads a roster row.
 
-import { COLS, RIGHT_EXHAUST_ROWS } from "../../src/constants";
+import { COLS, RIGHT_EXHAUST_ROWS } from "../constants";
 import { tileCentre } from "../geometry";
 import {
   posePinnedTower,

@@ -32,7 +32,7 @@
 // `60` where this row says `38`. Each is a different reading from the row.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../../src/constants";
+import { SURGE_DEFS } from "../constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { bountyPaidFor, livesLostTo, readArrival, slowTouches } from "./roster";

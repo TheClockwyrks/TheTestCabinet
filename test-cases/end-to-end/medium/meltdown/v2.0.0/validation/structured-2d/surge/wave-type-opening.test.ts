@@ -38,7 +38,7 @@
 // the wave it happened on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_OPENING } from "../../src/constants";
+import { WAVE_OPENING } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

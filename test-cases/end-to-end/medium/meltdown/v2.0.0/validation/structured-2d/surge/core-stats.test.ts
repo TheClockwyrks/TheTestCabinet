@@ -45,7 +45,7 @@
 // that charged one life per leak reads lives falling by one instead of five.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../../src/constants";
+import { SURGE_DEFS } from "../constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

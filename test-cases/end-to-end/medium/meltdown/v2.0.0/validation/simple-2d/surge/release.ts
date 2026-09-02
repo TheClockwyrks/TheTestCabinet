@@ -26,7 +26,7 @@
 // Local to this group on purpose. The `waves` group is about the phases
 // themselves; nothing outside `surge/` watches what a release carries.
 
-import { WAVE_SPAWN_INTERVAL, waveSize, waveType } from "../../src/constants";
+import { WAVE_SPAWN_INTERVAL, waveSize, waveType } from "../constants";
 import {
   startRun,
   ticksFor,

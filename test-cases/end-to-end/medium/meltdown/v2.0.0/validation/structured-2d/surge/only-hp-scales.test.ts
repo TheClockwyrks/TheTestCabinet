@@ -42,7 +42,7 @@
 // the wave number reads `60`. None of them is inside an exact comparison.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS, hpScale } from "../../src/constants";
+import { SURGE_DEFS, hpScale } from "../constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

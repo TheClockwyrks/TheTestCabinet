@@ -48,7 +48,7 @@
 // it. And no tower may stand on the tile either way, which is the item's own words.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS } from "../../src/constants";
+import { LEFT_VENT_ROWS } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
