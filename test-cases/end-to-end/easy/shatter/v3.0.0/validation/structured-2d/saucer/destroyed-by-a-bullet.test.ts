@@ -29,7 +29,7 @@
 // (`specs/collision.md` resolves whichever a round reaches first in the tick).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_R } from "../../src/constants";
+import { SAUCER_R } from "../constants";
 import { assertNull, assertTrue, assertUndefined } from "../assert";
 import {
   aimedRound,

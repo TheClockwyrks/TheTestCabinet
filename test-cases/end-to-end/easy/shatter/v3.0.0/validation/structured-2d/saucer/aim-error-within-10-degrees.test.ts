@@ -31,7 +31,7 @@
 // a corner where the well is weakest. See `shots.ts`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, SAUCER_AIM_ERROR } from "../../src/constants";
+import { DEG, SAUCER_AIM_ERROR } from "../constants";
 import { assertLength, assertLessThanOrEqual } from "../assert";
 import { angleDelta } from "../geometry";
 import {

@@ -31,7 +31,7 @@
 // the travel was turned on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_WEAVE_INTERVAL } from "../../src/constants";
+import { SAUCER_WEAVE_INTERVAL } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureReplay,

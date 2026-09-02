@@ -15,7 +15,7 @@
 // of a visit are geometry and cost; every tolerance stays in the check that
 // asserts it, derived there from the figure `specs/saucer.md` fixes for it.
 
-import { SAUCER_AIM_ERROR, SAUCER_FIRE_INTERVAL } from "../../src/constants";
+import { SAUCER_AIM_ERROR, SAUCER_FIRE_INTERVAL } from "../constants";
 import { fail } from "../assert";
 import {
   angleBetween,
@@ -31,7 +31,7 @@ import { poseVisit } from "./visit";
 /**
  * `SAUCER_AIM_ERROR` in the degrees `specs/saucer.md` states it in: `10`.
  *
- * `src/constants.ts` carries it in radians, because every angle the surface
+ * `../constants` carries it in radians, because every angle the surface
  * takes or reports is in radians; the specification's own figure is the degree,
  * and all three aim items assert against the degree.
  */

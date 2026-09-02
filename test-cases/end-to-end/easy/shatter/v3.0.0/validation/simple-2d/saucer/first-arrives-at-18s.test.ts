@@ -24,7 +24,7 @@
 // build's own spawner putting it there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRST_DELAY } from "../../src/constants";
+import { SAUCER_FIRST_DELAY } from "../constants";
 import { assertNotNull, assertNull } from "../assert";
 import {
   captureStill,

@@ -43,7 +43,7 @@ import {
   SAUCER_FIRE_INTERVAL,
   SAUCER_SPEED,
   SAUCER_WEAVE_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertLength, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

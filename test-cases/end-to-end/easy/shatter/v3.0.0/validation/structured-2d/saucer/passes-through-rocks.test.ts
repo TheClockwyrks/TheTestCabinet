@@ -37,7 +37,7 @@
 // lethal contact test, so the only interaction available is the one under test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SAUCER_R } from "../../src/constants";
+import { ROCK_RADIUS, SAUCER_R } from "../constants";
 import {
   assertEqual,
   assertLength,

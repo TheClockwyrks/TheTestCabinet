@@ -33,7 +33,7 @@
 // every wrong model above is outside it by hundreds.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_H, SAUCER_WEAVE_SPEED } from "../../src/constants";
+import { FIELD_H, SAUCER_WEAVE_SPEED } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { foldY, wrapY } from "../geometry";
 import {

@@ -31,7 +31,7 @@
 // (`saucer/first-arrives-at-18s`, `saucer/subsequent-gap`).
 
 import { afterEach, it } from "vitest";
-import { FIELD_W, SAUCER_R, SAUCER_SPEED } from "../../src/constants";
+import { FIELD_W, SAUCER_R, SAUCER_SPEED } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import { captureStill, type Harness } from "../harness";
 import {

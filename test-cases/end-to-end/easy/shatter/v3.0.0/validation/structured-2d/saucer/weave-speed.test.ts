@@ -47,7 +47,7 @@
 // nothing to answer.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_WEAVE_INTERVAL, SAUCER_WEAVE_SPEED } from "../../src/constants";
+import { SAUCER_WEAVE_INTERVAL, SAUCER_WEAVE_SPEED } from "../constants";
 import { assertBetween, fail } from "../assert";
 import {
   captureStill,

@@ -35,7 +35,7 @@
 // `90`, or the `260` a `130`-unit Small drift would give).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_W, SAUCER_SPEED } from "../../src/constants";
+import { FIELD_W, SAUCER_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -59,13 +59,7 @@
 // leaves behind the approach the verdict rests on.
 
 import { afterEach, it } from "vitest";
-import {
-  CORE_R,
-  FIELD_W,
-  SAUCER_R,
-  SAUCER_SPEED,
-  STAR_Y,
-} from "../../src/constants";
+import { CORE_R, FIELD_W, SAUCER_R, SAUCER_SPEED, STAR_Y } from "../constants";
 import { assertGreaterThan } from "../assert";
 import { closestApproachToStar, type Vec } from "../geometry";
 import {

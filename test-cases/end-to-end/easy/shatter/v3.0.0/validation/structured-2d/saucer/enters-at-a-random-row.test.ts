@@ -33,7 +33,7 @@
 // distribution the specification does not fix.
 
 import { afterEach, it } from "vitest";
-import { FIELD_H, SAUCER_R, SAUCER_WEAVE_SPEED } from "../../src/constants";
+import { FIELD_H, SAUCER_R, SAUCER_WEAVE_SPEED } from "../constants";
 import {
   assertBetween,
   assertGreaterThan,

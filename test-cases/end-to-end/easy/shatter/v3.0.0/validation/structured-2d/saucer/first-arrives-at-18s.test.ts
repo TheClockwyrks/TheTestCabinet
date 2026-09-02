@@ -33,7 +33,7 @@
 // or when the next one comes (`saucer/subsequent-gap`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRST_DELAY } from "../../src/constants";
+import { SAUCER_FIRST_DELAY } from "../constants";
 import { assertNotNull, assertNull } from "../assert";
 import { captureStill, type Harness } from "../harness";
 import {

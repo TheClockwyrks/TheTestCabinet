@@ -27,7 +27,7 @@
 // steer it clear of the core is switched off.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_LIFETIME } from "../../src/constants";
+import { SAUCER_LIFETIME } from "../constants";
 import { assertNotNull, assertNull } from "../assert";
 import {
   captureStill,

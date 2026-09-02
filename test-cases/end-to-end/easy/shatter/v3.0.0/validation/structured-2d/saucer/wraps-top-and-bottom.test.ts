@@ -41,7 +41,7 @@
 // (`18`), so a build that wraps on the craft's edge rather than its centre fails.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_H, SAUCER_WEAVE_SPEED } from "../../src/constants";
+import { FIELD_H, SAUCER_WEAVE_SPEED } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

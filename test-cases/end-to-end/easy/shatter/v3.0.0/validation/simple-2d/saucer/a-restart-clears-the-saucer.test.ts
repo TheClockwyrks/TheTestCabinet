@@ -53,7 +53,7 @@
 // afterwards.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS, START_LIVES } from "../../src/constants";
+import { PAUSE_ITEMS, START_LIVES } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureReplay,

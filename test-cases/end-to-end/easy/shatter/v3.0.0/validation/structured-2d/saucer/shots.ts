@@ -39,7 +39,7 @@
 // SCENARIO those five points share.
 
 import { ConstantClock } from "@test-cabinet/structured-2d";
-import { TICK_HZ } from "../../src/constants";
+import { TICK_HZ } from "../constants";
 import {
   clearCalls,
   createHarness,

@@ -28,7 +28,7 @@
 // `saucer/despawns-after-12s`'s.
 
 import { afterEach, it } from "vitest";
-import { SAUCER_GAP_MAX, SAUCER_GAP_MIN } from "../../src/constants";
+import { SAUCER_GAP_MAX, SAUCER_GAP_MIN } from "../constants";
 import { assertBetween, assertEqual, assertTrue } from "../assert";
 import { captureStill, type Harness } from "../harness";
 import {

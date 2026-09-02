@@ -36,7 +36,7 @@
 // `saucer/bullet-harms-only-the-ship`'s and the `star-core` group's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_BULLET_LIFE } from "../../src/constants";
+import { SAUCER_BULLET_LIFE } from "../constants";
 import { assertDefined, assertUndefined } from "../assert";
 import {
   captureStill,

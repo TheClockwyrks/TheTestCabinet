@@ -34,7 +34,7 @@
 // `saucer/subsequent-gap`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_LIFETIME } from "../../src/constants";
+import { SAUCER_LIFETIME } from "../constants";
 import { assertNotNull, assertNull } from "../assert";
 import {
   captureStill,

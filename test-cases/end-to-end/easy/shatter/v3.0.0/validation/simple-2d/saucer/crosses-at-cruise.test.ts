@@ -29,7 +29,7 @@
 // that only weaves reads nothing at all across.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_SPEED } from "../../src/constants";
+import { SAUCER_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { foldX } from "../geometry";
 import {

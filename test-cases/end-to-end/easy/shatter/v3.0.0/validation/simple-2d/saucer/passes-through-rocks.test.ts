@@ -28,7 +28,7 @@
 // field, shut both world gates and switched the ship's contact test off.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SAUCER_R } from "../../src/constants";
+import { ROCK_RADIUS, SAUCER_R } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import { distance } from "../geometry";
 import {

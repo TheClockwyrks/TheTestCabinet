@@ -42,7 +42,7 @@
 // group in this suite marches minutes of game time.
 
 import { ConstantClock } from "@test-cabinet/structured-2d";
-import { FACE_UP, SAFE_X, SAFE_Y, TICK_HZ } from "../../src/constants";
+import { FACE_UP, SAFE_X, SAFE_Y, TICK_HZ } from "../constants";
 import {
   clearCalls,
   clearWorld,

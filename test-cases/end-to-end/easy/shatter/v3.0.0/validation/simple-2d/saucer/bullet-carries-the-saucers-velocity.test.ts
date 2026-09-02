@@ -39,11 +39,7 @@
 // to a constant — and the nearest wrong model is `146` units per second away.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DEG,
-  SAUCER_BULLET_SPEED,
-  SAUCER_FIRE_INTERVAL,
-} from "../../src/constants";
+import { DEG, SAUCER_BULLET_SPEED, SAUCER_FIRE_INTERVAL } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { speedOf } from "../geometry";
 import {

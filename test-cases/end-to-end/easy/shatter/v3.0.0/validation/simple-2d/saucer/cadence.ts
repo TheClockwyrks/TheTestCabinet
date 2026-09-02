@@ -18,7 +18,7 @@
 // it, derived there from the figure `specs/saucer.md` fixes for it.
 
 import { fail } from "../assert";
-import { FIELD_W } from "../../src/constants";
+import { FIELD_W } from "../constants";
 import { secondsFor, startPlaying, ticksFor, type Harness } from "../harness";
 import type {
   BulletSnapshot,

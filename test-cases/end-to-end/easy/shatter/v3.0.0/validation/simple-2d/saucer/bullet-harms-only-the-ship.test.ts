@@ -32,7 +32,7 @@ import {
   ROCK_RADIUS,
   SAUCER_BULLET_R,
   SAUCER_BULLET_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertContains, assertEqual, assertTrue } from "../assert";
 import { distance } from "../geometry";
 import {

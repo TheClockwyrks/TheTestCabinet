@@ -31,7 +31,7 @@
 // saucer that is still standing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MUZZLE_SPEED, SAUCER_R, TICK_DT } from "../../src/constants";
+import { MUZZLE_SPEED, SAUCER_R, TICK_DT } from "../constants";
 import { assertNull, assertTrue } from "../assert";
 import {
   ROUND_STANDOFF,

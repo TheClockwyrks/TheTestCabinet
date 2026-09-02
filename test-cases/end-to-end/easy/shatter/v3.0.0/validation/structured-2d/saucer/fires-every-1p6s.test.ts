@@ -35,7 +35,7 @@
 // always a fresh shot.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRE_INTERVAL } from "../../src/constants";
+import { SAUCER_FIRE_INTERVAL } from "../constants";
 import { assertLength, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

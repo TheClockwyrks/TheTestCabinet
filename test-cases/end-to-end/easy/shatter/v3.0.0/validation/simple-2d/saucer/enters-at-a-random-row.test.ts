@@ -27,7 +27,7 @@
 // second at its widest.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_H, SAUCER_R, TICK_HZ } from "../../src/constants";
+import { FIELD_H, SAUCER_R, TICK_HZ } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { nextArrival, openSaucerGame } from "./cadence";

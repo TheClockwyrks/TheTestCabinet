@@ -61,7 +61,7 @@ import {
   SAUCER_SPEED,
   STAR_X,
   STAR_Y,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThan, assertLessThan } from "../assert";
 import { STAR, closestApproachTo, foldX, type Point } from "../geometry";
 import {

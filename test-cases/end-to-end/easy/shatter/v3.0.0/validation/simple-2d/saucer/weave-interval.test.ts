@@ -27,7 +27,7 @@
 // rerolls every tick reads a gap of one tick.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_WEAVE_INTERVAL } from "../../src/constants";
+import { SAUCER_WEAVE_INTERVAL } from "../constants";
 import { assertBetween, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

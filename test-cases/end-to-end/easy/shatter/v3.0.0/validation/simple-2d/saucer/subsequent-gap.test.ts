@@ -23,7 +23,7 @@
 // sampling stride, which is this check's own choice, cannot decide a verdict.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_GAP_MAX, SAUCER_GAP_MIN, TICK_HZ } from "../../src/constants";
+import { SAUCER_GAP_MAX, SAUCER_GAP_MIN, TICK_HZ } from "../constants";
 import { assertBetween, assertTrue } from "../assert";
 import {
   captureStill,

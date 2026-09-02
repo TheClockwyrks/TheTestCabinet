@@ -33,7 +33,7 @@
 // cannot carry it into anything, not so that the pull is switched off.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_BULLET_LIFE, SAUCER_BULLET_SPEED } from "../../src/constants";
+import { SAUCER_BULLET_LIFE, SAUCER_BULLET_SPEED } from "../constants";
 import { assertDeepEqual } from "../assert";
 import {
   captureStill,

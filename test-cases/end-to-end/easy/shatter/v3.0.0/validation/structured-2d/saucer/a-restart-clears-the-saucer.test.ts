@@ -45,7 +45,7 @@
 // re-adopts the craft it was holding, shows up on the second reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS, START_LIVES } from "../../src/constants";
+import { PAUSE_ITEMS, START_LIVES } from "../constants";
 import { assertEqual, assertNotNull, assertNull } from "../assert";
 import {
   captureReplay,
