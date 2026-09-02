@@ -45,12 +45,7 @@
 // rock carry on round the star rather than the frame the turn was read on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  ROCK_SPEED_MAX,
-  ROCK_SPEED_MIN,
-  STAR_Y,
-  TICK_DT,
-} from "../../src/constants";
+import { ROCK_SPEED_MAX, ROCK_SPEED_MIN, STAR_Y, TICK_DT } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import {
   captureReplay,

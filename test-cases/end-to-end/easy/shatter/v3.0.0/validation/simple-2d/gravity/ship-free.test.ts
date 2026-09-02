@@ -32,7 +32,7 @@
 // says nothing about which way it points.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAR_X, STAR_Y } from "../../src/constants";
+import { STAR_X, STAR_Y } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

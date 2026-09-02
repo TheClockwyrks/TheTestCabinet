@@ -14,7 +14,7 @@
 // comes out of `geometry.ts`, which computes it from `specs/gravity.md`'s own
 // `MU` and `SOFTEN`; every bound is stated in the check that asserts it.
 
-import { TICK_DT } from "../../src/constants";
+import { TICK_DT } from "../constants";
 import { STAR, gravityMagnitude, type Point } from "../geometry";
 
 export type { Point };

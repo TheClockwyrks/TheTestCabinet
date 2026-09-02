@@ -42,7 +42,7 @@
 // the saucer's travel is all that remains.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_LIFETIME, STAR_X, STAR_Y } from "../../src/constants";
+import { SAUCER_LIFETIME, STAR_X, STAR_Y } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

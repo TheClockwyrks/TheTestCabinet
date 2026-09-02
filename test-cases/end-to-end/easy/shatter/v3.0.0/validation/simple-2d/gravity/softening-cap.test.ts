@@ -25,7 +25,7 @@
 // `gravity/pull-magnitude`'s, and the direction is `gravity/pull-direction`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MU, STAR_X, STAR_Y, TICK_DT } from "../../src/constants";
+import { MU, STAR_X, STAR_Y, TICK_DT } from "../constants";
 import { assertBetween } from "../assert";
 import {
   bulletById,

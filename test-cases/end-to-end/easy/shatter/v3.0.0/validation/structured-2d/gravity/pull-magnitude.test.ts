@@ -47,7 +47,7 @@
 // model above is out by 78 percent.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MU, TICK_DT } from "../../src/constants";
+import { MU, TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

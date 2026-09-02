@@ -40,7 +40,7 @@
 // that rounds `MU` and for nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MU, SOFTEN, TICK_DT } from "../../src/constants";
+import { MU, SOFTEN, TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

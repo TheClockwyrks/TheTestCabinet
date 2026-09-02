@@ -47,7 +47,7 @@
 // `saucer/crosses-at-cruise`'s item, not this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MU, SAUCER_SPEED, STAR_X, STAR_Y, TICK_DT } from "../../src/constants";
+import { MU, SAUCER_SPEED, STAR_X, STAR_Y, TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -38,7 +38,7 @@
 // pull: the well acts on every rock alike.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, MU, SOFTEN, TICK_DT } from "../../src/constants";
+import { DEG, MU, SOFTEN, TICK_DT } from "../constants";
 import { assertBetween, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -37,7 +37,7 @@
 // item posed where the distinction is the point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   bulletById,

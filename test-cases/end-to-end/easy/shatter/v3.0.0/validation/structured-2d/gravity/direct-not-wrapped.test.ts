@@ -52,7 +52,7 @@
 // conformant build lands on the figure to floating point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_H, FIELD_W, TICK_DT } from "../../src/constants";
+import { FIELD_H, FIELD_W, TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

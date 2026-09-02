@@ -34,7 +34,7 @@
 // so the deviation across the shot's heading is read too.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MUZZLE_SPEED, STAR_Y } from "../../src/constants";
+import { MUZZLE_SPEED, STAR_Y } from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,

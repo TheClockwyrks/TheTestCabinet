@@ -46,7 +46,7 @@
 // than the frame the reading was taken on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MUZZLE_SPEED, STAR_Y } from "../../src/constants";
+import { MUZZLE_SPEED, STAR_Y } from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   bulletById,

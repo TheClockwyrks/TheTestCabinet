@@ -39,7 +39,7 @@
 // world gates, so the one tick this runs is the well's alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { assertBetween } from "../assert";
 import {
   bulletById,

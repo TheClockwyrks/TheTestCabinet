@@ -32,7 +32,7 @@
 // and the round ends at `x = 1014`, inside the field, so nothing wraps and the
 // bend is read on the path the round actually flew.
 
-import { MUZZLE_SPEED, STAR_Y } from "../../src/constants";
+import { MUZZLE_SPEED, STAR_Y } from "../constants";
 import { ticksFor } from "../harness";
 
 /** How far the unbent line passes from the star, in units. */
