@@ -25,8 +25,8 @@
 // a frame that raises more than one of them plays each of those once).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { CUES } from "../constants";
 import { R2_FOREIGN } from "../fixtures";
 import {
   captureReplay,
