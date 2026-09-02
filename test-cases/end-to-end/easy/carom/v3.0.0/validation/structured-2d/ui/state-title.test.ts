@@ -12,7 +12,7 @@
 // about the screen is the build's, rated through the domains.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
+import { TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -13,7 +13,7 @@
 // marker beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MATCHOVER_ITEMS, WIN_SCORE } from "../../src/constants";
+import { MATCHOVER_ITEMS, WIN_SCORE } from "../constants";
 import { assertDeepEqual, assertEqual, assertMatches } from "../assert";
 import {
   arrangeGoal,
