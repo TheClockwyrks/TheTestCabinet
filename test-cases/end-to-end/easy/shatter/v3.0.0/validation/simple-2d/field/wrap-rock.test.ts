@@ -36,7 +36,7 @@
 // overshoot the crossing is posed with as large as a legitimate drift allows.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAR_X, STAR_Y } from "../../src/constants";
+import { STAR_X, STAR_Y } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

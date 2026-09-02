@@ -31,7 +31,7 @@
 // NO THRESHOLD LIVES HERE. Every tolerance, every speed and every line a crossing
 // is flown along is the caller's; this file poses the run and reports the pair.
 
-import { FIELD_H, FIELD_W, TICK_DT } from "../../src/constants";
+import { FIELD_H, FIELD_W, TICK_DT } from "../constants";
 import { fail } from "../assert";
 import { wrapCoordinate } from "../geometry";
 import type { Harness } from "../harness";

@@ -32,7 +32,7 @@
 // HUD in, so the only thing that changes between the two readings is the rock.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_W, ROCK_RADIUS } from "../../src/constants";
+import { FIELD_W, ROCK_RADIUS } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -35,7 +35,7 @@
 // `SAUCER_BULLET_LIFE` (`1.4` s), so nothing expires mid-crossing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_BULLET_SPEED, STAR_X, STAR_Y } from "../../src/constants";
+import { SAUCER_BULLET_SPEED, STAR_X, STAR_Y } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

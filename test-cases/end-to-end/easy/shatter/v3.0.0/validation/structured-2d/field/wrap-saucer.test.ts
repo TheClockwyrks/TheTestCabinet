@@ -32,7 +32,7 @@
 // to a saucer.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_SPEED } from "../../src/constants";
+import { SAUCER_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

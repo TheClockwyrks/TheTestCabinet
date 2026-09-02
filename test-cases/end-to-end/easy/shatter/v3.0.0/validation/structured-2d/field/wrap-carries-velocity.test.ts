@@ -38,7 +38,7 @@
 // would not itself hand out.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT } from "../../src/constants";
+import { TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

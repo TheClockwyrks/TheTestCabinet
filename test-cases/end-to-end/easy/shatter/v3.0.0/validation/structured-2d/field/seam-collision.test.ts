@@ -39,12 +39,7 @@
 // both world gates and shut the ship's contact test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BULLET_R,
-  FIELD_W,
-  MUZZLE_SPEED,
-  ROCK_RADIUS,
-} from "../../src/constants";
+import { BULLET_R, FIELD_W, MUZZLE_SPEED, ROCK_RADIUS } from "../constants";
 import { assertTrue, assertUndefined } from "../assert";
 import {
   captureStill,

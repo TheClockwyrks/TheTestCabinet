@@ -46,7 +46,7 @@
 // read where it ends up rather than where it started.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_R, HALO_R, STAR_X, STAR_Y } from "../../src/constants";
+import { CORE_R, HALO_R, STAR_X, STAR_Y } from "../constants";
 import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,

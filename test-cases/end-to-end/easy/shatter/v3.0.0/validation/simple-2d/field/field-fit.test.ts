@@ -51,7 +51,7 @@
 // per shape and the build meets each as a fresh game.
 
 import { afterEach, it } from "vitest";
-import { FIELD_H, FIELD_W, ROCK_RADIUS } from "../../src/constants";
+import { FIELD_H, FIELD_W, ROCK_RADIUS } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

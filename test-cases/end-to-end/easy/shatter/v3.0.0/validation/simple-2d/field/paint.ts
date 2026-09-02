@@ -37,7 +37,7 @@
 // verdict takes are each check's own figures, stated in the check beside the
 // specification rule they serve.
 
-import { DEFAULT_SEED } from "../../src/constants";
+import { DEFAULT_SEED } from "../constants";
 import { startPlaying, type Harness, type Rgb } from "../harness";
 
 /** One whole frame of the backing store, as raw RGBA bytes. */
