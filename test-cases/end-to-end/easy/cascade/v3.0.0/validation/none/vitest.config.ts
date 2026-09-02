@@ -37,13 +37,20 @@ export default defineConfig({
     passWithNoTests: false,
     coverage: { enabled: false },
     // Each suite file holds a page of the shared browser while it runs, so the
-    // ceiling on files in flight is the ceiling on pages — and a suite spends
-    // almost all of its time waiting on a crossing into one, so overlapping them
-    // is most of what decides how long the whole run takes. Capped rather than
-    // left to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it.
-    maxWorkers: 4,
+    // ceiling on files in flight is the ceiling on pages.
+    //
+    // WHAT A SUITE SPENDS ITS TIME ON DECIDES THIS FIGURE, and it is no longer
+    // what it was. A suite used to sit waiting on a crossing into the page for
+    // almost all of its life — a round trip per frame — so overlapping suites was
+    // most of what decided how long the whole run took and a small number of them
+    // could keep the browser busy. The frames now run inside the page in batches
+    // (`Harness.sample`), so what a suite spends its time on is the build's own
+    // update and render: a core, not a wait. Eight rather than four because eight
+    // busy pages use a machine of any ordinary size properly, and eight rather
+    // than the core count because the cost of a page is also memory in one shared
+    // browser process, and the host running this is running a model's build under
+    // it.
+    maxWorkers: 8,
     minWorkers: 1,
     // WHAT THESE TWO BOUND, AND WHAT THEY MUST NOT DECIDE. Every suite here is
     // deterministic: it poses a board, drives a counted number of frames through
