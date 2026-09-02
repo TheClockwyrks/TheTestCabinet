@@ -44,7 +44,7 @@
 // randomness, which is `instrumentation/reset-seeds-randomness`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, RESONANCE_MAX, START_LIVES } from "../../src/constants";
+import { BINDINGS, RESONANCE_MAX, START_LIVES } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

@@ -39,7 +39,7 @@
 // grades the rule. This point asks only that the surface poses what it claims to.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { fluxHold } from "../../src/constants";
+import { fluxHold } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

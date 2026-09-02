@@ -58,7 +58,7 @@ import {
   PLAYER_BULLET_HALF,
   PLAYER_BULLET_SPEED,
   SHARD_HALF,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertLength,

@@ -49,7 +49,7 @@
 // the ship's `x` is well inside the lane's clamp.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, fluxHold } from "../../src/constants";
+import { START_LIVES, fluxHold } from "../constants";
 import { assertEqual } from "../assert";
 import {
   bulletById,

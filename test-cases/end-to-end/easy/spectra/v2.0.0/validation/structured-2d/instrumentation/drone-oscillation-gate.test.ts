@@ -41,7 +41,7 @@
 // `drones.flux-shimmer-duration` and `drones.flux-emerges-opposite`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { fluxCycle, fluxHold, fluxWindow } from "../../src/constants";
+import { fluxCycle, fluxHold, fluxWindow } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

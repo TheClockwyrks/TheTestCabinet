@@ -55,7 +55,7 @@
 // wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_INTRO_HOLD } from "../../src/constants";
+import { STAGE_INTRO_HOLD } from "../constants";
 import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
 import {
   captureStill,

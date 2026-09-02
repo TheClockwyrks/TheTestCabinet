@@ -41,7 +41,7 @@
 
 import { WallClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_SPEED } from "../../src/constants";
+import { DIVE_SPEED } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

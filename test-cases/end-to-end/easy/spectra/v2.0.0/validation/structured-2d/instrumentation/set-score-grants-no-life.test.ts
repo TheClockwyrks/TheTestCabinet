@@ -42,7 +42,7 @@ import {
   EXTRA_LIFE_AT,
   SCORE_SHARD_FORM,
   START_LIVES,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

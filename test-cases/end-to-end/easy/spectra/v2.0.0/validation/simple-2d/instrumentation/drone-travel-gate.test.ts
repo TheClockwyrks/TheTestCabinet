@@ -36,7 +36,7 @@
 // other did not.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_SPEED } from "../../src/constants";
+import { DIVE_SPEED } from "../constants";
 import { assertCloseTo, assertGreaterThan } from "../assert";
 import {
   captureStill,

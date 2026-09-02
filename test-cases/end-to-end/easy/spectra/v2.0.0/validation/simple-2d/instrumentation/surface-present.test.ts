@@ -35,7 +35,7 @@ import {
   BINDINGS,
   SHIP_SPEED,
   SPECTRA_DEBUG_VERSION,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertCloseTo,
   assertEqual,

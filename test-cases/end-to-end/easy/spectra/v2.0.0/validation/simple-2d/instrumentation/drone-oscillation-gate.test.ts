@@ -48,7 +48,7 @@ import {
   fluxWindow,
   slotX,
   slotY,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

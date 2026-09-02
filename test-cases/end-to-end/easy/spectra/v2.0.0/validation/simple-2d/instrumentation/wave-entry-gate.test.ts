@@ -45,7 +45,7 @@
 // nor that the field is empty for the intro, which is `swarm/wave-empty-at-start`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENTER_GROUP_GAP, FIELD_TOP } from "../../src/constants";
+import { ENTER_GROUP_GAP, FIELD_TOP } from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

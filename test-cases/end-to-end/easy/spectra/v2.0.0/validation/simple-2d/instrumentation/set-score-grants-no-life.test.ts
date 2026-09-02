@@ -38,7 +38,7 @@
 // `progression/extra-life-awarded` and `progression/extra-life-once`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { EXTRA_LIFE_AT, START_LIVES } from "../../src/constants";
+import { EXTRA_LIFE_AT, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

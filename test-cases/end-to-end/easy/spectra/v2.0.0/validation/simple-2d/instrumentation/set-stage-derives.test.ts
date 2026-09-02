@@ -50,7 +50,7 @@ import {
   droneSpeedScale,
   fluxHold,
   isChallengeStage,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseCrowdedField, sortedById } from "./crowded";

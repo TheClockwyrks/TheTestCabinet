@@ -46,7 +46,7 @@ import {
   RESONANCE_MAX,
   SHARD_HALF,
   SPECTRA_DEBUG_VERSION,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertContains,
   assertEqual,

@@ -39,7 +39,7 @@
 // silent, which is `swarm.only-divers-fire`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_FIRE_Y } from "../../src/constants";
+import { DIVE_FIRE_Y } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

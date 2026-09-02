@@ -82,7 +82,7 @@ import {
   SHARD_HALF,
   fluxHold,
   fluxWindow,
-} from "../../src/constants";
+} from "../constants";
 import { assertDeepEqual, assertEqual, assertNotEqual, fail } from "../assert";
 import {
   captureStill,

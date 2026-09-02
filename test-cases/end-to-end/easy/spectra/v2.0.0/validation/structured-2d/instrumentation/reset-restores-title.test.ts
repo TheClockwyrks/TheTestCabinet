@@ -64,7 +64,7 @@ import {
   SHIP_X_MAX,
   SHIP_X_MIN,
   START_LIVES,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertCloseTo,
   assertEqual,

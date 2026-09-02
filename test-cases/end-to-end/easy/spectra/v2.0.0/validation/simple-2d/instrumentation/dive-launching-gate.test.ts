@@ -43,7 +43,7 @@
 // which no point reads on its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_FIRST_DELAY, DIVE_GAP_MAX, FORM_COLS } from "../../src/constants";
+import { DIVE_FIRST_DELAY, DIVE_GAP_MAX, FORM_COLS } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

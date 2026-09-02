@@ -73,7 +73,7 @@
 // and that the panel is off when the game starts, which is that point's too.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESONANCE_MAX, fluxHold, fluxWindow } from "../../src/constants";
+import { RESONANCE_MAX, fluxHold, fluxWindow } from "../constants";
 import { assertDeepEqual, assertEqual, fail } from "../assert";
 import {
   captureStill,

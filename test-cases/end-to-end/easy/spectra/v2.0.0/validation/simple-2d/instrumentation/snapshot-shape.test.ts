@@ -32,7 +32,7 @@
 // belongs to the group that grades it. This point is about presence and type.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, RESONANCE_MAX } from "../../src/constants";
+import { BINDINGS, RESONANCE_MAX } from "../constants";
 import {
   assertContains,
   assertEqual,

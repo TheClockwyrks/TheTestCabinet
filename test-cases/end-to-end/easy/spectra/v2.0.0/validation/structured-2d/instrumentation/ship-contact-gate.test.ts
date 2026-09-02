@@ -48,7 +48,7 @@ import {
   FIELD_BOTTOM,
   SHIP_Y,
   START_LIVES,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertTrue, assertUndefined } from "../assert";
 import {
   bulletById,
