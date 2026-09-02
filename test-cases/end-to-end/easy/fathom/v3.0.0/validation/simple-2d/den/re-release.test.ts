@@ -36,7 +36,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { placeForager } from "../fixtures";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
-import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
+import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import { indexOfKind, requireSceneHeld, sceneGuard } from "../scene";
 import {
