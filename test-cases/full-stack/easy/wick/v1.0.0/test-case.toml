@@ -5379,6 +5379,14 @@ failure_cap = "scuffed"
 validation = { script = "screens/pause-via-key.test.ts", outputs = [ { id = "paused", name = "The run paused", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "playing-back-inert"
+title = "back does nothing on the playing screen"
+description = "On playing, pressing Escape leaves screen playing and the run alive, its weapons, passives, level, hp, and kills as the press found them."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/playing-back-inert.test.ts", outputs = [ { id = "inert", name = "The night untouched by back", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "paused-copy"
 title = "The pause screen draws PAUSED over the held world"
 description = "The paused frame draws PAUSED and the HUD over the world exactly as the pause left it."
