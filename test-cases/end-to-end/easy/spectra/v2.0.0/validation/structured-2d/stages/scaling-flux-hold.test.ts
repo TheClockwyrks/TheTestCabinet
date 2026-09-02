@@ -7,12 +7,12 @@
 // is holding its stored band, at or above it the Flux is shimmering — so the held
 // window at stage 10 is `fluxHold(10)`, 1.15 s.
 //
-// WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `stages/ramps.ts` restates
-// the ramp from specs/stages.md rather than importing `fluxHold` from the seeded
-// `src/constants.ts`. A build may leave that file exactly as seeded and still run
-// its shimmer predicate off a formula of its own — one step out, say — and a check
-// that compared the reported figure against the seeded function would agree with
-// it twice over and grade nothing.
+// WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `fluxHold` is read from this
+// project's own `constants.ts`, which restates the ramp from specs/stages.md,
+// rather than from the build's `src/constants.ts`. A build writes that file itself
+// and may still run its shimmer predicate off a formula of its own — one step out,
+// say — and a check that compared the reported figure against the build's own
+// function would agree with it twice over and grade nothing.
 //
 // WHY STAGE TEN. The ramp reaches its 1.0 s floor at stage 13, so ten is inside
 // it, and the wrong answers are far apart: a build that never scales the hold reads
@@ -43,7 +43,7 @@
 // and a boundary one step out passes a loose sweep and fails the probe.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLUX_SHIMMER, FORM_CENTER_X } from "../../src/constants";
+import { FLUX_SHIMMER, FORM_CENTER_X, fluxHold } from "../constants";
 import {
   assertBetween,
   assertCloseTo,
@@ -63,7 +63,6 @@ import {
   type Harness,
   type SpectraSnapshot,
 } from "../harness";
-import { fluxHold } from "./ramps";
 
 /** The stage the scenario is posed at: the hold is stated per stage. */
 const STAGE = 10;

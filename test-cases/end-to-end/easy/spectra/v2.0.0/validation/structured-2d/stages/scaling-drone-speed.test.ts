@@ -16,11 +16,12 @@
 // them, whatever the band around it. Read against the specification's own figures
 // they are 6% and 4.8% out, and separated.
 //
-// WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `stages/ramps.ts` restates
-// the ramp from specs/stages.md rather than importing `droneSpeedScale` from the
-// seeded `src/constants.ts`. A build may leave that file exactly as seeded and fly
-// its dives off a formula of its own, so the seeded function is not evidence about
-// the simulation; the restated one is the specification, and it is what the
+// WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `droneSpeedScale` is read
+// from this project's own `constants.ts`, which restates the ramp from
+// specs/stages.md, rather than from the build's `src/constants.ts`. A build writes
+// that file itself and may fly its dives off a formula of its own while the file
+// still reads correctly, so the build's function is not evidence about the
+// simulation; the restated one is the specification, and it is what the
 // measurement below is held to.
 //
 // WHY STAGE FIVE. It is inside the ramp. The formula saturates at its 1.50 cap by
@@ -44,7 +45,7 @@
 // the wave's own dive launcher so no second dive joins the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_SPEED, slotX, slotY } from "../../src/constants";
+import { DIVE_SPEED, droneSpeedScale, slotX, slotY } from "../constants";
 import {
   assertBetween,
   assertCloseTo,
@@ -61,7 +62,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { droneSpeedScale } from "./ramps";
 
 /** The stage the ramp is read at, and the stage it is read against. */
 const LATE_STAGE = 5;

@@ -28,7 +28,7 @@
 // is posed: which drones are moving and how fast is the whole question.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHALLENGE_EVERY } from "../../src/constants";
+import { CHALLENGE_EVERY } from "../constants";
 import { assertBetween, assertGreaterThanOrEqual, fail } from "../assert";
 import {
   captureStill,

@@ -24,10 +24,11 @@
 // at 448 where it says 435.2, and the two errors very nearly cancel between them.
 // Read against the specification's own figures they are 4% and 2.9% out.
 //
-// WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `stages/ramps.ts` restates
-// the ramp from specs/stages.md rather than importing `bulletSpeedScale` from the
-// seeded `src/constants.ts`, which a build may leave exactly as seeded while its
-// simulation runs off a formula of its own.
+// WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `bulletSpeedScale` is read
+// from this project's own `constants.ts`, which restates the ramp from
+// specs/stages.md, rather than from the build's `src/constants.ts` — a file the
+// build writes itself, and which may read correctly while its simulation runs off
+// a formula of its own.
 //
 // WHY STAGE TEN. `bulletSpeedScale` reaches its 1.40 cap at stage 11, so ten is
 // the last stage inside the ramp and `stages/scaling-bullet-speed-cap` is the point
@@ -46,7 +47,8 @@ import {
   ENEMY_BULLET_SPEED,
   FIELD_TOP,
   FORM_CENTER_X,
-} from "../../src/constants";
+  bulletSpeedScale,
+} from "../constants";
 import { assertBetween, assertCloseTo, assertTruthy, fail } from "../assert";
 import {
   bulletById,
@@ -61,7 +63,6 @@ import {
   type BulletSnapshot,
   type Harness,
 } from "../harness";
-import { bulletSpeedScale } from "./ramps";
 
 /** The stage the ramp is read at, and the stage it is read against. */
 const LATE_STAGE = 10;

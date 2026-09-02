@@ -22,7 +22,7 @@
 // nothing about the challenge schedule is in play.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_CLEARED_HOLD } from "../../src/constants";
+import { STAGE_CLEARED_HOLD } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

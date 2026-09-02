@@ -38,7 +38,7 @@
 // It asserts no verdict: it fails only when the game is not even in the situation
 // its callers need, and then with what it needed named.
 
-import { FORM_CENTER_X } from "../../src/constants";
+import { FORM_CENTER_X } from "../constants";
 import { fail } from "../assert";
 import { dronesOfKind, startStage, type Band, type Harness } from "../harness";
 

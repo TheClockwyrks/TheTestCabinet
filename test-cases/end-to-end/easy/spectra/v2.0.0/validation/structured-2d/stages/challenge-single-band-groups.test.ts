@@ -30,7 +30,7 @@ import {
   CHALLENGE_GROUPS,
   CHALLENGE_TOTAL,
   ENTER_GROUP_GAP,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,

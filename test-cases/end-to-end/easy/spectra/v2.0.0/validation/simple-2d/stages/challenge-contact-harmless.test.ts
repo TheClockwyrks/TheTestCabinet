@@ -30,7 +30,7 @@
 // contact, whether it scores, and what the ship does are other points' business.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHALLENGE_EVERY, SHIP_Y, START_LIVES } from "../../src/constants";
+import { CHALLENGE_EVERY, SHIP_Y, START_LIVES } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

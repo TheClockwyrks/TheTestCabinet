@@ -14,7 +14,7 @@
 // build's own stage rules did with it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYER_BULLET_SPEED } from "../../src/constants";
+import { PLAYER_BULLET_SPEED } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

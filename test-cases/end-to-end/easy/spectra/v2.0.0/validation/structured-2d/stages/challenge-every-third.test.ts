@@ -18,7 +18,7 @@
 // named by the first stage it disagrees on rather than by a single count.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHALLENGE_EVERY, isChallengeStage } from "../../src/constants";
+import { CHALLENGE_EVERY, isChallengeStage } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

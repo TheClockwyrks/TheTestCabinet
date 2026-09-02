@@ -8,10 +8,10 @@
 // (`1.4`) and `DIVE_GAP_MAX` (`2.6`) seconds, multiplied by `diveGapScale(stage)`".
 // At stage 7 that window is [0.98, 1.82] seconds and its middle is 1.40.
 //
-// WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `stages/ramps.ts` restates
-// the ramp from specs/stages.md rather than importing `diveGapScale` from the
-// seeded `src/constants.ts`. A build may leave that file exactly as seeded and
-// still draw its gaps against a formula of its own.
+// WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `diveGapScale` is read from
+// this project's own `constants.ts`, which restates the ramp from specs/stages.md,
+// rather than from the build's `src/constants.ts`. A build writes that file itself
+// and may still draw its gaps against a formula of its own.
 //
 // WHY STAGE SEVEN. It is inside the ramp — `diveGapScale` reaches its 0.55 floor at
 // stage 10, where this item would assert the same figure
@@ -65,7 +65,8 @@ import {
   DIVE_GAP_MIN,
   FORM_COLS,
   FORM_ROWS,
-} from "../../src/constants";
+  diveGapScale,
+} from "../constants";
 import {
   assertBetween,
   assertCloseTo,
@@ -82,7 +83,6 @@ import {
   type FormationEntry,
   type Harness,
 } from "../harness";
-import { diveGapScale } from "./ramps";
 
 /** The stage the ramp is read at. */
 const STAGE = 7;

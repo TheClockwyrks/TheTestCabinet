@@ -47,7 +47,7 @@ import {
   CHALLENGE_PER_GROUP,
   CHALLENGE_TOTAL,
   ENTER_GROUP_GAP,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureReplay,

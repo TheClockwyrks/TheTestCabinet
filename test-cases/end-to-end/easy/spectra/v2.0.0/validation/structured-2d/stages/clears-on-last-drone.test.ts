@@ -25,7 +25,7 @@
 // the specification's "moment" names.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYER_BULLET_SPEED } from "../../src/constants";
+import { PLAYER_BULLET_SPEED } from "../constants";
 import {
   assertEqual,
   assertLength,

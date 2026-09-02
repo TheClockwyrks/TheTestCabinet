@@ -29,7 +29,7 @@ import {
   CHALLENGE_EVERY,
   CHALLENGE_GROUPS,
   ENTER_GROUP_GAP,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
