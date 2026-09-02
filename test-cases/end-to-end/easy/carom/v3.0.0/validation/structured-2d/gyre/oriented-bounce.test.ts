@@ -15,7 +15,7 @@
 // the outgoing velocity is read at the instant the bounce resolves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../../src/constants";
+import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   ball0,

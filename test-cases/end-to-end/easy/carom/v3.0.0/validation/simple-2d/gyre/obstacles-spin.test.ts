@@ -8,7 +8,7 @@
 // center stays where it is: a rotation walks nothing across the field.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../../src/constants";
+import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../constants";
 import { assertDeepEqual, assertLessThanOrEqual } from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { angleDelta, poseObstacles, type ObstaclePose } from "./harness";

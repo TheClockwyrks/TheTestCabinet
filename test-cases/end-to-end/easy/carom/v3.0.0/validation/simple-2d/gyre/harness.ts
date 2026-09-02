@@ -11,7 +11,7 @@
 // fail with the member named when a build left it out, rather than throwing a
 // `TypeError` several frames later.
 
-import { OBSTACLE_CENTERS, OBSTACLE_SWAY_PERIOD } from "../../src/constants";
+import { OBSTACLE_CENTERS, OBSTACLE_SWAY_PERIOD } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import type { Harness } from "../harness";
 import type { ObstacleSnapshot } from "../surface";
