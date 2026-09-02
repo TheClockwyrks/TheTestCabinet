@@ -48,9 +48,20 @@ export default defineConfig({
     // Most of Meltdown's operations take effect the moment they are called, so a
     // posed scenario is a few hundred crossings into the page rather than
     // thousands of real-time frames. The exceptions are the items governed by the
-    // clock rule, which spend real seconds on the build's own clock by design; a
-    // minute is generous against a healthy build and still bounds a hung one.
-    testTimeout: 60_000,
-    hookTimeout: 60_000,
+    // clock rule, which spend real seconds on the build's own clock by design.
+    //
+    // THREE MINUTES, AND IT IS A CEILING ON THE HOST RATHER THAN A TOLERANCE ON
+    // THE BUILD. No validator in this project asserts anything about how long it
+    // took, so this figure can only ever turn a slow machine into a failing point
+    // — and that is a point taken off a build for the load on the runner that
+    // scored it. Measured on this repository's own machine with the core count
+    // oversubscribed twice over, the longest suites of the sibling projects ran
+    // between sixty and a hundred and five seconds against the twenty-five they
+    // take idle, and failed points they pass idle; a browser page under the same
+    // contention is slower still. Three minutes is the same ceiling all three
+    // engines carry, and the whole run is capped at twenty minutes of wall clock
+    // by the runner regardless, so a hung suite is still bounded.
+    testTimeout: 180_000,
+    hookTimeout: 180_000,
   },
 });

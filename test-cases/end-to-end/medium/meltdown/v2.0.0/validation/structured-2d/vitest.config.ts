@@ -36,6 +36,22 @@ export default defineConfig({
     // measured on the build's own clock, so those hand the frame loop back and
     // wait out a window of wall-clock seconds (`harness.ts`, Windows on the
     // build's own clock).
-    testTimeout: 60_000,
+    //
+    // THREE MINUTES, AND IT IS A CEILING ON THE HOST RATHER THAN A TOLERANCE ON
+    // THE BUILD. No validator in this project asserts anything about how long it
+    // took, so this figure can only ever turn a slow machine into a failing
+    // point — and that is a point taken off a build for the load on the runner
+    // that scored it. Measured on this repository's own machine with the core
+    // count oversubscribed twice over, the longest suites of the sibling projects
+    // ran between sixty and a hundred and five seconds against the twenty-five
+    // they take idle, and failed points they pass idle. Three minutes restores a
+    // margin of seven, and the whole run is capped at twenty minutes of wall
+    // clock by the runner regardless, so a hung suite is still bounded.
+    testTimeout: 180_000,
+    // The hook budget matches, for the same reason: `beforeEach` builds a harness
+    // and poses a floor, and a host slow enough to need the ceiling above is slow
+    // enough to need it here. It is the ceiling the engineless project already
+    // carries.
+    hookTimeout: 180_000,
   },
 });

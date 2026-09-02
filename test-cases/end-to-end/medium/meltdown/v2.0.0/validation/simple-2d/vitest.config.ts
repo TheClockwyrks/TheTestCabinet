@@ -32,6 +32,24 @@ export default defineConfig({
     // A posed floor is advanced with `engine.advance`, so even a scenario that
     // spends a minute of game time costs milliseconds; the ceiling is for the
     // sweeps that release a whole wave against a maze.
-    testTimeout: 60_000,
+    //
+    // THREE MINUTES, AND IT IS A CEILING ON THE HOST RATHER THAN A TOLERANCE ON
+    // THE BUILD. No validator in this project asserts anything about how long it
+    // took, so this figure can only ever turn a slow machine into a failing
+    // point — and that is a point taken off a build for the load on the runner
+    // that scored it. The sweeps here are the longest suites in the project: they
+    // run about twenty-five seconds each on an idle host, which left the old
+    // one-minute ceiling a margin of two and a half times. Measured on this
+    // repository's own machine with the core count oversubscribed twice over,
+    // those same suites ran between sixty and a hundred and five seconds and the
+    // suite failed points it passes idle. Three minutes restores a margin of
+    // seven, and the whole run is capped at twenty minutes of wall clock by the
+    // runner regardless, so a hung suite is still bounded.
+    testTimeout: 180_000,
+    // The hook budget matches, for the same reason: `beforeEach` builds a harness
+    // and poses a floor, and a host slow enough to need the ceiling above is slow
+    // enough to need it here. It is the ceiling the engineless project already
+    // carries.
+    hookTimeout: 180_000,
   },
 });
