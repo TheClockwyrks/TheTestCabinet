@@ -34,7 +34,13 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { DEG, ROCK_RADIUS, TORPEDO_SPEED } from "../constants";
+import {
+  DEG,
+  ROCK_RADIUS,
+  TICK_DT,
+  TORPEDO_SPEED,
+  TORPEDO_TURN,
+} from "../constants";
 import { angleBetween, bearingTo, wrappedDistance } from "../geometry";
 import {
   captureStill,
@@ -88,12 +94,14 @@ const HOLD_TOLERANCE = 0.5 * DEG;
 /**
  * How far a turned heading may sit from the bearing to its target, in radians.
  *
- * Three degrees. The guidance re-evaluates every tick and turns at up to 1.33
- * degrees per tick, so a torpedo tracking a target sits within a tick or two of
+ * TWO TICKS OF THE TURN RATE `specs/weapons.md` FIXES: `2 * TORPEDO_TURN * TICK_DT`,
+ * some `2.67` degrees. The guidance re-evaluates every tick and turns toward the
+ * target's CURRENT position, so a torpedo tracking one sits a tick or two behind
  * the bearing rather than exactly on it, and the rock drifts about two units under
- * the well over the span, which is under a degree at this range.
+ * the well over the span, which is under a degree at this range. The same figure
+ * decides the item under every engine.
  */
-const AIM_TOLERANCE = 3 * DEG;
+const AIM_TOLERANCE = 2 * TORPEDO_TURN * TICK_DT;
 
 /**
  * The least a running guidance must have turned the heading, in radians.

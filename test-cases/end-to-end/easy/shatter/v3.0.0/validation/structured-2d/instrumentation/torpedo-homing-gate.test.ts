@@ -89,6 +89,24 @@ const FLIGHT_SECONDS = 0.3;
  */
 const HELD_TOLERANCE = (TORPEDO_TURN * TICK_DT) / 4;
 
+/**
+ * How near a running guidance must have brought the heading to the bearing to its
+ * target, in radians.
+ *
+ * TWO TICKS OF THE TURN RATE `specs/weapons.md` FIXES: `2 * TORPEDO_TURN * TICK_DT`,
+ * some `2.67` degrees. The guidance re-evaluates every tick and turns toward the
+ * target's CURRENT position, so a torpedo tracking a target that is itself moving
+ * sits a tick or two behind the bearing rather than exactly on it — and nothing
+ * else it could be doing sits inside that.
+ *
+ * IT IS AN ABSOLUTE BOUND AND NOT A FRACTION OF THE ANGLE IT STARTED AT. A build
+ * that turns halfway onto its target and then stops has not turned ONTO it, which
+ * is what `specs/instrumentation.md` says a running gate makes it do; a bound of
+ * "half the offset it was posed at" passes that build, and this is the reading the
+ * other two engines already take.
+ */
+const ACQUIRED_TOLERANCE = 2 * TORPEDO_TURN * TICK_DT;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -163,9 +181,11 @@ it("on, the same pose turns it onto that rock", async () => {
   const closed = offsetToRock(rock, torpedo);
   assertLessThanOrEqual(
     closed,
-    posed / 2,
-    "with homing on the torpedo turns onto the rock: the angle between its " +
-      "heading and the bearing to the target closes (specs/weapons.md)",
+    ACQUIRED_TOLERANCE,
+    "with homing on, the angle between the torpedo's heading and the bearing " +
+      `to the rock, having been posed ${((posed * 180) / Math.PI).toFixed(1)} ` +
+      "degrees off it — a running gate turns the torpedo ONTO its target " +
+      "(specs/instrumentation.md, specs/weapons.md), not merely toward it",
   );
   const flown = requireTorpedo(h.snapshot(), torpedo, "the homing torpedo");
   assertGreaterThan(

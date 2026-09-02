@@ -34,7 +34,7 @@
 // long enough for the well to have chosen the answer.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TORPEDO_CONE } from "../../src/constants";
+import { TICK_DT, TORPEDO_CONE, TORPEDO_TURN } from "../../src/constants";
 import {
   assertGreaterThanOrEqual,
   assertLessThan,
@@ -99,13 +99,13 @@ const TURN_FLOOR = radians(8);
  * How near a guided torpedo's heading must end to the bearing to the rock, in
  * radians.
  *
- * Four degrees. `specs/weapons.md` turns the heading "toward that target's current
- * position" every tick at a bounded rate, so a torpedo that has had four times the
- * turn it needed is pointing at the rock; the four degrees leave room for a build
- * whose turn lags the moving bearing by a tick or two, and still separate "turned
- * onto the rock" from "turned somewhere".
+ * TWO TICKS OF THE TURN RATE `specs/weapons.md` FIXES: `2 * TORPEDO_TURN * TICK_DT`,
+ * some `2.67` degrees. It turns the heading "toward that target's current position"
+ * every tick at a bounded rate, so a torpedo that has had four times the turn it
+ * needed is pointing at the rock and the two ticks are room for a build whose turn
+ * lags the moving bearing. The same figure decides the item under every engine.
  */
-const ACQUIRED_TOLERANCE = radians(4);
+const ACQUIRED_TOLERANCE = 2 * TORPEDO_TURN * TICK_DT;
 
 let h: Harness;
 
