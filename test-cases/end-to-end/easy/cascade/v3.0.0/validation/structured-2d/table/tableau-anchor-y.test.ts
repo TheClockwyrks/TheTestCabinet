@@ -34,13 +34,8 @@
 // anywhere else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CARD_H,
-  TABLEAU_COLUMNS,
-  TABLEAU_Y,
-  TOP_ROW_Y,
-} from "../../src/constants";
 import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
+import { CARD_H, TABLEAU_COLUMNS, TABLEAU_Y, TOP_ROW_Y } from "../constants";
 import {
   alternatingRun,
   captureStill,

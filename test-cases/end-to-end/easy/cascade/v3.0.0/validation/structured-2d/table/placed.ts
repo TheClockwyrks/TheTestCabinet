@@ -22,7 +22,7 @@
 // check that passes it and derived there from the figure `specs/table.md` fixes.
 // This file only counts and sorts.
 
-import { CARD_H, CARD_W, TOP_ROW_Y } from "../../src/constants";
+import { CARD_H, CARD_W, TOP_ROW_Y } from "../constants";
 import {
   drawnImages,
   drawnShapes,
@@ -70,10 +70,10 @@ export function placedBoxes(
  * The boxes whose size is a card's footprint, allowing `sizeTolerance` of each
  * side.
  *
- * `CARD_W x CARD_H` comes from `src/constants.ts`, which is the specification's
- * own figure; how much slack a build gets is the caller's to state, and it is
- * stated as a FRACTION of each side so the allowance is the same proportion
- * across as it is down.
+ * `CARD_W x CARD_H` comes from this project's `constants.ts`, which transcribes
+ * specs/table.md's figure; how much slack a build gets is the caller's to state,
+ * and it is stated as a FRACTION of each side so the allowance is the same
+ * proportion across as it is down.
  */
 export function cardBoxes(
   h: Harness,

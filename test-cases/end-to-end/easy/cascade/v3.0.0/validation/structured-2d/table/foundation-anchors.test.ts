@@ -22,8 +22,8 @@
 // posed on the waste here in any event.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLUMN_X, FOUNDATION_X, TOP_ROW_Y } from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { COLUMN_X, FOUNDATION_X, TOP_ROW_Y } from "../constants";
 import {
   ACE,
   ALL_SUITS,

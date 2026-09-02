@@ -22,8 +22,8 @@
 // NO GESTURE DRIVES IT: the cards are posed straight onto the columns.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLUMN_X, TABLEAU_Y, TOP_ROW_Y } from "../../src/constants";
 import { assertBetween, assertLength } from "../assert";
+import { COLUMN_X, TABLEAU_Y, TOP_ROW_Y } from "../constants";
 import {
   captureStill,
   cardBoxes,

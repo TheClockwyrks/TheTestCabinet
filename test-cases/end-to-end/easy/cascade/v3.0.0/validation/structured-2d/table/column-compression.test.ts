@@ -31,13 +31,13 @@
 // empty (specs/table.md).
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertLength, assertLessThanOrEqual } from "../assert";
 import {
   CARD_H,
   COLUMN_BOTTOM_LIMIT,
   FACE_UP_OFFSET,
   TABLEAU_Y,
-} from "../../src/constants";
-import { assertLength, assertLessThanOrEqual } from "../assert";
+} from "../constants";
 import {
   alternatingRun,
   captureStill,

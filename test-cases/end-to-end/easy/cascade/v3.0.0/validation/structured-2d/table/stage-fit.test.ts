@@ -34,7 +34,6 @@
 //     the game drew.
 
 import { afterEach, it } from "vitest";
-import { STAGE_H, STAGE_W } from "../../src/constants";
 import {
   assertCloseTo,
   assertDeepEqual,
@@ -43,6 +42,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
+import { STAGE_H, STAGE_W } from "../constants";
 import {
   ACE,
   ALL_SUITS,

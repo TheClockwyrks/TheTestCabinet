@@ -36,8 +36,8 @@
 // empty (specs/table.md).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP_OFFSET_MIN } from "../../src/constants";
 import { assertBetween, assertGreaterThanOrEqual } from "../assert";
+import { FACE_UP_OFFSET_MIN } from "../constants";
 import {
   captureStill,
   createHarness,

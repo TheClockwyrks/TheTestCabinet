@@ -30,7 +30,7 @@
 // each axis. A cluster's own edge is the smallest of them, which is the
 // footprint's; an inset stroke can only sit inside it.
 
-import { TOP_ROW_Y } from "../../src/constants";
+import { TOP_ROW_Y } from "../constants";
 import {
   cardBoxes,
   drawnBoxes,

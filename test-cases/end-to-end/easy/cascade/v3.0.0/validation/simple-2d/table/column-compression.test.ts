@@ -29,8 +29,8 @@
 // to `table/card-size` rather than to the fit.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, COLUMN_BOTTOM_LIMIT } from "../../src/constants";
 import { assertLength, assertLessThanOrEqual } from "../assert";
+import { CARD_H, COLUMN_BOTTOM_LIMIT } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -32,8 +32,8 @@
 // empty (specs/table.md).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_DOWN_OFFSET } from "../../src/constants";
 import { assertBetween, assertLength } from "../assert";
+import { FACE_DOWN_OFFSET } from "../constants";
 import {
   captureStill,
   createHarness,

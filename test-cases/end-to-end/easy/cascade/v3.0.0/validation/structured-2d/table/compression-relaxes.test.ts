@@ -35,8 +35,8 @@
 // empty (specs/table.md).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP_OFFSET } from "../../src/constants";
 import { assertBetween, assertLength } from "../assert";
+import { FACE_UP_OFFSET } from "../constants";
 import {
   captureReplay,
   createHarness,

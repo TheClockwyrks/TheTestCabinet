@@ -17,8 +17,8 @@
 // `stock` group's; this reads only where the shown card was drawn.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOP_ROW_Y, WASTE_X } from "../../src/constants";
 import { assertGreaterThan } from "../assert";
+import { TOP_ROW_Y, WASTE_X } from "../constants";
 import {
   captureStill,
   card,

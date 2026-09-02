@@ -18,8 +18,8 @@
 // `handling.stock-click-turns` owns.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STOCK_X, TOP_ROW_Y } from "../../src/constants";
 import { fail } from "../assert";
+import { STOCK_X, TOP_ROW_Y } from "../constants";
 import {
   boxAt,
   captureStill,

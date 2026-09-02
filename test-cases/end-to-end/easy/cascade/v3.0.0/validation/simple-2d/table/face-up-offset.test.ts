@@ -25,8 +25,8 @@
 // `table/face-down-offset` poses its own column for the other.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FACE_UP_OFFSET } from "../../src/constants";
 import { assertBetween, assertLength } from "../assert";
+import { FACE_UP_OFFSET } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -25,18 +25,18 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
+import {
   CARD_H,
   CARD_W,
   FOUNDATION_X,
   STOCK_X,
   TOP_ROW_Y,
   WASTE_X,
-} from "../../src/constants";
-import {
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-} from "../assert";
+} from "../constants";
 import {
   ACE,
   alternatingRun,

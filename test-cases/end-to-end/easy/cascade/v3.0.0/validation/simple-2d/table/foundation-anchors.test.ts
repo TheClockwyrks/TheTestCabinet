@@ -26,8 +26,8 @@
 // broken auto-move or drop resolution cannot reach this verdict.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_X, TOP_ROW_Y } from "../../src/constants";
 import { fail } from "../assert";
+import { FOUNDATION_X, TOP_ROW_Y } from "../constants";
 import {
   boxAt,
   captureStill,

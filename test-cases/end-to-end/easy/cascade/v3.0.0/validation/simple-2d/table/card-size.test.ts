@@ -32,14 +32,8 @@
 // origin under a translate, is measured where it landed on the stage.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CARD_H,
-  CARD_W,
-  FOUNDATION_X,
-  STOCK_X,
-  TOP_ROW_Y,
-} from "../../src/constants";
 import { assertBetween, fail } from "../assert";
+import { CARD_H, CARD_W, FOUNDATION_X, STOCK_X, TOP_ROW_Y } from "../constants";
 import {
   captureStill,
   createHarness,

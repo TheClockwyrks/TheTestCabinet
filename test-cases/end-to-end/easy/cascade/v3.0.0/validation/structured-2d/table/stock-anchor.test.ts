@@ -17,8 +17,8 @@
 // (specs/table.md, A card).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STOCK_X, TOP_ROW_Y } from "../../src/constants";
 import { assertGreaterThan } from "../assert";
+import { STOCK_X, TOP_ROW_Y } from "../constants";
 import {
   captureStill,
   card,

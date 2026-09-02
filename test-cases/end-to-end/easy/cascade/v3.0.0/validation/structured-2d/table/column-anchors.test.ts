@@ -24,14 +24,14 @@
 // a column.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   CARD_H,
   CARD_W,
   COLUMN_X,
   TABLEAU_COLUMNS,
   TOP_ROW_Y,
-} from "../../src/constants";
-import { assertEqual, assertGreaterThan } from "../assert";
+} from "../constants";
 import {
   alternatingRun,
   captureStill,

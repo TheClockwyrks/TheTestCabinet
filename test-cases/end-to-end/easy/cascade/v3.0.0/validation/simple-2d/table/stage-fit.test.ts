@@ -40,15 +40,6 @@
 
 import { afterEach, it } from "vitest";
 import {
-  CARD_H,
-  CARD_W,
-  COLUMN_X,
-  STAGE_H,
-  STAGE_W,
-  STOCK_X,
-  TOP_ROW_Y,
-} from "../../src/constants";
-import {
   assertBetween,
   assertCloseTo,
   assertDeepEqual,
@@ -57,6 +48,15 @@ import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
+import {
+  CARD_H,
+  CARD_W,
+  COLUMN_X,
+  STAGE_H,
+  STAGE_W,
+  STOCK_X,
+  TOP_ROW_Y,
+} from "../constants";
 import {
   captureStill,
   clearColor,
