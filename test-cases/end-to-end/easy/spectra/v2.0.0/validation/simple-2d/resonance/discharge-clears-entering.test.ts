@@ -25,11 +25,7 @@
 // three sibling points; how an entrance is actually flown is `swarm`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DISCHARGE_MAX_R,
-  DISCHARGE_TIME,
-  RESONANCE_MAX,
-} from "../constants";
+import { DISCHARGE_MAX_R, DISCHARGE_TIME, RESONANCE_MAX } from "../constants";
 import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   captureStill,

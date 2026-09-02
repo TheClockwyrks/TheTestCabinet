@@ -8,11 +8,7 @@
 // derived from the figure `specs/` fixes for it.
 
 import { assertLength, assertTrue } from "../assert";
-import {
-  PLAYER_BULLET_SPEED,
-  FIELD_LEFT,
-  FIELD_TOP,
-} from "../constants";
+import { PLAYER_BULLET_SPEED, FIELD_LEFT, FIELD_TOP } from "../constants";
 import {
   poseDrone,
   SHOT_GAP,

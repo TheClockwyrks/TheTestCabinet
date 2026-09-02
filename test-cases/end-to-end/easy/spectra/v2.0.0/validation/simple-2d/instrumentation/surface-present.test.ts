@@ -31,11 +31,7 @@
 // point asks only that the pose reached the game the key drives.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BINDINGS,
-  SHIP_SPEED,
-  SPECTRA_DEBUG_VERSION,
-} from "../constants";
+import { BINDINGS, SHIP_SPEED, SPECTRA_DEBUG_VERSION } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

@@ -25,11 +25,7 @@
 // Nothing is destroyed in this scenario, so no stage clear is in play.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FORM_CENTER_X,
-  FORM_ROW0_Y,
-  PRISM_INVERT_Y,
-} from "../constants";
+import { FORM_CENTER_X, FORM_ROW0_Y, PRISM_INVERT_Y } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

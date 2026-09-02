@@ -25,12 +25,7 @@
 // check demands is the check's own and is passed in, stated beside the figure it
 // is a tolerance on.
 
-import {
-  HUD_BOTTOM_TOP,
-  HUD_TOP_H,
-  STAGE_H,
-  STAGE_W,
-} from "../constants";
+import { HUD_BOTTOM_TOP, HUD_TOP_H, STAGE_H, STAGE_W } from "../constants";
 import type { Harness, Rgb } from "../harness";
 
 /** A rectangle in logical stage units, by its top-left corner and its extent. */

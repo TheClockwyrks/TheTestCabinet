@@ -27,11 +27,7 @@
 // is asserting. So no bystander is parked on the field to hold the wave open.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FORM_CENTER_X,
-  PLAYER_BULLET_SPEED,
-  fluxHold,
-} from "../constants";
+import { FORM_CENTER_X, PLAYER_BULLET_SPEED, fluxHold } from "../constants";
 import { assertUndefined } from "../assert";
 import {
   captureStill,

@@ -23,11 +23,7 @@
 // `resonance/ready-at-full`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FORM_CENTER_X,
-  RESONANCE_KILL,
-  RESONANCE_MAX,
-} from "../constants";
+import { FORM_CENTER_X, RESONANCE_KILL, RESONANCE_MAX } from "../constants";
 import { assertCloseTo, assertNull } from "../assert";
 import {
   captureStill,

@@ -30,12 +30,7 @@
 // fixes ARRANGEMENT and nothing else, and holds no threshold and asserts nothing:
 // a caller states its own span in its own file, and reads its own verdict.
 
-import {
-  BINDINGS,
-  FIELD_LEFT,
-  FIELD_TOP,
-  RESONANCE_MAX,
-} from "../constants";
+import { BINDINGS, FIELD_LEFT, FIELD_TOP, RESONANCE_MAX } from "../constants";
 import {
   SHIP_LANE_Y,
   distanceBetween,

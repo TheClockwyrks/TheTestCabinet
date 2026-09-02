@@ -37,11 +37,7 @@
 // ends no wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DIVE_SPEED,
-  INVERSION_TIME,
-  PRISM_INVERT_Y,
-} from "../constants";
+import { DIVE_SPEED, INVERSION_TIME, PRISM_INVERT_Y } from "../constants";
 import { assertBetween, assertEqual, assertTrue } from "../assert";
 import {
   LANE_CENTER,

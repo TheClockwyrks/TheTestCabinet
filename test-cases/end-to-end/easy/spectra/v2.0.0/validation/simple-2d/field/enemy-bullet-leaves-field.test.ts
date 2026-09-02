@@ -22,11 +22,7 @@
 // The other edge is the sibling `field/player-bullet-leaves-field`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  ENEMY_BULLET_H,
-  ENEMY_BULLET_SPEED,
-  FIELD_BOTTOM,
-} from "../constants";
+import { ENEMY_BULLET_H, ENEMY_BULLET_SPEED, FIELD_BOTTOM } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -48,11 +48,7 @@
 // `screens/challenge-perfect-result`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CHALLENGE_TOTAL,
-  FIELD_TOP,
-  isChallengeStage,
-} from "../constants";
+import { CHALLENGE_TOTAL, FIELD_TOP, isChallengeStage } from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

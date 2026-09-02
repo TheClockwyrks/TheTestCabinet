@@ -26,11 +26,7 @@
 // as a prop with every faculty off on the empty, quiet field `startPosed` opens.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  OVERLOAD_AT,
-  PLAYER_BULLET_HALF,
-  SHARD_HALF,
-} from "../constants";
+import { OVERLOAD_AT, PLAYER_BULLET_HALF, SHARD_HALF } from "../constants";
 import { assertEqual } from "../assert";
 import {
   LANE_CENTER,

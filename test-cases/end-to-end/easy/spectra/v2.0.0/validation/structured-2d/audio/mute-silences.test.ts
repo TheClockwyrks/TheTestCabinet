@@ -37,11 +37,7 @@
 // the mute state, which are `controls/mute-m`'s and `screens/mute-indicator`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BINDINGS,
-  FIRE_INTERVAL,
-  PLAYER_BULLET_SPEED,
-} from "../constants";
+import { BINDINGS, FIRE_INTERVAL, PLAYER_BULLET_SPEED } from "../constants";
 import { assertEqual, assertLength, assertNotEqual } from "../assert";
 import {
   captureStill,

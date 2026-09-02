@@ -38,11 +38,7 @@
 // `progression.extra-life` and its sibling.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  EXTRA_LIFE_AT,
-  SCORE_SHARD_FORM,
-  START_LIVES,
-} from "../constants";
+import { EXTRA_LIFE_AT, SCORE_SHARD_FORM, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

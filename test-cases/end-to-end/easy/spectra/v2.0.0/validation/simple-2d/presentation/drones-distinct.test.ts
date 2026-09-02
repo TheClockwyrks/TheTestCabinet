@@ -44,12 +44,7 @@ import {
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
-import {
-  FLUX_HOLD_L1,
-  FLUX_SIZE,
-  PRISM_SIZE,
-  SHARD_SIZE,
-} from "../constants";
+import { FLUX_HOLD_L1, FLUX_SIZE, PRISM_SIZE, SHARD_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,

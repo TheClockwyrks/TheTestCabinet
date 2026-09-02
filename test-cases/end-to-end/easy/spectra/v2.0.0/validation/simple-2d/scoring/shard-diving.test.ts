@@ -28,11 +28,7 @@
 // own point so a failed grade names the phase.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  PLAYER_BULLET_HALF,
-  SCORE_SHARD_DIVE,
-  SHARD_HALF,
-} from "../constants";
+import { PLAYER_BULLET_HALF, SCORE_SHARD_DIVE, SHARD_HALF } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   SHOT_GAP,

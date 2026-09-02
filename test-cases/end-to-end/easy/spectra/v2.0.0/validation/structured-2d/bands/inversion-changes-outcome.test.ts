@@ -23,11 +23,7 @@
 // requirement is fired at.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  INVERSION_TIME,
-  PLAYER_BULLET_HALF,
-  SHARD_HALF,
-} from "../constants";
+import { INVERSION_TIME, PLAYER_BULLET_HALF, SHARD_HALF } from "../constants";
 import { assertDefined, assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

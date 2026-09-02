@@ -21,11 +21,7 @@
 // one payment the only thing that could have moved a number.
 
 import { fail } from "../assert";
-import {
-  FIELD_LEFT,
-  FIELD_TOP,
-  PLAYER_BULLET_SPEED,
-} from "../constants";
+import { FIELD_LEFT, FIELD_TOP, PLAYER_BULLET_SPEED } from "../constants";
 import {
   droneById,
   fireAt,

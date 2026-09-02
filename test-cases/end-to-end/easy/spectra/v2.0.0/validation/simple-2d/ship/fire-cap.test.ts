@@ -33,11 +33,7 @@
 // cooldown and the lockout at zero, so nothing but the cap can hold a shot back.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BINDINGS,
-  FIRE_INTERVAL,
-  MAX_PLAYER_BULLETS,
-} from "../constants";
+import { BINDINGS, FIRE_INTERVAL, MAX_PLAYER_BULLETS } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

@@ -31,12 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual, fail } from "../assert";
-import {
-  FLUX_HOLD_L1,
-  FLUX_SIZE,
-  SPRITES,
-  SPRITE_SIZE,
-} from "../constants";
+import { FLUX_HOLD_L1, FLUX_SIZE, SPRITES, SPRITE_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,

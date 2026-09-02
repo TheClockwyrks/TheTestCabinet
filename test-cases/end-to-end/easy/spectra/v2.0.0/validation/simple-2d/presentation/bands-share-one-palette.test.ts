@@ -36,11 +36,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThan, fail } from "../assert";
-import {
-  PLAYER_BULLET_H,
-  PLAYER_BULLET_W,
-  SHARD_SIZE,
-} from "../constants";
+import { PLAYER_BULLET_H, PLAYER_BULLET_W, SHARD_SIZE } from "../constants";
 import {
   bulletOf,
   captureStill,

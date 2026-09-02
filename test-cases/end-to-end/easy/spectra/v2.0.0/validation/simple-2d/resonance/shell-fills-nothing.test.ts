@@ -27,11 +27,7 @@
 // pays for neither layer and one that pays for both grade differently.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FORM_CENTER_X,
-  RESONANCE_KILL,
-  RESONANCE_MAX,
-} from "../constants";
+import { FORM_CENTER_X, RESONANCE_KILL, RESONANCE_MAX } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

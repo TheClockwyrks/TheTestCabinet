@@ -18,11 +18,7 @@
 // it is the same number whichever kind takes the shot.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  OVERLOAD_AT,
-  PLAYER_BULLET_HALF,
-  SHARD_HALF,
-} from "../constants";
+import { OVERLOAD_AT, PLAYER_BULLET_HALF, SHARD_HALF } from "../constants";
 import { assertEqual } from "../assert";
 import {
   LANE_CENTER,

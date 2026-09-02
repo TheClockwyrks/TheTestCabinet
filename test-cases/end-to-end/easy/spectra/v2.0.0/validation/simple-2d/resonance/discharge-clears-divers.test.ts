@@ -33,11 +33,7 @@
 // and scores is `scoring`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DISCHARGE_MAX_R,
-  DISCHARGE_TIME,
-  RESONANCE_MAX,
-} from "../constants";
+import { DISCHARGE_MAX_R, DISCHARGE_TIME, RESONANCE_MAX } from "../constants";
 import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   captureReplay,

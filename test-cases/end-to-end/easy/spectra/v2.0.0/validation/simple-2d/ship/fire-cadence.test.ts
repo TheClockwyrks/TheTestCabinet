@@ -43,11 +43,7 @@
 // no drone, dive or contact interrupts the two seconds.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BINDINGS,
-  FIRE_INTERVAL,
-  MAX_PLAYER_BULLETS,
-} from "../constants";
+import { BINDINGS, FIRE_INTERVAL, MAX_PLAYER_BULLETS } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

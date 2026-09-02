@@ -31,11 +31,7 @@
 // swaps while it runs, are `bands`'.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FORM_CENTER_X,
-  FORM_ROW0_Y,
-  PRISM_INVERT_Y,
-} from "../constants";
+import { FORM_CENTER_X, FORM_ROW0_Y, PRISM_INVERT_Y } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

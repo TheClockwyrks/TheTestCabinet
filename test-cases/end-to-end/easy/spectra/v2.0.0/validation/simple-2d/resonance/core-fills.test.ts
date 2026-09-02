@@ -26,11 +26,7 @@
 // `bands`' and `drones`'; what the core kill SCORES is `scoring`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FORM_CENTER_X,
-  RESONANCE_KILL,
-  RESONANCE_MAX,
-} from "../constants";
+import { FORM_CENTER_X, RESONANCE_KILL, RESONANCE_MAX } from "../constants";
 import { assertCloseTo, assertEqual, assertNull } from "../assert";
 import {
   captureStill,

@@ -29,11 +29,7 @@
 // a DIVING Flux pays is `scoring/flux-diving`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FLUX_HALF,
-  PLAYER_BULLET_HALF,
-  SCORE_FLUX_FORM,
-} from "../constants";
+import { FLUX_HALF, PLAYER_BULLET_HALF, SCORE_FLUX_FORM } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   SHOT_GAP,

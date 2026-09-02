@@ -20,11 +20,7 @@
 // margin, and it is asserted rather than assumed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FIELD_TOP,
-  PLAYER_BULLET_SPEED,
-  SHARD_HALF,
-} from "../constants";
+import { FIELD_TOP, PLAYER_BULLET_SPEED, SHARD_HALF } from "../constants";
 import { assertNull } from "../assert";
 import {
   LANE_CENTER,

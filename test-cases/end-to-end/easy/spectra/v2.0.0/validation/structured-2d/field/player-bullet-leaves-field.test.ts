@@ -23,11 +23,7 @@
 // one that removes neither.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FIELD_TOP,
-  PLAYER_BULLET_H,
-  PLAYER_BULLET_SPEED,
-} from "../constants";
+import { FIELD_TOP, PLAYER_BULLET_H, PLAYER_BULLET_SPEED } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   bulletById,

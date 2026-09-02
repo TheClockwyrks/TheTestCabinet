@@ -32,11 +32,7 @@
 // is `scoring/stage-clear-bonus`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  PLAYER_BULLET_HALF,
-  SCORE_SHARD_FORM,
-  SHARD_HALF,
-} from "../constants";
+import { PLAYER_BULLET_HALF, SCORE_SHARD_FORM, SHARD_HALF } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   SHOT_GAP,

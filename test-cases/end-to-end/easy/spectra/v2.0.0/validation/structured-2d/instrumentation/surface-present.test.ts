@@ -42,12 +42,7 @@
 // `instrumentation.poses-read-back`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BINDINGS,
-  SHIP_SPEED,
-  SHIP_X_MAX,
-  SHIP_X_MIN,
-} from "../constants";
+import { BINDINGS, SHIP_SPEED, SHIP_X_MAX, SHIP_X_MIN } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

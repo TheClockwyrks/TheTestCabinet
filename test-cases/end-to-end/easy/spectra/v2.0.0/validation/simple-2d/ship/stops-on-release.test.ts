@@ -43,12 +43,7 @@
 // into the `ready` phase, where `specs/progression.md` re-centres it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BINDINGS,
-  SHIP_SPEED,
-  SHIP_X_MAX,
-  SHIP_X_MIN,
-} from "../constants";
+import { BINDINGS, SHIP_SPEED, SHIP_X_MAX, SHIP_X_MIN } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

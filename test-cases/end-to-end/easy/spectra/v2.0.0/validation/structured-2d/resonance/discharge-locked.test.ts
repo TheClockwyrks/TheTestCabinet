@@ -30,11 +30,7 @@
 // `resonance/ready-at-full`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DISCHARGE_MAX_R,
-  DISCHARGE_TIME,
-  RESONANCE_MAX,
-} from "../constants";
+import { DISCHARGE_MAX_R, DISCHARGE_TIME, RESONANCE_MAX } from "../constants";
 import { assertCloseTo, assertDefined, assertEqual } from "../assert";
 import {
   LANE_CENTER,

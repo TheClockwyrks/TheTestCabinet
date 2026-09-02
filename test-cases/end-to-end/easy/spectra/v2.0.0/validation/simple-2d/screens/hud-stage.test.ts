@@ -25,11 +25,7 @@
 // ten stages of play in front of it. What a stage SCALES is the `stages` group's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  HUD_STAGE_LABEL,
-  HUD_TOP_H,
-  isChallengeStage,
-} from "../constants";
+import { HUD_STAGE_LABEL, HUD_TOP_H, isChallengeStage } from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

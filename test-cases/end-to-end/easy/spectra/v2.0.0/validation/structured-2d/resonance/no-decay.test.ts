@@ -30,11 +30,7 @@
 // is `resonance/discharge-spends`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DISCHARGE_TIME,
-  INVERSION_TIME,
-  RESONANCE_MAX,
-} from "../constants";
+import { DISCHARGE_TIME, INVERSION_TIME, RESONANCE_MAX } from "../constants";
 import { assertCloseTo, assertLength } from "../assert";
 import {
   captureStill,
