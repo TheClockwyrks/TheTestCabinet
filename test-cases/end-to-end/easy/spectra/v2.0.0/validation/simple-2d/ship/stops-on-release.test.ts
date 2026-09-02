@@ -24,17 +24,36 @@
 // THE MEASUREMENT TAKES NOTHING FROM THE HOLD. The reading is taken from where the
 // ship stood at the RELEASE, not from where the hold started, so how far the hold
 // carried it is `ship/move-left`'s and `ship/move-right`'s point and not this
-// one's. The holds are short and start mid-lane, so neither leg reaches
-// `SHIP_X_MIN` or `SHIP_X_MAX` and the clamp — which would stop a drifting ship
-// for the wrong reason — never enters the scenario.
+// one's.
+//
+// TWO PRECONDITIONS STAND BETWEEN THAT AND A CHECK THAT DECIDES NOTHING. A
+// release is only a release from MOTION if the hold moved the ship at all: a
+// build whose ship never answers a direction stands perfectly still for the tenth
+// of a second after every release, and would pass this point on the strength of
+// being broken. And a ship stopped by the lane's own bound is not a ship that
+// stopped because the key came up. Each leg therefore asserts that the hold
+// carried the ship, and that the lane ahead of it is longer than the coasting
+// tenth could be, before it reads the drift. Neither is a reading of the build's
+// speed — that is `ship/move-left`'s and `ship/move-right`'s point, and the
+// floors below sit an order of magnitude under the figure so that this point
+// cannot charge for it twice.
 //
 // THE WORLD IS EMPTY. `startPosed` clears the four rosters and shuts the wave's
 // three gates, so nothing but the keys can move the ship, and nothing can drop it
 // into the `ready` phase, where `specs/progression.md` re-centres it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_SPEED } from "../../src/constants";
-import { assertEqual, assertLessThanOrEqual } from "../assert";
+import {
+  BINDINGS,
+  SHIP_SPEED,
+  SHIP_X_MAX,
+  SHIP_X_MIN,
+} from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -56,7 +75,8 @@ const RIGHT_KEY = BINDINGS.right[0];
  * 108 units of travel at `SHIP_SPEED` — and short enough that both legs stay well
  * inside `[SHIP_X_MIN, SHIP_X_MAX]` from the centre of the lane.
  */
-const HOLD_TICKS = ticksFor(0.3);
+const HOLD_SECONDS = 0.3;
+const HOLD_TICKS = ticksFor(HOLD_SECONDS);
 
 /** The tenth of a second the review item measures the drift over. */
 const SETTLE_SECONDS = 0.1;
@@ -70,6 +90,26 @@ const SETTLE_TICKS = ticksFor(SETTLE_SECONDS);
  * did stop and nothing that is still moving.
  */
 const DRIFT_MAX = 1;
+
+/**
+ * How far a hold must have carried the ship for its release to be a release from
+ * motion, in logical units.
+ *
+ * A tenth of the ground `SHIP_SPEED` covers over `HOLD_SECONDS` — 10.8 units
+ * against the 108 a conforming build travels. A precondition on the SCENARIO and
+ * not a reading of the speed: no conforming build comes near it, and a ship that
+ * stood still through the hold is nowhere above it.
+ */
+const RUN_UP_MIN = SHIP_SPEED * HOLD_SECONDS * 0.1;
+
+/**
+ * How much lane must lie ahead of the ship at the release, in logical units.
+ *
+ * The whole of what the coasting tenth could carry a ship still travelling at
+ * `SHIP_SPEED`, so the bound cannot be what brings a drifting ship to rest and
+ * flatter the reading below.
+ */
+const ROOM_MIN = SHIP_SPEED * SETTLE_SECONDS;
 
 let h: Harness;
 
@@ -98,6 +138,20 @@ it("leaves the ship where the release left it, after either direction", async ()
 
   await holdFor(h, LEFT_KEY, HOLD_TICKS);
   const leftReleased = h.snapshot().ship.x;
+  assertGreaterThan(
+    Math.abs(leftReleased - opening.ship.x),
+    RUN_UP_MIN,
+    `the units the ship travelled over ${String(HOLD_SECONDS)}s of held LEFT, ` +
+      "so the release read below is a release from motion rather than from a " +
+      "standstill (specs/ship.md)",
+  );
+  assertGreaterThan(
+    leftReleased - SHIP_X_MIN,
+    ROOM_MIN,
+    `the units of lane between the ship and SHIP_X_MIN ` +
+      `(${String(SHIP_X_MIN)}) when LEFT was released, so the lane's bound ` +
+      "cannot be what stops a drifting ship (specs/field.md)",
+  );
   await h.advance(SETTLE_TICKS);
   const leftSettled = h.snapshot().ship.x;
 
@@ -109,8 +163,23 @@ it("leaves the ship where the release left it, after either direction", async ()
       "second (specs/ship.md)",
   );
 
+  const beforeRight = h.snapshot().ship.x;
   await holdFor(h, RIGHT_KEY, HOLD_TICKS);
   const rightReleased = h.snapshot().ship.x;
+  assertGreaterThan(
+    Math.abs(rightReleased - beforeRight),
+    RUN_UP_MIN,
+    `the units the ship travelled over ${String(HOLD_SECONDS)}s of held RIGHT, ` +
+      "so the release read below is a release from motion rather than from a " +
+      "standstill (specs/ship.md)",
+  );
+  assertGreaterThan(
+    SHIP_X_MAX - rightReleased,
+    ROOM_MIN,
+    `the units of lane between the ship and SHIP_X_MAX ` +
+      `(${String(SHIP_X_MAX)}) when RIGHT was released, so the lane's bound ` +
+      "cannot be what stops a drifting ship (specs/field.md)",
+  );
   await h.advance(SETTLE_TICKS);
   // Before the assertion, so a check that fails still leaves the picture of where
   // the release left the ship.
