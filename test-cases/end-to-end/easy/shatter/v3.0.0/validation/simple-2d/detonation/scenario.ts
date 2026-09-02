@@ -18,12 +18,7 @@
 // heading, a standoff — and every tolerance stays in the check that asserts it,
 // derived there from the figure `specs/` fixes for it.
 
-import {
-  ROCK_HEALTH,
-  TICK_DT,
-  TORPEDO_R,
-  TORPEDO_SPEED,
-} from "../../src/constants";
+import { ROCK_HEALTH, TICK_DT, TORPEDO_R, TORPEDO_SPEED } from "../constants";
 import { fail } from "../assert";
 import { angleGap, outwardFromStar, wrap, type Point } from "../geometry";
 import {

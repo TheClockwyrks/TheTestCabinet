@@ -19,7 +19,7 @@
 // otherwise empty field could add to it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SCORE_LARGE } from "../../src/constants";
+import { ROCK_RADIUS, SCORE_LARGE } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

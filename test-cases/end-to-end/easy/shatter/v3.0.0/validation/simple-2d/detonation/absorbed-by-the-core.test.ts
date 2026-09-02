@@ -23,7 +23,7 @@
 // run at `0`, so an exact reading of `0` is the whole of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_R, STAR_X, STAR_Y, TORPEDO_R } from "../../src/constants";
+import { CORE_R, STAR_X, STAR_Y, TORPEDO_R } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { directDistanceToStar } from "../geometry";
 import {

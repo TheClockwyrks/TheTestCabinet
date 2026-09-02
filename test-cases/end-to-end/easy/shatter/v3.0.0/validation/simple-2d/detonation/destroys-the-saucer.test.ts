@@ -27,7 +27,7 @@
 // ("the field the instant the torpedo took the saucer").
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_R, SCORE_SAUCER } from "../../src/constants";
+import { SAUCER_R, SCORE_SAUCER } from "../constants";
 import { assertEqual, assertNull, assertTrue } from "../assert";
 import {
   captureStill,

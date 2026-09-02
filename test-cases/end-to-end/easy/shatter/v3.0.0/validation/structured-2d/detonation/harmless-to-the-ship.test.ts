@@ -38,7 +38,7 @@
 // the line it flies, and there is nothing on the field for it to acquire anyway.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_R, START_LIVES, TORPEDO_R } from "../../src/constants";
+import { SHIP_R, START_LIVES, TORPEDO_R } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { distanceToSegment, type Vec } from "../geometry";
 import {

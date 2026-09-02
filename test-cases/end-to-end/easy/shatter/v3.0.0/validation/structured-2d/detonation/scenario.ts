@@ -27,7 +27,7 @@ import {
   TICK_DT,
   TORPEDO_R,
   TORPEDO_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import { QUIET_CORNER } from "../fixtures";
 import { DEG, STAR, angleBetween, wrapPoint, type Vec } from "../geometry";

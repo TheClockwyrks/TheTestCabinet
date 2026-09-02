@@ -38,7 +38,7 @@
 // `destroyByGun` places one after another on the rock's doorstep.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SPLIT_KICK, TORPEDO_SCATTER } from "../../src/constants";
+import { ROCK_RADIUS, SPLIT_KICK, TORPEDO_SCATTER } from "../constants";
 import {
   assertGreaterThan,
   assertLessThanOrEqual,

@@ -37,7 +37,7 @@
 // is subtracted rather than measured.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, ROCK_SPEED_MIN } from "../../src/constants";
+import { ROCK_RADIUS, ROCK_SPEED_MIN } from "../constants";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
 import { degrees } from "../geometry";
 import {

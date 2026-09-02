@@ -25,7 +25,7 @@
 // Nothing here is a tolerance.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH, ROCK_RADIUS } from "../../src/constants";
+import { ROCK_HEALTH, ROCK_RADIUS } from "../constants";
 import { assertEqual, assertLength, assertTrue } from "../assert";
 import {
   captureStill,
