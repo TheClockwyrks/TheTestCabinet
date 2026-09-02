@@ -11,18 +11,6 @@ slug = "wick"
 # Human-readable display name for this test case.
 name = "Wick"
 
-# Experimental until the case carries what a public version must. The checklist
-# below is already on the engine format, every item names its validator, and
-# `variants/base.toml` names the three reference implementations, but the
-# validator suites those names point at (`validation/none/`,
-# `validation/simple-2d/`, and `validation/structured-2d/`), the baselines
-# `tcab capture-baselines` synthesizes from the references, and the showcase
-# have yet to land. A version that runs freezes, and a frozen version can never
-# gain a validator, so this keeps the version off the catalog unless a
-# deployment opts in with `TCAB_BACKEND_ALLOW_EXPERIMENTAL`. Drop the key when
-# the suites and baselines are in.
-experimental = true
-
 # Relative difficulty, surfaced on the site. Easy: the case is a great deal of
 # BREADTH, not depth of reasoning. Every rule is a table row or a one-line
 # formula; there is no physics to tune, no opponent to model, and no solver.
