@@ -31,8 +31,8 @@
 // alone, and asks of the move only that the Ace reached the foundation.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertDeepEqual, assertEqual } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -32,12 +32,8 @@
 // cadence, which is the `cascade` group's requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CUES,
-  DOUBLE_CLICK_WINDOW,
-  LAUNCH_INTERVAL,
-} from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW, LAUNCH_INTERVAL } from "../constants";
 import {
   ACE,
   captureStill,

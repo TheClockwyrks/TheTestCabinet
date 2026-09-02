@@ -116,12 +116,7 @@ export const DOUBLE_CLICK_SLOP = 20;
 /* The deck (specs/deal.md)                                                   */
 /* -------------------------------------------------------------------------- */
 
-export const SUITS: readonly Suit[] = [
-  "spades",
-  "hearts",
-  "diamonds",
-  "clubs",
-];
+export const SUITS: readonly Suit[] = ["spades", "hearts", "diamonds", "clubs"];
 
 /** `1` is the Ace and `13` is the King. */
 export const RANK_MIN = 1;

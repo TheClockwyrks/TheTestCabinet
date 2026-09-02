@@ -36,8 +36,8 @@
 // gave back to the sound.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, DOUBLE_CLICK_WINDOW, HUD_SOUND } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW, HUD_SOUND } from "../constants";
 import {
   captureStill,
   card,

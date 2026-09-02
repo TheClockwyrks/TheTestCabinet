@@ -27,8 +27,8 @@
 // reads the cue alone, and asks of the deal only that it happened.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, DOUBLE_CLICK_WINDOW, HUD_NEW_GAME } from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW, HUD_NEW_GAME } from "../constants";
 import {
   captureStill,
   createHarness,

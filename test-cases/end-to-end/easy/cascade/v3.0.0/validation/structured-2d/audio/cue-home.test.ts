@@ -30,13 +30,13 @@
 // decide those.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   assertLength,
 } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   ACE,
   TWO,

@@ -38,17 +38,17 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  DOUBLE_CLICK_WINDOW,
-  HUD_SOUND,
-  STOCK_X,
-  TOP_ROW_Y,
-} from "../../src/constants";
-import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   assertNotNull,
 } from "../assert";
+import {
+  DOUBLE_CLICK_WINDOW,
+  HUD_SOUND,
+  STOCK_X,
+  TOP_ROW_Y,
+} from "../constants";
 import {
   captureStill,
   cardCenter,

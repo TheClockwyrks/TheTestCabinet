@@ -31,8 +31,8 @@
 // of the deal only that a full deck reached the table.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, DECK_SIZE, DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
+import { CUES, DECK_SIZE, DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   captureStill,
   createHarness,

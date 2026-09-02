@@ -35,7 +35,7 @@
 // in the check itself, beside the spec line it comes from.
 
 import type { Harness, Point, TimedCue } from "../harness";
-import type { Rect } from "../../src/constants";
+import type { Rect } from "../constants";
 
 /** The center of a control's hit rectangle, which is a point inside it. */
 export function centerOf(rect: Rect): Point {

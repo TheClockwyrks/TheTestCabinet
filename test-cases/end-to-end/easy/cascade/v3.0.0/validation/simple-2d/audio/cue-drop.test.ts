@@ -33,8 +33,8 @@
 // the cue alone, and asks of the drop only that the run landed on the target.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertDeepEqual, assertEqual } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   captureStill,
   createHarness,

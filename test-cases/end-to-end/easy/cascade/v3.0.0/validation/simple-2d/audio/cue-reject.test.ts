@@ -33,8 +33,8 @@
 // the run came back.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertDeepEqual, assertEqual } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   captureStill,
   createHarness,

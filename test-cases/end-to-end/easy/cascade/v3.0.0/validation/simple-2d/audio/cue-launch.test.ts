@@ -40,12 +40,8 @@
 // that a card left a foundation for the flight.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CUES,
-  DOUBLE_CLICK_WINDOW,
-  LAUNCH_INTERVAL,
-} from "../../src/constants";
 import { assertEqual } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW, LAUNCH_INTERVAL } from "../constants";
 import {
   captureStill,
   createHarness,

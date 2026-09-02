@@ -38,13 +38,13 @@
 // to the sound.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DOUBLE_CLICK_WINDOW, HUD_SOUND } from "../../src/constants";
 import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
   assertNotNull,
 } from "../assert";
+import { DOUBLE_CLICK_WINDOW, HUD_SOUND } from "../constants";
 import {
   captureStill,
   card,

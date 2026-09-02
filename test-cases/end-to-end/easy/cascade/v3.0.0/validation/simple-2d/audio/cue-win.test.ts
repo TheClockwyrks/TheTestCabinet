@@ -39,8 +39,8 @@
 // that the game arrived on the won screen.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   captureStill,
   createHarness,

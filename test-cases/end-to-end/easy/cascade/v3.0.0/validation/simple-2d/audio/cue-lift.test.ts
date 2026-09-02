@@ -31,8 +31,8 @@
 // alone, and asks of the press only that something entered the hand.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertEqual, assertNotNull } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   captureStill,
   createHarness,

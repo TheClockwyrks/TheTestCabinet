@@ -27,13 +27,8 @@
 // alone, and asks of the turn only that cards reached the waste.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CUES,
-  DOUBLE_CLICK_WINDOW,
-  STOCK_X,
-  TOP_ROW_Y,
-} from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { CUES, DOUBLE_CLICK_WINDOW, STOCK_X, TOP_ROW_Y } from "../constants";
 import {
   cardCenter,
   captureStill,
