@@ -30,7 +30,7 @@
 // `surge-reads-apart-from-the-floor`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_TYPES, TRIP_HEAT } from "../../src/constants";
+import { SURGE_TYPES, TRIP_HEAT } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import { sizeOf } from "../geometry";
 import {

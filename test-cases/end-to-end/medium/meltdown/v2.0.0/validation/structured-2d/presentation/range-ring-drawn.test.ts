@@ -48,7 +48,7 @@ import {
   inBounds,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

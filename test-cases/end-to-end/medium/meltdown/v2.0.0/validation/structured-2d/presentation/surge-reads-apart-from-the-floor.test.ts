@@ -31,7 +31,7 @@
 // `hud.unit-health-bars`. Nothing here asserts a size, a shape or a colour.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_TYPES, tileCX, tileCY } from "../../src/constants";
+import { SURGE_TYPES, tileCX, tileCY } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

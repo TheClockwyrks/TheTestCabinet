@@ -47,7 +47,7 @@
 // and what the ramp does between heats is `heat-glow-ramp`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TRIP_HEAT } from "../../src/constants";
+import { TRIP_HEAT } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -45,7 +45,7 @@ import {
   emitterStats,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import { footprintCentreOf, onGrid, type Point } from "../geometry";
 import {

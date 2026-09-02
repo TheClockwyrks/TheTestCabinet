@@ -11,7 +11,7 @@
 // `building/preview.ts`: each is three lines over the case's own table, and a
 // group reads it where it uses it.
 
-import { TOWER_DEFS, TOWER_TYPES } from "../../src/constants";
+import { TOWER_DEFS, TOWER_TYPES } from "../constants";
 import type { Face, TowerType } from "../harness";
 
 /** The four faces in the order a rotation step walks them (specs/towers.md). */

@@ -42,7 +42,7 @@ import {
   tileCY,
   tileLeft,
   tileTop,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import type { Point } from "../geometry";
 import {

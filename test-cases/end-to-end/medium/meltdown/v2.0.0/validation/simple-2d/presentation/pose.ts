@@ -17,7 +17,7 @@
 // that does nothing at all: a check about heat, combat, the trip or the movers
 // wants exactly the faculty this holds.
 
-import { TRIP_TIME } from "../../src/constants";
+import { TRIP_TIME } from "../constants";
 import { poseTower, type Harness } from "../harness";
 import type { TowerType } from "../surface";
 

@@ -44,7 +44,7 @@ import {
   TOP_VENT_COLS,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import type { Point } from "../geometry";
 import {

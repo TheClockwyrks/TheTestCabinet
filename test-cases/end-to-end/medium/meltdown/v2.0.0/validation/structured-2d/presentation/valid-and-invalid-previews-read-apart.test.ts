@@ -46,7 +46,7 @@
 // mode's build zone is drawn is `build-zone-drawn`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
