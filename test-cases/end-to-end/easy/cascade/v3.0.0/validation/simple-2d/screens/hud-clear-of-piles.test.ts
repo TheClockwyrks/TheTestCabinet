@@ -33,6 +33,7 @@
 // something card-sized into the HUD's band.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   HUD_H,
   HUD_MENU,
@@ -41,8 +42,7 @@ import {
   HUD_Y,
   STAGE_W,
   type Rect,
-} from "../../src/constants";
-import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
+} from "../constants";
 import {
   cardBoxes,
   captureStill,

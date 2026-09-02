@@ -27,7 +27,7 @@ import {
   STAGE_W,
   TABLEAU_Y,
   type Rect,
-} from "../../src/constants";
+} from "../constants";
 import {
   colorDistance,
   pixelColor,

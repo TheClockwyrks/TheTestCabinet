@@ -2,9 +2,10 @@
 //
 // specs/screens.md fixes the copy of the title screen as literals, each under the
 // name the specification gives it: the title is `TITLE_TEXT` (`CASCADE`), and
-// "the literal text it names is the text that is drawn". The constant is read from
-// `src/constants.ts`, which the case seeded and the build does not edit, so what is
-// asserted is the case's own string rather than a copy of it kept here.
+// "the literal text it names is the text that is drawn". The constant is read
+// from this project's own `constants.ts`, which transcribes it from
+// specs/screens.md, so what is asserted is the specification's own string rather
+// than whatever string the build called `TITLE_TEXT`.
 //
 // WHAT IS READ IS THE FRAME'S OWN DRAW CALLS. `drawFrame` clears the call log,
 // runs one frame and hands back exactly what that frame put on the canvas, so a
@@ -19,8 +20,8 @@
 // title READS against what it sits on is `presentation/text-legible`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_TEXT } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,

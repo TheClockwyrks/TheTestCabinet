@@ -55,8 +55,8 @@
 // digits, so neither is answered by a digit inside some other number.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_W } from "../../src/constants";
 import { assertTrue } from "../assert";
+import { STAGE_W } from "../constants";
 import {
   captureStill,
   createHarness,

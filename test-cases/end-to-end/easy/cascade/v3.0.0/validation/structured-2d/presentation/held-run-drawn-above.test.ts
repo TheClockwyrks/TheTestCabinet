@@ -42,8 +42,8 @@
 // column `4`, the run itself. Nothing else is on the table.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLUMN_X, TABLEAU_Y, TOP_ROW_Y } from "../../src/constants";
 import { assertLessThanOrEqual, assertNull, fail } from "../assert";
+import { COLUMN_X, TABLEAU_Y, TOP_ROW_Y } from "../constants";
 import {
   captureStill,
   card,

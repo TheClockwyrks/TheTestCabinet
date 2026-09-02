@@ -39,8 +39,8 @@
 // three labels are pictured by `presentation/hud-labels-drawn`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H, HUD_Y } from "../../src/constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { HUD_H, HUD_Y } from "../constants";
 import {
   captureStill,
   createHarness,

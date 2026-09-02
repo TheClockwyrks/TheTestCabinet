@@ -28,8 +28,8 @@
 // HUD control works fails one point and passes the other.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, TITLE_NEW_GAME } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
+import { DECK_SIZE, TITLE_NEW_GAME } from "../constants";
 import {
   captureStill,
   createHarness,

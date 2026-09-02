@@ -21,8 +21,8 @@
 // it is reached, which is the four `title-shows-*` points.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_MENU } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { HUD_MENU } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -20,8 +20,8 @@
 // nothing this point reads concerns a card.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOWTO_BACK } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { HOWTO_BACK } from "../constants";
 import {
   captureStill,
   createHarness,

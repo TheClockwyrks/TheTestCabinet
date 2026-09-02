@@ -29,8 +29,8 @@
 // which is `presentation/hud-labels-drawn`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_SOUND } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { HUD_SOUND } from "../constants";
 import {
   captureStill,
   createHarness,

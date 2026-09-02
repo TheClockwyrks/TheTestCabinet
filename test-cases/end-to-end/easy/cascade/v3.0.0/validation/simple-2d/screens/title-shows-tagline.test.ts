@@ -22,8 +22,8 @@
 // are separate points.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TAGLINE_TEXT } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { TAGLINE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,

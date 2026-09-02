@@ -41,8 +41,8 @@
 // asks: are all thirteen there at once.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W } from "../../src/constants";
 import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
+import { CARD_H, CARD_W } from "../constants";
 import {
   ACE,
   ALL_SUITS,

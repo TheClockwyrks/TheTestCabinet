@@ -33,8 +33,8 @@
 // draws its slot and the strip the felt is read in stays bare.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W, FOUNDATION_X, TOP_ROW_Y } from "../../src/constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { CARD_H, CARD_W, FOUNDATION_X, TOP_ROW_Y } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -43,8 +43,8 @@
 // the same input path a player's pointer feeds.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_W } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { CARD_W } from "../constants";
 import {
   captureStill,
   columnCardTopLeft,

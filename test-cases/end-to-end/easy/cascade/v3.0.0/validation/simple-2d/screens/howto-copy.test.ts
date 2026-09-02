@@ -41,7 +41,7 @@ import {
  * The four standalone tokens specs/screens.md fixes for the how-to screen.
  *
  * The literals are the specification's own, restated here because they are copy
- * rather than a figure and `src/constants.ts` carries no constant for them.
+ * rather than a figure and `constants.ts` carries no constant for them.
  */
 const TOKENS = ["ACE", "KING", "STOCK", "DOUBLE-CLICK"] as const;
 

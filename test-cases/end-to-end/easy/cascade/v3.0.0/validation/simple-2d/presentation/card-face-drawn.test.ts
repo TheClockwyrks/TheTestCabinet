@@ -36,8 +36,8 @@
 // card is put on foundation `0`. Nothing else is on the table.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_X, TOP_ROW_Y } from "../../src/constants";
 import { assertGreaterThan, assertTrue } from "../assert";
+import { FOUNDATION_X, TOP_ROW_Y } from "../constants";
 import {
   boxAt,
   captureStill,

@@ -35,8 +35,8 @@
 // which is the state an empty slot exists in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W, COLUMN_X, TABLEAU_Y } from "../../src/constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { CARD_H, CARD_W, COLUMN_X, TABLEAU_Y } from "../constants";
 import {
   captureStill,
   createHarness,

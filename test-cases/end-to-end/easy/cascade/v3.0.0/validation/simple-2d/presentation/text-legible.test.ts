@@ -47,8 +47,8 @@
 // there would have put a rank and a suit among the runs this point reads.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H, HUD_Y } from "../../src/constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { HUD_H, HUD_Y } from "../constants";
 import {
   captureStill,
   createHarness,

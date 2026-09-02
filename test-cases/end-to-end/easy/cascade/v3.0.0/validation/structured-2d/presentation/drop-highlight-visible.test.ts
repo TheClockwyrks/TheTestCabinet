@@ -38,17 +38,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  CARD_H,
-  CARD_W,
-  COLUMN_X,
-  TABLEAU_Y,
-  TOP_ROW_Y,
-} from "../../src/constants";
-import {
   assertDeepEqual,
   assertGreaterThanOrEqual,
   assertNull,
 } from "../assert";
+import { CARD_H, CARD_W, COLUMN_X, TABLEAU_Y, TOP_ROW_Y } from "../constants";
 import {
   captureStill,
   card,

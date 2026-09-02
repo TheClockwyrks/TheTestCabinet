@@ -16,8 +16,8 @@
 // snapshot; what that screen SHOWS is `screens/howto-copy`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_HOW_TO } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { TITLE_HOW_TO } from "../constants";
 import {
   captureStill,
   clickControl,

@@ -5,18 +5,19 @@
 // text that is drawn". It is what tells a player which patience game this is
 // before a single card is dealt.
 //
-// The literal is read from `src/constants.ts`, which the case seeded, so the
-// string asserted is the case's own. What is read is the frame's own draw calls,
-// so a build that carries the tagline and never draws it fails; matching is by
-// substring and ignores case, because the type and any decoration around the run
-// are the build's.
+// The literal is read from this project's own `constants.ts`, which transcribes
+// it from specs/screens.md, so the string asserted is the specification's own and
+// not a tagline a build named after itself. What is read is the frame's own draw
+// calls, so a build that carries the tagline and never draws it fails; matching
+// is by substring and ignores case, because the type and any decoration around
+// the run are the build's.
 //
 // The title and the menu items are `screens/title-shows-title` and
 // `screens/title-shows-items`, so each literal is graded on its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TAGLINE_TEXT } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { TAGLINE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,

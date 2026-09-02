@@ -1,10 +1,10 @@
 // presentation/hud-labels-drawn — each HUD control draws its label.
 //
 // THE RULE. specs/screens.md, "The HUD": the strip carries three controls,
-// `HUD_ITEMS` is `["NEW GAME", "MENU", "SOUND"]`, and "each label is drawn
-// inside its own rectangle". The rectangles are `HUD_NEW_GAME`, `HUD_MENU` and
-// `HUD_SOUND`, which specs/controls.md fixes and `src/constants.ts` carries. A
-// control a player cannot read is a control a player cannot use.
+// `HUD_ITEMS` is `["NEW GAME", "MENU", "SOUND"]`, and "each label is drawn inside
+// its own rectangle". The rectangles are `HUD_NEW_GAME`, `HUD_MENU` and
+// `HUD_SOUND`, which specs/controls.md fixes and this project's `constants.ts`
+// transcribes. A control a player cannot read is a control a player cannot use.
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. That each of the three literal
 // labels is drawn, and drawn inside the rectangle that control answers. What
@@ -30,14 +30,14 @@
 // on the table is drawn near the strip.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertTrue } from "../assert";
 import {
   HUD_ITEMS,
   HUD_MENU,
   HUD_NEW_GAME,
   HUD_SOUND,
   type Rect,
-} from "../../src/constants";
-import { assertTrue } from "../assert";
+} from "../constants";
 import {
   captureStill,
   createHarness,

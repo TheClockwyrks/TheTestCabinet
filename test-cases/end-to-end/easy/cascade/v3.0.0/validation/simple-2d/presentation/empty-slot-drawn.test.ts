@@ -27,8 +27,8 @@
 // which is exactly and only what this point is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_COUNT, TABLEAU_COLUMNS } from "../../src/constants";
 import { assertTrue } from "../assert";
+import { FOUNDATION_COUNT, TABLEAU_COLUMNS } from "../constants";
 import {
   boxAt,
   captureStill,

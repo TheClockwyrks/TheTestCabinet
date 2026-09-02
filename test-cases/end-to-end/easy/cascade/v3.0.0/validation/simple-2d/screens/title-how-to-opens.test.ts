@@ -19,8 +19,8 @@
 // specification lets show behind it: nothing this point reads concerns a card.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_HOW_TO } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { TITLE_HOW_TO } from "../constants";
 import {
   captureStill,
   createHarness,

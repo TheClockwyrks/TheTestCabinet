@@ -34,10 +34,11 @@ import {
  * The four tokens specs/screens.md requires the how-to screen to carry as
  * standalone words.
  *
- * They are stated here rather than imported because they are the specification's
- * own copy requirement rather than a figure of the table: `src/constants.ts`
- * names the screen's title, its items and its `BACK` label, and deliberately
- * carries no constant for the prose these four words sit inside.
+ * They are stated here rather than imported because they are the
+ * specification's own copy requirement rather than a figure of the table:
+ * `constants.ts` transcribes the screen's title, its items and its `BACK`
+ * label, and deliberately carries no constant for the prose these four words
+ * sit inside.
  */
 const HOWTO_TOKENS = ["ACE", "KING", "STOCK", "DOUBLE-CLICK"] as const;
 

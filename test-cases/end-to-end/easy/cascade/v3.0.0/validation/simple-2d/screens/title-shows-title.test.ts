@@ -23,8 +23,8 @@
 // tagline and the two items are their own points.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_TEXT } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,

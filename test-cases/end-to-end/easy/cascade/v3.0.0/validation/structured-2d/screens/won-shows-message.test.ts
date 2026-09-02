@@ -25,8 +25,8 @@
 // found rather than passing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_TEXT } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { WIN_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,

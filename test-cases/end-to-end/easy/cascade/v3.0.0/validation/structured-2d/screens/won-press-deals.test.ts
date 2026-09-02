@@ -26,8 +26,8 @@
 // `winning/press-clears-and-deals`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, STAGE_H, STAGE_W } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { DECK_SIZE, STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   createHarness,

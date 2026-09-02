@@ -25,8 +25,8 @@
 // otherwise untouched.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_X, TOP_ROW_Y } from "../../src/constants";
 import { assertTrue } from "../assert";
+import { FOUNDATION_X, TOP_ROW_Y } from "../constants";
 import {
   captureStill,
   createHarness,

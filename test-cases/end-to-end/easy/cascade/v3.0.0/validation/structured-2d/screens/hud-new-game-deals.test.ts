@@ -19,8 +19,8 @@
 // table.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, HUD_NEW_GAME } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { DECK_SIZE, HUD_NEW_GAME } from "../constants";
 import {
   captureStill,
   clickControl,

@@ -26,8 +26,8 @@
 // which is `screens/title-new-game-enters-play`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, HUD_NEW_GAME } from "../../src/constants";
 import { assertEqual, assertLength } from "../assert";
+import { DECK_SIZE, HUD_NEW_GAME } from "../constants";
 import {
   captureStill,
   createHarness,

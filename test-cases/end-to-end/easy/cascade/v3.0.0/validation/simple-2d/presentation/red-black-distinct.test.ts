@@ -35,8 +35,8 @@
 // anchor and nothing about the column fan enters the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_X, TOP_ROW_Y } from "../../src/constants";
 import { assertGreaterThanOrEqual, fail } from "../assert";
+import { FOUNDATION_X, TOP_ROW_Y } from "../constants";
 import {
   captureStill,
   colorDistance,

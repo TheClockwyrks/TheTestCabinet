@@ -20,8 +20,7 @@
 // failure names the one whose label was missing or misplaced.
 //
 // HOW A LABEL IS MATCHED. Case-insensitively, and as part of a run rather than as
-// the whole of it: the copy is the case's, fixed in `src/constants.ts` as
-// `HUD_ITEMS`, but how a build presents it is the build's, and a label is
+// the whole of it: the copy is the case's, fixed by specs/screens.md as `HUD_ITEMS`, but how a build presents it is the build's, and a label is
 // commonly drawn with a marker or a bullet beside it. Where the run sits is read
 // through the transform and the alignment the build drew it with, so a build is
 // free to lay its strip out however it likes.
@@ -31,14 +30,14 @@
 // table, so every run of text the frame drew belongs to the HUD.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertTrue } from "../assert";
 import {
   HUD_ITEMS,
   HUD_MENU,
   HUD_NEW_GAME,
   HUD_SOUND,
   type Rect,
-} from "../../src/constants";
-import { assertTrue } from "../assert";
+} from "../constants";
 import {
   captureStill,
   createHarness,

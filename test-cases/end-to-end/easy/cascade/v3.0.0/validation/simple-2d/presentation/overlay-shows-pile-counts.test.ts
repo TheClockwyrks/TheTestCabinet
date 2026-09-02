@@ -32,7 +32,7 @@
 // besides the thirteen counts are the zeros of the sources that read them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_COUNT, TABLEAU_COLUMNS } from "../../src/constants";
+import { FOUNDATION_COUNT, TABLEAU_COLUMNS } from "../constants";
 import {
   RANK_LABELS,
   SUIT_LETTERS,
