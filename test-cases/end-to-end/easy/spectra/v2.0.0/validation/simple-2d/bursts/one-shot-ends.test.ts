@@ -31,7 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertNotNull, assertNull } from "../assert";
-import { BURST_DURATION } from "../../src/constants";
+import { BURST_DURATION } from "../constants";
 import {
   captureStill,
   createHarness,

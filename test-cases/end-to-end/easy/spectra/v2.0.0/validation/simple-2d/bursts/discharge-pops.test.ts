@@ -37,7 +37,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength } from "../assert";
-import { BINDINGS, DISCHARGE_TIME, RESONANCE_MAX } from "../../src/constants";
+import { BINDINGS, DISCHARGE_TIME, RESONANCE_MAX } from "../constants";
 import {
   captureStill,
   createHarness,

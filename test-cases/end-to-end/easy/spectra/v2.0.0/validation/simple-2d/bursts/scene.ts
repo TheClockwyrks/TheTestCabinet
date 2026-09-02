@@ -12,7 +12,7 @@ import {
   PLAYER_BULLET_SPEED,
   FIELD_LEFT,
   FIELD_TOP,
-} from "../../src/constants";
+} from "../constants";
 import {
   poseDrone,
   SHOT_GAP,

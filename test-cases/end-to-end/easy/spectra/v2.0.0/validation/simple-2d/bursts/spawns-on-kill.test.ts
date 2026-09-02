@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertLessThanOrEqual, assertNull } from "../assert";
-import { SHARD_SIZE } from "../../src/constants";
+import { SHARD_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,

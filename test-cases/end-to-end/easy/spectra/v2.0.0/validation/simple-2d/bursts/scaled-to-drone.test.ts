@@ -36,7 +36,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
-import { PRISM_SIZE, SHARD_SIZE } from "../../src/constants";
+import { PRISM_SIZE, SHARD_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -45,7 +45,7 @@ import {
   DISCHARGE_TIME,
   MAX_BURSTS,
   RESONANCE_MAX,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,
