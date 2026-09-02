@@ -29,7 +29,7 @@ import {
   TILE,
   tileCX,
   tileLeft,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,

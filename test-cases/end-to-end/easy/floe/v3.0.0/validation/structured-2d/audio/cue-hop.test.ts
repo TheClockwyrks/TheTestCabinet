@@ -32,7 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
-import { CUES, HOP_COOLDOWN, ROW_NEAR, START_COL } from "../../src/constants";
+import { CUES, HOP_COOLDOWN, ROW_NEAR, START_COL } from "../constants";
 import {
   captureReplay,
   createHarness,

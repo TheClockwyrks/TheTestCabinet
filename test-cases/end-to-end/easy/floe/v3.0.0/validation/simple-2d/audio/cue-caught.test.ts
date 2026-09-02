@@ -32,7 +32,7 @@ import {
   START_LIVES,
   TILE,
   bearIceSpeed,
-} from "../../src/constants";
+} from "../constants";
 import {
   bearOf,
   captureReplay,

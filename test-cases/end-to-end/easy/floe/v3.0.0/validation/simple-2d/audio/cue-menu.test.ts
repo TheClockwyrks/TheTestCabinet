@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { CUES, TITLE_ITEMS } from "../../src/constants";
+import { CUES, TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

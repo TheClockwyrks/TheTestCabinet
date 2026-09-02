@@ -22,7 +22,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { CUES, DEATH_PAUSE, START_COL, START_LIVES } from "../../src/constants";
+import { CUES, DEATH_PAUSE, START_COL, START_LIVES } from "../constants";
 import {
   captureReplay,
   createHarness,

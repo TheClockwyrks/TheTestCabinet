@@ -29,7 +29,7 @@ import {
   START_COL,
   TOTAL_LEVELS,
   WATER_TOP,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureReplay,
   createHarness,

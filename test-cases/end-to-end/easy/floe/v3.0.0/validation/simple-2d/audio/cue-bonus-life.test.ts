@@ -27,12 +27,7 @@ import {
   assertGreaterThanOrEqual,
   assertLength,
 } from "../assert";
-import {
-  BONUS_LIFE_EVERY,
-  CUES,
-  SCORE_ROW,
-  START_COL,
-} from "../../src/constants";
+import { BONUS_LIFE_EVERY, CUES, SCORE_ROW, START_COL } from "../constants";
 import {
   captureReplay,
   createHarness,

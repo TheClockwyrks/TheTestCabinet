@@ -27,7 +27,7 @@ import {
   ROW_NEAR,
   START_COL,
   WATER_TOP,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,
