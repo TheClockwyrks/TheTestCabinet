@@ -30,8 +30,14 @@ import type { Fault, Hex, SimState, SimStatus } from "./types";
 /** The threshold the specification's table is written against: `38`. */
 const THRESHOLD = 2 * MOTE_COLLIDE_R;
 
-/** A first frame small enough to begin the cycle without reaching a sample. */
-const PROBE = 1e-9;
+/**
+ * A first frame small enough to begin the cycle without reaching a sample, and
+ * large enough to count as progress: the clock in `src/sim.ts` drops a span
+ * below `CYCLE_EPSILON` (`1e-9` cycles) so a float residue cannot begin a cycle
+ * of its own. At `SPEEDS[0]` this is a microsecond of game time, eight
+ * millionths of the way to the first sample at `1/8`.
+ */
+const PROBE = 1e-6;
 
 /** A game holding Extras 1, with the surface over it and no run started. */
 function bench(): { game: Game; api: OrreryStateOps } {

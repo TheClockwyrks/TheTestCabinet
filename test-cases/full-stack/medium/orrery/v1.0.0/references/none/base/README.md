@@ -102,7 +102,7 @@ invokes a tool, so the project builds wherever the tools are absent.
 Regenerating them, when the tools are on the `PATH`:
 
 ```sh
-node scripts/gen-sprites.mjs   # 45 sprites + 2 sheets (draw, draw-sheet)
+bash scripts/gen-sprites.sh    # 45 sprites + 2 sheets (draw, draw-sheet)
 bash scripts/gen-fx.sh         # deliver, fault, complete (particle-2d)
 bash scripts/gen-audio.sh      # the six cues and the bed (sfx-sample, sfx-synth, music)
 ```

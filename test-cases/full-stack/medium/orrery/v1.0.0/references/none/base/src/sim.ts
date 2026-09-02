@@ -265,6 +265,40 @@ export function recordCompletion(state: OrreryState, metrics: Metrics): void {
 const MAX_CYCLES_PER_CALL = 100_000;
 
 /**
+ * How near a cycle boundary counts as standing on it, in cycles.
+ *
+ * specs/instrumentation.md requires that an interval of game time reach the
+ * same state however it was divided into frames: "`advance(1, 1)` and
+ * `advance(1, 60)` cover the same cycles and reach the same outcome exactly".
+ * The rule those two must agree on is real arithmetic, but the clock adds
+ * `SPEEDS[speed] * dt` in binary floating point, and a sum of sixty such terms
+ * is not bit-identical to the single term covering the same span. One second
+ * at speed `1` is three cycles either way in exact arithmetic; in floats the
+ * divided one can land at `2.999999999999999`, one cycle short.
+ *
+ * So the boundary is tested with a tolerance, at both ends. A span that comes
+ * within `CYCLE_EPSILON` of finishing a cycle finishes it, and the residue
+ * left over after crossing one is dropped rather than spent on beginning the
+ * next. Both matter: the first keeps the cycle COUNT, and with it every
+ * outcome the run turns on, independent of the frame division; the second
+ * keeps a residue of a few ulps from BEGINNING the following cycle, which
+ * resolves its fetch, drops, and grabs and so would show up in `sim.grips`.
+ * Neither accumulates — crossing re-seats the fraction on an exact `0`, so a
+ * long run cannot drift.
+ *
+ * The fraction WITHIN a cycle keeps its residue, since the rule it follows is
+ * the running sum itself. That residue is of order `1e-13` of a cycle and
+ * reaches `sim.fraction` and the drawn positions derived from it alone, never
+ * a cycle's outcome.
+ *
+ * `1e-9` cycles is a nanosecond of game time at `SPEEDS[0]`, and a
+ * thirtieth of one at `SPEEDS[3]` — far below anything a frame can express,
+ * and far above the float noise measured across the reference solutions
+ * (about `1e-12` cycles over a run).
+ */
+const CYCLE_EPSILON = 1e-9;
+
+/**
  * Advance the run by `dt` seconds of game time, at the speed step it stands
  * at. Whole cycles run in order and in full, and the excess carries into the
  * next one, so the outcome never depends on where a frame boundary fell.
@@ -282,7 +316,7 @@ export function advanceCycles(context: SimContext, cycles: number): void {
   let remaining = cycles;
   let guard = 0;
   while (
-    remaining > 0 &&
+    remaining > CYCLE_EPSILON &&
     sim.status === "running" &&
     guard < MAX_CYCLES_PER_CALL
   ) {
@@ -291,7 +325,7 @@ export function advanceCycles(context: SimContext, cycles: number): void {
     // A faulting cycle runs only as far as the sample its fault names.
     const limit = plan.fault === null ? 1 : plan.fault.fraction;
     const toLimit = limit - sim.fraction;
-    if (remaining < toLimit) {
+    if (remaining < toLimit - CYCLE_EPSILON) {
       sim.fraction += remaining;
       return;
     }

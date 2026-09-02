@@ -15,7 +15,7 @@ header for what it produces and the look it works to.
 
 | Group | Script | Files | On disk |
 | --- | --- | --- | --- |
-| Sprites and sheets | `scripts/gen-sprites.mjs` | 45 stills + 12 sheet frames | 264 KB |
+| Sprites and sheets | `scripts/gen-sprites.sh` | 45 stills + 12 sheet frames | 264 KB |
 | Particle systems | `scripts/gen-fx.sh` | 3 `system.json` | 20 KB |
 | Audio | `scripts/gen-audio.sh` | 7 `.wav` + 1 `.mid` | 6.2 MB |
 
@@ -53,7 +53,7 @@ what `src/fielddraw.ts` draws in code, an absent system plays no effect, and a
 sound that did not decode leaves its cue silent (`specs/assets.md` "Where the
 files land").
 
-## Sprites — `scripts/gen-sprites.mjs`
+## Sprites — `scripts/gen-sprites.sh`
 
 All are transparent straight-alpha RGBA PNGs, authored at the native canvas
 `specs/assets.md` pins and drawn at that size in logical units, so nothing is scaled at
