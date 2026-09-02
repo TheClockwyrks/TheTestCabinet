@@ -91,11 +91,15 @@ const TOLERANCE = 0.02;
 /**
  * How far either side of the stated hold the boundary is probed, in seconds.
  *
- * Twenty milliseconds: far enough below `fluxHold(10)` that no build's arithmetic
- * lands on the wrong side of it by accident, and well inside the 0.05 s a single
- * step of the ramp is worth, so a build whose boundary is one step out is named by
- * it. The probe at the hold itself takes no offset — specs/instrumentation.md makes
- * `shimmer` true AT `fluxHold(stage)`, not past it.
+ * Twenty milliseconds. It is deliberately an offset rather than a reading AT
+ * `fluxHold(10)` itself: specs/instrumentation.md makes `shimmer` true at the hold
+ * exactly, but the hold is a double, and a build that reaches the same figure by a
+ * differently ordered arithmetic can land an ulp either side of the validator's
+ * copy of it. No honest check sits on that edge. Twenty milliseconds is far clear
+ * of any such difference and well inside the 0.05 s a single step of the ramp is
+ * worth, so the pair still brackets the boundary tightly enough to name a build
+ * whose own boundary is one step early — it shimmers at 1.13 s — or one step late,
+ * which is still holding at 1.17 s.
  */
 const PROBE_EPSILON = 0.02;
 
@@ -190,11 +194,11 @@ it("holds a stage-ten Flux's band for fluxHold(10) before the shimmer", async ()
       `at ${HOLD - PROBE_EPSILON} s, under fluxHold(${STAGE}) ` +
       `= ${HOLD} s (specs/stages.md, specs/instrumentation.md)`,
   );
-  await harness.debug.setDroneBandClock(flux, HOLD);
+  await harness.debug.setDroneBandClock(flux, HOLD + PROBE_EPSILON);
   assertTrue(
     requireDrone(await harness.snapshot(), flux).shimmer,
-    `a stage-${STAGE} Flux shimmering with its band clock at ` +
-      `fluxHold(${STAGE}) = ${HOLD} s itself, which ` +
-      "specs/instrumentation.md makes the first instant of the shimmer",
+    `a stage-${STAGE} Flux shimmering with its band clock past ` +
+      `fluxHold(${STAGE}) = ${HOLD} s, at ${HOLD + PROBE_EPSILON} s, which ` +
+      "specs/instrumentation.md puts inside the shimmer",
   );
 });

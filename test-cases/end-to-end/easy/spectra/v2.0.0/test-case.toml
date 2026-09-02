@@ -2099,7 +2099,7 @@ validation = { script = "stages/scaling-dive-gap-floor.test.ts", outputs = [
 [[review.categories.items]]
 id = "scaling-flux-hold"
 title = "A Flux flips faster at a later stage"
-description = "The game reports fluxHold(10) as 1.15 s exactly, a Flux's held window at stage 10 runs that long within 2%, and the Flux reports shimmer false with its band clock posed at 1.13 s and true with it posed at 1.15 s."
+description = "The game reports fluxHold(10) as 1.15 s exactly, a Flux's held window at stage 10 runs that long within 2%, and the Flux reports shimmer false with its band clock posed at 1.13 s and true with it posed at 1.17 s."
 domains = ["polarity"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-flux-hold.test.ts", outputs = [
