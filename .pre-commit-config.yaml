@@ -163,6 +163,20 @@ repos:
         files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^packages/gg-sandbox'
         pass_filenames: false
 
+      - id: validator-constants
+        name: validator-owned figures
+        description: Report a validator project that imports an asserted figure from the build it grades.
+        entry: scripts/ci/validator-constants.sh
+        language: script
+        # Takes the staged validator sources so the report is scoped to the case
+        # being committed rather than to every case in the repository, and the
+        # author sees only what their own commit is about. The gate REPORTS and does
+        # not block yet, which pre-commit would otherwise hide (it prints a passing
+        # hook's output only under `verbose`), so `verbose: true` is what makes the
+        # report reach the author at all. The CI job reads every project.
+        files: '^(test-cases|game-jams)/.*/validation/[^/]+/.*\.(ts|tsx|js|mjs|cjs)$'
+        verbose: true
+
       - id: rust-fmt
         name: cargo fmt (--check)
         description: Enforce rustfmt formatting across the workspace.
