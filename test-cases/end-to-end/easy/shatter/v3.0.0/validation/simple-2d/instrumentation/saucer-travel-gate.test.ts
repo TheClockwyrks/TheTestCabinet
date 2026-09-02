@@ -30,7 +30,7 @@
 // is read at the one-second mark as well as at the end.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRE_INTERVAL, SAUCER_SPEED } from "../../src/constants";
+import { SAUCER_FIRE_INTERVAL, SAUCER_SPEED } from "../constants";
 import {
   assertCloseTo,
   assertGreaterThanOrEqual,

@@ -31,7 +31,7 @@
 // `warhead` build cannot escape the extra fields by omitting them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS } from "../../src/constants";
+import { ROCK_RADIUS } from "../constants";
 import {
   assertBetween,
   assertCloseTo,

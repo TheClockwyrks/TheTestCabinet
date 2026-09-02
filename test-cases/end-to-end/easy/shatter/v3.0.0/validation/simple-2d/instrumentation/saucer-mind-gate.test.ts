@@ -35,7 +35,7 @@ import {
   SAUCER_SPEED,
   SAUCER_WEAVE_INTERVAL,
   SAUCER_WEAVE_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

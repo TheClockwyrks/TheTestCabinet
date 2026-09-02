@@ -35,7 +35,7 @@
 // at all fails the ON leg.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME } from "../../src/constants";
+import { WAVE_BANNER_TIME } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

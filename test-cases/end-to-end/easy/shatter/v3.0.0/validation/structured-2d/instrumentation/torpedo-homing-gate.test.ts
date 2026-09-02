@@ -38,7 +38,7 @@
 // heading but the guidance this item gates.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT, TORPEDO_CONE, TORPEDO_TURN } from "../../src/constants";
+import { TICK_DT, TORPEDO_CONE, TORPEDO_TURN } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

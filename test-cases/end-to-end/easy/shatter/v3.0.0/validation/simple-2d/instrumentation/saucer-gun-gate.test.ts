@@ -36,7 +36,7 @@
 // none — and leaves the cadence itself to `saucer/fires-every-1p6s`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRE_INTERVAL } from "../../src/constants";
+import { SAUCER_FIRE_INTERVAL } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

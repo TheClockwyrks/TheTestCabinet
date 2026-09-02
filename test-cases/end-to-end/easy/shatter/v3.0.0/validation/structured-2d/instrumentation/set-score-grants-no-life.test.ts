@@ -29,7 +29,7 @@
 // else in that second can score or cost anything.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { EXTRA_LIFE_STEP, START_LIVES } from "../../src/constants";
+import { EXTRA_LIFE_STEP, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

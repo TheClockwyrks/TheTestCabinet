@@ -34,7 +34,7 @@
 // belongs, rather than being reported here as a missing snapshot field.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS } from "../../src/constants";
+import { ROCK_RADIUS } from "../constants";
 import {
   assertCloseTo,
   assertContains,

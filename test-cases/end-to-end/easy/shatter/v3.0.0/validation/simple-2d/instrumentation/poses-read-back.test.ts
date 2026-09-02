@@ -29,7 +29,7 @@
 // the snapshot is that it reports the bit.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
+import { DEG } from "../constants";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import {
   captureStill,

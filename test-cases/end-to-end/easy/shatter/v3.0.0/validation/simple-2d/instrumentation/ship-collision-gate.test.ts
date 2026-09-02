@@ -34,13 +34,7 @@
 // take the rock off the field before it arrives.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  ROCK_RADIUS,
-  SAFE_X,
-  SAFE_Y,
-  SHIP_R,
-  START_LIVES,
-} from "../../src/constants";
+import { ROCK_RADIUS, SAFE_X, SAFE_Y, SHIP_R, START_LIVES } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

@@ -29,7 +29,7 @@
 // fires at the ship leave from a place clear of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRE_INTERVAL, SAUCER_SPEED } from "../../src/constants";
+import { SAUCER_FIRE_INTERVAL, SAUCER_SPEED } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,

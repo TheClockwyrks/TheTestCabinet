@@ -28,7 +28,7 @@
 // operation for any of them would fail a perfectly conformant build.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS } from "../../src/constants";
+import { ROCK_RADIUS } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import { distance, STAR } from "../geometry";
 import {

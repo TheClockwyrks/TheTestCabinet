@@ -21,7 +21,7 @@
 // the copy from it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, FACE_UP, SAFE_X, SAFE_Y, START_LIVES } from "../../src/constants";
+import { DEG, FACE_UP, SAFE_X, SAFE_Y, START_LIVES } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

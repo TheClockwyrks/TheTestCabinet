@@ -32,7 +32,7 @@
 
 import { ConstantClock } from "@test-cabinet/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT } from "../../src/constants";
+import { TICK_DT } from "../constants";
 import { assertDeepEqual, assertLessThanOrEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { posePopulatedField } from "./scene";

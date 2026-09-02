@@ -23,7 +23,7 @@
 // over the minute is the saucer this item is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRST_DELAY } from "../../src/constants";
+import { SAUCER_FIRST_DELAY } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,

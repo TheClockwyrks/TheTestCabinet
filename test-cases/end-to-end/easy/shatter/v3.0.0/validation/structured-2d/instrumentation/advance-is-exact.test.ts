@@ -42,7 +42,7 @@
 
 import { ConstantClock } from "@test-cabinet/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT } from "../../src/constants";
+import { TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { QUIET_CORNER } from "../fixtures";
 import { driftOver } from "../geometry";

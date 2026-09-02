@@ -32,7 +32,7 @@
 // core throughout.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRE_INTERVAL } from "../../src/constants";
+import { SAUCER_FIRE_INTERVAL } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,

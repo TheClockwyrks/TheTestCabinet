@@ -24,7 +24,7 @@
 // from the reset itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME, WAVE_BASE_ROCKS } from "../../src/constants";
+import { WAVE_BANNER_TIME, WAVE_BASE_ROCKS } from "../constants";
 import { assertEqual, assertNotEqual, assertTrue } from "../assert";
 import {
   captureStill,

@@ -33,7 +33,7 @@
 // empty but for it, so nothing it could collide with can end the leg early.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT } from "../../src/constants";
+import { TICK_DT } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

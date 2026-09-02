@@ -34,7 +34,7 @@
 // check is holding empty.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BULLET_LIFE, WAVE_BANNER_TIME } from "../../src/constants";
+import { BULLET_LIFE, WAVE_BANNER_TIME } from "../constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import { QUIET_CORNER } from "../fixtures";
 import {

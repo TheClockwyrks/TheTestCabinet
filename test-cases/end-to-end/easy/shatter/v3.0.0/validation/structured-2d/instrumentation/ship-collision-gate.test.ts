@@ -29,13 +29,7 @@
 // (`specs/progression.md`: inside the grace the lethal pairs cost nothing).
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  ROCK_RADIUS,
-  SAFE_X,
-  SAFE_Y,
-  SHIP_R,
-  START_LIVES,
-} from "../../src/constants";
+import { ROCK_RADIUS, SAFE_X, SAFE_Y, SHIP_R, START_LIVES } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { wrappedDistance } from "../geometry";
 import {

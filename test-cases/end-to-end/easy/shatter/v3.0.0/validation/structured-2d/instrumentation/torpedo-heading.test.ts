@@ -41,7 +41,7 @@
 // anything a default would produce.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TORPEDO_SPEED } from "../../src/constants";
+import { TORPEDO_SPEED } from "../constants";
 import { assertCloseTo, assertLessThanOrEqual, fail } from "../assert";
 import { DEG, angleBetween } from "../geometry";
 import {
