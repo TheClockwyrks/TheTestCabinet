@@ -43,7 +43,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotEqual } from "../assert";
-import { PAUSE_ITEMS, START_LIVES } from "../../src/constants";
+import { PAUSE_ITEMS, START_LIVES } from "../constants";
 import {
   captureReplay,
   createHarness,

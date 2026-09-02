@@ -38,7 +38,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
-import { ENDING_ITEMS } from "../../src/constants";
+import { ENDING_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   frameText,

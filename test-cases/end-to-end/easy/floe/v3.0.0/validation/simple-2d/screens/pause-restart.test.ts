@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotEqual } from "../assert";
-import { BAY_COUNT, PAUSE_ITEMS, START_LIVES } from "../../src/constants";
+import { BAY_COUNT, PAUSE_ITEMS, START_LIVES } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -45,7 +45,7 @@ import {
   START_LIVES,
   TICK_DT,
   crossingTimer,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,

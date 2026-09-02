@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { ENDING_ITEMS } from "../../src/constants";
+import { ENDING_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,

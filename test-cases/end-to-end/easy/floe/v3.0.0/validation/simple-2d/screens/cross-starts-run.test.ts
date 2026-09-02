@@ -45,7 +45,7 @@ import {
   START_LIVES,
   TICK_DT,
   crossingTimer,
-} from "../../src/constants";
+} from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 /** The title entry this transition belongs to: `CROSS`, the first. */

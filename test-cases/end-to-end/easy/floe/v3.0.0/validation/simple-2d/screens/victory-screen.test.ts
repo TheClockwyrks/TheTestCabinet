@@ -39,7 +39,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
-import { ENDING_ITEMS, TOTAL_LEVELS } from "../../src/constants";
+import { ENDING_ITEMS, TOTAL_LEVELS } from "../constants";
 import {
   captureStill,
   createHarness,

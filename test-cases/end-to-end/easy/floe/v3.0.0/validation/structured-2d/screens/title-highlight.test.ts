@@ -34,7 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";
-import { STAGE_W, TITLE_ITEMS } from "../../src/constants";
+import { STAGE_W, TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   colorDistance,

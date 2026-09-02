@@ -34,7 +34,7 @@ import {
   ENDING_ITEMS,
   START_LIVES,
   TOTAL_LEVELS,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,

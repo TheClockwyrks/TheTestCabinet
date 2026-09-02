@@ -34,7 +34,7 @@
 // `TAGLINE_TEXT` ("DON'T LOOK BACK") is written with. Nothing else is
 // normalized: a build that drew a different word drew a different word.
 
-import { HUD_H } from "../../src/constants";
+import { HUD_H } from "../constants";
 import {
   drawnTextSpans,
   type Harness,

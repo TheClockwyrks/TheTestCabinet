@@ -48,7 +48,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { TICK_DT, TILE } from "../../src/constants";
+import { TICK_DT, TILE } from "../constants";
 import {
   bearOf,
   captureReplay,
