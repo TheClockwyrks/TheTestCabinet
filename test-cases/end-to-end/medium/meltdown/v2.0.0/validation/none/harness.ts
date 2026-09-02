@@ -568,7 +568,6 @@ export function framesForShots(shots: number, fireRate: number): number {
   return Math.round(((shots + 0.5) / fireRate) * TICK_HZ);
 }
 
-
 /* ---- The long-drive clock ------------------------------------------------- */
 //
 // A HANDFUL OF POINTS IN THIS PROJECT NEED MINUTES OF GAME TIME. What each reads

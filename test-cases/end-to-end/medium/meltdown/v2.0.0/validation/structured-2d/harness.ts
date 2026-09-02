@@ -258,9 +258,11 @@ export function driveSeconds(frames: number): number {
 export function createDriveHarness(
   options: Omit<HarnessOptions, "clock"> = {},
 ): Promise<Harness> {
-  return createHarness({ ...options, clock: new ConstantClock(1000 / DRIVE_HZ) });
+  return createHarness({
+    ...options,
+    clock: new ConstantClock(1000 / DRIVE_HZ),
+  });
 }
-
 
 /**
  * How often {@link Harness.gain} asks whether the build's clock has got there

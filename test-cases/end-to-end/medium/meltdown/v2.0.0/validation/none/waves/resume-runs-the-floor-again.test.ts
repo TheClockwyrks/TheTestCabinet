@@ -127,10 +127,7 @@ it("walks the same Mote again once the pause is lifted", async () => {
     // window, which is where the freeze the resume lifts left the floor.
     const held = await clock.read();
     await clock.press(BINDINGS.pause);
-    const ran = await clock.gain(
-      RESUMED_LEG_SECONDS,
-      RESUMED_LEG_DEADLINE_MS,
-    );
+    const ran = await clock.gain(RESUMED_LEG_SECONDS, RESUMED_LEG_DEADLINE_MS);
     return { held, ran, resumed: await clock.read() };
   });
 
