@@ -59,6 +59,14 @@ import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { connectChromium } from "./chromium";
+import {
+  HANDLE,
+  PAGE_DEADLINE_MS,
+  POLL_MS,
+  SURFACE_TIMEOUT_MS,
+  surfaceAbsent,
+  waitForSurface,
+} from "./surface";
 import { fail } from "./assert";
 import {
   STAGE_H,
@@ -77,6 +85,12 @@ declare module "vitest" {
     fathomUrl: string;
     /** The one Chromium every suite worker connects to. */
     fathomBrowserWs: string;
+    /**
+     * Whether this build installs no surface at all, settled once by
+     * `globalSetup.ts` at the whole of `SURFACE_TIMEOUT_MS` and on pages of its
+     * own, so no harness has to buy the same answer again.
+     */
+    fathomSurfaceAbsent: boolean;
   }
 }
 
@@ -84,8 +98,14 @@ declare module "vitest" {
 /* The contract the build owes                                                */
 /* -------------------------------------------------------------------------- */
 
-/** The handle an engineless build installs its surface on. */
-export const HANDLE = "__fathom";
+/**
+ * The handle an engineless build installs its surface on.
+ *
+ * Re-exported from `surface.ts`, which `globalSetup.ts` reads too: the runner
+ * settles the run's surface verdict before any worker exists, so the handle
+ * cannot live in a module that only a worker can import.
+ */
+export { HANDLE };
 
 /**
  * Every operation `specs/instrumentation.md` requires on the surface, including
@@ -553,56 +573,6 @@ const INIT_SCRIPTS = ["recorder-init.js", "audio-init.js"] as const;
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /**
- * How long the surface is waited for before the build is called non-conformant.
- *
- * Generous against a conformant build and cheap against one: the wait is a poll
- * that returns the instant the global appears, and a build installs it while its
- * entry module runs, so a page that has fired `load` has either installed it
- * already or is not going to. What the ceiling really bounds is the cost of a
- * build with no surface at all, which pays it once per harness — and there is a
- * cap on the whole suite run, so a wait long enough to exhaust it would turn
- * "every point this decides failed" into "the validators did not run", which
- * tells a reviewer far less.
- *
- * A MINUTE RATHER THAN FIVE SECONDS, because the ceiling is not really on the
- * build: it is on the host. This project holds four pages of one browser open at
- * once and the machine that runs it is running a model's build under it — and, on
- * a shared machine, whatever else that machine is doing. A page can be starved of
- * processor long enough for a perfectly conforming build's entry module to take
- * tens of seconds of wall clock to run, and a build failed for that has been
- * failed for the load average. Five seconds was observed to fail such a build once
- * in a suite run; fifteen is not obviously enough either, and a minute costs a
- * healthy build nothing at all, because the poll returns the instant the global
- * appears. It sits inside the hook budget `vitest.config.ts` states, so a build
- * that really has no surface still fails on this rather than on the runner.
- */
-const SURFACE_TIMEOUT_MS = 60_000;
-
-/**
- * The ceiling on every operation PLAYWRIGHT itself times against the page.
- *
- * WHY THIS CONSTANT EXISTS. Playwright's library defaults leave a deadline on
- * anything it has to wait for — a navigation, a screenshot — and that default is
- * thirty seconds. Nothing here asked for it, so nothing here reasoned about it,
- * and it is the same mistake {@link SURFACE_TIMEOUT_MS} was raised to correct:
- * every one of those waits is a wait on the HOST, not a claim about the build.
- * `page.goto` runs in the `beforeEach` of every check file in this project, so a
- * host that took a moment too long to serve a static file does not cost one point
- * — it fails the hook, and every point the file decides reads `ran=false`, which
- * tells a reviewer nothing at all. `page.screenshot` is the same shape one still
- * at a time: a build whose canvas the compositor was slow to hand over is a build
- * failed for the load average.
- *
- * A MINUTE, for the reason the surface ceiling is a minute. The wait ends the
- * instant the page is served or the frame is captured, so a healthy build pays
- * none of it however high it is set, and this project holds four pages of one
- * browser open at once on a machine that is also running a model's build. It sits
- * inside the hook and test budgets `vitest.config.ts` states, so a page that
- * genuinely never loads still fails here rather than on the runner.
- */
-const PAGE_DEADLINE_MS = 60_000;
-
-/**
  * The most recorded frames one driven run closes while a capture is keeping them.
  *
  * The same 300 a written recording holds ({@link MAX_REPLAY_FRAMES}), because a
@@ -763,17 +733,13 @@ export function failSurface(fault: string): never {
  * specification requires.
  */
 async function readSurfaceFault(page: Page): Promise<string | null> {
-  try {
-    await page.waitForFunction(
-      (handle) =>
-        typeof (window as never)[handle] === "object" &&
-        (window as never)[handle] !== null,
-      HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
-    );
-  } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
-  }
+  // The run already looked, twice, on pages of their own and for the whole of
+  // the ceiling, and this build installs no surface (`globalSetup.ts`). Waiting
+  // again here would buy the same answer a hundred and twenty-five times over,
+  // which is past the cap on the whole validator run — and a run that blows that
+  // cap reports every point as `ran=false` instead of as the failure it is.
+  if (inject("fathomSurfaceAbsent")) return surfaceAbsent();
+  if (!(await waitForSurface(page))) return surfaceAbsent();
   const missing = await page.evaluate(
     ([handle, ops]) => {
       const target = (
@@ -876,7 +842,10 @@ export async function createHarness(
             window as unknown as { __fathomRec: { ready(): boolean } }
           ).__fathomRec.ready(),
         undefined,
-        { timeout: SURFACE_TIMEOUT_MS },
+        // On a timer rather than on the page's animation frames, for the reason
+        // `surface.ts` gives: a starved page is starved of frames, and a look
+        // scheduled on them reads the host rather than the build.
+        { timeout: SURFACE_TIMEOUT_MS, polling: POLL_MS },
       )
       .catch(() => undefined);
   }
