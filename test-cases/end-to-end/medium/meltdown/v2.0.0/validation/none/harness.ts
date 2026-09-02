@@ -741,6 +741,23 @@ export interface GainResult {
  * what it reads is the state that loop produced.
  */
 export interface OwnClock {
+  /**
+   * The state the game was in AT THE INSTANT THE CLOCK WAS HANDED BACK.
+   *
+   * THE ONE READING A SCENARIO CANNOT TAKE FOR ITSELF, and the reason this field
+   * exists rather than a first {@link read}. Handing the clock back and reading
+   * the state are two crossings into the page, and between them the build is
+   * running itself: on a host that is short of cores that gap is long enough for
+   * a posed tower to fire, a walker to move, a countdown to start. A scenario
+   * that opens with `await clock.read()` and then asserts the opening state is
+   * what it arranged — a heat of exactly zero, say — is asserting that the gap
+   * was short, which is a fact about the machine and not about the build.
+   *
+   * So the snapshot is taken inside the SAME evaluation that calls
+   * `setAutoStep(true)`, before the build has run a frame of its own, and every
+   * scenario's opening reading comes from here.
+   */
+  readonly opened: MeltdownSnapshot;
   /** Let the build run itself for `ms` of real time. */
   settle(ms: number): Promise<void>;
   /**
@@ -863,18 +880,21 @@ export interface Harness {
    *
    * ```ts
    * const legs = await h.withOwnClock(async (clock) => {
-   *   const opened = await clock.read();
-   *   await clock.settle(WINDOW_MS);      // the running leg
+   *   await clock.gain(LEG_SECONDS, LEG_DEADLINE_MS); // the running leg
    *   await clock.press(BINDINGS.pause);
-   *   const pressed = await clock.read(); // ONE snapshot, on the press
-   *   await clock.settle(WINDOW_MS);      // the paused leg
-   *   return { opened, pressed, settled: await clock.read() };
+   *   const pressed = await clock.read();             // ONE snapshot, on the press
+   *   await clock.settle(pausedMs);                   // the paused leg
+   *   return { pressed, settled: await clock.read() };
    * });
    * ```
    *
-   * Both legs are read off the ONE snapshot taken on the press, so the pair
-   * spans the paused window and nothing else; a second round trip there would
-   * bill its own latency to the freeze. The windows, and every bound the legs
+   * The opening state is {@link OwnClock.opened} and never a `read` of the
+   * scenario's own: a first `read` is a round trip taken while the build is
+   * already running, so what it reports is how quickly this machine answered.
+   *
+   * Both legs of the freeze are read off the ONE snapshot taken on the press, so
+   * the pair spans the paused window and nothing else; a second round trip there
+   * would bill its own latency to the freeze. The windows, and every bound the legs
    * are held to, are the check's own and are stated in the check.
    */
   withOwnClock<T>(scenario: (clock: OwnClock) => Promise<T>): Promise<T>;
@@ -967,6 +987,31 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 const SURFACE_TIMEOUT_MS = 60_000;
 
 /**
+ * How often the two waits above ask the page whether the surface is there yet:
+ * ten times a second.
+ *
+ * NOT PLAYWRIGHT'S DEFAULT, WHICH IS THE PAGE'S OWN ANIMATION FRAME. A probe
+ * scheduled on `requestAnimationFrame` is scheduled on precisely the thing a
+ * loaded host starves, so the one wait in this file that is allowed to conclude
+ * something about the build would be the one wait that slows down when the
+ * machine is busy. A fixed interval is serviced off the page's timer queue
+ * instead, and ten a second is far finer than the hundreds of milliseconds a
+ * bundle takes to install its surface.
+ */
+const SURFACE_POLL_MS = 100;
+
+/**
+ * How long the page is given to load the built site: a minute.
+ *
+ * Playwright's own default is thirty seconds, and it is the same argument as
+ * {@link SURFACE_TIMEOUT_MS}: fetching and parsing a bundle off a host running a
+ * hundred other things is not a statement about the build, and a navigation that
+ * times out fails the harness rather than scoring a point. Stated here rather
+ * than left implicit so the figure is one this file chose.
+ */
+const NAVIGATION_TIMEOUT_MS = 60_000;
+
+/**
  * How often {@link OwnClock.gain} asks the page whether the build's clock has
  * got there yet: ten times a second.
  *
@@ -1053,6 +1098,14 @@ async function contextFor(
  *
  * Registered from `setup.ts` as an `afterAll`, so a suite file never has to think
  * about it and a worker cannot leave a page behind in the shared browser.
+ *
+ * IT IS PER FILE BECAUSE A WORKER IS PER FILE. Vitest's default pool forks a
+ * process for each suite file, so this module — the context cache and the
+ * connection alike — is built again for every one of them and nothing here can be
+ * carried from one file to the next. A revision that kept the context open
+ * between files to save rebuilding it was measuring a saving that does not exist:
+ * the contexts it left behind were torn down by the browser server the moment the
+ * fork disconnected, which is what this function does explicitly and in order.
  */
 export async function closeWorkerBrowser(): Promise<void> {
   for (const page of openPages) await page.close().catch(() => undefined);
@@ -1123,7 +1176,7 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
         typeof (window as never)[handle] === "object" &&
         (window as never)[handle] !== null,
       HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
+      { timeout: SURFACE_TIMEOUT_MS, polling: SURFACE_POLL_MS },
     );
   } catch {
     return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
@@ -1182,7 +1235,10 @@ export async function createHarness(
     if (message.type() === "error") pageErrors.push(message.text());
   });
 
-  await page.goto(inject("meltdownUrl"), { waitUntil: "load" });
+  await page.goto(inject("meltdownUrl"), {
+    waitUntil: "load",
+    timeout: NAVIGATION_TIMEOUT_MS,
+  });
 
   const surfaceFault = await readSurfaceFault(page);
   const refuse = (): never => failSurface(surfaceFault ?? "");
@@ -1231,7 +1287,7 @@ export async function createHarness(
             window as unknown as { __meltdownRec: { ready(): boolean } }
           ).__meltdownRec.ready(),
         undefined,
-        { timeout: SURFACE_TIMEOUT_MS },
+        { timeout: SURFACE_TIMEOUT_MS, polling: SURFACE_POLL_MS },
       )
       .catch(() => undefined);
   }
@@ -1382,7 +1438,14 @@ export async function createHarness(
    * scope holds the frames the build drew rather than the frames this harness
    * drove.
    */
+  let openedAt: MeltdownSnapshot | null = null;
   const ownClock: OwnClock = {
+    get opened(): MeltdownSnapshot {
+      if (openedAt === null) {
+        throw new Error("OwnClock.opened is only readable inside withOwnClock");
+      }
+      return openedAt;
+    },
     settle: (ms) => page.waitForTimeout(ms),
     async gain(seconds, deadlineMs) {
       if (surfaceFault !== null) refuse();
@@ -1426,20 +1489,29 @@ export async function createHarness(
     // bringing the page forward as well means this does not rest on a flag
     // alone.
     await page.bringToFront().catch(() => undefined);
-    await page.evaluate(
+    // The handover and the opening reading are ONE crossing. A scenario's first
+    // statement used to be a `read`, which is a second round trip taken while the
+    // build is already running itself — and on a loaded host that gap is long
+    // enough for a posed tower to fire and for an opening state a check arranged
+    // to have moved before the check saw it. Nothing runs between the
+    // `setAutoStep(true)` and the `snapshot()` below, so `clock.opened` is the
+    // state the scope opened in on any machine.
+    openedAt = (await page.evaluate(
       ([handle]) => {
         (
           window as unknown as { __meltdownRec: { setMode(m: string): void } }
         ).__meltdownRec.setMode("raf");
-        (
+        const api = (
           window as unknown as Record<
             string,
-            { setAutoStep(on: boolean): void }
+            { setAutoStep(on: boolean): void; snapshot(): unknown }
           >
-        )[handle].setAutoStep(true);
+        )[handle];
+        api.setAutoStep(true);
+        return api.snapshot();
       },
       [HANDLE] as const,
-    );
+    )) as MeltdownSnapshot;
     try {
       return await scenario(ownClock);
     } finally {
@@ -1461,6 +1533,7 @@ export async function createHarness(
         },
         [HANDLE] as const,
       );
+      openedAt = null;
     }
   };
 

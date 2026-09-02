@@ -112,7 +112,10 @@ it("walks the floor and gains simulation time with nothing stepping it", async (
 
   await captureStill(h, "before");
   const legs = await h.withOwnClock(async (clock) => {
-    const opened = await clock.read();
+    // The state the scope opened in, taken in the same crossing that handed the
+    // clock back — see `OwnClock.opened`. The window's gain is measured from
+    // here, so no part of it is a round trip's latency.
+    const opened = clock.opened;
     const gained = await clock.gain(WINDOW_SECONDS, GAIN_DEADLINE_MS);
     return { opened, gained, settled: await clock.read() };
   });

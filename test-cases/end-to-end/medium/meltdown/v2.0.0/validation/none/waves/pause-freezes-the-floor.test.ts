@@ -172,7 +172,11 @@ it("holds the floor still across a paused window it walked across unpaused", asy
 
   const legs = await captureReplay(h, "frozen", () =>
     h.withOwnClock(async (clock) => {
-      const opened = await clock.read();
+      // The state the scope opened in, taken in the same crossing that handed
+      // the clock back — see `OwnClock.opened` — so the running leg's travel is
+      // measured from where the Mote stood at the handover and not from wherever
+      // a round trip's worth of the build's own frames had carried it.
+      const opened = clock.opened;
       const ran = await clock.gain(
         RUNNING_LEG_SECONDS,
         RUNNING_LEG_DEADLINE_MS,

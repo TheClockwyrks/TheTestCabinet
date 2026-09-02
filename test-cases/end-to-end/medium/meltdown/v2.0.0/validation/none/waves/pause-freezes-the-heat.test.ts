@@ -192,7 +192,11 @@ it("holds a firing tower's heat across a paused window it climbed across unpause
 
   const legs = await captureReplay(h, "frozen", () =>
     h.withOwnClock(async (clock) => {
-      const opened = await clock.read();
+      // The state the scope opened in, taken in the same crossing that handed
+      // the clock back — see `OwnClock.opened`. Read a round trip later instead,
+      // a busy host gives this posed Stutter time to land its first shots and the
+      // precondition below reads the machine rather than the build.
+      const opened = clock.opened;
       const ran = await clock.gain(
         RUNNING_LEG_SECONDS,
         RUNNING_LEG_DEADLINE_MS,

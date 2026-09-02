@@ -125,7 +125,10 @@ it("carries a walker the same distance per second of game time at either speed",
   await h.debug.setSpeed(SLOW);
 
   const legs = await h.withOwnClock(async (clock) => {
-    const slowOpened = await clock.read();
+    // The state the scope opened in, taken in the same crossing that handed the
+    // clock back — see `OwnClock.opened` — so the slow leg's travel and its clock
+    // gain start at the same instant.
+    const slowOpened = clock.opened;
     const slowGained = await clock.gain(LEG_SECONDS, LEG_DEADLINE_MS);
     const slowSettled = await clock.read();
     // A pose of one field, not a step of the clock.
