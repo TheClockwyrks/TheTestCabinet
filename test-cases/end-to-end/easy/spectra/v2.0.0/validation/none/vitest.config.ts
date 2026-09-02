@@ -40,15 +40,21 @@ export default defineConfig({
     coverage: { enabled: false },
     // Each suite file holds a page of the shared browser while it runs, so the
     // ceiling on files in flight is the ceiling on pages — and a suite spends
-    // almost all of its time waiting on a crossing into one, so overlapping them
-    // is most of what decides how long the whole run takes. Capped rather than
-    // left to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it. Eight rather than four because a suite waiting on a
-    // round trip holds no core: on a host already running everything else, the
-    // whole project finishes sooner with more of them in flight, and the machine
-    // it ran on is exactly what a verdict may not depend on.
-    maxWorkers: 8,
+    // almost all of its time in crossings into one, so overlapping them is most
+    // of what decides how long the whole run takes.
+    //
+    // FOUR, AND THE CEILING IS WHY. A crossing does not merely wait: the frames
+    // it drives and the pixels they draw run inside the ONE Chromium this project
+    // shares, so pages in flight contend for that process rather than idling in
+    // it. Measured over this whole project on an idle host, going from four
+    // workers to eight took 12% off the wall clock and made every suite in it
+    // almost twice as slow — the longest went from 7.3 s to 13.9 s. A per-test
+    // ceiling is charged against a SUITE's duration, so the second figure is the
+    // one that decides whether a correct build is failed by the runner, and
+    // trading half of a suite's headroom for a tenth of the wall clock is the
+    // wrong way round. (The engine projects have no shared browser to contend
+    // for, and cap higher for that reason.)
+    maxWorkers: 4,
     minWorkers: 1,
     // Every scenario is posed rather than played into, so a suite is a few dozen
     // crossings into the page rather than thousands of real-time frames. The
