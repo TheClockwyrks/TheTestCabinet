@@ -37,7 +37,7 @@ import {
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { FathomSnapshot } from "../surface";
-import { BRIGHT_HOLD } from "../../src/constants";
+import { BRIGHT_HOLD } from "../constants";
 
 /**
  * How far apart the pair stands, in tiles, on either reading.

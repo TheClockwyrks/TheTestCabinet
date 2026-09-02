@@ -37,7 +37,7 @@ import {
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
   LINGER_TIME,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

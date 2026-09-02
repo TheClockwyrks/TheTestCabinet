@@ -26,7 +26,7 @@
 // fraction of the range so neither turns on either.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD } from "../../src/constants";
+import { BRIGHT_HOLD } from "../constants";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {

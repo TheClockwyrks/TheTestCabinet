@@ -31,7 +31,7 @@ import {
   DRIFTER_SPEED,
   FORAGER_SPEED,
   PREDATOR_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertLessThan,

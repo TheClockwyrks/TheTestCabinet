@@ -29,7 +29,7 @@
 // travels is `lanternjaw/wander-disguise`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, TILE } from "../../src/constants";
+import { BRIGHT_HOLD, TILE } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

@@ -28,7 +28,7 @@
 // rather than being failed twice for one fault.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, BRIGHT_HOLD, LINGER_TIME } from "../../src/constants";
+import { BINDINGS, BRIGHT_HOLD, LINGER_TIME } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
