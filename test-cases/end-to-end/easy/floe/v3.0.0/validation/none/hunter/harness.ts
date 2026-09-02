@@ -51,6 +51,33 @@ export async function samplePerTick(
 }
 
 /**
+ * The largest roster seen over `ticks` ticks, read every `poll` ticks.
+ *
+ * The reading the three slot-count checks take. It is a separate call rather
+ * than one long sweep so a check can arm `captureReplay` around the opening
+ * stretch alone: a minute of this game is seven thousand two hundred ticks, and
+ * the recorder draws a frame for every one it is armed over — the stretch worth
+ * showing a reviewer is the one in which the hunt starts and does not double,
+ * and the rest of the minute is a wait that the recording buys nothing by
+ * holding.
+ */
+export async function largestRoster(
+  h: Harness,
+  ticks: number,
+  poll: number,
+): Promise<number> {
+  let largest = 0;
+  await h.until(
+    (snapshot) => {
+      largest = Math.max(largest, snapshot.bears.length);
+      return false;
+    },
+    { maxTicks: ticks, poll },
+  );
+  return largest;
+}
+
+/**
  * Drive a bear `ticks` ticks along one axis, committing it to another step in
  * `direction` on every tick it is settled, and hand back the distance its centre
  * covered.

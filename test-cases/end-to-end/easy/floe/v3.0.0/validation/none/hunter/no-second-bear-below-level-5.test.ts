@@ -31,6 +31,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
+import { largestRoster } from "./harness";
 
 /** The level read: the one below SECOND_BEAR_LEVEL. */
 const LEVEL = 4;
@@ -43,6 +44,15 @@ const CRITTER_ROW = ICE_TOP;
 
 /** The game time the roster is watched for, from the item. */
 const WATCH_SECONDS = 60;
+
+/**
+ * The opening stretch, recorded: past both slots' delays several times over.
+ *
+ * Only this much of the minute is armed for the recorder. Thirty frames a second
+ * of a whole minute is eighteen hundred pictures drawn to keep the three hundred
+ * a replay holds, and the stretch a reviewer wants is the one the hunt starts in.
+ */
+const RECORDED_SECONDS = 5;
 
 /** How often the roster is read: fine enough that no arrival is stepped over. */
 const POLL_TICKS = ticksFor(0.25);
@@ -63,16 +73,15 @@ it("never holds more than one bear over a minute of level 4", async () => {
   await h.debug.setBestRow(ROW_NEAR - ADVANCED_ROWS);
   await h.debug.setBearEmergence(true);
 
-  let largest = 0;
-  await captureReplay(h, "one", () =>
-    h.until(
-      (snapshot) => {
-        largest = Math.max(largest, snapshot.bears.length);
-        return false;
-      },
-      { maxTicks: ticksFor(WATCH_SECONDS), poll: POLL_TICKS },
-    ),
+  const opening = await captureReplay(h, "one", () =>
+    largestRoster(h, ticksFor(RECORDED_SECONDS), POLL_TICKS),
   );
+  const rest = await largestRoster(
+    h,
+    ticksFor(WATCH_SECONDS - RECORDED_SECONDS),
+    POLL_TICKS,
+  );
+  const largest = Math.max(opening, rest);
 
   assertGreaterThanOrEqual(
     largest,
