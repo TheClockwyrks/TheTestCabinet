@@ -40,7 +40,12 @@
 
 import { fail } from "../assert";
 import { FORM_CENTER_X, type Band } from "../constants";
-import { dronesOfKind, startStage, type Harness } from "../harness";
+import {
+  dronesOfKind,
+  startStage,
+  type Harness,
+  type SurfaceCall,
+} from "../harness";
 
 /**
  * Where the survivor is parked: the centre column, mid-field.
@@ -59,7 +64,6 @@ export interface Survivor {
 
 /** Open stage 1's own wave and rake it down to one inert Shard of its own. */
 export async function rakeToLastDrone(h: Harness): Promise<Survivor> {
-  const { debug } = h;
   await startStage(h, 1);
 
   const built = await h.snapshot();
@@ -72,20 +76,23 @@ export async function rakeToLastDrone(h: Harness): Promise<Survivor> {
     );
   }
 
-  await debug.setWaveEntry(false);
-  await debug.setDiveLaunching(false);
-  await debug.setShipContact(false);
-
-  for (const drone of built.drones) {
-    if (drone.id !== survivor.id) await debug.removeDrone(drone.id);
-  }
-
-  await debug.setDroneTravel(survivor.id, false);
-  await debug.setDroneOscillation(survivor.id, false);
-  await debug.setDroneFire(survivor.id, false);
-  await debug.setDronePhase(survivor.id, "formation");
-  await debug.setDroneSlot(survivor.id, SURVIVOR_AT.x, SURVIVOR_AT.y);
-  await debug.setDronePosition(survivor.id, SURVIVOR_AT.x, SURVIVOR_AT.y);
+  // One crossing for the whole rake: the same calls in the same order, and the
+  // wave a stage builds is forty drones, so doing them one at a time would make
+  // this scenario's cost a fact about the host rather than about the build.
+  await h.pose([
+    ["setWaveEntry", false],
+    ["setDiveLaunching", false],
+    ["setShipContact", false],
+    ...built.drones
+      .filter((drone) => drone.id !== survivor.id)
+      .map((drone) => ["removeDrone", drone.id] as SurfaceCall),
+    ["setDroneTravel", survivor.id, false],
+    ["setDroneOscillation", survivor.id, false],
+    ["setDroneFire", survivor.id, false],
+    ["setDronePhase", survivor.id, "formation"],
+    ["setDroneSlot", survivor.id, SURVIVOR_AT.x, SURVIVOR_AT.y],
+    ["setDronePosition", survivor.id, SURVIVOR_AT.x, SURVIVOR_AT.y],
+  ]);
 
   return { id: survivor.id, band: survivor.effectiveBand };
 }

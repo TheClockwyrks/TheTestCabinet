@@ -384,6 +384,29 @@ export interface SpectraDebugApi {
   clearBursts(): Promise<void>;
 }
 
+/**
+ * The surface operations a {@link Harness.pose} may carry, which is every one of
+ * them that arranges the field.
+ *
+ * `snapshot` and `advance` are left out because they are not arrangements:
+ * `snapshot` is what a pose hands back already, and a frame belongs to the
+ * harness's own recorded stepping rather than to a batch of poses.
+ */
+export type PoseOperation = Exclude<
+  keyof SpectraDebugApi,
+  "snapshot" | "advance"
+>;
+
+/**
+ * One call into the build's surface: the operation's name, then its arguments.
+ *
+ * Typed against {@link SpectraDebugApi} operation by operation, so a batch is
+ * checked exactly as the direct call it replaces would be.
+ */
+export type SurfaceCall = {
+  [K in PoseOperation]: readonly [K, ...Parameters<SpectraDebugApi[K]>];
+}[PoseOperation];
+
 /* -------------------------------------------------------------------------- */
 /* The step schedule                                                          */
 /* -------------------------------------------------------------------------- */
@@ -624,6 +647,23 @@ export interface Harness {
 
   /** A fresh read of the game's state through the build's `snapshot`. */
   snapshot(): Promise<SpectraSnapshot>;
+  /**
+   * Run several of the build's surface operations, in order, in ONE crossing,
+   * and read the state they left.
+   *
+   * The same calls the build would receive one at a time, in the same order,
+   * against the same game: the surface is synchronous inside the page, so a
+   * batch and a run of separate calls leave the field in the same arrangement.
+   * What changes is the cost. A crossing is a round trip to the browser, and
+   * what a round trip costs is a fact about how busy the host is rather than
+   * about the build — so a scenario that poses forty drones pays it once here
+   * instead of three hundred times, and its verdict stops depending on the
+   * machine it was read on.
+   *
+   * Nothing here advances the game, so no frame is opened and the recorder keeps
+   * nothing: a pose is an arrangement, and {@link advance} is what runs it.
+   */
+  pose(calls: readonly SurfaceCall[]): Promise<SpectraSnapshot>;
   /** Run `frames` frames back to back, each the length the clock says. */
   advance(frames: number): Promise<void>;
   /** Advance until `predicate` holds, sampling every `poll` frames. */
@@ -734,11 +774,41 @@ export const WORKSPACE_ROOT = resolve(PROJECT_ROOT, "..");
  * that returns the instant the global appears. Spectra's surface is installed
  * once the four seeded sprites and the burst system have loaded and decoded
  * (`specs/assets.md`), so a build has a genuine asynchronous step to finish
- * before it can install — which is what this ceiling is sized for. What it really
- * bounds is the cost of a build with no surface at all, which pays it once per
- * harness.
+ * before it can install — which is what this ceiling is sized for.
+ *
+ * IT IS SET WHERE A LOADED HOST CANNOT REACH IT. How long a page takes to load
+ * and decode four sprites is a fact about the machine, not about the build: the
+ * same reference install measures under a second and a half on a quiet host and
+ * still lands well inside a couple of seconds on one running a hundred jobs. A
+ * ceiling anywhere near those figures turns a busy machine into a conformance
+ * failure, which is the one thing a check may never do, so this stands more than
+ * an order of magnitude above the worst reading taken.
  */
-const SURFACE_TIMEOUT_MS = 10_000;
+const SURFACE_TIMEOUT_MS = 45_000;
+
+/**
+ * How long the surface is waited for once this worker has already proved the
+ * build installs none.
+ *
+ * The full ceiling above is what it costs to establish that a build has no
+ * surface, and establishing it once is enough: a build that installed nothing in
+ * three quarters of a minute on one page installs nothing on the next. Every
+ * later page in the worker therefore looks with a short deadline rather than
+ * paying the ceiling again, so a surfaceless build is still decided rather than
+ * running the whole checklist out of time. A worker that has ever SEEN the
+ * surface never uses this: from then on every page gets the full ceiling.
+ */
+const SURFACE_RECHECK_MS = 1_000;
+
+/**
+ * How long the recorder is waited for before a section runs without one.
+ *
+ * A build may take its 2D context on the frame it first draws rather than while
+ * it initializes, so the recorder can be armed before there is a context to
+ * record. Expiring here costs a replay rather than a verdict, so it is bounded
+ * well below the surface's ceiling.
+ */
+const RECORDER_TIMEOUT_MS = 20_000;
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -867,16 +937,26 @@ export function failSurface(fault: string): never {
  * specification requires of every build.
  */
 async function readSurfaceFault(page: Page): Promise<string | null> {
+  const worker = globalThis as unknown as {
+    __spectraSurfaceSeen?: boolean;
+    __spectraSurfaceMissing?: boolean;
+  };
+  const patient =
+    worker.__spectraSurfaceSeen === true ||
+    worker.__spectraSurfaceMissing !== true;
+  const budget = patient ? SURFACE_TIMEOUT_MS : SURFACE_RECHECK_MS;
   try {
     await page.waitForFunction(
       (handle) =>
         typeof (window as never)[handle] === "object" &&
         (window as never)[handle] !== null,
       HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
+      { timeout: budget },
     );
+    worker.__spectraSurfaceSeen = true;
   } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
+    worker.__spectraSurfaceMissing = true;
+    return `window.${HANDLE} was still absent ${budget / 1000}s after the page loaded`;
   }
   const missing = await page.evaluate(
     ([handle, ops]) => {
@@ -932,7 +1012,12 @@ export async function createHarness(
     if (message.type() === "error") pageErrors.push(message.text());
   });
 
-  await page.goto(inject("spectraUrl"), { waitUntil: "load" });
+  // The document, not every byte the page pulls in after it. What decides that a
+  // build is ready is the surface appearing, which is waited for next and which a
+  // build installs once its own assets have loaded; waiting for the load event
+  // first only adds the browser's idea of the same wait to every check, and on a
+  // busy host that idea is seconds long.
+  await page.goto(inject("spectraUrl"), { waitUntil: "domcontentloaded" });
 
   const surfaceFault = await readSurfaceFault(page);
   const refuse = (): never => failSurface(surfaceFault ?? "");
@@ -1008,7 +1093,7 @@ export async function createHarness(
             window as unknown as { __spectraRec: { ready(): boolean } }
           ).__spectraRec.ready(),
         undefined,
-        { timeout: SURFACE_TIMEOUT_MS },
+        { timeout: RECORDER_TIMEOUT_MS },
       )
       .catch(() => undefined);
   }
@@ -1160,6 +1245,31 @@ export async function createHarness(
     timeMs: () => timeMs,
 
     snapshot: () => debug.snapshot(),
+
+    async pose(calls) {
+      if (surfaceFault !== null) refuse();
+      for (const [operation] of calls) {
+        if (known.has(operation) && !present.has(operation)) {
+          failSurface(`window.${HANDLE} carries no ${operation}()`);
+        }
+      }
+      return (await page.evaluate(
+        ([handle, batch]) => {
+          const api = (
+            window as unknown as Record<
+              string,
+              Record<string, (...a: unknown[]) => unknown>
+            >
+          )[handle];
+          for (const entry of batch) {
+            const [name, ...args] = entry;
+            api[name as string](...args);
+          }
+          return api.snapshot();
+        },
+        [HANDLE, calls as readonly (readonly unknown[])[]] as const,
+      )) as SpectraSnapshot;
+    },
 
     advance: async (frames) => {
       await drive(frames);
@@ -3016,28 +3126,29 @@ export async function startPosed(
   h: Harness,
   options: { stage?: number } = {},
 ): Promise<void> {
-  const { debug } = h;
-  await debug.clearDrones();
-  await debug.clearPlayerBullets();
-  await debug.clearEnemyBullets();
-  await debug.clearBursts();
-  await debug.setWaveEntry(false);
-  await debug.setDiveLaunching(false);
-  await debug.setShipContact(false);
-  await debug.setScreen("inWave");
-  await debug.setPhase("live");
-  await debug.setPhaseTimer(0);
-  await debug.setStage(options.stage ?? 1);
-  await debug.setShipX(FORM_CENTER_X);
-  await debug.setShipBand("cyan");
-  await debug.setFireLockout(0);
-  await debug.setFireCooldown(0);
-  await debug.setResonance(0);
-  await debug.setInversion(0);
-  await debug.setLives(START_LIVES);
-  await debug.setScore(0);
-  await debug.setExtraLifeAwarded(false);
-  await debug.setDiveClock(0);
+  await h.pose([
+    ["clearDrones"],
+    ["clearPlayerBullets"],
+    ["clearEnemyBullets"],
+    ["clearBursts"],
+    ["setWaveEntry", false],
+    ["setDiveLaunching", false],
+    ["setShipContact", false],
+    ["setScreen", "inWave"],
+    ["setPhase", "live"],
+    ["setPhaseTimer", 0],
+    ["setStage", options.stage ?? 1],
+    ["setShipX", FORM_CENTER_X],
+    ["setShipBand", "cyan"],
+    ["setFireLockout", 0],
+    ["setFireCooldown", 0],
+    ["setResonance", 0],
+    ["setInversion", 0],
+    ["setLives", START_LIVES],
+    ["setScore", 0],
+    ["setExtraLifeAwarded", false],
+    ["setDiveClock", 0],
+  ]);
 }
 
 /**
@@ -3132,38 +3243,53 @@ export async function poseDrone(
   y: number,
   spec: DroneSpec = {},
 ): Promise<number> {
-  await h.debug.addDrone(kind, x, y);
-  const added = lastDrone(await h.snapshot());
+  const added = lastDrone(await h.pose([["addDrone", kind, x, y]]));
   if (added === undefined) {
     fail(
       "addDrone to append a drone to the roster (specs/instrumentation.md)",
       "the drone roster was still empty after addDrone",
     );
   }
-  const id = added.id;
+  await h.pose(arrangeDrone(added, spec));
+  return added.id;
+}
 
-  if (spec.band !== undefined) await h.debug.setDroneBand(id, spec.band);
+/**
+ * The surface calls that turn the drone `addDrone` just appended into the one
+ * `spec` asks for, in the order they must run in.
+ *
+ * Split out so {@link poseFormation} can lay a whole formation out in one
+ * crossing rather than one per drone: the calls are the same, in the same order
+ * per drone, and every one of them names the drone it acts on.
+ */
+function arrangeDrone(added: DroneView, spec: DroneSpec): SurfaceCall[] {
+  const id = added.id;
+  const calls: SurfaceCall[] = [];
+
+  if (spec.band !== undefined) calls.push(["setDroneBand", id, spec.band]);
   if (spec.slotX !== undefined || spec.slotY !== undefined) {
-    await h.debug.setDroneSlot(
+    calls.push([
+      "setDroneSlot",
       id,
       spec.slotX ?? added.slotX,
       spec.slotY ?? added.slotY,
-    );
+    ]);
   }
   if (spec.bandClock !== undefined) {
-    await h.debug.setDroneBandClock(id, spec.bandClock);
+    calls.push(["setDroneBandClock", id, spec.bandClock]);
   }
-  if (spec.shell !== undefined) await h.debug.setDroneShell(id, spec.shell);
-  if (spec.charge !== undefined) await h.debug.setDroneCharge(id, spec.charge);
+  if (spec.shell !== undefined) calls.push(["setDroneShell", id, spec.shell]);
+  if (spec.charge !== undefined)
+    calls.push(["setDroneCharge", id, spec.charge]);
   // The phase last of the arrangements, so a build whose phase entry lays out a
   // path reads the slot and the band this pose gave the drone rather than the
   // ones `addDrone` did.
-  if (spec.phase !== undefined) await h.debug.setDronePhase(id, spec.phase);
+  if (spec.phase !== undefined) calls.push(["setDronePhase", id, spec.phase]);
 
-  await h.debug.setDroneTravel(id, spec.travel ?? false);
-  await h.debug.setDroneOscillation(id, spec.oscillation ?? false);
-  await h.debug.setDroneFire(id, spec.fire ?? false);
-  return id;
+  calls.push(["setDroneTravel", id, spec.travel ?? false]);
+  calls.push(["setDroneOscillation", id, spec.oscillation ?? false]);
+  calls.push(["setDroneFire", id, spec.fire ?? false]);
+  return calls;
 }
 
 /**
@@ -3216,25 +3342,54 @@ export interface FormationEntry extends DroneSpec {
  *
  * Every faculty still defaults off, as in {@link poseDrone}: a formation posed for
  * a dive check turns travel on for the drone it is about.
+ *
+ * TWO CROSSINGS, WHATEVER THE FORMATION HOLDS. The roster is appended to for
+ * every entry in one crossing, and every drone is then arranged in a second, in
+ * the same per-drone order {@link poseDrone} uses. Nothing runs between the two:
+ * no frame is opened, so the field a check reads is the one it laid out, and a
+ * formation of forty costs what a formation of one does. Adding a drone poses one
+ * field of the game (`specs/instrumentation.md`), so the drones already on the
+ * roster decide nothing about the drone appended after them.
  */
 export async function poseFormation(
   h: Harness,
   entries: readonly FormationEntry[],
 ): Promise<number[]> {
-  const ids: number[] = [];
-  for (const entry of entries) {
+  const specs = entries.map((entry) => {
     const x = slotX(entry.col);
     const y = slotY(entry.row);
-    ids.push(
-      await poseDrone(h, entry.kind, x, y, {
+    return {
+      kind: entry.kind,
+      x,
+      y,
+      spec: {
         ...entry,
         slotX: entry.slotX ?? x,
         slotY: entry.slotY ?? y,
         phase: entry.phase ?? "formation",
-      }),
+      } satisfies DroneSpec,
+    };
+  });
+
+  const appended = await h.pose(
+    specs.map(
+      (entry) => ["addDrone", entry.kind, entry.x, entry.y] as SurfaceCall,
+    ),
+  );
+  const added = appended.drones.slice(-specs.length);
+  if (added.length !== specs.length) {
+    fail(
+      `addDrone to append one drone per entry to the roster, so a formation of ` +
+        `${String(specs.length)} stands (specs/instrumentation.md)`,
+      `the roster held ${String(appended.drones.length)} drones after ` +
+        `${String(specs.length)} addDrone calls`,
     );
   }
-  return ids;
+
+  await h.pose(
+    added.flatMap((drone, index) => arrangeDrone(drone, specs[index].spec)),
+  );
+  return added.map((drone) => drone.id);
 }
 
 /**

@@ -35,6 +35,7 @@ import {
   type DroneView,
   type Harness,
   type SpectraSnapshot,
+  type SurfaceCall,
 } from "../harness";
 
 /**
@@ -78,18 +79,22 @@ export async function openWave(
   await h.debug.reset();
   await startStage(h, stage);
 
-  await h.debug.setWaveEntry(options.waveEntry ?? false);
-  await h.debug.setDiveLaunching(false);
-  await h.debug.setShipContact(false);
+  const opened = await h.pose([
+    ["setWaveEntry", options.waveEntry ?? false],
+    ["setDiveLaunching", false],
+    ["setShipContact", false],
+  ]);
 
-  const opened = await h.snapshot();
-  for (const drone of opened.drones) {
-    await h.debug.setDroneTravel(drone.id, false);
-    await h.debug.setDroneOscillation(drone.id, false);
-    await h.debug.setDroneFire(drone.id, false);
-  }
-
-  const held = await h.snapshot();
+  // The wave a challenge stage builds is forty drones, so shutting each one's
+  // three faculties on its own would be a hundred and twenty crossings for an
+  // arrangement no frame runs between: one crossing, in the same order.
+  const held = await h.pose(
+    opened.drones.flatMap((drone): SurfaceCall[] => [
+      ["setDroneTravel", drone.id, false],
+      ["setDroneOscillation", drone.id, false],
+      ["setDroneFire", drone.id, false],
+    ]),
+  );
   assertEqual(
     held.screen,
     "inWave",
@@ -123,18 +128,25 @@ export async function destroyDrone(
   h: Harness,
   id: number,
 ): Promise<SpectraSnapshot> {
-  await h.debug.setDronePosition(id, KILL_AT.x, KILL_AT.y);
+  let moved = await h.pose([["setDronePosition", id, KILL_AT.x, KILL_AT.y]]);
 
   // Two shots at most: one layer each for a Prism, one for every other kind.
   for (let shot = 0; shot < 2; shot += 1) {
-    const standing = droneById(await h.snapshot(), id);
+    const standing = droneById(moved, id);
     if (standing === undefined) break;
-    await fireAt(h, KILL_AT.x, KILL_AT.y, standing.effectiveBand, {
-      below: SHOT_BELOW,
-    });
+    const fired = await fireAt(
+      h,
+      KILL_AT.x,
+      KILL_AT.y,
+      standing.effectiveBand,
+      {
+        below: SHOT_BELOW,
+      },
+    );
+    moved = fired.snapshot;
   }
 
-  const after = await h.snapshot();
+  const after = moved;
   if (droneById(after, id) !== undefined) {
     fail(
       `drone ${id} destroyed by shots carrying the band it reads as ` +
