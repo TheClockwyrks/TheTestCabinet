@@ -39,7 +39,7 @@
 // WHAT EVERY WRONG MODEL READS is above. The distinguishing figure is `9`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { EARLY_SEND_PER_SECOND } from "../../src/constants";
+import { EARLY_SEND_PER_SECOND } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

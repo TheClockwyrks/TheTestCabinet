@@ -44,7 +44,7 @@
 // floor. Only `(invalid, no tower, 149)` passes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import { assertEqual, assertLength, assertTrue } from "../assert";
 import {
   captureStill,

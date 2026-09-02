@@ -38,7 +38,7 @@
 // `spent` `30`. Only `(1, 14, 15)` passes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, upgradeCost } from "../../src/constants";
+import { TOWER_DEFS, upgradeCost } from "../constants";
 import { assertEqual, assertTrue, fail } from "../assert";
 import {
   captureStill,

@@ -44,7 +44,7 @@
 // `(25, 55, 115)`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_CLEAR_BASE, WAVE_CLEAR_PER_WAVE } from "../../src/constants";
+import { WAVE_CLEAR_BASE, WAVE_CLEAR_PER_WAVE } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

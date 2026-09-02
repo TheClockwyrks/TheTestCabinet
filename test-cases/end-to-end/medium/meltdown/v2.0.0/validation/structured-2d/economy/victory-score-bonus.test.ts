@@ -61,7 +61,7 @@ import {
   DIFFICULTY_TABLE,
   MODE_TABLE,
   SCORE_VICTORY_PER_LIFE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

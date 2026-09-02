@@ -31,7 +31,7 @@
 // the score alone reads `0`. Each is a different pair from `(3, 90)`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../../src/constants";
+import { SURGE_DEFS } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

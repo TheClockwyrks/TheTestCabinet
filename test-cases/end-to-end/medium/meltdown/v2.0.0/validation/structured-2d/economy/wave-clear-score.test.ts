@@ -36,7 +36,7 @@
 // `(0, 0, 0)`. None is `(100, 700, 1900)`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_WAVE_CLEAR } from "../../src/constants";
+import { SCORE_WAVE_CLEAR } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

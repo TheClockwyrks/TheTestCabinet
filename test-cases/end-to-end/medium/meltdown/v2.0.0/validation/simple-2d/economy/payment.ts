@@ -25,7 +25,7 @@
 // Local to this group on purpose. Nothing outside `economy/` reaches a payment
 // event, so none of these belongs in the shared harness.
 
-import { COLS, RIGHT_EXHAUST_ROWS } from "../../src/constants";
+import { COLS, RIGHT_EXHAUST_ROWS } from "../constants";
 import { tileCentre } from "../geometry";
 import {
   poseTarget,

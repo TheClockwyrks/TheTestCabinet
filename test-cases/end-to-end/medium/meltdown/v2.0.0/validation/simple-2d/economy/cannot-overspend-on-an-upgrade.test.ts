@@ -38,7 +38,7 @@
 // `30`. Only `(1, 14, 15)` passes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, upgradeCost, type TowerType } from "../../src/constants";
+import { TOWER_DEFS, upgradeCost, type TowerType } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

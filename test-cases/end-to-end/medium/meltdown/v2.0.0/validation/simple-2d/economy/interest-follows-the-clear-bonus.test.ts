@@ -48,7 +48,7 @@ import {
   INTEREST_RATE,
   WAVE_CLEAR_BASE,
   WAVE_CLEAR_PER_WAVE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
