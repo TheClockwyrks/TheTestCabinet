@@ -50,6 +50,12 @@ included; a cell at or past the tape's own length is blank.
 writes plain instructions into the tape at the cursor, as `specs/editor.md`
 describes. Both are computed from the arm's own tape alone.
 
+A macro writes its expansion into the cells from the cursor onward, one cell
+per entry of the expansion, and reaches no further: every cell before the
+cursor and every cell past the expansion's last is left exactly as it was, so
+a macro whose expansion is empty leaves the whole tape as it stands. Writing
+past the tape's own end lengthens it, as any write does.
+
 For `reset`, the arm's pose at a cell is the pose reached by executing cells
 `0` up to that cell once from the rest pose, ignoring faults and other parts:
 rotation steps its direction, `extend` and `retract` step its length, clamped
@@ -59,9 +65,8 @@ stopping at the end of an open one.
 
 ### `reset`
 
-Invoked at a cell, `reset` overwrites the cells from that cell onward with the
-sequence that returns the arm from its pose at that cell to its rest pose, in
-this order:
+Invoked at a cell, `reset` writes, from that cell onward, the sequence that
+returns the arm from its pose at that cell to its rest pose, in this order:
 
 1. `drop`, always, as the first instruction.
 2. `retract` repeated while the length is above the rest length, or `extend`
@@ -79,5 +84,5 @@ wheel is already at its rest rotation.
 ### `repeat`
 
 Invoked at a cell, `repeat` copies the arm's own cells from index `0` up to but
-not including that cell, blanks included, and overwrites the cells from that
-cell onward with the copy. Invoked at cell `0` it writes nothing.
+not including that cell, blanks included, and writes the copy from that cell
+onward. Invoked at cell `0` the copy is empty, so it writes nothing.

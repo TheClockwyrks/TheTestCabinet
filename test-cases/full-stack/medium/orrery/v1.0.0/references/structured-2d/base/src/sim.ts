@@ -256,7 +256,7 @@ const MAX_CYCLES_PER_CALL = 100_000;
  *
  * specs/instrumentation.md requires that an interval of game time reach the
  * same state however it was divided into frames: "`advance(1, 1)` and
- * `advance(1, 60)` cover the same cycles and reach the same outcome exactly".
+ * `advance(1, 60)` cover the same cycles and reach the same outcome".
  * The rule those two must agree on is real arithmetic, but the clock adds
  * `SPEEDS[speed] * dt` in binary floating point, and a sum of sixty such terms
  * is not bit-identical to the single term covering the same span. One second

@@ -133,8 +133,8 @@ solution legal.
    and no track cell lies on any of them.
 3. No hex is a cell of two tracks, or of one track twice.
 4. No two arms or wheels share an anchor hex. An arm or wheel's anchor may sit
-   on a sigil footprint hex or on a track cell; sitting on a track cell is
-   what mounts it.
+   on any sigil footprint hex, a rise's and a set's included, or on a track
+   cell; sitting on a track cell is what mounts it.
 5. Each rise and each set is placed at most once.
 6. A track's consecutive cells are adjacent, and a closed track's last cell
    is adjacent to its first and its path holds at least three cells.

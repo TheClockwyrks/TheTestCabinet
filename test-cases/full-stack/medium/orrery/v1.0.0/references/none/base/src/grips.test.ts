@@ -163,7 +163,25 @@ describe("carrying (specs/simulation.md 'Motion and carrying')", () => {
     const mote = spawn(game, api, 1, 0);
     step(game, 2);
     expect(restingAt(game, mote)).toEqual({ q: 0, r: 1 });
-    expect(gripsOf(game)).toEqual([{ part: arm, spoke: 0, mote }]);
+    // The arm turned, so its gripper now sits on spoke 1, and the grip names
+    // the spoke the gripper CURRENTLY sits on (specs/state.md, `grips`).
+    expect(gripsOf(game)).toEqual([{ part: arm, spoke: 1, mote }]);
+  });
+
+  it("carries a grip around to the spoke its gripper now sits on", () => {
+    const { game, api } = bench();
+    const arm = withTape(game, api, "biarm", 0, 0, 0, [
+      "grab",
+      "rotate-ccw",
+      "rotate-ccw",
+    ]);
+    api.startRun();
+    const mote = spawn(game, api, 1, 0);
+    step(game, 3);
+    // Two counterclockwise steps from spoke 0 leave the gripper on spoke 4,
+    // and the grip follows it rather than reporting where it was taken.
+    expect(gripsOf(game)).toEqual([{ part: arm, spoke: 4, mote }]);
+    expect(restingAt(game, mote)).toEqual({ q: 0, r: -1 });
   });
 
   it("carries the whole constellation, rigidly", () => {

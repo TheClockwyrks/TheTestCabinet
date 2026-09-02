@@ -74,7 +74,14 @@ it.
 The surface rests on the simulation being deterministic: the run advances by
 simulated cycles integrated against the delta time the game is given, so an
 interval of game time reaches the same state however it was divided into
-frames. Two more properties make it driveable from code:
+frames. Everything that interval decides comes out identical whatever the
+division: the cycle count, every live pose and grip, the hex every mote
+rests on, the filaments, the tallies, the area bank, the fault, and whether
+the run completed. The three figures carried as running sums of the frames'
+own delta times — `simTime`, `sim.fraction`, and the drawn positions derived
+from `sim.fraction` — agree to within the rounding of that sum rather than
+bit for bit, and no decision the simulation makes is read off them at that
+precision. Two more properties make it driveable from code:
 
 - Render-free core. Game state advances from the elapsed time the game is
   handed, independent of a canvas, of the frame loop that measured it, and
@@ -204,9 +211,10 @@ while the simulation is held. The snapshot reports the switch as `autoStep`.
 
 A run advances by `SPEEDS[sim.speed]` cycles per second of game time, so
 `advance(1, 1)` and `advance(1, 60)` cover the same cycles and reach the
-same outcome exactly; every cycle runs in full whatever the frame that
-crossed it. Advancing while the game is still stepping automatically adds to
-what the wall clock is already doing.
+same outcome, to the precision the deterministic core above fixes; every
+cycle runs in full whatever the frame that crossed it. Advancing while the
+game is still stepping automatically adds to what the wall clock is already
+doing.
 
 {{/if}}
 ### Session
@@ -286,7 +294,7 @@ no progress and no record.
 | `closeTrack(part)` | Joins that track's last cell to its first, exactly as closing a path in `specs/editor.md` does. |
 | `removePart(part)` | Removes one placed part, discarding its tape and its tape-panel row exactly as `part-delete` does, and clearing a selection or cursor the removal invalidates. |
 | `setPartRotation(part, rotation)` | Sets that part's rest rotation, `0` to `5`. |
-| `setPartLength(part, length)` | Sets that part's rest length, `ARM_MIN_LEN` (`1`) to `ARM_MAX_LEN` (`3`). |
+| `setPartLength(part, length)` | Sets that part's rest length, `ARM_MIN_LEN` (`1`) to `ARM_MAX_LEN` (`3`). A part that carries no length of its own — a wheel, a track, a sigil, a rise, or a set, each of which stands at `1` — throws an `Error` naming its kind. |
 | `movePart(part, q, r)` | Translates the whole part, a track's path included, so its anchor is `(q, r)`. |
 | `setTapeCell(part, col, instruction)` | Writes `instruction`, a name from `INSTRUCTIONS` in `specs/instructions.md` or `null` for a blank, at column `col` of that part's tape, a whole number of at least `0`. Cells between the tape's end and `col` become blanks, and the trimming rule of `specs/formats.md` is applied afterwards. |
 | `loadSolution(solution)` | Replaces the open challenge's machine with `solution`, a solution document in the format of `specs/formats.md`, which is exactly the placements above applied in the order `parts` lists them. It empties both histories and clears the selection, the cursor, and any live drag. |

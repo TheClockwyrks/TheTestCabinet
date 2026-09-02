@@ -29,7 +29,7 @@
 import { firstCollisionSample, type MotePoint } from "./collision";
 import { fetchCycle, type PartStep } from "./fetch";
 import { applyDrops, applyGrabs, heldMotions } from "./grips";
-import { hexCenter } from "./hex";
+import { hexCenter, wrapDir } from "./hex";
 import { landHex, movePoint, REST, type Motion } from "./motion";
 import type { SimContext } from "./simcontext";
 import type { CyclePlan, Fault, Hex, MoteState, SimState } from "./types";
@@ -155,9 +155,19 @@ function landCycle(
   for (const step of steps) {
     const pose = sim.poses.find((entry) => entry.part === step.part.id);
     if (pose === undefined) continue;
+    const turned = wrapDir(step.next.rotation - step.pose.rotation);
     pose.rotation = step.next.rotation;
     pose.length = step.next.length;
     pose.cell = { q: step.next.cell.q, r: step.next.cell.r };
+    if (turned === 0) continue;
+    // A grip names the spoke its gripper CURRENTLY sits on
+    // (specs/state.md, `grips`), so a part that turned carries its grips
+    // around with it: the gripper that was on spoke `d` is on `d + turned`.
+    sim.grips = sim.grips.map((grip) =>
+      grip.part === step.part.id
+        ? { ...grip, spoke: wrapDir(grip.spoke + turned) }
+        : grip,
+    );
   }
 }
 

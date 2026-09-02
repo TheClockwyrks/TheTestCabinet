@@ -42,7 +42,10 @@ frame may complete several cycles; each runs in full, in order.
 `sim.status` is one of `running`, `paused`, `faulted`, and `complete`. The
 fraction advances only while the status is `running`, so pausing holds it
 where it is. A cycle completes when the accumulated fraction reaches `1`, and
-the excess carries into the next cycle. A `collision` leaves the fraction at
+the excess carries into the next cycle. A span of game time that lands
+exactly on a boundary completes that cycle however many frames covered it,
+so one second at speed step `0` completes exactly one cycle whether it
+arrived as one frame or as sixty. A `collision` leaves the fraction at
 that sample's `k / 8`; every other fault and completion leaves it at `0`. A
 completing or faulting boundary leaves `sim.cycle` at the cycle just run.
 Which action produces `running` rather than `paused` is in `specs/editor.md`.

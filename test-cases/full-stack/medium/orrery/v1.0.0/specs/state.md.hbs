@@ -31,8 +31,9 @@ specification is written against them:
   `specs/formats.md` records, plus a counter that gives each new part a
   fresh identity.
 - The editor's working state: the selected part, the focus, the tape cursor,
-  the live drag or lay with its targeted hex and, for a move, the hex the
-  press grabbed, and the undo and redo histories of `specs/editor.md`.
+  the live drag or lay with its targeted hex, the machine as it stood at the
+  press, and, for a move, the hex the press grabbed and the ghost's live
+  rotation and length, and the undo and redo histories of `specs/editor.md`.
 - The run, when one is active: its status, the completed-cycle count, the
   fraction through the current cycle, the speed step, every mote with its
   identity, hex, type, and whether it is a fixture of a wheel, every
@@ -147,14 +148,23 @@ export type DragState =
       readonly rotation: number;
       readonly length: number;
       readonly at: Hex | null;
+      readonly before: readonly PartState[];
     }
   | {
       readonly kind: "move";
       readonly part: number;
       readonly from: Hex;
       readonly at: Hex | null;
+      readonly rotation: number;
+      readonly length: number;
+      readonly before: readonly PartState[];
     }
-  | { readonly kind: "lay"; readonly part: number; readonly end: "first" | "last" };
+  | {
+      readonly kind: "lay";
+      readonly part: number;
+      readonly end: "first" | "last";
+      readonly before: readonly PartState[];
+    };
 
 export interface EditorState {
   readonly parts: readonly PartState[];
@@ -292,9 +302,16 @@ derived, never stored.
 The machine and the hands on it. `selected`, `cursor.part`, and a drag's
 `part` name parts by `id`. `drag` is `null` outside a press; a `place` drag
 carries what the tray handed out and the ghost's live `rotation` and
-`length`, a `move` drag carries the hex the press grabbed in `from` and its
-target in `at`, and a `lay` drag names which end of the track it is
-extending. `undo` and `redo` are the histories of
+`length`, a `move` drag carries the hex the press grabbed in `from`, its
+target in `at`, and the ghost's live `rotation` and `length`, which the four
+drag verbs of `specs/editor.md` turn and stretch under the pointer and the
+release carries onto the part, and a `lay` drag names which end of the track
+it is extending. Every drag carries `before`, the machine as it stood at the
+press: a whole gesture is one edit, so the entry its release commits is that
+machine, which a lay cannot rebuild afterwards because it appends and removes
+cells live under the pointer. `before` is working state of the gesture rather
+than a history entry, and it leaves both depths alone until the release
+commits. `undo` and `redo` are the histories of
 `specs/editor.md`, holding machines exactly as `parts` holds one. On
 entering a challenge the editor holds the stashed machine or an empty one,
 `selected` and `cursor` are `null`, `focus` is `field`, `drag` is `null`,
@@ -373,8 +390,14 @@ The declaration above is what the debug surface reads and poses.
   those fields are the whole of the authoritative state.
 - The state handed to `update` is the whole of the game, and the state
   `update` returns is the whole of the next frame. Every value the game
-  carries from one frame to the next lives in it; nothing is kept in a
-  module-level variable or a closure.
+  carries from one frame to the next lives in it; nothing the simulation, the
+  editor, or the screens read is kept in a module-level variable or a
+  closure. Presentation is the exception: the decoded assets, the particle
+  instances now playing, and the cues a pose has raised for the next frame to
+  sound, which `specs/instrumentation.md` requires a pose to defer, belong to
+  the layer that draws and sounds a frame rather than to the state. Nothing
+  the snapshot reports is read from there, no rule of the game turns on it,
+  and a `reset` clears it.
 - The state is handed over read-only, as `DeepReadonly<OrreryState>`, to
   `update`, to `render`, to every diagnostic source, and to every operation
   of the debug surface. `update` and the surface's poses return a new
@@ -480,9 +503,18 @@ export type DragState =
       rotation: number;
       length: number;
       at: Hex | null;
+      before: PartState[];
     }
-  | { kind: "move"; part: number; from: Hex; at: Hex | null }
-  | { kind: "lay"; part: number; end: "first" | "last" };
+  | {
+      kind: "move";
+      part: number;
+      from: Hex;
+      at: Hex | null;
+      rotation: number;
+      length: number;
+      before: PartState[];
+    }
+  | { kind: "lay"; part: number; end: "first" | "last"; before: PartState[] };
 
 export interface EditorState {
   parts: PartState[];
@@ -629,9 +661,16 @@ derived, never stored.
 The machine and the hands on it. `selected`, `cursor.part`, and a drag's
 `part` name parts by `id`. `drag` is `null` outside a press; a `place` drag
 carries what the tray handed out and the ghost's live `rotation` and
-`length`, a `move` drag carries the hex the press grabbed in `from` and its
-target in `at`, and a `lay` drag names which end of the track it is
-extending. `undo` and `redo` are the histories of `specs/editor.md`,
+`length`, a `move` drag carries the hex the press grabbed in `from`, its
+target in `at`, and the ghost's live `rotation` and `length`, which the four
+drag verbs of `specs/editor.md` turn and stretch under the pointer and the
+release carries onto the part, and a `lay` drag names which end of the track
+it is extending. Every drag carries `before`, the machine as it stood at the
+press: a whole gesture is one edit, so the entry its release commits is that
+machine, which a lay cannot rebuild afterwards because it appends and removes
+cells live under the pointer. `before` is working state of the gesture rather
+than a history entry, and it leaves both depths alone until the release
+commits. `undo` and `redo` are the histories of `specs/editor.md`,
 holding machines exactly as `parts` holds one. On entering a challenge the
 editor holds the stashed machine or an empty one, `selected` and `cursor`
 are `null`, `focus` is `field`, `drag` is `null`, and both histories are
@@ -723,10 +762,16 @@ The declaration above is what the debug surface reads and poses.
   `gameStateClass`, so every field is present by the time a frame can
   observe it, and none of them is optional.
 - The state is the whole of the authoritative game. Every value the game
-  carries from one frame to the next lives in it; nothing is kept in a
-  module-level variable or a closure, and any field an actor, component, or
-  controller holds of its own is derived data rebuilt from the declared
-  ones.
+  carries from one frame to the next lives in it; nothing the simulation, the
+  editor, or the screens read is kept in a module-level variable or a
+  closure, and any field an actor, component, or controller holds of its own
+  is derived data rebuilt from the declared ones. Presentation is the
+  exception: the decoded assets, the particle instances now playing, and the
+  cues a pose has raised for the next frame to sound, which
+  `specs/instrumentation.md` requires a pose to defer, belong to the layer
+  that draws and sounds a frame rather than to the state. Nothing the
+  snapshot reports is read from there, no rule of the game turns on it, and a
+  `reset` clears it.
 - The state is written only through the paths play runs on: the player
   controller resolves the frame's input into it, the game mode's tick
   advances it, and the debug surface's poses arrange it at the call.

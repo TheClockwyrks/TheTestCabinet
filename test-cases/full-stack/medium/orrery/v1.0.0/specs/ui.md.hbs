@@ -168,10 +168,14 @@ Each is a distinct short sound, played on the frame its event happens, from
 `update`, and at most once on that frame, however many of the event fired
 within it.
 {{else}}
-Each is a distinct short sound, played on the frame its event happens, by the
-code that raised it, and at most once on that frame, however many of the
+Each is a distinct short sound, played on the frame its event happens, from
+the game mode's tick, and at most once on that frame, however many of the
 event fired within it.
 {{/if}}
+
+Every cue is played from a frame, so an event raised outside one — an edit
+a pointer pose of `specs/instrumentation.md` commits between frames —
+sounds on the next frame advanced rather than at the call.
 
 `LOOPING_CUES` holds the one cue that loops until stopped rather than playing
 once. `music` is looping on every frame the game runs, on `title`, `howto`,

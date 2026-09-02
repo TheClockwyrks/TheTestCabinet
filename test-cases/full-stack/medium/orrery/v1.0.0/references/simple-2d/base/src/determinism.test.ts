@@ -1,7 +1,8 @@
 // The property specs/instrumentation.md rests the whole surface on: an
 // interval of game time reaches the same state however it was divided into
 // frames, so one frame worth a second and sixty worth a sixtieth cover the
-// same cycles and reach the same outcome exactly. `src/engine.test.ts` checks
+// same cycles and reach the same outcome, to the precision the deterministic
+// core fixes. `src/engine.test.ts` checks
 // the same property over the engine's own clock; this file checks it over the
 // transition the engine drives, at every speed and on every challenge.
 //

@@ -126,7 +126,7 @@ size.
 | Sigil glyphs | `assets/sprites/sigils/<kind>.png`, one for each of the twelve transforming sigils of `PARTS` | `48 x 48` | upright and centered on the sigil's anchor hex |
 | Instruction glyphs | `assets/sprites/instructions/<name>.png`, one for each of the ten names in `INSTRUCTIONS` | `24 x 24` | centered in its tape cell |
 | Arm hubs | `assets/sprites/parts/hub-arm.png`, `hub-piston.png` | `40 x 40` | centered on the part's anchor hex and turned to its first spoke; the arm hub carried by `arm`, `biarm`, `triarm`, and `hexarm`, the piston hub by `piston` |
-| Grippers | `assets/sprites/parts/gripper-open.png`, `gripper-closed.png` | `32 x 32` | centered on each gripper's live position and turned to that spoke's live angle, the closed sprite while the gripper is closed |
+| Grippers | `assets/sprites/parts/gripper-open.png`, `gripper-closed.png` | `32 x 32` | centered on each gripper's live position and turned to that spoke's live angle, the closed sprite while the gripper holds a mote and the open one whenever it holds none, so that whether a gripper is holding reads off the field as `specs/parts.md` asks |
 | Wheel hub | `assets/sprites/parts/wheel-hub.png` | `48 x 48` | centered on the wheel's anchor hex and turned to the wheel's live rotation |
 | Fixture mount | `assets/sprites/parts/fixture-mount.png` | `48 x 48` | centered on each fixture's hex, beneath its mote sprite |
 
