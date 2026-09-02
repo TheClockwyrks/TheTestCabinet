@@ -44,7 +44,7 @@
 // arrives. Anything that moved across that frame would be the overlay's doing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,

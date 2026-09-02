@@ -32,7 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { MODE_TABLE } from "../../src/constants";
+import { MODE_TABLE } from "../constants";
 import {
   captureStill,
   createHarness,

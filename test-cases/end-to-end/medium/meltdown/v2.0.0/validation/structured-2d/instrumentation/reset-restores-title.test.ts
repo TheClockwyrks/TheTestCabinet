@@ -36,7 +36,7 @@ import {
   DIFFICULTY_TABLE,
   MODE_TABLE,
   BUILD_PHASE_TIME,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

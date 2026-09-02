@@ -40,7 +40,7 @@ import {
   assertLessThan,
   assertLength,
 } from "../assert";
-import { WAVE_SPAWN_INTERVAL } from "../../src/constants";
+import { WAVE_SPAWN_INTERVAL } from "../constants";
 import {
   captureStill,
   createHarness,

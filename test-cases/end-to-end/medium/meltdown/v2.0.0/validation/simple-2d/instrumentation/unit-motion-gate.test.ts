@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import {
   captureStill,
   createHarness,

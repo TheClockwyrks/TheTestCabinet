@@ -42,7 +42,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull } from "../assert";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

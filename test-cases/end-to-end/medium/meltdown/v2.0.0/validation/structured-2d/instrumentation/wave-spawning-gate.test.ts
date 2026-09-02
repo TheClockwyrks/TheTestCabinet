@@ -38,7 +38,7 @@
 // send would pay a bonus and re-count the wave on the way in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_SPAWN_INTERVAL } from "../../src/constants";
+import { WAVE_SPAWN_INTERVAL } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

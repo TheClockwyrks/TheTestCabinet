@@ -19,7 +19,7 @@
 // figure a check asserts is stated in that check, derived from what `specs/`
 // fixes for it.
 
-import { COLS, LEFT_VENT_ROWS, RIGHT_EXHAUST_ROWS } from "../../src/constants";
+import { COLS, LEFT_VENT_ROWS, RIGHT_EXHAUST_ROWS } from "../constants";
 import { fail } from "../assert";
 import {
   tileCenter,

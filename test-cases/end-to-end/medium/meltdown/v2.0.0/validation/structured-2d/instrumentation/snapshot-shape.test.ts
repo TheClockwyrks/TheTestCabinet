@@ -40,7 +40,7 @@ import {
   MODES,
   SURGE_TYPES,
   TOWER_TYPES,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertBetween,
   assertContains,

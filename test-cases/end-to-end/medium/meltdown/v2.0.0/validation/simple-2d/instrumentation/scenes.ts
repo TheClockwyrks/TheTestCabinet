@@ -37,7 +37,7 @@ import {
   emitterStats,
   heatMultiplier,
   type EmitterDef,
-} from "../../src/constants";
+} from "../constants";
 import { tileCentre, type Point, type Tile } from "../geometry";
 import {
   TICK_HZ,

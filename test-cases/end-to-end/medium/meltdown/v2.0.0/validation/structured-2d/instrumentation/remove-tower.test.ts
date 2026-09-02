@@ -30,7 +30,7 @@
 // on whether a build recomputes at the call or in the update that follows it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_LEVEL } from "../../src/constants";
+import { MAX_LEVEL } from "../constants";
 import {
   assertContains,
   assertEqual,

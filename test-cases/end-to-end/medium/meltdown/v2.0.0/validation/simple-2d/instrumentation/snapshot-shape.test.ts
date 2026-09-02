@@ -50,7 +50,7 @@ import {
   assertNotNull,
   assertTrue,
 } from "../assert";
-import { SURGE_TYPES, TOWER_TYPES } from "../../src/constants";
+import { SURGE_TYPES, TOWER_TYPES } from "../constants";
 import { sizeOf, tileCentre } from "../geometry";
 import {
   captureStill,

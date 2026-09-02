@@ -37,7 +37,7 @@ import {
   START_LIVES,
   type DifficultyName,
   type ModeName,
-} from "../../src/constants";
+} from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

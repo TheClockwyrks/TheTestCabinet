@@ -36,7 +36,7 @@ import {
   SCORE_WAVE_CLEAR,
   START_LIVES,
   SURGE_DEFS,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

@@ -28,7 +28,7 @@
 // it as its precondition.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURGE_DEFS } from "../../src/constants";
+import { SURGE_DEFS } from "../constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,

@@ -30,7 +30,7 @@
 // is graded there rather than flattered here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_LEVEL, TOWER_DEFS, upgradeCost } from "../../src/constants";
+import { MAX_LEVEL, TOWER_DEFS, upgradeCost } from "../constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,
