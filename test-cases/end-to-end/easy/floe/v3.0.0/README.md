@@ -176,6 +176,24 @@ critter, its routing, its travel) so nothing else in the scenario can move. Ever
 expected value a suite asserts comes from a figure the specs fix, never from a
 reference build.
 
+That last sentence is enforced rather than promised. Each project transcribes the
+specification's figures into `validation/<engine>/constants.ts` and every suite
+imports the figures it asserts from `../constants`, so a suite grades the build
+against the CASE's number rather than against the build's own copy of it — a
+check that reads the figure out of `src/` passes a build that walks its critter
+at the wrong speed, because the number compared against is wrong too. The gate is
+the `eslint.config.js` in each `references/<engine>/`: `validation/` may not
+import from the build's `src/`, and may not reach outside itself at all, apart
+from two openings — `validation/constants.ts`, the one file that may re-export
+(by name) a value the specification genuinely leaves to the build, and
+`validation/harness.ts` under the two engines, which names the build's entry
+`../src/game` and nothing else. It lives beside the reference rather than in the
+seeded workspace because that is where it can fire: a run lints the repository
+the model wrote before the validator project is staged into it, while
+`tcab validate --implementation references/<engine>` copies `validation/<engine>/`
+to `references/<engine>/validation/`, which is where the suites are linted,
+typechecked and run.
+
 `validation-baseline/<engine>/base/` holds the media the same suites captured
 from that engine's reference build, so a reviewer sees the run's evidence and the
 reference's side by side.
