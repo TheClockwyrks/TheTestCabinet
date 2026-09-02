@@ -158,7 +158,18 @@ export async function destroyDrone(
       standing.effectiveBand,
       {
         below: SHOT_BELOW,
-        pose: [["setDronePosition", id, KILL_AT.x, KILL_AT.y]],
+        pose: [
+          // The bursts earlier kills left are cleared first. A destroyed drone
+          // pops a burst that plays for `BURST_DURATION`, and these four checks
+          // empty a whole wave far faster than that, so without this every later
+          // shot is flown over `MAX_BURSTS` live particle systems that are
+          // simulated and drawn on every frame of it. None of the four reads a
+          // burst — `bursts/` is where that is graded — so what the pile-up
+          // decides is how long the check takes, which is to say how busy the
+          // host was.
+          ["clearBursts"],
+          ["setDronePosition", id, KILL_AT.x, KILL_AT.y],
+        ],
       },
     );
     state = fired.snapshot;
