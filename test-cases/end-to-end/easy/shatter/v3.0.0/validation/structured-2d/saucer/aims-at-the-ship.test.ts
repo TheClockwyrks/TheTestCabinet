@@ -119,6 +119,9 @@ it("centres sixty shots on the bearing to the ship within three degrees", async 
     framesFor(BUDGET, SHOT_TICKS_PER_FRAME),
   );
   // The spread of sixty aimed shots at the ship.
+  // The sweep above runs undrawn, so one frame is drawn for the picture —
+  // after every reading the verdict rests on has been taken.
+  await h.paint();
   captureStill(h, "aim");
 
   assertLength(

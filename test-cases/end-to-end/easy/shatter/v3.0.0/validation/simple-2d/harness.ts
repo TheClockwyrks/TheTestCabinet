@@ -355,6 +355,15 @@ export interface Harness {
    * reading its verdict rests on has been taken.
    */
   quiet<T>(body: () => Promise<T>): Promise<T>;
+  /**
+   * Run ONE frame with the drawing on, whatever quiet scope is open around it.
+   *
+   * The way out of a quiet sweep for a check whose EVIDENCE is a moment inside
+   * it — the first arrival of `saucer/at-most-one-at-a-time`, say. The frame is
+   * a real frame like any other, so the picture it leaves is one tick past the
+   * moment the sweep read, which is what a still of that moment honestly is.
+   */
+  paint(): Promise<void>;
   /** Advance until `predicate` holds, sampling every `poll` ticks. */
   until(
     predicate: (snapshot: ShatterSnapshot) => boolean,
@@ -871,6 +880,16 @@ export async function createHarness(
         return await body();
       } finally {
         quietDepth -= 1;
+      }
+    },
+
+    paint: async () => {
+      const held = quietDepth;
+      quietDepth = 0;
+      try {
+        await run(1, true);
+      } finally {
+        quietDepth = held;
       }
     },
 

@@ -362,25 +362,33 @@ export async function sampleWaveSpeeds(
   let spawned: number | undefined;
   let runs = 0;
 
-  while (speeds.length < options.rocks && runs < options.maxRuns) {
-    openWaveAt(h, wave - 1, options.firstSeed + runs);
-    runs += 1;
-    await clearTheWave(h);
-    const arrival = await waitForTheWave(h);
-    if (spawned === undefined) spawned = arrival.at.wave;
-    else if (arrival.at.wave !== spawned) {
-      fail(
-        `the same wave number on every run posed at ${String(wave - 1)} and ` +
-          `cleared, so one sample is one wave's speed factor ` +
-          `(specs/progression.md)`,
-        `run ${String(runs)} arrived at wave ${String(arrival.at.wave)}, ` +
-          `where an earlier run arrived at ${String(spawned)}`,
-      );
+  // UNDRAWN, AND THE WHOLE SAMPLE IS. What this reads is a speed off each rock
+  // of each arrival: a hundred and twenty rocks gathered over as many as a
+  // hundred and thirty runs, each of which shoots a field down a round at a
+  // time. Every one of those frames would otherwise be drawn for a picture no
+  // reading takes. The two items that use this draw a frame of their own for the
+  // still they capture.
+  return h.quiet(async () => {
+    while (speeds.length < options.rocks && runs < options.maxRuns) {
+      openWaveAt(h, wave - 1, options.firstSeed + runs);
+      runs += 1;
+      await clearTheWave(h);
+      const arrival = await waitForTheWave(h);
+      if (spawned === undefined) spawned = arrival.at.wave;
+      else if (arrival.at.wave !== spawned) {
+        fail(
+          `the same wave number on every run posed at ${String(wave - 1)} and ` +
+            `cleared, so one sample is one wave's speed factor ` +
+            `(specs/progression.md)`,
+          `run ${String(runs)} arrived at wave ${String(arrival.at.wave)}, ` +
+            `where an earlier run arrived at ${String(spawned)}`,
+        );
+      }
+      for (const rock of arrival.rocks) speeds.push(speedOf(rock));
     }
-    for (const rock of arrival.rocks) speeds.push(speedOf(rock));
-  }
 
-  return { wave: spawned ?? wave, runs, speeds };
+    return { wave: spawned ?? wave, runs, speeds };
+  });
 }
 
 /**

@@ -75,10 +75,13 @@ it("never reports one live saucer id giving way to another without a clear tick 
 
   let filmed = false;
   const watch = await watchVisits(h, ticksFor(WATCH_SECONDS) - opened, {
-    onArrival: () => {
+    onArrival: async () => {
       if (filmed) return;
       filmed = true;
-      // One visit on the field at a time: the first arrival, on the tick it came.
+      // One visit on the field at a time: the first arrival. The watch runs
+      // undrawn, so one frame is drawn for this picture — the tick after the
+      // arrival the watch read.
+      await h.paint();
       captureStill(h, "visit");
     },
   });

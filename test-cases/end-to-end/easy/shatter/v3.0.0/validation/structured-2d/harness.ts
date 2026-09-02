@@ -57,6 +57,30 @@
 // NO ASSETS. Shatter seeds none and loads none, so nothing here stands `fetch`
 // or `createImageBitmap` up: the whole picture is drawn in code, and the
 // presentation checks read it off the canvas and off the recorded draw calls.
+//
+// A FRAME THAT NOBODY LOOKS AT IS NOT RASTERIZED. Every tick this harness runs
+// is a real tick: the engine's whole frame runs, the world ticks, and the
+// rendering pipeline walks the scene exactly as it always does. What a march
+// does without is the RASTER — the handful of calls that actually put ink on the
+// canvas (`fill`, `stroke`, `fillText`, `drawImage` and their kin), which is a
+// third of what a frame costs here and all of what a frame it draws for nobody
+// buys. {@link Harness.advance} therefore rasterizes its LAST frame and no
+// other: the state it leaves and the picture on the canvas are exactly what
+// drawing every frame would have left, because each frame clears and redraws the
+// whole canvas, and only the intermediate frames' entries in
+// {@link Harness.calls} are gone. A frame the engine's replay recorder is
+// capturing is always drawn, whatever a march asked for, so a captured section
+// is never a run of blank frames.
+//
+// AND A MARCH THAT WANTS NO PICTURE AT ALL SAYS SO. {@link Harness.skip} and
+// {@link Harness.quiet} run every tick without the raster, for the sweeps that
+// sample the state on EVERY tick and would otherwise draw every one of them.
+// What they leave behind is a canvas holding an older frame, so the harness
+// tracks that: {@link Harness.pixel}, every reading taken off
+// {@link Harness.ctx}, and {@link captureStill} REFUSE while the canvas is stale
+// rather than reading a picture from a tick that is no longer the current one. A
+// check that wants the picture after a quiet sweep advances one drawn tick for
+// it.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
@@ -300,10 +324,58 @@ export interface Harness {
 
   /** A fresh read of the game's state through the case's `snapshot`. */
   snapshot(): ShatterSnapshot;
-  /** Run `frames` frames back to back — one simulation tick each. */
+  /**
+   * Run `frames` frames back to back — one simulation tick each — rasterizing
+   * the last of them.
+   *
+   * Every frame is a whole engine frame: the world ticks and the pipeline walks
+   * the scene. Only the last puts ink on the canvas, which is all a caller can
+   * read anyway — each frame clears and redraws the whole canvas, so the picture
+   * after `advance(n)` is the picture the nth frame drew either way. What is gone
+   * is the intermediate frames' entries in {@link calls}; a check reading one
+   * frame's render clears the list and advances one frame, which is unchanged.
+   * See the header.
+   */
   advance(frames: number): Promise<void>;
   /** Run the whole frames covering `duration` seconds of game time. */
   advanceSeconds(duration: number): Promise<void>;
+  /**
+   * Run `frames` frames back to back, rasterizing NONE of them.
+   *
+   * The march to a state nobody needs to watch — waiting out the eighteen
+   * seconds before the first saucer, running a torpedo's ten-second recharge
+   * down, settling a pose. The same real frames {@link advance} runs; what is
+   * skipped is the ink. The canvas is left holding an older frame, so
+   * {@link pixel}, a reading off {@link ctx} and {@link captureStill} refuse
+   * until a drawn frame has run.
+   */
+  skip(frames: number): Promise<void>;
+  /**
+   * Run `body` with the raster suppressed for every frame inside it, whatever
+   * those frames were asked for through.
+   *
+   * The route for a check that samples the state on EVERY frame — the aim
+   * group's shot-by-shot sweep, `saucer/at-most-one-at-a-time`'s trace of the
+   * reported ids across two minutes. Those loops call `advance(1)` a frame at a
+   * time on purpose, so that no frame is ever stepped over, and each of those
+   * calls would otherwise draw its one picture: fourteen thousand of them to
+   * read one number off each. Inside a quiet scope the same frames run, the same
+   * snapshots are read, and one picture is drawn rather than all of them.
+   *
+   * The canvas is left holding an older frame, so a check that wants evidence of
+   * where its sweep ended advances one drawn frame after it — after the reading
+   * its verdict rests on has been taken.
+   */
+  quiet<T>(body: () => Promise<T>): Promise<T>;
+  /**
+   * Run ONE frame with the drawing on, whatever quiet scope is open around it.
+   *
+   * The way out of a quiet sweep for a check whose EVIDENCE is a moment inside
+   * it — the first arrival of `saucer/at-most-one-at-a-time`, say. The frame is
+   * a real frame like any other, so the picture it leaves is one tick past the
+   * moment the sweep read, which is what a still of that moment honestly is.
+   */
+  paint(): Promise<void>;
   /** Advance until `predicate` holds, sampling every `poll` frames. */
   until(
     predicate: (snapshot: ShatterSnapshot) => boolean,
@@ -350,8 +422,22 @@ export interface Harness {
 
   /** Where a logical point lands in the canvas's backing store. */
   device(x: number, y: number): { x: number; y: number };
-  /** The device pixel under a logical point, as `[r, g, b, a]`. */
+  /**
+   * The device pixel under a logical point, as `[r, g, b, a]`.
+   *
+   * Fails by assertion when the last frame that ran was not drawn — after a
+   * {@link skip} or inside a {@link quiet} scope — rather than reporting a
+   * picture from a frame that is no longer the current one.
+   */
   pixel(x: number, y: number): [number, number, number, number];
+  /**
+   * Whether the canvas holds the picture of the frame the game is on.
+   *
+   * False after a {@link skip} or a quiet sweep, and true again once a drawn
+   * frame has run. {@link captureStill} reads it, so a still is never an older
+   * frame wearing the current one's name.
+   */
+  drawn(): boolean;
 
   /** Close the world, halt the loop, and drop the engine's listeners. */
   dispose(): void;
@@ -390,17 +476,57 @@ function toDevice(
 }
 
 /**
+ * The context calls that put ink on the canvas, as opposed to the ones that move
+ * the pen, set a style, build a path or measure something.
+ *
+ * The set an undrawn frame skips (see the header). Everything else goes through
+ * untouched, so the pipeline's own bookkeeping — its transforms, its saves and
+ * restores, its `measureText` and its gradients — behaves exactly as it does on
+ * a drawn frame, and a build's own `DrawComponent` reads back what it always
+ * reads back. The only difference an undrawn frame makes is that nothing lands
+ * in the pixels.
+ */
+const RASTER_OPS: ReadonlySet<string> = new Set([
+  "clearRect",
+  "drawImage",
+  "fill",
+  "fillRect",
+  "fillText",
+  "putImageData",
+  "stroke",
+  "strokeRect",
+  "strokeText",
+]);
+
+/**
  * A proxy that records every call and property set on its way to the real
  * context, so one frame produces both a pixel buffer to sample and a call list
  * to inspect.
+ *
+ * `drawing` is the harness's own gate. On a frame that is not being drawn the
+ * raster calls are dropped and nothing is recorded: a march has no picture and
+ * no call list to leave, and keeping either would be tens of thousands of
+ * entries from frames no check reads. `requirePainted` is how every reading of
+ * the PIXELS — `getImageData`, wherever a check takes it from — is stopped from
+ * answering off a canvas a march left behind.
  */
-function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
+function recorder(
+  target: SKRSContext2D,
+  calls: DrawCall[],
+  drawing: () => boolean,
+  requirePainted: (what: string) => void,
+): SKRSContext2D {
   return new Proxy(target, {
     get(object, property) {
       const value = Reflect.get(object, property, object) as unknown;
       if (typeof value !== "function") return value;
       return (...args: unknown[]): unknown => {
         const method = String(property);
+        if (method === "getImageData") requirePainted("a pixel reading");
+        if (!drawing()) {
+          if (RASTER_OPS.has(method)) return undefined;
+          return (value as (...rest: unknown[]) => unknown).apply(object, args);
+        }
         const call: DrawCall = { kind: "call", method, args };
         if (
           (method === "fillText" || method === "strokeText") &&
@@ -422,7 +548,8 @@ function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
       };
     },
     set(object, property, value) {
-      calls.push({ kind: "set", property: String(property), value });
+      if (drawing())
+        calls.push({ kind: "set", property: String(property), value });
       return Reflect.set(object, property, value, object);
     },
   });
@@ -532,7 +659,43 @@ export async function createHarness(
   );
   const ctx = canvas.getContext("2d");
   const calls: DrawCall[] = [];
-  const recorded = recorder(ctx, calls);
+
+  /**
+   * How many {@link Harness.quiet} scopes are open around the frame now running,
+   * plus the one {@link Harness.advance} and {@link Harness.skip} open around
+   * the frames of a march.
+   *
+   * A frame runs undrawn while this is above zero — unless the engine's replay
+   * recorder is capturing, because the recorder is armed around the stretch a
+   * reviewer will watch and a section of blank frames would be evidence of
+   * nothing.
+   */
+  let quietDepth = 0;
+  /** Whether the canvas holds the picture of the frame the game is on. */
+  let painted = true;
+  let live: { recording(): boolean } | null = null;
+  const drawingNow = (): boolean =>
+    quietDepth === 0 || (live?.recording() ?? false);
+
+  /**
+   * Refuse a reading of the canvas taken after an undrawn march.
+   *
+   * A harness fault rather than a build's: the check asked for the picture of a
+   * frame nothing drew. It fails here, naming what to do about it, instead of
+   * quietly answering with an older frame — which is the one way a march that
+   * skips the raster could buy speed by making a check decide less.
+   */
+  const requirePainted = (what: string): void => {
+    if (painted) return;
+    fail(
+      `${what} taken on a drawn frame`,
+      "the last frame that ran was not drawn (h.skip, or a quiet scope), so " +
+        "the canvas still holds an older frame — advance one frame before " +
+        "reading it",
+    );
+  };
+
+  const recorded = recorder(ctx, calls, drawingNow, requirePainted);
   const element = Object.assign(canvas, {
     style: {} as CSSStyleDeclaration,
     getContext: (): SKRSContext2D => recorded,
@@ -575,7 +738,29 @@ export async function createHarness(
     loops.push({ cue, running: false, t });
   });
 
+  live = engine;
   const instance = await engine.initialize();
+
+  /**
+   * Run `frames` frames with the raster gate held where `draw` says.
+   *
+   * The gate is restored whatever the frames do, so a build that throws out of
+   * an undrawn march leaves the next harness call drawing again and the failure
+   * is the one the build produced.
+   */
+  const run = async (frames: number, draw: boolean): Promise<void> => {
+    if (frames <= 0) return;
+    if (!draw) quietDepth += 1;
+    // Read while the gate is still where these frames ran under, so what the
+    // canvas holds is recorded from the frames themselves.
+    const drew = drawingNow();
+    try {
+      await engine.advance(frames);
+    } finally {
+      if (!draw) quietDepth -= 1;
+    }
+    painted = drew;
+  };
   const debug = readDebugSurface(engine);
 
   const dispatch = (type: "keydown" | "keyup", code: string): void => {
@@ -600,8 +785,44 @@ export async function createHarness(
 
     snapshot: () => debug.snapshot(),
 
-    advance: (frames) => engine.advance(frames),
-    advanceSeconds: (duration) => engine.advance(ticksFor(duration)),
+    async advance(frames) {
+      // A count the engine would refuse is handed straight to it, so the refusal
+      // names the number the caller passed rather than one arithmetic here made
+      // out of it.
+      if (!Number.isInteger(frames) || frames < 1) {
+        await engine.advance(frames);
+        return;
+      }
+      await run(frames - 1, false);
+      await run(1, true);
+    },
+    async advanceSeconds(duration) {
+      await harness.advance(ticksFor(duration));
+    },
+
+    skip: (frames) => run(frames, false),
+
+    async quiet(body) {
+      quietDepth += 1;
+      const before = painted;
+      try {
+        return await body();
+      } finally {
+        quietDepth -= 1;
+        // A scope that ran no frame at all leaves the canvas as it found it.
+        painted = painted && before;
+      }
+    },
+
+    paint: async () => {
+      const held = quietDepth;
+      quietDepth = 0;
+      try {
+        await run(1, true);
+      } finally {
+        quietDepth = held;
+      }
+    },
 
     async until(predicate, untilOptions = {}) {
       const maxFrames = untilOptions.maxFrames ?? 600;
@@ -613,7 +834,11 @@ export async function createHarness(
       let frames = 0;
       while (frames < maxFrames) {
         const step = Math.min(poll, maxFrames - frames);
-        await engine.advance(step);
+        // The sampled frame is drawn, so the picture a sweep leaves is the
+        // picture of the frame it stopped on — unless the whole sweep is inside
+        // a quiet scope, which suppresses that too.
+        await run(step - 1, false);
+        await run(1, true);
         frames += step;
         snapshot = debug.snapshot();
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
@@ -642,10 +867,12 @@ export async function createHarness(
 
     device: (x, y) => toDevice(engine.world, engine.viewport(), x, y),
     pixel: (x, y) => {
+      requirePainted("a pixel read");
       const point = toDevice(engine.world, engine.viewport(), x, y);
       const { data } = ctx.getImageData(point.x, point.y, 1, 1);
       return [data[0], data[1], data[2], data[3]];
     },
+    drawn: () => painted,
 
     dispose: () => engine.destroy(),
   };
@@ -1081,6 +1308,16 @@ export async function captureReplay<T>(
  * rather than about the build.
  */
 export function captureStill(h: Harness, outputId: string): void {
+  // Before the destination is resolved, so a still taken off a stale canvas is
+  // refused on every run rather than only on the runs that collect media.
+  if (!h.drawn()) {
+    fail(
+      "a still captured on a drawn frame",
+      "the last frame that ran was not drawn (h.skip, or a quiet scope), so " +
+        "the canvas still holds an older frame — advance one frame before " +
+        "capturing",
+    );
+  }
   const destination = mediaDestination(outputId, "png");
   if (destination === null) return;
   try {

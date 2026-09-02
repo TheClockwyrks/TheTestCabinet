@@ -169,8 +169,14 @@ export interface VisitWatch {
 export interface WatchOptions {
   /** Stop early, once the visits so far satisfy this. */
   done?: (visits: readonly Visit[]) => boolean;
-  /** Called on the sample a visit is first seen on, with that frame on canvas. */
-  onArrival?: (visit: Visit, snapshot: ShatterSnapshot) => void;
+  /**
+   * Called on the sample a visit is first seen on.
+   *
+   * The watch runs undrawn (see below), so a handler that wants the picture
+   * awaits {@link Harness.paint} first — one drawn frame, one tick past the
+   * sample it was handed.
+   */
+  onArrival?: (visit: Visit, snapshot: ShatterSnapshot) => void | Promise<void>;
 }
 
 /**
@@ -188,6 +194,12 @@ export interface WatchOptions {
  * which is where a point about the entry edge or the entry row reads its figure.
  * The reading is therefore up to one frame late, and each such point states what
  * that is worth.
+ *
+ * THE WATCH RUNS UNDRAWN. Every frame is a whole frame — the world ticks and the
+ * pipeline walks the scene — but none of them puts ink on the canvas, because
+ * what a watch reads is one id per frame and `at-most-one-at-a-time` alone spends
+ * two minutes of game time here. A handler that wants a picture of the moment
+ * asks for one with {@link Harness.paint}.
  */
 export async function watchVisits(
   h: Harness,
@@ -198,7 +210,7 @@ export async function watchVisits(
   const overlaps: string[] = [];
   let live: Visit | null = null;
 
-  const sample = (snapshot: ShatterSnapshot): void => {
+  const sample = async (snapshot: ShatterSnapshot): Promise<void> => {
     const saucer = snapshot.saucer;
     if (saucer === null) {
       if (live !== null) {
@@ -224,19 +236,21 @@ export async function watchVisits(
     };
     visits.push(visit);
     live = visit;
-    options.onArrival?.(visit, snapshot);
+    await options.onArrival?.(visit, snapshot);
   };
 
   let snapshot = h.snapshot();
-  sample(snapshot);
 
-  for (let frame = 0; frame < frames; frame += 1) {
-    await h.advance(1);
-    snapshot = h.snapshot();
-    sample(snapshot);
-    if (frame % RECORD_CHUNK === RECORD_CHUNK - 1) clearCalls(h);
-    if (options.done?.(visits) === true) break;
-  }
+  await h.quiet(async () => {
+    await sample(snapshot);
+    for (let frame = 0; frame < frames; frame += 1) {
+      await h.advance(1);
+      snapshot = h.snapshot();
+      await sample(snapshot);
+      if (frame % RECORD_CHUNK === RECORD_CHUNK - 1) clearCalls(h);
+      if (options.done?.(visits) === true) break;
+    }
+  });
   clearCalls(h);
 
   return { visits, overlaps, snapshot };

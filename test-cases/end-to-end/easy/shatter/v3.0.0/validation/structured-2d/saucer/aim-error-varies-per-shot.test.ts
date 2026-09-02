@@ -96,6 +96,9 @@ it("spreads sixty shots at a still ship over more than four degrees", async () =
     framesFor(BUDGET, SHOT_TICKS_PER_FRAME),
   );
   // The scatter across sixty shots at a still ship.
+  // The sweep above runs undrawn, so one frame is drawn for the picture —
+  // after every reading the verdict rests on has been taken.
+  await h.paint();
   captureStill(h, "scatter");
 
   assertLength(

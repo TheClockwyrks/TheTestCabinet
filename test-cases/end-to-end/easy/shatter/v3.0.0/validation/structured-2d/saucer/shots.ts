@@ -173,13 +173,21 @@ export async function collectShots(
   // arrangement rather than to the reading.
   for (const round of h.snapshot().enemyBullets) seen.add(round.id);
 
-  for (let frame = 0; frame < frames && shots.length < count; frame += 1) {
-    await h.advance(1);
-    const snapshot = h.snapshot();
-    read(snapshot);
-    if (snapshot.saucer === null) poseGunner(h, pose);
-    if (frame % RECORD_CHUNK === RECORD_CHUNK - 1) clearCalls(h);
-  }
+  // UNDRAWN, BECAUSE THE READING IS A LIST OF VELOCITIES. The three aim items
+  // read sixty rounds apiece, which is a minute and a half of game time sampled
+  // a frame at a time so that no round is stepped over. The frames, the samples
+  // and the rounds caught are the same either way; what is gone is the ten
+  // thousand pictures none of them reads. Each item draws one frame of its own
+  // for the still it captures.
+  await h.quiet(async () => {
+    for (let frame = 0; frame < frames && shots.length < count; frame += 1) {
+      await h.advance(1);
+      const snapshot = h.snapshot();
+      read(snapshot);
+      if (snapshot.saucer === null) poseGunner(h, pose);
+      if (frame % RECORD_CHUNK === RECORD_CHUNK - 1) clearCalls(h);
+    }
+  });
   clearCalls(h);
 
   return shots;

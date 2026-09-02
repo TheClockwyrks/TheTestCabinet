@@ -96,6 +96,9 @@ it("gives a round SAUCER_BULLET_SPEED on top of the course the saucer was carryi
 
   const shots = await collectShots(h, GUN_POSE, 1, ticksFor(WINDOW));
   // A shot leaving a moving saucer.
+  // The sweep above runs undrawn, so one frame is drawn for the picture —
+  // after every reading the verdict rests on has been taken.
+  await h.paint();
   captureStill(h, "shot");
 
   assertLength(

@@ -79,7 +79,9 @@ it.each(SEEDS)(
     const watch = await watchVisits(h, marchFrames(WATCH_SECONDS) - opened, {
       done: (visits) => visits.length >= 2,
     });
-    // The saucer that followed the gap, on the frame it arrived.
+    // The saucer that followed the gap. The watch runs undrawn, so one frame is
+    // drawn for this picture, a frame past the arrival the gap was measured to.
+    await h.paint();
     captureStill(h, "gap");
 
     assertEqual(

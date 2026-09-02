@@ -79,6 +79,9 @@ it("puts SAUCER_FIRE_INTERVAL between the pose and each of five shots", async ()
   // read as the count it is rather than stopped at five.
   const shots = await collectShots(h, GUN_POSE, SHOTS * 2, ticksFor(WINDOW));
   // Five shots taken on the saucer's cadence.
+  // The sweep above runs undrawn, so one frame is drawn for the picture —
+  // after every reading the verdict rests on has been taken.
+  await h.paint();
   captureStill(h, "cadence");
 
   assertLength(

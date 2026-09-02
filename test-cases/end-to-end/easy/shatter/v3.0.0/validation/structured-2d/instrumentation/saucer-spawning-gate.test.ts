@@ -56,12 +56,18 @@ it("off, no saucer joins over a minute of game time", async () => {
   h.debug.setSaucerSpawning(false);
   assertNull(h.snapshot().saucer, "no saucer is up when the leg begins");
 
-  const arrived = await h.until((s) => s.saucer !== null, {
-    maxFrames: ticksFor(WATCH_SECONDS),
-    poll: WATCH_POLL,
-  });
+  // Undrawn: a minute of game time is 7 200 frames, and what the sweep reads is
+  // the saucer slot. The frame it stops on, and the state it reports, are the
+  // same either way.
+  const arrived = await h.quiet(() =>
+    h.until((s) => s.saucer !== null, {
+      maxFrames: ticksFor(WATCH_SECONDS),
+      poll: WATCH_POLL,
+    }),
+  );
 
-  // The field with no saucer a minute in.
+  // The field with no saucer a minute in, on a frame drawn for it.
+  await h.paint();
   captureStill(h, "quiet");
 
   assertEqual(
@@ -80,10 +86,12 @@ it("on, one joins inside the same minute", async () => {
   h.debug.setSaucerSpawning(true);
   assertNull(h.snapshot().saucer, "no saucer is up when the leg begins");
 
-  const arrived = await h.until((s) => s.saucer !== null, {
-    maxFrames: ticksFor(WATCH_SECONDS),
-    poll: WATCH_POLL,
-  });
+  const arrived = await h.quiet(() =>
+    h.until((s) => s.saucer !== null, {
+      maxFrames: ticksFor(WATCH_SECONDS),
+      poll: WATCH_POLL,
+    }),
+  );
   assertEqual(
     arrived.hit,
     true,

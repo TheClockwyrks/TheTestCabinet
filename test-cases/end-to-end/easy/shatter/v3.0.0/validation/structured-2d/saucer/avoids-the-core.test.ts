@@ -166,31 +166,37 @@ it("keeps every one of 54 crossings clear of CORE_R + SAUCER_R from the star's c
   let closest = Infinity;
   let worst: Crossing = { seed: SEEDS[0], row: ROWS[0], side: SIDES[0] };
 
-  for (const seed of SEEDS) {
-    for (const row of ROWS) {
-      for (const side of SIDES) {
-        const crossing: Crossing = { seed, row, side };
-        poseCrossing(sweep, crossing);
+  // The sweep runs undrawn: what it reads is a path of centres out of the
+  // snapshot, and fifty-four crossings of twelve seconds each is a hundred
+  // thousand frames nothing looks at. The crossing it ends on is flown again
+  // below in front of the recorder, and THAT is what a reviewer sees.
+  await sweep.quiet(async () => {
+    for (const seed of SEEDS) {
+      for (const row of ROWS) {
+        for (const side of SIDES) {
+          const crossing: Crossing = { seed, row, side };
+          poseCrossing(sweep, crossing);
 
-        const path: Vec[] = [];
-        for (let frame = 0; frame <= CROSSING_FRAMES; frame += 1) {
-          const saucer = sweep.snapshot().saucer;
-          // The visit ended on its own clock: the rest of the width is not a
-          // path the craft ever took.
-          if (saucer === null) break;
-          path.push({ x: saucer.x, y: saucer.y });
-          if (frame < CROSSING_FRAMES) await sweep.advance(1);
-          clearCalls(sweep);
-        }
+          const path: Vec[] = [];
+          for (let frame = 0; frame <= CROSSING_FRAMES; frame += 1) {
+            const saucer = sweep.snapshot().saucer;
+            // The visit ended on its own clock: the rest of the width is not a
+            // path the craft ever took.
+            if (saucer === null) break;
+            path.push({ x: saucer.x, y: saucer.y });
+            if (frame < CROSSING_FRAMES) await sweep.advance(1);
+            clearCalls(sweep);
+          }
 
-        const approach = closestApproachToStar(path);
-        if (approach < closest) {
-          closest = approach;
-          worst = crossing;
+          const approach = closestApproachToStar(path);
+          if (approach < closest) {
+            closest = approach;
+            worst = crossing;
+          }
         }
       }
     }
-  }
+  });
 
   // The closest of the 54 crossings, flown again in front of the recorder at one
   // tick a frame — and before the assertion, so a failing build leaves the

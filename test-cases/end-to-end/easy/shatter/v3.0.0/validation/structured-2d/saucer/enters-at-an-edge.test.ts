@@ -87,10 +87,13 @@ it("brings every arrival in within 40 units of the left or the right edge", asyn
 
     const watch = await watchVisits(h, marchFrames(WATCH_SECONDS) - opened, {
       done: (visits) => visits.length >= ARRIVALS_PER_SEED,
-      onArrival: () => {
+      onArrival: async () => {
         if (filmed) return;
         filmed = true;
-        // A saucer entering at the field's edge, on the frame it appeared.
+        // A saucer entering at the field's edge. The watch runs undrawn, so one
+        // frame is drawn for this picture — the frame after the one the entry
+        // column was read on.
+        await h.paint();
         captureStill(h, "entry");
       },
     });

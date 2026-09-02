@@ -97,6 +97,9 @@ it("keeps every one of sixty shots inside SAUCER_AIM_ERROR of the bearing to the
     framesFor(BUDGET, SHOT_TICKS_PER_FRAME),
   );
   // The sixty shots inside the error bound.
+  // The sweep above runs undrawn, so one frame is drawn for the picture —
+  // after every reading the verdict rests on has been taken.
+  await h.paint();
   captureStill(h, "aim");
 
   assertLength(

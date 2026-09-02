@@ -104,10 +104,12 @@ it("draws every entry row inside [SAUCER_R, FIELD_H - SAUCER_R] and spreads sixt
 
     const watch = await watchVisits(h, marchFrames(WATCH_SECONDS) - opened, {
       done: (visits) => visits.length >= ARRIVALS_PER_SEED,
-      onArrival: () => {
+      onArrival: async () => {
         if (filmed) return;
         filmed = true;
-        // One of the sixteen arrivals the rows were read from.
+        // One of the sixteen arrivals the rows were read from. The watch runs
+        // undrawn, so one frame is drawn for this picture.
+        await h.paint();
         captureStill(h, "rows");
       },
     });
