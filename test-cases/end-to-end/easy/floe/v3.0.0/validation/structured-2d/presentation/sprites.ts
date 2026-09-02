@@ -38,7 +38,7 @@
 // that poses a body or a lane reads positions and covering instead.
 
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
-import { SPRITE_TILE, TILE, tileTop } from "../../src/constants";
+import { SPRITE_TILE, TILE, tileTop } from "../constants";
 import {
   seededFrames,
   type DrawCall,
@@ -58,7 +58,7 @@ import { renderFrame } from "./frame";
 /* -------------------------------------------------------------------------- */
 //
 // Facts about the SUPPLIED ART rather than figures over the simulation, which is
-// why `src/constants.ts` does not carry them and this module does: each is read
+// why `constants.ts` does not carry them and this module does: each is read
 // straight off the table in specs/assets.md, and the points that use them cite
 // that table.
 

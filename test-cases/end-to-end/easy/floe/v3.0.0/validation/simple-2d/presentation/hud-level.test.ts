@@ -22,7 +22,7 @@
 // either frame is read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../../src/constants";
+import { HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

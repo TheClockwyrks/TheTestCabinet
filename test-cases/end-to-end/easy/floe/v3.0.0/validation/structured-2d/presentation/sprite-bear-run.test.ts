@@ -32,7 +32,7 @@
 // with the catch test shut.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BEAR_ICE_SPEED, TICK_HZ, TILE } from "../../src/constants";
+import { BEAR_ICE_SPEED, TICK_HZ, TILE } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   bearById,

@@ -28,7 +28,7 @@
 // three rows between them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileTop } from "../../src/constants";
+import { TILE, tileTop } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

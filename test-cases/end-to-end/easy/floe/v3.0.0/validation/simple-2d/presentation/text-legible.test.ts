@@ -41,7 +41,7 @@
 // from passing a point about words.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H } from "../../src/constants";
+import { HUD_H } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

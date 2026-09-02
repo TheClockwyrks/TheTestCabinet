@@ -29,7 +29,7 @@
 // point reads.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPRITE_TILE, TILE } from "../../src/constants";
+import { SPRITE_TILE, TILE } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

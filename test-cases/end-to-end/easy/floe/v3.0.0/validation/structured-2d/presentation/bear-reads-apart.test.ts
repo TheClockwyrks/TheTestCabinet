@@ -28,7 +28,7 @@
 // shore, which with the catch test shut is a bystander it cannot reach.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_MEDIAN, ROW_NEAR } from "../../src/constants";
+import { ROW_MEDIAN, ROW_NEAR } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   bearById,

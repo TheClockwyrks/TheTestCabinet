@@ -25,7 +25,7 @@
 // point reads.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RAFT_W, TILE } from "../../src/constants";
+import { RAFT_W, TILE } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

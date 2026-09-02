@@ -26,7 +26,7 @@
 // is eight rows from the critter and outside what is read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   captureStill,

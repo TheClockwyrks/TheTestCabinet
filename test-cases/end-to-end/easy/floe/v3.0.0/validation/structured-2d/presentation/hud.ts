@@ -20,7 +20,7 @@
 // invites a build to draw either of them as marks rather than as text, so their
 // points read the bar's PIXELS instead.
 
-import { HUD_H } from "../../src/constants";
+import { HUD_H } from "../constants";
 import { drawnTextSpans, type Harness, type TextSpan } from "../harness";
 
 /**

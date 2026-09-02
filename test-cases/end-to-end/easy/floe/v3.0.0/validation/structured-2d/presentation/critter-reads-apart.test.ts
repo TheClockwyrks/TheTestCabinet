@@ -28,7 +28,7 @@
 // `startCrossing` left it: no bear, no vehicle, no bonus catch, no drain.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_MEDIAN, ROW_NEAR } from "../../src/constants";
+import { ROW_MEDIAN, ROW_NEAR } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -26,7 +26,7 @@
 // it is the only thing this point concerns.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -19,7 +19,7 @@
 // lane's direction is nothing this point reads.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAN_W, TILE } from "../../src/constants";
+import { PAN_W, TILE } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

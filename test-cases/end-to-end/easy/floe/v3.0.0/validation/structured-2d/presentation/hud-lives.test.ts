@@ -63,7 +63,7 @@
 // items. This point reads what the bar draws for the count the run holds.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H, STAGE_W, START_LIVES } from "../../src/constants";
+import { HUD_H, STAGE_W, START_LIVES } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

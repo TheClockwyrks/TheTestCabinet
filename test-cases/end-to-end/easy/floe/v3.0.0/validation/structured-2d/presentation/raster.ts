@@ -26,7 +26,7 @@
 // the point. The one number below, the bucket the commonest colour is counted in,
 // is how a reading is TAKEN rather than what it is held to.
 
-import { STAGE_H, STAGE_W } from "../../src/constants";
+import { STAGE_H, STAGE_W } from "../constants";
 import { assertTrue } from "../assert";
 import { colorDistance, type Harness, type Rgb } from "../harness";
 

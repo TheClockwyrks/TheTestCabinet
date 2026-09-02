@@ -30,7 +30,7 @@
 // and the distance this point rests on is the distance the pose set.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, TILE, tileCX, tileCY } from "../../src/constants";
+import { START_LIVES, TILE, tileCX, tileCY } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   BEAR_LUNGE_FRAMES,

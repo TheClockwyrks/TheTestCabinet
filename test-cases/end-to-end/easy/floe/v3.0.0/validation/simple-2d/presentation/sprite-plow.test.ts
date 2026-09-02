@@ -21,7 +21,7 @@
 // is `presentation/mirror-leftward-vehicle`'s point, not this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLOW_W, TILE } from "../../src/constants";
+import { PLOW_W, TILE } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

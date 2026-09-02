@@ -18,7 +18,7 @@
 // all of the run's digits taken together, which is what makes "1,234" read as
 // `1234` and "SCORE 1234" read as `1234` alike.
 
-import { HUD_H } from "../../src/constants";
+import { HUD_H } from "../constants";
 import {
   drawnTextSpans,
   type DrawCall,

@@ -40,7 +40,7 @@
 // grades that.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAY_COUNT, HUD_H, STAGE_W } from "../../src/constants";
+import { BAY_COUNT, HUD_H, STAGE_W } from "../constants";
 import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -35,7 +35,7 @@
 // that can score, so the figure read is the figure posed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H } from "../../src/constants";
+import { HUD_H } from "../constants";
 import { assertContains, assertDeepEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

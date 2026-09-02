@@ -13,7 +13,7 @@
 // pose never reached the roster, and then through the harness's own look-up,
 // which names the entity the surface promised.
 
-import { TILE, tileTop } from "../../src/constants";
+import { TILE, tileTop } from "../constants";
 import {
   floeOf,
   isVehicleKind,

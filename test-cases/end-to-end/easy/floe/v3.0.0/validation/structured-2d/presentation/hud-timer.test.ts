@@ -32,7 +32,7 @@
 // carrying `22` is a readout that did not follow the field.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H } from "../../src/constants";
+import { HUD_H } from "../constants";
 import {
   assertContains,
   assertDeepEqual,

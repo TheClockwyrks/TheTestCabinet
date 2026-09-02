@@ -29,7 +29,7 @@
 // is the situation the drawing rule names.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BEAR_SWIM_SPEED, TICK_HZ, TILE } from "../../src/constants";
+import { BEAR_SWIM_SPEED, TICK_HZ, TILE } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertLength } from "../assert";
 import {
   bearById,

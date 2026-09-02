@@ -48,7 +48,7 @@
 // OUTSIDE the bar is that screen's own text and is read on every one of the six.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H, TOTAL_LEVELS } from "../../src/constants";
+import { HUD_H, TOTAL_LEVELS } from "../constants";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

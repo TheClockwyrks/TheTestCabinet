@@ -36,7 +36,7 @@
 // not follow the level, without demanding anything of the bays'.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../../src/constants";
+import { HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../constants";
 import { assertContains, assertMatches } from "../assert";
 import {
   captureStill,
