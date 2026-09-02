@@ -24,7 +24,7 @@
 // deliberately did not fix. The captured image is what a reviewer decides that from.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_LABELS } from "../../src/constants";
+import { BAND_LABELS } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

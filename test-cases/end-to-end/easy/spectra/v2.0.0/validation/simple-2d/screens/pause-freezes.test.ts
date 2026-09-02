@@ -41,7 +41,7 @@
 // `screens/pause-menu-items`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_X_MIN } from "../../src/constants";
+import { SHIP_X_MIN } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   bulletOf,

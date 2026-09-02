@@ -25,7 +25,7 @@
 // image rather than a script's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TAGLINE_TEXT, TITLE_TEXT } from "../../src/constants";
+import { TAGLINE_TEXT, TITLE_TEXT } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

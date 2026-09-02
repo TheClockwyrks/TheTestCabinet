@@ -35,7 +35,7 @@
 // `screens/start-enters-stage-intro`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_INTRO_HOLD } from "../../src/constants";
+import { STAGE_INTRO_HOLD } from "../constants";
 import { assertBetween, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

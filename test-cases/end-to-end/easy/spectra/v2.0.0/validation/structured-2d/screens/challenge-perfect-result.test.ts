@@ -52,7 +52,7 @@ import {
   RESONANCE_MAX,
   SCORE_CHALLENGE_DRONE,
   isChallengeStage,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

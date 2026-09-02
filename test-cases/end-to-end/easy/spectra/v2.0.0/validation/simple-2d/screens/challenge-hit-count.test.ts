@@ -52,7 +52,7 @@ import {
   CHALLENGE_TOTAL,
   FIELD_TOP,
   isChallengeStage,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

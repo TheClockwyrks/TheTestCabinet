@@ -54,7 +54,7 @@ import {
   PLAYER_BULLET_SPEED,
   SHARD_SIZE,
   isChallengeStage,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

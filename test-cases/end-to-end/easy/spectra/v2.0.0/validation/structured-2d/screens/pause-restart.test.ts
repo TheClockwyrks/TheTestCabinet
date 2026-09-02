@@ -27,7 +27,7 @@
 // `screens/pause-freezes`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS, START_LIVES } from "../../src/constants";
+import { PAUSE_ITEMS, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

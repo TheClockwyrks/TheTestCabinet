@@ -22,7 +22,7 @@
 // menu; that the field behind is frozen is `screens/pause-freezes`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

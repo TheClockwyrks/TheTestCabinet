@@ -34,7 +34,7 @@
 // group's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { INVERSION_TIME } from "../../src/constants";
+import { INVERSION_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -32,7 +32,7 @@
 // `screens/hud-resonance-ready`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESONANCE_MAX } from "../../src/constants";
+import { RESONANCE_MAX } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

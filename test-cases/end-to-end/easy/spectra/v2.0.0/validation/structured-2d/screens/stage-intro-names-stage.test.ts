@@ -32,7 +32,7 @@ import {
   HUD_STAGE_LABEL,
   STAGE_INTRO_HOLD,
   isChallengeStage,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

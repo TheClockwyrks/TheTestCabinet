@@ -42,7 +42,7 @@
 // made of, which is the `stages` group's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_CLEARED_HOLD, isChallengeStage } from "../../src/constants";
+import { STAGE_CLEARED_HOLD, isChallengeStage } from "../constants";
 import { assertBetween, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

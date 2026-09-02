@@ -32,7 +32,7 @@ import {
   CHALLENGE_BANNER,
   STAGE_INTRO_HOLD,
   isChallengeStage,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

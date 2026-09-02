@@ -35,7 +35,7 @@
 // `screens/game-over-menu-items`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAME_OVER_ITEMS, START_LIVES } from "../../src/constants";
+import { GAME_OVER_ITEMS, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -29,7 +29,7 @@
 // group's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_TOP_H } from "../../src/constants";
+import { HUD_TOP_H } from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

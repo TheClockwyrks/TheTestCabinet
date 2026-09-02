@@ -28,7 +28,7 @@
 // phase mid-reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { READY_HOLD, READY_TEXT } from "../../src/constants";
+import { READY_HOLD, READY_TEXT } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
