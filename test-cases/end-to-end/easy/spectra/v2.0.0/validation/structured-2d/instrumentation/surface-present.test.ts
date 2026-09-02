@@ -95,13 +95,17 @@ const HELD_SECONDS = 0.25;
 /**
  * How far right of its posed `x` the ship must end, in logical units.
  *
- * One unit. specs/ship.md travels the ship at `SHIP_SPEED` (`360`) units per
- * second, so the quarter-second below is `90` units for a build that keeps to the
- * figure — but the reading this point wants is only that the surface poses a game
- * the build's own input and tick then move, so the bar is set where float noise
- * ends rather than where the specification's speed is.
+ * `SHIP_SPEED` (`360`) over the quarter-second held is `90` units, and the floor
+ * is a tenth of that. The reading this point wants is only that the surface
+ * poses a game the build's own input and tick then MOVE — how fast the ship
+ * travels is `ship/move-right`'s point and this one must not charge for it twice
+ * — but a floor set at float noise would pass a build whose ship crawls a unit a
+ * second, which is not a game the surface posed running. A tenth is far below
+ * any conformant build and far above standing still, and it is the figure the
+ * same point uses under the other two engines, since what the surface has to
+ * hand back belongs to the case rather than to the runtime.
  */
-const MOVED_MIN = 1;
+const MOVED_MIN = (SHIP_SPEED * HELD_SECONDS) / 10;
 
 let h: Harness;
 
