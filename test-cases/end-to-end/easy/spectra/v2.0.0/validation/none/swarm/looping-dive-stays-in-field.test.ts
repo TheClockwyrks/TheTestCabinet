@@ -45,7 +45,14 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { deepest, step, steps, traceDrone, type Sample } from "./flight";
+import {
+  deepest,
+  step,
+  steps,
+  traceDive,
+  traceDrone,
+  type Sample,
+} from "./flight";
 
 /** The stage the dives are posed at: the first, where droneSpeedScale is 1. */
 const STAGE = 1;
@@ -125,10 +132,11 @@ it("turns a looping dive back above FIELD_BOTTOM, clear of the bottom HUD strip"
       await captureStill(harness, "turned");
       captured = true;
     }
-    const rest = await traceDrone(harness, id, {
-      frames: Math.max(1, DIVE_FRAMES - toTurn.samples.length),
-      stop: (sample) => sample.phase !== "diving",
-    });
+    const rest = await traceDive(
+      harness,
+      id,
+      Math.max(1, DIVE_FRAMES - toTurn.samples.length),
+    );
 
     const flown: Sample[] = [...toTurn.samples, ...rest.samples];
     const wrapped = steps(flown).some((travelled) => travelled > MAX_STEP);

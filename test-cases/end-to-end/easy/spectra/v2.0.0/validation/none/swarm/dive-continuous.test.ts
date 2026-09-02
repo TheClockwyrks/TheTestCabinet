@@ -48,7 +48,7 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { step, traceDrone } from "./flight";
+import { step, traceDive } from "./flight";
 
 /** The stage the dive is posed at: the first, where droneSpeedScale is 1. */
 const STAGE = 1;
@@ -91,10 +91,7 @@ it("flies a dive with no jump in it but the wrap through the bottom", async () =
   // The sample the dive ends on is kept, because a build that wraps at the end of
   // its dive puts the wrap in exactly that step.
   const trace = await captureReplay(harness, "path", () =>
-    traceDrone(harness, id, {
-      frames: DIVE_FRAMES,
-      stop: (sample) => sample.phase !== "diving",
-    }),
+    traceDive(harness, id, DIVE_FRAMES),
   );
 
   const jumps: { from: number; to: number; travelled: number }[] = [];

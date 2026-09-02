@@ -60,10 +60,11 @@ export interface Watch {
 /**
  * Sample every drone on the field, once per frame, for `frames` frames.
  *
- * The sampling rides {@link Harness.until}'s predicate, which is called on the
- * state before the first frame and then on every frame the sweep advances, so a
- * watch costs one crossing into the page per frame and the first sample is the
- * field as the watch opened.
+ * The sampling rides {@link Harness.samples}, which reads the roster in the page
+ * before the first frame and after each one, so a watch of three hundred frames
+ * costs ONE crossing rather than three hundred. What is read is the same roster
+ * on the same frames; what is not paid is a round trip per frame, and what a
+ * round trip costs is a fact about the host.
  *
  * A drone that appears part-way through is tracked from its first sighting, and
  * one that leaves simply stops having samples, so a caller reads each track's
@@ -73,43 +74,52 @@ export async function watchDrones(
   h: Harness,
   options: { frames: number },
 ): Promise<Watch> {
-  const tracks = new Map<number, Track>();
-  let index = 0;
+  const taken = await h.samples(options.frames, {
+    argument: null,
+    project: (snapshot) =>
+      snapshot.drones.map((drone) => ({
+        id: drone.id,
+        kind: drone.kind,
+        band: drone.band,
+        effectiveBand: drone.effectiveBand,
+        slotX: drone.slotX,
+        slotY: drone.slotY,
+        x: drone.x,
+        y: drone.y,
+        phase: drone.phase,
+      })),
+  });
 
-  const swept = await h.until(
-    (snapshot) => {
-      const t = seconds(index);
-      index += 1;
-      for (const drone of snapshot.drones) {
-        let track = tracks.get(drone.id);
-        if (track === undefined) {
-          track = {
-            id: drone.id,
-            kind: drone.kind,
-            band: drone.band,
-            effectiveBand: drone.effectiveBand,
-            slotX: drone.slotX,
-            slotY: drone.slotY,
-            samples: [],
-          };
-          tracks.set(drone.id, track);
-        }
-        track.samples.push({
-          t,
-          x: drone.x,
-          y: drone.y,
-          phase: drone.phase,
-        });
+  const tracks = new Map<number, Track>();
+  for (const [index, roster] of taken.samples.entries()) {
+    const t = seconds(index);
+    for (const drone of roster) {
+      let track = tracks.get(drone.id);
+      if (track === undefined) {
+        track = {
+          id: drone.id,
+          kind: drone.kind,
+          band: drone.band,
+          effectiveBand: drone.effectiveBand,
+          slotX: drone.slotX,
+          slotY: drone.slotY,
+          samples: [],
+        };
+        tracks.set(drone.id, track);
       }
-      return false;
-    },
-    { maxFrames: options.frames, poll: 1 },
-  );
+      track.samples.push({
+        t,
+        x: drone.x,
+        y: drone.y,
+        phase: drone.phase,
+      });
+    }
+  }
 
   return {
     tracks: [...tracks.values()],
-    frames: swept.frames,
-    snapshot: swept.snapshot,
+    frames: options.frames,
+    snapshot: taken.snapshot,
   };
 }
 
@@ -166,6 +176,56 @@ export async function traceDrone(
     stopped: swept.hit,
     present,
     snapshot: swept.snapshot,
+  };
+}
+
+/**
+ * Sample one drone, once per frame, until its dive ends or `frames` are spent.
+ *
+ * The trace the four dive-path points run, and the reason it is separate from
+ * {@link traceDrone}: its stopping rule is a fact about the sample alone, so the
+ * whole flight is one crossing rather than one per frame. A dive is a second or
+ * more of game time, and a frame the game runs is a frame it draws
+ * (`specs/instrumentation.md`), so paying a round trip for each of them made what
+ * these points cost a fact about the host as much as about the build.
+ */
+export async function traceDive(
+  h: Harness,
+  id: number,
+  frames: number,
+): Promise<Trace> {
+  const taken = await h.samples(frames, {
+    argument: id,
+    project: (snapshot, drone) => {
+      const found = snapshot.drones.find((one) => one.id === drone);
+      return found === undefined
+        ? null
+        : { x: found.x, y: found.y, phase: found.phase };
+    },
+    stop: (sample) => sample === null || sample.phase !== "diving",
+  });
+
+  const samples: Sample[] = [];
+  let present = true;
+  for (const [index, sample] of taken.samples.entries()) {
+    if (sample === null) {
+      present = false;
+      break;
+    }
+    samples.push({
+      t: seconds(index),
+      x: sample.x,
+      y: sample.y,
+      phase: sample.phase,
+    });
+  }
+
+  const last = taken.samples[taken.samples.length - 1];
+  return {
+    samples,
+    stopped: last === null || last.phase !== "diving",
+    present,
+    snapshot: taken.snapshot,
   };
 }
 

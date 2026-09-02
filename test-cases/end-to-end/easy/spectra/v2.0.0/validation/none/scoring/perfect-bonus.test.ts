@@ -90,11 +90,11 @@ it("adds SCORE_PERFECT_BONUS above the per-drone total when every drone is destr
 
   // The first kill on its own, so what the build pays for ONE challenge drone is
   // known before the other thirty-nine are added to it.
-  const afterFirst = await destroyDrone(h, ids[0]);
+  const afterFirst = await destroyDrone(h, ids[0], opened);
   const perDrone = afterFirst.score;
 
   let after = afterFirst;
-  for (const id of ids.slice(1)) after = await destroyDrone(h, id);
+  for (const id of ids.slice(1)) after = await destroyDrone(h, id, after);
 
   // The score a whole flyover paid, on the stage-cleared screen it opened.
   await captureStill(h, "bonus");

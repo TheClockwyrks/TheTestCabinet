@@ -84,8 +84,15 @@ it("keeps every gap between successive dive launches inside the drawn window", a
   await captureReplay(harness, "cadence", async () => {
     for (let index = 0; index <= GAPS; index += 1) {
       const before = dronesInPhase(await harness.snapshot(), "diving").length;
-      const swept = await harness.until(
-        (snapshot) => dronesInPhase(snapshot, "diving").length > before,
+      // Decided in the page: a gap is up to five seconds of a forty-drone
+      // formation, and reading the roster a round trip at a time made what this
+      // point costs a fact about how busy the host is. The frames, the readings
+      // and the frame the sweep stops on are the same either way.
+      const swept = await harness.sweep(
+        (snapshot, standing) =>
+          snapshot.drones.filter((drone) => drone.phase === "diving").length >
+          standing,
+        before,
         { maxFrames: index === 0 ? FIRST_FRAMES : GAP_FRAMES, poll: 1 },
       );
       launches.push({ frames: swept.frames, hit: swept.hit });

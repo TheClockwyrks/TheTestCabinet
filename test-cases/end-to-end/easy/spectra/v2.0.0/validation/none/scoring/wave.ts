@@ -55,8 +55,15 @@ export const KILL_AT = { x: 900, y: 500 } as const;
  * plus the bullet's `PLAYER_BULLET_HALF` (`6`) is `34` — so the bullet is in
  * flight rather than already in contact whatever kind it is aimed at, and short
  * enough to climb into a drone that is holding still.
+ *
+ * KEPT AS SHORT AS THAT CLEARANCE ALLOWS, because these four checks empty a
+ * whole flyover one drone at a time and every unit of climb is frames of a
+ * forty-drone field. A frame the game runs is a frame it draws
+ * (`specs/instrumentation.md`), so the flight a shot needs is most of what these
+ * checks cost, and none of it decides anything: where the bullet started is not
+ * what any of the four reads.
  */
-const SHOT_BELOW = 90;
+const SHOT_BELOW = 45;
 
 /**
  * Open the wave the game builds for `stage`, and hold everything on it still.
@@ -127,12 +134,22 @@ export async function openWave(
 export async function destroyDrone(
   h: Harness,
   id: number,
+  from?: SpectraSnapshot,
 ): Promise<SpectraSnapshot> {
-  let moved = await h.pose([["setDronePosition", id, KILL_AT.x, KILL_AT.y]]);
+  // ONE CROSSING PER LAYER. The move to the kill spot rides the shot's own
+  // crossing, and the state a shot leaves is the state the next kill reads, so
+  // emptying a flyover of forty costs forty-odd round trips rather than several
+  // hundred. What the game does is untouched: the drone is moved, the bullet is
+  // added, and the frames run, in that order, with no frame between the first
+  // two.
+  let state = from ?? (await h.snapshot());
 
-  // Two shots at most: one layer each for a Prism, one for every other kind.
+  // Two shots at most: one layer each for a Prism, one for every other kind. The
+  // band is read again for the second, off the state the first left, because
+  // breaking the shell swaps it — and because a kill can start an inversion that
+  // swaps every drone's.
   for (let shot = 0; shot < 2; shot += 1) {
-    const standing = droneById(moved, id);
+    const standing = droneById(state, id);
     if (standing === undefined) break;
     const fired = await fireAt(
       h,
@@ -141,12 +158,13 @@ export async function destroyDrone(
       standing.effectiveBand,
       {
         below: SHOT_BELOW,
+        pose: [["setDronePosition", id, KILL_AT.x, KILL_AT.y]],
       },
     );
-    moved = fired.snapshot;
+    state = fired.snapshot;
   }
 
-  const after = moved;
+  const after = state;
   if (droneById(after, id) !== undefined) {
     fail(
       `drone ${id} destroyed by shots carrying the band it reads as ` +
@@ -186,6 +204,6 @@ export async function destroyAllBut(
   );
 
   let after = opened;
-  for (const id of doomed) after = await destroyDrone(h, id);
+  for (const id of doomed) after = await destroyDrone(h, id, after);
   return after.score;
 }

@@ -41,7 +41,7 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { pathLength, traceDrone, type Sample } from "./flight";
+import { pathLength, traceDive, type Sample } from "./flight";
 
 /** The stage the dive is posed at: the first, where droneSpeedScale is 1. */
 const STAGE = 1;
@@ -85,10 +85,7 @@ it("carries a diving drone DIVE_SPEED units of path in a second", async () => {
     travel: true,
   });
 
-  const trace = await traceDrone(harness, id, {
-    frames: framesFor(MEASURE),
-    stop: (sample) => sample.phase !== "diving",
-  });
+  const trace = await traceDive(harness, id, framesFor(MEASURE));
   await captureStill(harness, "speed");
 
   // Only the frames the drone was diving: a build whose dive ends inside the

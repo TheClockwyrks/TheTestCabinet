@@ -111,11 +111,14 @@ it("pays no SCORE_PERFECT_BONUS when one challenge drone was never destroyed", a
 
   // The first kill on its own, so what the build pays for ONE challenge drone is
   // known before the other thirty-eight are added to it.
-  const afterFirst = await destroyDrone(h, ids[0]);
+  const afterFirst = await destroyDrone(h, ids[0], opened);
   const perDrone = afterFirst.score;
-  for (const id of ids.slice(1, DESTROYED)) await destroyDrone(h, id);
+  let emptied = afterFirst;
+  for (const id of ids.slice(1, DESTROYED)) {
+    emptied = await destroyDrone(h, id, emptied);
+  }
 
-  const shortOne = await h.snapshot();
+  const shortOne = emptied;
   assertLength(
     shortOne.drones,
     1,

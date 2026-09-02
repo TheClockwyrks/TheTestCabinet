@@ -434,6 +434,17 @@ export type SurfaceCall = {
 export interface Clock {
   /** The next frame's delta, in ms. */
   delta(): number;
+  /**
+   * Put `frames` deltas back, so the next one handed out is the one that was
+   * handed out `frames` calls ago.
+   *
+   * A sweep asks for every delta it MIGHT run before it crosses into the page,
+   * because the frames are run there, and hands back the ones it did not use.
+   * Without this a sweep that stopped early would leave a stepping clock further
+   * along than the frames it actually ran, and the next sweep would step
+   * differently for it.
+   */
+  rewind(frames: number): void;
 }
 
 /** The frame the suite steps in, in milliseconds. */
@@ -445,6 +456,9 @@ export class ConstantClock implements Clock {
   constructor(private readonly ms: number) {}
   delta(): number {
     return this.ms;
+  }
+  rewind(): void {
+    // Every frame is the same length, so where the clock stands decides nothing.
   }
 }
 
@@ -460,6 +474,9 @@ export class SequenceClock implements Clock {
     const step = this.stepsMs[this.index % this.stepsMs.length];
     this.index += 1;
     return step;
+  }
+  rewind(frames: number): void {
+    this.index = Math.max(0, this.index - frames);
   }
 }
 
@@ -507,6 +524,9 @@ export class JitterClock implements Clock {
     return (
       this.minMs + (hash32(this.seed, index) / 0x1_0000_0000) * this.spanMs
     );
+  }
+  rewind(frames: number): void {
+    this.index = Math.max(0, this.index - frames);
   }
 }
 
@@ -588,6 +608,17 @@ export interface HarnessOptions {
 export interface UntilOptions {
   maxFrames?: number;
   poll?: number;
+}
+
+/** {@link Harness.sweep}'s options: a sweep's own, plus what to pose before it. */
+export interface SweepOptions extends UntilOptions {
+  /** Surface calls run before the first reading, in the sweep's own crossing. */
+  pose?: readonly SurfaceCall[];
+}
+
+/** What a sweep found, and the state its `pose` left before the first frame ran. */
+export interface SweepResult extends UntilResult {
+  posed: SpectraSnapshot;
 }
 
 /** What a sweep found: whether the predicate ever held, and where it stopped. */
@@ -672,6 +703,68 @@ export interface Harness {
     options?: UntilOptions,
   ): Promise<UntilResult>;
   /**
+   * {@link until}, with the predicate decided INSIDE the page, so the whole sweep
+   * is one crossing.
+   *
+   * Identical in what it drives and what it reports: the same frames, one
+   * `advance(dt, 1)` each, the predicate read before the first frame and after
+   * every `poll` of them, and the sweep stopping on the frame it first holds.
+   * What changes is that the frames and the readings happen in the page instead
+   * of a round trip apart, so a sweep of a hundred frames costs one crossing
+   * rather than a hundred. A round trip's cost is a fact about how busy the host
+   * is, and a check that spends a hundred of them has made its verdict one too.
+   *
+   * THE PREDICATE IS CARRIED INTO THE PAGE AS SOURCE, so it must stand on its
+   * own: it sees its three parameters and nothing else. Anything it needs from
+   * the suite is passed as `argument`, which crosses as JSON. A predicate that
+   * reaches for a binding of the suite's fails in the page and the check reports
+   * it, so a mistake here is loud rather than quiet.
+   *
+   * `options.pose` runs surface calls first, in the same crossing, exactly as
+   * {@link pose} would; the state they left is read once and handed to the
+   * predicate as its third parameter and back to the caller as
+   * {@link SweepResult.posed}. That is what lets a shot be fired and followed to
+   * its contact without a round trip in between, which is the shape most of this
+   * project's scenarios are built out of.
+   */
+  sweep<Argument>(
+    predicate: (
+      snapshot: SpectraSnapshot,
+      argument: Argument,
+      posed: SpectraSnapshot,
+    ) => boolean,
+    argument: Argument,
+    options?: SweepOptions,
+  ): Promise<SweepResult>;
+  /**
+   * Run `frames` frames, reading `project` off the state before the first and
+   * after every one of them, in ONE crossing.
+   *
+   * The sweep a check that MEASURES a path runs: it wants a reading per frame
+   * rather than a stopping point, and taking those readings a round trip apart
+   * makes what the check costs a fact about how busy the host is. The frames are
+   * the same frames {@link advance} runs, one `advance(dt, 1)` each, so a
+   * recording made across it keeps one frame per driven frame exactly as before.
+   *
+   * `project` and `stop` are carried into the page as source, so each must stand
+   * on its own: they see the parameters they are handed and nothing else, and
+   * anything from the suite reaches them as `argument`, which crosses as JSON.
+   * Keeping a reading to the fields the check uses is what keeps the one
+   * crossing small.
+   *
+   * The array holds `frames + 1` readings: the state as the sweep opened, then
+   * one after each frame — or fewer, when `stop` ends it early. The reading
+   * `stop` held on is kept, so a caller reads the pair a change sits between.
+   */
+  samples<Sample, Argument>(
+    frames: number,
+    options: {
+      project: (snapshot: SpectraSnapshot, argument: Argument) => Sample;
+      argument: Argument;
+      stop?: (sample: Sample, taken: Sample[], argument: Argument) => boolean;
+    },
+  ): Promise<{ samples: Sample[]; snapshot: SpectraSnapshot; frames: number }>;
+  /**
    * Run `duration` seconds of game time WITHOUT opening a recorded frame.
    *
    * The same real update the loop runs, `hz` frames per second of it, but off
@@ -688,6 +781,23 @@ export interface Harness {
   ): Promise<SkipResult>;
   /** Hand the game back to its own frame loop for `ms` of real time, then take it back. */
   runFor(ms: number): Promise<void>;
+  /**
+   * Hand the game back to its own frame loop until `predicate` holds of what the
+   * build reports, then take it back, and hand over the state that ended it.
+   *
+   * The wait a point about the build's own clock runs. Real time passes and
+   * nothing steps the game, exactly as {@link runFor} leaves it, but what ends
+   * the wait is the build's own reading rather than a stretch of the wall clock:
+   * how many frames a browser delivers in a given second is a fact about the
+   * machine, so a host running a hundred other jobs makes this wait longer
+   * instead of making the build look stopped. `deadlineMs` bounds it, and a
+   * build whose loop never runs reaches that bound with the predicate still
+   * false.
+   */
+  runUntil(
+    predicate: (snapshot: SpectraSnapshot) => boolean,
+    options?: { deadlineMs?: number; pollMs?: number },
+  ): Promise<SpectraSnapshot>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): Promise<void>;
@@ -809,6 +919,21 @@ const SURFACE_RECHECK_MS = 1_000;
  * well below the surface's ceiling.
  */
 const RECORDER_TIMEOUT_MS = 20_000;
+
+/**
+ * How long a wait on the build's own frame loop may run before it gives up.
+ *
+ * The bound on {@link Harness.runUntil}, and it is a bound rather than a
+ * measurement: the wait ends the moment the build's own reading says what the
+ * check is waiting for, so a quiet host leaves it in a fraction of a second and
+ * a host running a hundred other jobs simply takes longer to get there. What
+ * reaching this bound means is that the loop never ran, which is the failure the
+ * point is looking for.
+ */
+const FREE_RUN_DEADLINE_MS = 30_000;
+
+/** How often the build is asked what its own loop has done, while it holds the clock. */
+const FREE_RUN_POLL_MS = 50;
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -1235,6 +1360,45 @@ export async function createHarness(
       devicePoints as { x: number; y: number }[],
     );
 
+  /**
+   * Hand the game to its own frame loop, or take it back.
+   *
+   * The two waits below are the only places the game runs on anything but this
+   * harness's stepping, and both leave it exactly this way: the recorder follows
+   * the page's own animation frame while the loop holds the clock, and returns
+   * to the harness's frames when it is taken back.
+   */
+  const freeRun = async (on: boolean): Promise<void> => {
+    if (on) {
+      // The one thing here that depends on real elapsed time, so the one thing a
+      // browser's own idea of which page matters can distort. The launch already
+      // turns the throttling off; bringing the page forward as well means this
+      // does not rest on a flag alone.
+      await page.bringToFront().catch(() => undefined);
+    }
+    await page.evaluate(
+      ([handle, running]) => {
+        const rec = (
+          window as unknown as { __spectraRec: { setMode(m: string): void } }
+        ).__spectraRec;
+        const api = (
+          window as unknown as Record<
+            string,
+            { setAutoStep(on: boolean): void }
+          >
+        )[handle];
+        if (running) {
+          rec.setMode("raf");
+          api.setAutoStep(true);
+        } else {
+          api.setAutoStep(false);
+          rec.setMode("manual");
+        }
+      },
+      [HANDLE, on] as const,
+    );
+  };
+
   const harness: Harness = {
     page,
     debug,
@@ -1273,6 +1437,138 @@ export async function createHarness(
 
     advance: async (frames) => {
       await drive(frames);
+    },
+
+    async samples(frames, sampleOptions) {
+      if (surfaceFault !== null) refuse();
+      const whole = Math.max(0, frames);
+      const deltas: number[] = [];
+      for (let i = 0; i < whole; i += 1) deltas.push(clock.delta());
+
+      const script = `((project, stop, handle, dts, argument) => {
+  const api = window[handle];
+  const rec = window.__spectraRec;
+  const audio = window.__spectraAudio;
+  const sounds = [];
+  const taken = [project(api.snapshot(), argument)];
+  let frames = 0;
+  const held = (sample) => stop !== null && stop(sample, taken, argument) === true;
+  if (!held(taken[0])) {
+    for (const dt of dts) {
+      const before = audio.started();
+      rec.begin();
+      api.advance(dt / 1000, 1);
+      rec.end(dt);
+      sounds.push(audio.started() - before);
+      frames += 1;
+      const sample = project(api.snapshot(), argument);
+      taken.push(sample);
+      if (held(sample)) break;
+    }
+  }
+  return { samples: taken, frames: frames, snapshot: api.snapshot(), sounds: sounds };
+})(${String(sampleOptions.project)}, ${
+        sampleOptions.stop === undefined ? "null" : String(sampleOptions.stop)
+      }, ${JSON.stringify(HANDLE)}, ${JSON.stringify(deltas)}, ${JSON.stringify(
+        sampleOptions.argument,
+      )})`;
+
+      const result = (await page.evaluate(script)) as {
+        samples: unknown[];
+        frames: number;
+        snapshot: SpectraSnapshot;
+        sounds: number[];
+      };
+
+      clock.rewind(deltas.length - result.frames);
+      for (const [index, delta] of deltas.slice(0, result.frames).entries()) {
+        frameCount += 1;
+        timeMs += delta;
+        for (let n = 0; n < result.sounds[index]; n += 1) {
+          for (const sink of cueSinks)
+            sink.push({ frame: frameCount, t: timeMs });
+        }
+      }
+      return {
+        samples: result.samples as never[],
+        frames: result.frames,
+        snapshot: result.snapshot,
+      };
+    },
+
+    async sweep(predicate, argument, sweepOptions = {}) {
+      if (surfaceFault !== null) refuse();
+      const calls = sweepOptions.pose ?? [];
+      for (const [operation] of calls) {
+        if (known.has(operation) && !present.has(operation)) {
+          failSurface(`window.${HANDLE} carries no ${operation}()`);
+        }
+      }
+      const maxFrames = Math.max(0, sweepOptions.maxFrames ?? 600);
+      const poll = Math.max(1, sweepOptions.poll ?? 1);
+      const deltas: number[] = [];
+      for (let i = 0; i < maxFrames; i += 1) deltas.push(clock.delta());
+
+      const script = `((predicate, handle, batch, dts, poll, argument) => {
+  const api = window[handle];
+  const rec = window.__spectraRec;
+  const audio = window.__spectraAudio;
+  const sounds = [];
+  for (const entry of batch) api[entry[0]](...entry.slice(1));
+  const posed = api.snapshot();
+  let snapshot = posed;
+  if (predicate(snapshot, argument, posed)) {
+    return { hit: true, frames: 0, snapshot: snapshot, posed: posed, sounds: sounds };
+  }
+  let frames = 0;
+  while (frames < dts.length) {
+    const step = Math.min(poll, dts.length - frames);
+    for (let i = 0; i < step; i += 1) {
+      const dt = dts[frames + i];
+      const before = audio.started();
+      rec.begin();
+      api.advance(dt / 1000, 1);
+      rec.end(dt);
+      sounds.push(audio.started() - before);
+    }
+    frames += step;
+    snapshot = api.snapshot();
+    if (predicate(snapshot, argument, posed)) {
+      return { hit: true, frames: frames, snapshot: snapshot, posed: posed, sounds: sounds };
+    }
+  }
+  return { hit: false, frames: frames, snapshot: snapshot, posed: posed, sounds: sounds };
+})(${String(predicate)}, ${JSON.stringify(HANDLE)}, ${JSON.stringify(
+        calls,
+      )}, ${JSON.stringify(deltas)}, ${JSON.stringify(poll)}, ${JSON.stringify(
+        argument,
+      )})`;
+
+      const result = (await page.evaluate(script)) as {
+        hit: boolean;
+        frames: number;
+        snapshot: SpectraSnapshot;
+        posed: SpectraSnapshot;
+        sounds: number[];
+      };
+
+      // Only the frames that ran are the harness's, and the deltas the sweep
+      // asked for and did not use go back to the clock.
+      clock.rewind(deltas.length - result.frames);
+      for (const [index, delta] of deltas.slice(0, result.frames).entries()) {
+        frameCount += 1;
+        timeMs += delta;
+        for (let n = 0; n < result.sounds[index]; n += 1) {
+          for (const sink of cueSinks)
+            sink.push({ frame: frameCount, t: timeMs });
+        }
+      }
+      return {
+        hit: result.hit,
+        frames: result.frames,
+        snapshot: result.snapshot,
+        posed: result.posed,
+      };
     },
 
     async until(predicate, untilOptions = {}) {
@@ -1314,42 +1610,29 @@ export async function createHarness(
       return { hit: false, elapsed, snapshot };
     },
 
+    async runUntil(predicate, runOptions = {}) {
+      if (surfaceFault !== null) refuse();
+      const deadline =
+        Date.now() + (runOptions.deadlineMs ?? FREE_RUN_DEADLINE_MS);
+      const pollMs = Math.max(1, runOptions.pollMs ?? FREE_RUN_POLL_MS);
+      await freeRun(true);
+      try {
+        let snapshot = await debug.snapshot();
+        while (!predicate(snapshot) && Date.now() < deadline) {
+          await page.waitForTimeout(pollMs);
+          snapshot = await debug.snapshot();
+        }
+        return snapshot;
+      } finally {
+        await freeRun(false);
+      }
+    },
+
     async runFor(ms) {
       if (surfaceFault !== null) refuse();
-      // The one thing here that depends on real elapsed time, so the one thing a
-      // browser's own idea of which page matters can distort. The launch already
-      // turns the throttling off; bringing the page forward as well means this
-      // does not rest on a flag alone.
-      await page.bringToFront().catch(() => undefined);
-      await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as { __spectraRec: { setMode(m: string): void } }
-          ).__spectraRec.setMode("raf");
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[handle].setAutoStep(true);
-        },
-        [HANDLE] as const,
-      );
+      await freeRun(true);
       await page.waitForTimeout(ms);
-      await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[handle].setAutoStep(false);
-          (
-            window as unknown as { __spectraRec: { setMode(m: string): void } }
-          ).__spectraRec.setMode("manual");
-        },
-        [HANDLE] as const,
-      );
+      await freeRun(false);
     },
 
     hold: (code) => page.keyboard.down(code),
@@ -3431,6 +3714,15 @@ export interface Shot {
    * the shot states its own.
    */
   maxFrames?: number;
+  /**
+   * Surface calls run in the shot's own crossing, immediately before the bullet
+   * is added.
+   *
+   * For the arrangement a shot is aimed at rather than for the shot: bringing
+   * the target to the spot it is fired at, say. Nothing runs between them and no
+   * frame divides them, so the field the bullet enters is the one they left.
+   */
+  pose?: readonly SurfaceCall[];
 }
 
 /**
@@ -3453,21 +3745,49 @@ export async function fireAt(
   y: number,
   band: Band,
   shot: Shot,
-): Promise<UntilResult & { id: number }> {
-  await h.debug.addPlayerBullet(x, y + shot.below, band);
-  const added = lastBullet(await h.snapshot());
+): Promise<SweepResult & { id: number }> {
+  return sweepShot(
+    h,
+    [...(shot.pose ?? []), ["addPlayerBullet", x, y + shot.below, band]],
+    {
+      maxFrames:
+        shot.maxFrames ?? framesFor(shot.below / PLAYER_BULLET_SPEED) + 2,
+    },
+  );
+}
+
+/**
+ * Put a bullet on the field and follow it to its contact, in ONE crossing.
+ *
+ * The shape almost every scenario in this project is built out of, and the one
+ * that decides how much of a check's cost is the host's: the bullet is added, the
+ * roster it landed in is read, and the frames it takes to climb into its target
+ * are run and watched, all inside the page. The bullet it followed is the one the
+ * add appended, read in the page from the roster the pose left, so nothing has to
+ * come back for its id first.
+ */
+async function sweepShot(
+  h: Harness,
+  pose: readonly SurfaceCall[],
+  shot: { maxFrames?: number },
+): Promise<SweepResult & { id: number }> {
+  const swept = await h.sweep(
+    (snapshot, _argument, posed) => {
+      const added = posed.bullets[posed.bullets.length - 1];
+      if (added === undefined) return true;
+      return !snapshot.bullets.some((one) => one.id === added.id);
+    },
+    null,
+    { pose, maxFrames: shot.maxFrames ?? framesFor(1) },
+  );
+  const added = lastBullet(swept.posed);
   if (added === undefined) {
     fail(
-      "addPlayerBullet to append a bullet to the roster (specs/instrumentation.md)",
-      "the bullet roster was still empty after addPlayerBullet",
+      "the add to append a bullet to the roster (specs/instrumentation.md)",
+      "the bullet roster was still empty after it",
     );
   }
-  const id = added.id;
-  const swept = await driveBullet(h, id, {
-    maxFrames:
-      shot.maxFrames ?? framesFor(shot.below / PLAYER_BULLET_SPEED) + 2,
-  });
-  return { ...swept, id };
+  return { ...swept, id: added.id };
 }
 
 /**
@@ -3482,7 +3802,7 @@ export async function shootDrone(
   id: number,
   band: Band,
   shot: Shot,
-): Promise<UntilResult & { id: number }> {
+): Promise<SweepResult & { id: number }> {
   const drone = requireDrone(await h.snapshot(), id, "the shot's target");
   return fireAt(h, drone.x, drone.y, band, shot);
 }
@@ -3501,36 +3821,39 @@ export async function fireAtShip(
   h: Harness,
   band: Band,
   shot: { above: number; maxFrames?: number },
-): Promise<UntilResult & { id: number }> {
+): Promise<SweepResult & { id: number }> {
   const before = await h.snapshot();
   // The stage's own enemy-bullet speed, which is what the surface gives a bullet
   // it adds, so the frames the sweep allows cover the distance it really falls.
   const speed = ENEMY_BULLET_SPEED * before.bulletSpeedScale;
-  await h.debug.addEnemyBullet(before.ship.x, SHIP_Y - shot.above, band);
-  const added = lastBullet(await h.snapshot());
-  if (added === undefined) {
-    fail(
-      "addEnemyBullet to append a bullet to the roster (specs/instrumentation.md)",
-      "the bullet roster was still empty after addEnemyBullet",
-    );
-  }
-  const id = added.id;
-  const swept = await driveBullet(h, id, {
-    maxFrames: shot.maxFrames ?? framesFor(shot.above / speed) + 2,
-  });
-  return { ...swept, id };
+  return sweepShot(
+    h,
+    [["addEnemyBullet", before.ship.x, SHIP_Y - shot.above, band]],
+    { maxFrames: shot.maxFrames ?? framesFor(shot.above / speed) + 2 },
+  );
 }
 
-/** Run the game until the bullet with that id is no longer in the roster. */
+/**
+ * Run the game until the bullet with that id is no longer in the roster.
+ *
+ * The sweep every band, drone, scoring and screen check runs, several times
+ * over, so it is decided in the page: a shot climbing into its target is tens of
+ * frames, and a check that paid a round trip for each of them would be reporting
+ * how busy the host was as much as what the build did.
+ */
 export async function driveBullet(
   h: Harness,
   id: number,
   options: UntilOptions = {},
 ): Promise<UntilResult> {
-  return h.until((snapshot) => bulletById(snapshot, id) === undefined, {
-    maxFrames: options.maxFrames ?? framesFor(1),
-    poll: options.poll ?? 1,
-  });
+  return h.sweep(
+    (snapshot, bullet) => !snapshot.bullets.some((one) => one.id === bullet),
+    id,
+    {
+      maxFrames: options.maxFrames ?? framesFor(1),
+      poll: options.poll ?? 1,
+    },
+  );
 }
 
 /** Show or hide the read-only debug overlay, through its fixed Backquote binding. */

@@ -38,7 +38,7 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { traceDrone } from "./flight";
+import { traceDive } from "./flight";
 
 /** The stage the dive is posed at: the first, a standard wave's. */
 const STAGE = 1;
@@ -88,10 +88,7 @@ it("closes a third of the gap to the ship parked at either end of its lane", asy
       phase: "diving",
       travel: true,
     });
-    const trace = await traceDrone(harness, id, {
-      frames: DIVE_FRAMES,
-      stop: (sample) => sample.phase !== "diving",
-    });
+    const trace = await traceDive(harness, id, DIVE_FRAMES);
     const gaps = trace.samples.map((sample) => Math.abs(sample.x - shipX));
     return { opened: gaps[0], closest: Math.min(...gaps) };
   };
