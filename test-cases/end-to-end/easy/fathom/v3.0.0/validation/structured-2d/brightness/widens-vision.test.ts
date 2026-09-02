@@ -30,7 +30,6 @@
 // earlier, brighter reading had already lit and left remembered.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, TILE, VISION_GAIN, VISION_MIN } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -38,6 +37,7 @@ import {
   assertLessThanOrEqual,
   assertNotEqual,
 } from "../assert";
+import { BRIGHT_HOLD, TILE, VISION_GAIN, VISION_MIN } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

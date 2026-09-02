@@ -38,13 +38,13 @@
 // where a patrol happened to wander mid-clip.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThan,
   fail,
 } from "../assert";
+import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

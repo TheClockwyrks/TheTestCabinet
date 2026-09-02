@@ -30,8 +30,8 @@
 // is the game's own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { VISION_GAIN, VISION_MIN } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { VISION_GAIN, VISION_MIN } from "../constants";
 import { placeForager, poseMaze } from "../fixtures";
 import {
   captureReplay,

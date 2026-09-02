@@ -28,6 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { BRIGHT_HOLD } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureStill,
@@ -36,7 +37,6 @@ import {
   type Harness,
 } from "../harness";
 import { parkForager } from "../scene";
-import { BRIGHT_HOLD } from "../constants";
 
 /** The second key specs/movement.md binds the `pause` action to. */
 const KEY = "KeyP";

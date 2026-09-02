@@ -33,16 +33,16 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
+import {
   BRIGHT_HOLD,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
   LINGER_TIME,
 } from "../constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThanOrEqual,
-} from "../assert";
 import { poseDimStandoff, spawnPredator } from "../fixtures";
 import {
   captureReplay,

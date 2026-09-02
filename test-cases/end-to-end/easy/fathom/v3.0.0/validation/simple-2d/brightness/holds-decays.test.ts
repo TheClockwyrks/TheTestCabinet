@@ -30,8 +30,8 @@
 // alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

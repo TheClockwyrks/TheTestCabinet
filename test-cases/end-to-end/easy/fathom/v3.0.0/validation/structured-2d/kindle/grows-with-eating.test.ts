@@ -27,6 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import { BRIGHT_HOLD } from "../constants";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -36,7 +37,6 @@ import {
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { KINDLE_VISION_GAIN, KINDLE_VISION_MIN, windowRadius } from "./circle";
-import { BRIGHT_HOLD } from "../constants";
 
 /** The board: a three-tile corridor the forager is parked on, and nothing else. */
 const ART = ["H.."] as const;

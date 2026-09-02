@@ -56,6 +56,7 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertTrue, fail } from "../assert";
 import {
   FLARE_BLOOM,
   FLARE_CHARGE,
@@ -64,7 +65,6 @@ import {
   TICK_HZ,
   TILE,
 } from "../constants";
-import { assertTrue, fail } from "../assert";
 import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   callsTo,

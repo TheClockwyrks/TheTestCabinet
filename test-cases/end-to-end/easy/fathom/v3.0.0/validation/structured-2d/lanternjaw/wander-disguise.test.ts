@@ -27,17 +27,17 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  BRIGHT_HOLD,
-  DRIFTER_SPEED,
-  FORAGER_SPEED,
-  PREDATOR_SPEED,
-} from "../constants";
-import {
   assertEqual,
   assertLessThan,
   assertLessThanOrEqual,
   fail,
 } from "../assert";
+import {
+  BRIGHT_HOLD,
+  DRIFTER_SPEED,
+  FORAGER_SPEED,
+  PREDATOR_SPEED,
+} from "../constants";
 import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,

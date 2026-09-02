@@ -41,13 +41,13 @@
 // reach the forager.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   BRIGHT_HOLD,
   GLOAMFIN_CHASE_SPEED,
   TICK_DT,
   TICK_HZ,
 } from "../constants";
-import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

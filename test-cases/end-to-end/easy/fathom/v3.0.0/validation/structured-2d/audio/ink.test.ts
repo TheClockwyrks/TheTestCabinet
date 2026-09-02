@@ -28,8 +28,8 @@
 // which is `ink/cloud`'s; the cooldown it starts, which is `ink/cooldown`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES } from "../constants";
 import { assertEqual } from "../assert";
+import { BINDINGS, CUES } from "../constants";
 import {
   captureReplay,
   createHarness,

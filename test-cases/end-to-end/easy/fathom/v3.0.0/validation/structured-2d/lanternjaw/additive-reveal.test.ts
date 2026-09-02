@@ -47,7 +47,6 @@
 // unmoved bulb far better than any pixel bound could state it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -56,6 +55,7 @@ import {
   assertNotNull,
   fail,
 } from "../assert";
+import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../constants";
 import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   MOTE_RADII,

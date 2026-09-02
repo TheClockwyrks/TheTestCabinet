@@ -33,17 +33,17 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  BRIGHT_HOLD,
-  LANTERN_RANGE_BASE,
-  LANTERN_RANGE_GAIN,
-  LINGER_TIME,
-} from "../constants";
-import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
   fail,
 } from "../assert";
+import {
+  BRIGHT_HOLD,
+  LANTERN_RANGE_BASE,
+  LANTERN_RANGE_GAIN,
+  LINGER_TIME,
+} from "../constants";
 import { poseDimStandoff, spawnPredator } from "../fixtures";
 import {
   captureReplay,

@@ -33,8 +33,8 @@
 // `gloamfin/lost-you-orange`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, GLOAMFIN_PING_INTERVAL } from "../constants";
 import { assertEqual } from "../assert";
+import { CUES, GLOAMFIN_PING_INTERVAL } from "../constants";
 import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,

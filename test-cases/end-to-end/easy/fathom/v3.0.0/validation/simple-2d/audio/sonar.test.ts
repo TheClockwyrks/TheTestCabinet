@@ -28,8 +28,8 @@
 // own; the cooldown it starts, which is `sonar/cooldown`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { clearWorld } from "../fixtures";
 import { BINDINGS, CUES } from "../constants";
+import { clearWorld } from "../fixtures";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

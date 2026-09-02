@@ -31,13 +31,13 @@
 // then taken — rather than half a minute of the same.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DRIFTER_INTERVAL, DRIFTER_SPEED } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
+import { DRIFTER_INTERVAL, DRIFTER_SPEED } from "../constants";
 import { poseApart } from "../fixtures";
 import {
   captureReplay,
