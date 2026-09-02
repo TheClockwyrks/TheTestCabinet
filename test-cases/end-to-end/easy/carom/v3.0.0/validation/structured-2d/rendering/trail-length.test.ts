@@ -17,7 +17,7 @@
 // caps, glows or rounds the ends. How the trail is styled is the build's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_R, TRAIL_TIME } from "../../src/constants";
+import { BALL_R, TRAIL_TIME } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
