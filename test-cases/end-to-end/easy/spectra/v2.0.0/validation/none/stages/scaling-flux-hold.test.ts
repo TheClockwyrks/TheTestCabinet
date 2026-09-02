@@ -116,8 +116,8 @@ it("holds a stage-ten Flux's band for fluxHold(10) before the shimmer", async ()
     fluxHold(STAGE),
     SCALE_DIGITS,
     `the Flux hold the game derives at stage ${STAGE}, ` +
-      "max(1.0, FLUX_HOLD_L1 - 0.05 * (stage - 1)) (specs/stages.md), which is the figure the " +
-      "reading below has to be taken under",
+      "max(1.0, FLUX_HOLD_L1 - 0.05 * (stage - 1)) (specs/stages.md), " +
+      "which is the figure the reading below has to be taken under",
   );
   const flux = await poseDrone(harness, "flux", AT.x, AT.y, {
     band: POSED_BAND,

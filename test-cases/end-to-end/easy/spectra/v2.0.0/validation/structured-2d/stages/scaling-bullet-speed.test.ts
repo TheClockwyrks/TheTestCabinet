@@ -117,8 +117,8 @@ async function fallAt(harness: Harness, stage: number): Promise<number> {
     bulletSpeedScale(stage),
     SCALE_DIGITS,
     `the bullet-speed scale the game derives at stage ${String(stage)}, ` +
-      "min(1.40, 1 + 0.04 * (stage - 1)) (specs/stages.md), which is the figure the " +
-      "reading below has to be taken under",
+      "min(1.40, 1 + 0.04 * (stage - 1)) (specs/stages.md), which is the figure " +
+      "the reading below has to be taken under",
   );
   const id = poseEnemyBullet(harness, DROPPED_AT.x, DROPPED_AT.y, "magenta");
 

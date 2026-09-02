@@ -225,8 +225,8 @@ async function meanGap(
     diveGapScale(stage),
     SCALE_DIGITS,
     `the dive-gap scale the game derives at stage ${String(stage)}, ` +
-      "max(0.55, 1 - 0.05 * (stage - 1)) (specs/stages.md), which is the figure the " +
-      "reading below has to be taken under",
+      "max(0.55, 1 - 0.05 * (stage - 1)) (specs/stages.md), which is the figure " +
+      "the reading below has to be taken under",
   );
   poseFormation(harness, FULL_FORMATION);
   harness.debug.setDiveClock(0);

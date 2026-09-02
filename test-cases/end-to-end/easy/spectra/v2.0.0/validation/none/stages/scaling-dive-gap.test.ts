@@ -208,8 +208,8 @@ async function meanGap(
     diveGapScale(stage),
     SCALE_DIGITS,
     `the dive-gap scale the game derives at stage ${stage}, ` +
-      "max(0.55, 1 - 0.05 * (stage - 1)) (specs/stages.md), which is the figure the " +
-      "reading below has to be taken under",
+      "max(0.55, 1 - 0.05 * (stage - 1)) (specs/stages.md), which is the figure " +
+      "the reading below has to be taken under",
   );
   await poseFormation(h, fullFormation("shard"));
   await h.debug.setDiveClock(0);
