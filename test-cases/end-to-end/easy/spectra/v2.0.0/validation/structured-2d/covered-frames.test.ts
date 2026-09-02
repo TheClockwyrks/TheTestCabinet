@@ -188,6 +188,13 @@ const scenes: Record<string, (ctx: SKRSContext2D, frame: number) => void> = {
     ctx.fillRect(0, 0, W, H);
     sprites(ctx, frame, 6);
   },
+  "a background fill under an open save": (ctx, frame) => {
+    ctx.save();
+    ctx.fillStyle = "#05070f";
+    ctx.fillRect(0, 0, W, H);
+    sprites(ctx, frame, 6);
+    ctx.restore();
+  },
   "text and paths drawn through the tint": (ctx, frame) => {
     ctx.fillStyle = "#05070f";
     ctx.fillRect(0, 0, W, H);

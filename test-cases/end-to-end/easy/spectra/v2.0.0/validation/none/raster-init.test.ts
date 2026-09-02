@@ -19,8 +19,9 @@
 // `covered-frames.test.ts`, and it carries scenes those two do not: the browser
 // implementation deliberately has no save-depth guard, because Chromium truncates
 // its recorded history for a clear issued under an open `save` and
-// `@napi-rs/canvas` does not. The scenes under "the browser's own cases" are what
-// hold that difference to the measurement it rests on.
+// `@napi-rs/canvas` does not. The scene both tables carry under that name, and
+// the ones under "the browser's own cases", are what hold that difference to the
+// measurement it rests on.
 //
 // No review item names this file, so a run never loads it. It runs with the whole
 // project:
@@ -140,8 +141,11 @@ function driveInPage(scene: Scene, frames: number, w: number, h: number): void {
  * are proved the same way, because the property being proved is the same one: the
  * picture is what the build drew.
  *
- * The first seventeen are the `covered-frames.test.ts` table, scene for scene, so
- * that one rule is held to one set of cases on all three engines.
+ * The first eighteen are the `covered-frames.test.ts` table, scene for scene, so
+ * that one rule is held to one set of cases on all three engines. The eighteenth
+ * is where the two implementations part: the node wrapper refuses to clear under
+ * an open `save` and this script clears anyway, and both tables prove the frame
+ * comes out the same either way.
  */
 const scenes: Record<string, Scene> = {
   "an opaque background fill": (ctx, frame, world) => {
@@ -248,6 +252,13 @@ const scenes: Record<string, Scene> = {
     ctx.fillRect(0, 0, world.w, world.h);
     world.sprites(ctx, frame, 6);
   },
+  "a background fill under an open save": (ctx, frame, world) => {
+    ctx.save();
+    ctx.fillStyle = "#05070f";
+    ctx.fillRect(0, 0, world.w, world.h);
+    world.sprites(ctx, frame, 6);
+    ctx.restore();
+  },
   "text and paths drawn through the tint": (ctx, frame, world) => {
     ctx.fillStyle = "#05070f";
     ctx.fillRect(0, 0, world.w, world.h);
@@ -265,13 +276,6 @@ const scenes: Record<string, Scene> = {
 
   // ---- The browser's own cases ---------------------------------------------
 
-  "a background fill under an open save": (ctx, frame, world) => {
-    ctx.save();
-    ctx.fillStyle = "#05070f";
-    ctx.fillRect(0, 0, world.w, world.h);
-    world.sprites(ctx, frame, 6);
-    ctx.restore();
-  },
   "a clip opened and then dropped by a reset": (ctx, frame, world) => {
     ctx.beginPath();
     ctx.rect(0, 0, 100, 100);
