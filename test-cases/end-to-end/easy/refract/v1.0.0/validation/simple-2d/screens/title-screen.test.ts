@@ -15,8 +15,8 @@
 // drawn with a selection marker or padding beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
 import { assertEqual, assertTrue } from "../assert";
+import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,

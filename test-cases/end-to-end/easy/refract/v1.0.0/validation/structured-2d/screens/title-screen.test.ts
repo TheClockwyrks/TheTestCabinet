@@ -13,8 +13,8 @@
 // rated through the domains.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
