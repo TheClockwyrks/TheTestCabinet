@@ -24,7 +24,7 @@
 // business (`hopping/refuse-right-edge`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOP_COOLDOWN, ROW_NEAR, TICK_HZ } from "../../src/constants";
+import { HOP_COOLDOWN, ROW_NEAR, TICK_HZ } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

@@ -18,7 +18,7 @@
 // only thing this check turns on is the edge.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, START_LIVES } from "../../src/constants";
+import { ROW_NEAR, START_LIVES } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

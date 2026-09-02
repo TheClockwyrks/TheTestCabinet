@@ -22,7 +22,7 @@
 // is exactly what that second reading catches.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_TOP, START_COL, START_LIVES } from "../../src/constants";
+import { ICE_TOP, START_COL, START_LIVES } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

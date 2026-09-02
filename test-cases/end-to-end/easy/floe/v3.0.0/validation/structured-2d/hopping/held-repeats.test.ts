@@ -15,7 +15,7 @@
 // only thing moving the critter over that second is the key that is down.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOP_COOLDOWN, ROW_NEAR, START_COL } from "../../src/constants";
+import { HOP_COOLDOWN, ROW_NEAR, START_COL } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

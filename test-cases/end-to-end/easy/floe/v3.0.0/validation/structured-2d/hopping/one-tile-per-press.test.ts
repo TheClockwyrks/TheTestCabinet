@@ -16,7 +16,7 @@
 // (specs/strait.md), so the hop is neither refused nor a hazard.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOP_COOLDOWN, ROW_NEAR, START_COL } from "../../src/constants";
+import { HOP_COOLDOWN, ROW_NEAR, START_COL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

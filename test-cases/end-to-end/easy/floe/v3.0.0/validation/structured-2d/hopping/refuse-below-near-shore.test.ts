@@ -14,7 +14,7 @@
 // settling window later, on an empty strait with every world gate shut.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, START_COL, START_LIVES } from "../../src/constants";
+import { ROW_NEAR, START_COL, START_LIVES } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

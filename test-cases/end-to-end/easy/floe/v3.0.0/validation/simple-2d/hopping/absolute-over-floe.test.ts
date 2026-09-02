@@ -44,7 +44,7 @@ import {
   tileCY,
   tileLeft,
   WATER_TOP,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertBetween,
   assertCloseTo,

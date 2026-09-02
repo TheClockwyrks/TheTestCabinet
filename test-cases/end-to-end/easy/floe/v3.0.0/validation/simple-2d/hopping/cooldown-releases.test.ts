@@ -20,7 +20,7 @@
 // one that spends it on the fifteenth both have to take this hop.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, START_COL, tileCX, tileCY } from "../../src/constants";
+import { ROW_NEAR, START_COL, tileCX, tileCY } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureReplay,

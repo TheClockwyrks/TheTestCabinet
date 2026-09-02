@@ -17,7 +17,7 @@
 // is a hop the build accepted.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOP_COOLDOWN, ROW_NEAR, START_COL, tileCX } from "../../src/constants";
+import { HOP_COOLDOWN, ROW_NEAR, START_COL, tileCX } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureReplay,

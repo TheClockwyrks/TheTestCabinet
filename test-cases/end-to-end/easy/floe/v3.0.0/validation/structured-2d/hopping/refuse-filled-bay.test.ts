@@ -24,7 +24,7 @@
 // about the bay: the cadence is a rule of its own, with its own items.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAYS, START_LIVES, WATER_TOP } from "../../src/constants";
+import { BAYS, START_LIVES, WATER_TOP } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

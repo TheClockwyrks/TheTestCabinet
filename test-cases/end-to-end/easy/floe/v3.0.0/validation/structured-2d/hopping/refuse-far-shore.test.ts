@@ -21,7 +21,7 @@
 // the shore and then kills it is exactly what that second reading catches.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, WATER_TOP } from "../../src/constants";
+import { START_LIVES, WATER_TOP } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

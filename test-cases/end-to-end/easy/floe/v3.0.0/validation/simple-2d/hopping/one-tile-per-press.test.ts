@@ -21,7 +21,7 @@
 // From `START_COL` there are nineteen columns of clear runway to the right edge.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, START_COL, tileCX, tileCY } from "../../src/constants";
+import { ROW_NEAR, START_COL, tileCX, tileCY } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureReplay,

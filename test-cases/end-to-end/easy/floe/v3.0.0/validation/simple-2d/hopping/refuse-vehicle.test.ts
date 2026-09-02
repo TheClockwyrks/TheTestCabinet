@@ -32,7 +32,7 @@
 // inside that tick.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_COL, START_LIVES } from "../../src/constants";
+import { START_COL, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

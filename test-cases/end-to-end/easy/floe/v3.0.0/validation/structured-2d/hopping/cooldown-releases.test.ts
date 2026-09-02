@@ -13,7 +13,7 @@
 // cooldown at all passes here and fails there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOP_COOLDOWN } from "../../src/constants";
+import { HOP_COOLDOWN } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

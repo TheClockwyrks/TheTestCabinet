@@ -40,7 +40,7 @@
 // that tick.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HOP_COOLDOWN, START_COL } from "../../src/constants";
+import { HOP_COOLDOWN, START_COL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

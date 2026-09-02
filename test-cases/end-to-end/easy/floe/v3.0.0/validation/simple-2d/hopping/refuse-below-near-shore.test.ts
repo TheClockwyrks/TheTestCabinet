@@ -27,7 +27,7 @@
 // inside that tick.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, START_COL, START_LIVES } from "../../src/constants";
+import { ROW_NEAR, START_COL, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

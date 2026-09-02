@@ -25,7 +25,7 @@
 // facing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, START_COL } from "../../src/constants";
+import { ROW_NEAR, START_COL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

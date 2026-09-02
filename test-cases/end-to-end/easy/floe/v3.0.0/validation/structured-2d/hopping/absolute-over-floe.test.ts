@@ -26,13 +26,7 @@
 // item is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  START_COL,
-  WATER_BOTTOM,
-  colAt,
-  tileCX,
-  tileCY,
-} from "../../src/constants";
+import { START_COL, WATER_BOTTOM, colAt, tileCX, tileCY } from "../constants";
 import { assertCloseTo, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureReplay,

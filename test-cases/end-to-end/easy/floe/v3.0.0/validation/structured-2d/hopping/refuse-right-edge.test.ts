@@ -14,7 +14,7 @@
 // shut.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ROW_NEAR, START_LIVES } from "../../src/constants";
+import { COLS, ROW_NEAR, START_LIVES } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,
