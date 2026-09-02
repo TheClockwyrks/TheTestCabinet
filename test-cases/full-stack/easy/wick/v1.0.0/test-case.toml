@@ -5772,8 +5772,8 @@ title = "HUD"
 
 [[review.categories.items]]
 id = "health-bar-scales"
-title = "The health bar's fill scales with hp"
-description = "The frame at hp 100 of 100 and the frame at hp 25 of 100 differ in a bar whose filled width at 25 is about a quarter of its width at 100."
+title = "The health bar fills from its left edge by hp / maxHp"
+description = "The bar's fill begins at the bar's left edge, and its width at hp 25 of 100 is about a quarter of its width at hp 100 of 100."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "hud/health-bar-scales.test.ts", outputs = [ { id = "bar", name = "The health bar at two fills", kind = "image" } ] }
@@ -5788,8 +5788,8 @@ validation = { script = "hud/health-numbers-drawn.test.ts", outputs = [ { id = "
 
 [[review.categories.items]]
 id = "experience-bar-scales"
-title = "The experience bar's fill scales with xp"
-description = "The frame at xp 0 of 15 and the frame at xp 12 of 15 differ in a bar whose filled width at 12 is about four fifths of its full width."
+title = "The experience bar fills from its left edge by xp / xpToNext"
+description = "The bar's fill begins at the bar's left edge, and its width at xp 12 of 15 is about four fifths of its width at xp 15 of 15."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "hud/experience-bar-scales.test.ts", outputs = [ { id = "bar", name = "The experience bar at two fills", kind = "image" } ] }
@@ -5837,7 +5837,7 @@ validation = { script = "hud/passive-slots-drawn.test.ts", outputs = [ { id = "s
 [[review.categories.items]]
 id = "level-pips"
 title = "Each held item shows one pip per level"
-description = "The frame with Taper at level 1 and the frame with Taper at level 5 differ in Taper's slot by pips, five drawn at level 5 and one at level 1, and Brass at level 3 shows three."
+description = "Against a slot holding nothing, Taper's slot draws one pip in its pip row at level 1 and five at level 5, and Brass at level 3 draws three."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "hud/level-pips.test.ts", outputs = [ { id = "pips", name = "The pips at three levels", kind = "image" } ] }
@@ -6224,7 +6224,7 @@ validation = { script = "presentation/walk-frame-counts-moved-ticks.test.ts", ou
 [[review.categories.items]]
 id = "lamplighter-faces-left"
 title = "The lamplighter's sprite faces left while facing left"
-description = "With facing left, the lamplighter's sprite is drawn mirrored across its vertical axis relative to the frame drawn with facing right."
+description = "With facing left, the lamplighter drawn on the stage is the produced idle sprite reflected across its vertical axis."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/lamplighter-faces-left.test.ts", outputs = [ { id = "left", name = "The sprite facing left", kind = "image" } ] }
@@ -6232,7 +6232,7 @@ validation = { script = "presentation/lamplighter-faces-left.test.ts", outputs =
 [[review.categories.items]]
 id = "lamplighter-faces-right"
 title = "The lamplighter's sprite faces right while facing right"
-description = "With facing right, the lamplighter's sprite is drawn without the mirror, so it differs from the frame drawn with facing left by a reflection across its vertical axis."
+description = "With facing right, the lamplighter drawn on the stage is the produced idle sprite as it was authored."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/lamplighter-faces-right.test.ts", outputs = [ { id = "right", name = "The sprite facing right", kind = "image" } ] }

@@ -187,8 +187,9 @@ Every animation runs on ticks, so it holds still on every screen but `playing`.
   direction and the idle sprite on every other tick. The walk frame is
   `floor(m × TICK_DT / WALK_FRAME_TIME) mod 6`, with `m` the number of ticks of
   this run on which the lamplighter moved, so the cycle advances one frame per
-  `WALK_FRAME_TIME` seconds of movement and wraps. The sprite faces the way
-  `facing` says: produce one facing and mirror it in code, or produce both.
+  `WALK_FRAME_TIME` seconds of movement and wraps. The produced idle sprite
+  faces right, and the lamplighter drawn facing left is that sprite reflected
+  across its vertical axis.
 - An enemy draws frame `floor(age / WALK_FRAME_TIME) mod 4` of its sheet for as
   long as it lives.
 - The death puff is drawn centered on the position an enemy died at, frame
