@@ -31,7 +31,7 @@ import {
   START_LIVES,
   slotX,
   slotY,
-} from "../src/constants";
+} from "./constants";
 import {
   LANE_CENTER,
   captureReplay,

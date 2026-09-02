@@ -102,7 +102,7 @@ import {
   START_LIVES,
   slotX,
   slotY,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build, type SpectraState } from "../src/game";
 import { assertTruthy, fail } from "./assert";
 import { clearBeforeCoveringFills } from "./covered-frames";
@@ -185,7 +185,7 @@ export type SpectraDriver = Driver<SpectraState, SpectraSurface>;
 /**
  * The frame the suite steps in, in milliseconds.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately fixes
+ * This is the SUITE's choice, not the game's: the specification deliberately fixes
  * no timestep, because the engine hands the game whatever elapsed time a frame
  * really took. Fixing it here makes a duration a whole number of frames, so a
  * tolerance can be stated in ticks and mean the same thing on every machine.
@@ -1695,7 +1695,7 @@ export async function fireAt(
  *
  * Nothing here poses anything: the keys go to the engine's own input, so the game
  * answers them exactly as it answers a player. Which key drives which action is
- * `BINDINGS` in `src/constants.ts` and specs/controls.md.
+ * `BINDINGS` in `constants.ts` and specs/controls.md.
  */
 export async function holdFor(
   h: Harness,
@@ -1759,7 +1759,7 @@ export interface TimedCue {
  * event — which is what tells a build that plays a cue on the right event apart from
  * one that plays it on every frame, or a frame late.
  *
- * The cue NAMES are `CUES` in `src/constants.ts`; specs/ui.md says which event each
+ * The cue NAMES are `CUES` in `constants.ts`; specs/ui.md says which event each
  * one belongs to, and states the mute rule these readings turn on: while sound is
  * muted the game starts no sound at all, so a muted cue reaches the bus not at all
  * rather than reaching it at zero gain.

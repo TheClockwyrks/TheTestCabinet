@@ -37,7 +37,7 @@ import {
   TITLE_TEXT,
   slotX,
   slotY,
-} from "../src/constants";
+} from "./constants";
 import {
   canvasPixels,
   captureReplay,

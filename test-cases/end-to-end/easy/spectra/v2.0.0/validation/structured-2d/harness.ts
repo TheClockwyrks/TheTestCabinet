@@ -122,7 +122,7 @@ import {
   START_LIVES,
   slotX,
   slotY,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
 import { clearBeforeCoveringFills } from "./covered-frames";
@@ -190,7 +190,7 @@ const game = build as unknown as GameDefinition<SpectraSurface>;
 /**
  * The frame the suite steps in, in milliseconds.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
+ * This is the SUITE's choice, not the game's: the specification deliberately
  * fixes no timestep, because the engine hands the game whatever elapsed time a
  * frame really took and the game divides it into sub-steps of at most
  * `SUBSTEP_MAX`. 100 Hz is chosen because every duration specs/ fixes is then a
@@ -239,7 +239,7 @@ export function slotCenter(col: number, row: number): { x: number; y: number } {
 /**
  * The drawn footprint of a drone of `kind`, in logical units.
  *
- * The figure `src/constants.ts` fixes for that kind, so a check that samples a
+ * The figure `constants.ts` fixes for that kind, so a check that samples a
  * drone's own body — its colour, its telegraph, the burst it leaves — reads the
  * box the specification says the drone occupies rather than a box of its own
  * invention. It is geometry, not a tolerance: how CLOSE a build's drawn box has
@@ -290,7 +290,7 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  */
 const WORKSPACE = join(PROJECT_ROOT, "..");
 
-/** The four seeded silhouettes, by the name `src/constants.ts` draws each for. */
+/** The four seeded silhouettes, by the name `constants.ts` draws each for. */
 export type SpriteName = keyof typeof SPRITES;
 
 /** Every seeded sprite's name, in the order `SPRITES` declares them. */
@@ -756,7 +756,7 @@ class KeyEvent extends Event {
 /**
  * A logical point's device pixel, through the world's camera and the engine's
  * fit. The camera opens at the defaults — world and logical coordinates coincide,
- * which is the space every figure in `src/constants.ts` is stated in — so the
+ * which is the space every figure in `constants.ts` is stated in — so the
  * projection is the identity unless the build moved it, and mapping through it
  * keeps the reading honest either way.
  */
@@ -1783,7 +1783,7 @@ export async function fireAtShip(
 
 /* ---- Driving the real input path ------------------------------------------ */
 
-/** An action the game registers, as `src/constants.ts` names them. */
+/** An action the game registers, as `constants.ts` names them. */
 export type Action = keyof typeof BINDINGS;
 
 /**
@@ -2018,7 +2018,7 @@ export interface Rgb {
  * The default spread is four units, which sits well inside a `SHARD_SIZE` body
  * and inside the ship's hull. A check reading something narrower — a bullet is
  * `PLAYER_BULLET_W` across — passes a spread of its own, taken from the figure
- * `src/constants.ts` fixes for what it is reading.
+ * `constants.ts` fixes for what it is reading.
  */
 export function sampleColor(h: Harness, x: number, y: number, spread = 4): Rgb {
   const offsets: readonly (readonly [number, number])[] = [
