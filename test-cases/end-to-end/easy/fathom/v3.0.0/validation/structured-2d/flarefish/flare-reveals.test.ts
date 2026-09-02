@@ -39,12 +39,7 @@ import {
   assertLessThanOrEqual,
   fail,
 } from "../assert";
-import {
-  FLARE_RADIUS,
-  PREDATOR_SPEED,
-  TICK_HZ,
-  TILE,
-} from "../constants";
+import { FLARE_RADIUS, PREDATOR_SPEED, TICK_HZ, TILE } from "../constants";
 import { tileCenter } from "../maze";
 import {
   captureReplay,

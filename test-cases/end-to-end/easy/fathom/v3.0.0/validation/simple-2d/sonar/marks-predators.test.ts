@@ -38,11 +38,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
-import {
-  SONAR_MARK_TIME,
-  SONAR_WAVE_SPEED,
-  TICK_HZ,
-} from "../constants";
+import { SONAR_MARK_TIME, SONAR_WAVE_SPEED, TICK_HZ } from "../constants";
 import { poseSonarSense, spawnPredator } from "../fixtures";
 import {
   captureReplay,

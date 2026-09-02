@@ -37,11 +37,7 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import {
-  FORAGER_SPEED,
-  GLOAMFIN_CHASE_SPEED,
-  TICK_HZ,
-} from "../constants";
+import { FORAGER_SPEED, GLOAMFIN_CHASE_SPEED, TICK_HZ } from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

@@ -34,11 +34,7 @@ import {
   assertLessThanOrEqual,
   assertTrue,
 } from "../assert";
-import {
-  GLOAMFIN_HEAR,
-  GLOAMFIN_PING_INTERVAL,
-  TICK_HZ,
-} from "../constants";
+import { GLOAMFIN_HEAR, GLOAMFIN_PING_INTERVAL, TICK_HZ } from "../constants";
 import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

@@ -35,13 +35,7 @@ import {
   assertLessThanOrEqual,
   fail,
 } from "../assert";
-import {
-  BINDINGS,
-  INK_LIFE,
-  INK_RADIUS,
-  TICK_DT,
-  TICK_HZ,
-} from "../constants";
+import { BINDINGS, INK_LIFE, INK_RADIUS, TICK_DT, TICK_HZ } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

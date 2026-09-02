@@ -30,12 +30,7 @@ import {
   assertGreaterThan,
   assertNotEqual,
 } from "../assert";
-import {
-  FORAGER_SPEED,
-  INK_LIFE,
-  INK_RADIUS,
-  TICK_DT,
-} from "../constants";
+import { FORAGER_SPEED, INK_LIFE, INK_RADIUS, TICK_DT } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

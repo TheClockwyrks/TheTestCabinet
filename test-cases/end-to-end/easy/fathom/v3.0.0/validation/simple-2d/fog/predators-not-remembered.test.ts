@@ -37,12 +37,7 @@
 // it is used here for the same question about one tile at two moments.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BRIGHT_HOLD,
-  TILE,
-  VISION_GAIN,
-  VISION_MIN,
-} from "../constants";
+import { BRIGHT_HOLD, TILE, VISION_GAIN, VISION_MIN } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
