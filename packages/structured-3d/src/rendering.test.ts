@@ -1652,6 +1652,118 @@ describe("the render modes", () => {
     ).toBe("#222222");
   });
 
+  it("follows a material the game mutates in place under unlit", () => {
+    // `unlit` is a substitution over what a material *is* on the frame it
+    // draws. An `Object3DComponent`'s subtree is the game's to mutate directly,
+    // and nothing announces a tint written straight onto its material, so a
+    // stand-in that froze the first frame's color would draw last frame's game.
+    // The stand-in itself is reused between frames, so what it carried at draw
+    // time is read in the hook rather than off the object afterwards.
+    const material = new THREE.MeshStandardMaterial({ color: "#ff0000" });
+    const inner = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material);
+    const group = new THREE.Group();
+    group.add(inner);
+    const { pipeline, world, spawn } = rig();
+    spawn(new Object3DComponent({ object: group }));
+    pipeline.syncScene(world, 0);
+    const seen: { color: string; side: THREE.Side; wireframe: boolean }[] = [];
+    inner.onBeforeRender = (
+      _renderer: THREE.WebGLRenderer,
+      _scene: THREE.Scene,
+      _camera: THREE.Camera,
+      _geometry: THREE.BufferGeometry,
+      drawn: THREE.Material,
+    ): void => {
+      const basic = drawn as THREE.MeshBasicMaterial;
+      seen.push({
+        color: `#${basic.color.getHexString()}`,
+        side: basic.side,
+        wireframe: basic.wireframe,
+      });
+    };
+
+    pipeline.setMode("unlit");
+    pipeline.renderWorld(world, FIT);
+
+    material.color.set("#00ff00");
+    material.side = THREE.DoubleSide;
+    material.wireframe = true;
+    pipeline.syncScene(world, 0);
+    pipeline.renderWorld(world, FIT);
+
+    expect(seen).toEqual([
+      { color: "#ff0000", side: THREE.FrontSide, wireframe: false },
+      { color: "#00ff00", side: THREE.DoubleSide, wireframe: true },
+    ]);
+  });
+
+  it("follows a map the game hangs on a material after the fact under unlit", () => {
+    const map = new THREE.Texture();
+    const material = new THREE.MeshStandardMaterial();
+    const inner = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
+    const { pipeline, world, spawn } = rig();
+    spawn(new Object3DComponent({ object: inner }));
+    pipeline.syncScene(world, 0);
+    const seen: (THREE.Texture | null)[] = [];
+    inner.onBeforeRender = (
+      _renderer: THREE.WebGLRenderer,
+      _scene: THREE.Scene,
+      _camera: THREE.Camera,
+      _geometry: THREE.BufferGeometry,
+      drawn: THREE.Material,
+    ): void => {
+      seen.push((drawn as THREE.MeshBasicMaterial).map);
+    };
+
+    pipeline.setMode("unlit");
+    pipeline.renderWorld(world, FIT);
+
+    material.map = map;
+    pipeline.renderWorld(world, FIT);
+
+    expect(seen).toEqual([null, map]);
+  });
+
+  it("follows a point cloud's own material under unlit", () => {
+    const material = new THREE.PointsMaterial({
+      color: "#ff0000",
+      opacity: 0.5,
+      transparent: true,
+    });
+    const points = new THREE.Points(new THREE.BufferGeometry(), material);
+    const { pipeline, world, spawn } = rig();
+    spawn(new Object3DComponent({ object: points }));
+    pipeline.syncScene(world, 0);
+    const seen: { color: string; size: number; opacity: number }[] = [];
+    points.onBeforeRender = (
+      _renderer: THREE.WebGLRenderer,
+      _scene: THREE.Scene,
+      _camera: THREE.Camera,
+      _geometry: THREE.BufferGeometry,
+      drawn: THREE.Material,
+    ): void => {
+      const cloud = drawn as THREE.PointsMaterial;
+      seen.push({
+        color: `#${cloud.color.getHexString()}`,
+        size: cloud.size,
+        opacity: cloud.opacity,
+      });
+    };
+
+    pipeline.setMode("unlit");
+    pipeline.renderWorld(world, FIT);
+
+    material.color.set("#0000ff");
+    material.size = 7;
+    pipeline.renderWorld(world, FIT);
+
+    expect(seen).toEqual([
+      { color: "#ff0000", size: 1, opacity: 1 },
+      { color: "#0000ff", size: 7, opacity: 1 },
+    ]);
+    expect(points.material).toBe(material);
+  });
+
   it("colors every surface by its normal under normals", () => {
     const { seen } = drawn("normals");
 

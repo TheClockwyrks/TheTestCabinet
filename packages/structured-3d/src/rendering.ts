@@ -622,6 +622,11 @@ function worldNormalMaterial(): THREE.MeshNormalMaterial {
   return material;
 }
 
+/** The texture a material samples, for the materials that have one at all. */
+function mapOf(material: THREE.Material): THREE.Texture | null {
+  return (material as { map?: THREE.Texture | null }).map ?? null;
+}
+
 class ModeSubstitution {
   /** Every mesh as its edges in one flat color, lights ignored. */
   private readonly wireframe = new THREE.MeshBasicMaterial({
@@ -632,7 +637,7 @@ class ModeSubstitution {
   /** Every surface colored by its world-space normal, lights ignored. */
   private readonly normals = worldNormalMaterial();
 
-  /** The unlit stand-in for one source material, built once and kept. */
+  /** The unlit stand-in for one source material, kept and re-read each frame. */
   private readonly unlit = new WeakMap<THREE.Material, THREE.Material>();
 
   /** The stand-ins this object built, for disposal; the two above are separate. */
@@ -699,7 +704,17 @@ class ModeSubstitution {
     if (mode !== "unlit") return material;
 
     const held = this.unlit.get(material);
-    if (held !== undefined) return held;
+    if (held !== undefined) {
+      // The mode is a substitution over what the material *is* this frame, not
+      // over what it was the first frame the mode was in force. A `MeshComponent`
+      // announces a new material by a declaration revision and the pipeline
+      // hands over a new object, but the subtree an `Object3DComponent` or a
+      // `ModelComponent` owns is documented to be mutated in place, and a tint
+      // written there has no revision to announce it. So the stand-in is kept
+      // for its compiled program and its fields are read off the source again.
+      this.syncUnlit(held, material, mesh);
+      return held;
+    }
     const made = this.buildUnlit(material, mesh);
     this.unlit.set(material, made);
     this.built.push(made);
@@ -716,26 +731,47 @@ class ModeSubstitution {
    * its alpha restored and nothing else touched.
    */
   private buildUnlit(material: THREE.Material, mesh: boolean): THREE.Material {
-    if (!mesh) {
-      const clone = material.clone();
-      clone.opacity = 1;
-      clone.transparent = false;
-      return clone;
+    const made = mesh ? new THREE.MeshBasicMaterial() : material.clone();
+    this.syncUnlit(made, material, mesh);
+    return made;
+  }
+
+  /**
+   * Bring one stand-in back into agreement with the material it stands in for.
+   *
+   * The mesh path writes the four fields {@link buildUnlit} is defined by; the
+   * other path re-runs the copy a `clone` is built out of, which is how a
+   * sprite's or a line's own fields — its map, its color, its size — follow a
+   * change the game made after the stand-in was first built. A program is
+   * recompiled only when the map's presence flips, because that is the one
+   * change among these that three keys a shader program by; the rest are state
+   * the renderer reads per draw.
+   */
+  private syncUnlit(
+    target: THREE.Material,
+    material: THREE.Material,
+    mesh: boolean,
+  ): void {
+    const had = mapOf(target) !== null;
+    if (mesh) {
+      const source = material as {
+        color?: THREE.Color;
+        map?: THREE.Texture | null;
+        side?: THREE.Side;
+        wireframe?: boolean;
+      };
+      const basic = target as THREE.MeshBasicMaterial;
+      if (source.color === undefined) basic.color.setHex(0xffffff);
+      else basic.color.copy(source.color);
+      basic.map = source.map ?? null;
+      basic.side = source.side ?? THREE.FrontSide;
+      basic.wireframe = source.wireframe ?? false;
+    } else {
+      target.copy(material);
     }
-    const source = material as {
-      color?: THREE.Color;
-      map?: THREE.Texture | null;
-      side?: THREE.Side;
-      wireframe?: boolean;
-    };
-    return new THREE.MeshBasicMaterial({
-      color: source.color?.clone() ?? new THREE.Color(0xffffff),
-      map: source.map ?? null,
-      side: source.side ?? THREE.FrontSide,
-      wireframe: source.wireframe ?? false,
-      opacity: 1,
-      transparent: false,
-    });
+    target.opacity = 1;
+    target.transparent = false;
+    if (had !== (mapOf(target) !== null)) target.needsUpdate = true;
   }
 
   /** Dispose every stand-in this object owns. Nothing here is the game's. */
@@ -1181,9 +1217,11 @@ export class RenderPipeline implements Renderer {
    * bounded by the scissor box and the write masks, and by nothing else.
    */
   renderWorld(world: World, viewport: Viewport): void {
-    // The mode is captured once per frame: a `setMode` issued from a tick, or
-    // from a `DrawComponent`'s `draw` later in this same frame, waits for the
-    // next frame, and every draw of this one agrees with `api.mode`.
+    // The mode is captured once, before the first draw of the pass: the ticks
+    // are behind us, so a `setMode` one of them issued is already in force and
+    // this frame draws under it, while a `setMode` a `DrawComponent`'s `draw`
+    // issues later in this same frame waits for the next one. Either way every
+    // draw of this frame agrees with the `api.mode` the screen pass reports.
     const mode = this.renderMode;
     const camera = cameraObject(world.camera, this.width, this.height);
 

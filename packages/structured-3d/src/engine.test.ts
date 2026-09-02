@@ -7,6 +7,7 @@ import { ConstantClock } from "./clocks";
 import { ColliderComponent } from "./collision";
 import {
   Component,
+  DrawComponent,
   LightComponent,
   MeshComponent,
   ShapeComponent,
@@ -14,6 +15,7 @@ import {
 import type {
   CameraSnapshot,
   DiagnosticValue,
+  DrawApi,
   EndPlayReason,
   SurfaceMetrics,
   TouchLayout,
@@ -2033,6 +2035,39 @@ describe("the frame order, from the game's side", () => {
     await engine.advance(2);
     // Step 4 before step 5: the pawn never reads last frame's drive.
     expect(seen).toEqual([1, 2]);
+    engine.destroy();
+  });
+
+  it("draws this frame under a mode a tick set, and next frame under one a draw set", async () => {
+    // Step 10 is behind every tick, so a `setMode` from step 5 is already in
+    // force when the pipeline reads it — "the next frame the pipeline runs" is
+    // this one. A `setMode` from inside the pipeline's own pass is the other
+    // case, and waits for the frame after.
+    const seen: string[] = [];
+    let held: Engine | null = null;
+    class Hud extends DrawComponent {
+      override draw(api: DrawApi): void {
+        seen.push(`${api.frame().count}:${api.mode}`);
+      }
+    }
+    class Switcher extends Actor {
+      constructor() {
+        super();
+        this.attach(new Hud());
+      }
+      override tick(): void {
+        if (this.world.frame().count === 2) held?.renderer.setMode("wireframe");
+      }
+    }
+    const { engine } = realEngine({
+      levels: { arena: { mode: GameMode, actors: [{ type: Switcher }] } },
+      startLevel: "arena",
+    });
+    held = engine;
+    await engine.initialize();
+    await engine.advance(3);
+
+    expect(seen).toEqual(["1:shaded", "2:wireframe", "3:wireframe"]);
     engine.destroy();
   });
 
