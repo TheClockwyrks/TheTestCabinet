@@ -40,7 +40,7 @@ import {
   TRIP_TIME,
   emitterStats,
   moverOutput,
-} from "../src/constants";
+} from "./constants";
 import {
   edgeTiles,
   footprintTiles,

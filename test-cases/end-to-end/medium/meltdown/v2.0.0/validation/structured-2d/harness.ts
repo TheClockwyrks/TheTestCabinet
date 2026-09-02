@@ -91,6 +91,8 @@ import {
   type Viewport,
   type World,
 } from "@test-cabinet/structured-2d";
+import { BACKGROUND, game as build } from "../src/game";
+import { fail } from "./assert";
 import {
   BINDINGS,
   BUILD_PHASE_TIME,
@@ -107,9 +109,7 @@ import {
   tileCX,
   tileCY,
   type ActionName,
-} from "../src/constants";
-import { BACKGROUND, game as build } from "../src/game";
-import { fail } from "./assert";
+} from "./constants";
 import type {
   BuildSnapshot,
   ControlRect,

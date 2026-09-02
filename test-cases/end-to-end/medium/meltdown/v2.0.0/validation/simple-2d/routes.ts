@@ -21,7 +21,7 @@
 //
 // NOTHING HERE IMPORTS A BUILD MODULE.
 
-import { COLS, ROWS, TILE } from "../src/constants";
+import { COLS, ROWS, TILE } from "./constants";
 import {
   exhaustMidpoint,
   exhaustOf,

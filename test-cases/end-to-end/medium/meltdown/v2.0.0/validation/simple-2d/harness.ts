@@ -88,6 +88,8 @@ import {
   type Viewport,
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
+import { BACKGROUND, game as build, type MeltdownState } from "../src/game";
+import { fail } from "./assert";
 import {
   BUILD_PHASE_TIME,
   DIFFICULTY_TABLE,
@@ -99,9 +101,7 @@ import {
   TRIP_TIME,
   tileCX,
   tileCY,
-} from "../src/constants";
-import { BACKGROUND, game as build, type MeltdownState } from "../src/game";
-import { fail } from "./assert";
+} from "./constants";
 import {
   footprintCentreOf,
   sizeOf,

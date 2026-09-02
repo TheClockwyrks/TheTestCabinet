@@ -24,7 +24,7 @@ import {
   TOWER_DEFS,
   tileCX,
   tileCY,
-} from "../src/constants";
+} from "./constants";
 import type { ExhaustName, Face, TowerType, VentName } from "./surface";
 
 /** A tile on the grid. */
