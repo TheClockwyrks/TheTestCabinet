@@ -201,6 +201,8 @@
 # by a case, so each appears in that script's list and in no case manifest.
 !/packages/simple-2d
 !/packages/structured-2d
+!/packages/simple-3d
+!/packages/structured-3d
 # The shared engineless (`none`) validator harness and canvas recorder. Nothing
 # bundles it and no COPY names it: scripts/stage-tcab-packages.mjs bakes it into the
 # package store beside the engine runtimes, and crates/core's vitest validator
