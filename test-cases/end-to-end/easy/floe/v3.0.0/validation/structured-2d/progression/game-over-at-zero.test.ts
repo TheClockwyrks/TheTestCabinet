@@ -30,7 +30,7 @@
 // is about, and would otherwise be graded for a screen it changed for another reason.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEATH_PAUSE, START_COL } from "../../src/constants";
+import { DEATH_PAUSE, START_COL } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
 import {
   captureReplay,

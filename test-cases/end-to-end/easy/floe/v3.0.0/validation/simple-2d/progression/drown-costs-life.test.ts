@@ -21,7 +21,7 @@
 // fails the point that owns the counter rather than this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_COL } from "../../src/constants";
+import { START_COL } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureReplay,

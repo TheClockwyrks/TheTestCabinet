@@ -30,7 +30,7 @@
 // rather than into the game over `progression/game-over-at-zero` is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEATH_PAUSE, ROW_NEAR, START_COL } from "../../src/constants";
+import { DEATH_PAUSE, ROW_NEAR, START_COL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

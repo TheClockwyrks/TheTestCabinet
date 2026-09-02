@@ -33,7 +33,7 @@
 // that owns the counter rather than this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_COL, tileCX } from "../../src/constants";
+import { START_COL, tileCX } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

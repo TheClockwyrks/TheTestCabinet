@@ -21,7 +21,7 @@
 // only the four checks about what a COMPLETED crossing leads to enter a bay, and
 // the hop below is the one gesture this group ever asks the critter for.
 
-import { BAYS, WATER_TOP } from "../../src/constants";
+import { BAYS, WATER_TOP } from "../constants";
 import {
   holdFor,
   keyFor,

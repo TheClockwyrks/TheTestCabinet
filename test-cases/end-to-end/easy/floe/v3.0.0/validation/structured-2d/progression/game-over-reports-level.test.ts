@@ -38,7 +38,7 @@
 // that printed both would still have reported the level reached.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H } from "../../src/constants";
+import { HUD_H } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

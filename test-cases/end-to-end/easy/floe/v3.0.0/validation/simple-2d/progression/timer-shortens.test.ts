@@ -35,7 +35,7 @@
 // and nothing is asserted after it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { crossingTimer, TIMER_MIN, TOTAL_LEVELS } from "../../src/constants";
+import { crossingTimer, TIMER_MIN, TOTAL_LEVELS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

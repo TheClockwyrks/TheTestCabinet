@@ -33,7 +33,7 @@
 // award.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BONUS_LIFE_EVERY, SCORE_ROW } from "../../src/constants";
+import { BONUS_LIFE_EVERY, SCORE_ROW } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

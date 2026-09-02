@@ -26,7 +26,7 @@
 // fails here rather than passing by accident.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAY_COUNT, TOTAL_LEVELS } from "../../src/constants";
+import { BAY_COUNT, TOTAL_LEVELS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

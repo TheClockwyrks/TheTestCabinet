@@ -18,7 +18,7 @@
 // crossing leads to. Every other check in this group reaches its scenario without
 // ever entering a bay.
 
-import { BAYS, WATER_TOP } from "../../src/constants";
+import { BAYS, WATER_TOP } from "../constants";
 import { poseLane, type Harness } from "../harness";
 
 /**

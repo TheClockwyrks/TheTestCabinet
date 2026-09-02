@@ -35,7 +35,7 @@
 // than being credited with a hazard that never came.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_COL, tileCX } from "../../src/constants";
+import { START_COL, tileCX } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

@@ -28,7 +28,7 @@
 // simply the first key specs/controls.md binds to the `confirm` action.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, TITLE_ITEMS } from "../../src/constants";
+import { START_LIVES, TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, keysFor, type Harness } from "../harness";
 

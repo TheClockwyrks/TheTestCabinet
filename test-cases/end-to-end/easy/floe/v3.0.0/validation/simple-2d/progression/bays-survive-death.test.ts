@@ -29,7 +29,7 @@
 // fresh crossing rather than into a game over.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAY_COUNT, DEATH_PAUSE, START_COL } from "../../src/constants";
+import { BAY_COUNT, DEATH_PAUSE, START_COL } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

@@ -30,7 +30,7 @@
 // about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEATH_PAUSE, START_COL } from "../../src/constants";
+import { DEATH_PAUSE, START_COL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

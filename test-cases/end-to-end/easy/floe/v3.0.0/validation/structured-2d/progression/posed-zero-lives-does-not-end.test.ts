@@ -32,7 +32,7 @@
 // long since finished it by the last reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROW_NEAR, START_COL } from "../../src/constants";
+import { ROW_NEAR, START_COL } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

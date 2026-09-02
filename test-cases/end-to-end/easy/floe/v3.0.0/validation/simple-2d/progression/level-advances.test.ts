@@ -35,7 +35,7 @@
 // leaves the level running and fails here rather than passing by accident.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAY_COUNT, CLEAR_PAUSE } from "../../src/constants";
+import { BAY_COUNT, CLEAR_PAUSE } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

@@ -32,7 +32,7 @@
 // one a build that dropped below the floor would show wrong.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TIMER_MIN, TOTAL_LEVELS, crossingTimer } from "../../src/constants";
+import { TIMER_MIN, TOTAL_LEVELS, crossingTimer } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -30,7 +30,7 @@
 // band that was frozen or run at another speed cannot hide inside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_COL, TICK_DT, TILE } from "../../src/constants";
+import { START_COL, TICK_DT, TILE } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

@@ -29,7 +29,7 @@
 // open, so a crossing follows rather than the level clearing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAYFILL_PAUSE } from "../../src/constants";
+import { BAYFILL_PAUSE } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
 import {
   captureReplay,

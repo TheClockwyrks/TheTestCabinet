@@ -45,7 +45,7 @@
 // reached.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BONUS_LIFE_EVERY } from "../../src/constants";
+import { BONUS_LIFE_EVERY } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureReplay,

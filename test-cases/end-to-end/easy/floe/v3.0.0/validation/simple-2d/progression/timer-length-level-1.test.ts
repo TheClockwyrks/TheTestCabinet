@@ -26,7 +26,7 @@
 // one worked value the specification states in full.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT, TIMER_BASE, TITLE_ITEMS } from "../../src/constants";
+import { TICK_DT, TIMER_BASE, TITLE_ITEMS } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import { captureStill, createHarness, keysFor, type Harness } from "../harness";
 
