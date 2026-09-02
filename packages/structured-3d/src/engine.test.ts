@@ -139,7 +139,13 @@ function fakes(log: string[] = []): Fakes {
     },
     flushDestroyed: () => log.push("flush"),
     takeTransition: () => queue.shift() ?? null,
-    close: () => log.push("close"),
+    // Faithful to the shipped driver, which answers for itself whether there is
+    // a world to close: `destroy` calls this whatever state the engine is in.
+    close: (): void => {
+      if (world === null) return;
+      world = null;
+      log.push("close");
+    },
   };
 
   const subsystems: EngineSubsystems = {
@@ -2768,6 +2774,230 @@ describe("the lifecycle's remaining edges", () => {
     await engine.advance(2);
     expect(engine.frame().count).toBe(before + 2);
     engine.destroy();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* A destroy that races the world                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The teardown paths where `destroy` and the world's own lifecycle overlap.
+ *
+ * A transition yields the thread at exactly one point — the incoming level's
+ * `load` — and a `destroy` is the one thing that can arrive while it is out. A
+ * tick is the other overlap: game code holding the engine may destroy it from
+ * inside the very frame the engine is running. Both must end with one world
+ * having ended play exactly once and nothing standing behind the torn-down
+ * engine, because the world concept page fixes the lifetime as "exactly one
+ * world exists between the moment initialization resolves and the moment the
+ * engine is destroyed".
+ */
+describe("a destroy that races the world", () => {
+  /** A promise and the function that settles it, for holding a `load` open. */
+  function gate(): { held: Promise<void>; release: () => void } {
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { held, release };
+  }
+
+  it("opens no world when it lands while the start level is loading", async () => {
+    const log: string[] = [];
+    const held = gate();
+    class Watched extends Actor {
+      override beginPlay(): void {
+        log.push("actor.beginPlay");
+      }
+    }
+    class Game extends GameInstance {
+      override initialize(): null {
+        return null;
+      }
+      override worldOpened(): void {
+        log.push("instance.worldOpened");
+      }
+      override shutdown(): void {
+        log.push("instance.shutdown");
+      }
+    }
+    const { engine } = realEngine({
+      instance: Game,
+      levels: {
+        arena: {
+          mode: GameMode,
+          actors: [{ type: Watched }],
+          load: async (): Promise<void> => {
+            log.push("load.start");
+            await held.held;
+          },
+        },
+      },
+      startLevel: "arena",
+    });
+    const starting = engine.initialize();
+    await Promise.resolve();
+    engine.destroy();
+    log.push("--destroy--");
+    held.release();
+    await starting;
+
+    // Nothing of the world is built after the teardown: the actor never begins
+    // play, the instance is never told a world opened, and the gate stays shut
+    // rather than reporting a destroyed engine as initialized.
+    expect(log).toEqual(["load.start", "instance.shutdown", "--destroy--"]);
+    expect(() => engine.world).toThrow(/before initialize\(\) resolved/);
+  });
+
+  it("opens no world when it lands mid-transition, and closes the outgoing one once", async () => {
+    const log: string[] = [];
+    const held = gate();
+    class Watched extends Actor {
+      override beginPlay(): void {
+        log.push(`actor.beginPlay:${this.world.level}`);
+      }
+      override endPlay(reason: EndPlayReason): void {
+        log.push(`actor.endPlay:${this.world.level}:${reason}`);
+      }
+      override tick(): void {
+        if (this.world.level === "one") this.world.open("two");
+      }
+    }
+    class Mode extends GameMode {
+      override beginPlay(): void {
+        log.push("mode.beginPlay");
+      }
+      override endPlay(reason: EndPlayReason): void {
+        log.push(`mode.endPlay:${reason}`);
+      }
+    }
+    class Game extends GameInstance {
+      override initialize(): null {
+        return null;
+      }
+      override worldOpened(world: World): void {
+        log.push(`instance.worldOpened:${world.level}`);
+      }
+      override shutdown(): void {
+        log.push("instance.shutdown");
+      }
+    }
+    const { engine } = realEngine({
+      instance: Game,
+      levels: {
+        one: { mode: Mode, actors: [{ type: Watched }] },
+        two: {
+          mode: Mode,
+          actors: [{ type: Watched }],
+          load: async (): Promise<void> => {
+            log.push("load:two.start");
+            await held.held;
+          },
+        },
+      },
+      startLevel: "one",
+    });
+    await engine.initialize();
+    log.length = 0;
+    const stepping = engine.advance(1);
+    await Promise.resolve();
+    engine.destroy();
+    log.push("--destroy--");
+    held.release();
+    await stepping;
+
+    // The outgoing world ends play exactly once — the transition's own teardown
+    // — and the incoming one is never built.
+    expect(log).toEqual([
+      "actor.endPlay:one:level-closed",
+      "mode.endPlay:level-closed",
+      "load:two.start",
+      "instance.shutdown",
+      "--destroy--",
+    ]);
+  });
+
+  it("ends play for the actors that began it when initialize rejected", async () => {
+    const log: string[] = [];
+    class Good extends Actor {
+      override beginPlay(): void {
+        log.push("good.beginPlay");
+      }
+      override endPlay(reason: EndPlayReason): void {
+        log.push(`good.endPlay:${reason}`);
+      }
+    }
+    class Bad extends Actor {
+      override beginPlay(): never {
+        throw new Error("boom");
+      }
+    }
+    const { engine } = realEngine({
+      levels: {
+        arena: { mode: GameMode, actors: [{ type: Good }, { type: Bad }] },
+      },
+      startLevel: "arena",
+    });
+    await expect(engine.initialize()).rejects.toThrow("boom");
+    engine.destroy();
+
+    // `initialize` rejecting leaves a world half begun; `destroy` is what ends
+    // it, so an actor that begins play always ends it.
+    expect(log).toEqual(["good.beginPlay", "good.endPlay:level-closed"]);
+  });
+
+  it("ends the frame it was called from, whichever tick called it", async () => {
+    const from = async (
+      where: "controller" | "actor" | "mode",
+    ): Promise<string[]> => {
+      const log: string[] = [];
+      // The engine the ticks tear down, reached the way a game reaches it: a
+      // closure over what built it, since the framework hands out no engine.
+      let live: Engine | null = null;
+      class Puppet extends Pawn {
+        override tick(): void {
+          log.push("actor.tick");
+          if (where === "actor") live?.destroy();
+        }
+      }
+      class Driver extends PlayerController {
+        override tick(): void {
+          log.push("controller.tick");
+          if (where === "controller") live?.destroy();
+        }
+      }
+      class Mode extends GameMode {
+        override beginPlay(): void {
+          this.addPlayer({ controller: Driver, pawn: Puppet });
+        }
+        override tick(): void {
+          log.push("mode.tick");
+          if (where === "mode") live?.destroy();
+        }
+      }
+      const { engine } = realEngine({
+        levels: { arena: { mode: Mode } },
+        startLevel: "arena",
+      });
+      live = engine;
+      await engine.initialize();
+      log.length = 0;
+      await expect(engine.advance(1)).resolves.toBeUndefined();
+      // The engine is down: a second frame runs nothing at all.
+      await engine.advance(1);
+      return log;
+    };
+
+    // Every step after the destroy is skipped, because the world it would run
+    // against has already ended play.
+    expect(await from("controller")).toEqual(["controller.tick"]);
+    expect(await from("actor")).toEqual(["controller.tick", "actor.tick"]);
+    expect(await from("mode")).toEqual([
+      "controller.tick",
+      "actor.tick",
+      "mode.tick",
+    ]);
   });
 });
 

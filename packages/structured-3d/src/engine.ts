@@ -282,7 +282,15 @@ export interface WorldDriver {
   flushDestroyed(): void;
   /** The transition this frame requested, or `null`. Reading clears it. */
   takeTransition(): PendingTransition | null;
-  /** Close the open world (everything ends play with `"level-closed"`). */
+  /**
+   * Tear the driver down: the open world, if there is one, ends play with
+   * `"level-closed"`, and any transition still in flight is abandoned.
+   *
+   * Called unconditionally by `engine.destroy`, because whether there is
+   * anything to close is the driver's own question — a rejected `initialize`
+   * leaves a half-begun world behind, and a `destroy` mid-transition leaves an
+   * awaited `load` that must not go on to build one.
+   */
   close(): void;
 }
 
@@ -453,6 +461,20 @@ function createWorldDriver(
   /** The open world and its collision system, or `null` before the first open. */
   let current: { world: EngineWorld; collision: CollisionSystem } | null = null;
 
+  /**
+   * Whether {@link WorldDriver.close} has run, which is the engine being torn
+   * down: no world is open and none ever will be again.
+   *
+   * A transition yields the thread at exactly one point — the incoming level's
+   * `load` — and `destroy` is what can arrive while it is out. The outgoing
+   * world has ended play by then and the instance has been shut down, so
+   * finishing the transition would build a world nothing will ever close,
+   * begin play in it, and announce it to an instance that is already gone.
+   * `engine.initialize` refuses the same resurrection across its own awaits;
+   * this is the flag the transition refuses it by.
+   */
+  let shut = false;
+
   const emit: EngineEventEmitter = (event, payload) =>
     services.events.emit(event, payload);
 
@@ -496,6 +518,10 @@ function createWorldDriver(
         events: services.events,
       };
       await definition.load?.(loadApi);
+      // The load is where a `destroy` overtakes a transition. Its teardown has
+      // already run — this world's outgoing half included — so the transition
+      // stops here rather than opening into an engine that no longer exists.
+      if (shut) return;
 
       // Step 9: the world is built — the mode with `options`, then the state,
       // then the declared actors, inside `EngineWorld`'s constructor — over a
@@ -535,13 +561,22 @@ function createWorldDriver(
     },
 
     tick(dtSeconds: number): void {
-      if (current === null) return;
+      const open = current;
+      if (open === null) return;
       // Steps 2 and 4–6 (time, controllers, actors, timers), then the collision
       // pass — a paused world runs none — then the mode's tick, so the mode
       // decides the match from a settled world.
-      current.world.simulate(dtSeconds);
-      if (!current.world.paused) current.collision.pass();
-      current.world.tickMode(dtSeconds);
+      //
+      // Each step re-reads the driver's world before running, because any of
+      // the ticks inside the first one may call `engine.destroy`: a game is
+      // entitled to end itself from a tick, and the steps behind that tick must
+      // then find nothing to do rather than run the collision pass and the
+      // mode's tick against a world that has already ended play.
+      open.world.simulate(dtSeconds);
+      if (current !== open) return;
+      if (!open.world.paused) open.collision.pass();
+      if (current !== open) return;
+      open.world.tickMode(dtSeconds);
     },
 
     flushDestroyed(): void {
@@ -553,11 +588,18 @@ function createWorldDriver(
     },
 
     close(): void {
+      // Set whether or not a world is open: the driver may be between the two
+      // halves of a transition, and what closes then is the transition's future
+      // rather than a world that exists yet.
+      shut = true;
       if (current === null) return;
       const closing = current;
       current = null;
       ports.dropWorldDiagnostics();
       closing.collision.close();
+      // A transition already tore this world down before awaiting the incoming
+      // level's `load`; `EngineWorld.close` ends play once, so this is the
+      // teardown or a no-op depending on which side of that await it landed.
       closing.world.close();
     },
   };
@@ -879,6 +921,11 @@ export function assembleEngine<D = unknown>(
    * game's own coordinates.
    */
   const finishFrame = (deltaMs: number): void => {
+    // A tick may have destroyed the engine, and so may a `destroy` that landed
+    // while this frame's transition was awaiting its level's `load`. Either way
+    // the world has ended play and the renderer is disposed, so the frame ends
+    // here: there is nothing left to draw and nothing left to draw it with.
+    if (destroyed) return;
     const world = frameWorld();
     // The world's delta, not the frame's: a paused world holds every model's
     // pose where it stood, and this is the number that decides it.
@@ -1210,6 +1257,11 @@ export function assembleEngine<D = unknown>(
           return instance;
         }
         await subsystems.worlds.open(game.startLevel, undefined);
+        // The same race, one await later: a `destroy` during the start level's
+        // `load` has shut the instance down and torn the driver down, and the
+        // open above returned having built nothing. Reporting the engine as
+        // ready would open the gated members onto a world that does not exist.
+        if (destroyed) return instance;
         ready = true;
         return instance;
       })();
@@ -1354,7 +1406,13 @@ export function assembleEngine<D = unknown>(
       if (destroyed) return;
       destroyed = true;
       halt();
-      if (ready) subsystems.worlds.close();
+      // Unconditional rather than gated on `ready`: a world exists from the
+      // moment the driver builds it, which is before its actors begin play and
+      // well before `initialize` resolves, so an `initialize` that rejected
+      // part-way through the start level still leaves actors owed an `endPlay`.
+      // The driver answers for the case where there is nothing to close, and
+      // the same call is what stops a transition still awaiting its `load`.
+      subsystems.worlds.close();
       if (built !== null) built.instance.shutdown();
       subsystems.audio.silence();
       subsystems.input.detach();
