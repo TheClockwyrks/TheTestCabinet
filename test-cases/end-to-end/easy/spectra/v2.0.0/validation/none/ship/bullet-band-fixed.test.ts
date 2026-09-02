@@ -24,17 +24,21 @@
 // correct build but not from each other, and a single magenta one would miss the
 // first entirely. With one of each, every wrong model reads as a different pair.
 //
-// THE FLIP IS GIVEN TIME TO ACT. A tenth of a second of game time runs after the
-// press, so a build that re-stamps its bullets on the next update rather than
-// inside the handler is caught just the same. The bullets are placed low enough
-// that they are still in flight at the end of it: a conformant bullet climbs 76
-// units in that tenth of a second, and these start 200 units above `FIELD_TOP`.
+// THE FLIP IS GIVEN TIME TO ACT. A fifth of a second of game time runs after the
+// press, so a build that re-stamps its bullets on a later update rather than
+// inside the handler has had every chance to and is caught rather than sampled
+// just before it acts. It is the window the same point uses under both engines.
 //
-// THE BULLETS ARE PLACED RATHER THAN FIRED. `addPlayerBullet` takes the band as
-// an argument, which is the only way to have both bands in the air at once
-// without firing twice around a flip — and firing them would put the cannon's
-// gates, its spawn point and the `FLIP_LOCKOUT` this very flip starts inside a
-// reading about what a bullet in flight remembers.
+// THE BULLETS ARE PLACED RATHER THAN FIRED, AND HELD STILL. `addPlayerBullet`
+// takes the band as an argument, which is the only way to have both bands in the
+// air at once without firing twice around a flip — and firing them would put the
+// cannon's gates, its spawn point and the `FLIP_LOCKOUT` this very flip starts
+// inside a reading about what a bullet in flight remembers.
+// `setBulletVelocity(id, 0, 0)` then holds each one where it was placed, so both
+// bullets read after the flip are certainly the same two and are certainly still
+// on the field: `specs/ship.md` fixes a bullet's band for its whole life however
+// it moves, so nothing this point reads depends on its travel, and the removal at
+// the top of the field is `field/player-bullet-leaves-field`'s.
 //
 // THE WORLD IS EMPTY. `startPosed` clears the four rosters and shuts the wave's
 // three gates, so no drone can consume either bullet before it is read.
@@ -63,7 +67,7 @@ const LEFT_AT = { x: 560, y: FIELD_TOP + 200 };
 const RIGHT_AT = { x: 720, y: FIELD_TOP + 200 };
 
 /** How much game time runs after the flip, so a build that re-stamps later is caught. */
-const SETTLE_FRAMES = framesFor(0.1);
+const SETTLE_FRAMES = framesFor(0.2);
 
 let h: Harness;
 
@@ -105,6 +109,10 @@ it("leaves both bullets on the bands they were fired with, through a flip", asyn
     opposite(SHIP_BAND),
     "the band the second bullet was placed with",
   );
+  // Held where they were placed, so the two bullets read after the flip are
+  // certainly the same two and are certainly still on the field.
+  await h.debug.setBulletVelocity(same.id, 0, 0);
+  await h.debug.setBulletVelocity(other.id, 0, 0);
 
   await h.tap(FLIP_KEY);
   await h.advance(SETTLE_FRAMES);

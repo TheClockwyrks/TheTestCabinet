@@ -18,20 +18,28 @@
 // bullet through a flip, and this point is not decided in its favour by a press that
 // never happened.
 //
-// THE SHOT IS POSED, NOT FIRED. `addPlayerBullet` adds "one of the player's bullets
-// in flight … carrying `band`" (specs/instrumentation.md), which is precisely the
-// precondition the rule names — a bullet ALREADY in flight, with a band of its own —
-// and posing it keeps the cannon, the cadence and the spawn point out of a point
-// about neither. It is posed on the band the ship is holding, cyan, because that is
-// the state a real shot leaves behind: the interesting thing is whether the flip
-// drags it to magenta with the ship.
+// THE SHOTS ARE POSED, NOT FIRED. `addPlayerBullet` adds "one of the player's
+// bullets in flight … carrying `band`" (specs/instrumentation.md), which is
+// precisely the precondition the rule names — a bullet ALREADY in flight, with a
+// band of its own — and posing it keeps the cannon, the cadence and the spawn point
+// out of a point about neither. It is also the only way to have both bands in the
+// air at once without firing twice around a flip.
 //
-// THE SHOT IS HELD STILL, with `setBulletVelocity(id, 0, 0)`
-// (specs/instrumentation.md), so the bullet the check reads after the flip is
-// certainly the same bullet and is certainly still on the field: `specs/bands.md`
+// TWO BULLETS, ONE ON EACH BAND, AND THAT IS WHAT SEPARATES THE WRONG MODELS. The
+// ship is on cyan. A build that re-stamps every bullet with the ship's NEW band
+// turns both magenta; a build that flips every bullet along with the ship swaps the
+// two; a build that derives a bullet's band from the ship's live band reports both
+// as magenta. A single cyan bullet would tell the first two apart from a correct
+// build but not from each other, and a single magenta one would miss the first
+// entirely. With one of each, every wrong model reads as a different pair — which
+// is how the same point reads under the other two engines.
+//
+// THE SHOTS ARE HELD STILL, with `setBulletVelocity(id, 0, 0)`
+// (specs/instrumentation.md), so the bullets the check reads after the flip are
+// certainly the same two and are certainly still on the field: `specs/bands.md`
 // fixes a bullet's band for its whole life however it moves, so nothing this point
-// reads depends on its travel, and specs/field.md's removal at the top of the field
-// is `field/player-bullet-leaves-field`'s.
+// reads depends on their travel, and specs/field.md's removal at the top of the
+// field is `field/player-bullet-leaves-field`'s.
 //
 // THE FIELD IS WATCHED FOR A FIFTH OF A SECOND AFTER THE FLIP, not read on the
 // instant, so a build that repaints its bullets' bands a frame or two later is
@@ -59,11 +67,15 @@ import { bulletOnRoster } from "./cannon";
 /** The key the flip is delivered on: the first `specs/controls.md` binds to `b`. */
 const FLIP_KEY = BINDINGS.b[0];
 
-/** The band the ship holds, and the band the shot is therefore fired with. */
+/** The band the ship holds, and the band the first shot is therefore fired with. */
 const FIRED_ON: Band = "cyan";
 
-/** Where the posed shot stands: up the lane's own column, well inside the field. */
-const SHOT_AT = { x: LANE_CENTER, y: SHIP_Y - 200 };
+/** The other band, which the second shot carries and the ship flips TO. */
+const OTHER_BAND: Band = "magenta";
+
+/** Where the two posed shots stand: either side of the lane, well inside the field. */
+const SAME_AT = { x: LANE_CENTER - 80, y: SHIP_Y - 200 };
+const OTHER_AT = { x: LANE_CENTER + 80, y: SHIP_Y - 200 };
 
 /**
  * How long the field is watched after the flip, in frames.
@@ -84,14 +96,17 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("leaves an in-flight bullet's band alone when the ship flips", async () => {
+it("leaves both bullets on the bands they were fired with, through a flip", async () => {
   startPosed(h);
   h.debug.setShipBand(FIRED_ON);
-  const id = posePlayerBullet(h, SHOT_AT.x, SHOT_AT.y, FIRED_ON);
-  // Held still, so the bullet read after the flip is certainly the same bullet and
-  // is certainly still on the field. Its band is fixed for its whole life however it
-  // moves (specs/bands.md), so nothing this point reads is changed by holding it.
-  h.debug.setBulletVelocity(id, 0, 0);
+  const same = posePlayerBullet(h, SAME_AT.x, SAME_AT.y, FIRED_ON);
+  const other = posePlayerBullet(h, OTHER_AT.x, OTHER_AT.y, OTHER_BAND);
+  // Held still, so the bullets read after the flip are certainly the same two and
+  // are certainly still on the field. A band is fixed for a bullet's whole life
+  // however it moves (specs/bands.md), so nothing this point reads is changed by
+  // holding them.
+  h.debug.setBulletVelocity(same, 0, 0);
+  h.debug.setBulletVelocity(other, 0, 0);
 
   const before = h.snapshot();
   assertEqual(before.screen, "inWave", "the screen that reads the flip action");
@@ -101,9 +116,14 @@ it("leaves an in-flight bullet's band alone when the ship flips", async () => {
     "the band the ship holds before the flip",
   );
   assertEqual(
-    bulletOnRoster(before, id, "before the flip").band,
+    bulletOnRoster(before, same, "before the flip").band,
     FIRED_ON,
-    "the band the shot was posed in flight with",
+    "the band the first shot was posed in flight with",
+  );
+  assertEqual(
+    bulletOnRoster(before, other, "before the flip").band,
+    OTHER_BAND,
+    "the band the second shot was posed in flight with",
   );
 
   await h.tap(FLIP_KEY);
@@ -121,11 +141,22 @@ it("leaves an in-flight bullet's band alone when the ship flips", async () => {
       "(specs/bands.md)",
   );
   assertEqual(
-    bulletOnRoster(after, id, `${String(WATCH_FRAMES)} frames after the flip`)
+    bulletOnRoster(after, same, `${String(WATCH_FRAMES)} frames after the flip`)
       .band,
     FIRED_ON,
-    `the band of the bullet that was already in flight when the ship flipped ` +
-      `to ${after.ship.band} — a bullet already in flight keeps the band it was ` +
-      "fired with (specs/bands.md)",
+    `the band of the ${FIRED_ON} bullet that was already in flight when the ` +
+      `ship flipped to ${after.ship.band} — a bullet already in flight keeps ` +
+      "the band it was fired with (specs/bands.md)",
+  );
+  assertEqual(
+    bulletOnRoster(
+      after,
+      other,
+      `${String(WATCH_FRAMES)} frames after the flip`,
+    ).band,
+    OTHER_BAND,
+    `the band of the ${OTHER_BAND} bullet that was already in flight when the ` +
+      `ship flipped to ${after.ship.band} — the flip drags no bullet onto the ` +
+      "band it left, either (specs/bands.md)",
   );
 });
