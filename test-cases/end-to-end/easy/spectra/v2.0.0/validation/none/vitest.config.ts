@@ -44,8 +44,11 @@ export default defineConfig({
     // is most of what decides how long the whole run takes. Capped rather than
     // left to the core count because the cost of a page is memory in one shared
     // browser process rather than a core, and the host running this is running a
-    // model's build under it.
-    maxWorkers: 4,
+    // model's build under it. Eight rather than four because a suite waiting on a
+    // round trip holds no core: on a host already running everything else, the
+    // whole project finishes sooner with more of them in flight, and the machine
+    // it ran on is exactly what a verdict may not depend on.
+    maxWorkers: 8,
     minWorkers: 1,
     // Every scenario is posed rather than played into, so a suite is a few dozen
     // crossings into the page rather than thousands of real-time frames. The
@@ -54,7 +57,7 @@ export default defineConfig({
     // even on a host running a hundred other jobs, because a check cut short by
     // the runner reports a build's failure that never happened, and how busy the
     // machine was is not a property of the build.
-    testTimeout: 240_000,
-    hookTimeout: 240_000,
+    testTimeout: 480_000,
+    hookTimeout: 480_000,
   },
 });

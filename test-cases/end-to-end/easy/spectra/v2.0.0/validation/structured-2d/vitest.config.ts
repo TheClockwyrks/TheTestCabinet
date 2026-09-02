@@ -34,13 +34,21 @@ export default defineConfig({
     passWithNoTests: false,
     coverage: { enabled: false },
     // Every scenario is posed and stepped in process, so a suite costs
-    // milliseconds; the ceiling is for the few that run a minute of game time —
-    // a wave flying in, a challenge stage's whole flyover, a Flux's cycle at a
-    // late stage.
-    testTimeout: 60_000,
+    // milliseconds on a quiet host. The ceiling is not a figure any check is
+    // sized against: what it bounds is a suite that never returns, and it stands
+    // far above the longest reading taken even on a host running a hundred other
+    // jobs — a check cut short by the runner reports a build's failure that never
+    // happened, and how busy the machine was is not a property of the build.
+    testTimeout: 300_000,
     // The same ceiling on the hooks, because every suite builds its harness in a
     // `beforeEach`: a build whose `initialize` is slow must fail on its own
     // merits rather than on a hook the runner cut short.
-    hookTimeout: 60_000,
+    hookTimeout: 300_000,
+    // Every frame a suite advances is a frame the engine renders into an
+    // `@napi-rs/canvas` surface, so these projects are CPU rather than round
+    // trips, and left to itself vitest fans out over every core the box has.
+    // Capped so the project does not contend with itself on a host that is
+    // already running everything else.
+    maxWorkers: 8,
   },
 });
