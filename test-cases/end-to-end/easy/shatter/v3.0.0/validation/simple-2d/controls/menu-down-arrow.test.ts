@@ -42,7 +42,7 @@
 // `screens/title-menu-highlight`. Nor where confirming would lead.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, PAUSE_ITEMS } from "../../src/constants";
+import { BINDINGS, PAUSE_ITEMS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,

@@ -41,7 +41,7 @@
 // that can move the facing across the drive is the key this item is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, DEG, SHIP_TURN, TICK_DT } from "../../src/constants";
+import { BINDINGS, DEG, SHIP_TURN, TICK_DT } from "../constants";
 import {
   assertContains,
   assertLessThan,

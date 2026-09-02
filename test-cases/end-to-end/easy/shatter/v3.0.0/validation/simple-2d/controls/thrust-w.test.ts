@@ -30,7 +30,7 @@
 // on release, which the item's description leaves to `controls/thrust-up`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_THRUST } from "../../src/constants";
+import { BINDINGS, SHIP_THRUST } from "../constants";
 import {
   assertContains,
   assertEqual,

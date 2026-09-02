@@ -54,7 +54,7 @@
 // binding, which is `controls/thrust-w`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_THRUST, TICK_DT } from "../../src/constants";
+import { SHIP_THRUST, TICK_DT } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

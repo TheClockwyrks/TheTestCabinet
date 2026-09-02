@@ -49,7 +49,7 @@
 // entry of movement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, PAUSE_ITEMS } from "../../src/constants";
+import { BINDINGS, PAUSE_ITEMS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,

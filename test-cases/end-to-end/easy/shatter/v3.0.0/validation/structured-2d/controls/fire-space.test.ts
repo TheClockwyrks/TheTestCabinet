@@ -41,7 +41,7 @@
 // the cue the shot sounds (`audio/fire-cue`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL_TICKS } from "../../src/constants";
+import { FIRE_INTERVAL_TICKS } from "../constants";
 import { assertLength } from "../assert";
 import {
   captureStill,

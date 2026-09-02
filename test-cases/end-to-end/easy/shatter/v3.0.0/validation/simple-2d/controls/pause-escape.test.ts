@@ -39,7 +39,7 @@
 // key, on this screen, opens that screen.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,

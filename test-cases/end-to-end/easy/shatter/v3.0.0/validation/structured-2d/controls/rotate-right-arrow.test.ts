@@ -48,7 +48,7 @@
 // counter-clockwise binding, which is `controls/rotate-left-arrow`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, SHIP_TURN, TICK_HZ } from "../../src/constants";
+import { DEG, SHIP_TURN, TICK_HZ } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

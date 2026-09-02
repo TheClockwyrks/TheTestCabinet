@@ -42,7 +42,7 @@
 // clause), and the arrow binding itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, SHIP_TURN } from "../../src/constants";
+import { DEG, SHIP_TURN } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

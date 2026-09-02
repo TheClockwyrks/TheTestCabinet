@@ -32,7 +32,7 @@
 // `controls/rotate-left-arrow`, where `specs/controls.md`'s hold rule is graded.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, DEG, SHIP_TURN } from "../../src/constants";
+import { BINDINGS, DEG, SHIP_TURN } from "../constants";
 import {
   assertContains,
   assertLessThan,

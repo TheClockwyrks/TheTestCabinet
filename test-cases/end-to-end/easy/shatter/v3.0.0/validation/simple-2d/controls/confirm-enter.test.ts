@@ -33,7 +33,7 @@
 // screen, takes the highlighted entry.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, TITLE_ITEMS } from "../../src/constants";
+import { BINDINGS, TITLE_ITEMS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 

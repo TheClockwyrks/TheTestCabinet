@@ -40,7 +40,7 @@
 // the drag-free ideal, which rules out a nudge and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_THRUST, TICK_DT } from "../../src/constants";
+import { BINDINGS, SHIP_THRUST, TICK_DT } from "../constants";
 import {
   assertContains,
   assertEqual,

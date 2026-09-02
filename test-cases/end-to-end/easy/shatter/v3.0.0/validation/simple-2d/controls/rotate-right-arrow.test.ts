@@ -37,7 +37,7 @@
 // `flight/rotation-keeps-velocity`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, DEG, SHIP_TURN, TICK_DT } from "../../src/constants";
+import { BINDINGS, DEG, SHIP_TURN, TICK_DT } from "../constants";
 import {
   assertContains,
   assertGreaterThan,

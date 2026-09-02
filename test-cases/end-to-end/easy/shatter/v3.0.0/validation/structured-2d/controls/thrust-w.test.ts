@@ -43,7 +43,7 @@
 // itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_THRUST } from "../../src/constants";
+import { SHIP_THRUST } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
