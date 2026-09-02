@@ -20,7 +20,7 @@
 // forager grazes, and the maze cannot clear and descend mid-window.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../../src/constants";
+import { BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../constants";
 import { assertLessThanOrEqual, fail } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import type { Tile } from "../maze";

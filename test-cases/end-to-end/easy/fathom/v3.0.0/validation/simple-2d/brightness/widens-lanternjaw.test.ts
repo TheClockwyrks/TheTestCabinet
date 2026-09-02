@@ -47,7 +47,7 @@ import {
   BRIGHT_HOLD,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,

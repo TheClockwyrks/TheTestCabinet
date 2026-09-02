@@ -35,7 +35,7 @@ import {
   BRIGHT_HOLD,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
-} from "../../src/constants";
+} from "../constants";
 import { assertLessThanOrEqual, assertNotEqual, fail } from "../assert";
 import { poseApart, spawnPredator } from "../fixtures";
 import {
