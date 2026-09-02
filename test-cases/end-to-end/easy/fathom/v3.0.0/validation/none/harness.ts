@@ -435,7 +435,7 @@ export interface Harness {
    *
    * A fault here is the build's: the surface is missing, or it is missing an
    * operation `specs/instrumentation.md` requires. It says what was found
-   * (`window.__fathom was still absent 15s after the page loaded`), and
+   * (`window.__fathom was still absent 60s after the page loaded`), and
    * {@link failSurface} pairs it with what the specification requires. Every
    * operation fails by assertion with that pair rather than throwing, so the fault
    * lands on the points whose checks reach the game through the surface.
@@ -564,15 +564,19 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  * "every point this decides failed" into "the validators did not run", which
  * tells a reviewer far less.
  *
- * FIFTEEN SECONDS RATHER THAN FIVE, because the ceiling is not really on the
+ * A MINUTE RATHER THAN FIVE SECONDS, because the ceiling is not really on the
  * build: it is on the host. This project holds four pages of one browser open at
- * once and the machine that runs it is running a model's build under it, so a
- * page can be starved of processor long enough for a perfectly conforming build's
- * entry module to take seconds of wall clock to run. Five seconds was observed to
- * fail such a build once in a suite run; fifteen costs a healthy build nothing,
- * because the poll returns the instant the global appears.
+ * once and the machine that runs it is running a model's build under it — and, on
+ * a shared machine, whatever else that machine is doing. A page can be starved of
+ * processor long enough for a perfectly conforming build's entry module to take
+ * tens of seconds of wall clock to run, and a build failed for that has been
+ * failed for the load average. Five seconds was observed to fail such a build once
+ * in a suite run; fifteen is not obviously enough either, and a minute costs a
+ * healthy build nothing at all, because the poll returns the instant the global
+ * appears. It sits inside the hook budget `vitest.config.ts` states, so a build
+ * that really has no surface still fails on this rather than on the runner.
  */
-const SURFACE_TIMEOUT_MS = 15_000;
+const SURFACE_TIMEOUT_MS = 60_000;
 
 /**
  * The most recorded frames one driven run closes while a capture is keeping them.

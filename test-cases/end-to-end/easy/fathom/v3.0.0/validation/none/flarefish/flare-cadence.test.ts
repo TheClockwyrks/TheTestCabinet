@@ -46,6 +46,7 @@ import {
   CHARGE_MAX,
   FIRST_FLARE_MAX,
   FLARE_POLL,
+  FLARE_WAIT_POLL,
   NEXT_FLARE_MAX,
   poseFlareRoom,
 } from "./room";
@@ -56,12 +57,28 @@ import {
  *
  * The item's own bounds: a tenth of a second for the charge and the bloom, a
  * fifth for the gap between consecutive charge-ups, which is the sum of three
- * figures and so carries three beats' worth of a build's own rounding. The sweeps
- * resolve an edge to `FLARE_POLL` ticks, a sixtieth of a second, so all but a
- * sixth of the tighter band is room for the build.
+ * figures and so carries three beats' worth of a build's own rounding. Each beat
+ * is measured between two edges resolved to `FLARE_POLL` ticks and each edge is
+ * seen at the first sample at or after it, so a beat is under a thirtieth of a
+ * second out either way — a third of the tighter band, leaving the rest to the
+ * build. The cycle is measured between two edges resolved to {@link CYCLE_POLL},
+ * which stands in the same ratio to the band twice as wide.
  */
 const BEAT_TOLERANCE = 0.1;
 const CYCLE_TOLERANCE = 0.2;
+
+/**
+ * How often the two charge-ups the CYCLE is measured between are looked for, in
+ * ticks: a fifteenth of a second.
+ *
+ * The cycle's band is twice a beat's, so the edges it is measured between can be
+ * resolved half as finely and still leave two thirds of the band to the build.
+ * They are the two most expensive edges in this check — each is a whole
+ * `FLARE_INTERVAL` (`7 s`) of wandering away, and `specs/instrumentation.md` has
+ * every sample redraw — so halving their cost is most of what this check costs.
+ * The beats inside a cycle stay at {@link FLARE_POLL}.
+ */
+const CYCLE_POLL = 8;
 
 /**
  * The gap between consecutive charge-ups, in seconds.
@@ -150,7 +167,7 @@ it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole 
   // charge-up rather than from the pose.
   const firstCharge = await h.until(charging, {
     maxTicks: ticks(FIRST_FLARE_MAX),
-    poll: FLARE_POLL,
+    poll: CYCLE_POLL,
   });
   stillWandering(firstCharge.snapshot, "it first charged up");
   assertEqual(
@@ -158,9 +175,11 @@ it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole 
     true,
     `a wandering Flarefish charged up within ${FIRST_FLARE_MAX} s`,
   );
+  // Pure waits, both: only `hit` and the hunter's state are read off them, and
+  // the cycle below is measured between the two CHARGE-UPS.
   const firstBloom = await h.until(blooming, {
     maxTicks: ticks(CHARGE_MAX),
-    poll: FLARE_POLL,
+    poll: FLARE_WAIT_POLL,
   });
   stillWandering(firstBloom.snapshot, "its first charge-up reached a bloom");
   assertEqual(
@@ -170,7 +189,7 @@ it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole 
   );
   const firstQuiet = await h.until((snap) => !blooming(snap), {
     maxTicks: ticks(BLOOM_MAX),
-    poll: FLARE_POLL,
+    poll: FLARE_WAIT_POLL,
   });
   stillWandering(firstQuiet.snapshot, "its first bloom ended");
   assertEqual(
@@ -180,7 +199,7 @@ it("charges for FLARE_CHARGE, blooms for FLARE_BLOOM, and charges again a whole 
   );
   const secondCharge = await h.until(charging, {
     maxTicks: ticks(NEXT_FLARE_MAX),
-    poll: FLARE_POLL,
+    poll: CYCLE_POLL,
   });
   stillWandering(secondCharge.snapshot, "it charged up a second time");
   assertEqual(

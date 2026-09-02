@@ -35,16 +35,19 @@ export default defineConfig({
     // drives some seven and a half thousand of them. That takes half a minute of
     // wall clock on a quiet machine and appreciably longer on a loaded one, so a
     // budget sized to what it costs when nothing else is running turns an honest
-    // measurement into a coin flip. This is several times the slowest check
-    // observed, which costs a passing suite nothing and still stops a validator
-    // that hangs far inside the runner's own cap on the whole run.
-    testTimeout: 180_000,
+    // measurement into a coin flip. This is many times the slowest check observed
+    // on an idle machine, which costs a passing suite nothing and still stops a
+    // validator that hangs. What it is NOT is a budget for the measurement: every
+    // check here decides its verdict on frames and on the state they left, all of
+    // it deterministic; what varies is the wall clock the same work takes, and
+    // that is a property of the machine.
+    testTimeout: 300_000,
     // The same ceiling on a hook as on a check, rather than vitest's own 10 s
     // default. `beforeEach` here constructs the engine, loads every seeded sheet
     // and runs the build's `initialize` — real work, and work that competes with
     // whatever else the host is running. A hook budget sized for a quiet machine
     // fails a perfectly good build as "hook timed out", which says nothing about
     // the build at all.
-    hookTimeout: 180_000,
+    hookTimeout: 300_000,
   },
 });
