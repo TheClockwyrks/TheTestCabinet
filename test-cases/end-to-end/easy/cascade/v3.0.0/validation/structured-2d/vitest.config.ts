@@ -32,6 +32,16 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
+    // HOW MANY SUITES RUN AT ONCE IS THE CASE'S FIGURE, NOT THE HOST'S. Left
+    // unset, vitest fans out across whatever cores it finds, so the same
+    // checklist runs eight ways on one machine and forty on another — and every
+    // suite here is a forked node process holding an engine over its own canvas,
+    // so the fan-out decides how much memory the run wants as much as how fast it
+    // goes. Eight is what the engineless project settles on for the same reason
+    // and is enough to use a machine of any ordinary size properly, while leaving
+    // the host something to run the build's own work with.
+    maxWorkers: 8,
+    minWorkers: 1,
     // WHAT THESE TWO BOUND, AND WHAT THEY MUST NOT DECIDE. A suite here is
     // deterministic: it poses a board, steps a counted number of frames, and
     // reads what they left, and not one assertion in the project reads a wall
