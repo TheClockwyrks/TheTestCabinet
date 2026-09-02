@@ -146,18 +146,21 @@ export async function poseLiveLanes(
   row: number,
   level = 1,
 ): Promise<void> {
-  const { debug } = h;
-  await debug.reset();
-  await debug.setLevel(level);
-  await debug.setBearEmergence(false);
-  await debug.setCatchTest(false);
-  await debug.setFishCadence(false);
-  await debug.setTimerRunning(false);
-  await debug.setScreen("playing");
-  await debug.setPhase("crossing");
-  await debug.setPhaseTimer(0);
-  await debug.setTimer(crossingTimer(level));
-  await debug.addCritter(col, row);
+  // One run of poses with no reading between them, so one crossing into the page
+  // rather than eleven. See `Harness.poseAll`.
+  await h.poseAll([
+    { op: "reset", args: [] },
+    { op: "setLevel", args: [level] },
+    { op: "setBearEmergence", args: [false] },
+    { op: "setCatchTest", args: [false] },
+    { op: "setFishCadence", args: [false] },
+    { op: "setTimerRunning", args: [false] },
+    { op: "setScreen", args: ["playing"] },
+    { op: "setPhase", args: ["crossing"] },
+    { op: "setPhaseTimer", args: [0] },
+    { op: "setTimer", args: [crossingTimer(level)] },
+    { op: "addCritter", args: [col, row] },
+  ]);
 }
 
 /**

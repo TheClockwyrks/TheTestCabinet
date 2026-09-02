@@ -28,6 +28,7 @@ import { FISH_INTERVAL, TICK_HZ } from "../constants";
 import {
   captureStill,
   createHarness,
+  seconds,
   startCrossing,
   ticksFor,
   type Harness,

@@ -592,8 +592,8 @@ it("writes a still and a replay under the media directory", async () => {
     assertEqual(recording.height, 720);
     assertLength(
       recording.frames,
-      12,
-      "the driven ticks, two to a recorded frame, and nothing of the skip",
+      6,
+      "the driven ticks, four to a recorded frame, and nothing of the skip",
     );
     assertGreaterThan(recording.ops.length, 0, "the frames carry operations");
     assertCloseTo(

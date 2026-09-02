@@ -626,6 +626,24 @@ export interface Harness {
   /** A fresh read of the game's state through the build's `snapshot`. */
   snapshot(): Promise<FloeSnapshot>;
   /**
+   * Run several operations of the build's own surface, in order, in ONE crossing
+   * into the page.
+   *
+   * A POSE IS ARRANGEMENT, NEVER A MEASUREMENT. Each entry is exactly the call
+   * `h.debug.<op>(...)` would have made — the build's own operation, the caller's
+   * own arguments, in the order written — and the build's rules run from whatever
+   * they leave behind, on the next tick, exactly as before. What crossing them
+   * together removes is a round trip to the browser per FIELD, and what a round
+   * trip costs is a property of how busy the machine is rather than of the build:
+   * `startCrossing` alone arranges eighteen of them, and every suite in this
+   * project opens with it.
+   *
+   * Use it for a run of poses with no reading between them. Where a pose's
+   * argument comes from a reading — an id the roster has to report first — the
+   * reading goes between two calls of this, not inside one.
+   */
+  poseAll(poses: readonly Pose[]): Promise<void>;
+  /**
    * Run `ticks` whole simulation ticks.
    *
    * One call into the page by default. `clock` divides the interval into several
@@ -1329,6 +1347,26 @@ export async function createHarness(
     timeMs: () => tickCount * TICK_DT * 1000,
 
     snapshot: () => debug.snapshot(),
+
+    async poseAll(poses) {
+      if (surfaceFault !== null) refuse();
+      if (poses.length === 0) return;
+      await page.evaluate(
+        ([handle, ops]) => {
+          const api = (
+            window as unknown as Record<
+              string,
+              Record<string, (...a: unknown[]) => unknown>
+            >
+          )[handle];
+          for (const { op, args } of ops) api[op](...args);
+        },
+        [
+          HANDLE,
+          poses.map((pose) => ({ op: pose.op, args: [...pose.args] })),
+        ] as const,
+      );
+    },
 
     async advance(ticks, clock) {
       const whole = Math.max(0, Math.trunc(ticks));
@@ -3299,25 +3337,29 @@ export function critterTile(snapshot: FloeSnapshot): Tile {
  * what its requirement concerns.
  */
 export async function startCrossing(h: Harness, level = 1): Promise<void> {
-  const { debug } = h;
-  await debug.reset();
-  await debug.setLevel(level);
-  await debug.clearVehicles();
-  await debug.clearFloes();
-  await debug.clearBears();
-  await debug.clearBays();
-  await debug.clearFish();
-  await debug.setBearEmergence(false);
-  await debug.setCatchTest(false);
-  await debug.setFishCadence(false);
-  await debug.setTimerRunning(false);
-  await debug.setScreen("playing");
-  await debug.setPhase("crossing");
-  await debug.setPhaseTimer(0);
-  await debug.setLives(START_LIVES);
-  await debug.setScore(0);
-  await debug.setTimer(crossingTimer(level));
-  await debug.addCritter(START_COL, ROW_NEAR);
+  // Eighteen operations of the build's own surface, in this order, in one
+  // crossing: nothing here reads the game between them. See
+  // {@link Harness.poseAll}.
+  await h.poseAll([
+    { op: "reset", args: [] },
+    { op: "setLevel", args: [level] },
+    { op: "clearVehicles", args: [] },
+    { op: "clearFloes", args: [] },
+    { op: "clearBears", args: [] },
+    { op: "clearBays", args: [] },
+    { op: "clearFish", args: [] },
+    { op: "setBearEmergence", args: [false] },
+    { op: "setCatchTest", args: [false] },
+    { op: "setFishCadence", args: [false] },
+    { op: "setTimerRunning", args: [false] },
+    { op: "setScreen", args: ["playing"] },
+    { op: "setPhase", args: ["crossing"] },
+    { op: "setPhaseTimer", args: [0] },
+    { op: "setLives", args: [START_LIVES] },
+    { op: "setScore", args: [0] },
+    { op: "setTimer", args: [crossingTimer(level)] },
+    { op: "addCritter", args: [START_COL, ROW_NEAR] },
+  ]);
 }
 
 /**
@@ -3378,21 +3420,22 @@ export async function poseLane(
     fail(`a floe kind on water row ${row} (specs/water.md)`, kind);
   }
 
-  await h.debug.setLaneSpeed(row, 0);
-  const before = ice
-    ? (await h.snapshot()).vehicles.length
-    : (await h.snapshot()).floes.length;
-  for (const col of cols) {
-    if (ice) {
-      await h.debug.addVehicle(row, kind as VehicleKind, tileLeft(col));
-    } else {
-      await h.debug.addFloe(row, kind as FloeKind, tileLeft(col));
-    }
-  }
+  // The roster is read BEFORE the lane is touched, which is the same count:
+  // `setLaneSpeed` moves nothing on and nothing off. That leaves the stop and the
+  // adds a single run of poses with no reading between them.
+  const posed = await h.snapshot();
+  const before = ice ? posed.vehicles.length : posed.floes.length;
+  await h.poseAll([
+    { op: "setLaneSpeed", args: [row, 0] },
+    ...cols.map((col) =>
+      ice
+        ? { op: "addVehicle", args: [row, kind as VehicleKind, tileLeft(col)] }
+        : { op: "addFloe", args: [row, kind as FloeKind, tileLeft(col)] },
+    ),
+  ]);
 
-  const roster = ice
-    ? (await h.snapshot()).vehicles
-    : (await h.snapshot()).floes;
+  const laid = await h.snapshot();
+  const roster = ice ? laid.vehicles : laid.floes;
   if (roster.length !== before + cols.length) {
     fail(
       `${ice ? "addVehicle" : "addFloe"} to append each item to its roster ` +
@@ -3443,14 +3486,27 @@ export async function poseBear(
     );
   }
   const id = added.id;
-  if (pose.target !== undefined) {
-    await h.debug.setBearTarget(id, pose.target.col, pose.target.row);
-  }
-  if (pose.sense !== undefined) await h.debug.setBearSense(id, pose.sense);
-  if (pose.routing !== undefined) {
-    await h.debug.setBearRouting(id, pose.routing);
-  }
-  if (pose.travel !== undefined) await h.debug.setBearTravel(id, pose.travel);
+  // The id had to be read off the roster first, so the faculties this scenario
+  // turns off go over in one crossing after it rather than one apiece.
+  await h.poseAll([
+    ...(pose.target === undefined
+      ? []
+      : [
+          {
+            op: "setBearTarget",
+            args: [id, pose.target.col, pose.target.row],
+          },
+        ]),
+    ...(pose.sense === undefined
+      ? []
+      : [{ op: "setBearSense", args: [id, pose.sense] }]),
+    ...(pose.routing === undefined
+      ? []
+      : [{ op: "setBearRouting", args: [id, pose.routing] }]),
+    ...(pose.travel === undefined
+      ? []
+      : [{ op: "setBearTravel", args: [id, pose.travel] }]),
+  ]);
   return id;
 }
 
