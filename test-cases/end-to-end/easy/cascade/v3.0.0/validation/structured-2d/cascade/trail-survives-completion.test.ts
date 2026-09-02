@@ -22,7 +22,7 @@
 // under eight percent of the stage.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
@@ -77,7 +77,18 @@ it("leaves the table painted once the cascade is done", async () => {
   const bare = sampleGrid(harness, TABLE, GRID_COLS, GRID_ROWS);
   harness.debug.setTrailPainting(true);
 
-  await harness.until((seen) => seen.cascadeDone, { maxFrames: MAX_FRAMES });
+  const finished = await harness.until((seen) => seen.cascadeDone, {
+    maxFrames: MAX_FRAMES,
+  });
+  // Read only once there is a FINISHED table to read. Without this the sweep
+  // would simply run out against a build whose cascade never ends, and the
+  // painted share would be measured somewhere in the middle of one — which is a
+  // table this point says nothing about, and a pass this point never meant.
+  assertEqual(
+    finished.hit,
+    true,
+    "the cascade to finish, so there is a finished table to read",
+  );
   const done = sampleGrid(harness, TABLE, GRID_COLS, GRID_ROWS);
   captureStill(harness, "painted");
 
