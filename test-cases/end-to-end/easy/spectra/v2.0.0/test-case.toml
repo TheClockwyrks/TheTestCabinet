@@ -2025,11 +2025,15 @@ validation = { script = "stages/wave-built-at-intro.test.ts", outputs = [
 ] }
 # Stage 5 is inside the ramp: the formula saturates at its 1.50 cap by stage 10,
 # where this item would assert the same figure its cap sibling does and the
-# per-stage ramp would go ungraded.
+# per-stage ramp would go ungraded. Both legs are read ABSOLUTELY, against the
+# figure specs/stages.md fixes for their own stage, because a ratio between two
+# stages cancels a ramp that runs one step out — 318 against 300 and 390 against
+# 372 are the same ratio to within a percent — and that is the model this item is
+# best placed to name.
 [[review.categories.items]]
 id = "scaling-drone-speed"
 title = "Drones are faster at a later stage"
-description = "The game reports droneSpeedScale(5) as 1.24 exactly, and a dive at stage 5 travels that many times the stage-1 distance in a second, within 10%."
+description = "The game reports droneSpeedScale(5) as 1.24 exactly, and a posed dive covers DIVE_SPEED * droneSpeedScale(stage) units of path a second — 300 at stage 1 and 372 at stage 5 — each within 3%."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-drone-speed.test.ts", outputs = [
@@ -2047,11 +2051,11 @@ validation = { script = "stages/scaling-drone-speed-cap.test.ts", outputs = [
 [[review.categories.items]]
 id = "scaling-bullet-speed"
 title = "Enemy fire is faster at a later stage"
-description = "The game reports bulletSpeedScale(10) as 1.36 exactly, and an enemy bullet at stage 10 falls that many times the stage-1 distance in a second, within 5%."
+description = "The game reports bulletSpeedScale(10) as 1.36 exactly, and enemy fire falls at ENEMY_BULLET_SPEED * bulletSpeedScale(stage) units a second — 320 at stage 1 and 435.2 at stage 10 — both for the shot a diver takes as it crosses DIVE_FIRE_Y and for a bullet addEnemyBullet places, each within 1.5%."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-bullet-speed.test.ts", outputs = [
-  { id = "faster", name = "The ground stage-ten enemy fire covers in a second", kind = "image" },
+  { id = "faster", name = "The shot a stage-ten diver took, half a second on", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "scaling-bullet-speed-cap"
@@ -2063,19 +2067,21 @@ validation = { script = "stages/scaling-bullet-speed-cap.test.ts", outputs = [
   { id = "capped", name = "The capped bullet speed at a late stage", kind = "image" },
 ] }
 # Stage 7 is inside the ramp — the formula reaches its 0.55 floor at stage 10, where
-# this item would assert the same figure its floor sibling does — and it is the one
-# stage on the ramp at which a 20% band excludes every wrong model a MEASURED
-# cadence can show: diveGapScale(7) is 0.70, so the band is [0.56, 0.84], clear of
-# the 1.00 a build that does not scale reads, the 0.85 one scaling at half the
-# stated rate reads, and the 0.55 one already on the floor reads. Read earlier the
-# band admits half-rate scaling; read later it admits the floor. A ramp that runs
-# one step ahead of the stated one cancels in any such ratio, so the item also
-# reads the figure the game itself derives at that stage, exactly — as the three
-# other scaling items do.
+# this item would assert the same figure its floor sibling does. The gap is a DRAWN
+# quantity, so the item reads it twice. The mean of twenty gaps carries the spread
+# of the draw and is given the 20% band that spread needs: at 1.40 s the band is
+# [1.12, 1.68], clear of the 2.00 s a build that does not scale means, the 1.70 s
+# one scaling at half the stated rate means, and the 1.10 s one already on the
+# floor means. That band cannot separate a ramp one step out, at 1.30 s, and no
+# band over a mean could — so every one of a hundred drawn gaps is also bracketed
+# against the window itself, [DIVE_GAP_MIN, DIVE_GAP_MAX] * 0.70 = [0.98, 1.82] s,
+# by posing the wave's own dive clock either side of it. A build drawing from a
+# window one step out draws under 0.98 s about one time in eleven, so a hundred
+# draws name it.
 [[review.categories.items]]
 id = "scaling-dive-gap"
 title = "Dives come faster at a later stage"
-description = "The game reports diveGapScale(7) as 0.70 exactly, and over a posed complete formation with the dive clock posed at 0 and dive launching on, the mean gap between dive launches at stage 7 is that many times the stage-1 mean, within 20%."
+description = "The game reports diveGapScale(7) as 0.70 exactly; over a posed complete formation with the dive clock posed at 0 and dive launching on, the mean of twenty stage-7 dive gaps is 1.40 s within 20%, and none of a hundred drawn gaps launches with the wave's clock under 0.98 s or fails to launch with it past 1.82 s."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-dive-gap.test.ts", outputs = [
@@ -2093,7 +2099,7 @@ validation = { script = "stages/scaling-dive-gap-floor.test.ts", outputs = [
 [[review.categories.items]]
 id = "scaling-flux-hold"
 title = "A Flux flips faster at a later stage"
-description = "The game reports fluxHold(10) as 1.15 s exactly, and a Flux's held window at stage 10 runs that long, within 10%."
+description = "The game reports fluxHold(10) as 1.15 s exactly, a Flux's held window at stage 10 runs that long within 2%, and the Flux reports shimmer false with its band clock posed at 1.13 s and true with it posed at 1.15 s."
 domains = ["polarity"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-flux-hold.test.ts", outputs = [
