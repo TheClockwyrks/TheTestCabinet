@@ -33,7 +33,7 @@
 // The note at the head of that file states the whole of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORGE_K, FORGE_SETPOINT } from "../../src/constants";
+import { FORGE_K, FORGE_SETPOINT } from "../constants";
 import { assertCloseTo, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

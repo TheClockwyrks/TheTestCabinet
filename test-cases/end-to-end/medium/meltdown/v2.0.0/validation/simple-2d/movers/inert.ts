@@ -26,7 +26,7 @@
 // NOTHING HERE IS A TOLERANCE. It hands back what the tower reported and what the
 // surge lost; what those must come to is stated in the check that took them.
 
-import { SURGE_TYPES } from "../../src/constants";
+import { SURGE_TYPES } from "../constants";
 import type { Tile } from "../geometry";
 import {
   poseTarget,

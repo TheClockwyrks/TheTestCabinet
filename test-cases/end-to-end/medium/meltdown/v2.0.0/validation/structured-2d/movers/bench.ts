@@ -38,7 +38,7 @@
 // that rate must come to is stated in the check that took it, derived from the
 // figure specs/ fixes for it.
 
-import { TOWER_DEFS, type EmitterDef } from "../../src/constants";
+import { TOWER_DEFS, type EmitterDef } from "../constants";
 import { fail } from "../assert";
 import {
   poseIdleTower,

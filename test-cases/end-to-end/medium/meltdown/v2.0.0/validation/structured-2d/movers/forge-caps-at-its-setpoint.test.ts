@@ -28,7 +28,7 @@
 // head of that file states the whole of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORGE_SETPOINT } from "../../src/constants";
+import { FORGE_SETPOINT } from "../constants";
 import { assertCloseTo } from "../assert";
 import {
   captureStill,

@@ -50,7 +50,7 @@
 // exercises, and a firing line has no part in a route length.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS } from "../../src/constants";
+import { LEFT_VENT_ROWS } from "../constants";
 import { assertCloseTo, assertContains, assertGreaterThan } from "../assert";
 import {
   blockedTiles,
