@@ -38,7 +38,7 @@ import {
   tileCX,
   tileCY,
   tileLeft,
-} from "../src/constants";
+} from "./constants";
 import {
   bandOf,
   bayAtColumn,

@@ -127,7 +127,7 @@ import {
   tileCX,
   tileCY,
   tileLeft,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
 import type {
@@ -681,7 +681,7 @@ class KeyEvent extends Event {
 /**
  * A stage point's device pixel, through the world's camera and the engine's
  * fit. The camera opens at the defaults — world and stage coordinates
- * coincide, which is the space every figure in `src/constants.ts` is stated
+ * coincide, which is the space every figure in `constants.ts` is stated
  * in — so the projection is the identity unless the build moved it, and
  * mapping through it keeps the reading honest either way.
  */
@@ -1673,7 +1673,7 @@ export function poseBear(
 
 /* ---- Driving the real input path ------------------------------------------ */
 
-/** An action the game registers, as `src/constants.ts` names them. */
+/** An action the game registers, as `constants.ts` names them. */
 export type Action = keyof typeof BINDINGS;
 
 /**

@@ -29,7 +29,7 @@ import {
   TICK_HZ,
   tileCX,
   tileCY,
-} from "../src/constants";
+} from "./constants";
 import {
   captureReplay,
   captureStill,

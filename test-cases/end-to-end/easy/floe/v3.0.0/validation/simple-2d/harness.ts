@@ -124,7 +124,7 @@ import {
   tileCY,
   tileLeft,
   type ActionName,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build, type FloeState } from "../src/game";
 import { assertTruthy, fail } from "./assert";
 import {
@@ -1704,7 +1704,7 @@ export function poseBear(
 /* ---- Driving the keyboard -------------------------------------------------- */
 
 /**
- * Every key bound to an action (`BINDINGS` in `src/constants.ts`,
+ * Every key bound to an action (`BINDINGS` in `constants.ts`,
  * specs/controls.md).
  *
  * A check about a particular binding names the `KeyboardEvent.code` itself —
@@ -1730,7 +1730,7 @@ export function keyFor(direction: Facing): string {
  *
  * Nothing here poses anything: the keys go to the engine's own input, so the game
  * answers them exactly as it answers a player. Which key drives which action is
- * `BINDINGS` in `src/constants.ts` and specs/controls.md.
+ * `BINDINGS` in `constants.ts` and specs/controls.md.
  */
 export async function holdFor(
   h: Harness,
@@ -1863,7 +1863,7 @@ export interface TimedCue {
  * event — which is what tells a build that plays a cue on the right event apart
  * from one that plays it on every frame, or a frame late.
  *
- * The cue NAMES are `CUES` in `src/constants.ts`; specs/ui.md says which event
+ * The cue NAMES are `CUES` in `constants.ts`; specs/ui.md says which event
  * each one belongs to.
  */
 export function watchCues(h: Harness): TimedCue[] {
