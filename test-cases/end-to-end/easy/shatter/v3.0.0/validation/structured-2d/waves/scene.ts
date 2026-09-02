@@ -37,7 +37,7 @@ import {
   WAVE_BASE_ROCKS,
   WAVE_SPEED_CAP,
   WAVE_SPEED_STEP,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import { QUIET_CORNER } from "../fixtures";
 import { speedOf, type Vec } from "../geometry";

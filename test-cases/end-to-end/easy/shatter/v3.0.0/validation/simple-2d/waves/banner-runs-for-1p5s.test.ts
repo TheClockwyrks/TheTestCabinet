@@ -29,7 +29,7 @@
 // banner of the wrong length would pass a posed one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME } from "../../src/constants";
+import { WAVE_BANNER_TIME } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

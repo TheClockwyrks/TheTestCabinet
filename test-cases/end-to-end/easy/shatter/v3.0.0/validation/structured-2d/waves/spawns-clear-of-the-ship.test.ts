@@ -51,7 +51,7 @@ import {
   TICK_DT,
   WAVE_MIN_SHIP_DIST,
   WAVE_SPEED_CAP,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import { wrappedDistance } from "../geometry";
 import { captureStill, createHarness, type Harness } from "../harness";

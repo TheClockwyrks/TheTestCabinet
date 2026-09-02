@@ -35,7 +35,7 @@
 // it, which is `no-rock-during-the-banner`'s and `spawns-as-the-banner-ends`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME } from "../../src/constants";
+import { WAVE_BANNER_TIME } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -31,11 +31,7 @@
 // exclusion on any of the ten fails the item, and names which.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  ROCK_SPEED_MAX,
-  TICK_DT,
-  WAVE_MIN_SHIP_DIST,
-} from "../../src/constants";
+import { ROCK_SPEED_MAX, TICK_DT, WAVE_MIN_SHIP_DIST } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {

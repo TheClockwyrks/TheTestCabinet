@@ -45,7 +45,7 @@
 // a half is forty-five chances to see it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME } from "../../src/constants";
+import { WAVE_BANNER_TIME } from "../constants";
 import { assertLength, assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

@@ -41,7 +41,7 @@
 // drift, which is `speed-scales-per-wave`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME, WAVE_BASE_ROCKS } from "../../src/constants";
+import { WAVE_BANNER_TIME, WAVE_BASE_ROCKS } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

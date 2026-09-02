@@ -48,7 +48,7 @@
 // makes the base drift speed "the speed it enters the field with".
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_SPEED_CAP } from "../../src/constants";
+import { WAVE_SPEED_CAP } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {

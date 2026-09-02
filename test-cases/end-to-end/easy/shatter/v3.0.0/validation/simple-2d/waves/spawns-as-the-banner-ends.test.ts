@@ -31,7 +31,7 @@
 // the top of `scenario.ts`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME } from "../../src/constants";
+import { WAVE_BANNER_TIME } from "../constants";
 import { assertLength } from "../assert";
 import {
   captureReplay,

@@ -40,7 +40,7 @@
 // slide along the core never comes into it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SHIP_THRUST, WAVE_BANNER_TIME } from "../../src/constants";
+import { SHIP_THRUST, WAVE_BANNER_TIME } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import {
   captureStill,

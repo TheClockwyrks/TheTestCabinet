@@ -56,7 +56,7 @@
 // the top of `scenario.ts`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SAUCER_FIRE_INTERVAL, WAVE_BANNER_TIME } from "../../src/constants";
+import { SAUCER_FIRE_INTERVAL, WAVE_BANNER_TIME } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import { distance } from "../geometry";
 import {

@@ -31,7 +31,7 @@
 // there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT, WAVE_BANNER_TIME } from "../../src/constants";
+import { TICK_DT, WAVE_BANNER_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -55,7 +55,7 @@
 // star's centre, against the `44` at which the slide begins.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, WAVE_BANNER_TIME } from "../../src/constants";
+import { DEG, WAVE_BANNER_TIME } from "../constants";
 import {
   assertGreaterThan,
   assertGreaterThanOrEqual,

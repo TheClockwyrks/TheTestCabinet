@@ -46,7 +46,7 @@
 // THE CLEAR IS A REAL KILL, through `./scene.ts`, never `clearRocks`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME } from "../../src/constants";
+import { WAVE_BANNER_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

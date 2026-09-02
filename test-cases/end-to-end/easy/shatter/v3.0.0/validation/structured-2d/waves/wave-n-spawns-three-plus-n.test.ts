@@ -47,7 +47,7 @@
 // `spawns-as-the-banner-ends`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BASE_ROCKS } from "../../src/constants";
+import { WAVE_BASE_ROCKS } from "../constants";
 import { assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { clearTheWave, openWaveAt, rocksInWave, waitForTheWave } from "./scene";

@@ -66,7 +66,7 @@ import {
   SAUCER_SPEED,
   TICK_DT,
   WAVE_BANNER_TIME,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertGreaterThan,
   assertGreaterThanOrEqual,

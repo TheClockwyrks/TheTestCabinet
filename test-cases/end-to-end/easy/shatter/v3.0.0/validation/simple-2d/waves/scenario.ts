@@ -37,7 +37,7 @@ import {
   WAVE_MIN_STAR_DIST,
   WAVE_SPEED_CAP,
   WAVE_SPEED_STEP,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import { STAR, distance } from "../geometry";
 import {
@@ -59,8 +59,9 @@ import type { ShatterSnapshot } from "../surface";
 /* -------------------------------------------------------------------------- */
 //
 // DERIVATIONS, NOT THRESHOLDS. Each is the specification's own arithmetic written
-// once so five checks read the same figure, and each is built out of the constants
-// the BUILD was seeded rather than out of a number typed here.
+// once so five checks read the same figure, and each is built out of the figures
+// `../constants` transcribes from `specs/progression.md` rather than out of a
+// number typed here.
 
 /**
  * How many Large rocks wave `n` puts up: `WAVE_BASE_ROCKS + n`.

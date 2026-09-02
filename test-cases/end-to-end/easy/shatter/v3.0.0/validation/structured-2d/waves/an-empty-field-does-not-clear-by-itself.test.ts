@@ -50,7 +50,7 @@
 // in the window can destroy anything.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_BANNER_TIME } from "../../src/constants";
+import { WAVE_BANNER_TIME } from "../constants";
 import { assertEqual, assertLength, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -62,7 +62,7 @@
 // the top of `scenario.ts`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WAVE_SPEED_CAP, WAVE_SPEED_STEP } from "../../src/constants";
+import { WAVE_SPEED_CAP, WAVE_SPEED_STEP } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
