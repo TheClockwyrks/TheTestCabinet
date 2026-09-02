@@ -82,6 +82,8 @@ import {
   LAYOUT,
   P1_X1,
   P2_X0,
+  SPEED_CAP,
+  SPEED_MULT,
 } from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { assertEqual, assertNotEqual, assertTruthy, fail } from "./assert";
@@ -618,6 +620,23 @@ const SURFACE_REQUIREMENT =
   "the engine hands back from engine.debug (specs/instrumentation.md)";
 
 /**
+ * Hand the host's event loop a turn.
+ *
+ * A frame this project advances is a SYNCHRONOUS render, and a sweep of them is
+ * one unbroken run of them: awaiting an already-settled promise only queues a
+ * microtask, so nothing timer-driven gets a turn until the whole sweep is over.
+ * The runner watching this worker is timer-driven, and a sweep long enough to
+ * outlast its own ping is reported as an error against a run in which every check
+ * passed. This is a macrotask, so the loop actually breathes; no game time passes
+ * across it and nothing here poses anything.
+ */
+function breathe(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+}
+
+/**
  * Build an engine over a canvas of the harness's own, initialize the build's
  * game, and hand back everything a check reads.
  *
@@ -718,6 +737,7 @@ export async function createHarness(
         frames += step;
         snapshot = debug.snapshot();
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
+        await breathe();
       }
       return { hit: false, frames, snapshot };
     },
@@ -1492,6 +1512,18 @@ export async function drivePaddleHit(
  * to reach the ceiling follows from it and `SPEED_MULT` alone.
  */
 export const RALLY_LAUNCH_SPEED = 500;
+
+/**
+ * The paddle hits it takes `SPEED_MULT` to carry {@link RALLY_LAUNCH_SPEED} to
+ * `SPEED_CAP`.
+ *
+ * The two rally checks state their lengths in terms of it rather than picking a
+ * number: one hit short of it is the last one the multiplier decides on its own,
+ * and one past it is the first spent sitting on the ceiling.
+ */
+export const RALLY_HITS_TO_CAP = Math.ceil(
+  Math.log(SPEED_CAP / RALLY_LAUNCH_SPEED) / Math.log(SPEED_MULT),
+);
 
 /** Two still, centred paddles and a ball launched level down the middle. */
 export async function arrangeRally(h: Harness): Promise<void> {

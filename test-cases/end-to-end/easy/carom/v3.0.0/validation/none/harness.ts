@@ -62,6 +62,8 @@ import {
   P1_X1,
   P2_X0,
   P2_X1,
+  SPEED_CAP,
+  SPEED_MULT,
   TRAIL_TIME,
   UNBOUND_KEY,
   type Rect,
@@ -384,7 +386,7 @@ export interface Harness {
    *
    * A fault here is the build's: the surface is missing, or it is missing an
    * operation the specification requires. It says what was found (`window.__carom
-   * was still absent 30s after the page loaded`), and {@link failSurface} pairs
+   * was still absent 15s after the page loaded`), and {@link failSurface} pairs
    * it with what the specification requires. Every operation fails by assertion
    * with that pair rather than throwing, so the fault lands on the points whose
    * checks reach the game through the surface.
@@ -479,11 +481,12 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  * fired `load` has either installed it already or is not going to, and
  * {@link readSurfaceFault} looks once before it waits at all: a conformant build
  * never reaches this ceiling, whatever the machine is doing. What the ceiling
- * bounds is the cost of a build with no surface, so it is set where a page that
- * really is still initializing on a loaded host is not called non-conformant for
- * being slow.
+ * bounds is the cost of a build that installs its surface later than `load` and
+ * then never gets there, which every harness of that build pays; it is set well
+ * above any deferred install a loaded host could still be finishing, and well
+ * below the cap on the whole suite run.
  */
-const SURFACE_TIMEOUT_MS = 30_000;
+const SURFACE_TIMEOUT_MS = 15_000;
 
 /**
  * The ceiling used once this worker has already watched {@link SURFACE_TIMEOUT_MS}
@@ -1930,6 +1933,18 @@ export async function drivePaddleHit(
  * to reach the ceiling follows from it and `SPEED_MULT` alone.
  */
 export const RALLY_LAUNCH_SPEED = 500;
+
+/**
+ * The paddle hits it takes `SPEED_MULT` to carry {@link RALLY_LAUNCH_SPEED} to
+ * `SPEED_CAP`.
+ *
+ * The two rally checks state their lengths in terms of it rather than picking a
+ * number: one hit short of it is the last one the multiplier decides on its own,
+ * and one past it is the first spent sitting on the ceiling.
+ */
+export const RALLY_HITS_TO_CAP = Math.ceil(
+  Math.log(SPEED_CAP / RALLY_LAUNCH_SPEED) / Math.log(SPEED_MULT),
+);
 
 /** Two still, centred paddles and a ball launched level down the middle. */
 export async function arrangeRally(h: Harness): Promise<void> {

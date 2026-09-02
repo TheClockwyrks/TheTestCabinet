@@ -7,9 +7,10 @@
 // ceiling, and the sequence must never decrease. The plateau AT the ceiling is
 // the sibling `rally-caps` check.
 //
-// HOW LONG THE RALLY IS. Exactly as long as the ratio has to be read to be read
-// many times over, and no longer: every hit past that is a leg of real physics
-// rendered frame by frame, deciding nothing this check has not already decided.
+// HOW LONG THE RALLY IS. Exactly the hits that happen below the ceiling, and no
+// more: the length follows from `RALLY_LAUNCH_SPEED`, `SPEED_MULT` and
+// `SPEED_CAP` rather than being picked, and every hit past it belongs to the
+// sibling check.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
@@ -19,17 +20,20 @@ import {
   captureReplay,
   createHarness,
   driveRallySpeeds,
+  RALLY_HITS_TO_CAP,
   type Harness,
 } from "../harness";
 
 /**
- * Enough hits for the ratio to be read many times over below the ceiling.
+ * The hits the rally drives: every one the multiplier decides on its own.
  *
- * The rally drives exactly this many: from `RALLY_LAUNCH_SPEED` the twelfth hit
- * leaves the ball at `RALLY_LAUNCH_SPEED * SPEED_MULT ** 12`, still clear of the
- * ceiling, so every one of the twelve ratios below is one the multiplier decides.
+ * One short of the climb to the ceiling, so the last of them leaves the ball
+ * still clear of `SPEED_CAP` and every ratio read below is one this item is
+ * about. A hit past it is the sibling `rally-caps` check's subject rather than
+ * this one's, and a rally that runs into the plateau costs legs of real physics
+ * to decide nothing this check has not already decided.
  */
-const MIN_HITS = 12;
+const HITS_BELOW_CAP = RALLY_HITS_TO_CAP - 1;
 /**
  * One percent on the ratio, rounding room on `SPEED_MULT`, and half a unit per
  * second on a decrease.
@@ -51,10 +55,10 @@ it("multiplies the ball's speed on every hit below the ceiling", async () => {
   await arrangeRally(harness);
 
   const speeds = await captureReplay(harness, "acceleration", () =>
-    driveRallySpeeds(harness, MIN_HITS),
+    driveRallySpeeds(harness, HITS_BELOW_CAP),
   );
 
-  assertGreaterThanOrEqual(speeds.length, MIN_HITS);
+  assertGreaterThanOrEqual(speeds.length, HITS_BELOW_CAP);
 
   for (let i = 1; i < speeds.length; i += 1) {
     assertGreaterThanOrEqual(speeds[i], speeds[i - 1] - DECREASE_TOLERANCE);
