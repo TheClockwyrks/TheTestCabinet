@@ -10,7 +10,7 @@
 // as a hop passes eight of this category's points and fails only this one.
 //
 // THAT THE KEY IS UNBOUND IS CHECKED, NOT ASSUMED. `BINDINGS` in
-// `src/constants.ts` is the table `specs/controls.md` states in prose, and the
+// `constants.ts` is the table `specs/controls.md` states in prose, and the
 // check reads it back for every registered action before it presses anything. A
 // build that widened the table to bind `KeyZ` has departed from a closed list, and
 // it fails here saying so rather than failing later for a reason that looks like
@@ -43,7 +43,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertTrue } from "../assert";
-import { ACTIONS, BINDINGS } from "../../src/constants";
+import { ACTIONS, BINDINGS } from "../constants";
 import {
   captureStill,
   createHarness,

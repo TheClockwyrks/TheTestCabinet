@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 /** The key this point decides, named literally: it is the whole of the point. */
