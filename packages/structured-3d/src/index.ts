@@ -73,6 +73,31 @@ export {
 } from "./math";
 
 /**
+ * The clocks that decide what a frame is worth.
+ *
+ * A run takes {@link WallClock} and follows real time; a check takes one of the
+ * scripted clocks and steps the same sequence synchronously, so what a reviewer
+ * watches and what a validator drives are the same frames.
+ */
+export {
+  ConstantClock,
+  JitterClock,
+  PacedClock,
+  SequenceClock,
+  WallClock,
+} from "./clocks";
+export type { PacedClockOptions } from "./clocks";
+
+/**
+ * The closed catalogue of touch layouts an engine may be built with.
+ *
+ * A game reads actions through its player controller and never through this
+ * table; it is exported so a build can name a layout it supports and a check
+ * can assert the actions that layout carries.
+ */
+export { TOUCH_LAYOUTS } from "./input";
+
+/**
  * The whole shared vocabulary, re-exported wholesale.
  *
  * `contract.ts` *is* the package's type surface — it exists precisely so that
