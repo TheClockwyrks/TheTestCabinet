@@ -3,24 +3,39 @@
 // specs/stages.md, Scaling: `droneSpeedScale(stage)` is
 // `min(1.50, 1 + 0.06 * (stage - 1))`, and it "multiplies the entrance and dive
 // speeds in specs/swarm.md". specs/swarm.md fixes the stage-1 dive speed at
-// `DIVE_SPEED` (`300`) units per second "along that path". So the ground one dive
-// covers in a second at stage 5 is `droneSpeedScale(5)` — 1.24 — times the ground
-// the same dive covers at stage 1.
+// `DIVE_SPEED` (`300`) units per second "along that path". So a dive covers
+// `DIVE_SPEED` units of path in a second at stage 1 and
+// `DIVE_SPEED * droneSpeedScale(5)` — 372 — at stage 5.
+//
+// WHY THE READING IS ABSOLUTE AND NOT A RATIO. Both stages are measured, and each
+// is asserted against the figure specs/stages.md fixes for THAT stage. A ratio
+// between the two would be blind to the one wrong model this point is best placed
+// to name: a build running `1 + 0.06 * stage` rather than `1 + 0.06 * (stage - 1)`
+// flies at 318 where the specification says 300 and at 390 where it says 372, and
+// those two errors cancel to within a percent of each other in any ratio between
+// them, whatever the band around it. Read against the specification's own figures
+// they are 6% and 4.8% out, and separated.
+//
+// WHY THE EXPECTATION IS NOT THE BUILD'S OWN FORMULA. `stages/ramps.ts` restates
+// the ramp from specs/stages.md rather than importing `droneSpeedScale` from the
+// seeded `src/constants.ts`. A build may leave that file exactly as seeded and fly
+// its dives off a formula of its own, so the seeded function is not evidence about
+// the simulation; the restated one is the specification, and it is what the
+// measurement below is held to.
 //
 // WHY STAGE FIVE. It is inside the ramp. The formula saturates at its 1.50 cap by
 // stage 10, so a check posed at a later stage would be asserting the same figure
 // `stages/scaling-drone-speed-cap` already asserts and the per-stage ramp would go
-// ungraded. At stage 5 the three wrong models each read differently: a build that
-// does not scale reads 1.00, one that jumped straight to the cap reads 1.50, and
-// one that scales by 0.06 per stage rather than per stage ABOVE THE FIRST reads
-// 1.30.
+// ungraded. At stage 5 the wrong models each read differently: a build that does
+// not scale reads 300, one that jumped straight to the cap reads 450, and one that
+// scales by 0.06 per stage rather than per stage ABOVE THE FIRST reads 390.
 //
 // WHAT IS MEASURED, AND WHY IT IS A RATE RATHER THAN A DISTANCE. The dive's own
 // PATH is the build's design — specs/swarm.md fixes only the speed along it — so
 // the distance covered is summed frame by frame along whatever path the build
 // flew, and divided by the game time it took. That makes the reading the speed the
-// specification states rather than a demand on where the dive went, and it lets
-// the two legs be compared even if one build's dive ends sooner than another's.
+// specification states rather than a demand on where the dive went, and it lets a
+// dive that ends sooner than the window still be read.
 //
 // WHAT IS POSED. One drone alone, put into phase `diving` with travel on and fire
 // off. The dive's path is the build's, laid out from where the drone stands toward
@@ -29,7 +44,7 @@
 // the wave's own dive launcher so no second dive joins the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { droneSpeedScale, slotX, slotY } from "../../src/constants";
+import { DIVE_SPEED, slotX, slotY } from "../../src/constants";
 import {
   assertBetween,
   assertCloseTo,
@@ -45,14 +60,16 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
+import { droneSpeedScale } from "./ramps";
 
 /** The stage the ramp is read at, and the stage it is read against. */
 const LATE_STAGE = 5;
 const BASE_STAGE = 1;
 
-/** What specs/stages.md says the late stage's dive covers, per the base stage's. */
-const EXPECTED_RATIO =
-  droneSpeedScale(LATE_STAGE) / droneSpeedScale(BASE_STAGE);
+/** The units of path a dive covers in a second at `stage` (specs/stages.md). */
+function expectedRate(stage: number): number {
+  return DIVE_SPEED * droneSpeedScale(stage);
+}
 
 /**
  * How far the measurement runs, in seconds.
@@ -73,26 +90,23 @@ const MEASURED_FOR = 1;
 const LEAST_DIVING = MEASURED_FOR / 3;
 
 /**
- * How far the measured ratio may sit from the stated one, as a fraction.
+ * How far a measured rate may sit from the stated one, as a fraction.
  *
- * The manifest's own figure. The measurement itself is far tighter than this — the
- * frames are counted exactly and the chord-sum under-reads a curved path by the
- * same fraction on both legs, so the two errors very nearly cancel in the ratio —
- * so what the 10% band is really doing is deciding which wrong models this point
- * names. It separates the two large ones: a build that does not scale drones with
- * the stage at all reads 1.00, well below the band, and one that goes straight to
- * the 1.50 cap after the first stage reads 1.50, well above it.
+ * Three percent, and it is a measurement allowance rather than a licence on the
+ * speed. The reading is a chord sum over frames of `1 / TICK_HZ` of a second: at
+ * 372 units a second a frame carries the drone about three units, so a path would
+ * have to turn some thirty degrees within one frame — a full circle inside a tenth
+ * of a second — before the chords under-read the ground covered by even one
+ * percent. No dive down a 1280x720 field bends anything like that, and the
+ * reference builds read the stated figure to a part in 10^13.
  *
- * It cannot separate an off-by-one in the ramp, and nothing about a RATIO could:
- * a build multiplying by `1 + 0.06 * stage` rather than `1 + 0.06 * (stage - 1)`
- * reads 1.30 where the specification says 1.24 and 1.06 where it says 1.00, and
- * the two errors cancel to within a percent in the ratio between them. That model
- * is separated by the reading below instead — {@link SCALE_DIGITS} — which takes
- * the derived figure itself off the snapshot and admits nothing but the stated
- * formula. The band above stays where the manifest sets it, deciding what a
- * MEASURED dive may read.
+ * What the band is doing is deciding which wrong models this point names, and at
+ * three percent it names all of them: no scaling reads 300 against a stage-5
+ * expectation of 372, straight-to-the-cap reads 450, and the off-by-one ramp reads
+ * 390 against 372 and 318 against a stage-1 expectation of 300 — 4.8% and 6% out,
+ * each clear of the band's edge.
  */
-const TOLERANCE = 0.1;
+const TOLERANCE = 0.03;
 
 /**
  * Decimal places the derived scale itself must agree to.
@@ -101,10 +115,8 @@ const TOLERANCE = 0.1;
  * specification states to two decimals and specs/instrumentation.md has the
  * snapshot report it "derived at the call from `stage` by the formulas in
  * specs/stages.md", so the only slack a build can honestly need is the last bits
- * of a double. Reading it at the stage the ramp is measured at is what separates a
- * ramp that runs one step ahead of the stated one — `stages/scaling-drone-speed-cap`
- * reads the same field, but only where the formula has saturated and every ramp
- * reads the same 1.50.
+ * of a double. This is the REPORTED figure, which is a requirement of its own and
+ * not the evidence the measurement above rests on — that is why both are here.
  */
 const SCALE_DIGITS = 6;
 
@@ -131,8 +143,7 @@ async function diveRate(harness: Harness, stage: number): Promise<number> {
     droneSpeedScale(stage),
     SCALE_DIGITS,
     `the drone-speed scale the game derives at stage ${String(stage)}, ` +
-      "min(1.50, 1 + 0.06 * (stage - 1)) (specs/stages.md), which the dive " +
-      "measured below has to be flown at",
+      "min(1.50, 1 + 0.06 * (stage - 1)) (specs/stages.md)",
   );
   const id = poseDrone(harness, "shard", FROM.x, FROM.y, {
     phase: "diving",
@@ -163,17 +174,25 @@ async function diveRate(harness: Harness, stage: number): Promise<number> {
   return travelled / seconds(frames);
 }
 
-it("moves a stage-five dive droneSpeedScale(5) times as fast as a stage-one dive", async () => {
+/** Hold one leg's reading to `DIVE_SPEED * droneSpeedScale(stage)`. */
+function assertRate(rate: number, stage: number): void {
+  const expected = expectedRate(stage);
+  assertBetween(
+    rate,
+    expected * (1 - TOLERANCE),
+    expected * (1 + TOLERANCE),
+    `the ground a stage-${String(stage)} dive covers per second ` +
+      `(${rate.toFixed(1)} units), DIVE_SPEED * droneSpeedScale(` +
+      `${String(stage)}) = ${expected.toFixed(1)} ` +
+      "(specs/stages.md, specs/swarm.md)",
+  );
+}
+
+it("flies a stage-five dive at DIVE_SPEED * droneSpeedScale(5)", async () => {
   const base = await diveRate(h, BASE_STAGE);
   const late = await diveRate(h, LATE_STAGE);
   captureStill(h, "faster");
 
-  assertBetween(
-    late / base,
-    EXPECTED_RATIO * (1 - TOLERANCE),
-    EXPECTED_RATIO * (1 + TOLERANCE),
-    `the ground a stage-${String(LATE_STAGE)} dive covers per second over a ` +
-      `stage-${String(BASE_STAGE)} dive's, ` +
-      `droneSpeedScale(${String(LATE_STAGE)}) (specs/stages.md)`,
-  );
+  assertRate(base, BASE_STAGE);
+  assertRate(late, LATE_STAGE);
 });
