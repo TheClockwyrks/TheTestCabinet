@@ -32,7 +32,7 @@ import {
   COLS,
   DIFFICULTIES,
   RIGHT_EXHAUST_ROWS,
-} from "../../src/constants";
+} from "../constants";
 import { tileCentre } from "../geometry";
 import {
   poseTarget,

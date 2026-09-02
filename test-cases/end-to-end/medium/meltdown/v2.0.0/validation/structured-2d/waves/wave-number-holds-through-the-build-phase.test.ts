@@ -30,7 +30,7 @@
 // one that reports a constant reads `1`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BUILD_PHASE_TIME } from "../../src/constants";
+import { BUILD_PHASE_TIME } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

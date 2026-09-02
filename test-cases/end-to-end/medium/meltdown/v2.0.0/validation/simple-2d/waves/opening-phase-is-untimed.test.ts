@@ -43,7 +43,7 @@
 // that starts Wave 1 on its own reads the `wave` phase. A conformant build reads `("opening", 0, 0)` at every one of them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BUILD_PHASE_TIME } from "../../src/constants";
+import { BUILD_PHASE_TIME } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

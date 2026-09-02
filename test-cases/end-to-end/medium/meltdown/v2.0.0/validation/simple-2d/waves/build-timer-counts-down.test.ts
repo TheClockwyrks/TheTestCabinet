@@ -33,7 +33,7 @@
 // window closes and reads the whole `15`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BUILD_PHASE_TIME } from "../../src/constants";
+import { BUILD_PHASE_TIME } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

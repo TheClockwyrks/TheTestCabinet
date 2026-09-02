@@ -33,7 +33,7 @@ import {
   COLS,
   DIFFICULTIES,
   RIGHT_EXHAUST_ROWS,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import {
   heatGain,
