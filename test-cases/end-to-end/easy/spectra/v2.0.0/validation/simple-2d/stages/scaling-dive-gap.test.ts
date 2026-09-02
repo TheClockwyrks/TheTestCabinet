@@ -51,7 +51,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { diveGapScale, FORM_COLS, FORM_ROWS } from "../../src/constants";
-import { assertBetween, assertGreaterThanOrEqual } from "../assert";
+import {
+  assertBetween,
+  assertCloseTo,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -131,6 +135,22 @@ const SWEEP_FRAMES = ticksFor((2.0 + GAPS * 2.6) * 1.5);
 const TOLERANCE = 0.2;
 
 /**
+ * Decimal places the derived dive-gap scale itself must agree to.
+ *
+ * Six, which is exact for this purpose: `diveGapScale(stage)` is a formula the
+ * specification states to two decimals and specs/instrumentation.md has the
+ * snapshot report it "derived at the call from `stage` by the formulas in
+ * specs/stages.md", so the only slack a build can honestly need is the last bits
+ * of a double. Reading it at the stage this point works at is what separates a
+ * ramp that runs one step ahead of the stated one — a build using
+ * `1 - 0.05 * stage` reads 0.65 where the specification says
+ * 0.70, which the band above admits and this does not, and
+ * `stages/scaling-dive-gap-floor` reads the same field only where the formula has
+ * saturated and every ramp reads alike.
+ */
+const SCALE_DIGITS = 6;
+
+/**
  * Launches kept as the replay this point hands the reviewer.
  *
  * Four, which is the first delay and three gaps — about seven seconds of the
@@ -200,6 +220,14 @@ async function meanGap(
   harness.debug.reset();
   startPosed(harness);
   harness.debug.setStage(stage);
+  assertCloseTo(
+    harness.snapshot().diveGapScale,
+    diveGapScale(stage),
+    SCALE_DIGITS,
+    `the dive-gap scale the game derives at stage ${String(stage)}, ` +
+      "max(0.55, 1 - 0.05 * (stage - 1)) (specs/stages.md), which is the figure the " +
+      "reading below has to be taken under",
+  );
   poseFormation(harness, FULL_FORMATION);
   harness.debug.setDiveClock(0);
   harness.debug.setDiveLaunching(true);

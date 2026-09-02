@@ -27,7 +27,7 @@
 // what the player experiences: how long the drone is killable at a late stage.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertEqual } from "../assert";
+import { assertBetween, assertCloseTo, assertEqual } from "../assert";
 import { FORM_CENTER_X, fluxHold, fluxWindow } from "../constants";
 import {
   captureStill,
@@ -64,6 +64,22 @@ const AT = { x: FORM_CENTER_X, y: 300 } as const;
 const TOLERANCE = 0.1;
 
 /**
+ * Decimal places the derived Flux hold itself must agree to.
+ *
+ * Six, which is exact for this purpose: `fluxHold(stage)` is a formula the
+ * specification states to two decimals and specs/instrumentation.md has the
+ * snapshot report it "derived at the call from `stage` by the formulas in
+ * specs/stages.md", so the only slack a build can honestly need is the last bits
+ * of a double. Reading it at the stage this point works at is what separates a
+ * ramp that runs one step ahead of the stated one — a build using
+ * `FLUX_HOLD_L1 - 0.05 * stage` reads 1.10 s where the specification says
+ * 1.15 s, which the band above admits and this does not, and
+ * `stages/scaling-flux-hold-floor` reads the same field only where the formula has
+ * saturated and every ramp reads alike.
+ */
+const SCALE_DIGITS = 6;
+
+/**
  * One frame of the harness's 100 Hz clock, added to each end of the bound.
  *
  * The sweep reads `shimmer` once per frame, so the instant it reports is the frame
@@ -95,6 +111,14 @@ afterEach(async () => {
 
 it("holds a stage-ten Flux's band for fluxHold(10) before the shimmer", async () => {
   await startPosed(harness, { stage: STAGE });
+  assertCloseTo(
+    (await harness.snapshot()).fluxHold,
+    fluxHold(STAGE),
+    SCALE_DIGITS,
+    `the Flux hold the game derives at stage ${STAGE}, ` +
+      "max(1.0, FLUX_HOLD_L1 - 0.05 * (stage - 1)) (specs/stages.md), which is the figure the " +
+      "reading below has to be taken under",
+  );
   const flux = await poseDrone(harness, "flux", AT.x, AT.y, {
     band: POSED_BAND,
     bandClock: 0,

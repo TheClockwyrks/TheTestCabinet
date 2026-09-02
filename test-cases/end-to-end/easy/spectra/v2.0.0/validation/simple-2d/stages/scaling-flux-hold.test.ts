@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { fluxHold, fluxWindow, FORM_CENTER_X } from "../../src/constants";
-import { assertBetween, assertEqual } from "../assert";
+import { assertBetween, assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -62,6 +62,22 @@ const AT = { x: FORM_CENTER_X, y: 300 } as const;
  * both wrong answers: an unscaled hold reads 1.60 s and a floored one 1.00 s.
  */
 const TOLERANCE = 0.1;
+
+/**
+ * Decimal places the derived Flux hold itself must agree to.
+ *
+ * Six, which is exact for this purpose: `fluxHold(stage)` is a formula the
+ * specification states to two decimals and specs/instrumentation.md has the
+ * snapshot report it "derived at the call from `stage` by the formulas in
+ * specs/stages.md", so the only slack a build can honestly need is the last bits
+ * of a double. Reading it at the stage this point works at is what separates a
+ * ramp that runs one step ahead of the stated one — a build using
+ * `FLUX_HOLD_L1 - 0.05 * stage` reads 1.10 s where the specification says
+ * 1.15 s, which the band above admits and this does not, and
+ * `stages/scaling-flux-hold-floor` reads the same field only where the formula has
+ * saturated and every ramp reads alike.
+ */
+const SCALE_DIGITS = 6;
 
 /**
  * One frame of the suite's clock, allowed at each end of the bound.
@@ -98,6 +114,14 @@ it("holds a stage-ten Flux's band for fluxHold(10) before the shimmer", async ()
   // exactly the one drone the requirement is about.
   startPosed(h);
   h.debug.setStage(STAGE);
+  assertCloseTo(
+    h.snapshot().fluxHold,
+    fluxHold(STAGE),
+    SCALE_DIGITS,
+    `the Flux hold the game derives at stage ${String(STAGE)}, ` +
+      "max(1.0, FLUX_HOLD_L1 - 0.05 * (stage - 1)) (specs/stages.md), which is the figure the " +
+      "reading below has to be taken under",
+  );
   const flux = poseDrone(h, "flux", AT.x, AT.y, {
     band: POSED_BAND,
     bandClock: 0,

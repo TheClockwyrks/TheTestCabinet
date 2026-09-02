@@ -35,7 +35,7 @@ import {
   FIELD_TOP,
   FORM_CENTER_X,
 } from "../../src/constants";
-import { assertBetween, fail } from "../assert";
+import { assertBetween, assertCloseTo, fail } from "../assert";
 import {
   bulletById,
   captureStill,
@@ -81,6 +81,22 @@ const DROPPED_AT = { x: FORM_CENTER_X - 200, y: FIELD_TOP + 10 } as const;
  */
 const TOLERANCE = 0.05;
 
+/**
+ * Decimal places the derived bullet-speed scale itself must agree to.
+ *
+ * Six, which is exact for this purpose: `bulletSpeedScale(stage)` is a formula the
+ * specification states to two decimals and specs/instrumentation.md has the
+ * snapshot report it "derived at the call from `stage` by the formulas in
+ * specs/stages.md", so the only slack a build can honestly need is the last bits
+ * of a double. Reading it at the stage this point works at is what separates a
+ * ramp that runs one step ahead of the stated one — a build using
+ * `1 + 0.04 * stage` reads 1.40 where the specification says
+ * 1.36, which the band above admits and this does not, and
+ * `stages/scaling-bullet-speed-cap` reads the same field only where the formula has
+ * saturated and every ramp reads alike.
+ */
+const SCALE_DIGITS = 6;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -96,6 +112,14 @@ async function fallAt(harness: Harness, stage: number): Promise<number> {
   resetTo(harness);
   startPosed(harness);
   harness.debug.setStage(stage);
+  assertCloseTo(
+    harness.snapshot().bulletSpeedScale,
+    bulletSpeedScale(stage),
+    SCALE_DIGITS,
+    `the bullet-speed scale the game derives at stage ${String(stage)}, ` +
+      "min(1.40, 1 + 0.04 * (stage - 1)) (specs/stages.md), which is the figure the " +
+      "reading below has to be taken under",
+  );
   const id = poseEnemyBullet(harness, DROPPED_AT.x, DROPPED_AT.y, "magenta");
 
   const placed = bulletById(harness.snapshot(), id);

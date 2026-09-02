@@ -29,7 +29,11 @@
 // the wave's own dive launcher so no second dive joins the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertGreaterThanOrEqual } from "../assert";
+import {
+  assertBetween,
+  assertCloseTo,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import { droneSpeedScale, slotX, slotY } from "../constants";
 import {
   captureStill,
@@ -79,13 +83,30 @@ const LEAST_DIVING = MEASURED_FOR / 3;
  * the stage at all reads 1.00, well below the band, and one that goes straight to
  * the 1.50 cap after the first stage reads 1.50, well above it.
  *
- * It does NOT separate an off-by-one in the ramp — a build multiplying by
- * `1 + 0.06 * stage` rather than `1 + 0.06 * (stage - 1)` reads 1.30 against the
- * stated 1.24, inside the band at every stage, because the two formulas differ by
- * one step of 0.06 wherever they are read. That is the tolerance the manifest sets
- * for this point, and it is stated here rather than quietly tightened.
+ * It cannot separate an off-by-one in the ramp, and nothing about a RATIO could:
+ * a build multiplying by `1 + 0.06 * stage` rather than `1 + 0.06 * (stage - 1)`
+ * reads 1.30 where the specification says 1.24 and 1.06 where it says 1.00, and
+ * the two errors cancel to within a percent in the ratio between them. That model
+ * is separated by the reading below instead — {@link SCALE_DIGITS} — which takes
+ * the derived figure itself off the snapshot and admits nothing but the stated
+ * formula. The band above stays where the manifest sets it, deciding what a
+ * MEASURED dive may read.
  */
 const TOLERANCE = 0.1;
+
+/**
+ * Decimal places the derived scale itself must agree to.
+ *
+ * Six, which is exact for this purpose: `droneSpeedScale(stage)` is a formula the
+ * specification states to two decimals and specs/instrumentation.md has the
+ * snapshot report it "derived at the call from `stage` by the formulas in
+ * specs/stages.md", so the only slack a build can honestly need is the last bits
+ * of a double. Reading it at the stage the ramp is measured at is what separates a
+ * ramp that runs one step ahead of the stated one — `stages/scaling-drone-speed-cap`
+ * reads the same field, but only where the formula has saturated and every ramp
+ * reads the same 1.50.
+ */
+const SCALE_DIGITS = 6;
 
 /** Where the dive is launched from: a top-row slot off the centre column. */
 const FROM = { x: slotX(2), y: slotY(0) } as const;
@@ -104,6 +125,14 @@ afterEach(async () => {
 async function diveRate(h: Harness, stage: number): Promise<number> {
   await h.debug.reset();
   await startPosed(h, { stage });
+  assertCloseTo(
+    (await h.snapshot()).droneSpeedScale,
+    droneSpeedScale(stage),
+    SCALE_DIGITS,
+    `the drone-speed scale the game derives at stage ${stage}, ` +
+      `min(1.50, 1 + 0.06 * (stage - 1)) (specs/stages.md), which the dive ` +
+      `measured below has to be flown at`,
+  );
   const id = await poseDrone(h, "shard", FROM.x, FROM.y, {
     phase: "diving",
     travel: true,

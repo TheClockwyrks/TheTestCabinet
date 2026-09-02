@@ -2029,7 +2029,7 @@ validation = { script = "stages/wave-built-at-intro.test.ts", outputs = [
 [[review.categories.items]]
 id = "scaling-drone-speed"
 title = "Drones are faster at a later stage"
-description = "A dive at stage 5 travels droneSpeedScale(5) — 1.24 — times the stage-1 distance in a second, within 10%."
+description = "The game reports droneSpeedScale(5) as 1.24 exactly, and a dive at stage 5 travels that many times the stage-1 distance in a second, within 10%."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-drone-speed.test.ts", outputs = [
@@ -2047,7 +2047,7 @@ validation = { script = "stages/scaling-drone-speed-cap.test.ts", outputs = [
 [[review.categories.items]]
 id = "scaling-bullet-speed"
 title = "Enemy fire is faster at a later stage"
-description = "An enemy bullet at stage 10 falls bulletSpeedScale(10) times the stage-1 distance in a second, within 5%."
+description = "The game reports bulletSpeedScale(10) as 1.36 exactly, and an enemy bullet at stage 10 falls that many times the stage-1 distance in a second, within 5%."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-bullet-speed.test.ts", outputs = [
@@ -2064,15 +2064,18 @@ validation = { script = "stages/scaling-bullet-speed-cap.test.ts", outputs = [
 ] }
 # Stage 7 is inside the ramp — the formula reaches its 0.55 floor at stage 10, where
 # this item would assert the same figure its floor sibling does — and it is the one
-# stage on the ramp at which a 20% band excludes every wrong model: diveGapScale(7)
-# is 0.70, so the band is [0.56, 0.84], clear of the 1.00 a build that does not
-# scale reads, the 0.85 one scaling at half the stated rate reads, and the 0.55 one
-# already on the floor reads. Read earlier the band admits half-rate scaling; read
-# later it admits the floor.
+# stage on the ramp at which a 20% band excludes every wrong model a MEASURED
+# cadence can show: diveGapScale(7) is 0.70, so the band is [0.56, 0.84], clear of
+# the 1.00 a build that does not scale reads, the 0.85 one scaling at half the
+# stated rate reads, and the 0.55 one already on the floor reads. Read earlier the
+# band admits half-rate scaling; read later it admits the floor. A ramp that runs
+# one step ahead of the stated one cancels in any such ratio, so the item also
+# reads the figure the game itself derives at that stage, exactly — as the three
+# other scaling items do.
 [[review.categories.items]]
 id = "scaling-dive-gap"
 title = "Dives come faster at a later stage"
-description = "Over a posed complete formation with the dive clock posed at 0 and dive launching on, the mean gap between dive launches at stage 7 is diveGapScale(7) — 0.70 — times the stage-1 mean, within 20%."
+description = "The game reports diveGapScale(7) as 0.70 exactly, and over a posed complete formation with the dive clock posed at 0 and dive launching on, the mean gap between dive launches at stage 7 is that many times the stage-1 mean, within 20%."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-dive-gap.test.ts", outputs = [
@@ -2090,7 +2093,7 @@ validation = { script = "stages/scaling-dive-gap-floor.test.ts", outputs = [
 [[review.categories.items]]
 id = "scaling-flux-hold"
 title = "A Flux flips faster at a later stage"
-description = "A Flux's held window at stage 10 is fluxHold(10), within 10%."
+description = "The game reports fluxHold(10) as 1.15 s exactly, and a Flux's held window at stage 10 runs that long, within 10%."
 domains = ["polarity"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-flux-hold.test.ts", outputs = [
