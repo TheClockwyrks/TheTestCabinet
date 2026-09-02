@@ -13,7 +13,7 @@
 // and the balance is read on the frame the tower lands, before any frame runs.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,

@@ -16,7 +16,7 @@ import {
   TOWER_DEFS,
   type EmitterDef,
   type TowerType,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import { lastTower, type BuildSnapshot, type Harness } from "../harness";
 

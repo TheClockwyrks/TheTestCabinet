@@ -15,7 +15,7 @@
 // that reports its own idea of a starting footprint is conformant, and passes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ROWS } from "../../src/constants";
+import { COLS, ROWS } from "../constants";
 import {
   assertBetween,
   assertContains,

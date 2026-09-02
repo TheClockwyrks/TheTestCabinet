@@ -34,7 +34,7 @@
 // way whatever it holds.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileLeft, tileTop } from "../../src/constants";
+import { TILE, tileLeft, tileTop } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { sizeOf } from "../geometry";
 import {

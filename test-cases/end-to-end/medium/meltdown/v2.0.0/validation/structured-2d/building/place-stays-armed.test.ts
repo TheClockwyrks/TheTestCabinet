@@ -18,7 +18,7 @@
 // `building/place-disarms-when-unaffordable` is what decides that one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

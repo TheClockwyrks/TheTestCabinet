@@ -23,7 +23,7 @@
 // that floored or truncated instead of rounding reads a different tile.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, FLOOR_X0, FLOOR_Y0, ROWS, TILE } from "../../src/constants";
+import { COLS, FLOOR_X0, FLOOR_Y0, ROWS, TILE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

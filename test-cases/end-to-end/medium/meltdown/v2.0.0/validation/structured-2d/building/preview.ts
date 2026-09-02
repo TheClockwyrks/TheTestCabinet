@@ -17,7 +17,7 @@ import {
   type EmitterDef,
   type Face,
   type TowerType,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import type {
   BuildSnapshot,

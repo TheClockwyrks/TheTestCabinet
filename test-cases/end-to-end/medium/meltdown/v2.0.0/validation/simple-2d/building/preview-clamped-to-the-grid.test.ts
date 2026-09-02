@@ -20,7 +20,7 @@
 // that clamped for a 2x2 alone passes the first and fails the second.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ROWS, tileCX, tileCY } from "../../src/constants";
+import { COLS, ROWS, tileCX, tileCY } from "../constants";
 import { assertBetween } from "../assert";
 import { sizeOf } from "../geometry";
 import {

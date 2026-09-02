@@ -39,7 +39,7 @@
 // happens to report.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_LEVEL } from "../../src/constants";
+import { MAX_LEVEL } from "../constants";
 import {
   assertBetween,
   assertDeepEqual,

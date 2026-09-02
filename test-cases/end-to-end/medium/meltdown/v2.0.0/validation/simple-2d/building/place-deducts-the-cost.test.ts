@@ -15,7 +15,7 @@
 // a second later would be measuring whatever else the run does with money.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

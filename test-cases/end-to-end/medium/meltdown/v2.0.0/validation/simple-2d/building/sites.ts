@@ -14,7 +14,7 @@
 // across a corridor — `place-repaths` and `sell-reopens-and-repaths` — ignore
 // this file and name their own anchor in their own terms.
 
-import { LEFT_VENT_ROWS } from "../../src/constants";
+import { LEFT_VENT_ROWS } from "../constants";
 import type { Tile } from "../geometry";
 
 /**

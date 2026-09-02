@@ -73,7 +73,7 @@ import {
   emitterStats,
   footprintCentre,
   heatMultiplier,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertBetween,
   assertEqual,

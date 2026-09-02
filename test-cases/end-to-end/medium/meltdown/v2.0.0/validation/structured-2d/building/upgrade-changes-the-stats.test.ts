@@ -72,7 +72,7 @@ import {
   TILE,
   emitterStats,
   heatMultiplier,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertBetween,
   assertEqual,

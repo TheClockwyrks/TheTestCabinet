@@ -34,7 +34,7 @@ import {
   REFUND_RATE,
   TOWER_DEFS,
   upgradeCost,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

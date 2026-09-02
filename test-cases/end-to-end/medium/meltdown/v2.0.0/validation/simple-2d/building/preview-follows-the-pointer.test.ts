@@ -40,7 +40,7 @@ import {
   TILE,
   tileLeft,
   tileTop,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import { sizeOf } from "../geometry";
 import {

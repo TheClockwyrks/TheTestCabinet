@@ -26,7 +26,7 @@
 // this item exists to catch, and the failure names which of the two was wrong.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { REFUND_RATE, TOWER_DEFS } from "../../src/constants";
+import { REFUND_RATE, TOWER_DEFS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

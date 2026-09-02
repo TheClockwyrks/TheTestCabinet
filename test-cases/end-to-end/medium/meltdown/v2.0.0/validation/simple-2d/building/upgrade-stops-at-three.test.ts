@@ -22,7 +22,7 @@
 // the act itself changes neither the level nor the balance.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_LEVEL } from "../../src/constants";
+import { MAX_LEVEL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

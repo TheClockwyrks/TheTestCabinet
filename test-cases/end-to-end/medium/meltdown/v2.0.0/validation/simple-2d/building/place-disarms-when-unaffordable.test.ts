@@ -15,7 +15,7 @@
 // failure than the one this item is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   captureStill,
