@@ -36,7 +36,7 @@ import {
   FLUX_SIZE,
   SPRITES,
   SPRITE_SIZE,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,

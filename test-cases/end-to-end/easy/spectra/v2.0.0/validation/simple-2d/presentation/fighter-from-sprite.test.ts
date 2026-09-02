@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, fail } from "../assert";
-import { SHIP_W, SHIP_Y, SPRITES, SPRITE_SIZE } from "../../src/constants";
+import { SHIP_W, SHIP_Y, SPRITES, SPRITE_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,

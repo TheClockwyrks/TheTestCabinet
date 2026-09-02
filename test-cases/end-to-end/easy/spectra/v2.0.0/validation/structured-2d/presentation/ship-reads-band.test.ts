@@ -35,7 +35,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { SHIP_H, SHIP_W, SHIP_X_MIN, SHIP_Y } from "../../src/constants";
+import { SHIP_H, SHIP_W, SHIP_X_MIN, SHIP_Y } from "../constants";
 import {
   LANE_CENTER,
   captureStill,

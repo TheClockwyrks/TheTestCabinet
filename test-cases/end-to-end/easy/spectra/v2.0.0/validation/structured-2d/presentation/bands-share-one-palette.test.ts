@@ -40,7 +40,7 @@ import {
   PLAYER_BULLET_H,
   PLAYER_BULLET_W,
   SHARD_SIZE,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   colorDistance,

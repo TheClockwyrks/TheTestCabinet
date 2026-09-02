@@ -36,7 +36,7 @@ import {
   PRISM_SIZE,
   SHARD_SIZE,
   SPRITE_SIZE,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,

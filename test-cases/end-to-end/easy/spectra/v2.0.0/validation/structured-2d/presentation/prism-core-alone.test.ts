@@ -38,7 +38,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
-import { PRISM_CORE_SIZE, PRISM_SIZE } from "../../src/constants";
+import { PRISM_CORE_SIZE, PRISM_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,

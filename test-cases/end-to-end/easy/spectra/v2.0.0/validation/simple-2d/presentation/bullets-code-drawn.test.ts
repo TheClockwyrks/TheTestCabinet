@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
-import { PLAYER_BULLET_H, PLAYER_BULLET_W, SPRITES } from "../../src/constants";
+import { PLAYER_BULLET_H, PLAYER_BULLET_W, SPRITES } from "../constants";
 import {
   bulletOf,
   captureStill,

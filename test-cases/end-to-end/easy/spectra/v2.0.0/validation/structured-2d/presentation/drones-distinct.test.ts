@@ -49,7 +49,7 @@ import {
   FLUX_SIZE,
   PRISM_SIZE,
   SHARD_SIZE,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,

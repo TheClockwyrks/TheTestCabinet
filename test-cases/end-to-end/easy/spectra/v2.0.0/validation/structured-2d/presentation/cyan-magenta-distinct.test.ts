@@ -31,7 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { SHARD_SIZE } from "../../src/constants";
+import { SHARD_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,

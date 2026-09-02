@@ -49,7 +49,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCanvas, loadImage, type SKRSContext2D } from "@napi-rs/canvas";
 import { fail } from "../assert";
-import { SPRITES, SPRITE_SIZE } from "../../src/constants";
+import { SPRITES, SPRITE_SIZE } from "../constants";
 import {
   colorDistance,
   distance,
