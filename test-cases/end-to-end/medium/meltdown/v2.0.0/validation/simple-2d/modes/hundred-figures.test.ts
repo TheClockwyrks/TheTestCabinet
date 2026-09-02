@@ -35,7 +35,7 @@
 // reviewer opens shows the build's own answer on the HUD (modes/run.ts).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_TABLE, START_LIVES } from "../../src/constants";
+import { MODE_TABLE, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { drawOpening, poseMode } from "./run";

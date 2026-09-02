@@ -47,7 +47,7 @@
 // travelled.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOTTLENECK_ZONE, TILE, TOWER_DEFS } from "../../src/constants";
+import { BOTTLENECK_ZONE, TILE, TOWER_DEFS } from "../constants";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import { tileCentre } from "../geometry";
 import {

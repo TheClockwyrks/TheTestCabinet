@@ -23,7 +23,7 @@
 // `modes.deep-pockets-no-interest`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEEP_POCKETS_MONEY } from "../../src/constants";
+import { DEEP_POCKETS_MONEY } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -28,7 +28,7 @@
 // at all is `modes.run-opens-with-its-figures`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SUDDEN_DEATH_LIVES } from "../../src/constants";
+import { SUDDEN_DEATH_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { drawOpening, poseMode } from "./run";

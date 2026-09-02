@@ -34,7 +34,7 @@ import {
   HUNDRED_UNITS,
   RIGHT_EXHAUST_ROWS,
   WAVE_SPAWN_INTERVAL,
-} from "../../src/constants";
+} from "../constants";
 import { tileCentre } from "../geometry";
 import {
   poseWalker,

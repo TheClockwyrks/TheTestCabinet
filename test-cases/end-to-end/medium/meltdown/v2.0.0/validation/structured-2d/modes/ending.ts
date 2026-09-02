@@ -27,7 +27,7 @@
 // transitions for its own figures, and neither file belongs in the shared
 // harness, which fixes no scenario a single group uses.
 
-import { COLS, RIGHT_EXHAUST_ROWS } from "../../src/constants";
+import { COLS, RIGHT_EXHAUST_ROWS } from "../constants";
 import { poseWalker, ticksFor, tileCenter, type Harness } from "../harness";
 
 /**

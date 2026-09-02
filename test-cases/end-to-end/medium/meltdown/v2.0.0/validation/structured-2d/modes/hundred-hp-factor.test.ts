@@ -50,7 +50,7 @@ import {
   HUNDRED_UNITS,
   SURGE_DEFS,
   WAVE_SPAWN_INTERVAL,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

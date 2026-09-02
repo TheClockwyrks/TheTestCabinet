@@ -36,7 +36,7 @@
 // one, which is the right split: this point decides one direction only.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOTTLENECK_ZONE } from "../../src/constants";
+import { BOTTLENECK_ZONE } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,

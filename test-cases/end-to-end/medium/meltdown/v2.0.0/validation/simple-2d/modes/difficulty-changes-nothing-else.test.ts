@@ -40,7 +40,7 @@
 // EACH LEG IS POSED FROM A RESET, so no leg stands on what the leg before it left.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES } from "../../src/constants";
+import { START_LIVES } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,

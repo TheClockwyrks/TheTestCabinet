@@ -28,7 +28,7 @@
 // `modes.run-opens-with-its-figures`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_TABLE } from "../../src/constants";
+import { MODE_TABLE } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { drawOpening, poseMode } from "./run";

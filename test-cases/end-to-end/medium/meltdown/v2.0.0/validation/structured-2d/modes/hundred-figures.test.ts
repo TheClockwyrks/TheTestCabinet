@@ -32,7 +32,7 @@
 // whole numbers and interest is a flag.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUNDRED_MONEY, START_LIVES } from "../../src/constants";
+import { HUNDRED_MONEY, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

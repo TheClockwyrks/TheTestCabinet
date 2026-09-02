@@ -61,7 +61,7 @@ import {
   BUILD_PHASE_TIME,
   HUNDRED_UNITS,
   WAVE_SPAWN_INTERVAL,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

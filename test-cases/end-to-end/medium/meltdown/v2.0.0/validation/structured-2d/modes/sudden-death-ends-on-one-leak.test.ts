@@ -42,7 +42,7 @@
 // that charges no life for a leak reads `1` and `playing`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SUDDEN_DEATH_LIVES } from "../../src/constants";
+import { SUDDEN_DEATH_LIVES } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

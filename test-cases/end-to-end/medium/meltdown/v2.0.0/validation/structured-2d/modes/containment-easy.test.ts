@@ -27,7 +27,7 @@
 // `specs/modes.md` fixes both exactly — so both assertions are equality.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTY_TABLE } from "../../src/constants";
+import { DIFFICULTY_TABLE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
