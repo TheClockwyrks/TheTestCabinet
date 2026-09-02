@@ -41,10 +41,12 @@ export default defineConfig({
     // projects at once (load average ~450), the slowest suite here — a
     // twenty-five-board cascade sweep — took about 40 s against about 6 s quiet,
     // and the engineless sibling of this project lost four points to a sixty-
-    // second allowance under the same conditions. Four minutes is roughly six
-    // times the worst reading actually taken. A hung build is still bounded, and
-    // bounded twice over, since the runner caps the whole suite run as well.
-    testTimeout: 240_000,
+    // second allowance under the same conditions. Five minutes is a quarter of
+    // the twenty-minute cap the runner puts on the WHOLE suite run, so a single
+    // file can only cross it on a host where the whole run was already lost;
+    // below that, no correct build loses a point to the clock. A hung build is
+    // still bounded, and bounded twice over.
+    testTimeout: 300_000,
     // Vitest defaults an unset hook allowance to TEN SECONDS, which is the
     // tightest wall clock in the project and the one least related to anything
     // the build does — a `beforeEach` that builds a harness over the engine can

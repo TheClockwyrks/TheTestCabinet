@@ -51,6 +51,14 @@ export default defineConfig({
     // while the box had cores to spare, and the whole run measured 700 s against
     // a 20-minute cap. Eight halves that, and a page is still memory rather than
     // a core.
+    //
+    // And eight rather than sixteen, which was measured too. At load average
+    // ~650 the same suite run took 1 059 s at eight workers with its slowest
+    // FILE at 170 s, and 861 s at sixteen with its slowest file at 316 s —
+    // sixteen buys 19% off the wall clock by making every file compete with
+    // fifteen siblings, and four points crossed the per-test allowance and were
+    // lost. The whole-run cap is the runner's to spend; the per-test one is what
+    // decides a build's score, so the worker count is set to protect the second.
     maxWorkers: 8,
     minWorkers: 1,
     // WHAT A TIMEOUT IS FOR, AND WHAT IT MUST NOT DO. Nothing this project
@@ -64,14 +72,17 @@ export default defineConfig({
     // projects at once (load average ~450), an unmodified reference lost
     // cascade/tier-ladder, cascade/sequence-is-endless,
     // cascade/boards-meet-the-tier-floor and campaign/select-states to it, at
-    // 66-76 s apiece against quiet times of 6-14 s. Four minutes is set against
-    // that measurement rather than against a healthy machine: the slowest suite
-    // here is a twenty-five-board cascade sweep that costs about 2 s quiet and
-    // about 40 s on a host under that load, so the allowance is roughly six times
-    // the worst reading actually taken and about a hundred times the quiet one. A
-    // hung build is still bounded — and bounded twice over, since the runner caps
-    // the whole suite run as well.
-    testTimeout: 240_000,
+    // 66-76 s apiece against quiet times of 6-14 s.
+    //
+    // Five minutes is set against the measured worst case rather than against a
+    // healthy machine, and against the one ceiling this project cannot move: the
+    // runner caps the WHOLE suite run at twenty minutes. At load average ~650 —
+    // half again the worst this case has been run under — the slowest file here
+    // measured 170 s and the whole run 1 059 s of that twenty minutes. Five
+    // minutes is a quarter of the outer cap, so a single file can only cross it
+    // on a host where the whole run was already lost; below that, no correct
+    // build loses a point to the clock. A hung build is still bounded, twice over.
+    testTimeout: 300_000,
     // A hook opens a page on the shared browser and loads the built site in it.
     // The same reasoning applies, against a much smaller cost.
     hookTimeout: 120_000,
