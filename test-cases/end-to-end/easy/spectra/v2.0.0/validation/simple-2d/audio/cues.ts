@@ -31,7 +31,7 @@
 // what makes that distinction available, and it is the whole reason these checks
 // are stronger here than under an engineless build.
 
-import { SHIP_Y } from "../../src/constants";
+import { SHIP_Y } from "../constants";
 import { fail } from "../assert";
 import {
   lastBullet,

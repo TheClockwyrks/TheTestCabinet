@@ -42,7 +42,7 @@ import {
   CHALLENGE_GROUPS,
   CUES,
   ENTER_GROUP_GAP,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

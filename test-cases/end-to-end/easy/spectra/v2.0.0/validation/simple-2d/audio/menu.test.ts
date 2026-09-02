@@ -25,7 +25,7 @@
 // what `confirm` takes, which are `controls/menu-*`'s and `screens/title-*`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES } from "../../src/constants";
+import { BINDINGS, CUES } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

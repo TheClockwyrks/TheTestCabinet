@@ -36,7 +36,7 @@
 // `audio/stage-clear`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, PLAYER_BULLET_SPEED } from "../../src/constants";
+import { CUES, PLAYER_BULLET_SPEED } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

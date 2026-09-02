@@ -31,7 +31,7 @@ import {
   ENEMY_BULLET_SPEED,
   START_LIVES,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

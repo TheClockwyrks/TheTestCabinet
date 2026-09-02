@@ -32,7 +32,7 @@
 // that a meter below full releases nothing, which are `resonance/*`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES, RESONANCE_MAX } from "../../src/constants";
+import { BINDINGS, CUES, RESONANCE_MAX } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

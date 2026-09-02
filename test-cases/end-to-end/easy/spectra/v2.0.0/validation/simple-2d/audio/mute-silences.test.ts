@@ -40,7 +40,7 @@ import {
   BINDINGS,
   FIRE_INTERVAL,
   PLAYER_BULLET_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLength, assertNotEqual } from "../assert";
 import {
   captureStill,

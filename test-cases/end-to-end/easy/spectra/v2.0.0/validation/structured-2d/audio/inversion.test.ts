@@ -29,7 +29,7 @@
 // `bands/inversion-*`'s and `screens/inversion-overlay`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, PRISM_INVERT_Y } from "../../src/constants";
+import { CUES, PRISM_INVERT_Y } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

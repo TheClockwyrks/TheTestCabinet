@@ -24,7 +24,7 @@
 // `ship/*`'s and `controls/fire-space`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES, FIRE_INTERVAL } from "../../src/constants";
+import { BINDINGS, CUES, FIRE_INTERVAL } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

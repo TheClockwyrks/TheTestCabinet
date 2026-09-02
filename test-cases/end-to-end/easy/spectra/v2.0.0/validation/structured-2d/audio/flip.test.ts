@@ -23,7 +23,7 @@
 // cannon, which are `bands/flip-instant`'s and `bands/flip-starts-lockout`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES } from "../../src/constants";
+import { BINDINGS, CUES } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
