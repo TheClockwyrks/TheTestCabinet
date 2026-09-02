@@ -1034,7 +1034,7 @@ export function traceRoute(h: Harness, route: RoutePairs): void {
   h.debug.trace(toCells(route));
 }
 
-/** The registered actions, as `src/constants.ts` names them. */
+/** The registered actions, as the build's own `BINDINGS` table names them. */
 export type ActionName = keyof typeof BINDINGS;
 
 /**
@@ -1045,7 +1045,7 @@ export type ActionName = keyof typeof BINDINGS;
 export async function tapAction(h: Harness, action: ActionName): Promise<void> {
   const code = BINDINGS[action][0];
   if (code === undefined) {
-    return fail(`a key bound to the ${action} action in src/constants.ts`, []);
+    return fail(`a key bound to the ${action} action in BINDINGS`, []);
   }
   await h.tap(code);
 }

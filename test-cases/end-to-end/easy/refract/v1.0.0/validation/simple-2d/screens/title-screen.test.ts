@@ -10,9 +10,10 @@
 // No reset is posed: what is read is the state the build's `initialize` handed
 // the engine, which is where the game "opens" (specs/ui.md: the title is where
 // the game opens, and `menuIndex` is 0 on arriving at it). The copy is the
-// case's own — TITLE_TEXT, TAGLINE_TEXT, and every entry of TITLE_ITEMS from
-// `src/constants.ts` — matched by substring, because a menu entry is commonly
-// drawn with a selection marker or padding beside it.
+// case's own — TITLE_TEXT, TAGLINE_TEXT, and every entry of TITLE_ITEMS, as
+// this project's `constants.ts` transcribes them from specs/ui.md rather than
+// as the build states them — matched by substring, because a menu entry is
+// commonly drawn with a selection marker or padding beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";

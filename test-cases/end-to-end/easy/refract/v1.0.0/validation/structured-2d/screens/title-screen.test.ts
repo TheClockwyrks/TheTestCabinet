@@ -7,10 +7,11 @@
 // not report, fails here rather than passing on either half alone.
 //
 // The copy is the case's: TITLE_TEXT, TAGLINE_TEXT, and every entry of
-// TITLE_ITEMS from `src/constants.ts` (specs/ui.md fixes all three). Matching
-// is by substring, because a menu entry is commonly drawn with a selection
-// marker or padding beside it. Everything else about the screen is the build's,
-// rated through the domains.
+// TITLE_ITEMS, read from this project's `constants.ts`, which transcribes all
+// three from specs/ui.md rather than reading the build's own copy of them.
+// Matching is by substring, because a menu entry is commonly drawn with a
+// selection marker or padding beside it. Everything else about the screen is
+// the build's, rated through the domains.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

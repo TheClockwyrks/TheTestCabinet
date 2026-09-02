@@ -2,12 +2,13 @@
 // each aligned with its own row band of the grid.
 //
 // Two readings of one frame. The copy is the case's — every entry of
-// SET_LABELS from `src/constants.ts`, in order from the top row down
-// (specs/modes/campaign.md) — and the alignment is read geometrically: each
-// label's anchor sits nearer its own row's band of number draws than any other
-// row's. A set is a grouping only and gates nothing; the one thing a grouping
-// observably IS on this screen is its label on its row, which is what is held
-// here. Where exactly a label sits beside its row is the build's.
+// SET_LABELS, in order from the top row down, as this project's `constants.ts`
+// transcribes them from specs/modes/campaign.md rather than as the build states
+// them — and the alignment is read geometrically: each label's anchor sits
+// nearer its own row's band of number draws than any other row's. A set is a
+// grouping only and gates nothing; the one thing a grouping observably IS on
+// this screen is its label on its row, which is what is held here. Where
+// exactly a label sits beside its row is the build's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
