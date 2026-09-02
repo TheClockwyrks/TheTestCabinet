@@ -36,9 +36,9 @@
 //     rotation items, whose rule is about what PLACING fixes.
 //
 // NOTHING HERE HOLDS A TOLERANCE. Each function hands back a measurement or a
-// specification figure; what the specification requires of it, and how far a build
-// may miss by, is stated in the check that took it. The figures restated from
-// `src/constants.ts` — `figuresOf`, `massOf`, `redlineOf`, `costOf`,
+// specification figure; what the specification requires of it, and how far a
+// build may miss by, is stated in the check that took it. The figures restated
+// from `constants.ts` — `figuresOf`, `massOf`, `redlineOf`, `costOf`,
 // `localRadiators`, `airLossPerSecond` — are the specification's own arithmetic
 // with no slack in them at all, and the anchors are geometry: they say WHERE a
 // scenario stands, never how far a build may miss by.

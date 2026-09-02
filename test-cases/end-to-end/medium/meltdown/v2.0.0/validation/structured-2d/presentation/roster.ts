@@ -1,11 +1,11 @@
 // presentation — what the roster says about a tower this group draws.
 //
-// Two readings of `src/constants.ts`'s own tables, both of them the
-// SPECIFICATION rather than the build: which types are emitters, and which world
-// faces a placement rotation turns a type's local radiators onto. A check
-// compares against these rather than against `snapshot().radiatorFaces`, so a
-// build that turned its faces the wrong way is measured against what
-// specs/towers.md says instead of against its own mistake.
+// Two readings of `constants.ts`'s own tables, both of them the SPECIFICATION
+// rather than the build: which types are emitters, and which world faces a
+// placement rotation turns a type's local radiators onto. A check compares
+// against these rather than against `snapshot().radiatorFaces`, so a build that
+// turned its faces the wrong way is measured against what specs/towers.md says
+// instead of against its own mistake.
 //
 // Local to this group, as the same two readings are in `heat/thermal.ts` and
 // `building/preview.ts`: each is three lines over the case's own table, and a

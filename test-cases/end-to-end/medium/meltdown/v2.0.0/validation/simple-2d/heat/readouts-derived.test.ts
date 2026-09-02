@@ -13,11 +13,11 @@
 // plateau. A level-I Arc carries the reading, so its redline is `80` and its base
 // damage `6`.
 //
-// THE EXPECTATION IS THE CASE'S OWN CURVE. `thermal.ts` restates specs/heat.md's
-// formula over the two scalar constants `src/constants.ts` seeds; the build
-// exports a `heatMultiplier` of its own from that same module and this check
-// never calls it, because a readout compared against the build's own curve would
-// agree with a build that changed the curve.
+// THE EXPECTATION IS THE CASE'S OWN CURVE. `thermal.ts` restates
+// specs/heat.md's formula over the two scalar constants `constants.ts` states;
+// the build has a `heatMultiplier` of its own in `src/constants.ts` and this
+// check never calls it, because a readout compared against the build's own
+// curve would agree with a build that changed the curve.
 //
 // NEITHER FACULTY RUNS. The tower is posed with its thermal model off, so the
 // heat cannot drift between the pose and the read, and with its guns off, so

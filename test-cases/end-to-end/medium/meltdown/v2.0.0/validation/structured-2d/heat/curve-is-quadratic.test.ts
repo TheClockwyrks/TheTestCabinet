@@ -30,11 +30,11 @@ const HALF_REDLINE = REDLINE / 2;
 /**
  * `6 * (0.35 + 3.15 * 0.25)`, which is 6.825 hp.
  *
- * The multiplier comes from `thermal.ts`, which is the CASE's own restatement of
- * specs/heat.md's formula over the two scalar constants `src/constants.ts` seeds.
- * The build has a `heatMultiplier` to hand in that same module and this check
- * never calls it: an expectation read out of the build's own curve would agree
- * with a build that changed the curve.
+ * The multiplier comes from `thermal.ts`, which is the CASE's own restatement
+ * of specs/heat.md's formula over the two scalar constants `constants.ts`
+ * states. The build has a `heatMultiplier` of its own in `src/constants.ts` and
+ * this check never calls it: an expectation read out of the build's own curve
+ * would agree with a build that changed the curve.
  */
 const EXPECTED = BASE_DAMAGE * heatMultiplierOf(HALF_REDLINE, REDLINE);
 

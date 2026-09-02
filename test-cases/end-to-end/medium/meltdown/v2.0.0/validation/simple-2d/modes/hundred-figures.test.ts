@@ -16,12 +16,11 @@
 // `false` is the flag a build carries when it gives the mode the standard economy:
 // The Hundred and Deep Pockets are the two rows that read `no`.
 //
-// WHY THE FIGURES ARE READ FROM THE CASE'S OWN TABLE. `MODE_TABLE` and
-// `START_LIVES` are in `src/constants.ts`, the module the case SEEDS and the build
-// is told not to edit, and specs/modes.md names them as where the row lives. So the
-// expected figures are the ones the build was handed, and the assertions are exact:
-// whole numbers and a flag a specification fixes outright, with no tolerance on
-// them.
+// WHY THE FIGURES ARE THE VALIDATOR'S OWN. `MODE_TABLE` and `START_LIVES` are
+// `constants.ts`'s, this project's own transcription of the row specs/modes.md
+// states. So the expected figures are the specification's rather than the
+// build's own, and the assertions are exact: whole numbers and a flag a
+// specification fixes outright, with no tolerance on them.
 //
 // INTEREST IS READ AS THE FLAG, NOT AS A PAYMENT. Whether a mode with `interest`
 // false actually pays nothing on entering a build phase is

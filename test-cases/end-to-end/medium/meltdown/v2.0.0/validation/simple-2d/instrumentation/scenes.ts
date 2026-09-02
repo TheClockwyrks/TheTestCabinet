@@ -8,14 +8,14 @@
 // game can reach them — so that the only thing moving across a window is the
 // faculty the item is about.
 //
-// THIS FILE FIXES ARRANGEMENT AND GEOMETRY ALONE. Not one figure an item asserts
-// and not one tolerance is decided here. Where the gun stands, where the mark
-// stands and where a walker starts say WHERE a scenario is posed, never how far a
-// build may miss a figure by; the three functions that compute a specification
-// figure (`emitterDefOf`, `fireRateOf`, `shotDamage`) are the specification's own
-// arithmetic restated from `src/constants.ts`, with no slack in them at all; and
-// `ticksForShots` says where in the fire cycle a drive stops, which is geometry of
-// the same kind.
+// THIS FILE FIXES ARRANGEMENT AND GEOMETRY ALONE. Not one figure an item
+// asserts and not one tolerance is decided here. Where the gun stands, where
+// the mark stands and where a walker starts say WHERE a scenario is posed,
+// never how far a build may miss a figure by; the three functions that compute
+// a specification figure (`emitterDefOf`, `fireRateOf`, `shotDamage`) are the
+// specification's own arithmetic restated from `constants.ts`, with no slack in
+// them at all; and `ticksForShots` says where in the fire cycle a drive stops,
+// which is geometry of the same kind.
 //
 // IT LIVES IN THE GROUP RATHER THAN IN `harness.ts` because only these items pose
 // a floor to read a gate on. `harness.ts` carries what every group needs — the

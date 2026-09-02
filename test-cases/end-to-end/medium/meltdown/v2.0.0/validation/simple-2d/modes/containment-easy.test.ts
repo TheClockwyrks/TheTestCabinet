@@ -8,11 +8,11 @@
 // specs/instrumentation.md lists among the derived fields that "follow `setMode`
 // and `setDifficulty`" with no other operation.
 //
-// WHY THE FIGURES ARE READ FROM THE CASE'S OWN TABLE. `DIFFICULTY_TABLE` is in
-// `src/constants.ts`, the module the case SEEDS and the build is told not to edit,
-// and specs/modes.md names it as where the row lives. So the expected figures here
-// are the ones the build was handed, and the assertion is exact: they are whole
-// numbers a specification fixes outright, and there is no tolerance on them.
+// WHY THE FIGURES ARE THE VALIDATOR'S OWN. `DIFFICULTY_TABLE` is
+// `constants.ts`'s, this project's own transcription of the row specs/modes.md
+// states. So the expected figures here are the specification's rather than the
+// build's own, and the assertion is exact: they are whole numbers a
+// specification fixes outright, and there is no tolerance on them.
 //
 // EASY IS THE DISTINGUISHING ROW. `350` and `15` are shared with no other row of
 // the table: a build that ignores the difficulty altogether reads Medium's `250`

@@ -198,10 +198,11 @@ export type MeltdownDriver = Driver<MeltdownState, MeltdownSurface>;
 /**
  * The frame the suite steps in, in milliseconds.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
+ * This is the SUITE's choice, not the game's: the specification deliberately
  * fixes no timestep, because the runtime hands the game whatever elapsed time a
- * frame really took. Fixing it here makes a duration a whole number of frames, so
- * a tolerance can be stated in ticks and mean the same thing on every machine.
+ * frame really took. Fixing it here makes a duration a whole number of frames,
+ * so a tolerance can be stated in ticks and mean the same thing on every
+ * machine.
  *
  * 120 Hz divides every figure this case is timed against finely enough to read a
  * threshold rather than a rounding: the wave spawner's `0.6` s cadence is 72
@@ -1664,9 +1665,9 @@ export function boxIn(
 /**
  * Hold every key in `codes` for `ticks` frames, then release them.
  *
- * Nothing here poses anything: the keys go to the engine's own input, so the game
- * answers them exactly as it answers a player. Which key drives which action is
- * `BINDINGS` in `src/constants.ts` and specs/controls.md.
+ * Nothing here poses anything: the keys go to the engine's own input, so the
+ * game answers them exactly as it answers a player. Which key drives which
+ * action is `BINDINGS` in `constants.ts`, transcribed from specs/controls.md.
  */
 export async function holdFor(
   h: Harness,
@@ -1902,8 +1903,8 @@ export interface TimedCue {
  * event — which is what tells a build that plays a cue on the right event apart
  * from one that plays it on every frame, or a frame late.
  *
- * The cue NAMES are `CUES` in `src/constants.ts`; specs/audio.md says which event
- * each one belongs to.
+ * The cue NAMES are `CUES` in `constants.ts`, transcribed from specs/audio.md,
+ * which says which event each one belongs to.
  */
 export function watchCues(h: Harness): TimedCue[] {
   const played: TimedCue[] = [];

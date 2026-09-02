@@ -6,10 +6,10 @@
 // what each of them changes; this item is only that all three are on the screen to
 // be chosen from.
 //
-// THE COPY IS THE CASE'S. `DIFFICULTY_ITEMS` lives in `src/constants.ts` and a
-// build is told not to edit it. Matching is by substring and ignores case, because
-// a row is commonly drawn with a marker or padding around it, and specs/overview.md
-// fixes no typeface, no palette and no layout.
+// THE COPY IS THE CASE'S. `DIFFICULTY_ITEMS` lives in `constants.ts`,
+// transcribed from specs/screens.md. Matching is by substring and ignores case,
+// because a row is commonly drawn with a marker or padding around it, and
+// specs/overview.md fixes no typeface, no palette and no layout.
 //
 // ONE FRAME, ON THE SCREEN ITSELF. `setScreen` runs no entry effect
 // (specs/instrumentation.md), so what is read is what the build draws for

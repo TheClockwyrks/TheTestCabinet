@@ -7,11 +7,12 @@
 // every menu in the game — "one row is highlighted... The highlighted row is drawn
 // plainly apart from the others."
 //
-// THE COPY IS THE CASE'S AND THE LOOK IS THE BUILD'S. `src/constants.ts` is where
-// the four strings live and a build is told not to edit them, so what is read is
-// those exact strings, by substring and ignoring case, because a row is commonly
-// drawn with a marker or padding around it. specs/overview.md fixes no palette, no
-// typeface and no layout, so nothing here reads a colour, a size or a position.
+// THE COPY IS THE CASE'S AND THE LOOK IS THE BUILD'S. `constants.ts` is where
+// the four strings live, transcribed from specs/screens.md, so what is read is
+// those exact strings, by substring and ignoring case, because a row is
+// commonly drawn with a marker or padding around it. specs/overview.md fixes no
+// palette, no typeface and no layout, so nothing here reads a colour, a size or
+// a position.
 //
 // HOW "DRAWN APART" IS DECIDED, AND WHY IT TAKES THREE FRAMES. Which row is
 // highlighted is a fact about ONE frame, but no check can read "apart" out of one

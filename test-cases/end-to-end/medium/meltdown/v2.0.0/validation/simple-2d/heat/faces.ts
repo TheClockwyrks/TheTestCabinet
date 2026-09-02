@@ -21,7 +21,7 @@
 // THE SIZES COME FROM THE SPECIFICATION, never from a snapshot's own `size`: a
 // build that reported a 3x3 Arc would otherwise be walled according to its own
 // mistake and then graded on the arrangement that mistake produced. `sizeOf` is
-// `geometry.ts`'s, over `src/constants.ts`'s table.
+// `geometry.ts`'s, over `constants.ts`'s table.
 //
 // NOTHING HERE IS A TOLERANCE and nothing here is a threshold. This file says
 // only where a footprint stands; what a reading must come to is stated in the

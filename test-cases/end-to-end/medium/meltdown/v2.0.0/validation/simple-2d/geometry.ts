@@ -1,9 +1,9 @@
 // Meltdown — the floor's geometry, as the CASE computes it. CASE-PROVIDED.
 //
-// Tile arithmetic over `src/constants.ts` — the figures the case seeds and a
-// build is told not to edit — and nothing else. `thermal.ts`, `routes.ts` and
-// `harness.ts` all rest on it, which is why it lives here rather than inside one
-// of them.
+// Tile arithmetic over `constants.ts` — this project's own transcription of the
+// figures specs/floor.md fixes — and nothing else. `thermal.ts`, `routes.ts`
+// and `harness.ts` all rest on it, which is why it lives here rather than
+// inside one of them.
 //
 // NOTHING HERE IMPORTS A BUILD MODULE. The build has geometry of its own, and a
 // check that asked the build where its footprints and edge-tiles are would agree

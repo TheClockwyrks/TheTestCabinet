@@ -1,7 +1,7 @@
 // mazing/routes — the routes across the floor, as the SPECIFICATION computes
 // them. CASE-PROVIDED.
 //
-// specs/mazing.md states the step rule and the metric; `src/constants.ts` seeds
+// specs/mazing.md states the step rule and the metric; `constants.ts` states
 // the grid, the tile size and the four openings. This module is those two
 // together: an INDEPENDENT shortest-route search over the open tiles, written
 // from the specification alone.

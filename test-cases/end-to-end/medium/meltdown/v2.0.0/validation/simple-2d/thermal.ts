@@ -1,7 +1,7 @@
 // Meltdown — the heat model, as the CASE computes it. CASE-PROVIDED.
 //
-// specs/heat.md states the two-phase rule and the four flows; `src/constants.ts`
-// seeds `RAD_K`, `BASE_K`, `COND_K`, `FORGE_K`, `TRIP_HEAT`, `TRIP_TIME`, the
+// specs/heat.md states the two-phase rule and the four flows; `constants.ts`
+// states `RAD_K`, `BASE_K`, `COND_K`, `FORGE_K`, `TRIP_HEAT`, `TRIP_TIME`, the
 // per-tower masses and the mover outputs. This module is those two together: an
 // INDEPENDENT resolution of one frame of the heat model, written from the
 // specification alone.
@@ -15,9 +15,9 @@
 // the wrong mass, disagrees; a build that got it right agrees to within floating
 // point.
 //
-// NOTHING HERE IMPORTS A BUILD MODULE. `src/constants.ts` is the case's own
-// seeded figure table, and `geometry.ts` beside this file is the case's own tile
-// arithmetic. The build's `src/heat.ts` is never read.
+// NOTHING HERE IMPORTS A BUILD MODULE. `constants.ts` is this project's own
+// figure table, transcribed from the specs, and `geometry.ts` beside this file
+// is the case's own tile arithmetic. The build's `src/heat.ts` is never read.
 //
 // WHAT DOES NOT PARTICIPATE. A tripped emitter takes part in NO term — nothing it
 // touches heats it, cools it, or conducts with it — and bleeds at
@@ -56,10 +56,9 @@ import type { MeltdownSnapshot, TowerSnapshot, TowerType } from "./surface";
  *
  * Everything here is either posed by the check or reported by `snapshot()` as a
  * DECLARED field of the state — never a figure the build derived. `redline`,
- * `mass`, `heatPerShot` and a mover's `output` are read out of
- * `src/constants.ts` below, so a build that reports the wrong redline is caught
- * by the item about the redline rather than quietly having its own number used
- * against it.
+ * `mass`, `heatPerShot` and a mover's `output` are read out of `constants.ts`
+ * below, so a build that reports the wrong redline is caught by the item about
+ * the redline rather than quietly having its own number used against it.
  */
 export interface Placed {
   id: number;

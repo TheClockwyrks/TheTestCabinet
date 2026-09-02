@@ -183,7 +183,7 @@ const game = build as unknown as GameDefinition<MeltdownSurface>;
 /**
  * The frame the suite steps in, in milliseconds.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
+ * This is the SUITE's choice, not the game's: the specification deliberately
  * fixes no timestep, because the engine hands the game whatever elapsed time a
  * frame really took and every rate in Meltdown is per second and integrated
  * against it. Fixing it here makes a duration a whole number of frames, so a
@@ -527,7 +527,7 @@ class PointerEvt extends Event {
 /**
  * A logical point's device pixel, through the world's camera and the engine's
  * fit. The camera is never moved or zoomed in this game — world and logical
- * coordinates coincide, which is the space every figure in `src/constants.ts` is
+ * coordinates coincide, which is the space every figure in `constants.ts` is
  * stated in — so the projection is the identity unless the build moved it, and
  * mapping through it keeps the reading honest either way.
  */
@@ -1284,7 +1284,7 @@ export function startLivesOf(mode: ModeName): number {
  * mis-posed.
  *
  * The money and lives are computed from the case's own tables in
- * `src/constants.ts`, never read back off the build's snapshot: whether a build
+ * `constants.ts`, never read back off the build's snapshot: whether a build
  * reports the right `startMoney` is `modes.run-opens-with-its-figures`'s
  * requirement, and a helper that seeded from the build's own reading would fail
  * every scenario standing on that purse for a fault belonging to that one item.
@@ -1546,7 +1546,7 @@ export function placeAt(
 
 /* ---- Driving the real input path ------------------------------------------ */
 
-/** An action the game registers, as `src/constants.ts` names them. */
+/** An action the game registers, as `constants.ts` names them (specs/controls.md). */
 export type Action = ActionName;
 
 /**

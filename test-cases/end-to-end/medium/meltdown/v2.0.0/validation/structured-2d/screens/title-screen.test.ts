@@ -6,11 +6,11 @@
 // `HOW TO PLAY`." And under Menus: "one row is highlighted, counted from `0`. The
 // highlighted row is drawn plainly apart from the others."
 //
-// FOUR RUNS OF TEXT AND ONE COMPARISON, because that is what the one item names:
-// the title, the tagline, the two rows, and the mark that tells the highlighted
-// row from the other. Every string is read from the seeded `src/constants.ts`
-// rather than written out here, so the check asks for the copy the case handed
-// the build.
+// FOUR RUNS OF TEXT AND ONE COMPARISON, because that is what the one item
+// names: the title, the tagline, the two rows, and the mark that tells the
+// highlighted row from the other. Every string is read from `constants.ts`
+// rather than written out here, so the check asks for the copy the
+// specification fixes.
 //
 // WHERE ANY OF IT SITS IS THE BUILD'S. specs/screens.md fixes no layout beyond
 // "a vertical list of rows", so nothing here reads a position: a run is looked

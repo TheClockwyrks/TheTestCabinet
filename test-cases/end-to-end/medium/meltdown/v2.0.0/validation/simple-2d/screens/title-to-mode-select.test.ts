@@ -18,8 +18,9 @@
 // `instrumentation.reset-restores-the-title`'s requirement, not this one's.
 //
 // THE PRESS IS A REAL KEY. It goes to the engine's own input at the binding
-// `src/constants.ts` declares, so what answers it is the build's own handling of
-// `confirm` rather than an operation of the debug surface.
+// `constants.ts` declares (specs/controls.md), so what answers it is the
+// build's own handling of `confirm` rather than an operation of the debug
+// surface.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BINDINGS, TITLE_ITEMS } from "../constants";

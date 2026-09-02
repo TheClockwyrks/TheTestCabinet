@@ -12,13 +12,14 @@
 // scenario may pose heat `100` on a Rime and read its shots without the tower
 // going offline mid-drive.
 //
-// THIS FILE FIXES ARRANGEMENT AND GEOMETRY ALONE. Not one figure a point asserts
-// and not one tolerance is decided here. Where a mark stands is geometry — it says
-// WHERE a scenario is posed, never how far a build may miss by — and the four
-// functions that compute a specification figure (`shotDamage`, `fireRateOf`,
-// `slowCeilOf`, `rangeUnitsOf`) are the specification's own arithmetic, restated
-// from `src/constants.ts`, with no slack in them at all. `ticksForShots` says where
-// in the fire cycle a drive stops, which is geometry of the same kind.
+// THIS FILE FIXES ARRANGEMENT AND GEOMETRY ALONE. Not one figure a point
+// asserts and not one tolerance is decided here. Where a mark stands is
+// geometry — it says WHERE a scenario is posed, never how far a build may miss
+// by — and the four functions that compute a specification figure
+// (`shotDamage`, `fireRateOf`, `slowCeilOf`, `rangeUnitsOf`) are the
+// specification's own arithmetic, restated from `constants.ts`, with no slack
+// in them at all. `ticksForShots` says where in the fire cycle a drive stops,
+// which is geometry of the same kind.
 //
 // IT LIVES IN THE GROUP RATHER THAN IN `harness.ts` because only this group poses a
 // duel. `harness.ts` carries what every group needs — the run, the pinned tower,

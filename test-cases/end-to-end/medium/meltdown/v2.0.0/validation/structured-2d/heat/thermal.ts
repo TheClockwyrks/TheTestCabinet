@@ -1,7 +1,7 @@
 // Meltdown — the heat model, as the CASE computes it. GROUP-LOCAL.
 //
-// specs/heat.md states the two-phase rule and the four flows; `src/constants.ts`
-// seeds `RAD_K`, `BASE_K`, `COND_K`, `FORGE_K`, `TRIP_HEAT`, `TRIP_TIME`, the
+// specs/heat.md states the two-phase rule and the four flows; `constants.ts`
+// states `RAD_K`, `BASE_K`, `COND_K`, `FORGE_K`, `TRIP_HEAT`, `TRIP_TIME`, the
 // per-tower masses and the mover outputs. This module is those two together: an
 // INDEPENDENT resolution of one frame of the heat model, written from the
 // specification alone.
@@ -15,12 +15,13 @@
 // the wrong mass, disagrees; a build that got it right agrees to within floating
 // point.
 //
-// NOTHING HERE IMPORTS A BUILD MODULE. `src/constants.ts` is the case's own
-// seeded figure table, and the tile arithmetic below is the case's own. The
-// build's `src/heat.ts` is never read, and neither is the `heatMultiplier`
-// `src/constants.ts` exports for the build to call: the curve is restated here
-// over the two scalars, because an expectation evaluated by the same function
-// the build evaluates would agree with a build that changed the curve.
+// NOTHING HERE IMPORTS A BUILD MODULE. `constants.ts` is this project's own
+// figure table, transcribed from the specs, and the tile arithmetic below is
+// the case's own. The build's `src/heat.ts` is never read, and neither is the
+// `heatMultiplier` the build's own `src/constants.ts` exports for it to call:
+// the curve is restated here over the two scalars, because an expectation
+// evaluated by the same function the build evaluates would agree with a build
+// that changed the curve.
 //
 // WHAT DOES NOT PARTICIPATE. A tripped emitter takes part in NO term — nothing it
 // touches heats it, cools it, or conducts with it — and bleeds at
@@ -128,10 +129,9 @@ function edgeTiles(type: TowerType, col: number, row: number): EdgeTile[] {
  *
  * Everything here is either posed by the check or reported by `snapshot()` as a
  * DECLARED field of the state — never a figure the build derived. `redline`,
- * `mass`, `heatPerShot` and a mover's `output` are read out of
- * `src/constants.ts` below, so a build that reports the wrong redline is caught
- * by the item about the redline rather than quietly having its own number used
- * against it.
+ * `mass`, `heatPerShot` and a mover's `output` are read out of `constants.ts`
+ * below, so a build that reports the wrong redline is caught by the item about
+ * the redline rather than quietly having its own number used against it.
  */
 export interface Placed {
   id: number;

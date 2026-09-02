@@ -1,12 +1,13 @@
 // Meltdown — towers/roster-complete: every one of the eight is buildable, and the
 // shop lists all eight in roster order.
 //
-// THE RULE. specs/towers.md opens "Eight towers stand on the floor: six emitters
-// that fire, and the Forge and the Sink"; `src/constants.ts` fixes them in SHOP
-// ORDER as `TOWER_TYPES`, and specs/hud.md draws the shop as one entry per type
-// in that order. specs/building.md gives what each one must then do: arming holds
-// a preview of the type, the held footprint reads valid on open floor the money
-// covers, and placing commits a tower of that type on that footprint.
+// THE RULE. specs/towers.md opens "Eight towers stand on the floor: six
+// emitters that fire, and the Forge and the Sink"; `constants.ts` states them
+// in SHOP ORDER as `TOWER_TYPES`, and specs/hud.md draws the shop as one entry
+// per type in that order. specs/building.md gives what each one must then do:
+// arming holds a preview of the type, the held footprint reads valid on open
+// floor the money covers, and placing commits a tower of that type on that
+// footprint.
 //
 // WHY THIS IS THE GROUP'S BROKEN-CAPPED ITEM. A missing tower is not a wrong
 // figure, it is a tower a player cannot build at all, and every other item in this
@@ -52,7 +53,7 @@ import {
   requirePlaced,
 } from "./roster";
 
-/** The eight, in the shop order `src/constants.ts` fixes (specs/towers.md). */
+/** The eight, in the shop order `constants.ts` states (specs/towers.md). */
 const ROSTER = [...TOWER_TYPES];
 
 /**

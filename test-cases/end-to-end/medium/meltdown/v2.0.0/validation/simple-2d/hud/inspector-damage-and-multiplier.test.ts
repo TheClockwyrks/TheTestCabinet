@@ -43,9 +43,9 @@
 //
 // THE FIGURES ARE THE SPECIFICATION'S, NOT THE SNAPSHOT'S. This is the one item
 // in this group whose domain is `heat` rather than `presentation`, and its
-// requirement is the CURVE the player watches: `heatMultiplier` is computed here
-// from the seeded `src/constants.ts` the build was handed, so a panel that draws
-// its own wrong multiplier faithfully still fails.
+// requirement is the CURVE the player watches: `heatMultiplier` is computed
+// here from `constants.ts`, this project's own transcription of specs/heat.md,
+// so a panel that draws its own wrong multiplier faithfully still fails.
 //
 // THE FIGURES CARRY NOTHING ELSE ON THE PANEL. The information area also holds
 // the money, the lives and the wave over its total, and the Bloom's own size,

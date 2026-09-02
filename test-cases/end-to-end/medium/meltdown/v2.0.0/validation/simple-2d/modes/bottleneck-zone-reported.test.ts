@@ -9,13 +9,14 @@
 // that follow `setMode` with no other operation, and surface.ts fixes its spelling:
 // `{ col0, row0, col1, row1 }`, "Inclusive on both ends; `null` off Bottleneck".
 //
-// FOUR EDGES, READ ONE AT A TIME. A zone reported one column short on the right is a
-// different defect from one reported one row low at the top, and a player feels them
-// differently — the first takes tiles away from the buildable middle, the second
-// shifts the whole band. Reading each edge on its own is what lets a failure name
-// which. The figures are read from `BOTTLENECK_ZONE` in `src/constants.ts`, the
-// module the case SEEDS and the build is told not to edit, so they are the ones the
-// build was handed, and the assertions are exact: whole tile indices a specification
+// FOUR EDGES, READ ONE AT A TIME. A zone reported one column short on the right
+// is a different defect from one reported one row low at the top, and a player
+// feels them differently — the first takes tiles away from the buildable
+// middle, the second shifts the whole band. Reading each edge on its own is
+// what lets a failure name which. The figures are read from `BOTTLENECK_ZONE`
+// in `constants.ts`, this project's own transcription of the zone
+// specs/modes.md states, so they are the specification's rather than the
+// build's own, and the assertions are exact: whole tile indices a specification
 // fixes outright, with no tolerance on them.
 //
 // THE CORRIDORS ARE THE SPECIFICATION'S SECOND SENTENCE, READ OFF THE BUILD'S OWN

@@ -23,10 +23,10 @@
 //
 // THE TWO TABLE LOOKUPS below are the specification's own figures, narrowed. A
 // check that wants the Stutter's `heatPerShot` or the Arc's redline reaches
-// `src/constants.ts` — the module the build was seeded, so the figure a check
-// asserts is the figure the build was handed — rather than the snapshot, so a
-// build reporting the wrong redline is caught by the item about the redline and
-// never has its own number used against it.
+// `constants.ts` — this project's own transcription of specs/towers.md, so the
+// figure a check asserts is the figure the SPECIFICATION fixes — rather than
+// the snapshot, so a build reporting the wrong redline is caught by the item
+// about the redline and never has its own number used against it.
 //
 // It lives in the group rather than in `harness.ts` because the arrangement it
 // encodes — a gun with a mark parked in it, and a crowd of marks that never dies

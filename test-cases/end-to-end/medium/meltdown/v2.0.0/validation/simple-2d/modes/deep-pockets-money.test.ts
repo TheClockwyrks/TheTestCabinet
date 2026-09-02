@@ -13,11 +13,11 @@
 // `300`, and one that mistook the figure for a cap or a multiplier reads neither
 // `10000` nor any of those.
 //
-// WHY THE FIGURE IS READ FROM THE CASE'S OWN TABLE. `MODE_TABLE` is in
-// `src/constants.ts`, the module the case SEEDS and the build is told not to edit,
-// and specs/modes.md names it as where the row lives. So the expected figure is the
-// one the build was handed, and the assertion is exact: a whole number a
-// specification fixes outright, with no tolerance on it.
+// WHY THE FIGURE IS THE VALIDATOR'S OWN. `MODE_TABLE` is `constants.ts`'s, this
+// project's own transcription of the row specs/modes.md states. So the expected
+// figure is the specification's rather than the build's own, and the assertion
+// is exact: a whole number a specification fixes outright, with no tolerance on
+// it.
 //
 // NOTHING BUT THE MODE IS POSED before the reading. The run's live money, lives and
 // wave are posed afterwards, from the figures the BUILD derived, so the still a

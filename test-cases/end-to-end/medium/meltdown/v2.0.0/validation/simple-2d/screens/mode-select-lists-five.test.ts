@@ -6,12 +6,12 @@
 // `SUDDEN DEATH`." specs/modes.md fixes what each of them changes; this item is
 // only that a player can see all five are there.
 //
-// THE COPY IS THE CASE'S. `MODE_ITEMS` lives in `src/constants.ts` and a build is
-// told not to edit it, so the five exact strings are what the frame is read for.
-// Matching is by substring and ignores case, because a row is commonly drawn with
-// a marker or padding around it, and specs/overview.md fixes no typeface, no
-// palette and no layout — so nothing here reads where a row was put or what colour
-// it was drawn in.
+// THE COPY IS THE CASE'S. `MODE_ITEMS` lives in `constants.ts`, transcribed
+// from specs/screens.md, so the five exact strings are what the frame is read
+// for. Matching is by substring and ignores case, because a row is commonly
+// drawn with a marker or padding around it, and specs/overview.md fixes no
+// typeface, no palette and no layout — so nothing here reads where a row was
+// put or what colour it was drawn in.
 //
 // ONE FRAME, ON THE SCREEN ITSELF. The screen is posed with `setScreen`, which
 // runs no entry effect (specs/instrumentation.md), so what is read is what the

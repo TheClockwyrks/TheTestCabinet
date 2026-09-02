@@ -1,14 +1,15 @@
 // hud/figures — the figures this group holds the panel to, restated from the
 // specification rather than read out of the build's own arithmetic.
 //
-// WHY THEY ARE RESTATED. `src/constants.ts` is the build's file: the case seeds
-// it, and a build is free to edit it. Reading a NAMED FIGURE back out of it is
-// how a check reads back the number the build was handed — `TOWER_DEFS`, the
-// four `UPGRADE_*` multipliers, `MIN_HEAT_MULT` — and that is what the imports
-// below do. Reading a FORMULA out of it is a different thing entirely: a panel
-// check that asked the build's own `heatMultiplier` what to expect would compare
-// the build against itself, and a build that flattened the damage curve would
-// draw the flattened figure and be told it was right.
+// WHY THEY ARE RESTATED. A NAMED FIGURE comes from `constants.ts`, this
+// project's own transcription of the specification — `TOWER_DEFS`, the four
+// `UPGRADE_*` multipliers, `MIN_HEAT_MULT` — and that is what the imports below
+// do; the build's own `src/constants.ts` is never read, because a figure taken
+// from it would grade the build against itself. Taking a FORMULA from the build
+// is a different thing again: a panel check that asked the build's own
+// `heatMultiplier` what to expect would compare the build against itself, and a
+// build that flattened the damage curve would draw the flattened figure and be
+// told it was right.
 //
 // So every rule this group compares a drawn number against is written out here,
 // in the form the specification states it, over figures the specification names.

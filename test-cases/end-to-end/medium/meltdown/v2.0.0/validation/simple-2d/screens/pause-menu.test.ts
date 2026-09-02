@@ -5,8 +5,8 @@
 // `PAUSE_ITEMS`: `RESUME`, `RESTART`, and `QUIT TO MENU`. The floor is still drawn
 // behind the menu."
 //
-// THE COPY IS THE CASE'S. `PAUSE_ITEMS` lives in `src/constants.ts` and a build is
-// told not to edit it, so the three exact strings are read off the frame, by
+// THE COPY IS THE CASE'S. `PAUSE_ITEMS` lives in `constants.ts`, transcribed
+// from specs/screens.md, so the three exact strings are read off the frame, by
 // substring and ignoring case, because a row is commonly drawn with a marker or
 // padding around it.
 //

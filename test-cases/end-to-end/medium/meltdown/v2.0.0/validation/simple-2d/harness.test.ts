@@ -517,7 +517,7 @@ it("computes the four flows from the specification's own figures", () => {
   //
   //   airLoss = (RAD_K * 4 + BASE_K * 4) * (100 / 100) = 18.8
   //
-  // Hand-computed from specs/heat.md and `src/constants.ts`, never read off the
+  // Hand-computed from specs/heat.md and `constants.ts`, never read off the
   // build — which is the whole reason `thermal.ts` exists.
   const alone = [
     {

@@ -1,8 +1,8 @@
 // Meltdown — the emitter table, and the two readings this group takes. GROUP-LOCAL.
 //
-// THE TABLE. Every figure this group asserts is specs/towers.md's: the Arc's base
-// damage and redline, the Stutter's mass, the Rime's `heatPerShot`.
-// `src/constants.ts` holds that table as a union of the six emitters and the two
+// THE TABLE. Every figure this group asserts is specs/towers.md's: the Arc's
+// base damage and redline, the Stutter's mass, the Rime's `heatPerShot`.
+// `constants.ts` holds that table as a union of the six emitters and the two
 // movers, so reaching a mass or a base damage means narrowing it first. That
 // narrowing is written once here so that no check does it with a cast, and so
 // that asking a MOVER for a mass fails as a named requirement rather than as an

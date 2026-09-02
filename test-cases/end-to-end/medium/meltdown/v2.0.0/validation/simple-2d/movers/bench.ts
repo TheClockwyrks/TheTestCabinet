@@ -125,12 +125,12 @@ export interface Neighbour {
  * The top-left tile a 2x2 neighbour takes to sit flush against `face` of a
  * `subject` anchored at {@link MOVER_SITE}.
  *
- * A 2x2 covers two edge-tiles of the face it stands against, whatever the size of
- * the footprint it stands against, so `sharedEdges` is `2` at every subject size
- * on the roster (specs/heat.md, Faces, edge-tiles, and neighbours). The size comes
- * from `src/constants.ts`'s table rather than from a snapshot's own `size`, so a
- * build that reported the wrong footprint is not walled according to its own
- * mistake.
+ * A 2x2 covers two edge-tiles of the face it stands against, whatever the size
+ * of the footprint it stands against, so `sharedEdges` is `2` at every subject
+ * size on the roster (specs/heat.md, Faces, edge-tiles, and neighbours). The
+ * size comes from `constants.ts`'s table rather than from a snapshot's own
+ * `size`, so a build that reported the wrong footprint is not walled according
+ * to its own mistake.
  */
 export function faceAnchor(subject: TowerType, face: Face): Tile {
   const size = sizeOf(subject);

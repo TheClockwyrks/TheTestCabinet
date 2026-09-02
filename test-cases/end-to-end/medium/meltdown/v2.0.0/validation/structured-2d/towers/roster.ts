@@ -38,9 +38,9 @@
 //     fixes.
 //
 // NOTHING HERE HOLDS A TOLERANCE. Each function hands back a measurement or a
-// specification figure; what the specification requires of it, and how far a build
-// may miss by, is stated in the check that took it. The figures restated from
-// `src/constants.ts` — `figuresOf`, `massOf`, `redlineOf`, `costOf`,
+// specification figure; what the specification requires of it, and how far a
+// build may miss by, is stated in the check that took it. The figures restated
+// from `constants.ts` — `figuresOf`, `massOf`, `redlineOf`, `costOf`,
 // `localRadiators`, `airLossPerSecond` — are the specification's own arithmetic
 // with no slack in them at all, and the anchors are geometry: they say WHERE a
 // scenario stands, never how far a build may miss by.
@@ -117,12 +117,13 @@ export interface Figures {
 /**
  * That emitter's range, fire rate, base damage and `heatPerShot` at `level`.
  *
- * specs/towers.md, Levels: each level above the first adds `UPGRADE_RANGE` to the
- * range and multiplies the other three by `UPGRADE_DAMAGE`, `UPGRADE_FIRE_RATE`
- * and `UPGRADE_HEAT`. That sentence is written out here over the seeded row rather
- * than taken from the `emitterStats` `src/constants.ts` exports FOR THE BUILD TO
- * CALL, because an expectation evaluated by the same function the build evaluates
- * would agree with a build that changed it.
+ * specs/towers.md, Levels: each level above the first adds `UPGRADE_RANGE` to
+ * the range and multiplies the other three by `UPGRADE_DAMAGE`,
+ * `UPGRADE_FIRE_RATE` and `UPGRADE_HEAT`. That sentence is written out here
+ * over the seeded row rather than taken from the `emitterStats` the build's own
+ * `src/constants.ts` exports FOR IT TO CALL, because an expectation evaluated
+ * by the same function the build evaluates would agree with a build that
+ * changed it.
  */
 export function figuresOf(type: TowerType, level = 1): Figures {
   const def = emitterDefOf(type);
@@ -140,8 +141,9 @@ export function figuresOf(type: TowerType, level = 1): Figures {
  * damage): quadratic to the redline, then flat across the plateau to `100`.
  *
  * Restated over the two scalars for the same reason {@link figuresOf} is: the
- * `heatMultiplier` `src/constants.ts` exports is the function the BUILD calls, and
- * an expectation evaluated by it would agree with a build that changed the curve.
+ * `heatMultiplier` in the build's own `src/constants.ts` is the function the
+ * BUILD calls, and an expectation evaluated by it would agree with a build that
+ * changed the curve.
  */
 export function heatMultiplierOf(heat: number, redline: number): number {
   const ramp = Math.min(heat, redline) / redline;
