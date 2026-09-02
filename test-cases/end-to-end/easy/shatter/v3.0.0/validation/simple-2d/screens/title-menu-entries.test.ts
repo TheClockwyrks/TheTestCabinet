@@ -31,7 +31,7 @@
 // which is `screens/play-starts-a-game` and `screens/howto-reachable`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { entryRow, textRuns } from "./menu";

@@ -31,7 +31,7 @@
 // behind it, which is `presentation/screen-text-is-legible`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TAGLINE_TEXT, TITLE_TEXT } from "../../src/constants";
+import { TAGLINE_TEXT, TITLE_TEXT } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { drawnCopy, normalize, textRuns } from "./menu";

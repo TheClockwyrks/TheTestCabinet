@@ -33,7 +33,7 @@
 // pause menu, which is `controls/pause-p`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

@@ -44,7 +44,7 @@
 // (`audio/death-cue`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SHIP_R } from "../../src/constants";
+import { ROCK_RADIUS, SHIP_R } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

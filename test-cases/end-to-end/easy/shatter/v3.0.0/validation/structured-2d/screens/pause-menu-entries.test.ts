@@ -35,7 +35,7 @@
 // field behind the menu is frozen (`screens/pause-freezes-the-field`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertContains, assertLessThan } from "../assert";
 import {
   captureStill,

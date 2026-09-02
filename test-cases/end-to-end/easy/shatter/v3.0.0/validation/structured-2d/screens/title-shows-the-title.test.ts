@@ -3,7 +3,7 @@
 //
 // `specs/ui.md` fixes the copy of the `title` screen outright: the title is
 // `TITLE_TEXT` (`SHATTER`) and the tagline is `TAGLINE_TEXT` (`GRAVITY WELL
-// SHOOTER`), each named by the constant `src/constants.ts` carries it in. The
+// SHOOTER`), each named by the constant `../constants` carries it in. The
 // same file makes `title` the screen "where the game opens".
 //
 // ON LOAD, WITH NOTHING POSED. The one frame this check runs is the game's
@@ -29,7 +29,7 @@
 // `presentation/screen-text-is-legible`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TAGLINE_TEXT, TITLE_TEXT } from "../../src/constants";
+import { TAGLINE_TEXT, TITLE_TEXT } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,

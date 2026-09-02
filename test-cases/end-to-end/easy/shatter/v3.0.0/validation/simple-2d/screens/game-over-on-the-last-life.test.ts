@@ -33,7 +33,7 @@
 // is `screens/game-over-shows-the-score` and `screens/game-over-shows-the-wave`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_RADIUS, SHIP_R } from "../../src/constants";
+import { ROCK_RADIUS, SHIP_R } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

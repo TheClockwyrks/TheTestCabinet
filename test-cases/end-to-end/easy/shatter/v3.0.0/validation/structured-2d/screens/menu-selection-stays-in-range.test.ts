@@ -39,7 +39,7 @@
 // a confirmed entry leads (`screens/*`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "../../src/constants";
+import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,

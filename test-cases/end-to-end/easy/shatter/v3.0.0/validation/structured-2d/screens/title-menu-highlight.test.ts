@@ -42,7 +42,7 @@
 // `screens/howto-reachable`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEFAULT_SEED, TITLE_ITEMS } from "../../src/constants";
+import { DEFAULT_SEED, TITLE_ITEMS } from "../constants";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import {
   canvasPixels,

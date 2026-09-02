@@ -8,15 +8,22 @@
 // `ARROWS`, `WASD`, `SPACE`, `ENTER`, `ESC`, `P`, and `M`" — with `F` among them
 // under `warhead`, where `specs/controls.md` binds the torpedo to `KeyF`.
 //
-// THE LIST IS DERIVED FROM `BINDINGS`, NOT TYPED OUT. `src/constants.ts`'s
-// `BINDINGS` is the case's own table of the keys `specs/controls.md` binds, so
-// the words required here are read off it through the mapping below — which is
-// the specification's own list, key for word. That is what makes the check the
-// same check under both variants: `warhead` binds `KeyF` and so requires `F`,
-// and `base` binds no such key and so does not, without a branch on the variant
-// anywhere in this file. A key the table binds that the mapping does not cover
-// is asserted to be none, so a later revision that adds a binding fails here
-// rather than quietly dropping a word from the requirement.
+// THE LIST IS DERIVED FROM `BINDINGS`, NOT TYPED OUT. `../constants`'s
+// `BINDINGS` is this validator's transcription of the key table
+// `specs/controls.md` fixes — the specification's table, not the build's own copy
+// of it — so the words required here are read off it through the mapping below,
+// which is the specification's own list, key for word.
+//
+// THE ONE VARIANT-DEPENDENT ROW IS READ, NOT ASSUMED. `specs/controls.md` binds
+// `b` to `KeyF` under `warhead`, where it launches the torpedo, and to `Space`
+// under `base`, where the gun's own key already covers the word `SPACE`. So that
+// row is taken only from a build that reports a torpedo roster at all
+// (`carriesTorpedoes`, `specs/instrumentation.md`): `warhead` is graded on `F`
+// and `base` is not. The probe decides nothing about the SCENARIO — the screen is
+// the same either way — only how long the specification's list is for this build.
+// A key the table binds that the mapping does not cover is asserted to be none,
+// so a later revision that adds a binding fails here rather than quietly dropping
+// a word from the requirement.
 //
 // STANDALONE WORDS, WHICH IS WHAT THE SPECIFICATION ASKS FOR. Each word must
 // appear with a non-alphanumeric on either side of it or at an end of a run, so
@@ -36,10 +43,11 @@
 // cover, which is prose a reviewer rates rather than a figure a check reads.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS, VARIANT_ACTION, type ActionName } from "../constants";
 import { assertLength, assertMatches } from "../assert";
 import {
   captureStill,
+  carriesTorpedoes,
   clearCalls,
   createHarness,
   resetTo,
@@ -73,22 +81,32 @@ const WORD_FOR_KEY: Readonly<Record<string, string>> = {
   KeyF: "F",
 };
 
-/** Every key the case's own `BINDINGS` table binds, once each. */
-const BOUND_KEYS: readonly string[] = [
-  ...new Set(Object.values(BINDINGS).flatMap((binding) => binding.keys)),
-];
+/**
+ * Every key `specs/controls.md` binds this build, once each.
+ *
+ * The whole transcribed table but for its one variant-dependent row, which is
+ * included only where the build carries torpedoes.
+ */
+function boundKeys(withTorpedo: boolean): readonly string[] {
+  const actions = (Object.keys(BINDINGS) as ActionName[]).filter(
+    (action) => withTorpedo || action !== VARIANT_ACTION,
+  );
+  return [...new Set(actions.flatMap((action) => BINDINGS[action].keys))];
+}
 
 /** Any bound key the mapping above has no word for: there must be none. */
-const UNMAPPED_KEYS = BOUND_KEYS.filter((key) => !(key in WORD_FOR_KEY));
+function unmappedKeys(keys: readonly string[]): readonly string[] {
+  return keys.filter((key) => !(key in WORD_FOR_KEY));
+}
 
 /** The words the screen must name, in the order `BINDINGS` binds their keys. */
-const REQUIRED_WORDS: readonly string[] = [
-  ...new Set(
-    BOUND_KEYS.filter((key) => key in WORD_FOR_KEY).map(
-      (key) => WORD_FOR_KEY[key],
+function requiredWords(keys: readonly string[]): readonly string[] {
+  return [
+    ...new Set(
+      keys.filter((key) => key in WORD_FOR_KEY).map((key) => WORD_FOR_KEY[key]),
     ),
-  ),
-];
+  ];
+}
 
 /** `word` standing on its own, rather than inside a longer run of characters. */
 function standalone(word: string): RegExp {
@@ -115,10 +133,14 @@ it("names every key BINDINGS binds, as a standalone word, on the howto screen", 
 
   const drawn = drawnRuns(h);
 
+  const keys = boundKeys(carriesTorpedoes(h));
+  const UNMAPPED_KEYS = unmappedKeys(keys);
+  const REQUIRED_WORDS = requiredWords(keys);
+
   assertLength(
     UNMAPPED_KEYS,
     0,
-    "keys in src/constants.ts's BINDINGS that this check has no required " +
+    "keys in specs/controls.md's BINDINGS that this check has no required " +
       "word for — specs/ui.md requires the how-to screen to name every key " +
       `specs/controls.md binds, so a binding with no word here would go ` +
       `ungraded: ${JSON.stringify(UNMAPPED_KEYS)}`,

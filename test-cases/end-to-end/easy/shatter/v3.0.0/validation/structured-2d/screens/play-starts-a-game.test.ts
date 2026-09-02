@@ -35,7 +35,7 @@
 // is placed (`lives/*`), and the second entry (`screens/howto-reachable`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, TITLE_ITEMS } from "../../src/constants";
+import { START_LIVES, TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

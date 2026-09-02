@@ -30,7 +30,7 @@
 // (`screens/title-*`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAMEOVER_ITEMS } from "../../src/constants";
+import { GAMEOVER_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

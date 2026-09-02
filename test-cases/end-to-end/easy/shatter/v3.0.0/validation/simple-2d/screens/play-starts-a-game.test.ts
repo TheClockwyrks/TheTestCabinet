@@ -30,7 +30,7 @@
 // `controls` group's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, TITLE_ITEMS } from "../../src/constants";
+import { START_LIVES, TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, keyFor, type Harness } from "../harness";
 

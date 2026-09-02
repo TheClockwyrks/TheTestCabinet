@@ -28,7 +28,7 @@
 // screen alone, so that is left ungraded here rather than folded into this grade.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAMEOVER_ITEMS } from "../../src/constants";
+import { GAMEOVER_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, keyFor, type Harness } from "../harness";
 

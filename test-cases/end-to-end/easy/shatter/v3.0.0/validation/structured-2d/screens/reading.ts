@@ -25,7 +25,7 @@ import {
 
 /** Where one menu entry was drawn, in the field's own logical units. */
 export interface MenuRow {
-  /** The entry, exactly as `src/constants.ts` spells it. */
+  /** The entry, exactly as `specs/ui.md` spells it. */
   item: string;
   /** The vertical placement of the entry's drawn glyphs. */
   y: number;

@@ -35,7 +35,7 @@
 // (`screens/restart-begins-a-new-game`, `screens/quit-returns-to-the-title`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertEqual, assertLength, assertLessThan } from "../assert";
 import { QUIET_CORNER } from "../fixtures";
 import { directDistance, driftOver } from "../geometry";

@@ -49,7 +49,7 @@
 // pauses (`controls/pause-*`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MUZZLE_SPEED } from "../../src/constants";
+import { MUZZLE_SPEED } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import { QUIET_CORNER, QUIET_CORNER_OPPOSITE } from "../fixtures";
 import {

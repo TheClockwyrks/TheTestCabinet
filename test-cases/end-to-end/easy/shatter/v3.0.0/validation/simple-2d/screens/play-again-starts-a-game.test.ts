@@ -30,7 +30,7 @@
 // which is `screens/game-over-on-the-last-life`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAMEOVER_ITEMS, START_LIVES } from "../../src/constants";
+import { GAMEOVER_ITEMS, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, keyFor, type Harness } from "../harness";
 

@@ -37,7 +37,7 @@
 // (`waves/wave-one-spawns-four`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAMEOVER_ITEMS, START_LIVES } from "../../src/constants";
+import { GAMEOVER_ITEMS, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -8,13 +8,20 @@
 // how-to screen that leaves a key unnamed leaves a player unable to use it, and a
 // how-to screen with nothing on it is the failure this item exists to catch.
 //
-// THE WORD LIST IS DERIVED, NOT WRITTEN OUT. It is built from `BINDINGS` — the
-// keys the build was seeded to register (`specs/controls.md`) — through the
-// mapping the specification itself states: the four arrows are named together as
+// THE WORD LIST IS DERIVED, NOT WRITTEN OUT. It is built from `BINDINGS` in
+// `../constants` — the validator's transcription of the key table
+// `specs/controls.md` fixes, not the build's own copy of it — through the mapping
+// the specification itself states: the four arrows are named together as
 // `ARROWS`, the four letter keys of the hand position as `WASD`, and every other
 // key by itself. So the same check grades `base` against seven words and
-// `warhead` against eight, and it grades the keys the game ACTUALLY binds rather
-// than a list that could drift from them.
+// `warhead` against eight, and it grades the words the SPECIFICATION names rather
+// than whatever list a build happened to bind.
+//
+// THE VARIANT IS READ, NOT ASSUMED. The table has one variant-dependent row, `b`,
+// and `carriesTorpedoes` is the harness's read of whether this build reports a
+// torpedo roster at all (`specs/instrumentation.md`). It decides nothing about the
+// SCENARIO — the screen is the same either way — only how long the list of keys
+// the specification handed this build is.
 //
 // STANDALONE IS THE READING THE SPECIFICATION ASKS FOR. A word counts only where
 // no letter or digit sits either side of it, so the `P` of `PAUSES` does not name
@@ -36,7 +43,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  carriesTorpedoes,
+  createHarness,
+  type Harness,
+} from "../harness";
 import { boundKeyWords, drawnCopy, textRuns, wordPattern } from "./menu";
 
 let h: Harness;
@@ -64,7 +76,7 @@ it("names every bound key on the how-to screen, as a standalone word", async () 
   );
 
   const copy = drawnCopy(textRuns(h, h.calls));
-  for (const word of boundKeyWords()) {
+  for (const word of boundKeyWords(carriesTorpedoes(h))) {
     assertMatches(
       copy,
       wordPattern(word),

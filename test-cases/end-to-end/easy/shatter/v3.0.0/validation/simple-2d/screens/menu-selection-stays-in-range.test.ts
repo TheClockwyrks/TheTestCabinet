@@ -38,7 +38,7 @@
 // is drawn as, which is `screens/title-menu-highlight`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "../../src/constants";
+import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "../constants";
 import { assertBetween, assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

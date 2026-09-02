@@ -46,7 +46,7 @@
 // through `setMenuIndex`, so what is graded is the drawing and not the input.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_W, TITLE_ITEMS } from "../../src/constants";
+import { FIELD_W, TITLE_ITEMS } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { changedPixels, entryRow, readBand, textRuns, type Band } from "./menu";

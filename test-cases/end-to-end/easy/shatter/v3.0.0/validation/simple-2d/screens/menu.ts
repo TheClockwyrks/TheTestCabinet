@@ -22,7 +22,7 @@
 // beside the rule `specs/ui.md` fixes for it.
 
 import { fail } from "../assert";
-import { BINDINGS, ACTIONS } from "../../src/constants";
+import { ACTIONS, BINDINGS, VARIANT_ACTION } from "../constants";
 import { colorDistance, type DrawCall, type Harness } from "../harness";
 
 /* -------------------------------------------------------------------------- */
@@ -264,16 +264,24 @@ const WORD_FOR_KEY: Readonly<Record<string, string>> = {
 };
 
 /**
- * Every word the how-to screen must name, derived from the keys the game BINDS.
+ * Every word the how-to screen must name, derived from the keys
+ * `specs/controls.md` BINDS.
  *
- * Read off `BINDINGS` rather than written out, so the list is the one
- * `specs/controls.md` states for the variant actually being graded: `base` binds
- * seven words and `warhead` adds `F` for the torpedo, and the same check decides
- * both without knowing which it is running against.
+ * Read off `../constants`'s transcription of the binding table rather than
+ * written out, so the mapping above is applied once and the list is the
+ * specification's rather than a second, hand-kept copy of it.
+ *
+ * `carriesTorpedoes` is what makes the same list serve both checklists. The
+ * binding table's one variant-dependent row is `b` — `KeyF` and the torpedo under
+ * `warhead`, a second `Space` for the gun under `base` — so it is taken only from
+ * a build that carries torpedoes, and `base` is graded on the seven words
+ * `specs/ui.md` names it while `warhead` is graded on those seven plus `F`. Every
+ * other row is the same under both.
  */
-export function boundKeyWords(): string[] {
+export function boundKeyWords(carriesTorpedoes: boolean): string[] {
   const words: string[] = [];
   for (const action of ACTIONS) {
+    if (action === VARIANT_ACTION && !carriesTorpedoes) continue;
     for (const key of BINDINGS[action].keys) {
       const word = WORD_FOR_KEY[key];
       if (word === undefined) {

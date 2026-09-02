@@ -36,7 +36,7 @@
 // above the menu (`screens/title-shows-the-title`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
 import { assertContains, assertLessThan } from "../assert";
 import {
   captureStill,
