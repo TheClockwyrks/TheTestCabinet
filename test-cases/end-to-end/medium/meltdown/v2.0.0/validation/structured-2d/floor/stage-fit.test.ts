@@ -67,7 +67,7 @@ import {
   TOWER_TYPES,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertCloseTo,
   assertEqual,

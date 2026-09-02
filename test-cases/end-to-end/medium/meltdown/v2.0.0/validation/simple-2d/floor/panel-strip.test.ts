@@ -67,7 +67,7 @@ import {
   STAGE_W,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

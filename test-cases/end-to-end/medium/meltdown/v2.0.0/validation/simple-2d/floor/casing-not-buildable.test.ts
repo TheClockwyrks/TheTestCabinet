@@ -49,7 +49,7 @@ import {
   STAGE_H,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import { footprintTiles, onGrid, sizeOf } from "../geometry";
 import {

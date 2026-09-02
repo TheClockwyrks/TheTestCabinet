@@ -46,7 +46,7 @@ import {
   ROWS,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

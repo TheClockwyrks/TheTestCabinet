@@ -50,7 +50,7 @@ import {
   inBounds,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import {
   captureStill,

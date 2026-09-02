@@ -30,7 +30,7 @@
 // from.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LEFT_VENT_ROWS, SURGE_TYPES } from "../../src/constants";
+import { LEFT_VENT_ROWS, SURGE_TYPES } from "../constants";
 import { assertContains, assertEqual, assertLength } from "../assert";
 import {
   captureStill,

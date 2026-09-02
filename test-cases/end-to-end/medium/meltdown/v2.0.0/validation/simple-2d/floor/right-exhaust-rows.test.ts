@@ -42,7 +42,7 @@ import {
   tileCX,
   tileCY,
   tileLeft,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

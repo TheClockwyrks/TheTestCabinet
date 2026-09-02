@@ -33,7 +33,7 @@
 // it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileCX, tileCY, tileLeft, tileTop } from "../../src/constants";
+import { TILE, tileCX, tileCY, tileLeft, tileTop } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import type { Point } from "../geometry";
 import {

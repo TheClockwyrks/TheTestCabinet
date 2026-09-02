@@ -58,7 +58,7 @@ import {
   tileCY,
   tileLeft,
   tileTop,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
