@@ -40,13 +40,8 @@
 // it started from.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DRAG_THRESHOLD,
-  STOCK_X,
-  TOP_ROW_Y,
-  TURN_COUNT,
-} from "../../src/constants";
-import { assertLength } from "../assert";
+import { assertGreaterThan, assertLength } from "../assert";
+import { DRAG_THRESHOLD, STOCK_X, TOP_ROW_Y } from "../constants";
 import {
   cardCenter,
   captureStill,
@@ -61,13 +56,17 @@ import {
 const SPARE = 2;
 
 /**
- * The stock, bottom card first, holding one turn and `SPARE` cards over.
+ * The cards the stock is posed from, bottom card first.
  *
- * `TURN_COUNT` is `1` under Draw One and `3` under Draw Three (specs/stock.md), so
- * the pose is three or five cards off this list and the same check reads both.
+ * A turn moves one card under Draw One and three under Draw Three
+ * (specs/stock.md), so the pose takes three or five off this list and the same
+ * check reads both. The count comes off `snapshot().turnCount`, the reading
+ * `draw-one/deal-mode-reported` and `draw-three/deal-mode-reported` pin to the
+ * specification, rather than out of the build's own `src/constants` — a build that
+ * turned the wrong number and named it consistently would otherwise be measured
+ * against its own mistake.
  */
 const DECK = ["2C", "3D", "4S", "5H", "6C", "7D", "8S"];
-const STOCK = DECK.slice(0, TURN_COUNT + SPARE);
 
 /** The center of the stock's drop rectangle, which every press below lands in. */
 const AT = cardCenter(STOCK_X, TOP_ROW_Y);
@@ -98,12 +97,17 @@ afterEach(() => {
 
 it("answers a release inside DRAG_THRESHOLD as a click and one outside it as a drop", async () => {
   openTable(h);
-  poseStock(h, STOCK);
+
+  const turnCount = h.snapshot().turnCount;
+  assertGreaterThan(turnCount, 0, "the turn count this build reports");
+  const stock = DECK.slice(0, turnCount + SPARE);
+
+  poseStock(h, stock);
   gesture(h, DROP_MOVE);
   const dropped = h.snapshot();
 
   openTable(h);
-  poseStock(h, STOCK);
+  poseStock(h, stock);
   gesture(h, CLICK_MOVE);
   const clicked = h.snapshot();
   await h.advance(1);
@@ -111,7 +115,7 @@ it("answers a release inside DRAG_THRESHOLD as a click and one outside it as a d
 
   assertLength(
     clicked.waste,
-    TURN_COUNT,
+    turnCount,
     `the cards on the waste after a press on the stock and a release ` +
       `${CLICK_MOVE} units away, within DRAG_THRESHOLD (${DRAG_THRESHOLD}): ` +
       "the gesture is a click, and a click over the stock turns it " +
@@ -126,7 +130,7 @@ it("answers a release inside DRAG_THRESHOLD as a click and one outside it as a d
   );
   assertLength(
     dropped.stock,
-    STOCK.length,
+    stock.length,
     `the cards left in the stock after that ${DROP_MOVE}-unit gesture: it was ` +
       "a drop, so nothing was turned off it (specs/controls.md)",
   );

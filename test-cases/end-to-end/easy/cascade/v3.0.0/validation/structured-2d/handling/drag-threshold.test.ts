@@ -30,9 +30,10 @@
 //
 // One unit either side of the figure, so a build whose threshold is anywhere but
 // where the specification puts it answers one of the two wrongly, and the pair
-// grades differently from a build that got both wrong. The figures are derived
-// from the `DRAG_THRESHOLD` the seeded `src/constants.ts` carries, so the check
-// reads back what the build was handed rather than a literal restated here.
+// grades differently from a build that got both wrong. The two figures are
+// derived from the `DRAG_THRESHOLD` this project's own `constants.ts` transcribes
+// from specs/controls.md, so the build is held to the specification rather than to
+// the number it wrote for itself.
 //
 // BOTH SIDES OF THE DROP ARE READ. An empty waste is what a build that turned
 // nothing leaves, and it is also what a build that took cards off the stock and
@@ -50,12 +51,8 @@
 // independent.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DOUBLE_CLICK_WINDOW,
-  DRAG_THRESHOLD,
-  TURN_COUNT,
-} from "../../src/constants";
-import { assertLength } from "../assert";
+import { assertGreaterThan, assertLength } from "../assert";
+import { DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD } from "../constants";
 import {
   captureStill,
   card,
@@ -80,10 +77,15 @@ const DROP_DISTANCE = DRAG_THRESHOLD + 1;
  * The stock, bottom card first. Deep enough that one turn leaves cards behind
  * under either deal mode, so a build that emptied the stock instead of turning
  * `TURN_COUNT` reads as a different waste.
+ *
+ * The turn count is `snapshot().turnCount`, the reading
+ * `draw-one/deal-mode-reported` and `draw-three/deal-mode-reported` pin to the
+ * specification, rather than the build's own `src/constants` — this suite is
+ * common to both deal modes and may spell neither one's figure.
  */
-const CARDS: CardSpec[] = Array.from({ length: 3 * TURN_COUNT }, (_, i) =>
-  card("hearts", i + 1),
-);
+function stockOf(turnCount: number): CardSpec[] {
+  return Array.from({ length: 3 * turnCount }, (_, i) => card("hearts", i + 1));
+}
 
 /** Frames of quiet between the two gestures: past the double-click window. */
 const QUIET = framesFor(DOUBLE_CLICK_WINDOW) + 1;
@@ -100,7 +102,12 @@ afterEach(() => {
 
 it("turns the stock on a release inside the threshold and not on one outside it", async () => {
   openTable(h);
-  poseStock(h, CARDS);
+
+  const turnCount = h.snapshot().turnCount;
+  assertGreaterThan(turnCount, 0, "the turn count this build reports");
+  const cards = stockOf(turnCount);
+
+  poseStock(h, cards);
 
   const at = rectCenter(dropRectIn(h.snapshot(), "stock"));
 
@@ -133,14 +140,14 @@ it("turns the stock on a release inside the threshold and not on one outside it"
   );
   assertLength(
     afterDrop.stock,
-    CARDS.length,
+    cards.length,
     `the cards left on the stock after that ${String(DROP_DISTANCE)}-unit ` +
-      `gesture, which is the ${String(CARDS.length)} it was posed with: a ` +
+      `gesture, which is the ${String(cards.length)} it was posed with: a ` +
       "drop turns no stock, so nothing left it (specs/controls.md)",
   );
   assertLength(
     afterClick.waste,
-    TURN_COUNT,
+    turnCount,
     `the cards on the waste after a press on the stock released ` +
       `${String(CLICK_DISTANCE)} units away, which is within DRAG_THRESHOLD ` +
       `(${String(DRAG_THRESHOLD)}) and so is a click: a click whose press lies ` +

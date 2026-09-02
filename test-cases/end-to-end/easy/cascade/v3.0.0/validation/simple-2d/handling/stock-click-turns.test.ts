@@ -8,12 +8,15 @@
 // center. specs/stock.md fixes what the turn moves: "`TURN_COUNT` cards, or all that
 // remain when the stock holds fewer than that".
 //
-// THE FIGURE IS THE ONE THE BUILD WAS SEEDED. `TURN_COUNT` is read from
-// `src/constants.ts`, the module the case supplies and the build does not edit, so
-// this point holds a build to the deal mode it was given rather than to the number
-// it reports for itself; `draw-one/turn-count` and `draw-three/turn-count` are the
-// items that grade the reported figure. That is also what makes one validator serve
-// both variants: the pose is `TURN_COUNT + SPARE` cards whatever `TURN_COUNT` is.
+// WHY THE TURN COUNT IS READ RATHER THAN WRITTEN. `TURN_COUNT` is one of the four
+// figures that differ between the two deal modes, so this common check cannot spell
+// either one — and it must not read the build's own `src/constants` for it, because
+// a build that turns two cards and writes `TURN_COUNT = 2` would then be measured
+// against its own mistake and pass. The expected growth is `snapshot().turnCount`,
+// which `draw-one/deal-mode-reported` and `draw-three/deal-mode-reported` separately
+// pin to the figure their own `specs/stock.md` fixes. That is also what makes one
+// validator serve both variants: the pose is `turnCount + SPARE` cards whatever the
+// turn count is.
 //
 // THE STOCK HOLDS MORE THAN ONE TURN, so the reading separates a build that turns
 // the deal mode's count from one that turns the whole stock, and the waste starts
@@ -24,8 +27,8 @@
 // a press and a release over the stock is what turns it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STOCK_X, TOP_ROW_Y, TURN_COUNT } from "../../src/constants";
-import { assertLength } from "../assert";
+import { assertGreaterThan, assertLength } from "../assert";
+import { STOCK_X, TOP_ROW_Y } from "../constants";
 import {
   cardCenter,
   captureStill,
@@ -40,13 +43,12 @@ import {
 const SPARE = 2;
 
 /**
- * The stock, bottom card first, holding one turn and `SPARE` cards over.
+ * The cards the stock is posed from, bottom card first.
  *
- * Long enough for either deal mode: `TURN_COUNT` is `1` under Draw One and `3` under
- * Draw Three (specs/stock.md), so the pose is three or five cards off this list.
+ * Long enough for either deal mode: a turn moves one card under Draw One and three
+ * under Draw Three (specs/stock.md), so the pose takes three or five off this list.
  */
 const DECK = ["2C", "3D", "4S", "5H", "6C", "7D", "8S"];
-const STOCK = DECK.slice(0, TURN_COUNT + SPARE);
 
 /** The center of the stock's drop rectangle, which the press lands in. */
 const AT = cardCenter(STOCK_X, TOP_ROW_Y);
@@ -63,7 +65,12 @@ afterEach(() => {
 
 it("grows the waste by the deal mode's turn count on a click over the stock", async () => {
   openTable(h);
-  poseStock(h, STOCK);
+
+  const turnCount = h.snapshot().turnCount;
+  assertGreaterThan(turnCount, 0, "the turn count this build reports");
+
+  const stock = DECK.slice(0, turnCount + SPARE);
+  poseStock(h, stock);
 
   clickAt(h, AT.x, AT.y);
   const after = h.snapshot();
@@ -72,15 +79,15 @@ it("grows the waste by the deal mode's turn count on a click over the stock", as
 
   assertLength(
     after.waste,
-    TURN_COUNT,
+    turnCount,
     `the cards on the waste after one click over the stock, which held ` +
-      `${STOCK.length}: a turn moves TURN_COUNT of them (specs/controls.md, ` +
-      "specs/stock.md)",
+      `${String(stock.length)}: a turn moves TURN_COUNT of them ` +
+      "(specs/controls.md, specs/stock.md)",
   );
   assertLength(
     after.stock,
     SPARE,
-    `the cards left in the stock after that click: the ${STOCK.length} it ` +
-      `held, less the ${TURN_COUNT} the turn moved (specs/stock.md)`,
+    `the cards left in the stock after that click: the ${String(stock.length)} ` +
+      `it held, less the ${String(turnCount)} the turn moved (specs/stock.md)`,
   );
 });

@@ -7,10 +7,15 @@
 // TOP_ROW_Y)`. specs/stock.md: "A turn of a stock holding cards moves
 // `TURN_COUNT` cards onto the waste."
 //
-// WHAT IS ASSERTED, AND WHY IT IS THE SEEDED FIGURE. `TURN_COUNT` is imported
-// from `src/constants.ts` — the module the case supplied and the build does not
-// edit — so the check reads back the figure the build was handed rather than a
-// literal restated here, and one common suite is right under either deal mode.
+// WHAT IS ASSERTED, AND WHERE THE FIGURE COMES FROM. `TURN_COUNT` differs between
+// the two deal modes and this suite is common to both, so it cannot be spelled
+// here — and it must not be read out of the build's own `src/constants` either,
+// which the build writes: a build that turns two cards and writes `TURN_COUNT = 2`
+// would be measured against its own mistake and pass. The count comes off
+// `snapshot().turnCount`, the reading `draw-one/deal-mode-reported` and
+// `draw-three/deal-mode-reported` separately pin to the figure their own
+// `specs/stock.md` fixes, so one common suite is right under either deal mode and
+// the figure behind it is still graded against the specification.
 //
 // THE STOCK HOLDS TWO MORE CARDS THAN A TURN TAKES, so the models separate:
 //
@@ -34,8 +39,7 @@
 // only that the gesture reaches the turn at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TURN_COUNT } from "../../src/constants";
-import { assertLength } from "../assert";
+import { assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,
   card,
@@ -56,9 +60,11 @@ const SPARE = 2;
  * The stock, bottom card first, so the last is the one the next turn takes. The
  * cards are distinct; their suit and rank decide nothing here.
  */
-const CARDS: CardSpec[] = Array.from({ length: TURN_COUNT + SPARE }, (_, i) =>
-  card("hearts", i + 1),
-);
+function stockOf(turnCount: number): CardSpec[] {
+  return Array.from({ length: turnCount + SPARE }, (_, i) =>
+    card("hearts", i + 1),
+  );
+}
 
 let h: Harness;
 
@@ -72,7 +78,12 @@ afterEach(() => {
 
 it("grows the waste by the turn count when a press and release land on the stock", async () => {
   openTable(h);
-  poseStock(h, CARDS);
+
+  const turnCount = h.snapshot().turnCount;
+  assertGreaterThan(turnCount, 0, "the turn count this build reports");
+  const cards = stockOf(turnCount);
+
+  poseStock(h, cards);
 
   const at = rectCenter(dropRectIn(h.snapshot(), "stock"));
   clickAt(h, at.x, at.y);
@@ -82,16 +93,16 @@ it("grows the waste by the turn count when a press and release land on the stock
 
   assertLength(
     after.waste,
-    TURN_COUNT,
+    turnCount,
     `the cards on the waste after one click on the stock, which turns this ` +
       `build's TURN_COUNT of them off a stock holding ` +
-      `${String(CARDS.length)} (specs/controls.md, specs/stock.md)`,
+      `${String(cards.length)} (specs/controls.md, specs/stock.md)`,
   );
   assertLength(
     after.stock,
     SPARE,
     `the cards left on the stock after that click: the ` +
-      `${String(CARDS.length)} it held less the TURN_COUNT the turn moved — a ` +
+      `${String(cards.length)} it held less the TURN_COUNT the turn moved — a ` +
       "turn moves its cards onto the waste rather than copying them " +
       "(specs/stock.md)",
   );

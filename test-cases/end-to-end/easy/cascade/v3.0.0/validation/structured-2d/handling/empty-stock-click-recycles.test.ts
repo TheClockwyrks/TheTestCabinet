@@ -15,18 +15,19 @@
 // cards, are `stock/recycle-preserves-order` and `stock/recycle-clears-sets`; this
 // point decides only that the GESTURE reaches the recycle.
 //
-// THE WASTE IS THREE TURNS DEEP, posed at this build's own `TURN_COUNT` from the
-// seeded `src/constants.ts`, so the pose is the waste three turns of this build's
-// stock leave (specs/stock.md) and the same sentence holds under either deal
-// mode. A build that moved one turn's worth back rather than the whole waste, or
-// that turned rather than recycled, reads as a different pair of counts.
+// THE WASTE IS THREE TURNS DEEP, sized by `snapshot().turnCount` — not by the
+// build's own `src/constants`, which the build writes — so the pose is the waste
+// three turns of this build's stock leave (specs/stock.md) and the same sentence
+// holds under either deal mode. The reading itself is pinned to the specification
+// by `draw-one/deal-mode-reported` and `draw-three/deal-mode-reported`. A build
+// that moved one turn's worth back rather than the whole waste, or that turned
+// rather than recycled, reads as a different pair of counts.
 //
 // THE CLICK IS AT ZERO DISTANCE from its press, inside `DRAG_THRESHOLD` by any
 // reading; `handling/drag-threshold` is the point that decides the threshold.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TURN_COUNT } from "../../src/constants";
-import { assertLength } from "../assert";
+import { assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,
   card,
@@ -44,12 +45,16 @@ import {
 const TURNS = 3;
 
 /** The cards on the waste, bottom first. Their suit and rank decide nothing. */
-const CARDS: CardSpec[] = Array.from({ length: TURNS * TURN_COUNT }, (_, i) =>
-  card("clubs", i + 1),
-);
+function wasteOf(turnCount: number): CardSpec[] {
+  return Array.from({ length: TURNS * turnCount }, (_, i) =>
+    card("clubs", i + 1),
+  );
+}
 
 /** The set memory those cards belong to: one set per turn (specs/stock.md). */
-const SETS = Array.from({ length: TURNS }, () => TURN_COUNT);
+function setsOf(turnCount: number): number[] {
+  return Array.from({ length: TURNS }, () => turnCount);
+}
 
 let h: Harness;
 
@@ -65,7 +70,12 @@ it("returns the whole waste to the stock when a click lands on the empty stock s
   // `openTable` clears all thirteen piles, so the stock is empty before the
   // waste is posed and the click meets an empty stock.
   openTable(h);
-  poseWaste(h, CARDS, SETS);
+
+  const turnCount = h.snapshot().turnCount;
+  assertGreaterThan(turnCount, 0, "the turn count this build reports");
+  const cards = wasteOf(turnCount);
+
+  poseWaste(h, cards, setsOf(turnCount));
 
   const at = rectCenter(dropRectIn(h.snapshot(), "stock"));
   clickAt(h, at.x, at.y);
@@ -75,9 +85,9 @@ it("returns the whole waste to the stock when a click lands on the empty stock s
 
   assertLength(
     after.stock,
-    CARDS.length,
+    cards.length,
     "the cards in the stock after a click on the empty stock slot, which " +
-      `recycles the whole ${String(CARDS.length)}-card waste into it ` +
+      `recycles the whole ${String(cards.length)}-card waste into it ` +
       "(specs/controls.md, specs/stock.md)",
   );
   assertLength(

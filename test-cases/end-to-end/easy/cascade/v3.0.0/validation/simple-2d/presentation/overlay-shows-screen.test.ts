@@ -24,16 +24,21 @@
 //
 // THE VALUE IS READ, NEVER THE NAME. A line is `${name}: ${value}` and the name
 // is the build's own word, so both readings below are of the value: the screen id
-// `specs/screens.md` fixes, and the deal mode as either the id `DEAL_MODE` or the
-// label `DEAL_MODE_LABEL` `specs/stock.md` fixes — the mode is one fact and a
-// build may honestly report it as either, so the pattern is built from the seeded
-// constant and accepts both spellings of it.
+// `specs/screens.md` fixes, and the deal mode `specs/stock.md` fixes for the
+// variant this run was given.
+//
+// THE DEAL MODE COMES OFF THE SNAPSHOT, NOT OUT OF A CONSTANT. This suite is
+// common to both variants, so it cannot spell one variant's id, and it must not
+// take one from the build's own `src/constants` either — a build with the wrong
+// id would then be looked up by its own wrong id and pass. It reads
+// `snapshot().dealMode`, the reading `draw-one.deal-mode-reported` and
+// `draw-three.deal-mode-reported` separately pin to the specification's figure,
+// and asks whether the panel shows that same fact.
 //
 // THE WORLD IT POSES. `reset` and `clearTable`, so all thirteen piles are empty
 // and nothing on the table can carry a figure this point reads.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEAL_MODE } from "../../src/constants";
 import {
   captureStill,
   createHarness,
@@ -50,17 +55,16 @@ const SCREEN = "howto";
 const SCREEN_FORM = /how\W*to/i;
 
 /**
- * How the deal mode may be written: the id `DEAL_MODE` (`draw-one` /
- * `draw-three`) or the label `DEAL_MODE_LABEL` (`DRAW ONE` / `DRAW THREE`),
- * whichever punctuation and case a build chose.
+ * How a deal mode may be written on the panel: as itself, whichever punctuation
+ * and case a build chose.
  *
- * Built from the seeded constant rather than written out, so the same pattern
- * reads either variant's build and neither variant's figure is spelled here.
+ * Built from the id the snapshot reports rather than written out, so the same
+ * pattern reads either variant's build and neither variant's figure is spelled
+ * here.
  */
-const MODE_FORM = new RegExp(
-  DEAL_MODE.split(/[^A-Za-z0-9]+/).join("\\W*"),
-  "i",
-);
+function modeForm(mode: string): RegExp {
+  return new RegExp(mode.split(/[^A-Za-z0-9]+/).join("\\W*"), "i");
+}
 
 let h: Harness;
 
@@ -77,6 +81,8 @@ it("draws the current screen and the deal mode on the overlay", async () => {
   h.debug.clearTable();
   h.debug.setScreen(SCREEN);
 
+  const dealMode = h.snapshot().dealMode;
+
   const before = await drawFrame(h);
   const after = await toggleOverlay(h);
   captureStill(h, "overlay");
@@ -85,8 +91,8 @@ it("draws the current screen and the deal mode on the overlay", async () => {
   assertForm(lines, SCREEN_FORM, `the current screen, '${SCREEN}'`);
   assertForm(
     lines,
-    MODE_FORM,
-    `the deal mode, as its id ${DEAL_MODE} or as the label it draws for it ` +
+    modeForm(dealMode),
+    `the deal mode, as its id ${dealMode} or as the label it draws for it ` +
       "(specs/stock.md)",
   );
 });

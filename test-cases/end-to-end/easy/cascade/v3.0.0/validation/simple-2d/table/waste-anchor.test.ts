@@ -23,7 +23,7 @@
 // stock click — `handling.stock-click-turns`'s point — cannot reach this verdict.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOP_ROW_Y, TURN_COUNT, WASTE_X } from "../../src/constants";
+import { TOP_ROW_Y, WASTE_X } from "../constants";
 import { fail } from "../assert";
 import {
   boxAt,
@@ -63,7 +63,9 @@ afterEach(() => {
 
 it("draws the bottom-most shown waste card at the waste anchor", async () => {
   openTable(harness);
-  poseWaste(harness, SHOWN.slice(0, TURN_COUNT), [TURN_COUNT]);
+
+  const turnCount = harness.snapshot().turnCount;
+  poseWaste(harness, SHOWN.slice(0, turnCount), [turnCount]);
 
   const calls = await drawFrame(harness);
   captureStill(harness, "waste");
