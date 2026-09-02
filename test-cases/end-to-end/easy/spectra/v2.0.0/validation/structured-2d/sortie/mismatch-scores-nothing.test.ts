@@ -38,7 +38,7 @@ import {
   SCORE_SHARD_DIVE,
   SCORE_SHARD_FORM,
   SHARD_HALF,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   LANE_CENTER,

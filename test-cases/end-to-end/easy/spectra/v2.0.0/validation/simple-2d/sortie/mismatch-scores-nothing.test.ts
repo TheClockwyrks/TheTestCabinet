@@ -36,7 +36,7 @@ import {
   PLAYER_BULLET_SPEED,
   SCORE_SHARD_DIVE,
   SCORE_SHARD_FORM,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   LANE_CENTER,

@@ -39,7 +39,7 @@ import {
   RESONANCE_ABSORB,
   RESONANCE_KILL,
   RESONANCE_MAX,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual, assertTrue } from "../assert";
 import {
   LANE_CENTER,
