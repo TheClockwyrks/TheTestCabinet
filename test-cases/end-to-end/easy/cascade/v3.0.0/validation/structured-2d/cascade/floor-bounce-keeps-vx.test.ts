@@ -16,8 +16,8 @@
 // enough from both side edges that the bounce is nowhere near a retirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLOOR_Y } from "../../src/constants";
 import { assertCloseTo } from "../assert";
+import { FLOOR_Y } from "../constants";
 import { captureStill, type Harness } from "../harness";
 import {
   bounced,

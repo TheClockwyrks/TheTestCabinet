@@ -21,8 +21,8 @@
 // neither a side edge nor a bounce can enter a single frame's reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GRAVITY } from "../../src/constants";
 import { assertBetween } from "../assert";
+import { GRAVITY } from "../constants";
 import {
   captureStill,
   createHarness,

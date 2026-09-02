@@ -15,8 +15,8 @@
 // thing the frame does to its position is the fall and the seating.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLOOR_Y } from "../../src/constants";
 import { assertCloseTo } from "../assert";
+import { FLOOR_Y } from "../constants";
 import {
   captureStill,
   createHarness,

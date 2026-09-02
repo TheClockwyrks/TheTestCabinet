@@ -15,8 +15,8 @@
 // card stays while it is only PARTLY over an edge is `no-early-retire`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_W, STAGE_W } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { CARD_W, STAGE_W } from "../constants";
 import { captureReplay, type Harness } from "../harness";
 import {
   createFlightHarness,

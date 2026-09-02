@@ -18,8 +18,8 @@
 // recording covers whole along with the departure.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOUNCE_DAMP, FLOOR_Y } from "../../src/constants";
 import { assertBetween } from "../assert";
+import { BOUNCE_DAMP, FLOOR_Y } from "../constants";
 import { captureReplay, type Harness } from "../harness";
 import {
   bounced,

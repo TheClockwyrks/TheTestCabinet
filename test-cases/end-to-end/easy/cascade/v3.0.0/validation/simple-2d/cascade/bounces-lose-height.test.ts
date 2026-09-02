@@ -27,8 +27,8 @@
 // a fraction of a second in and the three arcs fit inside one recording.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOUNCE_DAMP, FLOOR_Y } from "../../src/constants";
 import { assertLength, assertLessThanOrEqual } from "../assert";
+import { BOUNCE_DAMP, FLOOR_Y } from "../constants";
 import {
   captureReplay,
   createHarness,

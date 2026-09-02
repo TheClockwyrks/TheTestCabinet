@@ -17,8 +17,8 @@
 // `launch-takes-top-card`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_COUNT, LAUNCH_INTERVAL } from "../../src/constants";
 import { assertDeepEqual } from "../assert";
+import { FOUNDATION_COUNT, LAUNCH_INTERVAL } from "../constants";
 import {
   captureStill,
   createHarness,

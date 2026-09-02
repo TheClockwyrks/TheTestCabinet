@@ -18,8 +18,8 @@
 // is a fraction of a second in and the three arcs fit inside one recording.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLOOR_Y } from "../../src/constants";
 import { assertGreaterThan, assertLength } from "../assert";
+import { FLOOR_Y } from "../constants";
 import { captureReplay, type Harness } from "../harness";
 import {
   createFlightHarness,

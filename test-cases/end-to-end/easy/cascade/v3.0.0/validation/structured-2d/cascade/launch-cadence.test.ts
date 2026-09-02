@@ -25,8 +25,8 @@
 // than on the launches the recording is evidence of.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LAUNCH_INTERVAL } from "../../src/constants";
 import { assertBetween, assertEqual } from "../assert";
+import { LAUNCH_INTERVAL } from "../constants";
 import { captureReplay, startCascade, type Harness } from "../harness";
 import { createFlightHarness, flightFrames, watchLaunches } from "./flight";
 

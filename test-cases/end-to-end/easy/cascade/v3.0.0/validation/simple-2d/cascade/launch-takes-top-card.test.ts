@@ -25,14 +25,14 @@
 // walk this asserts is the full thirteen and the sweep is the whole deck.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
 import {
   DECK_SIZE,
   FOUNDATION_COUNT,
   LAUNCH_INTERVAL,
   RANK_MAX,
   RANK_MIN,
-} from "../../src/constants";
-import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
+} from "../constants";
 import {
   captureStill,
   createHarness,

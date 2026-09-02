@@ -25,8 +25,8 @@
 // launches the recording is evidence of.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LAUNCH_INTERVAL } from "../../src/constants";
 import { assertBetween, assertEqual } from "../assert";
+import { LAUNCH_INTERVAL } from "../constants";
 import {
   captureReplay,
   createHarness,

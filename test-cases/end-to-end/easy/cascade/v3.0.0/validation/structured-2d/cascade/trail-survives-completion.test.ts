@@ -22,8 +22,8 @@
 // under eight percent of the stage.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_H, STAGE_W } from "../../src/constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   colorDistance,

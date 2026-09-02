@@ -15,8 +15,8 @@
 // build that retires everything the moment it is asked to.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_W } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { CARD_W } from "../constants";
 import { captureReplay, type Harness } from "../harness";
 import {
   createFlightHarness,

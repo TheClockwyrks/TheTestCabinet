@@ -19,8 +19,8 @@
 // hundred units away and cannot be what the sample is reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W } from "../../src/constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { CARD_H, CARD_W } from "../constants";
 import {
   captureStill,
   colorDistance,

@@ -28,8 +28,8 @@
 // as a pass with no reading taken at all. The `none` suite guards it the same way.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W } from "../../src/constants";
 import { assertGreaterThan, assertTrue } from "../assert";
+import { CARD_H, CARD_W } from "../constants";
 import {
   captureStill,
   drawnImages,

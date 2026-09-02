@@ -19,8 +19,8 @@
 // alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FLOOR_Y } from "../../src/constants";
 import { assertLessThan } from "../assert";
+import { FLOOR_Y } from "../constants";
 import { captureReplay, type Harness } from "../harness";
 import {
   createFlightHarness,

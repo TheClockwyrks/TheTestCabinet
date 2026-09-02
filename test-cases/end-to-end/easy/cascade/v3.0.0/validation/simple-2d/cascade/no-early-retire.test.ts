@@ -18,8 +18,8 @@
 // left card are on the table, and forty units of the right card are off it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_W, STAGE_W } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { CARD_W, STAGE_W } from "../constants";
 import {
   captureStill,
   createHarness,

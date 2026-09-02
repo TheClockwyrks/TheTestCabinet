@@ -15,8 +15,8 @@
 // build never threw to.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DECK_SIZE, LAUNCH_INTERVAL } from "../../src/constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { DECK_SIZE, LAUNCH_INTERVAL } from "../constants";
 import { captureStill, startCascade, type Harness } from "../harness";
 import { createFlightHarness, flightFrames, watchLaunches } from "./flight";
 

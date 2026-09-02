@@ -23,8 +23,8 @@
 // eighth of the stage, which is why the floor is set at twice that.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_H, STAGE_W } from "../../src/constants";
 import { assertGreaterThanOrEqual } from "../assert";
+import { STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   colorDistance,

@@ -22,8 +22,8 @@
 // four.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FOUNDATION_COUNT, LAUNCH_INTERVAL } from "../../src/constants";
 import { assertCloseTo, assertGreaterThanOrEqual } from "../assert";
+import { FOUNDATION_COUNT, LAUNCH_INTERVAL } from "../constants";
 import {
   captureStill,
   pileTopLeft,
@@ -35,10 +35,11 @@ import { createFlightHarness, flightFrames, watchLaunches } from "./flight";
 /**
  * How exactly the top-left must sit on the anchor, as decimal places.
  *
- * The anchor is a whole number of logical units the build is handed in
- * `src/constants.ts`, and a card launched in a frame has not moved, so this is
- * not a tolerance on a measurement: it is room for the last bits of a float that
- * was copied rather than computed. A card placed anywhere else misses by units.
+ * The anchor is a whole number of logical units, fixed by specs/table.md and
+ * transcribed into this project's `constants.ts`, and a card launched in a frame
+ * has not moved, so this is not a tolerance on a measurement: it is room for the
+ * last bits of a float that was copied rather than computed. A card placed
+ * anywhere else misses by units.
  */
 const ANCHOR_DIGITS = 3;
 

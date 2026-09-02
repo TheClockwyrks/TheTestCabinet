@@ -29,8 +29,8 @@
 // {@link createFlightHarness} is that one call, written once so no check in the
 // group can quietly step at some other rate.
 
-import type { Rect } from "../../src/constants";
 import { fail } from "../assert";
+import type { Rect } from "../constants";
 import {
   card,
   createHarness,

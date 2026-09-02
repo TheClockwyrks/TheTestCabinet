@@ -19,13 +19,13 @@
 // build that alters `vx` in flight, which is `floor-bounce-keeps-vx`.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertGreaterThanOrEqual } from "../assert";
 import {
   DECK_SIZE,
   LAUNCH_INTERVAL,
   LAUNCH_VX_MAX,
   LAUNCH_VX_MIN,
-} from "../../src/constants";
-import { assertBetween, assertGreaterThanOrEqual } from "../assert";
+} from "../constants";
 import { captureStill, startCascade, type Harness } from "../harness";
 import { createFlightHarness, flightFrames, watchLaunches } from "./flight";
 

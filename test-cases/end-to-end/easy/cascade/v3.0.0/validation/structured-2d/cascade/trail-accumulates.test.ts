@@ -24,8 +24,8 @@
 // card.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_H, STAGE_W } from "../../src/constants";
 import { assertGreaterThan } from "../assert";
+import { STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   card,

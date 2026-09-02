@@ -17,8 +17,8 @@
 // acceleration and to nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GRAVITY } from "../../src/constants";
 import { assertBetween } from "../assert";
+import { GRAVITY } from "../constants";
 import { captureReplay, type Harness } from "../harness";
 import {
   createFlightHarness,

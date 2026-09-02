@@ -28,8 +28,8 @@
 // adding to the paint.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W, STAGE_H, STAGE_W } from "../../src/constants";
 import { assertGreaterThan } from "../assert";
+import { CARD_H, CARD_W, STAGE_H, STAGE_W } from "../constants";
 import {
   captureStill,
   colorDistance,

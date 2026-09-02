@@ -16,12 +16,8 @@
 // the same four.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FOUNDATION_COUNT,
-  LAUNCH_INTERVAL,
-  LAUNCH_VY,
-} from "../../src/constants";
 import { assertCloseTo, assertGreaterThanOrEqual } from "../assert";
+import { FOUNDATION_COUNT, LAUNCH_INTERVAL, LAUNCH_VY } from "../constants";
 import {
   captureStill,
   createHarness,
