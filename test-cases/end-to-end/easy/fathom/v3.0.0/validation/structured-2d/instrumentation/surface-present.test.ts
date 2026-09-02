@@ -47,7 +47,7 @@ import { FATHOM_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
 import type { FathomSnapshot } from "../surface";
 import type { Tile } from "../maze";
 import {} from "../scene";
-import { BRIGHT_HOLD } from "../../src/constants";
+import { BRIGHT_HOLD } from "../constants";
 
 /**
  * The board: the forager's own four-tile room, eight tiles of solid rock, and a

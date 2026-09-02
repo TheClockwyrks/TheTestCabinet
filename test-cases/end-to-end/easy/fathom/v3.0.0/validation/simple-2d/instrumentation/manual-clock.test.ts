@@ -36,7 +36,7 @@
 // check watches is the pair it posed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, TICK_DT, TICK_HZ } from "../../src/constants";
+import { BRIGHT_HOLD, TICK_DT, TICK_HZ } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { poseMaze, spawnDrifter } from "../fixtures";
 import {

@@ -46,7 +46,7 @@ import {
   GLOAMFIN_CHASE_SPEED,
   TICK_DT,
   TICK_HZ,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
