@@ -49,6 +49,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
+import type { Speed } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -72,8 +73,8 @@ import { poseRunningFloor } from "./run";
 const LEG_FRAMES = framesFor(1.5);
 
 /** The two settings the toggle offers (`specs/waves.md`). */
-const SLOW = 1;
-const FAST = 2;
+const SLOW: Speed = 1;
+const FAST: Speed = 2;
 
 /** What doubling the speed must multiply a leg's game time by (`specs/waves.md`). */
 const EXPECTED_RATIO = FAST / SLOW;
@@ -101,7 +102,7 @@ afterEach(async () => {
 });
 
 /** Pose a fresh run at `speed`, spend one leg on it, and report what it did. */
-async function legAt(speed: number): Promise<{
+async function legAt(speed: Speed): Promise<{
   opened: MeltdownSnapshot;
   closed: MeltdownSnapshot;
   mote: number;

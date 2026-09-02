@@ -33,23 +33,34 @@ export default defineConfig({
     // spends a minute of game time costs milliseconds; the ceiling is for the
     // sweeps that release a whole wave against a maze.
     //
-    // THREE MINUTES, AND IT IS A CEILING ON THE HOST RATHER THAN A TOLERANCE ON
+    // TEN MINUTES, AND IT IS A CEILING ON THE HOST RATHER THAN A TOLERANCE ON
     // THE BUILD. No validator in this project asserts anything about how long it
-    // took, so this figure can only ever turn a slow machine into a failing
-    // point — and that is a point taken off a build for the load on the runner
-    // that scored it. The sweeps here are the longest suites in the project: they
-    // run about twenty-five seconds each on an idle host, which left the old
-    // one-minute ceiling a margin of two and a half times. Measured on this
-    // repository's own machine with the core count oversubscribed twice over,
-    // those same suites ran between sixty and a hundred and five seconds and the
-    // suite failed points it passes idle. Three minutes restores a margin of
-    // seven, and the whole run is capped at twenty minutes of wall clock by the
-    // runner regardless, so a hung suite is still bounded.
-    testTimeout: 180_000,
+    // took, so this figure can only ever turn a slow machine into a failing point
+    // — and a point taken off a build for the load on the runner that scored it
+    // is exactly what a per-check ceiling must never produce.
+    //
+    // WHY THREE MINUTES WAS NOT ENOUGH, MEASURED RATHER THAN GUESSED. On this
+    // repository's own twenty-core machine, with the nine engine-and-case
+    // checklists of the surrounding suite running at once and the load average
+    // between two hundred and four hundred and fifty, a check gets a percent or
+    // two of a core: its wall clock is ten to twenty times its idle wall clock,
+    // and the arithmetic it does is unchanged. Measured that way the longest
+    // suites here — the ones that drive a minute of game time frame by frame —
+    // ran to about two hundred and fifty seconds against the twenty-odd they take
+    // idle, and failed points they pass idle. Ten minutes is a margin of nearly
+    // thirty against those idle figures, which covers a machine several times
+    // busier than the worst this one has been measured at.
+    //
+    // IT CANNOT RUN AWAY WITH THE RUN, because the runner caps the WHOLE vitest
+    // invocation at twenty minutes of wall clock regardless (`VITEST_TIMEOUT`,
+    // `crates/core/src/vitest_validator.rs`). A hung suite is still bounded, and
+    // the figure here is deliberately half of that cap so that one stuck check
+    // cannot be the thing that spends it.
+    testTimeout: 600_000,
     // The hook budget matches, for the same reason: `beforeEach` builds a harness
     // and poses a floor, and a host slow enough to need the ceiling above is slow
     // enough to need it here. It is the ceiling the engineless project already
     // carries.
-    hookTimeout: 180_000,
+    hookTimeout: 600_000,
   },
 });

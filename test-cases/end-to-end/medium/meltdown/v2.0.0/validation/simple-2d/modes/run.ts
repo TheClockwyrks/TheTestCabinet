@@ -37,6 +37,7 @@ import {
 } from "../constants";
 import { tileCentre } from "../geometry";
 import {
+  createHarness,
   poseWalker,
   startRun,
   ticksFor,
@@ -45,6 +46,7 @@ import {
   type ModeName,
   type SurgeType,
 } from "../harness";
+import { ConstantClock } from "@test-cabinet/simple-2d";
 
 /* ---- Posing a mode ------------------------------------------------------- */
 
@@ -196,7 +198,42 @@ export function poseWaveEnd(h: Harness, wave: number): void {
  * window, and a build releasing at a slower cadence than the specification's still
  * gets its whole hundred out.
  */
-export const ONSLAUGHT_TICKS = ticksFor(70);
+export const ONSLAUGHT_SECONDS = 70;
+
+/**
+ * The clock the onslaught is watched on, in frames per second.
+ *
+ * COARSER THAN THE SUITE'S `120`, AND THE REASON IS COST RATHER THAN
+ * MEASUREMENT. The specification "deliberately fixes no timestep ... an interval
+ * of game time reaches the same state however it was divided into frames"
+ * (specs/waves.md), and `instrumentation.deterministic-core` is the point that
+ * grades that claim, so a scenario is free to choose how finely it dices the game
+ * time it needs. What this one needs is seventy seconds OF GAME TIME, which at the
+ * suite's clock is eight thousand four hundred frames, each of them a full update
+ * and a full render of a floor carrying a hundred units — twenty-five seconds of
+ * one core on an idle machine, and four minutes of wall clock on a runner sharing
+ * twenty cores between two hundred tasks, against a per-check ceiling. None of
+ * that arithmetic is anything the point asserts.
+ *
+ * `1/30` of a second still puts eighteen frames inside one `WAVE_SPAWN_INTERVAL`
+ * (`0.6` s), so the release cadence this point counts is resolved eighteen times
+ * over, and it is the same clock the structured-2d copy of this point has always
+ * used. Nothing read here has a finer resolution than that: a unit is counted from
+ * the roster it appears in, not from the frame it appeared on.
+ */
+export const ONSLAUGHT_HZ = 30;
+
+/** Frames of {@link ONSLAUGHT_HZ} covering `duration` seconds of game time. */
+export function onslaughtFrames(duration: number): number {
+  return Math.ceil(duration * ONSLAUGHT_HZ);
+}
+
+/** A harness whose clock is {@link ONSLAUGHT_HZ}, for the two onslaught points. */
+export function createOnslaughtHarness(): Promise<Harness> {
+  return createHarness({ clock: new ConstantClock(1000 / ONSLAUGHT_HZ) });
+}
+
+export const ONSLAUGHT_TICKS = onslaughtFrames(ONSLAUGHT_SECONDS);
 
 /** The interval the release is paced at, for a failure that names it. */
 export const RELEASE_INTERVAL = WAVE_SPAWN_INTERVAL;
@@ -205,18 +242,19 @@ export const RELEASE_INTERVAL = WAVE_SPAWN_INTERVAL;
 export const ONSLAUGHT_UNITS = HUNDRED_UNITS;
 
 /**
- * How often the onslaught is sampled: every sixth frame.
+ * How often the onslaught is sampled: every other frame.
  *
  * Geometry rather than a tolerance. specs/modes.md paces the release at
- * `WAVE_SPAWN_INTERVAL` (`0.6`) seconds, which is seventy-two frames of the suite's
- * 120 Hz clock, so a sample every sixth frame falls between two releases twelve
- * times over and cannot land on a release and a phase change at once. Nothing can be
- * MISSED at any spacing: a unit held where it arrived never leaves the roster, so a
- * sample sees every unit released before it, however many frames ago. What the
- * spacing costs is only how promptly a unit is held — at most six frames, a
- * twentieth of a second, in which a Mote covers three logical units.
+ * `WAVE_SPAWN_INTERVAL` (`0.6`) seconds, which is eighteen frames of this
+ * scenario's {@link ONSLAUGHT_HZ} clock, so a sample every other frame falls
+ * between two releases nine times over and cannot land on a release and a phase
+ * change at once. Nothing can be MISSED at any spacing: a unit held where it
+ * arrived never leaves the roster, so a sample sees every unit released before it,
+ * however many frames ago. What the spacing costs is only how promptly a unit is
+ * held — at most two frames, a fifteenth of a second, in which a Mote covers four
+ * logical units.
  */
-export const SAMPLE_EVERY = 6;
+export const SAMPLE_EVERY = 2;
 
 /** One unit of the onslaught, as it read on the frame it first appeared. */
 export interface Released {

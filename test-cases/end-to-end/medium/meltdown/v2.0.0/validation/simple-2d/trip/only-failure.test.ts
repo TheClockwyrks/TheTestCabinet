@@ -53,13 +53,42 @@ import {
   captureStill,
   createHarness,
   poseTower,
-  seconds,
   startRun,
-  ticksFor,
   towerOf,
   type Harness,
 } from "../harness";
 import { CROWD_SITE, poseCrowd } from "./bench";
+import { ConstantClock } from "@test-cabinet/simple-2d";
+
+/**
+ * This check's own clock, in frames per second.
+ *
+ * COARSER THAN THE SUITE'S `120`, AND THE REASON IS COST RATHER THAN
+ * MEASUREMENT. specs/waves.md fixes no timestep — "an interval of game time
+ * reaches the same state however it was divided into frames" — and
+ * `instrumentation.deterministic-core` is the point that grades that claim, so a
+ * scenario is free to choose how finely it dices the game time it needs. What
+ * this one needs is a MINUTE of game time under sustained fire, which at the
+ * suite's clock is seven thousand two hundred full updates and renders of a floor
+ * carrying forty units: twenty seconds of one core idle, and four minutes of wall
+ * clock on a runner sharing twenty cores between two hundred tasks, against a
+ * per-check ceiling. None of that arithmetic is anything this point asserts.
+ *
+ * NOTHING READ HERE HAS A FINER RESOLUTION THAN A FRAME. `firing` is "a frame in
+ * which it has a target and is online" (specs/combat.md), and
+ * {@link MAX_OFFLINE_RUN} is stated in FRAMES because what it makes room for is
+ * the one frame either side of a cooldown boundary — a fact about the order the
+ * passes run in, not about how long a frame is. At `1/30` of a second the Arc's
+ * `2.0` shots a second still fall fifteen frames apart and its `5.0`-second
+ * cooldown is still a hundred and fifty frames, so every period this item counts
+ * is resolved many times over.
+ */
+const CLOCK_HZ = 30;
+
+/** Frames of {@link CLOCK_HZ} covering `duration` seconds of game time. */
+function frames(duration: number): number {
+  return Math.ceil(duration * CLOCK_HZ);
+}
 
 /** The tower held under the crowd. */
 const TOWER = "arc";
@@ -80,8 +109,9 @@ const TAIL_SECONDS = 10;
  * Two frames, which is one either side of the boundary a cooldown ends on: the
  * simulation resolves combat before the heat pass (specs/combat.md,
  * specs/heat.md), so the frame that brings a tower back online has already picked
- * its targets and may legally report `firing` false. `0.017` s is a third of one
- * percent of a `5.0` s cooldown, and every failure this item exists to catch —
+ * its targets and may legally report `firing` false. Two frames of this check's
+ * own clock is `0.067` s, under a sixtieth of a `5.0` s cooldown, and every
+ * failure this item exists to catch —
  * a tower destroyed, silenced by damage, or out of ammunition — is offline for
  * the rest of the minute.
  */
@@ -90,7 +120,7 @@ const MAX_OFFLINE_RUN = 2;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / CLOCK_HZ) });
 });
 
 afterEach(() => {
@@ -103,8 +133,8 @@ it("The trip is the only failure", async () => {
   poseCrowd(h, TOWER, CROWD_SITE, CROWD, CROWD_RADIUS);
 
   const opened = towerOf(h.snapshot(), id);
-  const frames = ticksFor(HELD_SECONDS);
-  const tailOpensAt = frames - ticksFor(TAIL_SECONDS);
+  const held = frames(HELD_SECONDS);
+  const tailOpensAt = held - frames(TAIL_SECONDS);
 
   let trips = 0;
   let wasTripped = false;
@@ -113,7 +143,7 @@ it("The trip is the only failure", async () => {
   let longestAt = 0;
   let dealtAtTail = 0;
 
-  for (let frame = 0; frame < frames; frame += 1) {
+  for (let frame = 0; frame < held; frame += 1) {
     await h.advance(1);
     const tower = towerOf(h.snapshot(), id);
     if (tower.tripped && !wasTripped) trips += 1;
@@ -160,7 +190,7 @@ it("The trip is the only failure", async () => {
     longestOfflineRun,
     MAX_OFFLINE_RUN,
     `the longest run of frames the ${TOWER} was neither firing nor tripped, ` +
-      `which ended ${seconds(longestAt).toFixed(3)}s in; every offline ` +
+      `which ended ${(longestAt / CLOCK_HZ).toFixed(3)}s in; every offline ` +
       `period must be one of its ${TRIP_TIME}s cooldowns`,
   );
   assertGreaterThan(

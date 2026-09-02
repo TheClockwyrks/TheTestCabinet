@@ -46,9 +46,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
-import { captureStill, createHarness, seconds, type Harness } from "../harness";
+import { captureStill, type Harness } from "../harness";
 import {
   beginOnslaught,
+  createOnslaughtHarness,
+  ONSLAUGHT_SECONDS,
   ONSLAUGHT_TICKS,
   ONSLAUGHT_UNITS,
   RELEASE_INTERVAL,
@@ -58,7 +60,7 @@ import {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createOnslaughtHarness();
 });
 
 afterEach(() => {
@@ -80,7 +82,7 @@ it("releases exactly a hundred units, and no more, in one continuous wave", asyn
   assertEqual(
     watched.released.length,
     ONSLAUGHT_UNITS,
-    `the units The Hundred released over ${seconds(ONSLAUGHT_TICKS)} seconds, ` +
+    `the units The Hundred released over ${ONSLAUGHT_SECONDS} seconds, ` +
       `an onslaught paced at one every ${RELEASE_INTERVAL} seconds having its ` +
       "last due at 59.4 (specs/modes.md, The Hundred)",
   );

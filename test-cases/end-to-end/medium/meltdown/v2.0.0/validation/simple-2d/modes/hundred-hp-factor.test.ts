@@ -48,8 +48,14 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertGreaterThan } from "../assert";
 import { HUNDRED_HP_SCALE, SURGE_DEFS } from "../constants";
-import { captureStill, createHarness, seconds, type Harness } from "../harness";
-import { beginOnslaught, ONSLAUGHT_TICKS, watchOnslaught } from "./run";
+import { captureStill, type Harness } from "../harness";
+import {
+  beginOnslaught,
+  createOnslaughtHarness,
+  ONSLAUGHT_SECONDS,
+  ONSLAUGHT_TICKS,
+  watchOnslaught,
+} from "./run";
 
 /**
  * The decimal places the factor is read to: three, a thousandth of a hit point.
@@ -62,7 +68,7 @@ const HP_DIGITS = 6;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createOnslaughtHarness();
 });
 
 afterEach(() => {
@@ -79,7 +85,7 @@ it("gives every unit of the onslaught six times its base hp, front to back", asy
     watched.released.length,
     0,
     `precondition: the onslaught released a unit inside ` +
-      `${seconds(ONSLAUGHT_TICKS)} seconds, so there is an hp to read`,
+      `${ONSLAUGHT_SECONDS} seconds, so there is an hp to read`,
   );
 
   watched.released.forEach((unit, index) => {
