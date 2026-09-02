@@ -36,7 +36,7 @@
 // comparison rather than on the gains.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

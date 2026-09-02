@@ -26,7 +26,7 @@
 // which is the thing the build controls.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES } from "../../src/constants";
+import { BINDINGS, CUES } from "../constants";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureStill,

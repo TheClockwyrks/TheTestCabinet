@@ -20,7 +20,7 @@
 // THIS ASSERTS NOTHING about the build. It drives, and the point that calls it
 // compares what the two sides of the mute bit produced.
 
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { fail } from "../assert";
 import { footprintCentreOf } from "../geometry";
 import {

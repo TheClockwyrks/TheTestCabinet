@@ -21,7 +21,7 @@
 // reading of the build rather than of the scenario.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,
