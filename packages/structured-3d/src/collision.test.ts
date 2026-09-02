@@ -1990,6 +1990,57 @@ describe("what a manifold promises", () => {
     );
   });
 
+  it("separates a sphere sitting on a capsule's own axis", () => {
+    // The reduction that answers a capsule — the closest point of its core
+    // carries a ball — has nothing left to say when the sphere's center is on
+    // the core: the two balls are concentric. Along the axis is the one family
+    // of directions that separates nothing, since it slides the sphere down the
+    // capsule's length and leaves the core exactly as close as it was.
+    const manifold = expectSeparation(
+      { kind: "sphere", radius: 0.5 },
+      at(0, 0, 0),
+      { kind: "capsule", radius: 0.4, height: 2 },
+      at(0, 0, 0, { rotation: turn(v(0, 0, 1), 1) }),
+    );
+
+    expect(manifold.depth).toBeCloseTo(0.9, 9);
+    // The capsule lies along world X, so the normal has no share of it.
+    expect(Math.abs(manifold.normal.x)).toBeLessThan(1e-9);
+  });
+
+  it("separates two capsules whose cores cross at a shared point", () => {
+    const manifold = expectSeparation(
+      { kind: "capsule", radius: 0.4, height: 2 },
+      at(0, 0, 0),
+      { kind: "capsule", radius: 0.4, height: 2 },
+      at(0, 0, 0, { rotation: turn(v(0, 0, 1), 1) }),
+    );
+
+    expect(manifold.depth).toBeCloseTo(0.8, 9);
+    // One core along Y and one along X leave only Z to come apart along.
+    expectVec3(
+      v(Math.abs(manifold.normal.x), Math.abs(manifold.normal.y), 0),
+      v(0, 0, 0),
+      9,
+    );
+    expect(Math.abs(manifold.normal.z)).toBeCloseTo(1, 9);
+  });
+
+  it("separates two capsules laid along one line", () => {
+    // Parallel cores have no common perpendicular of their own — their cross
+    // product is no direction — and any direction across the shared axis
+    // separates them.
+    const manifold = expectSeparation(
+      { kind: "capsule", radius: 0.4, height: 2 },
+      at(0, 0, 0),
+      { kind: "capsule", radius: 0.4, height: 2 },
+      at(0, 0.5, 0),
+    );
+
+    expect(manifold.depth).toBeCloseTo(0.8, 9);
+    expect(Math.abs(manifold.normal.y)).toBeLessThan(1e-9);
+  });
+
   it("separates a capsule standing against a box", () => {
     expectSeparation(CAPSULE, at(1.3, 0, 0), BOX_1, at(0, 0, 0));
   });

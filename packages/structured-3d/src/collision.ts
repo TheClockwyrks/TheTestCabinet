@@ -241,6 +241,9 @@ const TOUCH_EPS2 = 1e-12;
 /** Below this sine of the angle between two axes, their cross is no axis. */
 const PARALLEL_EPS = 1e-9;
 
+/** Below this much of `+X` left square to an axis, `+X` is that axis. */
+const ACROSS_EPS = 1e-6;
+
 /** `value` held inside `[low, high]`. */
 function clamp(value: number, low: number, high: number): number {
   return value < low ? low : value > high ? high : value;
@@ -253,6 +256,23 @@ function clamp(value: number, low: number, high: number): number {
  */
 function unsigned(n: number): number {
   return n === 0 ? 0 : n;
+}
+
+/**
+ * A unit direction square to `v`, or `+X` when `v` is no direction at all.
+ *
+ * The part of `+X` square to `v` is preferred, so a degenerate pair whose axis
+ * `+X` already crosses reports the same fixed direction two concentric spheres
+ * take and the answer stays the one a reader of either case would predict. An
+ * axis along `+X` has no such part, and `+Y` is square to it by construction.
+ */
+function across(v: Vec3): Vec3 {
+  const len2 = dot(v, v);
+  if (len2 <= 0) return LOCAL_X;
+  const squareTo = (from: Vec3): Vec3 =>
+    sub(from, scale(v, dot(from, v) / len2));
+  const part = squareTo(LOCAL_X);
+  return normalize(length(part) > ACROSS_EPS ? part : squareTo(LOCAL_Y));
 }
 
 /** `v` negated, each component's sign of zero normalized away. */
@@ -631,17 +651,28 @@ function closestSegmentBox(
 /* Manifolds                                                                  */
 /* -------------------------------------------------------------------------- */
 
-/** Sphere against sphere, normal from `a` toward `b`. */
-function sphereSphere(a: WorldSphere, b: WorldSphere): Manifold | null {
+/**
+ * Sphere against sphere, normal from `a` toward `b`.
+ *
+ * `degenerate` is the direction to report when the two centers coincide, which
+ * leaves the pair with no separating direction of its own. Two real spheres are
+ * separated by any of them and take the fixed default, so the report stays
+ * deterministic; a pair the capsule reductions below produced is not free that
+ * way — its two balls stand in for shapes swept along segments, and only a
+ * direction those segments do not lie along really separates them — so those
+ * callers name the direction their reduction lost.
+ */
+function sphereSphere(
+  a: WorldSphere,
+  b: WorldSphere,
+  degenerate: Vec3 = LOCAL_X,
+): Manifold | null {
   const between = sub(b.center, a.center);
   const sum = a.radius + b.radius;
   const d2 = dot(between, between);
   if (d2 >= sum * sum) return null;
   const d = Math.sqrt(d2);
-  // Concentric spheres have no separating direction of their own; any unit
-  // vector separates them, so pick a fixed one and keep the report
-  // deterministic.
-  const normal = d > 0 ? scale(between, 1 / d) : { x: 1, y: 0, z: 0 };
+  const normal = d > 0 ? scale(between, 1 / d) : degenerate;
   const depth = sum - d;
   // The middle of the lens the two boundaries cut off along the axis.
   return {
@@ -707,27 +738,49 @@ function sphereBox(sphere: WorldSphere, box: WorldBox): Manifold | null {
  * Sphere against capsule, normal from the sphere toward the capsule. A capsule
  * is a segment swept by a ball, so the closest point of the segment carries a
  * ball of the capsule's radius and the pair is two spheres.
+ *
+ * A center sitting exactly on the segment is the case the reduction cannot
+ * answer on its own: the two balls are concentric, but pushing along the
+ * segment slides the sphere down the capsule's length and separates nothing.
+ * Across the axis is the direction that does, and every point of the segment is
+ * then `depth` from the center, so the promised translation lands the pair
+ * exactly touching.
  */
 function sphereCapsule(
   sphere: WorldSphere,
   capsule: WorldCapsule,
 ): Manifold | null {
-  return sphereSphere(sphere, {
-    kind: "sphere",
-    center: closestOnSegment(capsule.a, capsule.b, sphere.center),
-    radius: capsule.radius,
-  });
+  return sphereSphere(
+    sphere,
+    {
+      kind: "sphere",
+      center: closestOnSegment(capsule.a, capsule.b, sphere.center),
+      radius: capsule.radius,
+    },
+    across(sub(capsule.b, capsule.a)),
+  );
 }
 
 /**
  * Capsule against capsule, normal from `a` toward `b`. The same reduction: the
  * closest points of the two core segments carry the two balls.
+ *
+ * Two segments that meet leave the same gap in the reduction, and the direction
+ * that closes it is the common perpendicular: translate one segment along a
+ * direction square to both and every pair of points on them moves apart by that
+ * distance in quadrature, so the closest pair ends exactly `depth` apart and no
+ * other pair is nearer. Parallel axes have no common perpendicular to speak of
+ * — their cross product is no direction — and any direction across the shared
+ * axis does the same work.
  */
 function capsuleCapsule(a: WorldCapsule, b: WorldCapsule): Manifold | null {
   const { c1, c2 } = closestBetweenSegments(a.a, a.b, b.a, b.b);
+  const axisA = sub(a.b, a.a);
+  const common = cross(axisA, sub(b.b, b.a));
   return sphereSphere(
     { kind: "sphere", center: c1, radius: a.radius },
     { kind: "sphere", center: c2, radius: b.radius },
+    length(common) > PARALLEL_EPS ? normalize(common) : across(axisA),
   );
 }
 
