@@ -431,6 +431,19 @@ export class EngineWorld implements World {
   /** The deferred `open` request, the latest call in the frame winning. */
   private pending: TransitionRequest | null = null;
 
+  /**
+   * Whether {@link close} has run, so nothing of this world runs again.
+   *
+   * A world's teardown is not always the end of a frame that has finished with
+   * it. Game code holding the engine may call `engine.destroy` from inside a
+   * controller's, an actor's, or the mode's own tick, and the frame's remaining
+   * steps are then aimed at a world whose controllers, actors, and mode have
+   * already ended play. The flag is what those steps consult: a closed world
+   * simulates nothing, ticks no mode, and closes only once, so an `endPlay` is
+   * never followed by a `tick` and never runs twice.
+   */
+  private closedFlag = false;
+
   constructor(deps: WorldDeps) {
     this.deps = deps;
     this.diagnosticsApi = {
@@ -658,8 +671,10 @@ export class EngineWorld implements World {
    * stands still.
    */
   simulate(dt: number): void {
+    if (this.closedFlag) return;
     if (this.pausedFlag) {
       for (const actor of [...this.actorList]) {
+        if (this.closedFlag) return;
         if (!actor.alive || !actor.tickEnabled || !actor.tickWhenPaused) {
           continue;
         }
@@ -677,12 +692,17 @@ export class EngineWorld implements World {
     // destroy.
     const actors = [...this.actorList];
     for (const controller of [...this.controllerList]) {
+      // The snapshots are taken before the pass; a tick that closes the world
+      // — `engine.destroy` from inside one — makes every entry after it stale.
+      if (this.closedFlag) return;
       controller.tick(dt);
     }
     for (const actor of actors) {
+      if (this.closedFlag) return;
       if (!actor.alive || !actor.tickEnabled) continue;
       this.tickActor(actor, dt);
     }
+    if (this.closedFlag) return;
     this.fireTimers();
   }
 
@@ -692,7 +712,7 @@ export class EngineWorld implements World {
    * still. Internal: the engine calls it once per frame.
    */
   tickMode(dt: number): void {
-    if (this.pausedFlag) return;
+    if (this.closedFlag || this.pausedFlag) return;
     this.worldMode.tick(dt);
   }
 
@@ -746,10 +766,19 @@ export class EngineWorld implements World {
    * order, each actor's components' and then the actor's own
    * `endPlay("level-closed")` run in reverse spawn order, and the game mode's
    * `endPlay("level-closed")` runs last. The lists are then emptied, so a
-   * stale reference finds an empty world. Internal: the engine calls it once,
-   * and emits `world:closed` itself afterwards.
+   * stale reference finds an empty world. Internal: the engine calls it when
+   * the world's level is left or the engine is destroyed, and emits
+   * `world:closed` itself afterwards.
+   *
+   * Ending play is a once-only act, so a second call does nothing. The two
+   * paths into here can overlap: a transition tears the outgoing world down
+   * before it awaits the incoming level's `load`, and a `destroy` arriving in
+   * that window reaches the same world again. One `endPlay("level-closed")` per
+   * controller, actor, and game mode is what the transition sequence promises.
    */
   close(): void {
+    if (this.closedFlag) return;
+    this.closedFlag = true;
     this.timers.clear();
     this.pending = null;
     this.destroyedQueue.length = 0;

@@ -1834,6 +1834,78 @@ describe("close", () => {
     world.close();
     expect(world.takeTransition()).toBeNull();
   });
+
+  it("ends play once however many times it is closed", () => {
+    const log: string[] = [];
+
+    class Logged extends TestActor {
+      override endPlay(reason: string): void {
+        log.push(`actor(${reason})`);
+      }
+    }
+    class Watched extends GameMode {
+      override endPlay(reason: string): void {
+        log.push(`mode(${reason})`);
+      }
+    }
+
+    const { world } = openWorld({ mode: Watched, actors: [{ type: Logged }] });
+    world.close();
+    // A transition tears the outgoing world down before it awaits the incoming
+    // level's `load`, and a `destroy` that lands in that window reaches the
+    // same world again. One `endPlay("level-closed")` apiece is the promise.
+    world.close();
+    expect(log).toEqual(["actor(level-closed)", "mode(level-closed)"]);
+  });
+
+  it("simulates and ticks no mode once it is closed", () => {
+    const log: string[] = [];
+
+    class Logged extends TestActor {
+      override tick(): void {
+        log.push("actor.tick");
+      }
+    }
+    class Watched extends GameMode {
+      override tick(): void {
+        log.push("mode.tick");
+      }
+    }
+
+    const { world } = openWorld({ mode: Watched, actors: [{ type: Logged }] });
+    world.close();
+    // The frame a `destroy` interrupts still has steps behind it. None of them
+    // may run: everything they would run has already ended play.
+    world.simulate(0.016);
+    world.tickMode(0.016);
+    expect(log).toEqual([]);
+    expect(world.time).toBe(0);
+  });
+
+  it("stops the actor pass at the actor whose tick closed the world", () => {
+    const log: string[] = [];
+
+    class Logged extends TestActor {
+      name = "";
+      override tick(): void {
+        log.push(this.name);
+        if (this.name === "second") this.world.close();
+      }
+    }
+
+    const { world } = openWorld({
+      mode: GameMode,
+      actors: [
+        { type: Logged, configure: (a: Logged): void => void (a.name = "first") },
+        { type: Logged, configure: (a: Logged): void => void (a.name = "second") },
+        { type: Logged, configure: (a: Logged): void => void (a.name = "third") },
+      ],
+    });
+    world.simulate(0.016);
+    // The pass walks a snapshot taken before it started, so the entries behind
+    // the closing tick are actors that have already ended play.
+    expect(log).toEqual(["first", "second"]);
+  });
 });
 
 describe("accessors", () => {
