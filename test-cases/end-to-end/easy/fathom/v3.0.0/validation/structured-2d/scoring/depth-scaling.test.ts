@@ -41,7 +41,7 @@ import {
   ROSTER_ADD_ORDER,
   SONAR_RANGE_BASE,
   SONAR_RANGE_MIN,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

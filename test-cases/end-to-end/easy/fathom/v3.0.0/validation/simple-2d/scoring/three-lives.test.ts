@@ -24,7 +24,7 @@
 // the three lives before it are spent outside the capture.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES } from "../../src/constants";
+import { START_LIVES } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { holdPredators } from "../fixtures";
 import {

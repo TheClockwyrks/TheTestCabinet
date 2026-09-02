@@ -25,7 +25,7 @@
 // ate from and stays there while the reading is taken.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCORE_PLANKTON } from "../../src/constants";
+import { SCORE_PLANKTON } from "../constants";
 import { assertEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {

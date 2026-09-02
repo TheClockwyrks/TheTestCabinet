@@ -34,7 +34,7 @@
 // measurement, which here is the subject.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, INK_COOLDOWN, SONAR_COOLDOWN } from "../../src/constants";
+import { BRIGHT_HOLD, INK_COOLDOWN, SONAR_COOLDOWN } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,
