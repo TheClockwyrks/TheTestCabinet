@@ -14,7 +14,7 @@
 // `addRock` is specified to place a rock at full health for its size.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

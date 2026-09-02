@@ -27,7 +27,7 @@
 // take it on the way in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

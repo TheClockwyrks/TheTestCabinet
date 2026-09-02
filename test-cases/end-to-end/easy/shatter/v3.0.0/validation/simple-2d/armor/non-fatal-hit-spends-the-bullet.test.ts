@@ -18,7 +18,7 @@
 // that has left the roster on this tick left it by hitting.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual, assertLessThan, assertUndefined } from "../assert";
 import {
   captureStill,

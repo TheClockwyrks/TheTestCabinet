@@ -20,7 +20,7 @@
 // can only be a re-placement — and every tolerance stays in the check that asserts
 // it, derived there from the figure `specs/` fixes for it.
 
-import { ROCK_RADIUS, STAR_X } from "../../src/constants";
+import { ROCK_RADIUS, STAR_X } from "../constants";
 import { fail } from "../assert";
 import { QUIET_CORNER } from "../fixtures";
 import { directDistance, STAR, wrappedDistance, type Vec } from "../geometry";

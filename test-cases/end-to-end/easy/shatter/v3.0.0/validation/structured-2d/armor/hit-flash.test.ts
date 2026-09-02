@@ -36,7 +36,7 @@
 // reads is `armor/health-falls-by-one`'s point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HIT_FLASH_TIME, ROCK_HEALTH, ROCK_RADIUS } from "../../src/constants";
+import { HIT_FLASH_TIME, ROCK_HEALTH, ROCK_RADIUS } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

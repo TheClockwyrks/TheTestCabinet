@@ -23,7 +23,7 @@
 // follow it as the well draws it in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HIT_FLASH_TIME, ROCK_HEALTH } from "../../src/constants";
+import { HIT_FLASH_TIME, ROCK_HEALTH } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

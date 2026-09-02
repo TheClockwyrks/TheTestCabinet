@@ -19,7 +19,7 @@
 // SIZE of a fragment is `rocks/split-large`'s item and the count is its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_CHILD, ROCK_HEALTH } from "../../src/constants";
+import { ROCK_CHILD, ROCK_HEALTH } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

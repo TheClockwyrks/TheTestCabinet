@@ -9,7 +9,7 @@
 // which never load against a `base` build — so it lives beside them and leaves the
 // shared file alone.
 
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { fail } from "../assert";
 import { directDistanceToStar, distance } from "../geometry";
 import {

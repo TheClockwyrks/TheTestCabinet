@@ -22,7 +22,7 @@
 // facing away from the star — see `armor/health-large-3` for both.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

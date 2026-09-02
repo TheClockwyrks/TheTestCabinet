@@ -36,7 +36,7 @@
 // interaction anyway, so nothing on the field can change a health but the surface.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

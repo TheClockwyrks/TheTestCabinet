@@ -16,7 +16,7 @@
 // too, and this check would then be asserting nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual, assertLength, assertLessThan } from "../assert";
 import {
   captureStill,

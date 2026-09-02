@@ -15,7 +15,7 @@
 // score alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import {
   captureStill,

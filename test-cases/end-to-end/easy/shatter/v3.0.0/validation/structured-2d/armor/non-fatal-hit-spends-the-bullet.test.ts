@@ -28,7 +28,7 @@
 // that takes the wrong number off a hit must fail there rather than here as well.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertUndefined } from "../assert";
 import {
   bulletById,

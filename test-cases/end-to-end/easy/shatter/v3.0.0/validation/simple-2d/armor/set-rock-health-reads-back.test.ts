@@ -22,7 +22,7 @@
 // anyway.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual, fail } from "../assert";
 import {
   captureStill,

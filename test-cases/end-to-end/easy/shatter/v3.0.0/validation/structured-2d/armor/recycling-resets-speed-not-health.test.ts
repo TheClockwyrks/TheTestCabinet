@@ -35,7 +35,7 @@ import {
   ROCK_SPEED_MAX,
   ROCK_SPEED_MIN,
   TICK_HZ,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import { pullAt, speedOf } from "../geometry";
 import {

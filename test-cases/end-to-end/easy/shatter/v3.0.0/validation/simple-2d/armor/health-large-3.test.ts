@@ -16,7 +16,7 @@
 // takes four or more is still standing after the third.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual, assertUndefined } from "../assert";
 import {
   captureStill,

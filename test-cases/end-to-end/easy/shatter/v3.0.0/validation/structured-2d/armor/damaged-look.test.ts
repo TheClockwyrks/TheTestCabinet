@@ -37,7 +37,7 @@
 // and judges the look itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEFAULT_SEED, ROCK_HEALTH, ROCK_RADIUS } from "../../src/constants";
+import { DEFAULT_SEED, ROCK_HEALTH, ROCK_RADIUS } from "../constants";
 import { assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,

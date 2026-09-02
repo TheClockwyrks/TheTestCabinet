@@ -32,7 +32,7 @@
 // kills, not an assertion about the figure.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCK_HEALTH } from "../../src/constants";
+import { ROCK_HEALTH } from "../constants";
 import { assertEqual, assertLength, assertUndefined } from "../assert";
 import {
   captureStill,
