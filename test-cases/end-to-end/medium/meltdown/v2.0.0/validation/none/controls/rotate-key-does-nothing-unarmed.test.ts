@@ -42,10 +42,24 @@
 // on an empty floor. A build that turns the SELECTED tower when there is nothing
 // held moves that tower's `rotation` and its `radiatorFaces` — and on a floor
 // with no tower on it there is no such field for the comparison to catch it in.
-// So one Arc is posed at a rotation of its own and selected, its guns held off so
-// nothing but the key can move anything, and the whole-snapshot comparison then
-// covers the turned-the-selection reading as well as the armed-something and
-// charged-for-it ones.
+// So one tower is posed at a rotation of its own and selected, and the
+// whole-snapshot comparison then covers the turned-the-selection reading as well
+// as the armed-something and charged-for-it ones.
+//
+// IT IS A STUTTER AT ROTATION 1, the same tower at the same rotation on the same
+// tile the other two engines' copies of this point pose, so the three read one
+// scenario rather than three. A Stutter's LOCAL radiators are N and E
+// (`specs/towers.md`): an asymmetric pair, so every one of the three turns it
+// could take names a different pair of WORLD faces and shows in `radiatorFaces`
+// on its own. An Arc, whose N-and-S pair a half turn maps onto itself, would
+// leave `rotation` as the only witness to a two-step turn.
+//
+// AND IT MOVES NOTHING BY ITSELF over the frame that carries the press, with all
+// of its faculties left on. It is posed at the heat `0` a placed tower starts at
+// (`specs/instrumentation.md`); `specs/heat.md` makes air cooling proportional to
+// heat, so at `0` it is nothing at all; nothing stands beside it to conduct with;
+// and with the surge roster empty it finds no target, takes no shot and gains no
+// heat.
 //
 // AND THE FRAME IS PROVEN TO HAVE HAPPENED. A comparison of two snapshots is
 // satisfied by a build that never ran a frame at all, so `simTime` — the one
@@ -60,7 +74,7 @@ import { FREE_SITE } from "../fixtures";
 import {
   captureStill,
   createHarness,
-  poseIdleTower,
+  poseTower,
   startRun,
   type Harness,
   type MeltdownSnapshot,
@@ -73,14 +87,15 @@ const KEY = BINDINGS.rotate;
  * The tower left standing selected, where it stands, and the rotation it was
  * placed at.
  *
- * The Arc because it is the 2x2 workhorse and its radiator faces are `N` and `S`
- * (specs/towers.md), so a quarter turn in either direction moves both
- * `rotation` and `radiatorFaces`. Rotation `1` rather than `0` so a build that
- * reset the selection's rotation would move the field too, not only one that
- * advanced it. `FREE_SITE` is clear of both vent-to-exhaust corridors, so
- * standing a tower there lengthens no route.
+ * A Stutter's local radiator faces are `N` and `E` (specs/towers.md) — an
+ * asymmetric pair — so each of the four rotations names a different pair of world
+ * faces and a turn of ANY size shows in `radiatorFaces`, not only a quarter turn.
+ * Rotation `1` rather than `0` so a build that reset the selection's rotation
+ * would move the field too, not only one that advanced it. `FREE_SITE` is clear
+ * of both vent-to-exhaust corridors, so standing a tower there lengthens no
+ * route.
  */
-const TOWER = "arc";
+const TOWER = "stutter";
 const SITE = FREE_SITE;
 const PLACED_AT: Rotation = 1;
 
@@ -110,11 +125,9 @@ it("leaves every reported field as it was when KeyR is pressed with nothing held
   await h.debug.setPhase("opening");
   await h.debug.setBuildTimer(0);
 
-  // One tower standing selected at a rotation of its own, its guns held off: the
-  // arrangement in which turning the selection would show.
-  const id = await poseIdleTower(h, TOWER, SITE.col, SITE.row, {
-    rotation: PLACED_AT,
-  });
+  // One tower standing selected at a rotation of its own: the arrangement in
+  // which turning the selection would show.
+  const id = await poseTower(h, TOWER, SITE.col, SITE.row, PLACED_AT);
   await h.debug.setSelected(id);
   await h.debug.setArmed(null);
 
