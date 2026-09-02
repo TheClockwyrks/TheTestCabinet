@@ -36,7 +36,7 @@
 // reads `1` — a figure neither a reset nor an untouched run produces.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BEAR_CATCH_DIST } from "../../src/constants";
+import { BEAR_CATCH_DIST } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

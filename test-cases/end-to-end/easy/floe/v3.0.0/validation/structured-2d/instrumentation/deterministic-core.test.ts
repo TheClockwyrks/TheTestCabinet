@@ -42,7 +42,7 @@
 // grades the tick's own length and `ice/lane-speeds` the figure each lane runs at.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_LANES, TICK_HZ, tileLeft } from "../../src/constants";
+import { ICE_LANES, TICK_HZ, tileLeft } from "../constants";
 import {
   assertCloseTo,
   assertEqual,

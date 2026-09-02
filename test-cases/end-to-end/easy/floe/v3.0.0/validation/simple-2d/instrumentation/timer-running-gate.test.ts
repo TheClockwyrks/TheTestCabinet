@@ -28,7 +28,7 @@
 // out, which is `progression/timer-costs-life`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, crossingTimer } from "../../src/constants";
+import { START_LIVES, crossingTimer } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

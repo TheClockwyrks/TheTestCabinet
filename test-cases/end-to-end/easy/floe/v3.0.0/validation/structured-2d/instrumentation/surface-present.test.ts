@@ -35,7 +35,7 @@
 // committed to is the whole of what is read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BEAR_ICE_SPEED } from "../../src/constants";
+import { BEAR_ICE_SPEED } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

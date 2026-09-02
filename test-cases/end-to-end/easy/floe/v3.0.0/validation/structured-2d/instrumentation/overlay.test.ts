@@ -69,7 +69,7 @@
 // whatever the screen".
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY, tileLeft } from "../../src/constants";
+import { tileCX, tileCY, tileLeft } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

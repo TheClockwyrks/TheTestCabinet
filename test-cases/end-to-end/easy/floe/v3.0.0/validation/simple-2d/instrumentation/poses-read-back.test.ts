@@ -39,7 +39,7 @@
 // `ice/*`'s and `water/*`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY } from "../../src/constants";
+import { tileCX, tileCY } from "../constants";
 import { assertEqual } from "../assert";
 import {
   bearOf,

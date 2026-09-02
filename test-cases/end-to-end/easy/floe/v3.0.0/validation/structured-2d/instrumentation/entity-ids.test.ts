@@ -51,7 +51,7 @@ import {
   TILE,
   laneGap,
   tileLeft,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

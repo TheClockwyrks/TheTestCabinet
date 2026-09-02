@@ -33,7 +33,7 @@
 // got there is `hopping/*`'s point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY } from "../../src/constants";
+import { tileCX, tileCY } from "../constants";
 import { assertCloseTo, assertEqual, assertNotEqual } from "../assert";
 import {
   bearOf,

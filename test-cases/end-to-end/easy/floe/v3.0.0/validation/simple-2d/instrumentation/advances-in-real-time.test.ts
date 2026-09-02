@@ -42,7 +42,7 @@
 
 import { WallClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_LANES, TICK_DT, tileLeft } from "../../src/constants";
+import { ICE_LANES, TICK_DT, tileLeft } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

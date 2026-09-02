@@ -26,7 +26,7 @@
 // costs is `progression/catch-costs-life`'s; this point decides the gate.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BEAR_CATCH_DIST, START_LIVES, TICK_HZ } from "../../src/constants";
+import { BEAR_CATCH_DIST, START_LIVES, TICK_HZ } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

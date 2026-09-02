@@ -33,11 +33,7 @@
 // recording of the whole wait would be seven thousand identical frames.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BEAR_EMERGE_ADVANCE,
-  BEAR_EMERGE_DELAY,
-  ROW_NEAR,
-} from "../../src/constants";
+import { BEAR_EMERGE_ADVANCE, BEAR_EMERGE_DELAY, ROW_NEAR } from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureReplay,

@@ -30,7 +30,7 @@
 // strait, and the critter is posed rather than hopped there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_HZ, tileCX, tileCY } from "../../src/constants";
+import { TICK_HZ, tileCX, tileCY } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   bearOf,

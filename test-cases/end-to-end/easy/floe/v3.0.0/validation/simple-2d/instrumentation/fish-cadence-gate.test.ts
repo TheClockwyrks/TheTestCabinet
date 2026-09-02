@@ -29,7 +29,7 @@
 // a build whose cadence is slow keeps this point and loses those.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAY_COUNT, FISH_INTERVAL } from "../../src/constants";
+import { BAY_COUNT, FISH_INTERVAL } from "../constants";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import {
   captureStill,

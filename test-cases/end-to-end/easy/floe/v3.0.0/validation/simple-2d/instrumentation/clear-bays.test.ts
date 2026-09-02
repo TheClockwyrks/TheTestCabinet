@@ -30,7 +30,7 @@
 // nothing else can end a level.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAY_COUNT } from "../../src/constants";
+import { BAY_COUNT } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

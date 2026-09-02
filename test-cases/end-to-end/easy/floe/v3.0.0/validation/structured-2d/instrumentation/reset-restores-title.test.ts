@@ -47,7 +47,7 @@ import {
   WATER_LANES,
   crossingTimer,
   laneSpeed,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,

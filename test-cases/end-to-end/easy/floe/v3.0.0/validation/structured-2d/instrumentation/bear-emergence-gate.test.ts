@@ -50,7 +50,7 @@ import {
   ROW_MEDIAN,
   ROW_NEAR,
   START_COL,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureReplay,

@@ -37,7 +37,7 @@
 // point reads only whether two straits are the same strait.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FISH_INTERVAL, crossingTimer } from "../../src/constants";
+import { FISH_INTERVAL, crossingTimer } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

@@ -41,7 +41,7 @@
 // speed, so the level's own scaling is not in the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SECOND_BEAR_LEVEL, tileCX, tileCY } from "../../src/constants";
+import { SECOND_BEAR_LEVEL, tileCX, tileCY } from "../constants";
 import { assertCloseTo, assertEqual, assertNotEqual } from "../assert";
 import {
   captureReplay,

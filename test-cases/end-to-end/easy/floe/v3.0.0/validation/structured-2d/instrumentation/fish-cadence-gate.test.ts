@@ -43,7 +43,7 @@
 // grades neither.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAY_COUNT, FISH_INTERVAL, FISH_LINGER } from "../../src/constants";
+import { BAY_COUNT, FISH_INTERVAL, FISH_LINGER } from "../constants";
 import { assertBetween, assertEqual, assertNull, assertTrue } from "../assert";
 import {
   captureStill,

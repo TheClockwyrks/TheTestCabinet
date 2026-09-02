@@ -43,13 +43,7 @@
 // the bears the second reading finds are the bears the first one did.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  ITEM_LEN,
-  ROW_MEDIAN,
-  TILE,
-  laneGap,
-  tileLeft,
-} from "../../src/constants";
+import { ITEM_LEN, ROW_MEDIAN, TILE, laneGap, tileLeft } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

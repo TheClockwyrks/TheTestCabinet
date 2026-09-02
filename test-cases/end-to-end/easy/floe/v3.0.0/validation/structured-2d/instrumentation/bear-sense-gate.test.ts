@@ -36,7 +36,7 @@
 // allows only from level `5`, and this check needs two.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SECOND_BEAR_LEVEL } from "../../src/constants";
+import { SECOND_BEAR_LEVEL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

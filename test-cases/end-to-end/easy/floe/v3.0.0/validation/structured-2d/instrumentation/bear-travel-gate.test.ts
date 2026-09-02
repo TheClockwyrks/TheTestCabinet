@@ -34,7 +34,7 @@
 // `hunter/glides-continuously`, and how fast is `hunter/ice-speed`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY } from "../../src/constants";
+import { tileCX, tileCY } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureReplay,

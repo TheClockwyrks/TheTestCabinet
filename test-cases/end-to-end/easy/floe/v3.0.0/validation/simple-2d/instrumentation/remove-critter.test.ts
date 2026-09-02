@@ -27,7 +27,7 @@
 // fires, and every other lane is left parked at a speed of `0`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, TILE, tileCX, tileLeft } from "../../src/constants";
+import { START_LIVES, TILE, tileCX, tileLeft } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

@@ -32,7 +32,7 @@
 // `instrumentation/advances-in-real-time`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT, TICK_HZ, TILE } from "../../src/constants";
+import { TICK_DT, TICK_HZ, TILE } from "../constants";
 import { assertCloseTo } from "../assert";
 import {
   captureStill,

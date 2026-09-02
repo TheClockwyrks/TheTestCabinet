@@ -31,7 +31,7 @@
 // the timer for the right reason in the second half would still fail.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_DT, crossingTimer } from "../../src/constants";
+import { TICK_DT, crossingTimer } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

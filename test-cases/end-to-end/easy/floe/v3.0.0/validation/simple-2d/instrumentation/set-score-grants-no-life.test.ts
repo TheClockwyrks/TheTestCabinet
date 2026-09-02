@@ -35,7 +35,7 @@
 // update is caught rather than missed by a snapshot taken too early.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BONUS_LIFE_EVERY } from "../../src/constants";
+import { BONUS_LIFE_EVERY } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -29,7 +29,7 @@
 // of the documented kind.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAY_COUNT, ICE_LANES, WATER_LANES } from "../../src/constants";
+import { BAY_COUNT, ICE_LANES, WATER_LANES } from "../constants";
 import {
   assertContains,
   assertEqual,
