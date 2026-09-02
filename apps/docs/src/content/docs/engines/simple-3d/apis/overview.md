@@ -13,7 +13,7 @@ The package `@test-cabinet/simple-3d` has one entry point.
 
 | Specifier | Provides |
 | --- | --- |
-| `@test-cabinet/simple-3d` | `createEngine`, `cloneModel`, `packRecording`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, `RECORDING_FORMAT`, and every type a game names. |
+| `@test-cabinet/simple-3d` | `createEngine`, `cloneModel`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, and every type a game names. |
 
 `three` is a peer dependency of the package. A build declares `three` itself
 and imports it directly where it needs a three object, so the engine, the
@@ -33,10 +33,10 @@ the surface a validator exercises is the surface the game was written against.
 | [Game](/engines/simple-3d/apis/game/) | `Game`, `Transition`, `DeepReadonly`, the scoped `InitApi`, `UpdateApi`, and `RenderApi`, the debug surface a game returns beside its state, `EngineEvents`, and `FrameInfo`. |
 | [Clocks](/engines/simple-3d/apis/clocks/) | The `Clock` interface and the five clocks a run's deltas can come from. |
 | [Viewport](/engines/simple-3d/apis/viewport/) | `Viewport`, `fitViewport`, `applyViewport`, `syncCanvas`, the logical-to-device mapping, and the renderer's letterboxed viewport. |
-| [Rendering](/engines/simple-3d/apis/rendering/) | The scene, the camera object, the screen layer, the backend, shadows, and the order of one frame. |
+| [Rendering](/engines/simple-3d/apis/rendering/) | The scene, the camera object, the screen layer, the renderer, shadows, and the order of one frame. |
 | [View](/engines/simple-3d/apis/view/) | `View`, `CameraSnapshot`, `Ray`, `Projected`, the plain math types, the camera defaults, and the coordinate conventions. |
 | [Input](/engines/simple-3d/apis/input/) | Action registration, `ActionBinding`, the read methods, the pointer, and `TOUCH_LAYOUTS`. |
 | [Audio](/engines/simple-3d/apis/audio/) | `CueSpec`, synthesized and file-based cues, looping, positional playback, and the mute and unlock calls. |
 | [Assets](/engines/simple-3d/apis/assets/) | `loadImage`, `loadTexture`, `loadModel`, `loadAudio`, `load`, `resolve`, `cloneModel`, and the asset root. |
 | [Diagnostics](/engines/simple-3d/apis/diagnostics/) | Source registration, the values a read returns, the frame metrics, the overlay, and its toggle. |
-| [Recording](/engines/simple-3d/apis/recording/) | The recorder's engine members, the `.replay` archive, `Recording` and `packRecording`, `RecordingDocument`, `RecordedFrame`, the asset references and the scene tables, the budgets, and the screen layer's `DrawState`, `DrawOp`, and `DrawValue`. |
+| [Recording](/engines/simple-3d/apis/recording/) | The recorder's engine members, `Recording` and `RecordedFrame`, the frame boundaries, how a frame is composed, the VP9 WebM encoding with its timestamps and keyframes, the frame bound, and the errors. |

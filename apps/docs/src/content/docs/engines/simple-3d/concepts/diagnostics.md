@@ -7,14 +7,12 @@ engine's own frame metrics. The engine cannot know what is worth watching inside
 someone else's simulation, so the game registers named sources and the engine
 owns everything around them: the panel, the toggle key, and the frame metrics.
 
-## Sources are pulled, not pushed
+## Sources are pulled on every read
 
 A source is a function from the game's state to the value to show. It is
 evaluated on every read rather than sampled at registration, and each read
 hands it the state current at that moment. The overlay reads after the render,
-so a source reports the state this frame's update returned. A pushed value would
-be a second copy of the game's state kept current by the game remembering to
-update it, and a stale diagnostic is worse than no diagnostic.
+so a source reports the state this frame's update returned.
 
 The state is fed to the source rather than closed over because the state is a
 value each frame replaces. A source that closed over the object `initialize`
@@ -80,7 +78,7 @@ submits: a game that builds a mesh per crate reads its draw calls climb with the
 crate count, and one that batches reads them flat while its triangles climb
 instead. The two are the renderer's own counts for the frame it most recently
 rendered, read after the scene was drawn, so they describe one frame rather than
-the window. Under the `headless` backend no renderer exists and both read zero.
+the window.
 
 The window is the last ten seconds of frames, held in a ring buffer of 2048
 samples. Both rules bound it and neither replaces the other: age is what keeps a
@@ -105,7 +103,7 @@ the engine, and the overlay starts hidden.
 ## Chrome over the finished picture
 
 The overlay is drawn on the [screen layer](/engines/simple-3d/concepts/rendering/)
-after the game's render and after the recorder's frame bracket has closed, with
+after the game's render and after the recorder has captured the frame, with
 the layer's transform reset to the identity. Its geometry is therefore in the
 device pixels of the canvas backing store rather than in the game's letterboxed
 logical coordinates, so debug text stays the same physical size and stays crisp
@@ -115,8 +113,8 @@ for free.
 
 The screen layer is composited over the 3D picture at the end of the frame, so
 the overlay sits on top of the scene and on top of every HUD line the game drew
-on the layer that frame. Drawing it after the bracket closes is what keeps it
-out of every [recording](/engines/simple-3d/concepts/recording/): a recording
+on the layer that frame. Drawing it after the capture is what keeps it out of
+every [recording](/engines/simple-3d/concepts/recording/): a recording
 holds the picture the build submitted, and a debug panel is chrome rather than
 picture.
 

@@ -89,9 +89,9 @@ Each frame, after the ticks and after any transition:
    component draws in `layer` order, and within a layer by the owning actor's
    spawn order, and within an actor by attachment order. A `DrawComponent`
    receives `DrawApi` and draws itself.
-6. The recorder's frame closes.
+6. The recorder captures the frame, when it is armed.
 7. The debug overlay draws on the screen layer in device space.
-8. Under `webgl`, the screen layer is composited over the picture.
+8. The screen layer is composited over the picture.
 
 Steps 2 and 5 read `enabled` from the component and `visible` from its
 `RenderComponent` fields, so a component leaves the picture the moment either is
@@ -195,16 +195,6 @@ against the world reads `api.camera()` and projects world points through
 
 Render modes belong to the declarative pipeline, so a `DrawComponent` reads
 `api.mode` and supplies its own render modes.
-
-## Headless
-
-[`EngineOptions.backend`](/engines/structured-3d/apis/engine/) selects `webgl`
-or `headless`. Under `headless` no renderer exists: steps 3, 4, and 8 of the
-pipeline produce no pixels, and every other step runs as it does under `webgl`.
-The scene is still synced, world matrices are still updated, the screen layer
-still draws through its 2D context, and the recorder still captures the frame,
-so a validator reads `engine.scene`, the screen layer's pixels, and the
-recording with no GPU present.
 
 ## The ticks and the pipeline
 

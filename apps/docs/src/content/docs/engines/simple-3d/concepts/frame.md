@@ -44,11 +44,11 @@ The render draws on two surfaces. It updates the objects in the engine's
 retained [scene](/engines/simple-3d/concepts/rendering/) from the state and
 poses the camera, and it draws its readouts on the screen layer through a 2D
 context. After the render, the engine's own per-frame work runs: world matrices
-are updated, the scene is captured for the recorder and the camera is read into
-the view, the scene is rendered through the camera, the debug overlay is drawn
-on the screen layer over the finished picture, the screen layer is composited
-over the scene, and the input frame is closed so an edge-triggered action is
-consumed exactly once.
+are updated and the camera is read into the view, the scene is rendered through
+the camera, the recorder captures the frame, the debug overlay is drawn on the
+screen layer over the finished picture, the screen layer is composited over the
+scene, and the input frame is closed so an edge-triggered action is consumed
+exactly once.
 
 Each function receives only the part of the engine it may use. The update reads
 input and plays cues with nothing that draws; the render draws with nothing that
@@ -62,34 +62,33 @@ taking part in the result.
 
 1. The clock is called once. A declined tick ends the frame.
 2. The frame counter, `timeMs`, and `lastDeltaMs` advance.
-3. The recorder's frame opens. Both canvases are synced to the surface's size
-   and ratio, and the viewport is recomputed.
+3. Both canvases are synced to the surface's size and ratio, and the viewport
+   is recomputed.
 4. The screen layer is cleared and given the viewport transform.
 5. `update` runs with the delta in seconds, and the state is replaced.
 6. `render` runs: the game updates the scene, poses the camera, and draws on
    the screen layer.
-7. The engine updates world matrices, captures the scene for the recorder,
-   reads the camera into the view, and, under `webgl`, clears the canvas to
-   `background`, applies the letterboxed viewport and scissor, and renders the
-   scene through the camera.
-8. The recorder's frame closes.
+7. The engine updates world matrices, reads the camera into the view, clears
+   the canvas to `background`, applies the letterboxed viewport and scissor,
+   and renders the scene through the camera.
+8. The recorder captures the frame.
 9. The diagnostics overlay draws on the screen layer in device space.
-10. Under `webgl`, the screen layer is composited over the picture.
+10. The screen layer is composited over the picture.
 11. The input frame closes.
 
-The scene is touched at steps 6 and 7: the game writes it, and the engine reads
-it once for the recorder and once for the renderer, from the same objects at
-the same moment. The screen layer is touched at steps 4, 6, 9, and 10: cleared
-and transformed by the engine, drawn by the game in logical coordinates, drawn
-by the overlay in device space, and lifted onto the canvas over the 3D picture.
-Step 7 is where the camera the game posed in step 6 becomes the camera the
+The scene is touched at steps 6 and 7: the game writes it, and the engine
+renders it. The screen layer is touched at steps 4, 6, 8, 9, and 10: cleared
+and transformed by the engine, drawn by the game in logical coordinates,
+captured into the recording over the picture, drawn by the overlay in device
+space, and lifted onto the canvas over the 3D picture. Step 7 is where the
+camera the game posed in step 6 becomes the camera the
 [view](/engines/simple-3d/concepts/camera-and-view/) answers from, so the next
 frame's update picks against the camera the player is looking through.
 
-Under the `headless` backend steps 7 and 10 produce no pixels of the 3D
-picture, and everything else in the list happens as written. The scene is
-maintained, the world matrices are updated, the screen layer draws through its
-2D context, and the recorder captures the frame.
+The recorder captures the frame after the scene is rendered and the screen
+layer drawn, and before the diagnostics overlay draws on the screen layer. A
+[recording](/engines/simple-3d/concepts/recording/) therefore holds the picture
+the game submitted and nothing of the overlay.
 
 ## The clock
 

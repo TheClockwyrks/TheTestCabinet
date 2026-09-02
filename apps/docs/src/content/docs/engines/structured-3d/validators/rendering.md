@@ -2,20 +2,19 @@
 title: Rendering
 ---
 
-There are four ways to assert on what a build drew. Reading a render component
+There are five ways to assert on what a build drew. Reading a render component
 establishes what the build declared; reading the scene establishes what the
 pipeline placed for it; projecting through the camera establishes where it
-appears on the logical stage; and the screen layer's pixels and its operation
-stream establish the HUD the player sees. A suite may use all of them against
-the same run, and a claim about what was submitted to be drawn reads the
-[recording](/engines/structured-3d/validators/recording/).
+appears on the logical stage; the stage canvas's pixels establish the picture
+the world pass rendered; and the screen layer's pixels and its operation stream
+establish the HUD the player sees. A suite may use all of them against the same
+run, and the [recording](/engines/structured-3d/validators/recording/) hands the
+reviewer the same frames afterwards.
 
 Drawing happens inside a frame, so a check advances at least one frame before it
-reads anything. The pipeline syncs every world-space component's object, clears
-the screen layer, and draws the complete screen pass each frame, so what a read
-sees is the last frame alone. The `headless` backend produces no pixels of the
-3D picture, so a claim about the rendered pixels of the world pass is a browser
-check outside the in-process suite.
+reads anything. The pipeline syncs every world-space component's object, renders
+the scene, clears the screen layer, and draws the complete screen pass each
+frame, so what a read sees is the last frame alone.
 
 ## Render components as data
 
@@ -49,11 +48,11 @@ pipeline put it, which is what the scene answers.
 
 [`engine.scene`](/engines/structured-3d/apis/engine/) is the `THREE.Scene` the
 pipeline maintains: one three object per enabled, visible world-space
-component, placed at the component's world transform every frame, with world
-matrices updated under `headless` exactly as under `webgl`. A check finds an
-object by name, where the game's own `Object3DComponent` subtree or a loaded
-model's nodes carry names, or by traversal, and reads its world position, its
-visibility, its geometry, and its material.
+component, placed at the component's world transform every frame, with its
+world matrices updated before the scene is rendered. A check finds an object by
+name, where the game's own `Object3DComponent` subtree or a loaded model's nodes
+carry names, or by traversal, and reads its world position, its visibility, its
+geometry, and its material.
 
 ```ts
 import * as THREE from "three";
@@ -158,44 +157,76 @@ other check correct at both ratios.
 
 ## Pixel readback
 
-The harness's screen canvas is a `@napi-rs/canvas` canvas holding the screen
-layer, and `getImageData` returns its bytes. A sample is four bytes in `RGBA`
-order. The helper takes a logical point and converts it through the viewport
-alone, because everything on the screen layer is drawn in logical units.
+Both canvases the harness created are readable. The screen layer is a 2D canvas,
+and `getImageData` on its context returns its bytes directly. The stage canvas
+holds a `webgl2` context, so a suite draws it into a 2D canvas of its own with
+`drawImage` and reads that canvas's bytes, the same way the engine's recorder
+composes a frame. A sample is four bytes in `RGBA` order, and each helper takes a
+logical point and converts it through the viewport alone, and `rgba` states a
+color the case fixed in the same form.
 
 ```ts
 import type { Vec2 } from "@test-cabinet/structured-3d";
 import type { Harness } from "./harness";
 
-export function sample(h: Harness, point: Vec2) {
+function device(h: Harness, point: Vec2): { x: number; y: number } {
   const view = h.engine.viewport();
-  const ctx = h.screen.getContext("2d");
-  const [r, g, b, a] = ctx.getImageData(
-    Math.round(view.offsetX + point.x * view.scale),
-    Math.round(view.offsetY + point.y * view.scale),
-    1,
-    1,
-  ).data;
+  return {
+    x: Math.round(view.offsetX + point.x * view.scale),
+    y: Math.round(view.offsetY + point.y * view.scale),
+  };
+}
+
+function read(ctx: CanvasRenderingContext2D, at: { x: number; y: number }) {
+  const [r, g, b, a] = ctx.getImageData(at.x, at.y, 1, 1).data;
   return { r, g, b, a };
+}
+
+export function rgba(color: string) {
+  const value = Number.parseInt(color.slice(1), 16);
+  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255, a: 255 };
+}
+
+export function sample(h: Harness, point: Vec2) {
+  const ctx = h.screen.getContext("2d") as CanvasRenderingContext2D;
+  return read(ctx, device(h, point));
+}
+
+export function samplePicture(h: Harness, point: Vec2) {
+  const copy = document.createElement("canvas");
+  copy.width = h.stage.width;
+  copy.height = h.stage.height;
+  const ctx = copy.getContext("2d") as CanvasRenderingContext2D;
+  ctx.drawImage(h.stage, 0, 0);
+  return read(ctx, device(h, point));
 }
 ```
 
-The screen layer is cleared to transparency at the top of every screen pass and
-the 3D picture lies beneath it on the stage canvas, so a sample where nothing
-screen-space drew reports `a: 0`. That is how a check tells the HUD from the
-world: a readout, a menu, or a label a `DrawComponent` pinned to an actor
-carries alpha, and the picture behind it carries none here.
+`sample` reads the screen layer. It is cleared to transparency at the top of
+every screen pass, so a sample where nothing screen-space drew reports `a: 0`,
+which is how a check tells the HUD from the world: a readout, a menu, or a label
+a `DrawComponent` pinned to an actor carries alpha, and the picture behind it
+carries none here.
+
+`samplePicture` reads the stage canvas, which holds the world pass with the
+screen layer composited over it. The canvas is cleared to `background` before
+every frame, letterbox bars included, so a sample in a bar is the background
+exactly, and a sample at the point an object projects to is what the world pass
+rendered there. Under `shaded` that pixel is lit, so a claim about it is stated
+against the background rather than against the material's color, and a
+byte-exact claim about the world pass is made under `unlit`, which draws every
+material's base color with the lights ignored.
 
 ### Sampling inside a shape
 
-Take a sample at least two logical pixels inside the shape's edge. Curve edges
-are anti-aliased, so a pixel on or near an edge blends the shape with what is
-behind it, while an interior pixel carries the fill exactly.
+Take a sample at least two logical pixels inside the shape's edge. Edges are
+anti-aliased, so a pixel on or near an edge blends the shape with what is behind
+it, while an interior pixel carries the fill exactly.
 
-An interior sample is byte-exact against the color the build was told to use, so
-a fill is asserted on directly. A `screen` component's composed transform is its
-logical position, and a label a `DrawComponent` draws for a world point sits at
-the point `worldToLogical` reports for it.
+An interior sample of the screen layer is byte-exact against the color the build
+was told to use, so a fill is asserted on directly. A `screen` component's
+composed transform is its logical position, and a label a `DrawComponent` draws
+for a world point sits at the point `worldToLogical` reports for it.
 
 ```ts
 const marker = world.byTag(TAGS.scoreP1)[0];
@@ -204,11 +235,18 @@ expect(sample(h, at)).toEqual({ r: 0xf2, g: 0xf5, b: 0xf7, a: 255 });
 
 const label = world.camera.worldToLogical(ball.transform.position);
 expect(sample(h, { x: label.x, y: label.y - 12 }).a).toBe(255);
+
+const center = { x: label.x, y: label.y };
+expect(samplePicture(h, center)).not.toEqual(rgba(BACKGROUND));
+expect(samplePicture(h, { x: 2, y: 2 })).toEqual(rgba(BACKGROUND));
 ```
 
-Reach for pixels when the claim is about the HUD as the player sees it: a
-readout's fill, whether a menu occupies a position on screen, whether the
-letterbox bars are clear, whether a label followed its actor between two frames.
+Reach for the screen layer's pixels when the claim is about the HUD as the
+player sees it: a readout's fill, whether a menu occupies a position on screen,
+whether a label followed its actor between two frames. Reach for the stage
+canvas's pixels when the claim is about the rendered picture: that the ball is
+drawn where the camera projects it, that the letterbox bars are clear, that a
+mode or the collision overlay changed what was rendered.
 
 ## The recording proxy
 
@@ -221,8 +259,6 @@ each property assignment and forwards both, which keeps the pixels correct while
 the stream is captured.
 
 ```ts
-import type { Canvas } from "@napi-rs/canvas";
-
 export interface DrawCall {
   method?: string;
   args?: unknown[];
@@ -232,12 +268,12 @@ export interface DrawCall {
 
 export function recordDrawing(): {
   calls: DrawCall[];
-  install: (screen: Canvas) => void;
+  install: (screen: HTMLCanvasElement) => void;
 } {
   const calls: DrawCall[] = [];
 
-  const install = (screen: Canvas): void => {
-    const real = screen.getContext("2d");
+  const install = (screen: HTMLCanvasElement): void => {
+    const real = screen.getContext("2d") as CanvasRenderingContext2D;
     const proxy = new Proxy(real, {
       get(target, prop) {
         const value = Reflect.get(target, prop);
@@ -252,7 +288,7 @@ export function recordDrawing(): {
         return Reflect.set(target, prop, value);
       },
     });
-    screen.getContext = () => proxy;
+    screen.getContext = (() => proxy) as typeof screen.getContext;
   };
 
   return { calls, install };
@@ -294,75 +330,75 @@ layer alone.
 the collision overlay. Both change what the pipeline draws rather than what a
 tick computes, so a check sets one, advances a single frame, and reads again
 with the world untouched. The world pass under a mode is observable in the
-recording, because the scene is captured under the mode in force and carries
-the materials the mode substituted; the screen pass under a mode is observable
-in the screen layer's pixels.
+stage canvas's pixels, and the screen pass under a mode in the screen layer's
+pixels and its stream.
 
 ```ts
-function frameMaterials(recording: Recording) {
-  const { document } = recording;
-  const frame = document.frames[0];
-  return frame.draws.map((i) => document.materials[document.draws[i].material]);
-}
-
-engine.renderer.setMode("wireframe");
-engine.startRecording();
-await engine.advance(1);
-const wireframe = frameMaterials(engine.stopRecording());
-
-expect(engine.renderer.mode()).toBe("wireframe");
-expect(wireframe.length).toBeGreaterThan(0);
-expect(wireframe.every((material) => material.wireframe)).toBe(true);
+const ball = world.byTag(TAGS.ball)[0];
+const center = world.camera.worldToLogical(ball.transform.position);
 
 engine.renderer.setMode("unlit");
-engine.startRecording();
 await engine.advance(1);
-const unlit = frameMaterials(engine.stopRecording());
 
-expect(unlit.every((material) => material.kind === "basic")).toBe(true);
+expect(engine.renderer.mode()).toBe("unlit");
+expect(samplePicture(h, center)).toEqual(rgba(COLORS.ball));
+
+engine.renderer.setMode("wireframe");
+drawing.calls.length = 0;
+await engine.advance(1);
+
+expect(drawing.calls.some((call) => call.method === "fill")).toBe(false);
+expect(drawing.calls.some((call) => call.method === "stroke")).toBe(true);
 ```
 
-`shaded` draws every material as declared and is the default. `wireframe`
-draws each mesh as its edges, so every recorded material carries `wireframe`,
-and the screen pass draws each component's outline alone, so an interior
-sample of a screen-space shape loses its fill. `unlit` draws every material's
-base color and map at full opacity, which records as `basic`, and the screen
-pass drops every tint, which is how a check about a shape's identity avoids a
-build's opacity animation. `normals` colors every surface by its world-space
-normal through a material outside the recorded kinds, which records as `opaque`
-naming its constructor.
+`shaded` draws every material as declared and is the default. `unlit` draws
+every material's base color and map at full opacity with the lights ignored, so
+an interior sample of the ball is the color the case fixed for it, and the
+screen pass drops every tint, which is how a check about a shape's identity
+avoids a build's opacity animation. `wireframe` draws each mesh as its edges in
+one flat color, and the screen pass strokes each component's outline alone, so
+the stream carries strokes and no fills and an interior sample of a screen-space
+shape loses its fill. `normals` colors every surface by its world-space normal.
 
 `setCollisionOverlay` draws every enabled collider's shape as a wireframe in the
-world pass, after the scene, and is independent of the mode. A recording taken
-with the overlay on carries each collider's shape among the frame's draws, so a
-check that is about a collider compares the draw count of a frame with the
-overlay on against the same frame with it off.
+world pass, after the scene and with depth testing off, and is independent of
+the mode. The overlay changes the rendered picture and nothing else, so a check
+that is about a collider compares the stage canvas with the overlay off against
+the same frame with it on.
 
 ```ts
-engine.startRecording();
+function picture(h: Harness): Uint8ClampedArray {
+  const copy = document.createElement("canvas");
+  copy.width = h.stage.width;
+  copy.height = h.stage.height;
+  const ctx = copy.getContext("2d") as CanvasRenderingContext2D;
+  ctx.drawImage(h.stage, 0, 0);
+  return ctx.getImageData(0, 0, copy.width, copy.height).data;
+}
+
 await engine.advance(1);
-const plain = engine.stopRecording().document.frames[0].draws.length;
+const plain = picture(h);
 
 engine.renderer.setCollisionOverlay(true);
-engine.startRecording();
 await engine.advance(1);
-const overlaid = engine.stopRecording().document.frames[0].draws.length;
+const overlaid = picture(h);
 
-const enabled = world
-  .actors()
-  .flatMap((actor) => actor.componentsOf(ColliderComponent))
-  .filter((collider) => collider.enabled);
-
+const changed = plain.reduce((n, byte, i) => (byte === overlaid[i] ? n : n + 1), 0);
 expect(engine.renderer.collisionOverlay()).toBe(true);
-expect(overlaid).toBe(plain + enabled.length);
+expect(changed).toBeGreaterThan(0);
 ```
+
+The world is untouched between the two frames, so every byte that differs is
+the overlay's. A check that is about one collider narrows the comparison to the
+region its shape projects into, through `worldToLogical` and the viewport.
 
 ## Choosing between them
 
 A component answers "what did the build declare". The scene answers "what did
 the pipeline place for it". Projection answers "where does it appear on the
-stage". Pixels answer "what does the player see on the HUD at this point", and
-the stream answers "what did the build ask the context to do". A check states
-its claim in whichever of those the specification stated it in, and a claim
-about a color at a position stays with pixels because a fill's arguments say
-nothing about where the fill landed.
+stage". The stage canvas's pixels answer "what did the world pass render at this
+point", the screen layer's pixels answer "what does the player see on the HUD at
+this point", and the stream answers "what did the build ask the context to do".
+A check states its claim in whichever of those the specification stated it in,
+and a claim about a color at a position stays with pixels because a fill's
+arguments say nothing about where the fill landed.

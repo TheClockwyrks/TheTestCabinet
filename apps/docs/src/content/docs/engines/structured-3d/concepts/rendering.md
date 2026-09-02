@@ -147,20 +147,6 @@ and supplies its own. An `Object3DComponent`'s subtree is made of three
 materials the pipeline can substitute, so the world-pass modes reach it with
 nothing for the game to implement.
 
-## Headless
-
-The backend is one option, `webgl` or `headless`. Under `headless` no renderer
-exists and no pixels of the 3D picture are produced, and everything else in the
-pipeline runs as it does under `webgl`: the camera follows and clamps, every
-world component's object is synced and its world matrix updated, the screen
-layer draws through its 2D context, and the recorder captures the frame.
-
-That is the backend a validator selects. What it reads is the scene the
-pipeline placed, the point a world position projects to, the screen layer's
-pixels, and the recording, none of which depends on a renderer existing, so
-the in-process suite runs with no GPU present and reads the same answers a
-browser would.
-
 ## The ticks and the pipeline
 
 Drawing belongs to the pipeline, and reading input and playing cues belong to

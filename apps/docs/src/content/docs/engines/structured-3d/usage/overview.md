@@ -37,7 +37,7 @@ are declared, and it returns the debug surface a caller drives the build through
 
 | Page | Covers |
 | --- | --- |
-| [Creating the Engine](/engines/structured-3d/usage/creating-the-engine/) | The design size, the options `createEngine` takes, the peer dependency on `three`, the backend and the screen layer, sizing the canvas from CSS, choosing a clock, booting, and teardown. |
+| [Creating the Engine](/engines/structured-3d/usage/creating-the-engine/) | The design size, the options `createEngine` takes, the peer dependency on `three`, the screen layer, sizing the canvas from CSS, choosing a clock, booting, and teardown. |
 | [Levels and Worlds](/engines/structured-3d/usage/levels-and-worlds/) | Registering levels, placing actors with 3D transforms, loading what a level needs, opening one from play, and what crosses a transition. |
 | [Game Modes](/engines/structured-3d/usage/game-modes/) | Writing a mode's rules, moving the match through its phases, adding players and bots, and carrying figures on the game state. |
 | [Actors and Components](/engines/structured-3d/usage/actors-and-components/) | Writing an actor, attaching components, moving and turning with the math helpers, mounting a component on an offset, tagging, finding peers, and destroying. |

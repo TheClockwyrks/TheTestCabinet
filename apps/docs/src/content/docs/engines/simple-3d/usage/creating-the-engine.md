@@ -98,7 +98,6 @@ const opening = await engine.initialize();
 | `layout` | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions. |
 | `assetRoot` | The root every asset path resolves under. Defaults to `assets/`. |
 | `surface` | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document. |
-| `backend` | `"webgl"`, the default, renders the scene over the canvas. `"headless"` maintains the scene and produces no pixels of it. |
 | `screen` | The canvas the screen layer draws on. Defaults to one created from the stage canvas's owning document. |
 | `projection` | `"perspective"`, the default, or `"orthographic"`: which camera the engine creates and renders through. |
 | `shadows` | `true` enables PCF soft shadow maps on the renderer. Defaults to `false`. |
@@ -119,20 +118,17 @@ different color inside the picture sets `scene.background` as well, which
 paints inside the viewport alone, so the two together give a sky inside the
 frame and a matching or contrasting border around it.
 
-## The backend and the screen canvas
+## The screen canvas
 
-A build in the browser takes the default backend and the default screen
-canvas: the engine obtains a `webgl2` context from the stage canvas, builds its
-renderer over it, and creates the screen layer's canvas from the stage canvas's
-owning document. Nothing in the build names either.
+A build in the browser takes the default screen canvas: the engine obtains a
+`webgl2` context from the stage canvas, builds its renderer over it, and creates
+the screen layer's canvas from the stage canvas's owning document. Nothing in
+the build names it.
 
-Supplying both is how a validator runs the same engine over a canvas with no
-document behind it. `backend: "headless"` leaves the scene maintained, the
-world matrices updated, the screen layer drawn, and the recorder capturing,
-with no renderer and no pixels of the 3D picture; a `@napi-rs/canvas` canvas
-handed as `screen` is what lets the validator read the screen layer's pixels
-and record its operations. The [rendering](/engines/simple-3d/apis/rendering/)
-page specifies both.
+Supplying `screen` is how a validator hands the engine a canvas it owns for the
+screen layer, which is what lets it read the screen layer's pixels or substitute
+a recording proxy for the context. The
+[rendering](/engines/simple-3d/apis/rendering/) page specifies it.
 
 ## Choose a projection
 
@@ -179,8 +175,7 @@ const engine = createEngine({
 ```
 
 Shadow maps cost a render of the scene per casting light, so a build enables
-them when the picture calls for grounding and leaves them off otherwise. Under
-`headless` a shadow produces nothing, as the rest of the 3D picture does.
+them when the picture calls for grounding and leaves them off otherwise.
 
 ## Size the canvas
 

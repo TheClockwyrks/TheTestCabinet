@@ -162,7 +162,7 @@ loop.
 A canvas styled to follow its container therefore keeps following it at whatever
 size the container currently has, and a canvas dropped into a page that styles
 nothing settles at its declared attribute size. A canvas that exposes no style,
-such as one driven headlessly behind a supplied surface, keeps the size the
+such as one driven behind a supplied surface, keeps the size the
 surface reports.
 
 ## Measuring through the surface

@@ -56,9 +56,8 @@ await engine.run();
 builds the state, and `run` drives frames off the host's frame callback until
 the engine is destroyed. Omitting the clock installs a
 [`WallClock`](/engines/simple-3d/apis/clocks/), so each frame is worth the time
-that actually elapsed. Omitting `backend` and `projection` gives the build a
-`webgl` renderer over the canvas and a perspective camera at the
-[camera defaults](/engines/simple-3d/apis/view/).
+that actually elapsed. Omitting `projection` gives the build a perspective
+camera at the [camera defaults](/engines/simple-3d/apis/view/).
 
 ## src/game.ts
 

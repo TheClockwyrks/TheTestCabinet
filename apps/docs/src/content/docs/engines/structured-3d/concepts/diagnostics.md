@@ -52,11 +52,6 @@ A figure read off the world, its game mode, its game state, or an actor is
 rebuilt with the world, so it belongs to the world's registry and is registered
 when the world is built.
 
-That split keeps the panel honest across travel. A world source registered on
-the instance would outlive the objects it closes over and report a level that is
-no longer open, while an instance source registered on the world would vanish at
-the first transition.
-
 ## What every build reports
 
 The overlay opens with the engine's own world line, giving the open level's
@@ -81,9 +76,8 @@ what the pipeline hands the renderer, so a slow frame is read against how much
 was submitted: a few draws that each take long is a different problem from
 thousands of draws that each take nothing. The counts are the renderer's own,
 read after the scene has been rendered, and they describe the frame most
-recently rendered rather than the window. Under the headless backend no
-renderer exists and both read zero, so a check that reads them learns whether a
-renderer ran, and a claim about what was submitted is checked against the
+recently rendered rather than the window. A claim about what the picture shows
+is checked against the stage canvas's pixels or the
 [recording](/engines/structured-3d/concepts/recording/).
 
 The window is the last ten seconds of frames, held in a ring buffer of 2048
@@ -121,8 +115,8 @@ check might accept as a legitimate reading.
 ## Chrome over the finished picture
 
 The overlay draws last, on the screen layer, after the pipeline has rendered the
-world pass and drawn the screen pass and after the recorder's frame has closed,
-with the screen layer's transform reset to the identity. Its geometry is
+world pass and drawn the screen pass and after the recorder has captured the
+frame, with the screen layer's transform reset to the identity. Its geometry is
 therefore in the device pixels of the backing store, which the screen layer
 shares with the canvas, rather than in the game's letterboxed logical
 coordinates, so debug text stays the same physical size and stays crisp
@@ -130,11 +124,11 @@ whatever the camera is doing to the world. Type size tracks the surface height
 with a floor for legibility, which follows the device pixel ratio for free.
 
 The screen layer is composited over the 3D picture at the end of the frame, so
-the panel sits over the world and over every screen-space component alike, and
-because it draws after the recorder's frame closes it appears in no recording.
-Under the headless backend the overlay still draws on the screen layer's
-context, so the panel, when it is shown, is on the screen layer a validator
-reads.
+the panel sits over the world and over every screen-space component alike.
+The recorder captures the frame after the scene is rendered and the screen
+layer drawn, and before the diagnostics overlay draws on the screen layer, so a
+recording holds the picture the game submitted and nothing of the panel. The
+panel, when it is shown, is on the screen layer a validator reads.
 
 The panel sits in the top-left corner, sized to its own text, clamped to the
 surface, and translucent so the game reads underneath it. The engine saves and

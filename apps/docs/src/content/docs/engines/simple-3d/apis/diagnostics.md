@@ -69,7 +69,7 @@ draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
 | `toggle()` | `void` | Inverts the enabled state. |
 | `read()` | `readonly DiagnosticReading[]` | Evaluates every registered source and returns what each one reports. |
 | `metrics()` | `FrameMetrics` | The frame metrics over the current window. |
-| `draw(ctx, width, height)` | `void` | Draws the overlay onto `ctx`. Called by the engine with the screen layer's context after the recorder's frame closes. |
+| `draw(ctx, width, height)` | `void` | Draws the overlay onto `ctx`. Called by the engine with the screen layer's context after the recorder has captured the frame. |
 
 The overlay is hidden when the engine is created.
 
@@ -125,8 +125,8 @@ interface FrameMetrics {
 | `meanMs` | The arithmetic mean of the window's samples, in milliseconds. |
 | `p95Ms` | The 95th percentile of the window's samples, in milliseconds. |
 | `p99Ms` | The 99th percentile of the window's samples, in milliseconds. |
-| `drawCalls` | The draw calls the renderer issued for the most recent frame. `0` under the `headless` backend. |
-| `triangles` | The triangles the renderer drew in the most recent frame. `0` under the `headless` backend. |
+| `drawCalls` | The draw calls the renderer issued for the most recent frame. |
+| `triangles` | The triangles the renderer drew in the most recent frame. |
 
 Percentiles are nearest-rank over the window's samples sorted ascending, so
 `p95Ms` is the sample at index `ceil(0.95 * samples) - 1`. An empty window
@@ -134,9 +134,7 @@ reports `0` for all three.
 
 `drawCalls` and `triangles` describe one frame rather than the window: they are
 the renderer's counts for the frame most recently rendered, and are `0` before
-the first render. Under the [`headless`
-backend](/engines/simple-3d/apis/rendering/) no renderer exists, and both are
-`0` on every frame.
+the first render.
 
 ### The window
 
@@ -159,9 +157,9 @@ transform to the identity before calling `draw`, and `draw` saves and restores
 the context around all of its own work, including when measuring or drawing
 throws.
 
-The engine calls `draw` after the [recorder's](/engines/simple-3d/apis/recording/)
-frame bracket closes, so the overlay is outside every recording, and before the
-screen layer is composited over the 3D picture, so the overlay is on top of
+The engine calls `draw` after the [recorder](/engines/simple-3d/apis/recording/)
+has captured the frame, so the overlay is outside every recording, and before
+the screen layer is composited over the 3D picture, so the overlay is on top of
 the scene.
 
 The overlay draws the registered lines first, then a metrics line reading

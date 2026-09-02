@@ -182,9 +182,9 @@ expect(clank?.at?.z).toBeCloseTo(crate.z, 3);
 ```
 
 The engine reports every play regardless of the unlock state, so a cue check
-needs no gesture. Unlocking affects audibility, which a suite running in process
-has nothing to observe, and so does the distance attenuation a positioned cue
-plays under: `gain` is the gain before the panner.
+needs no gesture. Unlocking affects audibility alone, which is outside what a
+check asserts on, and so does the distance attenuation a positioned cue plays
+under: `gain` is the gain before the panner.
 
 A loop is checked the same way. `cue:looped` is broadcast once when a cue starts
 looping and `cue:stopped` once when it ends, so a check that a motor hum starts

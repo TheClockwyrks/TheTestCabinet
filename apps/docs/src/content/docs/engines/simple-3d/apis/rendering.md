@@ -49,9 +49,7 @@ three object lives in the state. A game keeps the objects it created in a
 render-side cache, a module-level `Map` keyed by the ids the state carries, or
 in the scene itself under `object.name`, found with `scene.getObjectByName`.
 Objects that look alike share one geometry and one material, built once at
-module level, so a hundred crates upload one box and one shader and a
-[recording](/engines/simple-3d/apis/recording/) carries one geometry entry and
-one material entry for all of them.
+module level, so a hundred crates upload one box and one shader.
 
 ```ts
 import * as THREE from "three";
@@ -165,29 +163,16 @@ function render(state: DeepReadonly<State>, api: RenderApi): void {
 The canvas behind it is [`EngineOptions.screen`](/engines/simple-3d/apis/engine/).
 Absent, the engine creates one with `document.createElement("canvas")` from the
 stage canvas's owning document, and the engine syncs its backing store to the
-stage canvas's size and ratio every frame. A validator supplies a
-`@napi-rs/canvas` canvas here, which is what lets it read the screen layer's
-pixels and record its operations headlessly. A validator that wants the drawing
-operations rather than the pixels substitutes its own object for the context,
-and the engine passes through whatever the screen canvas returned.
+stage canvas's size and ratio every frame. A validator reads the screen
+layer's pixels off this canvas through `getImageData`. A validator that wants
+the drawing operations rather than the pixels substitutes its own object for the
+context, and the engine passes through whatever the screen canvas returned.
 
-## Backend
+## The renderer
 
-```ts
-backend?: "webgl" | "headless";
-```
-
-| Backend | Renderer | Scene and world matrices | Screen layer | Recorder | 3D pixels |
-| --- | --- | --- | --- | --- | --- |
-| `webgl` | A `THREE.WebGLRenderer` over the canvas's `webgl2` context | Maintained and updated every frame | Drawn and composited | Captures every frame | Produced |
-| `headless` | None | Maintained and updated every frame | Drawn through its 2D context | Captures every frame | None |
-
-The default is `webgl`. Under it the engine obtains a `webgl2` context from the
-stage canvas and builds the renderer over it with antialiasing on, alpha on, and
-sRGB output. Under `headless` no renderer exists, and everything else about the
-frame is unchanged: the scene is maintained, world matrices are updated, the
-screen layer draws, and the recorder captures. `headless` is the backend a
-validator selects, and under it the engine asks the stage canvas for no context.
+The engine obtains a `webgl2` context from the stage canvas at construction and
+builds a `THREE.WebGLRenderer` over it with antialiasing on, alpha on, and sRGB
+output. A canvas that yields no `webgl2` context is refused by `createEngine`.
 
 ## Shadows
 
@@ -195,8 +180,7 @@ validator selects, and under it the engine asks the stage canvas for no context.
 default. `true` enables the renderer's shadow maps with PCF soft filtering.
 Which lights cast and which objects cast and receive is the game's, through
 `castShadow` on a light and a mesh and `receiveShadow` on a mesh, as three reads
-them. Under `headless` a shadow produces nothing, as the rest of the 3D picture
-does.
+them.
 
 ## Background
 
@@ -210,8 +194,8 @@ may also set `scene.background`, which paints inside the viewport alone.
 
 The letterboxed rectangle is `offsetX, offsetY, width * scale, height * scale`
 in device pixels, from the [viewport](/engines/simple-3d/apis/viewport/) the
-engine recomputes at the top of every frame. Under `webgl` the renderer's
-viewport and scissor are set to that rectangle with the scissor test on, so the
+engine recomputes at the top of every frame. The renderer's viewport and
+scissor are set to that rectangle with the scissor test on, so the
 scene is drawn into the same region the screen layer's transform maps onto. A
 perspective camera's `aspect` is held at `width / height`, so the picture keeps
 the design aspect whatever the canvas's own is.
@@ -220,27 +204,27 @@ the design aspect whatever the canvas's own is.
 
 1. The clock is called once. A declined tick ends the frame.
 2. The frame counter, `timeMs`, and `lastDeltaMs` advance.
-3. The [recorder](/engines/simple-3d/apis/recording/)'s frame opens. Both
-   canvases are synced to the surface's size and ratio; the viewport is
+3. Both canvases are synced to the surface's size and ratio; the viewport is
    recomputed.
 4. The screen layer is cleared and given the viewport transform.
 5. `update` runs with the delta in seconds; the state is replaced.
 6. `render` runs: the game updates the scene, poses the camera, and draws on
    the screen layer.
-7. The engine updates world matrices, captures the scene for the recorder,
-   reads the camera into the `View`, and, under `webgl`, clears the canvas to
-   `background`, applies the letterboxed viewport and scissor, and renders the
-   scene through the camera.
-8. The recorder's frame closes.
+7. The engine updates world matrices, reads the camera into the `View`, clears
+   the canvas to `background`, applies the letterboxed viewport and scissor,
+   and renders the scene through the camera.
+8. The [recorder](/engines/simple-3d/apis/recording/) captures the frame.
 9. The [diagnostics](/engines/simple-3d/apis/diagnostics/) overlay draws on the
    screen layer in device space.
-10. Under `webgl`, the screen layer is composited over the picture.
+10. The screen layer is composited over the picture.
 11. The input frame closes.
 
 Step 7 is where the camera the game posed in step 6 becomes the camera `View`
 answers from, so the next frame's `update` picks against the camera the player
-is looking through. Step 9 is outside the recorder's bracket, so a recording
-holds the picture the game submitted and nothing of the overlay.
+is looking through. The recorder captures the frame after the scene is rendered
+and the screen layer drawn, and before the diagnostics overlay draws on the
+screen layer. A recording therefore holds the picture the game submitted and
+nothing of the overlay.
 
 ## What `render` does
 
@@ -267,8 +251,7 @@ destroying the engine still finds what the last frame left.
 
 | Condition | Result |
 | --- | --- |
-| `backend` is `"webgl"` and the canvas yields no `webgl2` context | `Error` naming the backend |
-| `backend` outside `"webgl"` / `"headless"` | `Error` naming both values |
+| The canvas yields no `webgl2` context | `Error` naming the canvas |
 | No `screen` canvas supplied and the stage canvas has no owning document | `Error` naming `screen` |
 | `projection` outside `"perspective"` / `"orthographic"` | `Error` naming both values |
 

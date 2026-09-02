@@ -14,7 +14,7 @@ The package `@test-cabinet/structured-3d` has one entry point.
 
 | Specifier | Provides |
 | --- | --- |
-| `@test-cabinet/structured-3d` | `createEngine`, the framework classes, the built-in components, `packRecording`, the clocks, `TOUCH_LAYOUTS`, the viewport functions, the math helpers and constants, `RECORDING_FORMAT`, and every type a game or a validator names. |
+| `@test-cabinet/structured-3d` | `createEngine`, the framework classes, the built-in components, the clocks, `TOUCH_LAYOUTS`, the viewport functions, the math helpers and constants, and every type a game or a validator names. |
 
 `three` is a peer dependency of the package. A build declares `three` itself,
 and the engine, the build, and `@test-cabinet/voxel-runtime/three` share that
@@ -40,7 +40,7 @@ against.
 | [Actors](/engines/structured-3d/apis/actors/) | `Actor`, `Pawn`, `Transform`, the tag calls, and the deferred destroy. |
 | [Components](/engines/structured-3d/apis/components/) | `Component` and the built-in render, mesh, model, light, object, sprite, shape, text, draw, and camera components. |
 | [Controllers](/engines/structured-3d/apis/controllers/) | `Controller`, `PlayerController`, `AIController`, `InputReader`, and possession. |
-| [Rendering](/engines/structured-3d/apis/rendering/) | `Renderer`, `RenderMode`, the collision overlay switch, the backend, shadows, the screen layer, and the pipeline's ordering. |
+| [Rendering](/engines/structured-3d/apis/rendering/) | `Renderer`, `RenderMode`, the collision overlay switch, shadows, the screen layer, and the pipeline's ordering. |
 | [Collision](/engines/structured-3d/apis/collision/) | `ColliderComponent`, `ColliderShape`, `CollisionResponse`, `CollisionWorld`, `Manifold`, `Hit`, and the queries. |
 | [Camera](/engines/structured-3d/apis/camera/) | `Camera`, `CameraSnapshot`, `Projected`, `Ray`, `Viewport`, `fitViewport`, `applyViewport`, `syncCanvas`, and the three spaces. |
 | [Math](/engines/structured-3d/apis/math/) | `Vec2`, `Vec3`, `Quat`, `Mat4`, `Box3`, the constants, and the vector, quaternion, and transform helpers. |
@@ -49,4 +49,4 @@ against.
 | [Audio](/engines/structured-3d/apis/audio/) | `CueSpec`, `WorldAudio`, `PlayOptions`, synthesized and file-backed cues, looping, positional playback, and the mute and unlock calls. |
 | [Assets](/engines/structured-3d/apis/assets/) | `loadImage`, `loadTexture`, `loadModel`, `Model`, `loadAudio`, `load`, `resolve`, and the asset root. |
 | [Diagnostics](/engines/structured-3d/apis/diagnostics/) | Source registration on the instance and the world, the values a read returns, `FrameMetrics`, the overlay, and its toggle. |
-| [Recording](/engines/structured-3d/apis/recording/) | The recorder's engine members, the `.replay` archive, `Recording` and `packRecording`, `RecordingDocument`, `RecordedFrame`, the asset references and the scene tables, the budgets, and the screen layer's `DrawState`, `DrawOp`, and `DrawValue`. |
+| [Recording](/engines/structured-3d/apis/recording/) | The recorder's engine members, `Recording` and `RecordedFrame`, frame boundaries, what a frame holds, the VP9 WebM encoding with its timestamps and keyframes, the frame bound, and the errors. |

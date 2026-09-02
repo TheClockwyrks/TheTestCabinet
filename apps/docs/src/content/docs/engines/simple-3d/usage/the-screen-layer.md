@@ -176,8 +176,8 @@ function drawMenu(
 ```
 
 A fully opaque fill hides the scene for the frame it is drawn on. The scene is
-still rendered underneath and still recorded, so a menu that covers the field
-costs the same frame as one that lets the world show through.
+still rendered underneath, so a menu that covers the field costs the same frame
+as one that lets the world show through.
 
 ## Anchoring a readout to a world point
 

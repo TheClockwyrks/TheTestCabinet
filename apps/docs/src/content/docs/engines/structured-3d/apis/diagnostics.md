@@ -59,7 +59,7 @@ draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
 | `toggle()` | `void` | Inverts the enabled state. |
 | `read()` | `readonly DiagnosticReading[]` | Evaluates every source in both registries and returns what each one reports. |
 | `metrics()` | `FrameMetrics` | The frame-time metrics over the current window and the most recent frame's render counts. |
-| `draw(ctx, width, height)` | `void` | Draws the overlay onto `ctx`. Called by the engine with the screen layer's context after the recorder's frame closes. |
+| `draw(ctx, width, height)` | `void` | Draws the overlay onto `ctx`. Called by the engine with the screen layer's context after the recorder has captured the frame. |
 
 The overlay is hidden when the engine is created.
 
@@ -116,8 +116,8 @@ interface FrameMetrics {
 | `meanMs` | The arithmetic mean of the window's samples, in milliseconds. |
 | `p95Ms` | The 95th percentile of the window's samples, in milliseconds. |
 | `p99Ms` | The 99th percentile of the window's samples, in milliseconds. |
-| `drawCalls` | The draw calls the renderer issued for the most recent frame. `0` under the `headless` backend. |
-| `triangles` | The triangles the renderer drew for the most recent frame. `0` under the `headless` backend. |
+| `drawCalls` | The draw calls the renderer issued for the most recent frame. |
+| `triangles` | The triangles the renderer drew for the most recent frame. |
 
 Percentiles are nearest-rank over the window's samples sorted ascending, so
 `p95Ms` is the sample at index `ceil(0.95 * samples) - 1`. An empty window
@@ -125,8 +125,7 @@ reports `0` for all three.
 
 `drawCalls` and `triangles` are the renderer's own counts for the world pass,
 read after the scene has been rendered, and they cover the frame most recently
-rendered rather than the window. Before the first render, and under the
-[`headless` backend](/engines/structured-3d/apis/rendering/), both are `0`.
+rendered rather than the window. Before the first render both are `0`.
 
 ### The window
 
@@ -142,10 +141,11 @@ older than the window is dropped as each new frame arrives.
 ## `draw`
 
 The overlay draws on the [screen layer](/engines/structured-3d/apis/rendering/)
-in device space, after the recorder's frame closes and before the screen layer
-is composited over the 3D picture, so the overlay appears on the canvas and in
-no recording. `width` and `height` are the dimensions of the screen layer's
-backing store, in device pixels, which match the stage canvas's. The engine
+in device space, after the recorder has captured the frame and before the
+screen layer is composited over the 3D picture, so the overlay appears on the
+canvas and outside every recording. `width` and `height` are the dimensions of
+the screen layer's backing store, in device pixels, which match the stage
+canvas's. The engine
 resets the context transform to the identity before calling `draw`, and `draw`
 saves and restores the context around all of its own work, including when
 measuring or drawing throws.

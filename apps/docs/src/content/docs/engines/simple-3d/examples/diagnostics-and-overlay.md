@@ -194,8 +194,7 @@ The overlay is what a person reads the sources off. The backtick key brings it
 up, so this build binds no key of its own and leaves that key free of gameplay
 bindings. Beneath the registered lines the overlay prints the engine's own
 metrics line, the frame timings followed by the most recent frame's draw calls
-and triangles, which come from the renderer and read `0` under the headless
-backend.
+and triangles, which come from the renderer.
 
 A check reads the same values by holding the engine rather than the page. It
 constructs the engine over this build's `rally` module, steps it with

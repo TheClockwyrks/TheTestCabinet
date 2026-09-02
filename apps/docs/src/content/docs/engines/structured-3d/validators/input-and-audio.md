@@ -225,8 +225,8 @@ expect(distance(at[0] ?? VEC3_ZERO, paddle.transform.position)).toBeLessThan(BAL
 
 A cue name carries one source, and playing a cue that was never declared throws,
 naming the cue. The engine reports every play regardless of the unlock state, so
-a cue check needs no gesture. Unlocking affects audibility, which a suite
-running in process has nothing to observe, and so does the panner: the listener
+a cue check needs no gesture. Unlocking affects audibility, which is outside
+what a check asserts on, and so does the panner: the listener
 and the attenuation belong to the audio context, and the event carries the
 point the build supplied.
 

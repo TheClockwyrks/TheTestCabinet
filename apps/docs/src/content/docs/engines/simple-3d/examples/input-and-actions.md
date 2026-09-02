@@ -223,18 +223,15 @@ and attaches its key listeners. Dispatching a key event on that event target
 takes the same path a browser's key takes, so the suite exercises the build's
 own bindings rather than a parallel entry point.
 
-The test selects the `headless` backend, so no renderer exists and the stage
-canvas is asked for no context, and hands
-the engine a second canvas as `screen`, since the stage canvas has no owning
-document to create one from. The scene is still maintained and the camera is
-still read into the [`View`](/engines/simple-3d/apis/view/) after every
-`render`, so a test reads where the game put the camera without a pixel being
-drawn.
+The test runs in the page under vitest's browser mode, so it creates the stage
+canvas with `document.createElement("canvas")` and the engine builds its
+renderer over it. The camera is read into the
+[`View`](/engines/simple-3d/apis/view/) after every `render`, so a test reads
+where the game put the camera off the view.
 
 ### tests/steering.test.ts
 
 ```ts
-import { createCanvas } from "@napi-rs/canvas";
 import { ConstantClock, createEngine } from "@test-cabinet/simple-3d";
 import type { Engine, SurfaceMetrics } from "@test-cabinet/simple-3d";
 import { expect, test } from "vitest";
@@ -275,9 +272,7 @@ function key(
 function boot(): { engine: Engine<HopperState>; surface: TestSurface } {
   const surface = new TestSurface();
   const engine = createEngine({
-    canvas: createCanvas(WIDTH, HEIGHT) as unknown as HTMLCanvasElement,
-    screen: createCanvas(WIDTH, HEIGHT) as unknown as HTMLCanvasElement,
-    backend: "headless",
+    canvas: document.createElement("canvas"),
     width: WIDTH,
     height: HEIGHT,
     layout: "dual-stick-two-buttons",

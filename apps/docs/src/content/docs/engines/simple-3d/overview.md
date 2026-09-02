@@ -21,7 +21,7 @@ camera it renders through, the screen layer a game draws its readouts on, the
 input action registry and its bindings, the pointer mapped into the game's
 logical coordinates, the audio bus with its positional cues, the asset loader
 with its texture and model decoders, the debug overlay together with the frame
-metrics it reports, the recorder that captures the scene and the screen layer
+metrics it reports, the recorder that captures the picture it drew as video,
 frame by frame, and the debug surface the game returned beside its state, held
 for a caller to read back.
 
@@ -57,7 +57,7 @@ The spatial model is 3D. The game draws by building a three.js scene and
 posing a camera rather than by issuing 2D context calls, and the engine
 composites a 2D screen layer over the picture for the readouts every game
 needs. The assets a game loads gain textures and glTF models, the models the
-[voxel binaries](/testing/asset-generation/voxel-binaries/) produce among them.
+voxel binaries produce among them.
 The pointer arrives in logical stage units as in 2D, and the engine turns it
 into a world-space ray through the camera on request. The touch layouts add
 analog sticks to the pads.
@@ -71,16 +71,17 @@ effort on the physics and the scene, and the engine removes the frame loop,
 the fit, the input, the audio graph, and the overlay a case never intended to
 measure.
 
-A case's validators are vitest suites that run in the same process as the
-build they check. A suite imports the engine and the build's own game module,
-creates an engine over a scripted clock with the headless backend, and steps
-the game with `engine.advance`. The clock, the input, the cues that played,
-the assets that resolved, and the diagnostics are read off engine code, and
-the scene the build populated is read back through `engine.scene` and the
-camera's projection rather than through pixels.
+A case's validators are vitest suites that run in a browser, in the page
+beside the build they check. A suite imports the engine and the build's own
+game module, creates an engine over a canvas it makes with a scripted clock,
+and steps the game with `engine.advance`. The clock, the input, the cues that
+played, the assets that resolved, and the diagnostics are read off engine
+code, and the scene the build populated is read back through `engine.scene`,
+the camera's projection, and the stage canvas's pixels.
 
 The engine also captures what a build drew. A validator arms the
 [recorder](/engines/simple-3d/concepts/recording/) around the stretch of a
-scenario its check is about and hands back the scene and the screen layer the
-build submitted, frame by frame, which a reviewer replays beside the same
-scenario driven against the case's reference implementation.
+scenario its check is about and hands back a video of the frames the build
+drew, one per engine frame and timestamped in simulated time, which a reviewer
+scrubs beside the same scenario driven against the case's reference
+implementation.

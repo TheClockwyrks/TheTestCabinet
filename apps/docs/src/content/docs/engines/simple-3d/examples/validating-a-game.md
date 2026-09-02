@@ -2,15 +2,16 @@
 title: Validating a Game
 ---
 
-A case's validators are vitest suites that run in the same process as the build.
-A suite imports the engine and the build's own game module, creates an engine
-under the headless backend over two canvases it owns and a clock it chose, and
-steps the game with `engine.advance`. A check poses its scenario through
+A case's validators are vitest suites that run in a browser page beside the
+build. A suite imports the engine and the build's own game module, creates an
+engine over two canvases it makes in the page and a clock it chose, and steps
+the game with `engine.advance`. A check poses its scenario through
 `engine.apply` and reads the outcome back through `engine.state`, both routed
 through the build's debug surface; everything else it reads is an engine
 surface: the frame counter, the events the engine broadcast, the scene the
-build populated, the camera's projection, the pixels or the draw calls of the
-screen layer, and the recording the engine captured.
+build populated, the camera's projection, the pixels of the stage canvas, the
+pixels or the draw calls of the screen layer, and the recording the engine
+captured.
 
 This page is one complete suite for a small game, written the way a case ships
 its validators.
@@ -151,20 +152,47 @@ export default defineConfig({
 
 The case's config names `validation/` and roots itself at the repository, so a
 validator resolves the build's modules by the same relative paths the build
-uses.
+uses. It runs the suites in browser mode on headless Chromium through the
+Playwright provider, and registers the `emitReplay` command that writes a
+suite's recording to disk from the Node side.
 
 ```ts
-// validation/vitest.config.ts
-import { fileURLToPath } from "node:url";
+// validation/vitest.config.ts — the case's, staged in with the suites
 import { defineConfig } from "vitest/config";
+import type { BrowserCommand } from "vitest/node";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
+
+const ROOT = new URL("..", import.meta.url).pathname;
+
+/** Writes a suite's recording under the run's media directory. Runs on the Node side. */
+const emitReplay: BrowserCommand<[output: string, video: string]> = (
+  { testPath },
+  output,
+  video,
+) => {
+  const dir = process.env.TCAB_VALIDATION_MEDIA_DIR;
+  if (dir === undefined || testPath === undefined) return;
+  const target = join(dir, relative(ROOT, testPath), `${output}.webm`);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, Buffer.from(video, "base64"));
+};
 
 export default defineConfig({
-  root: fileURLToPath(new URL("..", import.meta.url)),
+  root: ROOT,
   test: {
     name: "validation",
     include: ["validation/**/*.test.ts"],
-    environment: "node",
+    browser: {
+      enabled: true,
+      provider: "playwright",
+      headless: true,
+      instances: [{ browser: "chromium" }],
+      commands: { emitReplay },
+    },
+    passWithNoTests: false,
     coverage: { enabled: false },
+    testTimeout: 60_000,
   },
 });
 ```
@@ -188,9 +216,11 @@ npx vitest run                                       # the build's own tests
 npx vitest run --config validation/vitest.config.ts  # the case's validators
 ```
 
-The canvas and the runner are devDependencies of the seeded workspace. `three`
-is a dependency the build declares, since the engine takes it as a peer, and
-the suite imports the same copy for its scene checks.
+The runner, its browser mode, and the Playwright provider are devDependencies
+of the seeded workspace, and the Chromium they launch is the one the runner's
+browser driver uses. `three` is a dependency the build declares, since the
+engine takes it as a peer, and the suite imports the same copy for its scene
+checks.
 
 ```json
 {
@@ -198,8 +228,9 @@ the suite imports the same copy for its scene checks.
     "three": "~0.182.0"
   },
   "devDependencies": {
-    "@napi-rs/canvas": "^0.1",
     "@types/three": "~0.182.0",
+    "@vitest/browser": "^3",
+    "playwright": "^1",
     "vitest": "^3"
   }
 }
@@ -208,18 +239,17 @@ the suite imports the same copy for its scene checks.
 ## The harness
 
 Every validator builds its engine through one helper. It creates two canvases
-with `@napi-rs/canvas`, one as the stage and one as the screen layer, selects
-the `headless` backend, supplies a `SurfaceMetrics` so the engine takes every
-measurement from the harness instead of from a document, wraps the screen
-canvas's 2D context in a recording proxy, subscribes to `asset:failed` before
-any game code runs, and then initializes. It also wraps the build's pure
-surface over the engine, so a check writes `harness.setBallPosition(…)` and
+in the page with `document.createElement("canvas")`, one as the stage and one
+as the screen layer, supplies a `SurfaceMetrics` so the engine takes every
+measurement from the harness rather than from a layout the detached canvases
+lack, wraps the screen canvas's 2D context in a recording proxy, subscribes to
+`asset:failed` before any game code runs, and then initializes. It also wraps
+the build's pure surface over the engine, so a check writes `harness.setBallPosition(…)` and
 `harness.snapshot()` and the harness routes the pose through `engine.apply` and
 the reading through `engine.state`.
 
 ```ts
 // validation/harness.ts
-import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import {
   ConstantClock,
   createEngine,
@@ -259,7 +289,8 @@ export interface HarnessOptions {
 
 export interface Harness {
   readonly engine: Engine<State, Debug>;
-  readonly ctx: SKRSContext2D;
+  readonly stage: HTMLCanvasElement;
+  readonly ctx: CanvasRenderingContext2D;
   readonly calls: DrawCall[];
   readonly assetFailures: string[];
   setBallPosition(x: number, z: number): void;
@@ -271,6 +302,7 @@ export interface Harness {
   tap(code: string): void;
   device(x: number, y: number): { x: number; y: number };
   pixel(x: number, y: number): [number, number, number, number];
+  stagePixel(x: number, y: number): [number, number, number, number];
   project(point: Vec3): Projected;
   dispose(): void;
 }
@@ -293,7 +325,17 @@ function toDevice(view: Viewport, x: number, y: number): { x: number; y: number 
   };
 }
 
-function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
+function pageCanvas(width: number, height: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function recorder(
+  target: CanvasRenderingContext2D,
+  calls: DrawCall[],
+): CanvasRenderingContext2D {
   return new Proxy(target, {
     get(object, property) {
       const value = Reflect.get(object, property, object);
@@ -329,17 +371,13 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
   const width = Math.round(cssWidth * dpr);
   const height = Math.round(cssHeight * dpr);
 
-  const stage = Object.assign(createCanvas(width, height), {
-    style: {} as CSSStyleDeclaration,
-  }) as unknown as HTMLCanvasElement;
+  const stage = pageCanvas(width, height);
 
-  const screen = createCanvas(width, height);
-  const ctx = screen.getContext("2d");
+  const screen = pageCanvas(width, height);
+  const ctx = screen.getContext("2d")!;
   const calls: DrawCall[] = [];
   const recorded = recorder(ctx, calls);
-  const layer = Object.assign(screen, {
-    getContext: () => recorded,
-  }) as unknown as HTMLCanvasElement;
+  screen.getContext = () => recorded;
 
   const events = new EventTarget();
   const surface: SurfaceMetrics = {
@@ -351,8 +389,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 
   const engine = createEngine<State, Debug>({
     canvas: stage,
-    screen: layer,
-    backend: "headless",
+    screen,
     width: FIELD_WIDTH,
     height: FIELD_HEIGHT,
     game,
@@ -374,6 +411,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 
   return {
     engine,
+    stage,
     ctx,
     calls,
     assetFailures,
@@ -395,6 +433,14 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
       const { data } = ctx.getImageData(point.x, point.y, 1, 1);
       return [data[0], data[1], data[2], data[3]];
     },
+    stagePixel: (x, y) => {
+      const point = toDevice(engine.viewport(), x, y);
+      const copy = pageCanvas(stage.width, stage.height);
+      const copyCtx = copy.getContext("2d")!;
+      copyCtx.drawImage(stage, 0, 0);
+      const { data } = copyCtx.getImageData(point.x, point.y, 1, 1);
+      return [data[0], data[1], data[2], data[3]];
+    },
     project: (point) => engine.view().project(point),
     dispose: () => engine.destroy(),
   };
@@ -408,24 +454,25 @@ specification fixes: the design size and the background. Everything else the
 build decided is inside the game module, which is what makes one validator
 suite serve every build of the case.
 
-`backend: "headless"` is what lets the suite run with no GPU and no document.
-No renderer exists, so the stage canvas is asked for no context and any
-canvas-like object serves there; the scene is still maintained, world matrices
-are still updated, the screen layer still draws, and the recorder still
-captures every frame. The pixels of the 3D picture are the one thing a headless
-engine does not produce, so a claim about the scene is stated against the scene
-and the projection rather than against pixels.
+The stage is a page canvas sized to the design size times the ratio the check
+chose, and it stays detached from the document. The engine obtains its
+`webgl2` context from it and renders the scene into it as it does in a browser
+tab, with Chromium rendering in software, so the scene is maintained, world
+matrices are updated, the picture is drawn, and the recorder captures every
+frame. `stagePixel` draws the stage into a 2D canvas of the same size and reads
+the copy back, which is how a claim about the rendered picture is stated.
 
-`screen` is the second `@napi-rs/canvas` canvas, handed over as the screen
-layer. The engine draws the HUD through that canvas's own 2D context, so
-`getImageData` reads the layer's pixels and `Object.assign` puts a `getContext`
-onto the canvas that returns the recording proxy instead, so every drawing
-operation lands in `calls` on its way to the real context.
+`screen` is the second page canvas, handed over as the screen layer. The engine
+draws the HUD through that canvas's own 2D context, so `getImageData` reads the
+layer's pixels, and the harness replaces the canvas's `getContext` with one
+that returns the recording proxy, so every drawing operation lands in `calls`
+on its way to the real context.
 
 `SurfaceMetrics` supplies the element size, the device pixel ratio, and the
-event target the engine attaches its key listeners to. Handing it a plain
-`EventTarget` gives the validator the same seam a player's keyboard uses, so
-`hold` and `release` drive actions through the bindings the game registered.
+event target the engine attaches its key listeners to, because a detached
+canvas has no laid-out size of its own. Handing it a plain `EventTarget` gives
+the validator the same seam a player's keyboard uses, so `hold` and `release`
+drive actions through the bindings the game registered.
 
 `setBallPosition`, `setBallVelocity`, `setPaddle`, and `snapshot` are the
 surface wrapped over the engine. A pose is
@@ -439,9 +486,9 @@ most recent frame left. A check that wants the state itself reads
 Subscribing before `engine.initialize()` is what makes an asset failure
 visible. Construction runs no game code, so the handler is attached in time to
 observe the game's own initialization, and a build whose assets never arrive
-reports that directly rather than as a wrong-scene failure. A suite whose build
-loads assets installs a `fetch` that serves the seeded asset directory from
-disk, so every path resolving under `assetRoot` arrives in process.
+reports that directly rather than as a wrong-scene failure. Vitest serves the
+workspace to the page, so a build's assets are fetched from it and every path
+resolving under `assetRoot` arrives as it does in the built page.
 
 ## Stepping the simulation
 
@@ -603,7 +650,8 @@ overlay stays hidden throughout.
 `engine.scene` is the retained scene the build populates from `render`, live
 and readable after any number of frames. A check finds an object by the name
 the case fixes, reads its world position, and reads its material, which is how
-a claim about what the build placed in the world is stated without a renderer.
+a claim about what the build placed in the world is stated against the world
+rather than the picture.
 `engine.view().camera()` is the camera's pose as it stood at the most recent
 render, so the same check reads where the build put the camera.
 
@@ -745,9 +793,8 @@ before the first render it answers from the camera defaults.
 
 Two readings of one frame answer two different questions. The pixels say what
 ended up on the screen layer, and the draw-call stream says what the render
-asked for. Both are about the HUD: the 3D picture has no pixels under
-`headless`, and a claim about it is stated against the scene and the
-projection above.
+asked for. Both are about the HUD; the picture under it is read from the stage
+canvas through `harness.stagePixel`, which the letterbox check below uses.
 
 The canvas is 800 by 360 CSS pixels at a device pixel ratio of 2, so the fit
 scales the 640 by 360 field by 2 and centres it in a 1600 by 720 backing store
@@ -793,6 +840,7 @@ it("fills the score panel and leaves the rest of the layer clear", async () => {
   expect(harness.pixel(12, 12)).toEqual([28, 32, 51, 255]);
   expect(harness.pixel(124, 44)).toEqual([28, 32, 51, 255]);
   expect(harness.pixel(320, 180)).toEqual([0, 0, 0, 0]);
+  expect(harness.stagePixel(-40, 180)).toEqual([16, 16, 24, 255]);
 });
 
 it("draws the panel as one rect and the score as one text", async () => {
@@ -815,10 +863,12 @@ it("draws the panel as one rect and the score as one text", async () => {
 });
 ```
 
-Clearing `calls` immediately before the frame keeps the stream to that one
-frame. The stream also carries the engine's own clear and transform of the
-screen layer, so a check names the calls the game made and keeps to the colors
-the case fixes when it compares fill styles.
+The stage sample at logical `-40` lands in the left letterbox bar, which
+`background` paints, so it reads `#101018` exactly. Clearing `calls`
+immediately before the frame keeps the stream to that one frame. The stream
+also carries the engine's own clear and transform of the screen layer, so a
+check names the calls the game made and keeps to the colors the case fixes when
+it compares fill styles.
 
 Both readings come from the same frame, because the recording proxy forwards
 every call to the real context. One advance therefore produces a pixel buffer to
@@ -887,53 +937,56 @@ the engine discards an edge nothing consumed at the end of the frame.
 
 A suite holds the engine, so it captures the stretch of a scenario its check is
 about and hands the frames to the reviewer as the verdict's media. The
-[recorder](/engines/simple-3d/apis/recording/) keeps the scene as the build
-submitted it, as draws, lights, scene settings, and a camera, together with the
-screen layer's operations, and it captures identically under `headless`, so the
-recording a validator emits is the one the same frames would have produced in a
-browser. `stopRecording` returns a `Recording` holding the document, the buffers
-the frames name by span, the embedded maps, and every asset the recorded frames
-reference, and `packRecording` builds the `.replay` archive from it. The verdict
-unit declares the output as `kind = "replay"` in the case
+[recorder](/engines/simple-3d/apis/recording/) captures the stage canvas with
+the screen layer over it once per engine frame and encodes the frames as VP9
+video in a WebM container, timestamped in the engine's simulated time, so the
+recording a validator emits is the picture the build drew in the page.
+`stopRecording` resolves with a `Recording` holding the video bytes, the frame
+size, one `RecordedFrame` per video frame, and `ended`. The verdict unit
+declares the output as `kind = "replay"` in the case
 [manifest](/testing/end-to-end/manifests/), and the suite writes it where the
 [validators](/engines/simple-3d/validators/recording/) page specifies.
 
+The suite runs in the page and the media directory is on disk, so the case's
+config registers the `emitReplay` browser command shown above, and the suite
+reaches it through a helper written once beside the harness. The command
+receives the suite's absolute path as `testPath`, so the staged path derives
+from it and the suite needs no name of its own.
+
 ```ts
 // validation/replay.ts
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
-import { packRecording, type Recording } from "@test-cabinet/simple-3d";
+import { commands } from "@vitest/browser/context";
+import type { Recording } from "@test-cabinet/simple-3d";
 
-const WORKSPACE = fileURLToPath(new URL("..", import.meta.url));
+declare module "@vitest/browser/context" {
+  interface BrowserCommands {
+    emitReplay: (output: string, video: string) => Promise<void>;
+  }
+}
 
-export function emitReplay(
-  suite: string,
-  output: string,
-  recording: Recording,
-): void {
-  const dir = process.env.TCAB_VALIDATION_MEDIA_DIR;
-  if (dir === undefined) return;
-  if (recording.document.frames.length === 0) return;
+export async function emitReplay(output: string, recording: Recording): Promise<void> {
+  if (recording.frames.length === 0) return;
+  await commands.emitReplay(output, toBase64(recording.video));
+}
 
-  const staged = relative(WORKSPACE, fileURLToPath(suite));
-  const target = join(dir, staged, `${output}.replay`);
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, packRecording(recording));
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 ```
 
 The check arms the recorder once the scenario is posed and disarms it once the
 behavior has happened, so the evidence opens on the situation the requirement
 describes. The recording is emitted before the assertions run, and the same
-document is asserted on, since a frame's `draws`, `lights`, and `camera` are
-the scene as submitted.
+`Recording` is asserted on, since its `frames` are the engine's own frame
+counter and simulated time for each video frame.
 
 ```ts
 // validation/recording.test.ts
-import { ConstantClock, RECORDING_FORMAT } from "@test-cabinet/simple-3d";
+import { ConstantClock } from "@test-cabinet/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { BALL_COLOR, FIELD_HEIGHT, FIELD_WIDTH, createHarness, type Harness } from "./harness";
+import { FIELD_HEIGHT, FIELD_WIDTH, createHarness, type Harness } from "./harness";
 import { emitReplay } from "./replay";
 
 let harness: Harness;
@@ -954,24 +1007,16 @@ it("records the frames around a wall reflection", async () => {
 
   engine.startRecording();
   await engine.advance(24);
-  const recording = engine.stopRecording();
-  emitReplay(import.meta.url, "bounce", recording);
+  const recording = await engine.stopRecording();
+  await emitReplay("bounce", recording);
 
-  const { document } = recording;
-  expect(document.format).toBe(RECORDING_FORMAT);
-  expect(document.width).toBe(FIELD_WIDTH);
-  expect(document.height).toBe(FIELD_HEIGHT);
-  expect(document.frames).toHaveLength(24);
-  expect(document.frames[0].count).toBe(13);
-  expect(document.ended).toBeUndefined();
-
-  for (const frame of document.frames) {
-    expect(frame.draws).toHaveLength(3);
-    expect(frame.lights).toHaveLength(1);
-    expect(document.cameras[frame.camera].projection).toBe("perspective");
-    expect(frame.screen.ops.length).toBeGreaterThan(0);
-  }
-  expect(document.materials.map((material) => material.color)).toContain(BALL_COLOR);
+  expect(recording.width).toBe(FIELD_WIDTH);
+  expect(recording.height).toBe(FIELD_HEIGHT);
+  expect(recording.frames).toHaveLength(24);
+  expect(recording.frames[0].count).toBe(13);
+  expect(recording.frames[23].timeMs).toBeCloseTo(600, 6);
+  expect(recording.ended).toBe(false);
+  expect(recording.video.length).toBeGreaterThan(0);
   expect(harness.snapshot().ball.vz).toBe(-4);
 });
 ```
@@ -980,10 +1025,11 @@ The ball starts 1.6 units from the wall at 4 units per second, so the
 reflection falls 0.4 seconds in, which is the twenty-fourth frame from the pose
 and the twelfth of the recording. Capture begins at the frame after
 `startRecording`, so twenty-four advances are twenty-four frames, counted from
-13, and an absent `ended` mark states that every one of them was held within
-the archive's budgets. Every frame submits the court, the ball, and the paddle
-as three draws under one light through a perspective camera, and the ball's
-material is in the material table under the color the case fixes.
+13, and the last is timed at 600 milliseconds of simulated time, thirty-six
+frames of `1000 / 60`. `ended` is `false` because the frame bound of 3,600
+frames was never reached, so every frame of the section is in the video. The
+size is the design size, because the harness reports the design size at a
+device pixel ratio of `1`.
 
 The recording is written only when `TCAB_VALIDATION_MEDIA_DIR` is set, which
 the runner does and a local `vitest run` does not, so the suite's assertions

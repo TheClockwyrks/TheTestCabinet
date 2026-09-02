@@ -53,8 +53,8 @@ A frame runs eleven steps, in this order:
    so the clock decides whether there is a frame at all before any state moves.
 2. The frame counter, `timeMs`, and `world.time` advance by the delta. Time
    moves first, so everything that runs in the frame reads one clock reading.
-3. The recorder's frame opens, the stage canvas and the screen layer's canvas
-   are synced to the surface's size and ratio, and the viewport is recomputed.
+3. The stage canvas and the screen layer's canvas are synced to the surface's
+   size and ratio, and the viewport is recomputed.
    The fit is taken before any game code runs, so a tick that converts a point
    uses the fit this frame renders through.
 4. Each controller ticks, in the order they were added. A controller writes the
@@ -88,19 +88,16 @@ A frame runs eleven steps, in this order:
     4. The collision overlay draws, when it is enabled.
     5. The screen layer is cleared and given the viewport transform, and every
        enabled, visible screen-space component draws in layer order.
-    6. The recorder's frame closes.
+    6. The recorder, when it is armed, captures the frame. The recorder
+       captures the frame after the scene is rendered and the screen layer
+       drawn, and before the diagnostics overlay draws on the screen layer,
+       so a recording holds the picture the game submitted and nothing of
+       the overlay.
     7. The diagnostics overlay draws on the screen layer in device space.
-    8. Under `webgl`, the screen layer is composited over the picture.
+    8. The screen layer is composited over the picture.
 11. The input frame closes, discarding every edge left unconsumed. It closes
     last so every controller that ticked this frame had its chance to consume an
     edge.
-
-Under the `headless` backend the render, the collision overlay, and the
-composite produce no pixels, and every other part of step 10 runs as it does
-under `webgl`. The scene is synced, its world matrices are updated, the screen
-layer draws through its 2D context, and the recorder captures the frame, so
-what a caller reads off the scene, the screen layer, and a recording is the
-same with or without a renderer.
 
 A transition is asynchronous because the incoming level's `load` is, and the
 loop runs no frame while one is in flight. The frame that performs the

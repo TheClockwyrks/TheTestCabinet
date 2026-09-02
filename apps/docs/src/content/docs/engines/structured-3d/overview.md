@@ -22,8 +22,8 @@ and its projection, the rendering pipeline over three.js and the screen layer
 it composites over the picture, collision detection, the input action registry
 and its bindings, the audio bus with its positional cues, the asset loader with
 its texture and model decoders, the debug overlay together with the frame
-metrics it reports, the recorder that captures the scene and the screen layer
-frame by frame, and the debug surface the game instance returned from its
+metrics it reports, the recorder that captures the rendered frames as video,
+and the debug surface the game instance returned from its
 `initialize`, held for a caller to read back.
 
 The game owns the levels it registers, the game modes that hold its rules, the
@@ -73,18 +73,18 @@ codebase rather than its ability to compile a WebAssembly module. A 3D case is
 where the work a game does around its own logic is largest, so the framework
 buys the most here.
 
-A case's validators are vitest suites that run in the same process as the
-build they check. A suite imports the engine and the build's own game module,
-creates an engine over a scripted clock with the headless backend, and steps
-the world with `engine.advance`. A scenario is posed through the build's
+A case's validators are vitest suites that run in a browser beside the build
+they check. A suite imports the engine and the build's own game module, creates
+an engine over a canvas it makes with a scripted clock, and steps the world with
+`engine.advance`. A scenario is posed through the build's
 [debug surface](/engines/structured-3d/concepts/debug/), whose operations
 arrange the live world through the same systems play uses, and read back off
 `engine.world` and the scene the pipeline maintains.
 
 The engine also captures what a build drew. A validator arms the
 [recorder](/engines/structured-3d/concepts/recording/) around the stretch of a
-scenario its check is about and hands back the scene and the screen layer the
-pipeline submitted, frame by frame, which a reviewer replays beside the same
+scenario its check is about and hands back the frames the pipeline drew, with
+the screen layer over them, as a video a reviewer steps beside the same
 scenario driven against the case's reference implementation.
 
 | Family | Gameplay framework | Simulation and rendering |

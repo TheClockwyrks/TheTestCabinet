@@ -70,7 +70,7 @@ listens on its owning document, which is the arrangement a page in a browser
 gets by default.
 
 Supplying a surface puts the engine over a canvas with no document behind it. A
-validator running in process hands the engine a fixed size and ratio and
+validator in a browser page hands the engine a fixed size and ratio and
 dispatches its key events into the event target it owns, and the fit arithmetic,
 the transform, the renderer's rectangle, and the pixels it reads back from the
 screen layer are the ones a browser produces.
@@ -108,27 +108,31 @@ follow a resize together.
 
 ## Order of work in one frame
 
-1. Both canvases are resynced to the surface's size and the current device
-   pixel ratio, and the viewport is recomputed.
-2. The screen layer is cleared and given the viewport transform.
-3. The game's update runs, with this frame's delta in seconds.
-4. The game's render runs, updating the scene and posing the camera, and
+1. The clock is called once. A declined tick ends the frame.
+2. The frame counter, `timeMs`, and `lastDeltaMs` advance.
+3. Both canvases are synced to the surface's size and the current device pixel
+   ratio, and the viewport is recomputed.
+4. The screen layer is cleared and given the viewport transform.
+5. The game's update runs, with this frame's delta in seconds.
+6. The game's render runs, updating the scene and posing the camera, and
    drawing on the transformed screen context.
-5. Under `webgl`, the whole canvas is cleared to the configured background
-   color or to transparency, the letterboxed viewport and scissor are applied,
-   and the scene is rendered through the camera.
-6. The diagnostics overlay is drawn on the screen layer.
-7. Under `webgl`, the screen layer is composited over the picture.
-8. The input frame is closed, discarding edges nothing consumed.
+7. The engine updates world matrices, reads the camera into the view, clears
+   the whole canvas to the configured background color or to transparency,
+   applies the letterboxed viewport and scissor, and renders the scene through
+   the camera.
+8. The recorder captures the frame.
+9. The diagnostics overlay is drawn on the screen layer.
+10. The screen layer is composited over the picture.
+11. The input frame is closed, discarding edges nothing consumed.
 
-Because step 2 clears the screen layer and step 5 clears the whole canvas
+Because step 4 clears the screen layer and step 7 clears the whole canvas
 before drawing the scene, every frame draws the complete picture from what the
 scene holds and what the render drew, and a build reasons about one full
 redraw per frame.
 
 ## The overlay sits outside the transform
 
-Step 6 resets the screen layer's transform to the identity and draws the overlay
+Step 9 resets the screen layer's transform to the identity and draws the overlay
 in device space, over everything the game drew there that frame and, once
 composited, over the scene. Debug text is chrome laid on top of the game rather
 than part of it, so it holds one physical size and stays crisp however far the

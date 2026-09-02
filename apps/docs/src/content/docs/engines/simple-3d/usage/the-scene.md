@@ -163,7 +163,7 @@ by id suits the map, and naming each entry `crate-${id}` as well costs nothing.
 
 The state names the things that exist, so `render` reconciles the cache against
 it: each id the state carries gets an object, created on first sight, and each
-object whose id the state no longer carries is removed from the scene and
+object whose id is absent from the state is removed from the scene and
 dropped from the cache. The alive-set walk in the example above is the whole of
 that, and it runs every frame at the cost of one pass over the population.
 
@@ -303,9 +303,8 @@ one, is posed from `render` like any other object.
 
 A `MeshBasicMaterial` ignores lights and shows its color flat, which suits
 markers, guides, and anything the picture reads as unlit. Lit materials are
-`MeshLambertMaterial`, `MeshPhongMaterial`, and `MeshStandardMaterial`; the
-recording carries those four kinds, the line and points materials, and the five
-lights above, so a scene built from them replays exactly.
+`MeshLambertMaterial`, `MeshPhongMaterial`, and `MeshStandardMaterial`, and a
+recording shows each as the renderer drew it.
 
 ## Shadows
 
@@ -330,9 +329,7 @@ mesh.receiveShadow = true;
 
 A clone of a model carries the `castShadow` and `receiveShadow` flags of the
 template's meshes, which a glTF file leaves off, so a game that wants a model
-shadowed traverses the clone and sets them. Under the `headless` backend a
-shadow produces nothing, as the rest of the 3D picture does, and a recording
-carries no shadow settings.
+shadowed traverses the clone and sets them.
 
 ## The background
 

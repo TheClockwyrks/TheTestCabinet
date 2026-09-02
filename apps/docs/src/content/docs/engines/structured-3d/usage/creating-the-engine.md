@@ -225,7 +225,6 @@ the start level rather than a poll.
 | `layout` | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions. |
 | `assetRoot` | The root every asset path resolves under. Defaults to `assets/`. |
 | `surface` | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document. |
-| `backend` | `"webgl"`, the default, renders the scene through a `webgl2` context on the canvas. `"headless"` builds no renderer and produces no pixels of the 3D picture. |
 | `screen` | The 2D canvas the screen layer draws on. Defaults to one created from the stage canvas's owning document. |
 | `shadows` | `true` enables shadow maps with soft filtering. Defaults to `false`. |
 
@@ -242,9 +241,9 @@ const engine = createEngine({
 ```
 
 A build in the browser takes the default surface. Supplying one is how a
-validator runs the same engine over a canvas with no document behind it.
+validator fixes the element size and the device pixel ratio the engine reads.
 
-### The backend and the screen layer
+### The screen layer
 
 The engine draws two things onto the canvas each frame: the scene the pipeline
 populates from the world's render components, rendered through the camera, and
@@ -253,11 +252,9 @@ and the diagnostics overlay draw. The screen layer is sized to the same backing
 store as the canvas and composited over the 3D picture at the end of every
 frame.
 
-A build in the browser leaves `backend` and `screen` at their defaults. Under
-`"headless"` the scene is still maintained, the screen layer still draws through
-its 2D context, and the recorder still captures every frame, so a validator
-selects it together with a `@napi-rs/canvas` canvas handed as `screen`, which
-is what lets it read the HUD's pixels and operations with no GPU present.
+A build in the browser leaves `screen` at its default. A validator hands a
+canvas of its own as `screen`, or a recording proxy over that canvas's context,
+which is what lets it read the HUD's pixels and operations from the suite.
 
 ### Shadows
 

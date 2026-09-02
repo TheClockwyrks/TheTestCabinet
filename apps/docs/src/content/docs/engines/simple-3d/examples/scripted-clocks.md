@@ -9,7 +9,7 @@ validator chooses the shape of time the scenario runs under.
 
 Every example on this page uses the harness from
 [Validating a Game](/engines/simple-3d/examples/validating-a-game/), which
-creates the engine under the `headless` backend, accepts the clock as an option
+creates the engine over a canvas it makes in the page, accepts the clock as an option
 and installs it at construction, poses the ball through `engine.apply`, and
 reads a snapshot off `engine.state`. The ball moves in world units on the
 court, and the two side walls stand at `z = ±COURT_DEPTH / 2`, so the ball's

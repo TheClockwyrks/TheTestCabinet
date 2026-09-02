@@ -169,8 +169,8 @@ The overlay is hidden when the engine is created and is toggled by the
 `Backquote` key, which is engine chrome rather than a registered action. It
 draws the engine's own world line first, then the instance's sources, then the
 world's, then a metrics line, then the frame-time graph. It is drawn on the
-screen layer in device space, after the recorder's frame closes, so it appears
-on the canvas and in no recording.
+screen layer in device space, after the recorder has captured the frame, so it
+appears on the canvas and outside every recording.
 
 ```text
 level: patrol  phase: playing  actors: 7
@@ -195,7 +195,7 @@ overlay, over a window of the last 10 seconds of simulated time. The percentiles
 are nearest-rank. After the timings come the draw calls and the triangles the
 renderer issued for the most recent frame, read from the renderer after the
 scene was rendered: six boxes are six draws of twelve triangles each, and a
-light is no draw. Under the `headless` backend both counts read `0`.
+light is no draw.
 
 ## Reading the values back
 

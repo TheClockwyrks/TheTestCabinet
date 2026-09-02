@@ -86,6 +86,11 @@ and the composite comes last, so every screen draw is over every scene draw
 and the overlay is over both. The two canvases share one backing store size and
 one fit, so the composite is a pixel-for-pixel lift with nothing resampled.
 
+The recorder captures the frame after the scene is rendered and the screen
+layer drawn, and before the diagnostics overlay draws on the screen layer, so a
+[recording](/engines/simple-3d/concepts/recording/) holds the picture the game
+submitted and nothing of the overlay.
+
 ## The camera is engine-owned and game-posed
 
 The engine creates one camera at construction, a perspective or an
@@ -97,9 +102,9 @@ rendering, so a write from `render` is that frame's picture.
 
 Holding the camera in the engine is what lets the engine answer questions
 about it. The [view](/engines/simple-3d/concepts/camera-and-view/) reads the
-camera after each render, the listener for positional audio stands where the
-camera stands, and the recorder writes the camera each frame rendered through,
-none of which the engine could do for a camera the game held privately.
+camera after each render, and the listener for positional audio stands where
+the camera stands, neither of which the engine could do for a camera the game
+held privately.
 
 ## The whole picture, every frame
 
@@ -124,30 +129,6 @@ soft filtering, and which lights cast and which objects cast and receive is the
 game's, through `castShadow` on a light and a mesh and `receiveShadow` on a
 mesh, as three reads them. A build states once whether it wants shadows at all,
 and its scene objects state the rest.
-
-## The headless backend
-
-Under the `headless` backend no renderer exists, and everything else about the
-frame is unchanged. The scene is maintained, world matrices are updated every
-frame, the camera is posed and read into the view, the screen layer draws
-through its 2D context, and the recorder captures every frame. No pixels of the
-3D picture are produced, and the frame metrics report zero draw calls and zero
-triangles.
-
-This is the backend a validator selects. A validator runs the build in process
-over a canvas with no `webgl2` context behind it, hands the engine a
-`@napi-rs/canvas` canvas as the screen layer, and steps the game with a
-scripted clock. It then reads the scene for what the build placed, the view for
-where a world point lands on the stage, the screen layer's pixels or recorded
-operations for the HUD, and the recording for what was submitted to be drawn,
-which together cover what a case asserts about a picture. The rendered pixels
-of the world pass are the one thing the backend withholds, and a claim about
-them is a browser check outside the in-process suite.
-
-Keeping capture independent of the renderer is what makes the two backends
-agree. The recorder reads the scene object rather than the renderer's output,
-so the recording a validator emits under `headless` matches the one the same
-frames produce under `webgl`, frame for frame.
 
 ## The render and the update
 

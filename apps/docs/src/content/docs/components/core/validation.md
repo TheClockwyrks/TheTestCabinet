@@ -7,9 +7,10 @@ title: Validation
 Validation is the automated pass over a finished implementation. It builds and
 load-checks the produced tree, then decides the objective, mechanically
 verifiable review points and synthesizes their evidence. A run under an
-[engine](/components/core/engines/) decides those points with a vitest suite run
-in process against the game the build produced. A run under no engine drives the
-build's [instrumentation](/testing/end-to-end/instrumentation/) in a browser.
+[engine](/components/core/engines/) decides those points with a vitest suite that
+imports the game the build produced, run in Node for a 2D engine and in a browser
+page for a 3D one. A run under no engine drives the build's
+[instrumentation](/testing/end-to-end/instrumentation/) in a browser.
 
 Validation assesses part of an implementation, not all of it. A game's feel and
 quality are graded by a person playing the build and writing its
@@ -58,17 +59,19 @@ verdict unit for that engine, written as a TypeScript test file and run by
 vitest. Validators live with the case, are never seeded into the run workspace,
 and run after the produced repository's dependencies are installed.
 
-A validator runs in process. It imports the engine package directly, and it
-imports the module the case requires the build to export its game from, so it
-exercises the game the model wrote rather than a page serving it. The case's
-module contract is what makes that import valid for every build.
+A validator holds the engine it checks. It imports the engine package directly,
+and it imports the module the case requires the build to export its game from,
+so it exercises the game the model wrote rather than a page serving it. The
+case's module contract is what makes that import valid for every build.
 
-A validator builds the engine itself: a canvas from `@napi-rs/canvas`, a clock
-that supplies a scripted sequence of deltas, the engine's own initialization, and
-an exact number of frames stepped one call at a time. A scenario therefore runs
-synchronously and reproducibly, with no browser, no server, and nothing to wait
-for. Setup runs the real game forward, so a validator poses a situation through
-the game's own update and reads the outcome back from the state that update left.
+A validator builds the engine itself over a canvas of its own (a 2D engine's
+from `@napi-rs/canvas` in the test process, a 3D engine's from
+`document.createElement("canvas")` in a headless Chromium page), a clock that
+supplies a scripted sequence of deltas, the engine's own initialization, and an
+exact number of frames stepped one call at a time. A scenario therefore runs
+reproducibly with nothing to wait for. Setup runs the real game forward, so a
+validator poses a situation through the game's own update and reads the outcome
+back from the state that update left.
 
 Observation has three channels:
 
@@ -76,9 +79,10 @@ Observation has three channels:
   simulated time, and the viewport.
 - The engine's events, which report each asset resolution and each cue played at
   the moment it happens.
-- The canvas. Pixel readback decides what a frame actually drew, and a recording
-  wrapper around the 2D context captures the draw-call stream where the calls
-  carry the requirement more directly than the pixels do.
+- What the engine drew: pixel readback from the canvas, a recording wrapper
+  around a 2D context where the draw calls carry the requirement more directly
+  than the pixels do, and, under a 3D engine, the retained scene, the camera's
+  projection, the stage canvas's pixels, and the recording.
 
 A validator is written against one engine's API and uses that engine's own
 vocabulary, so a case supporting several engines ships a validator per verdict
@@ -94,10 +98,17 @@ passing only when every assertion passed.
 
 The validators for the run's engine are a vitest project of the case's own,
 separate from the build's. A case that ships one for the run's engine has its
-points decided in process, and one that ships none has its build driven in a
-browser instead. Whether the engine vendors a runtime does not enter into it: an
-engineless project is TypeScript a suite imports exactly as an engine-backed one
-is.
+points decided by that project, and one that ships none has its build driven
+through its instrumentation in a browser. An engineless project is TypeScript a
+suite imports exactly as an engine-backed one is.
+
+The project's shape follows the engine. A 2D engine's project is a Node project:
+its suites build the engine over a canvas of their own and step it in the test
+process. A 3D engine's project runs in vitest browser mode on the runner's
+headless Playwright Chromium: its suites run in the page, build the engine over a
+canvas they create, and step it there, with Chromium rendering WebGL2 in
+software. The Playwright Chromium is the one the runner's browser driver uses,
+so a host without it fails the validation stage.
 
 Deciding the run's points means running that project:
 
@@ -130,9 +141,7 @@ Deciding the run's points means running that project:
 A case ships one validator directory per engine, holding the suites of every
 variant, because the variants share nearly all of them. That directory is a
 superset of what any single run is rated on: a suite belonging to another variant
-would fail against a build that was never asked to satisfy it. Carom's `gyre`
-suites reach for a debug operation only `gyre`'s workspace seeds, so they fail
-every `base` build for a reason that is not the build's.
+would fail against a build that was never asked to satisfy it.
 
 The run is therefore scoped by the checklist, not by the directory. The
 resolved variant's review items already name exactly the suites that decide its
@@ -178,9 +187,7 @@ the suite knows the bounds of.
 For an `image` it encodes the surface as it stands, which is the frame that last
 ran. That is the right form for a point about one picture rather than a stretch
 of motion: which screen the game opened on, what colour it drew a paddle, where
-the letterbox bars fell. A recording of a still screen would be the same frame
-several hundred times over, and a reviewer looking at a menu wants to look at the
-menu.
+the letterbox bars fell.
 
 The runner creates the media directory before the suite run starts and names it
 to the suites in an environment variable. Each suite writes its outputs into a
@@ -189,24 +196,28 @@ different directories cannot collide. Once the run returns, the runner moves
 each declared output to the flat name every consumer of validation media
 addresses and records whether it was there.
 
-A 2D engine's recording is stored and served gzipped, as
-`<verdict>__<output>.json.gz`. A frame names its inherited drawing state and its
-operations by index into tables the whole recording shares, so any frame can be
-drawn on its own, which is what seeking and side-by-side scrubbing are built on.
-Compression takes what repetition remains down to a fraction of its size, so a
-run's whole set of 2D recordings costs a few megabytes. A recording in this form
-is served as `application/json` with `Content-Encoding: gzip`, so the browser
-inflates the body and the player parses the document the recorder produced.
+A `replay` takes one of two forms, decided by the engine that recorded it.
 
-A 3D engine writes a `.replay` archive: a zip holding `recording.json` beside
-the binary buffers its frames name by span, the material images the build made
-itself as embedded maps, and every asset file a recorded frame references,
-carried once under the SHA-256 of its bytes. The runner moves it to
-`<verdict>__<output>.replay` and the backend serves it as
-`application/octet-stream`, so the player unzips the body and reads the parts
-back. The document stays small because it holds references and scalars, the
-buffers hold what moved, and the engine ends the recording at the budgets its
-recording page states.
+A 2D engine's recording is a draw-command recording, stored and served gzipped
+as `<verdict>__<output>.json.gz`. A frame names its inherited drawing state and
+its operations by index into tables the whole recording shares, so any frame can
+be drawn on its own, which is what seeking and side-by-side scrubbing are built
+on. Compression takes what repetition remains down to a fraction of its size, so
+a run's whole set of 2D recordings costs a few megabytes. A recording in this
+form is served as `application/json` with `Content-Encoding: gzip`, so the
+browser inflates the body and the player parses the document the recorder
+produced.
+
+A 3D engine's recording is a frame recording: the frames the engine rendered,
+one video frame per engine frame, encoded as VP9 in a WebM container and
+timestamped in the engine's simulated time. The suite writes it as
+`<output>.webm` under its staged path, the runner moves it to
+`<verdict>__<output>.webm`, and it is served as `video/webm`. The console steps
+it frame-exactly through WebCodecs rather than playing it as a clip: it decodes
+the frames with `VideoDecoder`, indexes them by timestamp, and seeks to any frame
+by decoding forward from the nearest earlier keyframe, so the reviewer lands on
+exactly the frame asked for. The recording's frame count is the length of the
+`frames` array the engine hands back beside the video bytes.
 
 An output that is not there is recorded absent rather than failing anything. The
 assertions decide the point and the media is the evidence beside the verdict, so
@@ -222,16 +233,17 @@ The baseline half is the same suites run against the variant's
 [`tcab capture-baselines`](/components/cli/overview/#commands), captured once
 into `validation-baseline/<engine>/<variant>/` and served case-scoped. Same
 suites, same scenarios, same form of output, so the difference a reviewer sees
-on screen is a difference between the two builds and nothing else. Every frame
-of a recording is drawable on its own, so the reviewer scrubs the build's
-recording and the reference's in step.
+on screen is a difference between the two builds and nothing else. Both
+recordings of a scenario are indexed the same way, a 2D frame by its place in
+the recording and a 3D frame by its simulated-time timestamp, so the reviewer
+scrubs the build's recording and the reference's in step.
 
 ## Checks
 
 A check scores a screenshot of a driven view against a rendered reference
-baseline and records the similarity with the run. Checks remain supported for the
-case versions that declare them. A new case version decides its objective points
-with validators instead, which reach the state a check would have to drive a
+baseline and records the similarity with the run. A case version that declares
+checks has them scored; a case version that ships validators decides its
+objective points with them, which reach the state a check would have to drive a
 browser into and assert on it directly.
 
 ## Proofs
@@ -242,10 +254,9 @@ whether the file turned up in the produced tree and is non-empty, judges no
 proof's contents, and uploads each present proof when the run finishes to be
 served back as per-run media (see
 [run records](/components/core/run-records/)). A proof is informational, so a
-missing one leaves the run's load result and status untouched. Proofs remain
-supported for the case versions that declare them. A new case version captures
-its media from its validators, which produce it from a scenario the case
-controls.
+missing one leaves the run's load result and status untouched. A case version
+that declares proofs has them collected; a case version that ships validators
+captures its media from them, from a scenario the case controls.
 
 ## Instrumentation
 

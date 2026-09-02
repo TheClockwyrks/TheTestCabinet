@@ -27,11 +27,11 @@ builds live beside it rather than in it.
 | --- | --- |
 | [Frame](/engines/simple-3d/concepts/frame/) | The loop, simulated time, the clock behind delta time, pacing, and the order of one frame across the two surfaces. |
 | [Viewport](/engines/simple-3d/concepts/viewport/) | The fixed logical design size, the letterboxed fit over both canvases, the renderer's viewport and scissor, the measurement seam, and the per-frame resync. |
-| [Rendering](/engines/simple-3d/concepts/rendering/) | The retained scene, the two surfaces and the compositing that joins them, the engine-owned camera, the headless backend, and why three objects stay out of the state. |
+| [Rendering](/engines/simple-3d/concepts/rendering/) | The retained scene, the two surfaces and the compositing that joins them, the engine-owned camera, shadows, and why three objects stay out of the state. |
 | [Camera and View](/engines/simple-3d/concepts/camera-and-view/) | The three spaces, posing the camera from `render` and reading it from `update`, picking with a ray, projecting a point, and the listener. |
 | [Input](/engines/simple-3d/concepts/input/) | Named actions over bindings, magnitudes and edges, the pointer, and the 3D touch layout catalogue with its analog sticks. |
 | [Audio](/engines/simple-3d/concepts/audio/) | Synthesized and file-backed cues, positional playback from the camera, the first-interaction unlock, and the cue events. |
 | [Assets](/engines/simple-3d/concepts/assets/) | The single asset root, path resolution, textures and glTF models as templates, and the load events. |
 | [Diagnostics](/engines/simple-3d/concepts/diagnostics/) | Named sources, reading them back, the renderer's counts, and the overlay drawn on the screen layer in device space. |
 | [Debug Surface](/engines/simple-3d/concepts/debug/) | The object `initialize` returns beside the state, whose poses and readings a build is driven and read through from code. |
-| [Recording](/engines/simple-3d/concepts/recording/) | The scene as submitted, referenced assets and embedded content, the archive and its buffers, the projection the scene half is, budgets and coverage gaps, the wrapper over the screen layer's context, per-frame inherited state, and independently drawable frames. |
+| [Recording](/engines/simple-3d/concepts/recording/) | A recording as a video of the frames the engine drew, what a frame is and when it is taken, simulated-time timestamps and keyframes, the bracket and the frame bound, arming around a section, and two recordings scrubbed in step. |

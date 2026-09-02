@@ -17,8 +17,9 @@ item and a shared harness module. The file path mirrors the item's id, so
 `gameplay/scoring-p1.test.ts`, relative to this directory.
 
 That directory is placed into the built workspace at `validation/` when the run
-is validated, alongside the `src/` the build wrote. A suite therefore reaches
-the build's modules with a relative import, and the engine by its package name.
+is validated, alongside `src/`, which holds the case's seeded modules and the
+build's own. A suite therefore reaches the build's modules with a relative
+import, and the engine by its package name.
 
 ```text
 workspace/
@@ -26,8 +27,10 @@ workspace/
   vitest.config.ts
   src/            the build
   validation/     the case's suites
+    vitest.config.ts
     harness.ts
     debug.ts
+    replay.ts
     gameplay/scoring-p1.test.ts
 ```
 
@@ -41,20 +44,41 @@ measures none.
 
 ```ts
 // validation/vitest.config.ts — the case's, staged in with the suites
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import type { BrowserCommand } from "vitest/node";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
+
+const ROOT = new URL("..", import.meta.url).pathname;
+
+/** Writes a suite's recording under the run's media directory. Runs on the Node side. */
+const emitReplay: BrowserCommand<[output: string, video: string]> = (
+  { testPath },
+  output,
+  video,
+) => {
+  const dir = process.env.TCAB_VALIDATION_MEDIA_DIR;
+  if (dir === undefined || testPath === undefined) return;
+  const target = join(dir, relative(ROOT, testPath), `${output}.webm`);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, Buffer.from(video, "base64"));
+};
 
 export default defineConfig({
-  // The workspace, not this directory, so a validator resolves the build's
-  // modules by the same relative paths the build itself uses.
-  root: fileURLToPath(new URL("..", import.meta.url)),
+  root: ROOT,
   test: {
     name: "validation",
     include: ["validation/**/*.test.ts"],
-    environment: "node",
-    // A missing validator is a broken suite, not a passing one.
+    browser: {
+      enabled: true,
+      provider: "playwright",
+      headless: true,
+      instances: [{ browser: "chromium" }],
+      commands: { emitReplay },
+    },
     passWithNoTests: false,
     coverage: { enabled: false },
+    testTimeout: 60_000,
   },
 });
 ```
@@ -68,23 +92,36 @@ npx vitest run --config validation/vitest.config.ts  # the case's validators
 
 The config belongs to the case for the same reason the suites do: the case
 alone decides which suites reach the verdict, and the build's own tests and
-coverage stay separate from them.
+coverage stay separate from them. The root is the workspace rather than this
+directory, so a validator resolves the build's modules by the same relative
+paths the build itself uses, and `passWithNoTests` is `false` because a missing
+validator is a broken suite rather than a passing one.
 
-The environment is `node`. The engine takes every measurement it needs from the
-surface the harness supplies, and the `headless` backend asks the stage canvas
-for no context, so the suites need no DOM and no GPU.
+The project runs in browser mode. Playwright launches a headless Chromium, and
+each suite runs in its page, where `document`, `HTMLCanvasElement`, WebGL2, and
+WebCodecs are the browser's own. Chromium renders WebGL2 in software, so the
+world pass produces its pixels with no GPU on the host. The Chromium is the one
+the runner's browser driver uses, and a host without it fails the validation
+stage.
+
+`commands` is the seam between the page and the Node side. A suite calls
+`emitReplay` from the page and the function runs in the vitest process with
+the suite's path in hand, which is how a
+[recording](/engines/structured-3d/validators/recording/) reaches the run's
+media directory. The timeout is a minute per test because a suite that records
+sixty frames encodes sixty video frames in software before it resolves.
 
 ## The harness
 
-The harness builds an engine headlessly: two canvases from `@napi-rs/canvas`,
-which the case declares as a development dependency of the workspace, and a
-[`SurfaceMetrics`](/engines/structured-3d/apis/engine/) object supplying the
-size, the device pixel ratio, and the event target the engine listens on. The
-first canvas is the stage, the second is the screen layer, and the backend is
-`headless`.
+The harness builds an engine over two canvases it creates with
+`document.createElement("canvas")`, sized to the design size at the device
+pixel ratio it chooses, and a
+[`SurfaceMetrics`](/engines/structured-3d/apis/engine/) object supplying that
+size, that ratio, and the event target the engine listens on. The first canvas
+is the stage, which the engine obtains its `webgl2` context from, and the second
+is the screen layer.
 
 ```ts
-import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import {
   ConstantClock,
   createEngine,
@@ -99,17 +136,25 @@ import type { Debug } from "./debug";
 
 export interface Harness {
   engine: Engine<Debug>;
-  screen: Canvas;
+  stage: HTMLCanvasElement;
+  screen: HTMLCanvasElement;
   keys: EventTarget;
+}
+
+function canvas(width: number, height: number): HTMLCanvasElement {
+  const element = document.createElement("canvas");
+  element.width = width;
+  element.height = height;
+  return element;
 }
 
 export function createHarness(
   clock: Clock = new ConstantClock(1000 / 60),
   dpr = 1,
-  prepare: (screen: Canvas) => void = () => {},
+  prepare: (screen: HTMLCanvasElement) => void = () => {},
 ): Harness {
-  const canvas = createCanvas(FIELD_W * dpr, FIELD_H * dpr);
-  const screen = createCanvas(FIELD_W * dpr, FIELD_H * dpr);
+  const stage = canvas(FIELD_W * dpr, FIELD_H * dpr);
+  const screen = canvas(FIELD_W * dpr, FIELD_H * dpr);
   prepare(screen);
   const keys = new EventTarget();
   const surface: SurfaceMetrics = {
@@ -120,9 +165,8 @@ export function createHarness(
   };
 
   const engine = createEngine<Debug>({
-    canvas: canvas as unknown as HTMLCanvasElement,
-    screen: screen as unknown as HTMLCanvasElement,
-    backend: "headless",
+    canvas: stage,
+    screen,
     width: FIELD_W,
     height: FIELD_H,
     game: game as GameDefinition<Debug>,
@@ -130,29 +174,27 @@ export function createHarness(
     surface,
   });
 
-  return { engine, screen, keys };
+  return { engine, stage, screen, keys };
 }
 ```
 
 `createEngine` takes the build's `GameDefinition` and returns an `Engine` whose
 one type parameter is the debug surface, because the game's state lives in the
 framework objects the engine owns and the surface is the one value the build
-hands back. The harness differs from a browser's construction in three lines.
-`backend: "headless"` builds no renderer, so the scene is maintained and
-captured and no pixels of the 3D picture are produced. The `screen` canvas is
-a `@napi-rs/canvas` canvas handed through a cast, and `@napi-rs/canvas`
-implements the 2D context natively, so the screen layer draws through it
-exactly as it draws in a browser and its pixels and its operations are readable
-in process. The stage `canvas` is any canvas-like object, because under
-`headless` the engine asks it for no context, and a second `@napi-rs/canvas`
-canvas serves.
+hands back. The harness differs from a browser build's construction in two
+respects. The canvases are created by the harness and stay outside the document,
+so the `surface` reports the size and ratio the harness chose, where a page's
+canvas would be measured from its layout. The `screen` canvas is handed in
+explicitly, so the harness keeps the handle and a check reads the layer's pixels
+and its operations off it.
 
 `prepare` runs on the screen canvas before the engine is created, which is
 where a check that records the screen layer's operations installs its proxy;
 the engine obtains the screen layer's context at construction. The surface
 reports the logical design size at a device pixel ratio of `1` by default,
 which puts one device pixel on one logical unit and makes a sampled coordinate
-readable without arithmetic.
+readable without arithmetic. The `dpr` parameter sizes both canvases, so a
+harness built at `2` exercises the fit itself.
 
 ## Initialization order
 
@@ -184,7 +226,8 @@ the ordering, so a suite awaits the call before it reads anything.
 once a frame has synced them.
 
 Call `engine.destroy()` when a suite is finished with an engine, which closes
-the world, halts the loop, and drops the listeners it attached.
+the world, halts the loop, drops the listeners it attached, and releases the
+`webgl2` context.
 
 ## The debug surface
 

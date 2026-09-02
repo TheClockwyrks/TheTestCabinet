@@ -39,7 +39,6 @@ interface EngineOptions<S, D = unknown> {
   clock?: Clock;
   surface?: SurfaceMetrics;
   assetRoot?: string;
-  backend?: "webgl" | "headless";
   screen?: HTMLCanvasElement;
   projection?: "perspective" | "orthographic";
   shadows?: boolean;
@@ -57,7 +56,6 @@ interface EngineOptions<S, D = unknown> {
 | `clock` | `new WallClock()` | The [clock](/engines/simple-3d/apis/clocks/) supplying each frame's delta. |
 | `surface` | Read from the canvas | Where the engine reads its element size and device pixel ratio. |
 | `assetRoot` | `"assets/"` | The root every [asset path](/engines/simple-3d/apis/assets/) resolves under. |
-| `backend` | `"webgl"` | Whether a [renderer](/engines/simple-3d/apis/rendering/) exists. `"webgl"` renders the scene over the canvas; `"headless"` maintains the scene and produces no pixels of it. |
 | `screen` | Created from the canvas's owning document | The canvas the [screen layer](/engines/simple-3d/apis/rendering/) draws on. |
 | `projection` | `"perspective"` | Which kind of camera the engine creates and renders through. |
 | `shadows` | `false` | `true` enables PCF soft shadow maps on the renderer. |
@@ -136,7 +134,7 @@ interface Engine<S, D = unknown> {
   diagnostics(): readonly DiagnosticReading[];
   recording(): boolean;
   startRecording(): void;
-  stopRecording(): Recording;
+  stopRecording(): Promise<Recording>;
   destroy(): void;
 }
 
@@ -161,9 +159,9 @@ interface RunOptions {
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
 | `view` | The [`View`](/engines/simple-3d/apis/view/): the camera as it stood at the most recent render, with picking and projection through it. |
 | `diagnostics` | Every registered [diagnostic](/engines/simple-3d/apis/diagnostics/) source and what it reports now, in registration order. |
-| `recording` | Whether scene [recording](/engines/simple-3d/apis/recording/) is currently capturing. |
+| `recording` | Whether the [recorder](/engines/simple-3d/apis/recording/) is capturing frames. |
 | `startRecording` | Arm the recorder. Capture begins at the next frame. |
-| `stopRecording` | Disarm the recorder and return everything captured since `startRecording`. |
+| `stopRecording` | Disarm the recorder, flush the encoder, and resolve with everything captured since `startRecording`. |
 | `destroy` | Halt the loop, drop every listener, and dispose the renderer. |
 
 ### `initialize`
@@ -279,8 +277,7 @@ over. A clock installed mid-run takes effect on the next frame.
 | Condition | Result |
 | --- | --- |
 | A `width` or `height` that is not finite and positive | `Error` naming the size |
-| `backend` is `"webgl"` and the canvas yields no `webgl2` context | `Error` naming the backend |
-| `backend` outside `"webgl"` / `"headless"` | `Error` naming both values |
+| The canvas yields no `webgl2` context | `Error` naming the canvas |
 | No `screen` canvas supplied and the stage canvas has no owning document | `Error` naming `screen` |
 | `projection` outside `"perspective"` / `"orthographic"` | `Error` naming both values |
 | A `layout` outside the catalogue | `Error` naming every valid layout |
@@ -291,10 +288,9 @@ over. A clock installed mid-run takes effect on the next frame.
 | The game's `initialize` returns anything but a two-element array | `initialize` rejects with an `Error` naming the `[state, debug]` pair |
 | `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
 | `startRecording` while already recording, or `stopRecording` while not | `Error` naming the unbalanced call |
+| `startRecording` where the host has no `VideoEncoder` | `Error` naming WebCodecs |
 
-Each construction failure otherwise presents as a build that runs and draws
-nothing, which is the most expensive kind to trace, so each is refused where it
-happens.
+Each construction failure is raised by `createEngine`.
 
 ## `engine.viewport()`
 
@@ -316,7 +312,8 @@ Halts the loop, detaches every listener, and disposes the renderer. Idempotent,
 because teardown races.
 
 Destroying resolves any promise `run` returned. Aborting a run's signal halts
-the loop and leaves the engine usable, so the two are separate acts.
+the loop and leaves the engine usable, so the two are separate acts. Destroying
+while the recorder is armed discards the capture and disarms the recorder.
 
 ## Exports
 

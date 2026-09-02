@@ -25,8 +25,8 @@ Construction performs no loading and runs no game code. An engine therefore
 exists in a state where its clock can be replaced and its events can be
 subscribed to before anything the game does is observable, which is what lets a
 caller watch the start level being built. Construction does obtain the
-renderer under the `webgl` backend and the screen layer's canvas, so a canvas
-that cannot supply either is refused here.
+renderer's `webgl2` context and the screen layer's canvas, so a canvas that
+cannot supply either is refused here.
 
 ## `EngineOptions`
 
@@ -42,7 +42,6 @@ interface EngineOptions<D = unknown> {
   clock?: Clock;
   surface?: SurfaceMetrics;
   assetRoot?: string;
-  backend?: "webgl" | "headless";
   screen?: HTMLCanvasElement;
   shadows?: boolean;
 }
@@ -60,7 +59,6 @@ interface EngineOptions<D = unknown> {
 | `clock` | `new WallClock()` | The [clock](/engines/structured-3d/apis/clocks/) supplying each frame's delta. |
 | `surface` | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its key listeners. |
 | `assetRoot` | `"assets/"` | The root every [asset path](/engines/structured-3d/apis/assets/) resolves under. |
-| `backend` | `"webgl"` | `"webgl"` obtains a `webgl2` context from `canvas` and renders the scene through it. `"headless"` builds no renderer: the scene is still maintained and captured, the screen layer still draws, and no pixels of the 3D picture are produced. |
 | `screen` | Created from the stage canvas's owning document | The 2D canvas the screen layer draws on, sized to the stage canvas's backing store and composited over the picture at the end of every frame. |
 | `shadows` | `false` | `true` enables shadow maps with soft (PCF) filtering, so a light declared with `castShadow` shadows a mesh declared with `receiveShadow`. |
 
@@ -72,10 +70,9 @@ diagnostics overlay draw on the screen layer.
 The [rendering](/engines/structured-3d/apis/rendering/) page covers both
 surfaces and the compositing.
 
-`backend: "headless"` together with a `@napi-rs/canvas` canvas handed as
-`screen` is what a validator constructs: the screen layer's pixels and
-operations are readable in-process, and the stage canvas is asked for no
-context.
+A validator hands a canvas of its own as `screen`, or a recording proxy over
+that canvas's context, so the screen layer's pixels and operations are readable
+in the suite.
 
 ## `SurfaceMetrics`
 
@@ -143,7 +140,7 @@ interface Engine<D = unknown> {
   diagnostics(): readonly DiagnosticReading[];
   recording(): boolean;
   startRecording(): void;
-  stopRecording(): Recording;
+  stopRecording(): Promise<Recording>;
   destroy(): void;
 }
 
@@ -167,10 +164,10 @@ interface RunOptions {
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
 | `diagnostics` | Every registered [diagnostic](/engines/structured-3d/apis/diagnostics/) source and what it reports now, the instance registry's first and then the world's. |
-| `recording` | Whether scene [recording](/engines/structured-3d/apis/recording/) is currently capturing. |
+| `recording` | Whether the [recorder](/engines/structured-3d/apis/recording/) is capturing frames. |
 | `startRecording` | Arm the recorder. Capture begins at the next frame. |
-| `stopRecording` | Disarm the recorder and return everything captured since `startRecording`. |
-| `destroy` | Close the world, halt the loop, drop every listener, and dispose the renderer. |
+| `stopRecording` | Disarm the recorder, flush the encoder, and resolve with everything captured since `startRecording`. |
+| `destroy` | Close the world, halt the loop, drop every listener, discard an armed capture, and dispose the renderer. |
 
 `instance` and `world` are live references rather than copies, so a reader
 observes the current frame's values. `world` follows each transition, so a
@@ -201,10 +198,6 @@ world transform every frame, and rebuilds the object when the component's
 declaration changes. A caller reads the scene for what the pipeline placed,
 which is how a validator finds an object by name or by traversal and reads its
 world position, its visibility, its geometry, and its material.
-
-Under the `headless` backend the scene is maintained identically and its world
-matrices are updated every frame, so what a check reads off it does not depend
-on a renderer existing.
 
 ### `debug`
 
@@ -375,8 +368,7 @@ observes the start level being built and every transition after it.
 | Condition | Result |
 | --- | --- |
 | A `width` or `height` that is not finite and positive | `Error` naming the size |
-| `backend` is `"webgl"` and the canvas yields no `webgl2` context | `Error` naming the backend |
-| `backend` outside `"webgl"` / `"headless"` | `Error` naming both values |
+| The canvas yields no `webgl2` context | `Error` naming the canvas |
 | No `screen` canvas supplied and the stage canvas has no owning document | `Error` naming `screen` |
 | The `screen` canvas yields no 2D context | `Error` naming `screen` |
 | A `layout` outside `TOUCH_LAYOUTS` | `Error` naming every valid layout |
@@ -387,11 +379,12 @@ observes the start level being built and every transition after it.
 | The instance's `initialize` returns `undefined` | `initialize` rejects with an `Error` naming the debug surface |
 | `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
 | `startRecording` while already recording, or `stopRecording` while not | `Error` naming the unbalanced call |
+| `startRecording` where the host has no `VideoEncoder` | `Error` naming WebCodecs |
 
 ## Exports
 
 `createEngine` is exported as a function from `@test-cabinet/structured-3d`.
 `EngineOptions`, `SurfaceMetrics`, `Engine`, `RunOptions`, `FrameInfo`,
 `EngineEvents`, and `EngineEventMap` are exported as types from the same
-specifier, as is `Recording` with the rest of the
-[recording](/engines/structured-3d/apis/recording/) format's types.
+specifier, as are `Recording` and `RecordedFrame`, the
+[recording](/engines/structured-3d/apis/recording/) types.

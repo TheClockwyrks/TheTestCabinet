@@ -105,12 +105,11 @@ camera maps a world point into the logical field and reports its depth and
 whether it lies inside the frustum, and the viewport maps that logical point
 onto the backing store.
 
-Under the headless backend the world pass produces no pixels, and a check
-never needs them. A claim about where something appears on screen is checked
-by projecting the world point through the camera and comparing the logical
-point it lands on, and the same composition runs the other way: a logical
-point taken off the field becomes a ray into the world, and the collision
-world says what it meets. The screen layer is a 2D canvas the validator
+A claim about where something appears on screen is checked by projecting the
+world point through the camera and comparing the logical point it lands on,
+and the same composition runs the other way: a logical point taken off the
+field becomes a ray into the world, and the collision world says what it
+meets. The screen layer is a 2D canvas the validator
 supplied, so a HUD readout is sampled by device pixel and reads the same answer
 on every machine.
 

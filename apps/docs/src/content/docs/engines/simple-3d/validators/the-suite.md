@@ -16,8 +16,9 @@ shared harness module. The file path mirrors the item's id, so
 `gameplay/delivery.test.ts`, relative to this directory.
 
 That directory is placed into the built workspace at `validation/` when the run
-is validated, alongside the `src/` the build wrote. A suite therefore reaches
-the build's modules with a relative import, and the engine by its package name.
+is validated, alongside `src/`, which holds the case's seeded modules and the
+build's own. A suite therefore reaches the build's modules with a relative
+import, and the engine by its package name.
 
 ```text
 workspace/
@@ -25,8 +26,10 @@ workspace/
   vitest.config.ts
   src/            the build
   validation/     the case's suites
+    vitest.config.ts
     harness.ts
     debug.ts
+    replay.ts
     gameplay/delivery.test.ts
 ```
 
@@ -39,20 +42,41 @@ case's names `validation/**/*.test.ts` and measures none.
 
 ```ts
 // validation/vitest.config.ts — the case's, staged in with the suites
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import type { BrowserCommand } from "vitest/node";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
+
+const ROOT = new URL("..", import.meta.url).pathname;
+
+/** Writes a suite's recording under the run's media directory. Runs on the Node side. */
+const emitReplay: BrowserCommand<[output: string, video: string]> = (
+  { testPath },
+  output,
+  video,
+) => {
+  const dir = process.env.TCAB_VALIDATION_MEDIA_DIR;
+  if (dir === undefined || testPath === undefined) return;
+  const target = join(dir, relative(ROOT, testPath), `${output}.webm`);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, Buffer.from(video, "base64"));
+};
 
 export default defineConfig({
-  // The workspace, not this directory, so a validator resolves the build's
-  // modules by the same relative paths the build itself uses.
-  root: fileURLToPath(new URL("..", import.meta.url)),
+  root: ROOT,
   test: {
     name: "validation",
     include: ["validation/**/*.test.ts"],
-    environment: "node",
-    // A missing validator is a broken suite, not a passing one.
+    browser: {
+      enabled: true,
+      provider: "playwright",
+      headless: true,
+      instances: [{ browser: "chromium" }],
+      commands: { emitReplay },
+    },
     passWithNoTests: false,
     coverage: { enabled: false },
+    testTimeout: 60_000,
   },
 });
 ```
@@ -68,20 +92,29 @@ The config belongs to the case, so the verdict is decided by the case's suites
 whatever the build's own config declares, and the build's coverage counts the
 build's tests alone.
 
-The environment is `node`. The engine takes every measurement it needs from the
-surface the harness supplies, and the `headless` backend needs no GPU, so the
-suites need no DOM and no browser.
+The project runs in browser mode with the Playwright provider on headless
+Chromium, so the suites run in a page and the engine renders there as it does
+in the built game. Chromium renders WebGL2 in software with no GPU. The
+Playwright Chromium is the one the runner's browser driver uses, and a host
+without it fails the validation stage.
+
+The root is the workspace rather than this directory, so a validator resolves
+the build's modules by the same relative paths the build itself uses.
+`emitReplay` is a browser command: the suite calls it from the page and it
+runs on the Node side, where the file system is, which is how a
+[recording](/engines/simple-3d/validators/recording/) reaches the run's media
+directory.
 
 ## The harness
 
-The harness builds an engine headlessly: two canvases from `@napi-rs/canvas`,
-which the case declares as a development dependency of the workspace, the
-`headless` backend, and a
-[`SurfaceMetrics`](/engines/simple-3d/apis/engine/) object supplying the size,
-the device pixel ratio, and the event target the engine listens on.
+The harness builds an engine over two canvases it makes in the page with
+`document.createElement("canvas")`, one as the stage and one as the screen
+layer, each sized to the design size times the device pixel ratio the check
+chose, and a [`SurfaceMetrics`](/engines/simple-3d/apis/engine/) object
+supplying the size, the device pixel ratio, and the event target the engine
+listens on.
 
 ```ts
-import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import {
   ConstantClock,
   createEngine,
@@ -96,7 +129,8 @@ import type { Debug, Mode, Screen, Snapshot } from "./debug";
 
 export interface Harness {
   readonly engine: Engine<State, Debug>;
-  readonly screen: Canvas;
+  readonly stage: HTMLCanvasElement;
+  readonly screen: HTMLCanvasElement;
   readonly keys: EventTarget;
   setScreen(screen: Screen): void;
   setMode(mode: Mode): void;
@@ -106,12 +140,19 @@ export interface Harness {
   snapshot(): Snapshot;
 }
 
+export function pageCanvas(width: number, height: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
 export function createHarness(
   clock: Clock = new ConstantClock(1000 / 60),
   dpr = 1,
-  screen: Canvas = createCanvas(STAGE_W * dpr, STAGE_H * dpr),
+  screen: HTMLCanvasElement = pageCanvas(STAGE_W * dpr, STAGE_H * dpr),
 ): Harness {
-  const stage = createCanvas(STAGE_W * dpr, STAGE_H * dpr);
+  const stage = pageCanvas(STAGE_W * dpr, STAGE_H * dpr);
   const keys = new EventTarget();
   const surface: SurfaceMetrics = {
     cssWidth: () => STAGE_W,
@@ -121,9 +162,8 @@ export function createHarness(
   };
 
   const engine = createEngine<State, Debug>({
-    canvas: stage as unknown as HTMLCanvasElement,
-    screen: screen as unknown as HTMLCanvasElement,
-    backend: "headless",
+    canvas: stage,
+    screen,
     width: STAGE_W,
     height: STAGE_H,
     game: game as Game<State, Debug>,
@@ -133,6 +173,7 @@ export function createHarness(
 
   return {
     engine,
+    stage,
     screen,
     keys,
     setScreen: (screen) =>
@@ -157,21 +198,22 @@ export function startShift(h: Harness, mode: Mode): void {
 }
 ```
 
-Three lines separate this construction from a browser's. `backend: "headless"`
-builds no renderer, so the engine asks the stage canvas for no context and any
-canvas-like object serves there; a second `@napi-rs/canvas` canvas is the
-simplest. `screen` hands the engine a `@napi-rs/canvas` canvas for the screen layer,
-which implements the 2D
-context natively, so the engine draws HUD text and readouts through it exactly
-as it draws in a browser, and the harness keeps the handle so a check reads the
-layer's pixels back. Both canvases are handed to `createEngine` through a cast.
+Three lines separate this construction from the built page's. The canvases
+stay detached from the document, so the engine obtains its `webgl2` context
+from the stage canvas and renders the scene into it exactly as it does in a
+browser tab, with nothing laid out around it. `screen` hands the engine the
+second canvas for the screen layer, so the engine draws HUD text and readouts
+through its 2D context and the harness keeps both handles so a check reads
+either layer's pixels back. `surface` supplies the size, the ratio, and the
+event target, because a detached canvas has no laid-out size of its own.
 
-Under `headless` the scene is still maintained and its world matrices updated
-every frame, so `engine.scene` holds what the build placed and `engine.view()`
-answers from the camera the build posed, and the recorder still captures every
-frame. The surface reports the logical design size at a device pixel ratio of
-`1` by default, which puts one device pixel of the screen layer on one logical
-unit and makes a sampled coordinate readable without arithmetic.
+The scene is maintained and its world matrices updated every frame, so
+`engine.scene` holds what the build placed and `engine.view()` answers from
+the camera the build posed. The surface reports the logical design size at a
+device pixel ratio of `1` by default, which puts one device pixel of either
+canvas on one logical unit and makes a sampled coordinate readable without
+arithmetic. Building the harness at a ratio of `2` sizes both canvases to
+twice the design size and is how a check exercises the mapping itself.
 
 The members after `keys` wrap the debug surface over the engine. A pose on the
 surface takes the current state and returns the next, so the harness hands it
@@ -287,7 +329,7 @@ every build of the case the same shape to check.
 | --- | --- | --- |
 | `src/constants.ts` | The case | The logical design size, the world's extents, the palette, the names the build gives its scene objects, the action names with the keys they bind, the cue names, and every tunable the specification fixes. |
 | `src/game.ts` | The build | The `State` type the case declares and the `Game` the engine drives, whose `initialize` returns `[state, surface]` to the instrumentation spec. |
-| `src/main.ts` | The case | The browser entry, which builds the engine over the page's canvas with a wall clock and the `webgl` backend and runs it. |
+| `src/main.ts` | The case | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it. |
 
 A suite imports `constants.ts` for the numbers and names its assertions are
 stated in and `game.ts` for the game it drives. `main.ts` belongs to the built

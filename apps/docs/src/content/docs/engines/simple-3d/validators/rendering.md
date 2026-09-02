@@ -2,20 +2,19 @@
 title: Rendering
 ---
 
-There are four ways to assert on what a build drew. Reading the scene
+There are five ways to assert on what a build drew. Reading the scene
 establishes what the build placed in the world and where; projecting through
 the view establishes where a world point lands on the stage; reading the
-screen layer's canvas back establishes what the HUD is; recording the screen
-layer's context establishes which operations produced it. A suite may use any
-of them against the same run.
+screen layer's canvas back establishes what the HUD is; reading the stage
+canvas back establishes what the rendered picture shows; recording the screen
+layer's context establishes which operations produced the HUD. A suite may use
+any of them against the same run.
 
 Drawing happens inside a frame, so a check advances at least one frame before
 it reads anything. `render` updates the scene from the state and poses the
 camera, the engine reads the camera into the view after `render` returns, and
-the screen layer is cleared at the top of every frame and redrawn in full, so
-what a read sees is the last frame alone. The harness runs the `headless`
-backend, which produces no pixels of the 3D picture; a claim about the rendered
-pixels of the world pass is a browser check outside the in-process suite.
+both canvases are cleared at the top of every frame and redrawn in full, so
+what a read sees is the last frame alone.
 
 ## The scene
 
@@ -122,14 +121,19 @@ point is drawn at the point's projection.
 
 ## Pixel readback
 
-The harness screen canvas is a `@napi-rs/canvas` canvas holding the screen
-layer, and `getImageData` returns its bytes. A sample is four bytes in `RGBA`
-order.
+The harness holds both canvases the engine draws on. The screen canvas holds
+the screen layer, and the stage canvas holds the scene as the renderer drew it,
+so a check reads whichever layer its claim is about. A sample is four bytes in
+`RGBA` order.
+
+### The screen layer
+
+The screen canvas's 2D context answers `getImageData` with the layer's bytes.
 
 ```ts
 export function sample(h: Harness, x: number, y: number) {
   const view = h.engine.viewport();
-  const ctx = h.screen.getContext("2d");
+  const ctx = h.screen.getContext("2d")!;
   const [r, g, b, a] = ctx.getImageData(
     Math.round(view.offsetX + x * view.scale),
     Math.round(view.offsetY + y * view.scale),
@@ -145,6 +149,56 @@ where the scene shows through once the layer is composited, so a sample outside
 every HUD element reads an alpha of `0`. A sample inside one reads the fill the
 build drew there.
 
+### The stage canvas
+
+The stage canvas holds a `webgl2` context, so a check draws it into a 2D canvas
+the suite owns and reads that canvas back with `getImageData`. The copy is the
+picture as the frame left it: the scene the renderer drew with the screen layer
+composited over it, so a sample under a HUD element is that element's fill and
+a sample where the layer is transparent is what the renderer drew.
+
+```ts
+export function stageSample(h: Harness, x: number, y: number) {
+  const view = h.engine.viewport();
+  const copy = document.createElement("canvas");
+  copy.width = h.stage.width;
+  copy.height = h.stage.height;
+  const ctx = copy.getContext("2d")!;
+  ctx.drawImage(h.stage, 0, 0);
+  const [r, g, b, a] = ctx.getImageData(
+    Math.round(view.offsetX + x * view.scale),
+    Math.round(view.offsetY + y * view.scale),
+    1,
+    1,
+  ).data;
+  return { r, g, b, a };
+}
+```
+
+The canvas is cleared to `background` before every frame, letterbox bars
+included, so a sample at a point where nothing was drawn reads the background
+exactly, and a stage built with no `background` reads an alpha of `0` there. A
+sample inside a lit object carries the material's color under the scene's
+lighting, so a claim about it is stated as a dominance or a tolerance, with the
+red channel above the others for a red hook, rather than as bytes. The point
+sampled for the background is one the specification leaves empty, such as the
+sky above the rail.
+
+```ts
+expect(stageSample(h, 4, 4)).toEqual({ r: 0x10, g: 0x10, b: 0x18, a: 255 });
+
+const { hook } = h.snapshot();
+const on = h.engine.view().project({ x: hook.x, y: hook.y, z: hook.z });
+const at = stageSample(h, on.x, on.y);
+expect(at.r).toBeGreaterThan(at.g);
+expect(at.r).toBeGreaterThan(at.b);
+```
+
+Reach for the stage canvas when the claim is about the rendered picture: that
+the bars carry the background, that an object's color shows where its
+projection lands, that a hidden object left nothing behind, that a fog or a
+post-effect changed the picture at all.
+
 ### The logical-to-device mapping
 
 A game draws on the screen layer in logical units and the canvas holds device
@@ -158,7 +212,8 @@ With the harness reporting the logical design size at a device pixel ratio of
 `1`, the scale is `1` and both offsets are `0`, so a logical coordinate is the
 device coordinate. Building the harness at a ratio of `2` is how a check
 exercises the mapping itself, and the conversion above keeps every other check
-correct at both ratios.
+correct at both ratios. Both canvases share one viewport, so the same mapping
+serves a sample of either.
 
 ### Sampling inside a shape
 
@@ -190,8 +245,8 @@ each call and each property assignment and forwards both, which keeps the
 pixels correct while the stream is captured.
 
 ```ts
-import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import { STAGE_H, STAGE_W } from "../src/constants";
+import { pageCanvas } from "./harness";
 
 export interface DrawCall {
   method?: string;
@@ -200,10 +255,10 @@ export interface DrawCall {
   value?: unknown;
 }
 
-export function recordingScreen(): { screen: Canvas; calls: DrawCall[] } {
+export function recordingScreen(): { screen: HTMLCanvasElement; calls: DrawCall[] } {
   const calls: DrawCall[] = [];
-  const screen = createCanvas(STAGE_W, STAGE_H);
-  const real = screen.getContext("2d");
+  const screen = pageCanvas(STAGE_W, STAGE_H);
+  const real = screen.getContext("2d")!;
 
   const proxy = new Proxy(real, {
     get(target, prop) {
@@ -252,17 +307,17 @@ pixels it produced depend on the font the machine resolved.
 ## Choosing between them
 
 The scene answers "what is in the world and where". Projection answers "where
-does that land on the stage". Pixels answer "what does the player see at this
-point of the HUD". The stream answers "what did the build ask the screen
-context to do". A check states its claim in whichever of those the
+does that land on the stage". The screen layer's pixels answer "what does the
+player see at this point of the HUD", and the stage canvas's answer "what did
+the renderer draw at this point". The stream answers "what did the build ask
+the screen context to do". A check states its claim in whichever of those the
 specification stated it in: a claim about an object's position or color stays
 with the scene, a claim about a HUD color at a position stays with pixels
-because a fill's arguments say nothing about where the fill landed, and a claim
+because a fill's arguments say nothing about where the fill landed, a claim
 about where a world point appears stays with projection because the scene
-alone says nothing about the camera between it and the stage.
+alone says nothing about the camera between it and the stage, and a claim
+about the picture itself stays with the stage canvas.
 
-What a frame submitted to be drawn, as one archive, is the
-[recording](/engines/simple-3d/validators/recording/), which carries the
-draws, the lights, the scene settings, the camera, and the screen layer's
-operations together. A check that is about what was drawn across a stretch of
-frames reads that.
+What the engine drew across a stretch of frames, as one video, is the
+[recording](/engines/simple-3d/validators/recording/), which the reviewer
+looks at beside the verdict the checks decided.
