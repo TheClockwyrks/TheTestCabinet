@@ -154,7 +154,7 @@ it("names a missing surface as a verdict, in the pair the runner stores", () => 
   // harness in a hook still reports the fault from the check.
   let message = "";
   try {
-    failSurface("window.__floe was still absent 10s after the page loaded");
+    failSurface("window.__floe was still absent 120s after the page loaded");
   } catch (error) {
     message = error instanceof Error ? error.message : String(error);
   }

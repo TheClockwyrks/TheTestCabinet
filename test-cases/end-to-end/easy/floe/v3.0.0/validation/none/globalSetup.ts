@@ -29,8 +29,10 @@ import { readFile } from "node:fs/promises";
 import { existsSync, readdirSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Browser } from "playwright";
 import type { TestProject } from "vitest/node";
-import { launchChromiumServer } from "./chromium";
+import { connectChromium, launchChromiumServer } from "./chromium";
+import { HANDLE } from "./constants";
 
 /** Where `npm run build` may have put the site, in the order the runner looks. */
 const BUILD_OUTPUTS = ["dist", "build", "out"] as const;
@@ -113,6 +115,56 @@ async function serve(root: string): Promise<{ server: Server; url: string }> {
   return { server, url: `http://127.0.0.1:${address.port}/` };
 }
 
+/**
+ * How long the probe below gives the build to load and install its surface.
+ *
+ * Two minutes, and it is spent ONCE for the whole project rather than once per
+ * suite. It is not a measurement of anything: what it bounds is how long this
+ * project waits before concluding that the build has no debug surface at all, and
+ * that conclusion has to be safe against a host that is merely busy. A conforming
+ * build resolves it in a second or two and never pays it.
+ */
+const SURFACE_PROBE_MS = 120_000;
+
+/**
+ * Whether the build installs its debug surface — asked ONCE, patiently, here.
+ *
+ * WHY THE ANSWER IS WORTH KNOWING UP FRONT. Every check opens a page and waits
+ * for `window.__floe`, and the deadline on that wait is a WALL CLOCK on a host
+ * this project does not own. Too short and a busy machine reports a conforming
+ * build as one that installed no surface, which is a verdict about the host
+ * wearing a build's name. Too long and a build that really has no surface costs
+ * two hundred suites a deadline each, which is the whole run.
+ *
+ * Asking once settles both. A build that answers here is given a patient deadline
+ * in every suite, which it never spends because its surface is already there; a
+ * build that does not answer here is given a short one, because the question has
+ * already been decided and the wait would buy nothing. See `harness.ts`'s
+ * `browserBudget`.
+ */
+async function surfaceInstalls(
+  browser: Browser,
+  url: string,
+): Promise<boolean> {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.goto(url, { waitUntil: "load", timeout: SURFACE_PROBE_MS });
+    await page.waitForFunction(
+      (handle) =>
+        typeof (window as never)[handle] === "object" &&
+        (window as never)[handle] !== null,
+      HANDLE,
+      { timeout: SURFACE_PROBE_MS },
+    );
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await context.close().catch(() => undefined);
+  }
+}
+
 export default async function setup(
   project: TestProject,
 ): Promise<() => Promise<void>> {
@@ -126,6 +178,14 @@ export default async function setup(
 
   project.provide("floeUrl", url);
   project.provide("floeBrowserWs", browser.wsEndpoint());
+  // Asked here, once, over a connection of this process's own — the suites reach
+  // the same browser through the endpoint above.
+  const client = await connectChromium(browser.wsEndpoint());
+  try {
+    project.provide("floeSurfacePresent", await surfaceInstalls(client, url));
+  } finally {
+    await client.close().catch(() => undefined);
+  }
 
   return async () => {
     await browser.close();

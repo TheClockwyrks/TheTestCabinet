@@ -30,10 +30,19 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    // Floe's longest scenarios run sixty seconds of GAME time — 7,200 ticks on
-    // a ConstantClock — which is thousands of in-process steps rather than
-    // minutes of wall clock. The ceiling is for a hung build rather than a slow
-    // one.
-    testTimeout: 120_000,
+    // A CEILING FOR A HUNG SUITE, NOT AN ALLOWANCE FOR A SLOW ONE. Every
+    // measurement in this project is taken in the game's own ticks and decides
+    // the same thing however long the host took to run them; the only thing this
+    // figure can decide is whether a BUSY MACHINE fails a build that is right.
+    // The suites here are seconds of work — measured on a twenty-core host under
+    // a load average of four hundred and sixty, the slowest of them was under a
+    // minute — so five minutes is several times over the worst a loaded host has
+    // been seen to produce, and it costs a conforming build nothing.
+    testTimeout: 300_000,
+    // The same figure for the hooks, which is where the harness is built. Left
+    // unset it would be vitest's ten seconds, and building a harness on a loaded
+    // host has been measured well past that — a hook that expires reports the
+    // check as broken rather than reporting anything about the build.
+    hookTimeout: 300_000,
   },
 });

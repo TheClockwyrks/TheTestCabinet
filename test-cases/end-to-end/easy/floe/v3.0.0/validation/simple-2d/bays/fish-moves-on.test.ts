@@ -30,12 +30,15 @@
 //
 // Nothing is timed: `bays/fish-lingers` and `bays/fish-interval` own the two
 // durations, and each sweep here is half again the figure it waits on so a build
-// that got one wrong fails there rather than here.
+// that got one wrong fails there rather than here. Because nothing here is timed,
+// the whole minute and three quarters of game time runs at the harness's COARSE
+// pace — the same ticks, one picture in ten — which is what `Harness.pace` is for.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual, assertNotNull } from "../assert";
-import { BAY_COUNT, FISH_INTERVAL, FISH_LINGER, TICK_HZ } from "../constants";
+import { BAY_COUNT, FISH_INTERVAL, FISH_LINGER } from "../constants";
 import {
+  COARSE_TICKS,
   captureStill,
   createHarness,
   startCrossing,
@@ -66,12 +69,25 @@ const FILLED_BAYS: number[] = Array.from(
  */
 const CYCLES = 8;
 
-/** Half again as long as each figure, since neither duration is what is graded here. */
-const LINGER_WAIT_FRAMES = ticksFor(FISH_LINGER * 1.5);
-const INTERVAL_WAIT_FRAMES = ticksFor(FISH_INTERVAL * 1.5);
+/**
+ * Half again as long as each figure, in COARSE frames, since neither duration is
+ * what is graded here. `COARSE_TICKS` ticks run in each of these frames, so the
+ * game time a sweep covers is the figure the constant names.
+ */
+const LINGER_WAIT_FRAMES = Math.ceil(
+  ticksFor(FISH_LINGER * 1.5) / COARSE_TICKS,
+);
+const INTERVAL_WAIT_FRAMES = Math.ceil(
+  ticksFor(FISH_INTERVAL * 1.5) / COARSE_TICKS,
+);
 
-/** How many frames separate two samples of a wait: a tenth of a second. */
-const POLL_FRAMES = Math.round(0.1 * TICK_HZ);
+/**
+ * How many coarse frames separate two samples of a wait: one, which is
+ * `COARSE_TICKS` ticks — a twelfth of a second at the `TICK_HZ` (`120`)
+ * specs/overview.md fixes, and far finer than the five- and eight-second figures
+ * the cadence is stated in.
+ */
+const POLL_FRAMES = 1;
 
 let h: Harness;
 
@@ -88,6 +104,7 @@ it("puts each bonus catch in an open bay the one before it did not hold", async 
   for (const bay of FILLED_BAYS) h.debug.setBay(bay, true);
   h.debug.setFishCadence(true);
   h.debug.setFishBay(BAY);
+  h.pace(COARSE_TICKS);
 
   let previous = BAY;
   for (let cycle = 1; cycle <= CYCLES; cycle += 1) {

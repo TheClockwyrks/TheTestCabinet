@@ -91,7 +91,11 @@ it("brings the next bonus catch eight seconds after the last one left", async ()
   // Both ends of the window are READ before either is asserted, so the picture
   // is the one the far end left: the bay the next catch arrived in when the gap
   // was right, and an empty far shore when nothing came at all.
-  await h.advance(EARLY_FRAMES);
+  // The bulk of the gap is a WAIT, not a reading, so it runs at the harness's
+  // coarse pace: the same whole ticks, a tenth of the pictures. The two sweeps
+  // either side of it stay at one tick a frame, because where the catch arrives
+  // inside the tolerance is exactly what this point grades.
+  await h.skipTicks(EARLY_FRAMES);
   const early = h.snapshot();
   const next = await h.until((s) => s.fishBay !== null, {
     maxFrames: WINDOW_FRAMES,

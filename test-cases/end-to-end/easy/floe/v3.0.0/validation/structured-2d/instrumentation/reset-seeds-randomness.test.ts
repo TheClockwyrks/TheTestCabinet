@@ -51,7 +51,6 @@ import {
   type FloeSnapshot,
   type Harness,
 } from "../harness";
-import { watchFor } from "./watch";
 
 /** The seed two runs share, and the one a third run is given instead. */
 const SEED = 7;
@@ -122,12 +121,10 @@ it("lays the same strait for one seed and a different one for another", async ()
     // Read before any of the wait below, so both runs' phases are read at the
     // same point of their own game time.
     const phases = phasesOf(h.snapshot());
-    const arrived = await watchFor(
-      h,
-      (s) => s.fishBay !== null,
-      FISH_WINDOW,
-      POLL_SECONDS,
-    );
+    const arrived = await h.skipUntil((s) => s.fishBay !== null, {
+      maxSeconds: FISH_WINDOW,
+      pollSeconds: POLL_SECONDS,
+    });
     assertTrue(
       arrived.hit,
       `a bonus catch to be in a bay within ${FISH_WINDOW} s of a run opened ` +

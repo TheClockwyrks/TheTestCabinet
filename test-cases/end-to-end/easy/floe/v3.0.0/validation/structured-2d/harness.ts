@@ -216,6 +216,19 @@ export const TICK_MS = TICK_DT * 1000;
  */
 export const COARSE_TICKS = 10;
 
+/**
+ * How far {@link Harness.skipUntil} sweeps when the caller names no ceiling, and
+ * how much game time separates two of its readings. Both are in SECONDS of game
+ * time, because a coarse sweep is for a wait the specification measures in
+ * seconds rather than in ticks.
+ *
+ * A minute is the longest span any point in this suite watches for, and a quarter
+ * of a second is a thirty-second of `FISH_INTERVAL` (`8` s), the longest cadence
+ * the specification states — so no arrival is stepped over.
+ */
+const DEFAULT_SWEEP_SECONDS = 60;
+const DEFAULT_SKIP_POLL_SECONDS = 0.25;
+
 /** Seconds of simulated time in `ticks` ticks. */
 export function seconds(ticks: number): number {
   return ticks / TICK_HZ;
@@ -560,6 +573,20 @@ export interface UntilResult {
   snapshot: FloeSnapshot;
 }
 
+/** How far a coarse sweep may run, and how much game time separates two samples. */
+export interface SkipOptions {
+  maxSeconds?: number;
+  pollSeconds?: number;
+}
+
+/** What a coarse sweep found. */
+export interface SkipResult {
+  hit: boolean;
+  /** Seconds of game time covered before the sample that ended the sweep. */
+  elapsed: number;
+  snapshot: FloeSnapshot;
+}
+
 export interface Harness {
   readonly engine: Engine<FloeSurface>;
   /**
@@ -607,6 +634,15 @@ export interface Harness {
   /** Run the whole ticks covering `duration` seconds of game time. */
   advanceSeconds(duration: number): Promise<void>;
   /**
+   * Run `ticks` whole simulation ticks in COARSE frames.
+   *
+   * The tick-exact companion to {@link skip}, for a wait a check states in TICKS:
+   * the coarse stretch runs whole `COARSE_TICKS` frames and the leftover runs at
+   * one tick a frame, so exactly `ticks` ticks are spent. {@link skip} is this
+   * over a duration in seconds, rounded the way `ticksFor` rounds.
+   */
+  skipTicks(ticks: number): Promise<void>;
+  /**
    * Cover `duration` seconds of game time in COARSE frames, for waiting out a
    * cadence the specification measures in tens of seconds.
    *
@@ -620,6 +656,11 @@ export interface Harness {
    * {@link advanceSeconds} where each frame has to be a tick.
    */
   skip(duration: number): Promise<void>;
+  /** {@link skip} until `predicate` holds, sampling every `pollSeconds`. */
+  skipUntil(
+    predicate: (snapshot: FloeSnapshot) => boolean,
+    options?: SkipOptions,
+  ): Promise<SkipResult>;
   /** Put `ticksPerFrame` whole ticks in each frame from here on. */
   pace(ticksPerFrame: number): void;
   /** Advance until `predicate` holds, sampling every `poll` frames. */
@@ -930,8 +971,8 @@ export async function createHarness(
       engine.setClock(new ConstantClock(TICK_MS * ticksPerFrame));
     },
 
-    async skip(duration) {
-      const total = ticksFor(duration);
+    async skipTicks(ticks) {
+      const total = Math.max(0, Math.trunc(ticks));
       const coarse = Math.floor(total / COARSE_TICKS);
       if (coarse > 0) {
         harness.pace(COARSE_TICKS);
@@ -939,14 +980,39 @@ export async function createHarness(
           await engine.advance(coarse);
         } finally {
           // In a `finally`, and outside the branch, so this always returns the
-          // clock to one tick a frame — whatever the duration was, and whether
-          // or not the coarse stretch ran to the end.
+          // clock to one tick a frame — whatever the count was, and whether or
+          // not the coarse stretch ran to the end.
           harness.pace(1);
         }
       } else {
         harness.pace(1);
       }
       await engine.advance(total - coarse * COARSE_TICKS);
+    },
+
+    skip: (duration) => harness.skipTicks(ticksFor(duration)),
+
+    async skipUntil(predicate, skipOptions = {}) {
+      const maxSeconds = skipOptions.maxSeconds ?? DEFAULT_SWEEP_SECONDS;
+      const pollSeconds = Math.max(
+        seconds(COARSE_TICKS),
+        skipOptions.pollSeconds ?? DEFAULT_SKIP_POLL_SECONDS,
+      );
+
+      // The state as it stands is read first, so a sweep whose condition already
+      // holds reports it without spending any game time.
+      let snapshot = harness.snapshot();
+      if (predicate(snapshot)) return { hit: true, elapsed: 0, snapshot };
+
+      let elapsed = 0;
+      while (elapsed < maxSeconds) {
+        const step = Math.min(pollSeconds, maxSeconds - elapsed);
+        await harness.skip(step);
+        elapsed += step;
+        snapshot = harness.snapshot();
+        if (predicate(snapshot)) return { hit: true, elapsed, snapshot };
+      }
+      return { hit: false, elapsed, snapshot };
     },
 
     async until(predicate, untilOptions = {}) {

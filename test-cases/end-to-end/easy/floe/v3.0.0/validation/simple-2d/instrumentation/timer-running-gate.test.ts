@@ -34,7 +34,6 @@ import {
   captureStill,
   createHarness,
   startCrossing,
-  ticksFor,
   type Harness,
 } from "../harness";
 
@@ -82,11 +81,11 @@ it("holds the crossing clock while it is gated and drains it by the span once it
   );
   assertEqual(posed.phase, "crossing", "the phase the clock is watched in");
 
-  await h.advance(ticksFor(SPAN_SECONDS));
+  await h.skip(SPAN_SECONDS);
   const held = h.snapshot();
 
   h.debug.setTimerRunning(true);
-  await h.advance(ticksFor(SPAN_SECONDS));
+  await h.skip(SPAN_SECONDS);
   const drained = h.snapshot();
   await h.advance(1);
   // Before the assertions, so a clock that moved when it should not have still

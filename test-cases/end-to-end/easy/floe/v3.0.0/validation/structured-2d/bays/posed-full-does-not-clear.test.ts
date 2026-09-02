@@ -67,7 +67,9 @@ it("keeps playing a level whose bays were posed filled", async () => {
   );
   assertEqual(posed.level, LEVEL, "the level posed");
 
-  await h.advance(WATCH_FRAMES);
+  // Nothing is read while these seconds run, so they run at the harness's coarse
+  // pace: the same whole ticks, a tenth of the pictures.
+  await h.skipTicks(WATCH_FRAMES);
   captureStill(h, "posed");
 
   const after = h.snapshot();

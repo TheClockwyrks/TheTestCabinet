@@ -64,9 +64,13 @@ it("puts the first bonus catch in a bay that is open", async () => {
   h.debug.setBay(FILLED_BAY, true);
   h.debug.setFishCadence(true);
 
-  const appeared = await h.until((s) => s.fishBay !== null, {
-    maxFrames: WAIT_FRAMES,
-    poll: POLL_FRAMES,
+  // The wait is a cadence the specification measures in seconds and nothing is
+  // read per frame, so it runs at the harness's coarse pace: the same whole
+  // ticks, a tenth of the pictures. WHERE the catch lands is this point's
+  // requirement; WHEN it lands is `bays/fish-interval`'s.
+  const appeared = await h.skipUntil((s) => s.fishBay !== null, {
+    maxSeconds: seconds(WAIT_FRAMES),
+    pollSeconds: seconds(POLL_FRAMES),
   });
 
   captureStill(h, "fish");

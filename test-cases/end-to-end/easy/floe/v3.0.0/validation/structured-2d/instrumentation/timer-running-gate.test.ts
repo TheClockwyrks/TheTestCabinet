@@ -37,7 +37,6 @@ import {
   captureStill,
   createHarness,
   startCrossing,
-  ticksFor,
   type Harness,
 } from "../harness";
 
@@ -97,12 +96,12 @@ it("holds the crossing clock with the gate off and drains it with the gate on", 
     `the seconds setTimer(${POSED_TIMER}) put on the clock`,
   );
 
-  await h.advance(ticksFor(SECTION_SECONDS));
+  await h.skip(SECTION_SECONDS);
   const held = h.snapshot();
 
   h.debug.setTimerRunning(true);
   const opened = h.snapshot();
-  await h.advance(ticksFor(SECTION_SECONDS));
+  await h.skip(SECTION_SECONDS);
   const drained = h.snapshot();
   // Before the assertions, so a failing clock still leaves the picture of the HUD
   // it was read on.

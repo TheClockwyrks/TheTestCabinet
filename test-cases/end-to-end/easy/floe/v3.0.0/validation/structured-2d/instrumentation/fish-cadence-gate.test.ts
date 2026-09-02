@@ -51,7 +51,6 @@ import {
   startCrossing,
   type Harness,
 } from "../harness";
-import { watchFor } from "./watch";
 
 /** The game time the bays are watched with the gate off, in seconds. */
 const OFF_SECONDS = 60;
@@ -93,21 +92,17 @@ it("keeps the bonus catch away with the gate off and lets one arrive with it on"
       "nothing about the gate",
   );
 
-  const off = await watchFor(
-    h,
-    (snapshot) => snapshot.fishBay !== null,
-    OFF_SECONDS,
-    POLL_SECONDS,
-  );
+  const off = await h.skipUntil((snapshot) => snapshot.fishBay !== null, {
+    maxSeconds: OFF_SECONDS,
+    pollSeconds: POLL_SECONDS,
+  });
 
   h.debug.setFishCadence(true);
   const opened = h.snapshot();
-  const on = await watchFor(
-    h,
-    (snapshot) => snapshot.fishBay !== null,
-    ON_SECONDS,
-    POLL_SECONDS,
-  );
+  const on = await h.skipUntil((snapshot) => snapshot.fishBay !== null, {
+    maxSeconds: ON_SECONDS,
+    pollSeconds: POLL_SECONDS,
+  });
   await h.advance(1);
   // Before the assertions, so a failing cadence still leaves the picture of the
   // far shore it was read on.

@@ -72,6 +72,7 @@ import { connectChromium } from "./chromium";
 import { fail } from "./assert";
 import {
   COLS,
+  HANDLE,
   HOP_COOLDOWN,
   HOP_KEY,
   ICE_ROWS,
@@ -114,15 +115,17 @@ declare module "vitest" {
     floeUrl: string;
     /** The one Chromium every suite worker connects to. */
     floeBrowserWs: string;
+    /**
+     * Whether the build installed its debug surface, probed once by
+     * `globalSetup.ts`. What {@link browserBudget} reads.
+     */
+    floeSurfacePresent: boolean;
   }
 }
 
 /* -------------------------------------------------------------------------- */
 /* The contract the build owes                                                */
 /* -------------------------------------------------------------------------- */
-
-/** The handle an engineless build installs its surface on. */
-export const HANDLE = "__floe";
 
 /** The version the surface reports (`FLOE_DEBUG_VERSION`). */
 export const FLOE_DEBUG_VERSION = 1;
@@ -600,7 +603,7 @@ export interface Harness {
    *
    * A fault here is the build's: the surface is missing, or it is missing an
    * operation the specification requires. It says what was found
-   * (`window.__floe was still absent 10s after the page loaded`), and
+   * (`window.__floe was still absent 120s after the page loaded`), and
    * {@link failSurface} pairs it with what the specification requires. Every
    * operation fails BY ASSERTION with that pair rather than throwing, so a
    * missing surface lands as the verdict of every point that reaches for it —
@@ -640,6 +643,37 @@ export interface Harness {
    * with {@link advance}; this is for reading one frame's render.
    */
   step(ticks?: number): Promise<void>;
+  /**
+   * Run `ticks` ticks ONE AT A TIME and hand back the state each of them left,
+   * oldest first — in a single crossing into the page.
+   *
+   * WHY THIS EXISTS. A tick driven from Node costs a round trip to the browser
+   * and back, and reading the state after it costs another; a check that watches
+   * four seconds of a bear's glide tick by tick pays nine hundred and sixty of
+   * them, and what a round trip costs is not a property of the build but of how
+   * busy the machine is. The ticks here are exactly the ticks the loop below
+   * would have run — one `advance(1)` each, one `snapshot()` after each, in the
+   * same order — and the only thing that changes is that they are asked for
+   * together. A check reads the returned series exactly as it read the snapshots
+   * it collected one at a time.
+   *
+   * While a {@link captureReplay} is running each tick closes a recorded frame,
+   * which is what driving them one at a time did before.
+   */
+  sample(ticks: number): Promise<FloeSnapshot[]>;
+  /**
+   * {@link sample}, with one operation of the build's own surface run before a
+   * tick — `pose(state)` decides which, from the state as it stands.
+   *
+   * For the checks that have to act BETWEEN ticks: re-committing a bear's step on
+   * the tick it settles, say. The decision stays here, in the case's own rules,
+   * so this cannot batch a whole run into one crossing — but it does collapse the
+   * pose, the tick and the reading into ONE, where they were three.
+   */
+  sampleWith(
+    ticks: number,
+    pose: (snapshot: FloeSnapshot) => Pose | null,
+  ): Promise<FloeSnapshot[]>;
   /** Advance until `predicate` holds, sampling every `poll` ticks. */
   until(
     predicate: (snapshot: FloeSnapshot) => boolean,
@@ -732,16 +766,46 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 export const WORKSPACE_ROOT = resolve(PROJECT_ROOT, "..");
 
 /**
- * How long the surface is waited for before the build is called non-conformant.
+ * How long this project waits on the BROWSER for one step — a page load, the
+ * surface appearing, a screenshot — when the build has already been shown to
+ * install a surface.
  *
- * Generous against a conformant build and cheap against one: the wait is a poll
- * that returns the instant the global appears. Floe's surface is installed after
- * the seeded sprite art has decoded (`specs/assets.md`), so a build has a genuine
- * asynchronous step to finish before it can install — which is what this ceiling
- * is sized for. What it really bounds is the cost of a build with no surface at
- * all, which pays it once per harness.
+ * NONE OF THESE DEADLINES MEASURES THE BUILD. Every one of them is a wall clock
+ * on a host this project shares with whatever else is running on it, and every
+ * one of them is spent waiting for Chromium rather than for the game: the page
+ * load, the poll that returns the instant `window.__floe` appears, the screenshot
+ * that keeps a check's evidence. A conforming build resolves each of them in a
+ * second or two, so what a ceiling here really decides is whether a BUSY MACHINE
+ * can turn a conforming build into a failing one — and this one is sized so it
+ * cannot. Measured on a twenty-core host under a load average of four hundred and
+ * sixty, the slowest page load this project saw was twenty-four seconds and the
+ * slowest surface wait three; two minutes is five times the worse of them.
+ *
+ * It costs a conforming build nothing, because a wait that returns immediately
+ * returns immediately whatever its ceiling is.
  */
-const SURFACE_TIMEOUT_MS = 10_000;
+const PATIENT_MS = 120_000;
+
+/**
+ * The same deadline once the build is known to install NO surface.
+ *
+ * `globalSetup.ts` asks that question once, patiently. When the answer is no,
+ * there is nothing left for a per-suite wait to discover and a patient one would
+ * cost every suite in the project a two-minute ceiling — turning a build that
+ * scores nothing into a run that never finishes and so decides nothing at all.
+ * Ten seconds is what such a build cost before this distinction existed.
+ */
+const IMPATIENT_MS = 10_000;
+
+/**
+ * How long to wait on the browser for one step, given what the probe found.
+ *
+ * Read through `inject` at the call rather than captured once, so a suite pays
+ * for it only where a wait is actually armed.
+ */
+function browserBudget(): number {
+  return inject("floeSurfacePresent") ? PATIENT_MS : IMPATIENT_MS;
+}
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -887,16 +951,17 @@ export function failSurface(fault: string): never {
  * specification requires.
  */
 async function readSurfaceFault(page: Page): Promise<string | null> {
+  const budget = browserBudget();
   try {
     await page.waitForFunction(
       (handle) =>
         typeof (window as never)[handle] === "object" &&
         (window as never)[handle] !== null,
       HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
+      { timeout: budget },
     );
   } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
+    return `window.${HANDLE} was still absent ${budget / 1000}s after the page loaded`;
   }
   const missing = await page.evaluate(
     ([handle, ops]) => {
@@ -917,17 +982,44 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
 
 /* ---- Building one --------------------------------------------------------- */
 
+/** One operation of the build's own surface, run in the page before a call. */
+export interface Pose {
+  op: string;
+  args: readonly unknown[];
+}
+
+/** What a drive is asked to do beyond running its ticks. */
+interface DriveOptions {
+  /** A pose to run before the call at the same index, or `null` for none. */
+  poses?: readonly (Pose | null)[];
+  /** Keep the state each call left, rather than only the state at the end. */
+  collect?: boolean;
+}
+
+/** What a drive hands back: the state it ended on, and the series if asked for. */
+interface DriveResult {
+  snapshot: FloeSnapshot;
+  series: FloeSnapshot[];
+}
+
 /**
  * The most recorded frames one {@link Harness.advance} closes while a capture is
  * armed, and the fewest ticks each of them covers.
  *
- * Both are about the SHAPE of the evidence rather than about any verdict. Two
- * ticks a frame is sixty recorded frames per second of game time, which is what
+ * Both are about the SHAPE of the evidence rather than about any verdict. Four
+ * ticks a frame is thirty recorded frames per second of game time, which is what
  * a replay of a moving strait wants; the ceiling keeps a section that advances a
  * minute of game time from closing seven thousand frames, and widens the frames
  * instead.
+ *
+ * FOUR RATHER THAN TWO BECAUSE OF {@link MAX_REPLAY_FRAMES}. What is written out
+ * is at most three hundred frames whatever was recorded, so a ten-second section
+ * recorded at sixty frames a second drew six hundred pictures to keep three
+ * hundred, and every one of those pictures is the build's own render run inside
+ * the page. At thirty a section of that length records exactly what the replay
+ * keeps, and a reviewer watches the same thing.
  */
-const RECORD_MIN_TICKS = 2;
+const RECORD_MIN_TICKS = 4;
 const RECORD_MAX_FRAMES = 240;
 
 /**
@@ -972,7 +1064,14 @@ export async function createHarness(
     pageErrors.push(message.text());
   });
 
-  await page.goto(inject("floeUrl"), { waitUntil: "load" });
+  // With an explicit budget rather than Playwright's default thirty seconds: a
+  // page load is the browser's work on a shared host, and a build whose page
+  // never loads is what `globalSetup.ts` has already decided (see
+  // {@link browserBudget}).
+  await page.goto(inject("floeUrl"), {
+    waitUntil: "load",
+    timeout: browserBudget(),
+  });
 
   const surfaceFault = await readSurfaceFault(page);
   const refuse = (): never => failSurface(surfaceFault ?? "");
@@ -1022,7 +1121,7 @@ export async function createHarness(
             window as unknown as { __floeRec: { ready(): boolean } }
           ).__floeRec.ready(),
         undefined,
-        { timeout: SURFACE_TIMEOUT_MS },
+        { timeout: browserBudget() },
       )
       .catch(() => undefined);
     if (options.frames === undefined) {
@@ -1052,12 +1151,18 @@ export async function createHarness(
   const drive = async (
     calls: readonly number[],
     record: boolean,
-  ): Promise<FloeSnapshot> => {
+    options: DriveOptions = {},
+  ): Promise<DriveResult> => {
     if (surfaceFault !== null) refuse();
-    if (calls.length === 0) return debug.snapshot();
+    if (calls.length === 0) {
+      const only = await debug.snapshot();
+      return { snapshot: only, series: [] };
+    }
     const mode = record ? frameMode : "none";
+    const poses = options.poses ?? [];
+    const collect = options.collect ?? false;
     const result = (await page.evaluate(
-      async ([handle, sizes, how, dt]) => {
+      async ([handle, sizes, how, dt, before, series]) => {
         const api = (
           window as unknown as Record<
             string,
@@ -1077,8 +1182,13 @@ export async function createHarness(
             requestAnimationFrame(() => done());
           });
         const sounds: number[] = [];
-        for (const ticks of sizes) {
-          const before = audio.started();
+        const shots: unknown[] = [];
+        for (const [index, ticks] of sizes.entries()) {
+          // The pose for this call, run through the build's OWN surface, exactly
+          // as a crossing of its own would have run it.
+          const pose = before[index];
+          if (pose !== null) api[pose.op](...pose.args);
+          const started = audio.started();
           if (how === "advance") {
             rec.begin();
             api.advance(ticks);
@@ -1093,12 +1203,24 @@ export async function createHarness(
           } else {
             api.advance(ticks);
           }
-          sounds.push(audio.started() - before);
+          sounds.push(audio.started() - started);
+          if (series) shots.push(api.snapshot());
         }
-        return { snapshot: api.snapshot(), sounds };
+        return { snapshot: api.snapshot(), sounds, series: shots };
       },
-      [HANDLE, [...calls], mode, TICK_DT * 1000] as const,
-    )) as { snapshot: FloeSnapshot; sounds: number[] };
+      [
+        HANDLE,
+        [...calls],
+        mode,
+        TICK_DT * 1000,
+        calls.map((_, index) => poses[index] ?? null),
+        collect,
+      ] as const,
+    )) as {
+      snapshot: FloeSnapshot;
+      sounds: number[];
+      series: FloeSnapshot[];
+    };
 
     for (const [index, ticks] of calls.entries()) {
       tickCount += ticks;
@@ -1113,7 +1235,7 @@ export async function createHarness(
         }
       }
     }
-    return result.snapshot;
+    return { snapshot: result.snapshot, series: result.series };
   };
 
   /** How a plain {@link Harness.advance} is divided while a capture is armed. */
@@ -1133,8 +1255,10 @@ export async function createHarness(
     ticks: number,
     clock?: Clock,
   ): Promise<FloeSnapshot> => {
-    if (capturing) return drive(recordedCalls(ticks), true);
-    return drive(clock === undefined ? [ticks] : divide(ticks, clock), false);
+    if (capturing) return (await drive(recordedCalls(ticks), true)).snapshot;
+    return (
+      await drive(clock === undefined ? [ticks] : divide(ticks, clock), false)
+    ).snapshot;
   };
 
   const readPixels = async (
@@ -1216,6 +1340,33 @@ export async function createHarness(
       await drive([Math.max(1, Math.trunc(ticks))], true);
     },
 
+    async sample(ticks) {
+      const whole = Math.max(0, Math.trunc(ticks));
+      if (whole === 0) return [];
+      const { series } = await drive(
+        new Array<number>(whole).fill(1),
+        capturing,
+        { collect: true },
+      );
+      return series;
+    },
+
+    async sampleWith(ticks, pose) {
+      const whole = Math.max(0, Math.trunc(ticks));
+      const series: FloeSnapshot[] = [];
+      let state = await this.snapshot();
+      for (let tick = 0; tick < whole; tick += 1) {
+        const posed = pose(state);
+        const driven = await drive([1], capturing, {
+          poses: [posed],
+          collect: true,
+        });
+        state = driven.series[0];
+        series.push(state);
+      }
+      return series;
+    },
+
     async until(predicate, untilOptions = {}) {
       const maxTicks = untilOptions.maxTicks ?? ticksFor(2);
       const poll = Math.max(1, untilOptions.poll ?? 1);
@@ -1252,7 +1403,7 @@ export async function createHarness(
       let elapsed = 0;
       while (elapsed < maxSeconds) {
         const step = Math.min(pollSeconds, maxSeconds - elapsed);
-        snapshot = await drive([Math.max(1, ticksFor(step))], false);
+        snapshot = (await drive([Math.max(1, ticksFor(step))], false)).snapshot;
         elapsed += step;
         if (predicate(snapshot)) return { hit: true, elapsed, snapshot };
       }
@@ -2031,7 +2182,11 @@ export async function captureStill(
   if (destination === null) return;
   try {
     mkdirSync(dirname(destination), { recursive: true });
-    await h.page.screenshot({ path: destination, type: "png" });
+    await h.page.screenshot({
+      path: destination,
+      type: "png",
+      timeout: browserBudget(),
+    });
   } catch (error) {
     console.warn(`floe: could not write ${destination}: ${String(error)}`);
   }

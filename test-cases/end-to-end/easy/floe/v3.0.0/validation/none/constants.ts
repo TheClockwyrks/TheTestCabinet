@@ -511,6 +511,16 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 /* The debug surface (specs/instrumentation.md)                               */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The `window` property an engineless build installs its surface on.
+ *
+ * specs/instrumentation.md fixes it, and the manifest declares the same name as
+ * the case's `[instrumentation] handle`. It lives here rather than in
+ * `harness.ts` because `globalSetup.ts` reaches for it too, to find out ONCE
+ * whether the build under test installs a surface at all.
+ */
+export const HANDLE = "__floe";
+
 /** The version the surface reports as `version`. */
 export const FLOE_DEBUG_VERSION = 1;
 

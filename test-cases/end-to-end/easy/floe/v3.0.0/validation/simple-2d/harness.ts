@@ -219,6 +219,34 @@ export type FloeDriver = Driver<FloeState, FloeSurface>;
  */
 export const TICK_MS = 1000 / TICK_HZ;
 
+/**
+ * The ticks {@link Harness.skip} and {@link Harness.pace} put in one frame.
+ *
+ * Waiting out a cadence the specification measures in tens of seconds is
+ * thousands of ticks, and drawing a picture for each of them is most of what it
+ * costs. Ten ticks a frame runs exactly the same ticks — specs/overview.md has
+ * the simulation advance by the whole `TICK_DT` ticks a frame's delta completes,
+ * so the state reached over an interval of game time does not depend on how that
+ * interval was divided into frames — and skips nine pictures in ten.
+ *
+ * Ten rather than more because a frame's delta stays small: ten ticks is `83` ms,
+ * well inside any sane ceiling a build puts on how much time one frame may carry.
+ */
+export const COARSE_TICKS = 10;
+
+/**
+ * How far {@link Harness.skipUntil} sweeps when the caller names no ceiling, and
+ * how much game time separates two of its readings. Both are in SECONDS of game
+ * time, because a coarse sweep is for a wait the specification measures in
+ * seconds rather than in ticks.
+ *
+ * A minute is the longest span any point in this suite watches for, and a quarter
+ * of a second is a thirty-second of `FISH_INTERVAL` (`8` s), the longest cadence
+ * the specification states — so no arrival is stepped over.
+ */
+const DEFAULT_SWEEP_SECONDS = 60;
+const DEFAULT_SKIP_POLL_SECONDS = 0.25;
+
 /** Seconds of simulated time in `ticks` frames of the default clock. */
 export function seconds(ticks: number): number {
   return ticks / TICK_HZ;
@@ -435,6 +463,20 @@ export interface UntilResult {
   snapshot: FloeSnapshot;
 }
 
+/** How far a coarse sweep may run, and how much game time separates two samples. */
+export interface SkipOptions {
+  maxSeconds?: number;
+  pollSeconds?: number;
+}
+
+/** What a coarse sweep found. */
+export interface SkipResult {
+  hit: boolean;
+  /** Seconds of game time covered before the sample that ended the sweep. */
+  elapsed: number;
+  snapshot: FloeSnapshot;
+}
+
 export interface Harness {
   readonly engine: Engine<FloeState, FloeSurface>;
   /**
@@ -480,6 +522,38 @@ export interface Harness {
   snapshot(): FloeSnapshot;
   /** Run `frames` frames back to back. One frame is one tick. */
   advance(frames: number): Promise<void>;
+  /** Run the whole ticks covering `duration` seconds of game time. */
+  advanceSeconds(duration: number): Promise<void>;
+  /**
+   * Run `ticks` whole simulation ticks in COARSE frames.
+   *
+   * The tick-exact companion to {@link skip}, for a wait a check states in TICKS:
+   * the coarse stretch runs whole `COARSE_TICKS` frames and the leftover runs at
+   * one tick a frame, so exactly `ticks` ticks are spent. {@link skip} is this
+   * over a duration in seconds, rounded the way `ticksFor` rounds.
+   */
+  skipTicks(ticks: number): Promise<void>;
+  /**
+   * Cover `duration` seconds of game time in COARSE frames, for waiting out a
+   * cadence the specification measures in tens of seconds.
+   *
+   * The same ticks run — the simulation advances by the whole `TICK_DT` ticks a
+   * frame's delta completes, which is what specs/overview.md fixes and what
+   * `instrumentation/deterministic-core` decides — and only the pictures between
+   * them are skipped. It leaves the clock at one tick a frame, so what follows
+   * steps tick by tick again.
+   *
+   * Not for a measurement stated per frame or per picture: use
+   * {@link advanceSeconds} where each frame has to be a tick.
+   */
+  skip(duration: number): Promise<void>;
+  /** {@link skip} until `predicate` holds, sampling every `pollSeconds`. */
+  skipUntil(
+    predicate: (snapshot: FloeSnapshot) => boolean,
+    options?: SkipOptions,
+  ): Promise<SkipResult>;
+  /** Put `ticksPerFrame` whole ticks in each frame from here on. */
+  pace(ticksPerFrame: number): void;
   /** Advance until `predicate` holds, sampling every `poll` frames. */
   until(
     predicate: (snapshot: FloeSnapshot) => boolean,
@@ -828,6 +902,55 @@ export async function createHarness(
     snapshot: () => debug.snapshot(),
 
     advance: (frames) => engine.advance(frames),
+    advanceSeconds: (duration) => engine.advance(ticksFor(duration)),
+
+    pace: (ticksPerFrame) => {
+      engine.setClock(new ConstantClock(TICK_MS * ticksPerFrame));
+    },
+
+    async skipTicks(ticks) {
+      const total = Math.max(0, Math.trunc(ticks));
+      const coarse = Math.floor(total / COARSE_TICKS);
+      if (coarse > 0) {
+        harness.pace(COARSE_TICKS);
+        try {
+          await engine.advance(coarse);
+        } finally {
+          // In a `finally`, and outside the branch, so this always returns the
+          // clock to one tick a frame — whatever the count was, and whether or
+          // not the coarse stretch ran to the end.
+          harness.pace(1);
+        }
+      } else {
+        harness.pace(1);
+      }
+      await engine.advance(total - coarse * COARSE_TICKS);
+    },
+
+    skip: (duration) => harness.skipTicks(ticksFor(duration)),
+
+    async skipUntil(predicate, skipOptions = {}) {
+      const maxSeconds = skipOptions.maxSeconds ?? DEFAULT_SWEEP_SECONDS;
+      const pollSeconds = Math.max(
+        seconds(COARSE_TICKS),
+        skipOptions.pollSeconds ?? DEFAULT_SKIP_POLL_SECONDS,
+      );
+
+      // The state as it stands is read first, so a sweep whose condition already
+      // holds reports it without spending any game time.
+      let snapshot = harness.snapshot();
+      if (predicate(snapshot)) return { hit: true, elapsed: 0, snapshot };
+
+      let elapsed = 0;
+      while (elapsed < maxSeconds) {
+        const step = Math.min(pollSeconds, maxSeconds - elapsed);
+        await harness.skip(step);
+        elapsed += step;
+        snapshot = harness.snapshot();
+        if (predicate(snapshot)) return { hit: true, elapsed, snapshot };
+      }
+      return { hit: false, elapsed, snapshot };
+    },
 
     async until(predicate, untilOptions = {}) {
       const maxFrames = untilOptions.maxFrames ?? DEFAULT_SWEEP_FRAMES;

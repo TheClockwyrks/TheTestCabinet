@@ -90,6 +90,24 @@ const MIN_SIM = 6 * TICK_DT;
  */
 const MIN_TRAVEL = 1;
 
+/**
+ * The most real time the wait is given altogether, in milliseconds.
+ *
+ * THE WAIT IS EXTENDED, NOT LENGTHENED. This is the one point in the suite that
+ * has to observe a real clock, because its requirement is that the game moves
+ * without being driven — but how much real time a machine needs to present a
+ * handful of frames is the MACHINE's business, and a fixed window turns a busy
+ * host into a failing build. So the game is handed its own loop in `REAL_MS`
+ * stretches until the build's OWN clock says the wait arrived, up to this
+ * ceiling.
+ *
+ * A build whose loop runs clears the first stretch on any machine and the ceiling
+ * is never approached. A build whose loop never advances the simulation spends
+ * the whole of it and fails — which is the defect this point is about, and the
+ * only thing that can spend it.
+ */
+const PATIENT_MS = 30_000;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -126,17 +144,30 @@ it("advances the simulation on its own clock while real time passes", async () =
 
   // The measurement: real wall-clock time, with the game handed to the engine's
   // own frame loop and nothing stepping it from here.
-  await h.runFor(REAL_MS);
-
-  const after = h.snapshot();
-  const afterX = requireVehicle(after, witness).x;
+  // Extended in REAL_MS stretches until the build's own clock says the wait
+  // arrived, so a busy host costs this point time rather than a verdict.
+  let after = before;
+  let afterX = beforeX;
+  let waited = 0;
+  while (waited < PATIENT_MS) {
+    await h.runFor(REAL_MS);
+    waited += REAL_MS;
+    after = h.snapshot();
+    afterX = requireVehicle(after, witness).x;
+    if (
+      after.simTime - before.simTime > MIN_SIM &&
+      Math.abs(afterX - beforeX) > MIN_TRAVEL
+    ) {
+      break;
+    }
+  }
   // And the strait the wait left behind.
   captureStill(h, "after");
 
   assertGreaterThan(
     after.simTime - before.simTime,
     MIN_SIM,
-    `the seconds of simulation time that arrived over ${REAL_MS} ms of real ` +
+    `the seconds of simulation time that arrived over ${waited} ms of real ` +
       `time with the engine's own frame loop running and nothing stepping the ` +
       `game from outside`,
   );

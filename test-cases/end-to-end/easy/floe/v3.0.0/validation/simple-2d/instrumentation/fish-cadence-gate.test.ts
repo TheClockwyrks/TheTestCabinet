@@ -35,7 +35,6 @@ import {
   captureStill,
   createHarness,
   startCrossing,
-  ticksFor,
   type Harness,
 } from "../harness";
 
@@ -85,9 +84,13 @@ it("keeps the bonus catch away while the cadence is gated, and puts one out when
       `a cadence that ran would have somewhere to put one (specs/bays.md)`,
   );
 
-  const gated = await h.until((s) => s.fishBay !== null, {
-    maxFrames: ticksFor(WATCH_SECONDS),
-    poll: ticksFor(POLL_SECONDS),
+  // Both watches run at the harness's COARSE pace, through `skipUntil`: the same
+  // ticks, one picture in ten. Nothing here is read per frame — each looks every
+  // POLL_SECONDS of GAME time, which is a thirty-second of the FISH_INTERVAL the
+  // cadence is stated in.
+  const gated = await h.skipUntil((s) => s.fishBay !== null, {
+    maxSeconds: WATCH_SECONDS,
+    pollSeconds: POLL_SECONDS,
   });
   assertEqual(
     gated.hit,
@@ -98,9 +101,9 @@ it("keeps the bonus catch away while the cadence is gated, and puts one out when
   );
 
   h.debug.setFishCadence(true);
-  const running = await h.until((s) => s.fishBay !== null, {
-    maxFrames: ticksFor(APPEAR_SECONDS),
-    poll: ticksFor(POLL_SECONDS),
+  const running = await h.skipUntil((s) => s.fishBay !== null, {
+    maxSeconds: APPEAR_SECONDS,
+    pollSeconds: POLL_SECONDS,
   });
   await h.advance(1);
   // Before the assertions, so a build whose cadence never ran still leaves the

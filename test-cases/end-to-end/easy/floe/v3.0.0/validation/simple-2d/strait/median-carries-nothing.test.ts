@@ -79,6 +79,22 @@ const SECTION_SECONDS = 10;
  */
 const SAMPLE_SECONDS = 0.5;
 
+/**
+ * Ticks per frame while the section runs.
+ *
+ * The simulation advances by the whole `TICK_DT` ticks a frame's delta completes
+ * and reaches the same state however an interval was divided into frames
+ * (specs/overview.md), so four ticks a frame runs exactly the same section as one
+ * tick a frame — and `instrumentation/deterministic-core` is the point that
+ * decides it. Four rather than the harness's coarser `skip` pace so the whole
+ * section still records at thirty frames a second, and nothing here is read off a
+ * picture: every reading below is spaced in GAME time.
+ */
+const TICKS_PER_FRAME = 4;
+
+/** Frames one stretch between two readings takes at that pace. */
+const SAMPLE_FRAMES = ticksFor(SAMPLE_SECONDS) / TICKS_PER_FRAME;
+
 /** What the median looked like at one moment. */
 interface Reading {
   at: number;
@@ -141,12 +157,23 @@ it("keeps every vehicle and every floe off the median across ten seconds of live
   poseLiveLanes(h, START_COL, ROW_MEDIAN, LEVEL);
 
   const readings: Reading[] = [readMedian(h.snapshot(), 0)];
-  await captureReplay(h, "median", async () => {
-    for (let at = SAMPLE_SECONDS; at <= SECTION_SECONDS; at += SAMPLE_SECONDS) {
-      await h.advance(ticksFor(SAMPLE_SECONDS));
-      readings.push(readMedian(h.snapshot(), at));
-    }
-  });
+  h.pace(TICKS_PER_FRAME);
+  try {
+    await captureReplay(h, "median", async () => {
+      for (
+        let at = SAMPLE_SECONDS;
+        at <= SECTION_SECONDS;
+        at += SAMPLE_SECONDS
+      ) {
+        await h.advance(SAMPLE_FRAMES);
+        readings.push(readMedian(h.snapshot(), at));
+      }
+    });
+  } finally {
+    // In a `finally`, so a section that failed still hands the clock back at one
+    // tick a frame.
+    h.pace(1);
+  }
 
   for (const reading of readings) {
     const when =

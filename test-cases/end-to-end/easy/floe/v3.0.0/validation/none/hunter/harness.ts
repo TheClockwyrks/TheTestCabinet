@@ -37,24 +37,17 @@ import {
  * of that difference, and a tick is the finest grain the specification's fixed
  * timestep has, so this is as close as any of them can look.
  *
- * It is one crossing into the page per tick rather than two, which is why it goes
- * through `until` with a predicate that never holds rather than through an
- * `advance`/`snapshot` pair: a four-second sample is four hundred and eighty
- * ticks, and halving the crossings halves what it costs.
+ * It is ONE crossing into the page for the whole sample, through
+ * `Harness.sample`: the ticks and the readings are exactly the ones a loop here
+ * would have driven, and asking for them together takes the cost of a round trip
+ * — which is a property of how busy the machine is rather than of the build —
+ * out of a four-hundred-and-eighty-tick sweep.
  */
 export async function samplePerTick(
   h: Harness,
   ticks: number,
 ): Promise<FloeSnapshot[]> {
-  const samples: FloeSnapshot[] = [];
-  await h.until(
-    (snapshot) => {
-      samples.push(snapshot);
-      return false;
-    },
-    { maxTicks: ticks, poll: 1 },
-  );
-  return samples;
+  return [await h.snapshot(), ...(await h.sample(ticks))];
 }
 
 /**
@@ -81,10 +74,16 @@ export async function stepAcross(
   const doing = "the bear whose speed is being measured";
   let view = requireBear(await h.snapshot(), id, doing);
   let covered = 0;
-  for (let tick = 0; tick < ticks; tick += 1) {
-    if (bearSettled(view)) await h.debug.setBearStep(id, direction);
-    await h.advance(1);
-    const next = requireBear(await h.snapshot(), id, doing);
+  // `sampleWith` runs the pose, the tick and the reading in ONE crossing into the
+  // page where this loop used to spend three, and the pose is still decided here:
+  // the step is re-committed on exactly the ticks the bear is settled on.
+  const series = await h.sampleWith(ticks, (snapshot) =>
+    bearSettled(requireBear(snapshot, id, doing))
+      ? { op: "setBearStep", args: [id, direction] }
+      : null,
+  );
+  for (const snapshot of series) {
+    const next = requireBear(snapshot, id, doing);
     covered += Math.hypot(next.x - view.x, next.y - view.y);
     view = next;
   }

@@ -19,6 +19,11 @@
 //
 // At least one appearance is required, so a build whose cadence never runs fails
 // here rather than passing on sixty seconds of `null`.
+//
+// The minute runs at the harness's COARSE pace — the same ticks, one picture in
+// ten, which is what `Harness.pace` is for. Nothing here is measured per frame or
+// per picture: the samples below are spaced in GAME TIME, a quarter of a second
+// apart, which is what the arithmetic names.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -28,21 +33,29 @@ import {
 } from "../assert";
 import { BAY_COUNT, TICK_HZ } from "../constants";
 import {
+  COARSE_TICKS,
   captureStill,
   createHarness,
   seconds,
   startCrossing,
+  ticksFor,
   type Harness,
 } from "../harness";
 
 /** The span the review item names, in seconds of game time. */
 const WATCH_SECONDS = 60;
 
-/** How many frames separate two samples: a quarter of a second. */
-const SAMPLE_FRAMES = Math.round(0.25 * TICK_HZ);
+/** How many ticks separate two samples: a quarter of a second of game time. */
+const SAMPLE_TICKS = Math.round(0.25 * TICK_HZ);
+
+/** Those ticks as coarse frames, each of which runs `COARSE_TICKS` of them. */
+const SAMPLE_FRAMES = Math.max(1, Math.round(SAMPLE_TICKS / COARSE_TICKS));
+
+/** The ticks a sample actually covers, which is what its timestamp is read from. */
+const TICKS_PER_SAMPLE = SAMPLE_FRAMES * COARSE_TICKS;
 
 /** How many samples that comes to across the span. */
-const SAMPLES = Math.round((WATCH_SECONDS * TICK_HZ) / SAMPLE_FRAMES);
+const SAMPLES = Math.ceil(ticksFor(WATCH_SECONDS) / TICKS_PER_SAMPLE);
 
 let h: Harness;
 
@@ -57,6 +70,7 @@ afterEach(() => {
 it("never reports more than one bonus catch across a minute of cadence", async () => {
   startCrossing(h);
   h.debug.setFishCadence(true);
+  h.pace(COARSE_TICKS);
 
   let appearances = 0;
   let previous: number | null = null;
@@ -64,7 +78,7 @@ it("never reports more than one bonus catch across a minute of cadence", async (
 
   for (let sample = 1; sample <= SAMPLES; sample += 1) {
     await h.advance(SAMPLE_FRAMES);
-    const at = seconds(sample * SAMPLE_FRAMES).toFixed(2);
+    const at = seconds(sample * TICKS_PER_SAMPLE).toFixed(2);
     const { fishBay } = h.snapshot();
 
     if (fishBay !== null) {

@@ -20,6 +20,7 @@
 import { BEAR_AVOID_LEAD, TILE, tileCX } from "../constants";
 import { fail } from "../assert";
 import {
+  COARSE_TICKS,
   bearById,
   bearSettled,
   itemCoversPoint,
@@ -134,6 +135,47 @@ export async function stepAcross(
     view = next;
   }
   return covered;
+}
+
+/**
+ * The largest roster seen over `ticks` ticks, read every `poll` ticks.
+ *
+ * The reading the three slot-count checks take. It is a separate call rather than
+ * one long sweep so a check can arm `captureReplay` around the opening stretch
+ * alone — a minute of this game is seven thousand two hundred ticks, and a
+ * recording of every one of them buys a reviewer nothing.
+ *
+ * IT RUNS AT THE HARNESS'S COARSE PACE. Both figures are in TICKS, which is what
+ * the checks state them in, and the same ticks run either way: specs/overview.md
+ * has the simulation advance by the whole `TICK_DT` ticks a frame's delta
+ * completes, so a minute reaches the same strait however it was divided into
+ * frames, and `instrumentation/deterministic-core` is the point that decides it.
+ * What the pace changes is the number of PICTURES drawn between two readings, and
+ * nothing here is read from a picture: the roster is read every `poll` ticks of
+ * GAME time, whatever the pace. The clock is put back to one tick a frame in a
+ * `finally`, so a check that continues afterwards steps tick by tick again.
+ */
+export async function largestRoster(
+  h: Harness,
+  ticks: number,
+  poll: number,
+): Promise<number> {
+  let largest = 0;
+  const frames = Math.ceil(ticks / COARSE_TICKS);
+  const pollFrames = Math.max(1, Math.round(poll / COARSE_TICKS));
+  h.pace(COARSE_TICKS);
+  try {
+    await h.until(
+      (snapshot) => {
+        largest = Math.max(largest, snapshot.bears.length);
+        return false;
+      },
+      { maxFrames: frames, poll: pollFrames },
+    );
+  } finally {
+    h.pace(1);
+  }
+  return largest;
 }
 
 /**

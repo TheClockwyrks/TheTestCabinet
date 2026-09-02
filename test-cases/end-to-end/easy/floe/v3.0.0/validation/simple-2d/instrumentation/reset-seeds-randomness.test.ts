@@ -48,7 +48,6 @@ import {
   captureStill,
   createHarness,
   keysFor,
-  ticksFor,
   type FloeSnapshot,
   type Harness,
 } from "../harness";
@@ -122,9 +121,9 @@ it("lays the same strait for one seed and a different one for another", async ()
     // Read before any of the wait below, so both runs' phases are read at the
     // same point of their own game time.
     const phases = phasesOf(h.snapshot());
-    const arrived = await h.until((s) => s.fishBay !== null, {
-      maxFrames: ticksFor(FISH_WINDOW),
-      poll: ticksFor(POLL_SECONDS),
+    const arrived = await h.skipUntil((s) => s.fishBay !== null, {
+      maxSeconds: FISH_WINDOW,
+      pollSeconds: POLL_SECONDS,
     });
     assertTrue(
       arrived.hit,

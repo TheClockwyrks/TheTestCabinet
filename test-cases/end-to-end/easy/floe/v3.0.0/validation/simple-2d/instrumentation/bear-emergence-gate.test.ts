@@ -112,9 +112,13 @@ it("keeps the hunt away while emergence is gated, and lets one arrive when it is
     "the bears on the strait before the watch",
   );
 
-  const gated = await h.until((s) => s.bears.length > 0, {
-    maxFrames: ticksFor(WATCH_SECONDS),
-    poll: ticksFor(POLL_SECONDS),
+  // The gated minute runs at the harness's COARSE pace, through `skipUntil`: the
+  // same ticks, one picture in ten. Nothing here is read per frame — the sweep
+  // looks every POLL_SECONDS of GAME time, which is what decides how soon a bear
+  // that should not be there is noticed.
+  const gated = await h.skipUntil((s) => s.bears.length > 0, {
+    maxSeconds: WATCH_SECONDS,
+    pollSeconds: POLL_SECONDS,
   });
   assertEqual(
     gated.hit,
