@@ -30,24 +30,23 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    // FOUR WORKERS, NOT ONE PER CORE.
+    // EIGHT WORKERS, NOT ONE PER CORE.
     //
-    // Left unset, vitest fans this project out across every core the machine
-    // has, and each worker of this project is a whole engine stepping a
-    // simulation: the project then competes with itself for the processor it is
-    // already saturating, and holds one engine's worth of memory per worker while
-    // it does. The host running this is also running a model's build, so the
-    // cores were never all this project's to take.
+    // Left unset, vitest fans this project out across every core the machine has,
+    // and each worker of this project is a whole engine stepping a simulation:
+    // the project then competes with itself for the processor it is already
+    // saturating, and holds one engine's worth of memory per worker while it
+    // does. The host running this is also running a model's build, so the cores
+    // were never all this project's to take.
     //
-    // It is also what keeps the runner's own reporting honest. Every worker
-    // reports each finished test back to the main thread over an RPC whose
-    // timeout is vitest's own sixty seconds and is not configurable: on a box
-    // with more workers than cores, a main thread busy collecting from all of
-    // them can leave a worker's `onTaskUpdate` unanswered past that, and the
-    // worker throws an unhandled error that vitest itself warns "might cause
-    // false positive tests". A run of this project on a loaded host reproduces
-    // exactly that. Four workers do not.
-    maxWorkers: 4,
+    // Eight rather than four, because the cap has to answer to the runner's OWN
+    // ceiling as well: `VITEST_TIMEOUT` in `crates/core/src/vitest_validator.rs`
+    // bounds the whole suite run at twenty minutes, and a cap tight enough to
+    // serialise 257 suites trades a per-suite risk for a whole-run one. Eight
+    // workers finish this project inside a third of that ceiling on a host
+    // running at twenty-five times its core count, which is the condition these
+    // figures were measured under.
+    maxWorkers: 8,
     minWorkers: 1,
     // A ceiling on a suite that never terminates, not a schedule any check is
     // written to. Every scenario here is stepped in whole ticks and none of them
