@@ -39,7 +39,7 @@
 // Its anchor is a quiet one clear of both vent-to-exhaust corridors.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, upgradeCost } from "../../src/constants";
+import { TOWER_DEFS, upgradeCost } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

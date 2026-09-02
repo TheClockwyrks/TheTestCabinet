@@ -40,7 +40,7 @@ import {
   TOWER_DEFS,
   TOWER_TYPES,
   type ActionName,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -26,7 +26,7 @@
 // and no wave starting, so the only thing that can move the speed is the key.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -43,7 +43,7 @@
 // about the floor's routes enters a reading about a key.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, TOWER_DEFS } from "../../src/constants";
+import { BINDINGS, TOWER_DEFS } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

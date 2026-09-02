@@ -31,7 +31,7 @@
 // precondition rests on the pose rather than on `reset` being right.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 

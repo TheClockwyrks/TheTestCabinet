@@ -37,7 +37,7 @@
 // fixes no build zone, and a single 2x2 block on open floor cannot seal a route.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

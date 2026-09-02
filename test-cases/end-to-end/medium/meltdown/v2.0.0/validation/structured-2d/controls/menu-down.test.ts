@@ -25,7 +25,7 @@
 // needs nothing posed to reach. The screen and the row are both posed outright.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 

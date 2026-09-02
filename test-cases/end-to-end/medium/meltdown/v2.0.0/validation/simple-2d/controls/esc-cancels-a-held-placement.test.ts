@@ -33,7 +33,7 @@
 // caught posing rather than passing on a preview it never held.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, TOWER_DEFS } from "../../src/constants";
+import { BINDINGS, TOWER_DEFS } from "../constants";
 import { assertEqual, assertNotNull, assertNull } from "../assert";
 import {
   captureStill,

@@ -42,7 +42,7 @@
 // VALID where it lands is `building.preview-valid-on-open-floor`'s reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import { assertCloseTo, assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,

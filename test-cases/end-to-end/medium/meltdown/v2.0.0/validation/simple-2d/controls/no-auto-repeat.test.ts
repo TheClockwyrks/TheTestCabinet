@@ -47,7 +47,7 @@ import {
   MODE_ITEMS,
   TOWER_DEFS,
   upgradeCost,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

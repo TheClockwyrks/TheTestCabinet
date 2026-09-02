@@ -24,7 +24,7 @@
 // all an arming needs.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS, TOWER_TYPES } from "../../src/constants";
+import { TOWER_DEFS, TOWER_TYPES } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,

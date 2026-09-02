@@ -35,7 +35,7 @@
 // the ENGINE's own pointer input.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -14,7 +14,7 @@
 // two small local files are cheaper than a shared one both groups have to agree
 // about while their agents are writing them side by side.
 
-import { LEFT_VENT_ROWS } from "../../src/constants";
+import { LEFT_VENT_ROWS } from "../constants";
 import { fail } from "../assert";
 import { tileCentre, type Tile } from "../geometry";
 import {

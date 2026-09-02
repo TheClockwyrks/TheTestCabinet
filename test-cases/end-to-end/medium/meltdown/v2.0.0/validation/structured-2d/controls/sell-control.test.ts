@@ -39,7 +39,7 @@
 // tower is selected".
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_DEFS } from "../../src/constants";
+import { TOWER_DEFS } from "../constants";
 import { assertEqual, assertTrue, assertUndefined } from "../assert";
 import {
   captureStill,

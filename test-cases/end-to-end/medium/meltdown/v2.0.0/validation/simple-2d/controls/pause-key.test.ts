@@ -35,7 +35,7 @@
 // the only thing that can change it is the key under test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
