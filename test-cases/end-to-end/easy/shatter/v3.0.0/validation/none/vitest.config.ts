@@ -43,13 +43,27 @@ export default defineConfig({
     // left to the core count because the cost of a page is memory in one shared
     // browser process rather than a core, and the host running this is running a
     // model's build under it.
-    maxWorkers: 4,
+    //
+    // EIGHT RATHER THAN FOUR, because the binding limit is not this project's
+    // own budget but the runner's: `VITEST_TIMEOUT` in
+    // `crates/core/src/vitest_validator.rs` bounds the whole suite run at twenty
+    // minutes, and this project's work is dominated by waiting on a crossing
+    // into a page rather than by processor. On a host running at twenty-five
+    // times its core count, four workers put the whole run past that ceiling and
+    // eight bring it back inside it — and a run the ceiling kills reports no
+    // point at all, which is a far worse answer than a slow one.
+    maxWorkers: 8,
     minWorkers: 1,
-    // Shatter's scenarios are stepped in whole ticks through the debug surface
-    // rather than watched in real time, but a few are long: the saucer's
-    // avoidance sweep flies 54 crossings, and `saucer/at-most-one-at-a-time`
-    // samples two minutes of game time every tick.
-    testTimeout: 120_000,
-    hookTimeout: 120_000,
+    // A ceiling on a suite that never terminates, not a schedule any check is
+    // written to. Every scenario here is stepped in whole ticks through the debug
+    // surface and none of them measures the wall clock, so what a check costs is
+    // round trips into a page on a host this project does not own — and a check
+    // that a busy host pushes past its allowance is a check that failed a correct
+    // build for a fact about the machine. The figure is therefore many times the
+    // longest scenario rather than a snug fit around it: the longest here run in
+    // well under a minute on a quiet host, and five minutes is room for one
+    // twenty times oversubscribed.
+    testTimeout: 300_000,
+    hookTimeout: 300_000,
   },
 });
