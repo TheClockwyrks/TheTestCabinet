@@ -10,10 +10,10 @@
 // THE TWO HALVES ARE THE ONE REQUIREMENT: the HUD and the table do not share
 // ground.
 //
-//   THE CONTROLS. The three rectangles specs/controls.md fixes are read from this
-// project's own `constants.ts`, which transcribes them, and each must lie
-// inside the strip. A build that put a control outside the band has moved the
-// HUD onto the table, whatever its own module says the rectangle is.
+//   THE CONTROLS. The three rectangles specs/controls.md fixes are read from
+//   this project's own `constants.ts`, which transcribes them, and each must lie
+//   inside the strip. A build that put a control outside the band has moved the
+//   HUD onto the table, whatever its own module says the rectangle is.
 //
 //   THE CARDS. The longest column the game can ever produce is posed, and every
 //   card-sized box the frame drew must end above the strip. specs/table.md keeps

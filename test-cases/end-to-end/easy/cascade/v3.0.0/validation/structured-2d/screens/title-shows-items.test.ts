@@ -12,10 +12,10 @@
 // `screens/title-how-to-opens`, so a build that draws both and answers neither
 // grades apart from one that draws neither.
 //
-// The literals are read from this project's own `constants.ts`, which
-// transcribes them from specs/screens.md. Matching
-// is by substring over the frame's own draw calls and ignores case, because a
-// menu entry is commonly drawn with padding or a marker beside it.
+// The literals are read from this project's own `constants.ts`, which transcribes
+// them from specs/screens.md. Matching is by substring over the frame's own draw
+// calls and ignores case, because a menu entry is commonly drawn with padding or a
+// marker beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

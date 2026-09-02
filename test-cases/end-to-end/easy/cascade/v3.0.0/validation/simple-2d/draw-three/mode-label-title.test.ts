@@ -5,8 +5,7 @@
 // "somewhere on the screen so a player sees which deal the game is played with".
 //
 // THIS POINT DECIDES THE LITERAL, which is why the text is written out here rather
-// than read from the build's own `src/constants.ts` or from the `dealModeLabel`
-// the
+// than read from the build's own `src/constants.ts` or from the `dealModeLabel` the
 // snapshot reports. The common `screens.title-shows-mode-label` holds the drawn text
 // against what the build reports, so that point decides consistency and this one
 // decides that what is reported and drawn is the label this variant plays under. A
