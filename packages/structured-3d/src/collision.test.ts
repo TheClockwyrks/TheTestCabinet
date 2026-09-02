@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ColliderComponent,
   CollisionSystem,
+  type CollisionDeps,
   type CollisionEventMap,
   type CollisionHitEvent,
   type CollisionPairEvent,
 } from "./collision";
+import { EngineEventBus } from "./events";
 import { QUAT_IDENTITY, UP, quatFromAxisAngle } from "./math";
 import type { Actor } from "./actors";
 import type {
@@ -67,8 +69,14 @@ function expectVec3(actual: Vec3, expected: Vec3, digits = 6): void {
   expect(actual.z).toBeCloseTo(expected.z, digits);
 }
 
-/** A fake world: actors in spawn order, a recording emitter, and the system. */
-function makeWorld() {
+/**
+ * A fake world: actors in spawn order, a recording emitter, and the system.
+ *
+ * `forward` is handed every event the pass emits, after it is recorded, which
+ * is how the one check that needs the real broadcaster gets it without the rest
+ * of the suite paying for a second subsystem.
+ */
+function makeWorld(forward?: CollisionDeps["emit"]) {
   const actors: FakeActor[] = [];
   const events: Emitted[] = [];
   let nextId = 1;
@@ -77,6 +85,7 @@ function makeWorld() {
     actors: () => actors as unknown as readonly Actor[],
     emit: (event, payload) => {
       events.push({ event, payload });
+      forward?.(event, payload);
     },
   });
 
@@ -1863,6 +1872,96 @@ describe("the usage page's collision matrix", () => {
     world.system.pass();
 
     expect(world.events).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The one row of the errors table the pass owns: a handler that throws costs
+ * the remaining handlers nothing.
+ *
+ * The pass emits through the engine's broadcaster, and it is the broadcaster
+ * that isolates a subscriber's bug — but the row is stated on the collision
+ * page, about `hit` and the two overlap events, so it is pinned here over the
+ * real bus rather than left to the bus's own suite to imply. A pass that
+ * gathered its handlers itself instead would break the row with a green bus.
+ */
+describe("a collision handler that throws", () => {
+  /** The fake world of `makeWorld`, emitting through a real broadcaster. */
+  function busWorld() {
+    const bus = new EngineEventBus();
+    const world = makeWorld((event, payload) => bus.emit(event, payload));
+    return { ...world, bus };
+  }
+
+  /** A blocking pair and an overlapping pair, both far apart until moved. */
+  function pairs(world: ReturnType<typeof busWorld>): FakeActor {
+    const mover = world.actor(0, 0, 0);
+    world.collider(mover, {
+      shape: { kind: "sphere", radius: 0.5 },
+      channel: "ball",
+      responses: { wall: "block", goal: "overlap" },
+    });
+    const wall = world.actor(10, 0, 0);
+    world.collider(wall, {
+      shape: { kind: "sphere", radius: 0.5 },
+      channel: "wall",
+    });
+    const goal = world.actor(20, 0, 0);
+    world.collider(goal, {
+      shape: { kind: "sphere", radius: 0.5 },
+      channel: "goal",
+    });
+    return mover;
+  }
+
+  it("costs the remaining hit handlers nothing, and is reported", () => {
+    const world = busWorld();
+    const mover = pairs(world);
+    const reported = vi.spyOn(console, "error").mockImplementation(() => {});
+    const cause = new Error("handler bug");
+    const after = vi.fn();
+    world.bus.on("hit", () => {
+      throw cause;
+    });
+    world.bus.on("hit", after);
+
+    mover.transform = at(9.5, 0, 0);
+    expect(() => world.system.pass()).not.toThrow();
+
+    expect(after).toHaveBeenCalledTimes(1);
+    expect(reported).toHaveBeenCalledWith(
+      'structured-3d: an "hit" handler threw',
+      cause,
+    );
+    reported.mockRestore();
+  });
+
+  it("costs the remaining overlap handlers nothing, on both edges", () => {
+    const world = busWorld();
+    const mover = pairs(world);
+    const reported = vi.spyOn(console, "error").mockImplementation(() => {});
+    const began = vi.fn();
+    const ended = vi.fn();
+    world.bus.on("overlap:begin", () => {
+      throw new Error("begin bug");
+    });
+    world.bus.on("overlap:begin", began);
+    world.bus.on("overlap:end", () => {
+      throw new Error("end bug");
+    });
+    world.bus.on("overlap:end", ended);
+
+    mover.transform = at(19.5, 0, 0);
+    expect(() => world.system.pass()).not.toThrow();
+    mover.transform = at(0, 0, 0);
+    expect(() => world.system.pass()).not.toThrow();
+
+    expect(began).toHaveBeenCalledTimes(1);
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(reported).toHaveBeenCalledTimes(2);
+    reported.mockRestore();
   });
 });
 
