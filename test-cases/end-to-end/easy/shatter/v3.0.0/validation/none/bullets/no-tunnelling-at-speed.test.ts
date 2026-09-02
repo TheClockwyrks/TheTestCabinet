@@ -132,8 +132,7 @@ it("takes a Small with a round closing at 1200 units per second, and misses it w
       target.vx + SPEED,
       target.vy,
     );
-    await h.advance(1);
-    const struck = await h.snapshot();
+    const struck = await h.advance(1);
 
     await h.advance(AFTERMATH_TICKS);
     return { missed, struck };

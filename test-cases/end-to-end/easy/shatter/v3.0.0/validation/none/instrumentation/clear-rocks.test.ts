@@ -41,8 +41,7 @@ afterEach(async () => {
 it("removes every rock and leaves the rest of the field standing", async () => {
   await startPlaying(h);
   const posed = await posePopulatedField(h);
-  await h.advance(1);
-  const before = await h.snapshot();
+  const before = await h.advance(1);
   assertLength(before.rocks, posed.rocks.length, "the rocks the field held");
 
   await h.debug.clearRocks();

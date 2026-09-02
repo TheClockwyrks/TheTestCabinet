@@ -37,8 +37,7 @@ afterEach(async () => {
 it("removes every one of the ship's bullets and leaves the rest standing", async () => {
   await startPlaying(h);
   const posed = await posePopulatedField(h);
-  await h.advance(1);
-  const before = await h.snapshot();
+  const before = await h.advance(1);
   assertLength(
     before.bullets,
     posed.bullets.length,

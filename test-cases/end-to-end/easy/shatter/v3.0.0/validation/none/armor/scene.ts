@@ -140,8 +140,7 @@ export async function slingIntoTheStar(h: Harness): Promise<Recycle> {
 
   let before = falling.snapshot;
   for (let tick = 1; tick <= ticksFor(2); tick += 1) {
-    await h.advance(1);
-    const at = await h.snapshot();
+    const at = await h.advance(1);
     const was = before.rocks[0];
     const now = at.rocks[0];
     if (

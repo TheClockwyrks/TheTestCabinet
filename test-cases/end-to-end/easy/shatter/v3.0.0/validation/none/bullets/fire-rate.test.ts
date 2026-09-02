@@ -99,8 +99,10 @@ it("takes 1200 / FIRE_INTERVAL_TICKS shots over ten seconds of held fire", async
   await h.hold(KEY_FIRE);
   try {
     for (let tick = 1; tick <= WINDOW_TICKS; tick += 1) {
-      await h.advance(1);
-      const now = await h.snapshot();
+      // The state the tick left comes back off the step that ran it, rather than
+      // from a second crossing asking for the same reading — the same reading,
+      // half the round trips, over a thousand-tick window.
+      const now = await h.advance(1);
       shots += now.bullets.length;
       // Every tick but the last, so the picture kept below still holds a round.
       if (now.bullets.length > 0 && tick < WINDOW_TICKS) {

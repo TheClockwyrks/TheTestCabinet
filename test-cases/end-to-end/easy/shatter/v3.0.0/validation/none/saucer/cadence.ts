@@ -211,36 +211,13 @@ export async function nextVolley(
 
   if (leadIn > 0) await h.skip(leadIn);
 
-  let held: readonly number[] = previous;
-  let ticks = -1;
-  let caught: Volley | null = null;
-  await sampleEvery(h, { stride: 1, maxTicks }, (snapshot) => {
-    ticks += 1;
-    const rounds = snapshot.enemyBullets;
-    const ids = rounds.map((round) => round.id);
-    // The sweep's first sample is the state it starts FROM, and after a lead-in
-    // that state may already hold a round fired several ticks ago, whose velocity
-    // the well has had time to bend. So it seeds the comparison and is never read
-    // as a shot: what this returns is always a round that appeared on a tick the
-    // sweep itself ran.
-    if (ticks === 0) {
-      held = ids;
-      return false;
-    }
-    const fired = rounds.filter((round) => !held.includes(round.id));
-    if (fired.length > 0) {
-      caught = {
-        fired,
-        saucer: snapshot.saucer ?? null,
-        ticks: leadIn + ticks,
-        ids,
-        snapshot,
-      };
-      return true;
-    }
-    held = ids;
-    return false;
-  });
+  // THE SWEEP RUNS INSIDE THE PAGE, for the reason the section below this one
+  // states at length: a tick at a time is the only sampling that cannot step over
+  // a shot, and a crossing per tick makes what the three aim items cost a fact
+  // about the host rather than about the build. The loop calls the BUILD's own
+  // `advance(1)` and the BUILD's own `snapshot()`, in the same order a sweep
+  // through the harness calls them, and stops on the same tick.
+  const caught = await traceNextVolley(h, previous, maxTicks, leadIn);
 
   if (caught === null) {
     fail(
@@ -381,6 +358,82 @@ export async function traceSaucerVisits(
     [HANDLE, ticks] as [string, number],
   )) as Traced<VisitTrace[]>;
   return requireTrace(traced);
+}
+
+/**
+ * Run a tick at a time until the saucer-bullet roster gains a round it did not
+ * hold the tick before, and report that tick — all inside the page.
+ *
+ * The page-side counterpart of the sweep {@link nextVolley} describes, and the
+ * same sweep: the first sample is the state it starts from and seeds the
+ * comparison, every tick after it is a real `advance(1)`, and the first tick
+ * carrying a round the previous sample did not is the one that comes back.
+ * `null` is "no round appeared inside `maxTicks`", which is the caller's failure
+ * to report, not this one's.
+ */
+async function traceNextVolley(
+  h: Harness,
+  previous: readonly number[],
+  maxTicks: number,
+  leadIn: number,
+): Promise<Volley | null> {
+  if (h.surfaceFault !== null) failSurface(h.surfaceFault);
+  const traced = (await h.page.evaluate(
+    ([handle, spec]) => {
+      const api = (window as unknown as Record<string, unknown>)[handle] as
+        | {
+            advance(n: number): void;
+            snapshot(): {
+              saucer: unknown;
+              enemyBullets: { id: number }[];
+            };
+          }
+        | undefined;
+      if (
+        api === undefined ||
+        typeof api.advance !== "function" ||
+        typeof api.snapshot !== "function"
+      ) {
+        return { fault: "advance and snapshot on the debug surface" };
+      }
+      try {
+        let held: number[] = [...spec.previous];
+        for (let tick = 1; tick <= spec.maxTicks; tick += 1) {
+          api.advance(1);
+          const snapshot = api.snapshot();
+          const rounds = snapshot.enemyBullets ?? [];
+          const ids = rounds.map((round) => round.id);
+          const fired = rounds.filter((round) => !held.includes(round.id));
+          if (fired.length > 0) {
+            return { read: { fired, snapshot, ids, tick } };
+          }
+          held = ids;
+        }
+        return { read: null };
+      } catch (error) {
+        return { fault: String(error) };
+      }
+    },
+    [HANDLE, { previous: [...previous], maxTicks }] as [
+      string,
+      { previous: number[]; maxTicks: number },
+    ],
+  )) as Traced<{
+    fired: ShotView[];
+    snapshot: ShatterSnapshot;
+    ids: number[];
+    tick: number;
+  } | null>;
+  if (traced.fault !== undefined) failSurface(traced.fault);
+  const read = traced.read;
+  if (read === undefined || read === null) return null;
+  return {
+    fired: read.fired,
+    saucer: read.snapshot.saucer ?? null,
+    ticks: leadIn + read.tick,
+    ids: read.ids,
+    snapshot: read.snapshot,
+  };
 }
 
 /** How a crossing is followed past the star. */

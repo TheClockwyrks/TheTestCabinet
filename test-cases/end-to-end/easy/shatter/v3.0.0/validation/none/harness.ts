@@ -535,8 +535,16 @@ export interface Harness {
    * reviewer should watch, and {@link skip} for the march that got there.
    * `advance(0)` runs nothing; a check that is ABOUT `advance(0)` calls the
    * surface's own operation instead.
+   *
+   * IT ANSWERS THE STATE THE TICKS LEFT, read inside the same crossing that ran
+   * them. A sweep that steps a tick and then reads it is the shape half this
+   * project is written in, and taking the reading off the return rather than
+   * calling {@link snapshot} after it is the same reading for half the crossings
+   * — which, on a host where a crossing costs a tenth of a second, is the
+   * difference between a check that fits its allowance and one that does not. A
+   * caller with no use for it ignores it.
    */
-  advance(ticks: number): Promise<void>;
+  advance(ticks: number): Promise<ShatterSnapshot>;
   /**
    * Run `ticks` real ticks in one call, closing no recorded frame.
    *
@@ -545,8 +553,11 @@ export interface Harness {
    * `specs/instrumentation.md` has `advance(n)` run `n` whole ticks "immediately
    * and in order", so a batch and a run of singles reach the same state. What it
    * saves is a capture's budget and a crossing per tick.
+   *
+   * Like {@link advance}, it answers the state the ticks left, read inside the
+   * same crossing.
    */
-  skip(ticks: number): Promise<void>;
+  skip(ticks: number): Promise<ShatterSnapshot>;
   /** Advance until `predicate` holds, sampling every `poll` ticks. */
   until(
     predicate: (snapshot: ShatterSnapshot) => boolean,
@@ -1072,11 +1083,13 @@ export async function createHarness(
     snapshot: () => debug.snapshot(),
 
     advance: async (count) => {
-      if (count > 0) await drive(count);
+      if (count > 0) return drive(count);
+      return debug.snapshot();
     },
 
     skip: async (count) => {
-      if (count > 0) await march(count);
+      if (count > 0) return march(count);
+      return debug.snapshot();
     },
 
     until: (predicate, untilOptions = {}) =>

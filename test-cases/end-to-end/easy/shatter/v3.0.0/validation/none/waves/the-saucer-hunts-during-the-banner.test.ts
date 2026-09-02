@@ -162,8 +162,7 @@ it("keeps the saucer travelling and firing while the banner shows", async () => 
   let pictured = false;
 
   while (ticks < BANNER_TICKS) {
-    await h.advance(1);
-    const now = await h.snapshot();
+    const now = await h.advance(1);
     if (now.waveBanner <= 0) break;
     ticks += 1;
     last = now;

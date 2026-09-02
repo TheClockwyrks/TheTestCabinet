@@ -127,8 +127,7 @@ it("spends exactly one ship on a Small crossing it at 1200 units per second, and
       0,
       CLOSING,
     );
-    await h.advance(1);
-    const struck = await h.snapshot();
+    const struck = await h.advance(1);
 
     await h.advance(AFTERMATH_TICKS);
     return { missed, struck };
