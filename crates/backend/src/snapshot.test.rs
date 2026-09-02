@@ -317,6 +317,36 @@ fn run_summary_lifts_the_gg_configuration_name_onto_the_card() {
 }
 
 #[test]
+fn run_summary_lifts_the_gg_configuration_id_beside_the_name() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    // The id is what a listing narrowed to one configuration's runs matches on, so the
+    // card carries it beside the name a person reads. Two cards may show one name; the
+    // ids tell them apart.
+    let mut launched = stored_run("r1", "2026-06-17T21:40:00Z");
+    launched.record.subject.harness_slug = HarnessSlug::Gg;
+    launched.record.subject.gg_capability_set = Some(GgCapabilitySet {
+        preset: Some("planning-A".to_string()),
+        preset_id: Some("cfg-a".to_string()),
+        ..GgCapabilitySet::default()
+    });
+    let subject = RunSummary::from_stored(&launched).subject;
+    assert_eq!(subject.gg_config_id.as_deref(), Some("cfg-a"));
+    assert_eq!(subject.gg_preset.as_deref(), Some("planning-A"));
+
+    // A gg run assembled by hand belongs to no configuration, so it carries no id.
+    let mut hand_assembled = stored_run("r2", "2026-06-17T21:41:00Z");
+    hand_assembled.record.subject.harness_slug = HarnessSlug::Gg;
+    hand_assembled.record.subject.gg_capability_set = Some(GgCapabilitySet::default());
+    assert_eq!(
+        RunSummary::from_stored(&hand_assembled)
+            .subject
+            .gg_config_id,
+        None
+    );
+}
+
+#[test]
 fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
     use test_cabinet_core::validation::PerformanceResult;
 

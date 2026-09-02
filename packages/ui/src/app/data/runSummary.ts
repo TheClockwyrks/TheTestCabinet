@@ -45,6 +45,11 @@ export function toRunSummary(stored: StoredRun): RunSummary {
       // set) and for a gg run assembled by hand rather than from a named
       // configuration.
       ggPreset: record.subject.ggCapabilitySet?.preset ?? null,
+      // The configuration's id beside its name, lifted exactly as the Rust
+      // `SubjectOut::from` does. It is what identifies the run's coverage cell, so a
+      // listing narrowed to one configuration's runs matches on this rather than on
+      // the name two configurations may share.
+      ggConfigId: record.subject.ggCapabilitySet?.presetId ?? null,
     },
     // The display name is resolved from the catalog elsewhere in the UI; fall back
     // to the slug so a summary is self-describing without a catalog lookup.

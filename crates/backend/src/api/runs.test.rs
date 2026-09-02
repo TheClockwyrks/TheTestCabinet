@@ -16,6 +16,18 @@ fn parse_comma_list_splits_trims_and_drops_empties() {
 }
 
 #[test]
+fn list_params_bind_the_gg_configuration_filter_from_its_wire_name() {
+    // The struct carries no `rename_all`, so each camelCase param needs its own rename.
+    // Without one the filter binds nothing and a coverage cell's link quietly widens to
+    // every run of the model.
+    let uri: axum::http::Uri = "/runs?fields=summary&offset=0&ggConfigId=cfg-a"
+        .parse()
+        .unwrap();
+    let Query(params) = Query::<ListParams>::try_from_uri(&uri).unwrap();
+    assert_eq!(params.gg_config_id.as_deref(), Some("cfg-a"));
+}
+
+#[test]
 fn parse_comma_list_yields_none_for_absent_or_empty_input() {
     // No param, an empty string, and nothing-but-separators all mean "no filter",
     // so the store never sees an empty list it would have to special-case.

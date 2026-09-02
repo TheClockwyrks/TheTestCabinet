@@ -53,19 +53,6 @@ vi.mock("../../../client/auth", () => ({
 
 const createGgConfig = vi.fn().mockResolvedValue({ id: "c1" });
 const updateGgConfig = vi.fn().mockResolvedValue({ id: "cfg-1" });
-// What a confirmation was asked about, and how the operator answered it. A rename is
-// the one edit here whose cost lands outside this form, so the page has to ask.
-let confirmAnswer = true;
-const confirmed = vi.fn();
-vi.mock("../../components/ConfirmDialog", () => ({
-  useConfirm: () => ({
-    confirm: (options: { title: string; message: string }) => {
-      confirmed(options);
-      return Promise.resolve(confirmAnswer);
-    },
-    alert: async () => {},
-  }),
-}));
 const createGgAgent = vi.fn();
 // Whether `GET /gg/agents` answers. A library that fails to load leaves every imported
 // profile looking inline, which is the one state the page must refuse to save from.
@@ -240,8 +227,6 @@ describe("GgConfigEditPage", () => {
   beforeEach(() => {
     createGgConfig.mockClear();
     updateGgConfig.mockClear();
-    confirmed.mockClear();
-    confirmAnswer = true;
   });
 
   it("renders the configuration's three sections, capabilities behind an agent", async () => {
@@ -1439,20 +1424,16 @@ describe("one saved agent imported twice", () => {
   });
 });
 
-// A gg coverage cell and a ladder climber are identified by the configuration's name,
-// because that is what a run records. Renaming therefore re-points every cell built on
-// the configuration: the recorded runs stay under the old name, the cells read as
-// empty, and the next top-up buys them again. The identity is deliberate; the cost has
-// to be visible before it is paid.
-describe("GgConfigEditPage renaming", () => {
+// A gg coverage cell and a ladder climber are identified by the configuration's id, so
+// what a saved configuration writes into its own capability set is that id. The name
+// rides beside it as display text and as the run log's slice-by facet, which is why
+// renaming costs nothing and the form asks nothing before it saves one.
+describe("GgConfigEditPage attribution", () => {
   beforeEach(() => {
     createGgConfig.mockClear();
     updateGgConfig.mockClear();
-    confirmed.mockClear();
-    confirmAnswer = true;
   });
 
-  // Open the stored configuration and wait for its name to arrive in the field.
   async function openStored() {
     renderPage("/account/gg/cfg-1/edit");
     await waitFor(() =>
@@ -1462,54 +1443,57 @@ describe("GgConfigEditPage renaming", () => {
     );
   }
 
-  function rename(next: string) {
+  function save(label = "Save configuration") {
+    fireEvent.click(screen.getByRole("button", { name: label }));
+  }
+
+  it("stores the configuration's own id beside its name", async () => {
+    await openStored();
+    save();
+    await waitFor(() => expect(updateGgConfig).toHaveBeenCalledTimes(1));
+    const [, input] = updateGgConfig.mock.calls[0]!;
+    expect(input.capabilitySet.presetId).toBe("cfg-1");
+    expect(input.capabilitySet.preset).toBe("Duo");
+  });
+
+  it("renames without asking, and keeps the id the runs are attributed to", async () => {
+    await openStored();
     fireEvent.change(screen.getByLabelText("Configuration name"), {
-      target: { value: next },
-    });
-  }
-
-  function save() {
-    fireEvent.click(screen.getByRole("button", { name: "Save configuration" }));
-  }
-
-  it("says what a rename costs while the name still differs", async () => {
-    await openStored();
-    expect(screen.queryByText(/re-points the coverage cells/)).toBeNull();
-    rename("Duo v2");
-    expect(screen.getByText(/re-points the coverage cells/)).toBeTruthy();
-    // Typing the stored name back is not a rename, so the warning goes with it.
-    rename("Duo");
-    expect(screen.queryByText(/re-points the coverage cells/)).toBeNull();
-  });
-
-  it("asks before saving a rename, naming both names and the cost", async () => {
-    await openStored();
-    rename("Duo v2");
-    save();
-    await waitFor(() => expect(updateGgConfig).toHaveBeenCalledTimes(1));
-    expect(confirmed).toHaveBeenCalledTimes(1);
-    const [options] = confirmed.mock.calls[0]!;
-    expect(options.message).toMatch(/“Duo” to “Duo v2”/);
-    expect(options.message).toMatch(/buys those runs again/);
-    expect(updateGgConfig.mock.calls[0]![1].name).toBe("Duo v2");
-  });
-
-  it("writes nothing when the rename is declined", async () => {
-    await openStored();
-    confirmAnswer = false;
-    rename("Duo v2");
-    save();
-    await waitFor(() => expect(confirmed).toHaveBeenCalledTimes(1));
-    expect(updateGgConfig).not.toHaveBeenCalled();
-  });
-
-  it("saves an edit that keeps the name without asking", async () => {
-    await openStored();
-    fireEvent.change(screen.getByLabelText("Description (optional)"), {
-      target: { value: "still the two-agent arm" },
+      target: { value: "Duo v2" },
     });
     save();
     await waitFor(() => expect(updateGgConfig).toHaveBeenCalledTimes(1));
-    expect(confirmed).not.toHaveBeenCalled();
+    const [, input] = updateGgConfig.mock.calls[0]!;
+    expect(input.name).toBe("Duo v2");
+    // The name moved; the identity did not, so every cell built on this configuration
+    // keeps the runs recorded under it.
+    expect(input.capabilitySet.presetId).toBe("cfg-1");
+    expect(input.capabilitySet.preset).toBe("Duo v2");
+  });
+
+  it("writes no id for a configuration being created, which has none yet", async () => {
+    renderPage();
+    fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "fresh" },
+    });
+    save("Create configuration");
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    expect(createGgConfig.mock.calls[0]![0].capabilitySet.presetId).toBe(
+      undefined,
+    );
+  });
+
+  it("writes no id for a duplicate, which must not answer for its original", async () => {
+    renderPage("/account/gg/new?from=saved:cfg-1");
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Configuration name") as HTMLInputElement).value,
+      ).toBe("Duo (copy)"),
+    );
+    save("Create configuration");
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    expect(createGgConfig.mock.calls[0]![0].capabilitySet.presetId).toBe(
+      undefined,
+    );
   });
 });

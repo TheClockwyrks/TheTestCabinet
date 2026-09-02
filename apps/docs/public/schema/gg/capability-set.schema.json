@@ -684,7 +684,11 @@
       "type": "array"
     },
     "preset": {
-      "description": "The name of a saved preset this set was assembled from (for example\n`\"minimal\"`, `\"full\"`, or `\"planning-A\"`), when it is a named preset rather\nthan a hand-assembled configuration. A study is a sweep over presets, so this\nrecords which one produced a run.",
+      "description": "The **name** a saved configuration carried at launch (for example `\"minimal\"`,\n`\"full\"`, or `\"planning-A\"`), when this set was launched from one rather than\nassembled by hand. A study is a sweep over configurations, so this records which\none produced a run.\n\nDisplay text and a slicing key: it is what the run log shows, what the\n[query language](https://docs.testcabinet.ai/gg/analysis/query-language/) reads as\n`preset`, and what a comparison groups by. It is not identity — a name is rewritten\nfreely and two configurations may share one, so what a run is *attributed* to is\n[`preset_id`](Self::preset_id).",
+      "type": ["string", "null"]
+    },
+    "presetId": {
+      "description": "The **id** of the saved configuration this set was launched from, when it was\nlaunched from one rather than assembled by hand.\n\nThis is what identifies a run's\n[coverage cell](https://docs.testcabinet.ai/components/backend/coverage/), and\n[`preset`](Self::preset) beside it is what a person reads: the id is minted once and\nnever rewritten, so renaming a configuration costs a plan nothing and two\nconfigurations that happen to agree on a name stay two cells.\n\nRecording it is consistent with gg's rule that launching resolves a configuration's\ninternal ids away. That rule covers the ids of [agent profiles](GgAgentConfig::id),\nwhich are references the model reads back by slug, and nothing in a launched set\npoints at the configuration's own id — the model is never shown it. It rides along\nas provenance, so a run can be attributed to the configuration that produced it.",
       "type": ["string", "null"]
     }
   },

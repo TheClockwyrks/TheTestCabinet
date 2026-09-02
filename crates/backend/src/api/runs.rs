@@ -394,6 +394,7 @@ pub async fn list(
             version: params.version.clone(),
             versions: parse_comma_list(params.versions.as_deref()),
             engine: params.engine.clone(),
+            gg_config_id: params.gg_config_id.clone(),
             latest_versions: params.latest_versions.unwrap_or(false),
             aesthetic: params.aesthetic.clone(),
             q: params.q.clone(),
@@ -964,6 +965,12 @@ pub struct ListParams {
     /// Filter to one engine slug (summary + offset path only) — the slug the run
     /// was launched under, with the engineless run recording the slug `none`.
     engine: Option<String>,
+    /// Filter to the runs launched from one gg configuration, by its id (summary +
+    /// offset path only). A coverage cell counts by the same value, so a listing
+    /// narrowed by it holds exactly the runs behind a cell's figure. Wire:
+    /// `ggConfigId`.
+    #[serde(rename = "ggConfigId")]
+    gg_config_id: Option<String>,
     /// Filter to runs whose aggregate aesthetic rating is exactly this tier
     /// (`legendary`/`amazing`/`good`/`okay`/`slop`; summary + offset path only).
     /// A run no review has rated on that channel never matches.

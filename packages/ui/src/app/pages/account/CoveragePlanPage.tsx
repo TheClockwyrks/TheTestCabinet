@@ -40,7 +40,7 @@ import { launchBatch, type LaunchItem } from "../runs/launchBatch";
 import { axisLabel } from "./coveragePickers";
 import {
   comboLabel,
-  ggConfigLabel,
+  ggConfigKey,
   isGgCombo,
   type CombinationLike,
 } from "./comboLabels";
@@ -57,6 +57,10 @@ import styles from "./Coverage.module.scss";
 // key must never collide and two members that swapped one model between two slots bind
 // the same set of models.
 //
+// The configuration is named by its id, which is what the server keys a cell on: two of
+// an account's configurations may carry one name, and a key built from the name would
+// hand React one key for the two cells that pair produces.
+//
 // Empty for a harness cell, which leaves its key byte-identical to what it always was.
 function ggIdentity(c: CombinationLike): string {
   if (!isGgCombo(c)) return "";
@@ -64,7 +68,7 @@ function ggIdentity(c: CombinationLike): string {
     .map(([slot, model]) => `${slot}=${model}`)
     .sort()
     .join(",");
-  return `${ggConfigLabel(c)}/${slots}`;
+  return `${ggConfigKey(c.ggConfigId)}/${slots}`;
 }
 
 /**
@@ -270,19 +274,20 @@ export async function launchGgCells(
 // away, leaving an empty page for a cell that plainly has runs. Variant is not a
 // facet the listing offers, so a multi-variant case's cells share a link.
 //
-// A gg cell adds the configuration's name as the listing's free text, which the
-// backend matches against the recorded `gg_preset` among other columns. There is no
-// configuration facet to pin it exactly, so this narrows rather than isolates: two
-// configurations whose names share a substring land in one listing. That is still much
-// closer than `harness=gg` on its own, which would return every gg run of the model.
+// A gg cell adds the configuration's id as the listing's `ggConfigId` filter, the
+// same value the cell's own counts group on, so the rows behind the figure are exactly
+// the rows the link lands on. The id and never the name: the runs recorded before a
+// rename carry the old name, and another account's same-named configuration carries
+// this one, so a name narrows to a set the count was never made of.
 function cellRunsHref(cell: CoverageCell): string {
+  const ggConfigId = ggConfigKey(cell.ggConfigId);
   const params = new URLSearchParams({
     case: cell.slug,
     version: cell.version,
     harness: cell.harness,
     model: cell.model,
     latest: "0",
-    ...(cell.ggConfigName ? { q: cell.ggConfigName } : {}),
+    ...(ggConfigId ? { ggConfigId } : {}),
   });
   return `${routes.runs()}?${params.toString()}`;
 }

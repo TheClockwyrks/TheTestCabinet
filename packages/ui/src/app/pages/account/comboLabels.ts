@@ -61,6 +61,21 @@ export function ggBoundModels(combo: CombinationLike): string[] {
 }
 
 /**
+ * The configuration a reference names, in the one form every key built on it uses.
+ *
+ * The wire contract accepts a bare id and stores what arrived, while the picker writes the
+ * launcher's `saved:<id>`, so two members of one configuration can carry either spelling
+ * and both have to key identically.
+ *
+ * Keys are built from the id rather than the name because nothing makes a name unique
+ * within an account: two configurations may carry one, and the server counts those as two
+ * cells.
+ */
+export function ggConfigKey(configId: string | null | undefined): string {
+  return (configId ?? "").replace(/^saved:/, "");
+}
+
+/**
  * What a gg combination's configuration is called.
  *
  * Falls back to the bare id when the name is missing, which happens for exactly one
@@ -71,7 +86,7 @@ export function ggBoundModels(combo: CombinationLike): string[] {
 export function ggConfigLabel(combo: CombinationLike): string {
   const name = (combo.ggConfigName ?? "").trim();
   if (name) return name;
-  return (combo.ggConfigId ?? "").replace(/^saved:/, "");
+  return ggConfigKey(combo.ggConfigId);
 }
 
 /**

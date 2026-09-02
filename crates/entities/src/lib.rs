@@ -14,6 +14,7 @@
 //! `coverage_settings`, and the four `ladder*` tables) are console-only and never
 //! feed the public snapshot.
 
+pub mod backfill_state;
 pub mod case_reference_build;
 pub mod case_reference_sheet;
 pub mod comparison;

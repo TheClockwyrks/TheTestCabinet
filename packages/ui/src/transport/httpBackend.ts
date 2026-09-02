@@ -1431,6 +1431,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (opts?.versions?.length)
         params.set("versions", opts.versions.join(","));
       if (opts?.engine) params.set("engine", opts.engine);
+      if (opts?.ggConfigId) params.set("ggConfigId", opts.ggConfigId);
       // Only sent when on: the backend defaults it off, so the common URL stays
       // free of a redundant `latestVersions=false`.
       if (opts?.latestVersions) params.set("latestVersions", "true");

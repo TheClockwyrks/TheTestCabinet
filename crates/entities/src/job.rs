@@ -57,14 +57,25 @@ pub struct Model {
     /// the capability set at enqueue and mirroring `run.gg_preset` on the run the job
     /// produces.
     ///
-    /// The pair with [`gg_models`](Self::gg_models) is a gg job's coverage cell. A
-    /// plan counts a cell's in-flight runs with a grouped query over `job`, so the
-    /// two segments have to be columns for the same reason `harness_slug` and
-    /// `model_id` already are — deserializing `gg_config_json` per row cannot be part
-    /// of a `GROUP BY`. `NULL` for every third-party-harness job and for a gg job
-    /// assembled by hand rather than from a saved configuration.
+    /// Display text and a slicing key, not identity: the active-run list names a gg job
+    /// by its configuration, and what the job is *counted* under is
+    /// [`gg_config_id`](Self::gg_config_id). `NULL` for every third-party-harness job and
+    /// for a gg job assembled by hand rather than from a saved configuration.
     #[sea_orm(column_type = "Text", nullable)]
     pub gg_preset: Option<String>,
+    /// The **id** of the gg configuration this job was launched from, lifted from the
+    /// capability set at enqueue and mirroring `run.gg_config_id` on the run the job
+    /// produces.
+    ///
+    /// The pair with [`gg_models`](Self::gg_models) is a gg job's coverage cell — the id
+    /// rather than the [name](Self::gg_preset) because a name is renamed freely and is
+    /// unique to nothing. A plan counts a cell's in-flight runs with a grouped query over
+    /// `job`, so both segments have to be columns for the same reason `harness_slug` and
+    /// `model_id` already are: deserializing `gg_config_json` per row cannot be part of a
+    /// `GROUP BY`. `NULL` for every third-party-harness job and for a gg job assembled by
+    /// hand rather than from a saved configuration.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub gg_config_id: Option<String>,
     /// The models this job's gg capability set binds, sorted, de-duplicated, and
     /// comma-joined, lifted at enqueue and mirroring `run.gg_models`.
     ///

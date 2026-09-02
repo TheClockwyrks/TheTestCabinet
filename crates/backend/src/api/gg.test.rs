@@ -640,3 +640,80 @@ fn into_launch_body_rejects_an_agent_slot_that_reaches_no_launch_input() {
         "unexpected reason: {err}"
     );
 }
+
+#[test]
+fn a_launch_records_the_bare_configuration_id_however_the_client_spelled_it() {
+    // The console's picker values a configuration as `saved:<id>`, and a client submitting
+    // what it displays must land in the same cell as a plan that schedules the very same
+    // configuration — whose members carry the bare id.
+    let spelled = |reference: &str| {
+        let mut set = authored(GgCapabilitySet::minimal("mock/echo"));
+        set.preset = Some("Critic sweep".to_string());
+        set.preset_id = Some(reference.to_string());
+        GgRunRequest {
+            capability_set: set,
+            ..sample_request()
+        }
+        .into_launch_body()
+        .expect("the Root agent is bound")
+        .gg_capability_set
+        .expect("a gg launch body carries the capability set")
+        .preset_id
+    };
+    assert_eq!(spelled("saved:cfg-1").as_deref(), Some("cfg-1"));
+    assert_eq!(spelled("cfg-1").as_deref(), Some("cfg-1"));
+    assert_eq!(spelled("  saved:cfg-1  ").as_deref(), Some("cfg-1"));
+    // A blank reference names no configuration. Recorded as an id it would be the same empty
+    // segment a set assembled by hand carries, filing this run into that shared cell.
+    assert_eq!(spelled("   "), None);
+    assert_eq!(spelled("saved:"), None);
+    // And a set assembled by hand carries no id at all, which is what leaves it attributed to
+    // no configuration.
+    assert_eq!(
+        sample_request()
+            .into_launch_body()
+            .expect("the Root agent is bound")
+            .gg_capability_set
+            .expect("a gg launch body carries the capability set")
+            .preset_id,
+        None
+    );
+}
+
+#[test]
+fn a_launch_is_bound_only_to_a_configuration_the_launching_account_holds() {
+    let library = HashMap::from([("cfg-a".to_string(), "planning-A".to_string())]);
+    let named = |reference: Option<&str>| {
+        let mut set = GgCapabilitySet::minimal("mock/echo");
+        set.preset = Some("what the client last read".to_string());
+        set.preset_id = reference.map(str::to_string);
+        set
+    };
+
+    // A configuration the account holds, in the picker's own spelling: reduced to the bare id
+    // the cell is keyed on, and stamped with the name the configuration bears now rather than
+    // the one the client held when it last loaded its picker.
+    let mut owned = named(Some("saved:cfg-a"));
+    bind_launch_configuration(&mut owned, &library).expect("the account holds cfg-a");
+    assert_eq!(owned.preset_id.as_deref(), Some("cfg-a"));
+    assert_eq!(owned.preset.as_deref(), Some("planning-A"));
+
+    // One it does not hold is refused by name. Recorded, it would file the run into a cell
+    // its launcher cannot see, and satisfy a target another account never asked for.
+    let mut foreign = named(Some("cfg-b"));
+    let err = bind_launch_configuration(&mut foreign, &library)
+        .expect_err("cfg-b belongs to another account");
+    assert!(err.contains("cfg-b"), "unexpected reason: {err}");
+
+    // A set assembled by hand names no configuration and is left exactly as it arrived.
+    let mut hand = named(None);
+    bind_launch_configuration(&mut hand, &library).expect("a hand-assembled set launches");
+    assert_eq!(hand.preset_id, None);
+    assert_eq!(hand.preset.as_deref(), Some("what the client last read"));
+
+    // And a reference that names nothing is no configuration either, rather than the empty
+    // id every hand-assembled set would share a cell under.
+    let mut blank = named(Some("saved:"));
+    bind_launch_configuration(&mut blank, &library).expect("a blank reference names nothing");
+    assert_eq!(blank.preset_id, None);
+}

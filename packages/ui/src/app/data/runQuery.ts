@@ -69,6 +69,13 @@ export interface RunQuery {
    * the run was launched under; the engineless run records the slug `none`, and a
    * card from before the engine dimension existed reads as `none` too. */
   engine?: string;
+  /** Filter to the runs launched from one gg configuration, by the configuration's
+   * **id** (an empty string is ignored). A coverage cell counts by the same id, so
+   * a listing narrowed by this holds exactly the runs behind that cell's figure —
+   * which the configuration's name cannot do, being display text an operator
+   * rewrites freely and two configurations may share. A run launched from no
+   * configuration matches no id. */
+  ggConfigId?: string;
   /** Restrict every run to its case's **current** version — the greatest
    * `major.minor` that case has a run for within this query's {@link state} slice.
    * A case version is frozen once it has runs, so an older minor is a different
@@ -172,6 +179,10 @@ function matches(summary: RunSummary, query: RunQuery): boolean {
   // A null/absent aggregate never equals a tier — the backend's NULL `aesthetic`
   // column contract: a run no review has rated on the channel matches no filter.
   if (query.aesthetic && (summary.aesthetic ?? null) !== query.aesthetic)
+    return false;
+  // The configuration a run was launched from, matched on the recorded id and
+  // harness-gated exactly as the backend's `gg_config_id` column is.
+  if (query.ggConfigId && ggConfigId(summary) !== query.ggConfigId)
     return false;
   const q = query.q?.trim().toLowerCase();
   if (q) {
@@ -301,6 +312,15 @@ function primaryCompare(
 function ggPreset(summary: RunSummary): string | null {
   const { subject } = summary;
   return isGgRun(subject.harnessSlug) ? (subject.ggPreset ?? null) : null;
+}
+
+// The lifted `run.gg_config_id` column's value for a summary: the id of the gg
+// configuration the run was launched from, or null. Harness-gated exactly as
+// {@link ggPreset} is, so a set that somehow rode in on another harness's card can
+// never file that run under a configuration.
+function ggConfigId(summary: RunSummary): string | null {
+  const { subject } = summary;
+  return isGgRun(subject.harnessSlug) ? (subject.ggConfigId ?? null) : null;
 }
 
 // What the MODEL / CONFIG column sorts by, mirroring the backend's

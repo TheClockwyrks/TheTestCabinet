@@ -2931,14 +2931,19 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
 }
 
 /**
- * Serialize a draft into the wire capability set. `preset` records the name the set
- * was assembled from (a run's slice-by facet); pass `null` for a hand-assembled one.
+ * Serialize a draft into the wire capability set. `preset` records the name of the saved
+ * configuration the set was assembled from (a run's slice-by facet) and `presetId` its
+ * id — what a run is attributed to, and so what identifies the coverage cell it counts
+ * against. Pass `null` for a hand-assembled set, and for the id while a configuration is
+ * being created: the id is minted server-side, and a launch picks it up from the
+ * [offered configuration](./useGgConfigs) rather than from the stored set.
  * The agents are written root-first, which is how the draft's root *flag* becomes the
  * contract's "the root is `agents[0]`".
  */
 export function capabilitySetFromDraft(
   draft: GgConfigDraft,
   preset: string | null,
+  presetId: string | null = null,
 ): GgCapabilitySet {
   const slotNameOn = (agentId: string, slotId: string): string | null =>
     draft.agents
@@ -2964,6 +2969,7 @@ export function capabilitySetFromDraft(
   );
   return {
     ...(preset ? { preset } : {}),
+    ...(presetId ? { presetId } : {}),
     agents: agentsInWireOrder(draft).map(agentConfigFromDraft),
     ...(modelSlots.length ? { modelSlots } : {}),
     ...(limits ? { limits } : {}),

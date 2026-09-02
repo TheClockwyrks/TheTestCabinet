@@ -243,6 +243,10 @@
           "description": "The version of the engine runtime vendored into the run repository. `None`\nfor an engine that vendors no runtime (`none` has no package), and for runs\nrecorded before engine selection existed.",
           "type": ["string", "null"]
         },
+        "ggConfigId": {
+          "description": "The **id** of the gg configuration this run was launched from — the\n[`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) recorded on the\nrun's capability set. Lifted onto the card beside the\n[name](Self::gg_preset) because it is what identifies the run's [coverage\ncell](https://docs.testcabinet.ai/components/backend/coverage/), and so what a\nlisting narrowed to one configuration's runs matches on: a name is display text\nthat is rewritten freely and is unique to nothing. `None` for every\nthird-party-harness run and for a gg run assembled by hand.",
+          "type": ["string", "null"]
+        },
         "ggPreset": {
           "description": "The name of the gg **configuration** this run was launched from — the\n[`preset`](test_cabinet_core::gg::GgCapabilitySet::preset) recorded on the run's\ncapability set. Lifted onto the card because a gg run has no single harness\nmodel to identify it by ([`model_id`](Self::model_id) is only its\nrepresentative primary-slot model, one of several per-agent bindings), so the\nrun log shows the configuration in that cell instead. `None` for every\nthird-party-harness run (which carries no capability set) and for a gg run\nassembled by hand rather than from a named configuration.",
           "type": ["string", "null"]

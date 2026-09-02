@@ -23,6 +23,8 @@
 #[path = "gg.test.rs"]
 mod tests;
 
+use std::collections::HashMap;
+
 use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -159,10 +161,100 @@ pub(super) struct GgLaunchSubject {
 /// holding one without the other could pair a set with a model nothing in it runs.
 pub(super) struct GgLaunchIdentity {
     /// The set as the run records it — [agent keys resolved](GgCapabilitySet::resolve_agent_keys),
-    /// slot declarations gone, every binding pinned.
+    /// slot declarations gone, every binding pinned, and its
+    /// [`preset_id`](GgCapabilitySet::preset_id) reduced to the
+    /// [bare configuration id](saved_config_id) the run's coverage cell is keyed on.
     pub capability_set: GgCapabilitySet,
     /// The model the run is attributed to: the one its very first turn is charged to.
     pub model: String,
+}
+
+/// The bare id of the saved gg configuration a textual reference names, or `None` when it
+/// names none.
+///
+/// One rule for the two places a configuration is named by text: the
+/// [member](super::ReviewPlanCombo::gg_config_ref) a plan or a ladder stores, and the
+/// [`preset_id`](GgCapabilitySet::preset_id) a launch records on the set it runs. The
+/// console's picker values a configuration as `saved:<id>` and a client may just as
+/// reasonably send the id alone; both name the same configuration, so both must key
+/// identically — a member written one way and a run launched the other way are one
+/// [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/) or the plan
+/// never fills.
+///
+/// A blank reference names nothing. Recorded as an id it would be indistinguishable from the
+/// empty segment a set assembled by hand carries, quietly filing the run into the cell those
+/// share.
+pub(super) fn saved_config_id(reference: &str) -> Option<&str> {
+    let id = reference.trim();
+    let id = id.strip_prefix("saved:").unwrap_or(id);
+    (!id.is_empty()).then_some(id)
+}
+
+/// The current name of every configuration in `refs` that `user_id`'s account holds, keyed
+/// by the [bare id](saved_config_id) each reference names.
+///
+/// Resolved in one pass ahead of the launches that use it, so a batch naming one
+/// configuration a hundred times reads it once and a store failure fails the request rather
+/// than being reported as one run's validation error.
+pub(super) async fn launch_configuration_names<'a>(
+    db: &crate::db::Db,
+    user_id: &str,
+    refs: impl IntoIterator<Item = &'a str>,
+) -> Result<HashMap<String, String>, ApiError> {
+    let ids: std::collections::BTreeSet<&str> =
+        refs.into_iter().filter_map(saved_config_id).collect();
+    let mut names = HashMap::new();
+    for id in ids {
+        if let Some(config) = db
+            .get_gg_config(user_id, id)
+            .await
+            .map_err(ApiError::from)?
+        {
+            names.insert(id.to_string(), config.name);
+        }
+    }
+    Ok(names)
+}
+
+/// Bind one launch's capability set to the configuration it claims to come from, given the
+/// [names](launch_configuration_names) the launching account's library resolved to, or say
+/// why the launch is refused.
+///
+/// Every endpoint that enqueues a gg run applies this, because the id it writes is the run's
+/// [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/) identity.
+/// Unchecked, a client could file its runs into a cell it names but cannot see, and — because
+/// coverage counts are global — into another account's, where they would satisfy a target
+/// that account never asked for. Refused rather than quietly dropped, because dropping the id
+/// would record the run as hand-assembled and leave the operator watching a cell that never
+/// fills.
+///
+/// The id is reduced to its [bare form](saved_config_id) here, and the name recorded beside
+/// it is the configuration's **now** rather than the one the client held when it last loaded
+/// its picker: a run is sliced by `preset` in the run log and in a comparison, so a
+/// configuration renamed in another tab would otherwise split its own runs across two labels.
+///
+/// A set naming no configuration is left exactly as it arrived. That is every launch the
+/// new-run form assembles by hand, and it belongs to no configuration's cell.
+pub(super) fn bind_launch_configuration(
+    set: &mut GgCapabilitySet,
+    names: &HashMap<String, String>,
+) -> Result<(), String> {
+    let Some(reference) = set.preset_id.clone() else {
+        return Ok(());
+    };
+    let Some(config_id) = saved_config_id(&reference) else {
+        set.preset_id = None;
+        return Ok(());
+    };
+    let Some(name) = names.get(config_id) else {
+        return Err(format!(
+            "no gg configuration `{config_id}` on this account; a run is attributed to a \
+             configuration the launching account owns"
+        ));
+    };
+    set.preset = Some(name.clone());
+    set.preset_id = Some(config_id.to_string());
+    Ok(())
 }
 
 /// Validate a gg capability set for launch and lift the model the run is recorded
@@ -184,7 +276,16 @@ pub(super) fn gg_launch_identity(set: &GgCapabilitySet) -> Result<GgLaunchIdenti
     // Then the resolution itself. Every reference is rewritten to the profile's slug and the
     // ids are dropped, so what is stored, what the container reads and what the run records
     // name a profile by the one name the operator wrote and the model was shown.
-    let capability_set = set.resolve_agent_keys();
+    let mut capability_set = set.resolve_agent_keys();
+    // The configuration this launch came from, in the one spelling everything else uses. The
+    // id is what the run's coverage cell is keyed on, so a picker key (`saved:<id>`) or a
+    // padded paste has to become the bare id here — before the set is stored, recorded and
+    // counted — rather than at each of the places that later read it back.
+    capability_set.preset_id = capability_set
+        .preset_id
+        .as_deref()
+        .and_then(saved_config_id)
+        .map(str::to_string);
     if let Some(defect) = super::gg_config::launched_capability_set_defect(&capability_set) {
         return Err(format!(
             "the gg capability set cannot be launched: {defect}"
@@ -297,6 +398,18 @@ pub(super) fn gg_launch_body(subject: GgLaunchSubject, identity: GgLaunchIdentit
 /// [`LaunchAck`] a conventional launch does, so the console watches a gg run through
 /// the existing `GET /jobs/{id}` status and `GET /jobs/{id}/live` monitor unchanged.
 ///
+/// A launch **from a saved configuration** says so by setting the capability set's
+/// [`preset_id`](GgCapabilitySet::preset_id) to that configuration's id — which is what puts
+/// the run in the same
+/// [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/) a plan or a
+/// ladder scheduling the same configuration files its runs into. The id must name a
+/// configuration the **launching account owns**, or the launch is refused: a run recording an
+/// id its launcher cannot resolve claims a cell nobody can explain, and the operator who
+/// wanted the attribution would find the cell they were filling still reading zero. The
+/// configuration's **current** name is stamped on beside it, so the label the run log slices
+/// by is the one the configuration bears rather than the one the client last read. A set
+/// assembled by hand omits the id and is attributed to no configuration.
+///
 /// The run is **attributed** to the token's account (`job.user_id`) and to the
 /// [origin](super::jobs::LaunchQuery::origin) the query names, exactly as `POST /jobs` is.
 /// Absent — a launch from the new-run form — it leaves `job.origin` null and the run stays
@@ -341,6 +454,13 @@ pub async fn launch_gg(
     }
 
     let mut launch = body.into_launch_body().map_err(ApiError::bad_request)?;
+    // The configuration the launch claims to come from has to be one this account holds, and
+    // it records that configuration's current name.
+    if let Some(set) = launch.gg_capability_set.as_mut() {
+        let names =
+            launch_configuration_names(&state.db, &user.0.id, set.preset_id.as_deref()).await?;
+        bind_launch_configuration(set, &names).map_err(ApiError::bad_request)?;
+    }
     // Price every model this run binds at enqueue, the same seeding `POST /jobs`
     // performs, so the catalog can split the run's cost per token class from its
     // first turn instead of only after the run completes. Missing-only and

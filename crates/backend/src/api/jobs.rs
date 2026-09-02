@@ -55,6 +55,7 @@ use crate::error::ApiError;
 use crate::relay::{JobSummary, Notification, RunEvent, StreamItem, StreamMessage};
 
 use super::AppState;
+use super::gg::{bind_launch_configuration, launch_configuration_names};
 
 /// `POST /jobs` — enqueue a run. Requires a bearer token; validates the request,
 /// mints a job id and per-job driver token, stores it in the `queued` state, and
@@ -86,6 +87,15 @@ pub async fn launch(
 ) -> Result<Response, ApiError> {
     let attribution = attribution(&user, &query)?;
     let now = now_rfc3339()?;
+    // A gg body reaches the same cell-identity lift `POST /gg/runs` does, so it answers to
+    // the same rule: the configuration it names must be one this account holds.
+    if body.harness == HarnessSlug::Gg
+        && let Some(set) = body.gg_capability_set.as_mut()
+    {
+        let names =
+            launch_configuration_names(&state.db, &user.0.id, set.preset_id.as_deref()).await?;
+        bind_launch_configuration(set, &names).map_err(ApiError::bad_request)?;
+    }
     crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&body)).await;
     resolve_gg_model_facts(&state.db, &state.prices, &mut body)
         .await
@@ -174,6 +184,19 @@ pub async fn launch_batch(
     // A batch usually fans one case out over many models/harnesses, so resolve each
     // (case, version)'s type once instead of re-reading the same manifest per run.
     let mut types: HashMap<(String, String), TestType> = HashMap::new();
+    // Every configuration this batch's gg runs name, resolved once against the launching
+    // account's library rather than per run: the batch is one account's decision, and the
+    // same configuration usually appears in most of its runs.
+    let config_names = launch_configuration_names(
+        &state.db,
+        &user.0.id,
+        body.runs
+            .iter()
+            .filter(|run| run.harness == HarnessSlug::Gg)
+            .filter_map(|run| run.gg_capability_set.as_ref())
+            .filter_map(|set| set.preset_id.as_deref()),
+    )
+    .await?;
     for run in &body.runs {
         let test_type = *types
             .entry((run.test_case.clone(), run.version.clone()))
@@ -184,8 +207,19 @@ pub async fn launch_batch(
         // reported at its own index like any other validation failure, so one unresolvable
         // model does not sink the rest of the batch.
         let mut run = run.clone();
-        let minted = match resolve_gg_model_facts(&state.db, &state.prices, &mut run).await {
-            Ok(()) => build_new_job(&run, test_type, &now, &attribution),
+        let is_gg = run.harness == HarnessSlug::Gg;
+        // The configuration a gg run names is checked exactly as `POST /jobs` and
+        // `POST /gg/runs` check it, and a run naming one this account does not hold is
+        // reported at its own index rather than sinking the batch.
+        let bound = match run.gg_capability_set.as_mut() {
+            Some(set) if is_gg => bind_launch_configuration(set, &config_names),
+            _ => Ok(()),
+        };
+        let minted = match bound {
+            Ok(()) => match resolve_gg_model_facts(&state.db, &state.prices, &mut run).await {
+                Ok(()) => build_new_job(&run, test_type, &now, &attribution),
+                Err(reason) => Err(reason),
+            },
             Err(reason) => Err(reason),
         };
         match minted {
@@ -540,9 +574,11 @@ pub(super) fn build_new_job(
         .map(serde_json::to_string)
         .transpose()
         .map_err(|e| format!("serializing gg capability set: {e}"))?;
-    // The two segments of a gg run's coverage cell, lifted out of that same set so the
-    // queue can attribute an in-flight run to its cell in SQL. Gated on the **harness**,
-    // exactly as the run's own lift is (`crate::db::lifted_gg_models`), so a queued job
+    // The two segments of a gg run's coverage cell — the configuration's id and the models
+    // the set binds — plus the configuration's name for the active-run list, all lifted out
+    // of that same set so the queue can attribute an in-flight run to its cell in SQL.
+    // Gated on the **harness**, exactly as the run's own lifts are
+    // (`crate::db::lifted_gg_config_id`, `crate::db::lifted_gg_models`), so a queued job
     // and the run it produces land in the same cell by construction — a set that somehow
     // rode in on a third-party-harness launch must not put the job in a cell the run can
     // never join.
@@ -551,6 +587,7 @@ pub(super) fn build_new_job(
         .as_ref()
         .filter(|_| body.harness == HarnessSlug::Gg);
     let gg_preset = gg_cell.and_then(|set| set.preset.clone());
+    let gg_config_id = gg_cell.and_then(|set| set.preset_id.clone());
     let gg_models = gg_cell.map(|set| set.bound_model_key());
     Ok(crate::db::NewJob {
         id: cuid2::create_id(),
@@ -563,6 +600,7 @@ pub(super) fn build_new_job(
         model_id: body.model.clone(),
         gg_config_json,
         gg_preset,
+        gg_config_id,
         gg_models,
         job_token: cuid2::create_id(),
         // A console launch is the initial attempt; the backend re-enqueues any
@@ -1310,6 +1348,7 @@ async fn maybe_enqueue_retry(
             // third-party-harness job.
             gg_config_json: job.gg_config_json.clone(),
             gg_preset: job.gg_preset.clone(),
+            gg_config_id: job.gg_config_id.clone(),
             gg_models: job.gg_models.clone(),
             job_token,
             attempt,

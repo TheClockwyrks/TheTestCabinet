@@ -150,6 +150,9 @@ function ggCell(over: Partial<CoverageCell> = {}): CoverageCell {
 // `bindModelSlots` to have something real to bind.
 const REVIEWER_SET: GgCapabilitySet = {
   preset: "reviewer",
+  // Stamped onto every offered configuration by `useGgConfigs`, and what a launched
+  // run is attributed to.
+  presetId: "cfg-1",
   modelSlots: [
     { name: "primary", targets: [{ agent: "a-root", slot: "own" }] },
     { name: "critic", targets: [{ agent: "a-critic", slot: "own" }] },
@@ -270,7 +273,7 @@ describe("MatrixSection collapse", () => {
     expect(screen.getByText("reviewer · haiku, opus")).toBeTruthy();
   });
 
-  it("narrows a gg cell's runs link by the configuration's name", () => {
+  it("narrows a gg cell's runs link by the configuration's id", () => {
     renderSection({ cells: [ggCell()] });
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     const href = screen
@@ -278,7 +281,11 @@ describe("MatrixSection collapse", () => {
       .getAttribute("href");
     const params = new URLSearchParams(href!.slice(href!.indexOf("?")));
     expect(params.get("harness")).toBe("gg");
-    expect(params.get("q")).toBe("reviewer");
+    // The bare id the run records, never the picker's `saved:` spelling, and never
+    // the name: the cell counts by this id, so the listing behind the figure has to
+    // select on the same value.
+    expect(params.get("ggConfigId")).toBe("cfg-1");
+    expect(params.get("q")).toBeNull();
   });
 
   it("shows why a blocked cell cannot be launched, and refuses to trigger it", () => {
@@ -417,6 +424,24 @@ describe("cellKey", () => {
     expect(cellKey(a)).not.toBe(cellKey(b));
   });
 
+  it("separates two configurations an account gave one name", () => {
+    // Nothing makes a configuration's name unique within an account, and the server counts
+    // two that share one as two cells. A key built from the name would hand React one key
+    // for both, rendering one row and silently dropping the other.
+    const a = ggCell({ ggConfigId: "cfg-a", ggConfigName: "planning-A" });
+    const b = ggCell({ ggConfigId: "cfg-b", ggConfigName: "planning-A" });
+    expect(cellKey(a)).not.toBe(cellKey(b));
+  });
+
+  it("keys a configuration the same however the member spelled its id", () => {
+    const picker = ggCell({
+      ggConfigId: "saved:cfg-a",
+      ggConfigName: "planning-A",
+    });
+    const bare = ggCell({ ggConfigId: "cfg-a", ggConfigName: "planning-A" });
+    expect(cellKey(picker)).toBe(cellKey(bare));
+  });
+
   it("does not depend on the order the slot bindings arrived in", () => {
     const a = ggCell({ ggSlotModels: { primary: "opus", critic: "haiku" } });
     const b = ggCell({ ggSlotModels: { critic: "haiku", primary: "opus" } });
@@ -456,6 +481,17 @@ describe("planGgLaunches", () => {
     // no slot at either level.
     expect(agents.every((a) => !a.modelSlot && !a.modelSlots)).toBe(true);
     expect(launches[0]!.capabilitySet.modelSlots).toBeUndefined();
+  });
+
+  // The binding rebuilds the set, and a run that lost the id on the way through would
+  // be attributed to no configuration at all — the cell the reviewer pressed would
+  // still read as missing that run, and the next top-up would buy it again.
+  it("carries the configuration's id through the binding, which is what the cell is keyed on", () => {
+    const { launches } = planGgLaunches(
+      [ggCell({ remaining: 1 })],
+      [ggOption()],
+    );
+    expect(launches[0]!.capabilitySet.presetId).toBe("cfg-1");
   });
 
   it("emits a cell's repeats together, so they arrive adjacent", () => {
@@ -521,6 +557,9 @@ describe("launchGgCells", () => {
     expect(request.testCase).toBe("pong");
     expect(request.version).toBe("v1.0.0");
     expect(request.variant).toBe("base");
+    // Submitted with the configuration's id, so the run counts against the cell it was
+    // triggered from rather than against no configuration.
+    expect(request.capabilitySet.presetId).toBe("cfg-1");
     expect(track).toHaveBeenCalledTimes(2);
     // Tracked under the identity the backend will lift back out of the job: gg, the
     // root agent's bound model, and the configuration's name.

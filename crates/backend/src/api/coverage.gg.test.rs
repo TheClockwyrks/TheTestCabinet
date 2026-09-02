@@ -116,11 +116,15 @@ fn a_gg_member_resolves_its_configuration_and_binds_every_launch_slot() {
     assert_eq!(resolved.launch_model, "opus");
 
     let gg = resolved.gg.expect("a resolved gg member carries its set");
-    assert_eq!(gg.preset, "Critic sweep");
+    // The configuration it names, by the id its cell is keyed on — not the `saved:` spelling
+    // the member was written in.
+    assert_eq!(gg.config_id, "cfg-1");
     // Which agent runs which model, sorted and de-duplicated — the identity a cell counts by.
     assert_eq!(gg.models, "reviewer=haiku,root=opus");
-    // The set is the launched one: every binding pinned, no slot declarations left, and the
-    // configuration's name recorded on it so the run files into the cell the matrix labelled.
+    // The set is the launched one: every binding pinned, no slot declarations left, and both
+    // halves of the configuration's provenance recorded on it — the id so the run files into
+    // the cell the matrix counted, the name so the run log can say which one produced it.
+    assert_eq!(gg.capability_set.preset_id.as_deref(), Some("cfg-1"));
     assert_eq!(gg.capability_set.preset.as_deref(), Some("Critic sweep"));
     assert!(gg.capability_set.model_slots.is_empty());
     assert!(gg.capability_set.unresolved_agents().is_empty());
@@ -262,10 +266,10 @@ fn a_configuration_whose_imported_agent_moved_on_is_not_launched_until_it_is_re_
 }
 
 #[test]
-fn a_member_that_resolves_onto_another_members_cell_is_reported_rather_than_run_twice() {
-    // Two configurations an account happens to have given one name, binding the same models
-    // to the same agents. Nothing stops that — configuration names are not unique — and the
-    // two produce one cell, because a cell is keyed by the name a run records.
+fn two_configurations_sharing_a_name_are_two_cells() {
+    // Nothing makes a configuration's name unique within an account, so two of them may
+    // carry one. They are still two configurations: two capability sets, two sets of runs,
+    // and two cells — which is only true because a cell is keyed by the id.
     let twins = GgLibrary::from_parts(
         vec![
             gg_config("cfg-1", "Critic sweep"),
@@ -282,6 +286,73 @@ fn a_member_that_resolves_onto_another_members_cell_is_reported_rather_than_run_
         &[gg_combo("opus", "haiku"), second],
         &HashMap::new(),
         &twins,
+    );
+
+    assert_eq!(resolved.len(), 2);
+    let c = case("pong");
+    assert_ne!(cell_key(&c, &resolved[0]), cell_key(&c, &resolved[1]));
+    // Neither is reported as a repeat of the other, so a plan holding both asks for both
+    // arms' runs rather than one arm's twice.
+    assert!(resolved[0].unlaunchable.is_none());
+    assert!(resolved[1].unlaunchable.is_none());
+    // And a run of one is never counted toward the other, however the two are labelled.
+    let mut ctx = empty_ctx();
+    ctx.completed.insert(cell_key(&c, &resolved[0]), 4);
+    assert_eq!(ctx.demand(5, &c, &resolved[0]).completed, 4);
+    assert_eq!(ctx.demand(5, &c, &resolved[1]).completed, 0);
+}
+
+#[test]
+fn renaming_a_configuration_keeps_its_cell_and_its_counts() {
+    let c = case("pong");
+    let before = gg_member("opus", "haiku");
+    let key = cell_key(&c, &before);
+    let mut ctx = empty_ctx();
+    ctx.completed.insert(key.clone(), 4);
+
+    // The same configuration, renamed in the account's library. A rename rewrites display
+    // text and nothing else, so the member re-points at nothing.
+    let renamed = configs(vec![gg_config("cfg-1", "Sweep, take two")]);
+    let after = resolve_member(&gg_combo("opus", "haiku"), &renamed);
+
+    assert_eq!(cell_key(&c, &after), key);
+    // The runs already recorded against it are still its runs: the plan reads 4/5 and the
+    // next top-up buys the one it is short, not five.
+    assert_eq!(ctx.demand(5, &c, &after).completed, 4);
+    assert_eq!(
+        launchable_demand(ctx.demand(5, &c, &after), &after).missing(),
+        1
+    );
+    // The new name travels everywhere it is read, on the member and on the set a run of it
+    // would record.
+    assert_eq!(
+        after.combo.gg_config_name.as_deref(),
+        Some("Sweep, take two")
+    );
+    let gg = after.gg.expect("a resolved gg member carries its set");
+    assert_eq!(gg.capability_set.preset.as_deref(), Some("Sweep, take two"));
+    assert_eq!(gg.capability_set.preset_id.as_deref(), Some("cfg-1"));
+}
+
+#[test]
+fn a_member_that_resolves_onto_another_members_cell_is_reported_rather_than_run_twice() {
+    // One configuration, bound twice — the second binding a slot name the configuration does
+    // not declare. The two are different declarations (the de-dupe key is what the reviewer
+    // wrote) that ask for exactly the same runs, because the launch ignores the slot nothing
+    // declares.
+    let second = ReviewPlanCombo {
+        gg_slot_models: {
+            let mut models = gg_combo("opus", "haiku").gg_slot_models;
+            models.insert("no-such-slot".to_string(), "sonnet".to_string());
+            models
+        },
+        ..gg_combo("opus", "haiku")
+    };
+    let resolved = resolve_combos(
+        &[],
+        &[gg_combo("opus", "haiku"), second],
+        &HashMap::new(),
+        &one_config(),
     );
 
     // Both keep their place — a member that vanished from the matrix would be a plan that
@@ -403,7 +474,7 @@ fn two_gg_members_of_one_configuration_differ_by_the_models_they_bind() {
 }
 
 #[test]
-fn a_gg_cell_is_keyed_by_the_configuration_name_and_the_models_it_binds() {
+fn a_gg_cell_is_keyed_by_the_configuration_id_and_the_models_it_binds() {
     let c = case("pong");
     let key = cell_key(&c, &gg_member("opus", "haiku"));
     assert_eq!(
@@ -414,9 +485,9 @@ fn a_gg_cell_is_keyed_by_the_configuration_name_and_the_models_it_binds() {
             "base".to_string(),
             "gg".to_string(),
             "opus".to_string(),
-            // The configuration's name, because counts are global and a run records the name
-            // it was launched from — never the account-scoped id behind it.
-            "Critic sweep".to_string(),
+            // The configuration's id: what it is across time, whatever it is called and
+            // whatever else on the account shares that name.
+            "cfg-1".to_string(),
             "reviewer=haiku,root=opus".to_string(),
         )
     );
@@ -427,6 +498,104 @@ fn a_gg_cell_is_keyed_by_the_configuration_name_and_the_models_it_binds() {
     let harness = cell_key(&c, &member(combo("opus")));
     assert_eq!((harness.5.as_str(), harness.6.as_str()), ("", ""));
     assert_ne!(key, harness);
+}
+
+#[test]
+fn a_hand_launched_run_and_a_scheduled_run_of_one_configuration_share_a_cell() {
+    let c = case("pong");
+    // What a plan schedules, and the cell its runs are counted in.
+    let scheduled = gg_member("opus", "haiku");
+    let (_, _, _, harness, model, config_id, models) = cell_key(&c, &scheduled);
+
+    // What the console launches by hand from the very same configuration: its set, bound to
+    // the same models, carrying the configuration's name and its id. The id arrives in the
+    // picker's own `saved:<id>` spelling, which the launch reduces to the bare id — a
+    // console that submits what it displays must still land in the scheduled cell.
+    let config = gg_config("cfg-1", "Critic sweep");
+    let mut sent = config.capability_set.bind_launch_slots(&BTreeMap::from([
+        ("primary".to_string(), "opus".to_string()),
+        ("reviewer.critic".to_string(), "haiku".to_string()),
+    ]));
+    sent.preset = Some(config.name.clone());
+    sent.preset_id = Some(format!("saved:{}", config.id));
+    let identity = crate::api::gg::gg_launch_identity(&sent).expect("the set launches");
+
+    // The three segments a run's cell is made of, agreed at the point both paths pass
+    // through — so the run this launch records and the runs the plan schedules are counted
+    // together, and the plan's own trigger button feeds the cell it sits in.
+    assert_eq!(identity.model, model);
+    assert_eq!(
+        identity.capability_set.preset_id.as_deref(),
+        Some(config_id.as_str())
+    );
+    assert_eq!(identity.capability_set.bound_model_key(), models);
+
+    // And they survive the lift onto the job row the queue counts in flight by.
+    let body = crate::api::gg::gg_launch_body(
+        crate::api::gg::GgLaunchSubject {
+            test_case: c.slug.clone(),
+            version: c.version.clone(),
+            variant: c.variant.clone(),
+            engine: None,
+            max_runtime_seconds: None,
+            retry_count: None,
+        },
+        identity,
+    );
+    let job = crate::api::jobs::build_new_job(
+        &body,
+        test_cabinet_core::test_case::TestType::EndToEnd,
+        "2026-09-01T00:00:00Z",
+        // The attribution is not part of a cell — a run counts toward it whoever asked for
+        // one — so the by-hand and scheduled forms are interchangeable here.
+        &crate::api::jobs::JobAttribution::scheduled(
+            "u-1",
+            &crate::db::JobOrigin::Plan("p-1".to_string()),
+        ),
+    )
+    .expect("the launch body builds a job");
+    assert_eq!(job.harness_slug, harness);
+    assert_eq!(job.model_id, model);
+    assert_eq!(job.gg_config_id.as_deref(), Some(config_id.as_str()));
+    assert_eq!(job.gg_models.as_deref(), Some(models.as_str()));
+    // The name rides along for the run log, and is no part of the identity.
+    assert_eq!(job.gg_preset.as_deref(), Some("Critic sweep"));
+}
+
+#[test]
+fn a_cells_queue_offers_exactly_the_runs_its_counts_are_made_of() {
+    let member = gg_member("opus", "haiku");
+    let bound = gg_config("cfg-1", "Critic sweep")
+        .capability_set
+        .bind_launch_slots(&BTreeMap::from([
+            ("primary".to_string(), "opus".to_string()),
+            ("reviewer.critic".to_string(), "haiku".to_string()),
+        ]));
+
+    // What a run of this member records: the configuration's id, and the models it bound.
+    let mut recorded = bound.clone();
+    recorded.preset = Some("Critic sweep".to_string());
+    recorded.preset_id = Some("cfg-1".to_string());
+    assert!(in_gg_cell(Some(&recorded), &member));
+
+    // A set naming the configuration only by name is in no configuration's cell. That is the
+    // same answer the counts give — they group on the column lifted from this field — so a
+    // run is either counted and offered or neither, never counted and unreachable.
+    let mut by_name_only = recorded.clone();
+    by_name_only.preset_id = None;
+    assert!(!in_gg_cell(Some(&by_name_only), &member));
+    assert!(!in_gg_cell(None, &member));
+
+    // Another configuration of the account, binding the same models to the same agents, is a
+    // cell of its own however it is named.
+    let mut twin = recorded.clone();
+    twin.preset_id = Some("cfg-2".to_string());
+    assert!(!in_gg_cell(Some(&twin), &member));
+
+    // And so is the same configuration run on another model.
+    let mut other_models = recorded.clone();
+    other_models.agents[0].model_id = "sonnet".to_string();
+    assert!(!in_gg_cell(Some(&other_models), &member));
 }
 
 #[test]

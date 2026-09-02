@@ -9,6 +9,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { RunLog, useRunTable } from "../../components/RunLog";
 import { claimSectionReturn } from "../../components/backReturn";
 import { useGalleryData } from "../../data/galleryContext";
+import { ggConfigKey } from "./comboLabels";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import ladderStyles from "./Ladder.module.scss";
 import styles from "./Coverage.module.scss";
@@ -45,6 +46,11 @@ export function RungRuns({
 
   const { slug, version, variant } = rung;
   const { harness, model } = climber;
+  // A gg climber's runs are the ones launched from its configuration, which the
+  // harness and the model alone do not say: every gg climber on this model runs the
+  // `gg` harness. The rung's verdict counts by the configuration's id, so the listing
+  // behind it narrows by the same id.
+  const ggConfigId = ggConfigKey(climber.ggConfigId);
 
   // Re-queried on `refreshToken` as well as on the rung's identity: that token is
   // bumped by the console stream's `finished` run events, so a run that completes while
@@ -62,6 +68,7 @@ export function RungRuns({
       variant,
       harness,
       model,
+      ggConfigId: ggConfigId || undefined,
       // A rung pins an exact version, which the listing's "current versions only"
       // default would otherwise filter away.
       latestVersions: false,
@@ -80,7 +87,16 @@ export function RungRuns({
     return () => {
       active = false;
     };
-  }, [queryRunSummaries, slug, version, variant, harness, model, refreshToken]);
+  }, [
+    queryRunSummaries,
+    slug,
+    version,
+    variant,
+    harness,
+    model,
+    ggConfigId,
+    refreshToken,
+  ]);
 
   // The runs of this cell that are still executing. They have no record to query yet,
   // so they are matched out of the runtime's in-flight list by the same identity the
