@@ -32,11 +32,7 @@
 // is read here is the gate itself, which `reset` "turns back on".
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DIFFICULTY_TABLE,
-  MODE_TABLE,
-  BUILD_PHASE_TIME,
-} from "../constants";
+import { DIFFICULTY_TABLE, MODE_TABLE, BUILD_PHASE_TIME } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

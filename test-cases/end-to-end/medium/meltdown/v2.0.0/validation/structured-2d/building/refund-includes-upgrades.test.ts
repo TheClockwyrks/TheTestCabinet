@@ -29,12 +29,7 @@
 // panel shows, and the balance is what the sale actually paid.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  MAX_LEVEL,
-  REFUND_RATE,
-  TOWER_DEFS,
-  upgradeCost,
-} from "../constants";
+import { MAX_LEVEL, REFUND_RATE, TOWER_DEFS, upgradeCost } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

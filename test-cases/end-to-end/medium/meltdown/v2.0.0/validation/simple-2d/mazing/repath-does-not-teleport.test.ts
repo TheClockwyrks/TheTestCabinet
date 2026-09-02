@@ -32,12 +32,7 @@
 // does.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  LEFT_VENT_ROWS,
-  SURGE_DEFS,
-  tileCX,
-  tileCY,
-} from "../constants";
+import { LEFT_VENT_ROWS, SURGE_DEFS, tileCX, tileCY } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   TICK_HZ,

@@ -34,11 +34,7 @@
 // is still a list.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  DIFFICULTIES,
-  DIFFICULTY_ITEMS,
-  DIFFICULTY_TABLE,
-} from "../constants";
+import { DIFFICULTIES, DIFFICULTY_ITEMS, DIFFICULTY_TABLE } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 import { readScreen, readsNumber, textOf } from "./menu";

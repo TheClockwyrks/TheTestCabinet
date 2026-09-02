@@ -44,13 +44,7 @@
 // `hud.on-floor-heat-read`; what the redline DOES is the `heat` and `trip` groups.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  TILE,
-  TOWER_DEFS,
-  TRIP_HEAT,
-  tileLeft,
-  tileTop,
-} from "../constants";
+import { TILE, TOWER_DEFS, TRIP_HEAT, tileLeft, tileTop } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { sizeOf } from "../geometry";
 import {

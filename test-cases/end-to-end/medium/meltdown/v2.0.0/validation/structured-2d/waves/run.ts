@@ -28,12 +28,7 @@
 // same events for figures of their own and keep their arrangements beside their
 // own points; nothing here belongs in the shared harness.
 
-import {
-  BINDINGS,
-  COLS,
-  DIFFICULTIES,
-  RIGHT_EXHAUST_ROWS,
-} from "../constants";
+import { BINDINGS, COLS, DIFFICULTIES, RIGHT_EXHAUST_ROWS } from "../constants";
 import { fail } from "../assert";
 import {
   heatGain,

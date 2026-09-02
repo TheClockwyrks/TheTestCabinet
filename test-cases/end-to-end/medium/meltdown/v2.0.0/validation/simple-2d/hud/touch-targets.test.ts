@@ -36,12 +36,7 @@
 // `floor.panel-strip`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  MIN_TOUCH_TARGET,
-  PANEL_X,
-  STAGE_H,
-  STAGE_W,
-} from "../constants";
+import { MIN_TOUCH_TARGET, PANEL_X, STAGE_H, STAGE_W } from "../constants";
 import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
