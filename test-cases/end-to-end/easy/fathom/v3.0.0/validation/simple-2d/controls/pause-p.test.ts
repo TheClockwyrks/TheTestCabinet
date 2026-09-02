@@ -27,7 +27,7 @@
 // the frame that delivers the key or at the top of the next, and both conform.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD } from "../../src/constants";
+import { BRIGHT_HOLD } from "../constants";
 import { assertEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {

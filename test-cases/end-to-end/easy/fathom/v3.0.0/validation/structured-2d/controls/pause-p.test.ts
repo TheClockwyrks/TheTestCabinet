@@ -36,7 +36,7 @@ import {
   type Harness,
 } from "../harness";
 import { parkForager } from "../scene";
-import { BRIGHT_HOLD } from "../../src/constants";
+import { BRIGHT_HOLD } from "../constants";
 
 /** The second key specs/movement.md binds the `pause` action to. */
 const KEY = "KeyP";

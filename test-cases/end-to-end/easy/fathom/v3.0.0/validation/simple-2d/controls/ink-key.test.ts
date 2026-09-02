@@ -35,7 +35,7 @@ import {
   INK_LIFE,
   INK_RADIUS,
   TICK_DT,
-} from "../../src/constants";
+} from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

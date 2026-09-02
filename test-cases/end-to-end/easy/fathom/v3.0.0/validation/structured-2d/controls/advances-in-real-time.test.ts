@@ -41,7 +41,7 @@
 import { WallClock } from "@test-cabinet/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, fail } from "../assert";
-import { BRIGHT_HOLD, DRIFTER_SPEED } from "../../src/constants";
+import { BRIGHT_HOLD, DRIFTER_SPEED } from "../constants";
 import { placeForager, poseMaze } from "../fixtures";
 import {
   captureStill,

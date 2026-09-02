@@ -40,7 +40,7 @@
 // and answers the held action exactly as it does for a player.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORAGER_SPEED, TILE } from "../../src/constants";
+import { FORAGER_SPEED, TILE } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {

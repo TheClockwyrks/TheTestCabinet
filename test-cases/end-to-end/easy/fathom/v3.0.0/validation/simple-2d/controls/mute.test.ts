@@ -31,7 +31,7 @@
 // the pulse pass on somebody else's noise.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD } from "../../src/constants";
+import { BRIGHT_HOLD } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {

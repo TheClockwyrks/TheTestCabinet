@@ -42,7 +42,7 @@
 // than by inference.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEN_RELEASE_GAP } from "../../src/constants";
+import { DEN_RELEASE_GAP } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,
