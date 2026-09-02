@@ -7,10 +7,10 @@
 // hold it to them. That arithmetic is here.
 //
 // EVERY FUNCTION BELOW IS WRITTEN FROM THE SPECIFICATION, never read off a
-// reference implementation. The figures come from `src/constants.ts`, which is
-// supplied with the project and not the build's to edit, so the oracle and the
-// build are reading the same numbers off the same page and disagreeing only
-// about what to do with them.
+// reference implementation. The figures come from `./constants`, this project's
+// own transcription of the `specs/` pages, so the oracle holds the build to the
+// specification's numbers rather than to whatever numbers the build wrote down
+// for itself.
 //
 // Nothing here touches the engine, the harness, or a snapshot. These are plain
 // functions over plain numbers, so a check can use one to predict a value, to
@@ -35,7 +35,7 @@ import {
   STAR_X,
   STAR_Y,
   TICK_DT,
-} from "../src/constants";
+} from "./constants";
 
 /** A point or a velocity in the field's logical units. */
 export interface Vec {

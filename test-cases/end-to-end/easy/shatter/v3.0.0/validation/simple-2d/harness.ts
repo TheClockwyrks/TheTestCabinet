@@ -11,7 +11,7 @@
 // `TICK_HZ`, so one advanced frame delivers exactly one `TICK_DT` of game time
 // and `h.advance(n)` runs `n` whole simulation ticks. That is why
 // `[instrumentation]` in `test-case.toml` carries no `tick_hz`: the rate is a
-// rule of the GAME (`specs/simulation.md`), stated in `src/constants.ts` and
+// rule of the GAME (`specs/simulation.md`), transcribed into `./constants` and
 // asserted by the checklist, and the suite reads it from there rather than being
 // handed it by the runner.
 //
@@ -94,7 +94,7 @@ import {
   TICK_DT,
   TICK_HZ,
   type ActionName,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build, type ShatterState } from "../src/game";
 import { fail } from "./assert";
 import {
@@ -168,7 +168,7 @@ export type ShatterDriver = Driver<ShatterState, ShatterSurface>;
  * The frame the suite steps in, in milliseconds.
  *
  * Derived from the game's OWN fixed step, which `specs/simulation.md` fixes and
- * `src/constants.ts` names. One advanced frame therefore delivers exactly one
+ * `./constants` transcribes. One advanced frame therefore delivers exactly one
  * `TICK_DT` of delta, so `h.advance(n)` runs `n` whole simulation ticks and a
  * tolerance stated in ticks means the same thing on every machine.
  */
@@ -772,6 +772,21 @@ export function enemyBulletById(
 }
 
 /**
+ * Whether this build carries torpedoes — which is to say, whether it is the
+ * `warhead` variant.
+ *
+ * `specs/instrumentation.md` gives `snapshot()` a `torpedoes` roster under
+ * `warhead` and none under `base`, so its presence is the one reading that tells
+ * the two apart. It decides nothing a build is GRADED on: it is read only where a
+ * requirement is one item longer under one variant than the other — the how-to
+ * screen's list of keys — so that a suite serving both checklists asks each build
+ * for the list `specs/controls.md` handed it.
+ */
+export function carriesTorpedoes(h: Harness): boolean {
+  return h.snapshot().torpedoes !== undefined;
+}
+
+/**
  * The `warhead` torpedo roster, or a failure naming the member a `base`
  * snapshot does not carry.
  *
@@ -907,7 +922,8 @@ export function smallestRock(snapshot: ShatterSnapshot): RockSnapshot {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The first key `action` is bound to, read off `src/constants.ts`'s `BINDINGS`.
+ * The first key `action` is bound to, read off `./constants`'s `BINDINGS` —
+ * the binding table `specs/controls.md` fixes, transcribed on this side.
  *
  * A check that is ABOUT a particular key names that key itself — that is what
  * the whole `controls` group does. This is for every other check, which needs to

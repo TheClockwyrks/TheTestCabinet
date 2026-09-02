@@ -30,13 +30,7 @@ import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import type { Recording } from "@test-cabinet/simple-2d";
-import {
-  BINDINGS,
-  CORE_R,
-  ROCK_RADIUS,
-  STAR_X,
-  STAR_Y,
-} from "../src/constants";
+import { BINDINGS, CORE_R, ROCK_RADIUS, STAR_X, STAR_Y } from "./constants";
 import {
   aimedRound,
   captureReplay,

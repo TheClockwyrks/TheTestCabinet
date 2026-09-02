@@ -30,7 +30,7 @@ import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import type { Recording } from "@test-cabinet/structured-2d";
-import { MUZZLE_SPEED, ROCK_RADIUS, TICK_DT } from "../src/constants";
+import { MUZZLE_SPEED, ROCK_RADIUS, TICK_DT } from "./constants";
 import {
   aimedRound,
   captureReplay,

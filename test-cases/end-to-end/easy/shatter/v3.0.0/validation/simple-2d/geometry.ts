@@ -6,11 +6,11 @@
 // restate them and no two checks can disagree about them.
 //
 // It is deliberately NOT a copy of anything the build wrote. Nothing here
-// imports `src/`, beyond the figures `src/constants.ts` names for the case —
-// `FIELD_W`, `FIELD_H`, `STAR_X`, `STAR_Y`, `MU` and `SOFTEN` are supplied with
-// the project and not the build's to choose — so a build that implemented the
-// wrap or the well its own way is measured against the specification rather than
-// against itself.
+// imports `src/` at all: `FIELD_W`, `FIELD_H`, `STAR_X`, `STAR_Y`, `MU` and
+// `SOFTEN` come from `./constants`, this project's own transcription of
+// `specs/field.md` and `specs/gravity.md`, so a build that implemented the wrap
+// or the well its own way — or that wrote down a different figure for one — is
+// measured against the specification rather than against itself.
 //
 // THE ONE ASYMMETRY WORTH READING BEFORE USING ANY OF IT. Distance between two
 // BODIES is the shortest WRAPPED separation (`specs/field.md`), and every
@@ -26,7 +26,7 @@
 // it asserts, derived from the figure `specs/` fixes for it, and uses these to
 // compute the value it compares against that bound.
 
-import { FIELD_H, FIELD_W, MU, SOFTEN, STAR_X, STAR_Y } from "../src/constants";
+import { FIELD_H, FIELD_W, MU, SOFTEN, STAR_X, STAR_Y } from "./constants";
 
 /** A point on the field, in the logical units of the fixed 1280x720 space. */
 export interface Point {

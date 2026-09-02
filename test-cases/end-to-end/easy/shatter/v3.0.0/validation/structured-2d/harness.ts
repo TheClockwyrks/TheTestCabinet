@@ -96,7 +96,7 @@ import {
   SAFE_Y,
   START_LIVES,
   TICK_HZ,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
 import { STAR, wrapPoint } from "./geometry";
@@ -372,7 +372,7 @@ class KeyEvent extends Event {
 /**
  * A logical point's device pixel, through the world's camera and the engine's
  * fit. The camera opens at the defaults — world and logical coordinates
- * coincide, which is the space every figure in `src/constants.ts` is stated
+ * coincide, which is the space every figure `specs/overview.md` fixes is stated
  * in — so the projection is the identity unless the build moved it, and
  * mapping through it keeps the reading honest either way.
  */
@@ -1510,7 +1510,7 @@ export async function shootFieldDown(
 
 /* ---- Driving the real input path ------------------------------------------ */
 
-/** An action the game registers, as `src/constants.ts` names them. */
+/** An action the game registers, as `specs/controls.md` names them. */
 export type Action = keyof typeof BINDINGS;
 
 /** Every key bound to an action, from the case-fixed `BINDINGS` table. */
@@ -1690,6 +1690,21 @@ export function enemyBulletById(
   id: number,
 ): BulletSnapshot | undefined {
   return snapshot.enemyBullets.find((bullet) => bullet.id === id);
+}
+
+/**
+ * Whether this build carries torpedoes — which is to say, whether it is the
+ * `warhead` variant.
+ *
+ * `specs/instrumentation.md` gives `snapshot()` a `torpedoes` roster under
+ * `warhead` and none under `base`, so its presence is the one reading that tells
+ * the two apart. It decides nothing a build is GRADED on: it is read only where a
+ * requirement is one item longer under one variant than the other — the how-to
+ * screen's list of keys — so that a suite serving both checklists asks each build
+ * for the list `specs/controls.md` handed it.
+ */
+export function carriesTorpedoes(h: Harness): boolean {
+  return h.snapshot().torpedoes !== undefined;
 }
 
 /** Every torpedo in flight — an empty list under `base`, which has none. */

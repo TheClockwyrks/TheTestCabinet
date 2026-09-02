@@ -28,7 +28,7 @@ import {
   SAUCER_R,
   SAUCER_SPEED,
   STAR_Y,
-} from "../src/constants";
+} from "./constants";
 import { driftOver, pullAt, type Vec } from "./geometry";
 
 /* -------------------------------------------------------------------------- */
