@@ -62,6 +62,29 @@ npm test            # vitest run --coverage
 The unit tests live beside the sources as `src/**/*.test.ts` and run in Node,
 with no browser.
 
+## The art and the sound
+
+Orrery ships no third-party art and no third-party audio. The fifteen mote
+sprites, the two filament strips, the twelve engraved sigils, the ten
+instruction glyphs, the machine's hubs, grippers, wheel and mount, the two
+six-frame aperture sheets, the three particle systems, the six cues and the
+music bed were all produced with the asset-generation tools during this build
+and committed under `assets/`. `ASSET-LAYOUT.md` maps every file: where it
+lands, its realized size, count and duration, which script produces it, and the
+loader key it is consumed under. The build bundles the committed files and never
+invokes a tool, so the project builds wherever the tools are absent.
+
+Regenerating them, when the tools are on the `PATH`:
+
+```sh
+node scripts/gen-sprites.mjs   # 45 sprites + 2 sheets (draw, draw-sheet)
+bash scripts/gen-fx.sh         # deliver, fault, complete (particle-2d)
+bash scripts/gen-audio.sh      # the six cues and the bed (sfx-sample, sfx-synth, music)
+```
+
+`gen-audio.sh` reads the baked sample pack and instrument bank through
+`TCAB_SAMPLE_PACK_DIR` and `TCAB_INSTRUMENT_BANK_DIR`.
+
 ## Controls
 
 The editor is worked with the pointer and the keyboard together; every other
