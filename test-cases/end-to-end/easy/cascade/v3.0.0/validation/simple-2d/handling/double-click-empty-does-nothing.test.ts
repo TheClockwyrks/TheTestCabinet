@@ -25,8 +25,8 @@
 // is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_W, COLUMN_X } from "../../src/constants";
 import { assertDeepEqual } from "../assert";
+import { CARD_W, COLUMN_X } from "../constants";
 import {
   captureStill,
   createHarness,

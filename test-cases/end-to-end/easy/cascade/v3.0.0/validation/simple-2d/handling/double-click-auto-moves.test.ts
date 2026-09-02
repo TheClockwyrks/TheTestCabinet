@@ -28,8 +28,8 @@
 // what send the card home.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertDeepEqual } from "../assert";
+import { DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   captureStill,
   clickAt,

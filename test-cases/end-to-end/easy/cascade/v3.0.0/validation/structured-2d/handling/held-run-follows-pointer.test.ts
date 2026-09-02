@@ -29,8 +29,8 @@
 // what a release does belongs to the four items that decide a release.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLUMN_X, TABLEAU_Y } from "../../src/constants";
 import { assertCloseTo, assertNotNull } from "../assert";
+import { COLUMN_X, TABLEAU_Y } from "../constants";
 import {
   captureReplay,
   card,

@@ -32,8 +32,8 @@
 // that neither reading could confuse with a target.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLUMN_X, TABLEAU_Y } from "../../src/constants";
 import { assertDeepEqual } from "../assert";
+import { COLUMN_X, TABLEAU_Y } from "../constants";
 import {
   captureStill,
   createHarness,

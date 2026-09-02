@@ -23,8 +23,8 @@
 // foundation still holds its Ace alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertDeepEqual, assertNull } from "../assert";
+import { DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   ACE,
   captureStill,
@@ -51,12 +51,12 @@ const COLUMN = 0;
 const CARDS = [card(SUIT, TWO)];
 
 /**
- * How many frames separate the two presses: the whole of
- * `DOUBLE_CLICK_WINDOW` (`0.30`, specs/controls.md) and a third of it again —
- * twenty-four frames, `0.4` s of game time at the suite's clock. The margin is
- * six whole frames, so the second press is outside the window however a build
- * rounds a frame count. The window is read off the seeded `src/constants.ts`
- * rather than restated.
+ * How many frames separate the two presses: the whole of `DOUBLE_CLICK_WINDOW`
+ * (`0.30`, specs/controls.md) and a third of it again — twenty-four frames,
+ * `0.4` s of game time at the suite's clock. The margin is six whole frames, so
+ * the second press is outside the window however a build rounds a frame count.
+ * The window is read off this project's own `constants.ts`, which transcribes it
+ * from specs/controls.md.
  */
 const WINDOW_FRAMES = framesFor(DOUBLE_CLICK_WINDOW);
 const GAP_FRAMES = WINDOW_FRAMES + Math.round(WINDOW_FRAMES / 3);

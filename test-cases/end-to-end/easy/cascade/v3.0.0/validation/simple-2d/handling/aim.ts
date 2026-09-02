@@ -22,7 +22,7 @@
 // Both of these are geometry, not thresholds: they name where a gesture is aimed,
 // and every figure a check asserts is stated in the check itself.
 
-import { CARD_H, CARD_W, COLUMN_X } from "../../src/constants";
+import { CARD_H, CARD_W, COLUMN_X } from "../constants";
 import {
   cardCenter,
   columnCardTops,

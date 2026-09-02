@@ -29,8 +29,8 @@
 // (`handling/release-on-legal-completes`). This point reads the position alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLUMN_X, TABLEAU_Y } from "../../src/constants";
 import { assertBetween, assertNotNull } from "../assert";
+import { COLUMN_X, TABLEAU_Y } from "../constants";
 import {
   captureReplay,
   createHarness,

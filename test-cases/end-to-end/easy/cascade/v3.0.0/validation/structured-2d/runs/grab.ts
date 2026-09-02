@@ -21,7 +21,7 @@
 // rule. A check whose REQUIREMENT is the geometry states its own figures and
 // reads what the build drew; nothing in this group does.
 
-import { CARD_H, CARD_W } from "../../src/constants";
+import { CARD_H, CARD_W } from "../constants";
 import {
   cardTopLeft,
   dropRectIn,

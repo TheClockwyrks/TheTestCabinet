@@ -23,8 +23,8 @@
 // gesture: that a press and a release over the empty stock is what recycles.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STOCK_X, TOP_ROW_Y } from "../../src/constants";
 import { assertLength } from "../assert";
+import { STOCK_X, TOP_ROW_Y } from "../constants";
 import {
   cardCenter,
   captureStill,

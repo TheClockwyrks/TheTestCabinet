@@ -24,8 +24,8 @@
 // (specs/controls.md) and a conforming build ends with the card where it started.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DOUBLE_CLICK_SLOP } from "../../src/constants";
 import { assertDeepEqual, assertNull } from "../assert";
+import { DOUBLE_CLICK_SLOP } from "../constants";
 import {
   captureStill,
   clickAt,

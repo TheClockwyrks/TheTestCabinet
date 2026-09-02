@@ -24,6 +24,7 @@
 // Ace alone.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertNull } from "../assert";
 import {
   CARD_H,
   CARD_W,
@@ -31,8 +32,7 @@ import {
   DOUBLE_CLICK_SLOP,
   DOUBLE_CLICK_WINDOW,
   TABLEAU_Y,
-} from "../../src/constants";
-import { assertDeepEqual, assertNull } from "../assert";
+} from "../constants";
 import {
   ACE,
   captureStill,

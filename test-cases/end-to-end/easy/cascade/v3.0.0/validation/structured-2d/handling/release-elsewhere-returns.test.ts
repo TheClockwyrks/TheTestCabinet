@@ -35,8 +35,8 @@
 // it where there is no pile to ask.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARD_H, CARD_W, COLUMN_X } from "../../src/constants";
 import { assertDeepEqual, assertLength, assertNull } from "../assert";
+import { CARD_H, CARD_W, COLUMN_X } from "../constants";
 import {
   captureStill,
   card,

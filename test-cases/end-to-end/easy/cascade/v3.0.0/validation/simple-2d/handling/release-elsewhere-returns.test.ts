@@ -22,8 +22,8 @@
 // those builds would return the run too and the point would decide nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLUMN_X } from "../../src/constants";
 import { assertDeepEqual, assertNull } from "../assert";
+import { COLUMN_X } from "../constants";
 import {
   captureStill,
   createHarness,

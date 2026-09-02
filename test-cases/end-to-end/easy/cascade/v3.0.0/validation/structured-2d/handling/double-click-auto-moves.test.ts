@@ -29,8 +29,8 @@
 // that the GESTURE reaches it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertDeepEqual, assertNull } from "../assert";
+import { DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   ACE,
   captureStill,
@@ -62,9 +62,9 @@ const CARDS = [card(SUIT, TWO)];
  * A third of the frames `DOUBLE_CLICK_WINDOW` (`0.30`, specs/controls.md) covers
  * at the suite's clock — six frames, `0.1` s of game time — so the second press
  * is inside the window by two thirds of it and lands on a whole frame boundary,
- * with no rounding anywhere near the edge. The window is read off the seeded
- * `src/constants.ts` rather than restated, so this stays right if the figure
- * ever moves.
+ * with no rounding anywhere near the edge. The window is read off this project's
+ * own `constants.ts`, which transcribes it from specs/controls.md, rather than
+ * off the build's module or a literal here.
  */
 const GAP_FRAMES = Math.round(framesFor(DOUBLE_CLICK_WINDOW) / 3);
 

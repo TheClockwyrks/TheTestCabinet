@@ -25,8 +25,8 @@
 // build that fails one and passes the other has been graded on the window alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DOUBLE_CLICK_WINDOW } from "../../src/constants";
 import { assertDeepEqual, assertNull } from "../assert";
+import { DOUBLE_CLICK_WINDOW } from "../constants";
 import {
   captureStill,
   clickAt,
