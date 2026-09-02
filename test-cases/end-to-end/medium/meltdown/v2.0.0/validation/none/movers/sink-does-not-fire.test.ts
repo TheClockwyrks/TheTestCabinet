@@ -22,11 +22,14 @@
 // floor, so the only thing that could take hp off one of them is a shot from this
 // tower.
 //
-// THE DRIVE IS LONG ENOUGH FOR THE SLOWEST GUN ON THE ROSTER. `specs/combat.md`
-// lands a first shot one full interval after a target is acquired, and the
-// longest interval any emitter has is the Lance's `1 / 0.8` seconds
-// (`specs/towers.md`), so two seconds is past the first shot of every rate a
-// build could have given a mover by mistake.
+// THE DRIVE IS LONG RATHER THAN TIGHT, because what it has to exclude is not a
+// figure but an EVENT. `specs/combat.md` lands a first shot one full interval
+// after a target is acquired, and the longest interval any emitter has is the
+// Lance's `1 / 0.8` seconds (`specs/towers.md`) — but a build that gave a mover a
+// gun by mistake did not take its fire rate off that roster, so a window cut to
+// the slowest rate the specification names would let any slower one through. Ten
+// seconds is eight shots at the slowest rate on the roster and seventy at the
+// fastest: a build that fires at any rate at all leaves a reading inside it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
@@ -46,13 +49,20 @@ import { MARK_HP, poseSurroundedMover } from "./contact";
 const MOVER: TowerType = "sink";
 
 /**
- * How long the floor is driven for, in seconds of game time.
+ * How long the floor is driven for, in seconds of game time: ten.
  *
- * Past the first shot of the slowest fire rate on the roster: the Lance's `0.8`
- * shots per second is an interval of `1.25` seconds (`specs/towers.md`,
- * `specs/combat.md`).
+ * Long rather than tight, because what it has to exclude is not a figure but an
+ * EVENT. `specs/combat.md` lands a first shot one full interval after a target is
+ * acquired, and the longest interval any emitter on the roster has is the Lance's
+ * `1 / 0.8` seconds (`specs/towers.md`) — but a build that gave a mover a gun by
+ * mistake did not take its fire rate off that roster, and a window cut to the
+ * slowest rate the specification names would let any slower one through. Ten
+ * seconds is eight shots at the slowest rate on the roster and seventy at the
+ * fastest, and it is the same window the other two engines' copies of this point
+ * hold, so a build that fires at any rate at all leaves a reading inside it. The
+ * floor is advanced rather than watched in real time, so the length costs nothing.
  */
-const WATCH_SECONDS = 2;
+const WATCH_SECONDS = 10;
 
 let h: Harness;
 
