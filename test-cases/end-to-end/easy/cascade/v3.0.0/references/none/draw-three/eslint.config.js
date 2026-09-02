@@ -112,6 +112,25 @@ export default tseslint.config(
     },
   },
   {
+    // A static clause is what the block above reads, so a dynamic one is the way
+    // round it: `await import("../../src/constants")` reaches the same module and
+    // is not an import declaration. A computed specifier is untouched — that is
+    // how `validation/chromium.ts` loads a browser it has just located on disk —
+    // and `require()` is already refused by the recommended set's
+    // `@typescript-eslint/no-require-imports`.
+    files: ["validation/**/*.ts", "validation/**/*.js"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ImportExpression[source.value=/src/]",
+          message:
+            "A validator may not load the build's own sources, dynamically or otherwise. A figure comes from `../constants`.",
+        },
+      ],
+    },
+  },
+  {
     // `validation/constants.ts` is the exemption above, so it is also where a
     // bypass would be written: one `export * from "../src/constants"` here
     // re-exports the build's whole figure table to every suite in the project,
@@ -123,6 +142,14 @@ export default tseslint.config(
     rules: {
       "no-restricted-syntax": [
         "error",
+        {
+          // Restated: a later block replaces a rule's options rather than adding
+          // to them, so dropping this would exempt `constants.ts` from the block
+          // above.
+          selector: "ImportExpression[source.value=/src/]",
+          message:
+            "A validator may not load the build's own sources, dynamically or otherwise. A figure comes from `../constants`.",
+        },
         {
           selector: "ExportAllDeclaration",
           message:
