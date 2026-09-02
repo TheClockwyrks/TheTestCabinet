@@ -701,8 +701,18 @@ export interface Harness {
 
 /* ---- The page ------------------------------------------------------------- */
 
-/** The init scripts injected before any of the build's own script runs. */
-const INIT_SCRIPTS = ["recorder-init.js", "audio-init.js"] as const;
+/**
+ * The init scripts injected before any of the build's own script runs.
+ *
+ * `raster-init.js` is first because it takes the page's own `getContext` for the
+ * probe it measures a fill colour on, and `recorder-init.js` replaces that
+ * `getContext` with one that hands back a recording proxy.
+ */
+const INIT_SCRIPTS = [
+  "raster-init.js",
+  "recorder-init.js",
+  "audio-init.js",
+] as const;
 
 /** This module's directory: the validator project's root. */
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
