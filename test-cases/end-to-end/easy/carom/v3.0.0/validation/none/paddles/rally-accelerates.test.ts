@@ -41,6 +41,18 @@ const HITS_BELOW_CAP = RALLY_HITS_TO_CAP - 1;
 const RATIO_TOLERANCE = 0.01;
 const DECREASE_TOLERANCE = 0.5;
 
+/**
+ * The hits at the head of the rally kept as the review item's replay.
+ *
+ * A recorder armed over a section is charged for every frame the section drives,
+ * and a whole rally is thousands of them; what a reviewer watches to see the ball
+ * speeding up hit by hit is a handful of legs, not the climb entire. The first
+ * three are the ones where the change is most legible, because the ball is
+ * slowest and the legs longest, and they are frames of the same drive the
+ * assertions below read.
+ */
+const RECORDED_HITS = 3;
+
 let harness: Harness;
 
 beforeEach(async () => {
@@ -54,9 +66,11 @@ afterEach(async () => {
 it("multiplies the ball's speed on every hit below the ceiling", async () => {
   await arrangeRally(harness);
 
-  const speeds = await captureReplay(harness, "acceleration", () =>
-    driveRallySpeeds(harness, HITS_BELOW_CAP),
+  const opening = await captureReplay(harness, "acceleration", () =>
+    driveRallySpeeds(harness, RECORDED_HITS),
   );
+  const rest = await driveRallySpeeds(harness, HITS_BELOW_CAP - RECORDED_HITS);
+  const speeds = [...opening, ...rest];
 
   assertGreaterThanOrEqual(speeds.length, HITS_BELOW_CAP);
 

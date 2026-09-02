@@ -1530,6 +1530,22 @@ export const RALLY_HITS_TO_CAP = Math.ceil(
   Math.log(SPEED_CAP / RALLY_LAUNCH_SPEED) / Math.log(SPEED_MULT),
 );
 
+/**
+ * Frames between samples while a rally leg is swept.
+ *
+ * A leg is the ball crossing between the two paddle faces, and the shortest one
+ * it can be is that distance covered at `SPEED_CAP`; sampling eight times inside
+ * even that leg catches every reversal. A per-frame sweep would cost eight times
+ * as much to read frames between which nothing this collects can change: a ball's
+ * speed only ever changes at a paddle hit, and walls and obstacles preserve it
+ * exactly, so a sample taken a few frames after a hit reports the same figure the
+ * frame of the hit would.
+ */
+const RALLY_POLL_FRAMES = Math.max(
+  1,
+  Math.floor((((P2_X0 - P1_X1) / SPEED_CAP) * TICK_HZ) / 8),
+);
+
 /** Two still, centred paddles and a ball launched level down the middle. */
 export async function arrangeRally(h: Harness): Promise<void> {
   await startPlaying(h);
@@ -1575,7 +1591,7 @@ export async function driveRallySpeeds(
         const ball = ball0(s);
         return Math.sign(ball.vx) === want && ball.vx !== 0;
       },
-      { maxFrames: 600, poll: 6 },
+      { maxFrames: 600, poll: RALLY_POLL_FRAMES },
     );
     if (leftPlay || !leg.hit) break;
     speeds.push(ball0(leg.snapshot).speed);

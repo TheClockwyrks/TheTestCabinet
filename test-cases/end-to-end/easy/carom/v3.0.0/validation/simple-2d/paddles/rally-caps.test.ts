@@ -35,6 +35,16 @@ const OVERSHOOT_TOLERANCE = 1e-6;
 /** The review item's margin on the plateau: one percent of SPEED_CAP. */
 const PLATEAU_TOLERANCE = SPEED_CAP * 0.01;
 
+/**
+ * The hits at the END of the rally kept as the review item's replay.
+ *
+ * A recorder armed over a section is charged for every frame the section drives,
+ * and the whole climb is thousands of them; what a reviewer watches to see the
+ * plateau is the rally once it is ON the ceiling, which is where these are. They
+ * are frames of the same drive the assertions below read.
+ */
+const RECORDED_HITS = 3;
+
 let harness: Harness;
 
 beforeEach(async () => {
@@ -48,9 +58,11 @@ afterEach(() => {
 it("plateaus at the speed ceiling and never exceeds it", async () => {
   await arrangeRally(harness);
 
-  const speeds = await captureReplay(harness, "ceiling", () =>
-    driveRallySpeeds(harness, RALLY_HITS),
+  const climb = await driveRallySpeeds(harness, RALLY_HITS - RECORDED_HITS);
+  const onTheCeiling = await captureReplay(harness, "ceiling", () =>
+    driveRallySpeeds(harness, RECORDED_HITS),
   );
+  const speeds = [...climb, ...onTheCeiling];
 
   assertGreaterThanOrEqual(speeds.length, RALLY_HITS);
   assertLessThanOrEqual(Math.max(...speeds), SPEED_CAP + OVERSHOOT_TOLERANCE);
