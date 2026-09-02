@@ -501,7 +501,16 @@ const SURFACE_TIMEOUT_MS = 15_000;
  */
 const SURFACE_RETRY_TIMEOUT_MS = 2_000;
 
-/** Whether a wait for the surface has already expired in this worker. */
+/**
+ * Whether a wait for the surface has already expired in this worker.
+ *
+ * It is a claim about the BUILD, so it stands only as long as nothing disproves
+ * it: the next page that does produce a surface clears it, and the full ceiling
+ * is back for every harness after that. Left latched it would be a claim about
+ * the machine instead — one page that took too long on a busy host would cut
+ * every later page's ceiling to two seconds, and a build whose surface arrives a
+ * moment after `load` would lose points it had already earned.
+ */
 let surfaceKnownAbsent = false;
 
 /**
@@ -684,6 +693,9 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
       return `window.${HANDLE} was still absent ${timeout / 1000}s after the page loaded`;
     }
   }
+  // A surface turned up, so whatever the earlier wait was, it was not a build
+  // that installs none: the shortened ceiling is withdrawn.
+  surfaceKnownAbsent = false;
   const missing = await page.evaluate(
     ([handle, ops]) => {
       const target = (
