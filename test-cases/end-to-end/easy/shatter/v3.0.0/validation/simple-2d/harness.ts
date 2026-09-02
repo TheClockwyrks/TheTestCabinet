@@ -437,6 +437,36 @@ function toDevice(
 }
 
 /**
+ * How many frames run back to back before the worker's event loop is given a
+ * turn.
+ *
+ * NOT A PACING FIGURE, AND IT CHANGES NOTHING THE GAME SEES. Every frame either
+ * side of the pause is the same frame with the same delta; what the pause buys is
+ * a trip round node's event loop.
+ *
+ * WHY THAT IS NEEDED. `engine.advance(n)` is synchronous — it runs all `n`
+ * frames before it returns — and a check that steps a tick at a time `await`s a
+ * promise that is already resolved, which is a microtask and never reaches the
+ * loop either. So a march of tens of thousands of frames holds the worker's
+ * thread from beginning to end. Vitest's worker talks to the runner over an RPC
+ * with a SIXTY-SECOND timeout of its own, armed with an ordinary timer and not
+ * configurable from a project's config: on a loaded host a march that blocks
+ * longer than that makes the worker throw
+ * `[vitest-worker]: Timeout calling "onTaskUpdate"` — an unhandled error vitest
+ * itself warns "might cause false positive tests", and a fact about how busy the
+ * machine was rather than about the build. Two thousand frames is about a
+ * fiftieth of that budget even on a host twenty times oversubscribed.
+ */
+const YIELD_EVERY = 2_000;
+
+/** Hand the event loop a turn: a real macrotask, not an already-settled await. */
+function breathe(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+/**
  * A proxy that records every call and property set on its way to the real
  * context, so one frame produces both a pixel buffer to sample and a call list
  * to inspect.
@@ -722,6 +752,8 @@ export async function createHarness(
   let quietDepth = 0;
   /** Whether the canvas holds the picture of the tick the game is on. */
   let painted = true;
+  /** Frames run since the event loop last had a turn. See {@link YIELD_EVERY}. */
+  let sinceYield = 0;
   let live: Engine<ShatterState, ShatterSurface> | null = null;
   const drawingNow = (): boolean =>
     (drawing && quietDepth === 0) || (live?.recording() ?? false);
@@ -834,7 +866,17 @@ export async function createHarness(
     // state the gate is restored to.
     const drew = drawingNow();
     try {
-      await engine.advance(frames);
+      let left = frames;
+      while (left > 0) {
+        const chunk = Math.max(1, Math.min(left, YIELD_EVERY - sinceYield));
+        await engine.advance(chunk);
+        left -= chunk;
+        sinceYield += chunk;
+        if (sinceYield >= YIELD_EVERY) {
+          sinceYield = 0;
+          await breathe();
+        }
+      }
     } finally {
       drawing = true;
     }
