@@ -9,7 +9,10 @@
 //   * cost — `PART_COSTS` summed over the machine, a track charged per cell;
 //   * legality — the six placement rules, checked against the machine as it
 //     stands, and reported as the first rule broken so a refusal can say what
-//     it refused.
+//     it refused. specs/parts.md names each rule by its number, so every
+//     message below opens with that number. The two guards ahead of them —
+//     a track with no path, a part with no footprint — refuse a malformed
+//     part rather than an illegal placement, and name no rule.
 //
 // The editor of specs/editor.md and the debug surface of
 // specs/instrumentation.md are the two callers, and they ask exactly the same
@@ -257,6 +260,17 @@ function holds(cells: readonly Hex[], cell: Hex): boolean {
 }
 
 /**
+ * Whether wheels anchored on `a` and `b` have rings that meet: whether any hex
+ * at all is adjacent to both anchors (specs/parts.md, rule 4).
+ */
+function ringsMeet(a: Hex, b: Hex): boolean {
+  for (let dir = 0; dir < 6; dir += 1) {
+    if (adjacent(neighbor(a, dir), b)) return true;
+  }
+  return false;
+}
+
+/**
  * The first placement rule `candidate` breaks against `others`, worded for the
  * error a refusal raises, or `null` when the placement is legal
  * (specs/parts.md "Placement rules"). `others` is the machine without the
@@ -273,21 +287,21 @@ export function placementFailure(
     if (cells.length === 0) return "a track's path holds no cells";
     for (let i = 1; i < cells.length; i += 1) {
       if (!adjacent(cells[i - 1], cells[i])) {
-        return "a track's consecutive cells are adjacent";
+        return "rule 6: a track's consecutive cells are adjacent";
       }
     }
     for (let i = 0; i < cells.length; i += 1) {
       for (let j = i + 1; j < cells.length; j += 1) {
         if (sameHex(cells[i], cells[j]))
-          return "no hex is a cell of one track twice";
+          return "rule 3: no hex is a cell of one track twice";
       }
     }
     if (candidate.closed === true) {
       if (cells.length < CLOSED_TRACK_MIN_CELLS) {
-        return `a closed track's path holds at least ${CLOSED_TRACK_MIN_CELLS} cells`;
+        return `rule 6: a closed track's path holds at least ${CLOSED_TRACK_MIN_CELLS} cells`;
       }
       if (!adjacent(cells[cells.length - 1], cells[0])) {
-        return "a closed track's last cell is adjacent to its first";
+        return "rule 6: a closed track's last cell is adjacent to its first";
       }
     }
   }
@@ -300,7 +314,7 @@ export function placementFailure(
   // Rule 1: every hex of the part is on the field.
   for (const cell of mine) {
     if (!hexOnField(cell)) {
-      return `every hex of a part is on the field; (${cell.q}, ${cell.r}) is not`;
+      return `rule 1: every hex of a part is on the field; (${cell.q}, ${cell.r}) is not`;
     }
   }
 
@@ -312,11 +326,12 @@ export function placementFailure(
       (part) => part.kind === candidate.kind && part.index === candidate.index,
     );
     if (twin !== undefined) {
-      return `${candidate.kind} ${String(candidate.index)} is already placed`;
+      return `rule 5: ${candidate.kind} ${String(candidate.index)} is already placed`;
     }
   }
 
-  // Rule 4: no two arms or wheels share an anchor hex.
+  // Rule 4: no two arms or wheels share an anchor hex, and no two wheels'
+  // rings meet.
   if (kind === "arm" || kind === "wheel") {
     const anchor = { q: candidate.q, r: candidate.r };
     const twin = others.find(
@@ -324,7 +339,17 @@ export function placementFailure(
         isMechanism(part.kind) && sameHex({ q: part.q, r: part.r }, anchor),
     );
     if (twin !== undefined) {
-      return `an arm or wheel already stands on (${anchor.q}, ${anchor.r})`;
+      return `rule 4: an arm or wheel already stands on (${anchor.q}, ${anchor.r})`;
+    }
+  }
+  if (kind === "wheel") {
+    const anchor = { q: candidate.q, r: candidate.r };
+    const near = others.find(
+      (part) =>
+        part.kind === "wheel" && ringsMeet({ q: part.q, r: part.r }, anchor),
+    );
+    if (near !== undefined) {
+      return `rule 4: the ring of the wheel on (${near.q}, ${near.r}) meets the ring on (${anchor.q}, ${anchor.r})`;
     }
   }
 
@@ -335,14 +360,14 @@ export function placementFailure(
   if (kind === "sigil" || kind === "rise" || kind === "set") {
     for (const cell of mine) {
       if (holds(engraved, cell)) {
-        return `an engraving already covers (${cell.q}, ${cell.r})`;
+        return `rule 2: an engraving already covers (${cell.q}, ${cell.r})`;
       }
     }
     for (const part of others) {
       if (part.kind !== "track") continue;
       for (const cell of part.cells ?? []) {
         if (holds(mine, cell)) {
-          return `a track cell lies on (${cell.q}, ${cell.r})`;
+          return `rule 2: a track cell lies on (${cell.q}, ${cell.r})`;
         }
       }
     }
@@ -351,7 +376,7 @@ export function placementFailure(
   if (kind === "track") {
     for (const cell of mine) {
       if (holds(engraved, cell)) {
-        return `a track cell may not lie on the engraving at (${cell.q}, ${cell.r})`;
+        return `rule 2: a track cell may not lie on the engraving at (${cell.q}, ${cell.r})`;
       }
     }
     // Rule 3: no hex is a cell of two tracks.
@@ -359,7 +384,7 @@ export function placementFailure(
       if (part.kind !== "track") continue;
       for (const cell of part.cells ?? []) {
         if (holds(mine, cell)) {
-          return `(${cell.q}, ${cell.r}) is already a cell of another track`;
+          return `rule 3: (${cell.q}, ${cell.r}) is already a cell of another track`;
         }
       }
     }

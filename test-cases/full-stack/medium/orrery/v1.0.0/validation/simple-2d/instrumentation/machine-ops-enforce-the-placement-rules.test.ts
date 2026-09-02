@@ -12,7 +12,8 @@
 //   2. "Sigil footprints, rise and set footprints included, are pairwise
 //      disjoint, and no track cell lies on any of them."
 //   3. "No hex is a cell of two tracks, or of one track twice."
-//   4. "No two arms or wheels share an anchor hex."
+//   4. "No two arms or wheels share an anchor hex, and no two wheels'
+//      rings meet..."
 //   5. "Each rise and each set is placed at most once."
 //   6. "A track's consecutive cells are adjacent..."
 //

@@ -26,6 +26,7 @@ import {
 import {
   adjacent,
   at,
+  neighbors,
   onField,
   place,
   sameHex,
@@ -332,6 +333,15 @@ export interface PlacementFault {
 }
 
 /**
+ * Whether wheels anchored on `a` and `b` have rings that meet — whether any hex
+ * at all is adjacent to both anchors, which is what rule 4's second clause
+ * forbids.
+ */
+function ringsMeet(a: Hex, b: Hex): boolean {
+  return neighbors(a).some((cell) => adjacent(cell, b));
+}
+
+/**
  * The first placement rule a whole machine breaks, or `null` when every one of
  * the six holds (`specs/parts.md`, Placement rules).
  *
@@ -402,6 +412,19 @@ export function placementFault(
         return {
           rule: 4,
           requirement: "no two arms or wheels share an anchor hex",
+        };
+      }
+    }
+  }
+  const hubs = parts.flatMap((part) =>
+    part.kind === "wheel" ? [at(part.q ?? 0, part.r ?? 0)] : [],
+  );
+  for (let a = 0; a < hubs.length; a += 1) {
+    for (let b = a + 1; b < hubs.length; b += 1) {
+      if (ringsMeet(hubs[a] as Hex, hubs[b] as Hex)) {
+        return {
+          rule: 4,
+          requirement: "no two wheels' rings meet",
         };
       }
     }

@@ -262,6 +262,22 @@ describe("the placement rules (specs/parts.md)", () => {
     expect(placementLegal(part("arm", 2, 0), [sigil], challenge)).toBe(true);
   });
 
+  it("refuses two wheels whose rings meet, and allows them three apart", () => {
+    const wheel = part("wheel", 0, 0);
+    // Anchors one apart share two ring hexes; two apart share the one between
+    // them. Either way a hex is adjacent to both anchors.
+    expect(placementFailure(part("wheel", 1, 0), [wheel], challenge)).toMatch(
+      /ring/,
+    );
+    expect(placementFailure(part("wheel", 2, 0), [wheel], challenge)).toMatch(
+      /ring/,
+    );
+    // Three apart, no hex is adjacent to both.
+    expect(placementLegal(part("wheel", 3, 0), [wheel], challenge)).toBe(true);
+    // The clause is wheel to wheel: an arm may stand on a wheel's ring.
+    expect(placementLegal(part("arm", 1, 0), [wheel], challenge)).toBe(true);
+  });
+
   it("refuses a second rise or set for one index", () => {
     const rise = part("rise", 0, 0, 0, { index: 0 });
     expect(

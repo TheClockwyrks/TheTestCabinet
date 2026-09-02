@@ -1,8 +1,8 @@
 // parts/an-anchor-may-sit-on-a-footprint — an arm or wheel may be anchored on a
 // sigil, rise or set footprint hex.
 //
-// THE RULE. Placement rule 4: "No two arms or wheels share an anchor hex. An arm
-// or wheel's anchor may sit on any sigil footprint hex, a rise's and a set's
+// THE RULE. Placement rule 4: "No two arms or wheels share an anchor hex ... An
+// arm or wheel's anchor may sit on any sigil footprint hex, a rise's and a set's
 // included, or on a track cell; sitting on a track cell is what mounts it"
 // (`specs/parts.md`, Placement rules). Rule 2 keeps footprints apart from each
 // other and from track cells and says nothing about anchors: "Sigil footprints,

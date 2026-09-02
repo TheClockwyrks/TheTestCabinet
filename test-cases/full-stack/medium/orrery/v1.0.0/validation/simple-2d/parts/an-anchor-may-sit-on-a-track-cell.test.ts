@@ -1,8 +1,8 @@
 // parts/an-anchor-may-sit-on-a-track-cell — an arm or wheel may be anchored on a
 // cell of a track.
 //
-// THE RULE. Placement rule 4: "No two arms or wheels share an anchor hex. An arm
-// or wheel's anchor may sit on any sigil footprint hex, a rise's and a set's
+// THE RULE. Placement rule 4: "No two arms or wheels share an anchor hex ... An
+// arm or wheel's anchor may sit on any sigil footprint hex, a rise's and a set's
 // included, or on a track cell; sitting on a track cell is what mounts it"
 // (`specs/parts.md`, Placement rules). `specs/parts.md` says the same under
 // Track: "An arm or wheel whose anchor hex is a cell of a track is mounted on

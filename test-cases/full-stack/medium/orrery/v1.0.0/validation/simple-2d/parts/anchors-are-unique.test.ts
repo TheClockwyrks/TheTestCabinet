@@ -1,8 +1,8 @@
 // parts/anchors-are-unique — no two arms or wheels share an anchor hex, in every
 // pairing of the six anchored mechanism kinds.
 //
-// THE RULE. Placement rule 4: "No two arms or wheels share an anchor hex. An arm
-// or wheel's anchor may sit on any sigil footprint hex, a rise's and a set's
+// THE RULE. Placement rule 4: "No two arms or wheels share an anchor hex ... An
+// arm or wheel's anchor may sit on any sigil footprint hex, a rise's and a set's
 // included, or on a track cell; sitting on a track cell is what mounts it"
 // (`specs/parts.md`, Placement rules). The kinds it speaks of are the anchored
 // mechanisms of the roster: `arm`, `biarm`, `triarm`, `hexarm`, `piston` — "one
