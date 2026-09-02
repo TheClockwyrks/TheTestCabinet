@@ -38,7 +38,7 @@ import {
   READY_HOLD,
   START_LIVES,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

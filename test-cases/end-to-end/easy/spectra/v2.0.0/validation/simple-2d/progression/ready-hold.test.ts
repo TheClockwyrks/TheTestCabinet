@@ -40,7 +40,7 @@ import {
   STAGE_INTRO_HOLD,
   START_LIVES,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,

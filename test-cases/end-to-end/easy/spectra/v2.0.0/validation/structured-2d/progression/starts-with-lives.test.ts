@@ -30,7 +30,7 @@
 // not be a run's opening figure.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { STAGE_INTRO_HOLD, START_LIVES } from "../../src/constants";
+import { STAGE_INTRO_HOLD, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

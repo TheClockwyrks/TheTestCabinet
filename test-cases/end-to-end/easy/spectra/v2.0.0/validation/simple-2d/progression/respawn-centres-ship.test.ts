@@ -35,7 +35,7 @@ import {
   SHIP_X_MIN,
   START_LIVES,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertCloseTo, assertEqual } from "../assert";
 import {
   LANE_CENTER,

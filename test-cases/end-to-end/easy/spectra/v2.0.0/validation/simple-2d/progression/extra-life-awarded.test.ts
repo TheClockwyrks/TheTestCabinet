@@ -40,7 +40,7 @@ import {
   START_LIVES,
   slotX,
   slotY,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
 import {
   captureStill,

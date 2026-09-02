@@ -42,7 +42,7 @@ import {
   READY_HOLD,
   START_LIVES,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual, assertLength } from "../assert";
 import {
   captureStill,

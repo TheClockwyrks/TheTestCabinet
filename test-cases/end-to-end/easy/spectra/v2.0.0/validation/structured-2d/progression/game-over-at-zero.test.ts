@@ -33,7 +33,7 @@ import {
   ENEMY_BULLET_SPEED,
   SHIP_HALF,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
