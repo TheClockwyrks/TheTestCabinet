@@ -373,6 +373,36 @@ describe("construction", () => {
     ).toThrow(/"perspective".*"orthographic"/);
   });
 
+  it("raises construction refusals in the order the errors table lists them", () => {
+    // A build with every mistake at once hears about the size, then the canvas, then
+    // the projection — outermost first, so what it is told to fix is what everything
+    // after it is built on rather than a detail of a stage that cannot exist.
+    const stage = createStage();
+    const broken = {
+      game: testGame(),
+      screen: stage.screen.canvas,
+      surface: stage.surface.surface,
+      projection: "isometric" as "perspective",
+    };
+
+    expect(() =>
+      createEngine({
+        ...broken,
+        canvas: createContextlessCanvas(),
+        width: 0,
+        height: DESIGN_HEIGHT,
+      }),
+    ).toThrow(/design size/);
+    expect(() =>
+      createEngine({
+        ...broken,
+        canvas: createContextlessCanvas(),
+        width: DESIGN_WIDTH,
+        height: DESIGN_HEIGHT,
+      }),
+    ).toThrow(/webgl2 context from the canvas/);
+  });
+
   it("refuses a layout outside the catalogue, naming every valid one", () => {
     const stage = createStage();
     expect(() =>

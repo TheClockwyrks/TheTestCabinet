@@ -202,6 +202,21 @@ describe("the renderer", () => {
       }),
     ).toThrow(/webgl2 context from the canvas/);
   });
+
+  it("names the canvas rather than the projection when a build has both mistakes", () => {
+    // The errors table's order is the order the refusals are raised in: the surface
+    // first, because the camera and the screen layer are both drawn on it, and a
+    // build told about its projection would fix that and be refused all over again.
+    expect(() =>
+      createRenderStage({
+        canvas: createContextlessCanvas(),
+        width: DESIGN_WIDTH,
+        height: DESIGN_HEIGHT,
+        screen: createStubCanvas().canvas,
+        projection: "isometric" as never,
+      }),
+    ).toThrow(/webgl2 context from the canvas/);
+  });
 });
 
 describe("the scene", () => {

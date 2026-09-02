@@ -255,9 +255,13 @@ export function createRenderStage(options: RenderStageOptions): RenderStage {
   const { canvas, width, height } = options;
 
   // Every refusal before the renderer, and in the order the errors table states
-  // them: a build with two mistakes in it is told about the canvas rather than
-  // about the layer drawn over it, and no renderer is ever constructed for an
+  // them — the canvas, then the layer drawn over it, then how it is looked at —
+  // so a build with two mistakes in it is told about the surface first, which is
+  // the one the other two are drawn on. No renderer is ever constructed for an
   // engine that will not be returned.
+  const gl = stageContext(canvas);
+  const screenCanvas = screenCanvasFor(canvas, options.screen);
+  const screen = screenContext(screenCanvas);
   // `projection` is defaulted here rather than inside the camera's own builder,
   // which takes the value as stated so that a build naming something outside the
   // pair is refused instead of quietly getting the default.
@@ -266,9 +270,6 @@ export function createRenderStage(options: RenderStageOptions): RenderStage {
     width,
     height,
   );
-  const gl = stageContext(canvas);
-  const screenCanvas = screenCanvasFor(canvas, options.screen);
-  const screen = screenContext(screenCanvas);
 
   const renderer = new THREE.WebGLRenderer({
     canvas,
