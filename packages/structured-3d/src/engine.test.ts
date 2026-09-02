@@ -25,7 +25,9 @@ import {
 import { GameMode } from "./game-mode";
 import type { World } from "./worlds";
 import {
+  createContextlessCanvas,
   createStage,
+  createStubCanvas,
   installCanvasContexts,
   type Stage,
 } from "./testing/canvas";
@@ -309,6 +311,31 @@ describe("construction", () => {
     expect(() => build({ canvas: contextless })).toThrow(/webgl2 context/);
   });
 
+  /**
+   * The screen layer's two refusals, reached through the factory rather than
+   * through the pipeline that raises them. The errors table attributes both to
+   * `createEngine`, and a build reads that table rather than the module list, so
+   * what has to hold is that the refusal survives the engine's own wiring: the
+   * pipeline is constructed first, before any argument measured against it, and
+   * nothing between the option and the constructor drops or defaults it.
+   */
+  it("refuses a stage canvas with no owning document when no screen is supplied", () => {
+    const stage = createStubCanvas({ width: 640, height: 360 });
+    Object.defineProperty(stage.canvas, "ownerDocument", {
+      value: null,
+      configurable: true,
+    });
+    expect(() => build({ canvas: stage.canvas, screen: undefined })).toThrow(
+      /`screen`/,
+    );
+  });
+
+  it("refuses a screen canvas that yields no 2D context, naming the option", () => {
+    expect(() => build({ screen: createContextlessCanvas() })).toThrow(
+      /2D context from the screen canvas/,
+    );
+  });
+
   it("refuses a layout outside the catalogue, naming every valid layout", () => {
     expect(() => build({ layout: "not-a-layout" })).toThrow(
       /outside TOUCH_LAYOUTS/,
@@ -347,6 +374,20 @@ describe("construction", () => {
       null) as unknown as HTMLCanvasElement["getContext"];
     expect(() =>
       build({ canvas: contextless, game: { levels: {}, startLevel: "main" } }),
+    ).toThrow(/webgl2 context/);
+    // A contextless screen canvas and a bad layout: the screen wins, because
+    // the layer drawn over the picture is still part of the surface and comes
+    // before the arguments measured against it.
+    expect(() =>
+      build({ screen: createContextlessCanvas(), layout: "not-a-layout" }),
+    ).toThrow(/2D context from the screen canvas/);
+    // A contextless stage canvas and a contextless screen: the stage wins, so a
+    // build is told about the surface everything else is drawn on first.
+    expect(() =>
+      build({
+        canvas: contextless,
+        screen: createContextlessCanvas(),
+      }),
     ).toThrow(/webgl2 context/);
     // A bad layout and a bad startLevel: the layout wins.
     expect(() =>
