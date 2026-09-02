@@ -813,6 +813,39 @@ describe("InputSystem pointer devices and contacts", () => {
     expect(reader.pointer()).toMatchObject({ x: 5, y: 5, down: true });
   });
 
+  it("reads an absent pointerId as 0, whatever the event says about isPrimary", () => {
+    // A browser always supplies the field, so an event without one was
+    // dispatched by hand and has no way of implying a second pointer: two
+    // contacts are named by giving each its own `pointerId`.
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { isPrimary: false });
+
+    expect(reader.pointerContacts()).toEqual([
+      {
+        id: 0,
+        x: 5,
+        y: 5,
+        primary: false,
+        device: "mouse",
+        buttons: ["primary"],
+      },
+    ]);
+    expect(reader.pointerSamples()[0]?.id).toBe(0);
+  });
+
+  it("folds a second unidentified pointer into the same contact", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5);
+    point(target, "pointerdown", 9, 9, { isPrimary: false });
+
+    expect(reader.pointerContacts()).toHaveLength(1);
+    expect(reader.pointerContacts()[0]?.id).toBe(0);
+  });
+
   it("keeps its contacts across a closing frame and drops a released one", () => {
     const { system, target } = systemWith();
     const reader = system.createReader();
