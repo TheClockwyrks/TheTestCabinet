@@ -229,10 +229,16 @@ its top are both clear of it:
   load whose bottom face rests exactly on `y = 0` is on the ground, not through
   it.
 
-Those three are the whole of it. The hook, the cable, the trolley, the slew
-ring, the counterweights, the anchor mounts, waiting loads, and placed loads
-collide with nothing, and the structure never collides with itself or with a
-load.
+Those three are the whole of it. Body by body:
+
+| Body | Tested against |
+| --- | --- |
+| A member | Obstacles |
+| An attached load | Obstacles and the ground |
+| The hook | The ground, and only while no load is attached |
+| The cable, the trolley, the slew ring, the counterweights, the anchor mounts, waiting loads, and placed loads | Nothing |
+
+The structure never collides with itself or with a load.
 
 ## The failure causes
 

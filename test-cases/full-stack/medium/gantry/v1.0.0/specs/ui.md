@@ -51,8 +51,8 @@ state reads without relying on hue alone.
 `confirm` on an open or cleared site enters it, opening the `build` screen
 with that site's stored structure and tape; `confirm` on a locked site does
 nothing; and `back` returns to `title`. On arriving, the highlight sits on the
-site most recently entered or cleared, and on the site at index `0`,
-`menuIndex` `0`, before any has been entered.
+site the yard screens last showed (`siteIndex`, `specs/state.md`), which is the
+site at index `0`, `menuIndex` `0`, before any site has been opened.
 
 ### Build
 
@@ -64,16 +64,21 @@ the budget, the tool palette with each tool's binding and the selected tool
 marked, and the tape's step count.
 
 The `check` action runs the static check (`specs/structure.md`) and shows what
-it reports: the issues by name, and, on a structure with none, whether it
-stands and each member colored by its static utilization on the utilization
-ramp (`specs/overview.md`).
+it found:
+
+| What the check found | What the screen shows |
+| --- | --- |
+| A readiness issue | The issues by name, and no verdict: with a readiness issue the structure is not solved, and the check reports no member, so nothing is colored |
+| No readiness issue, and the structure does not stand | The issues by name, `empty-program` among them when the tape is empty, and that the structure does not stand; the check reports no member, so nothing is colored |
+| No readiness issue, and the structure stands | The issues by name, `empty-program` among them when the tape is empty, that the structure stands, and each member colored by its static utilization on the utilization ramp (`specs/overview.md`) |
 
 A refused edit is visible in the moment it is refused, in whatever form suits
 the look, so a player is never left wondering why a click did nothing.
 
 `program` switches to the tape, `run` starts the run, and `back` returns to
-`select`. A refused start (`specs/program.md`) stays on the screen and shows
-the refusing issues by name.
+`select`, or clears a pending node when one is held (`specs/controls.md`). A
+refused start (`specs/program.md`) stays on the screen and shows the refusing
+issues by name.
 
 ### Program
 
@@ -87,8 +92,9 @@ starts the run, and `back` returns to `select`.
 `run` shows the tape playing out. Its readouts, over the live scene:
 
 - Each axis's value and its command's target while one is live.
-- The live step as `step m / n`, with `m` the live step counted from `1` and
-  `n` the tape's step count.
+- The live step as `step m / n`, with `n` the tape's step count and `m` the
+  tape step the run is on, counted from `1`: it reads `step 1 / n` before the
+  first tick takes a step and `step n / n` once every step is complete.
 - The run clock, in seconds, and the crane's cost.
 - The watch speed, cycled by `speed` through `RUN_SPEEDS`
   (`specs/program.md`).
@@ -96,8 +102,8 @@ starts the run, and `back` returns to `select`.
   coloring reads.
 
 A cleared run moves to `results`. A failed run stays here, the scene as it
-stood, with the failure copy below shown plainly and `back` returning to
-`build`. `back` during a running run aborts it, as `specs/program.md` states.
+stood, with the failure copy below shown plainly. `back` aborts a run in
+progress, as `specs/program.md` states, and otherwise returns to `build`.
 
 ### Results
 
@@ -105,9 +111,18 @@ stood, with the failure copy below shown plainly and `back` returning to
 beside the site's par cost and par time (`specs/sites.md`), and the menu
 `RESULTS_ITEMS` (`NEXT SITE`, `REPLAY`, `SITE SELECT`), with `menuIndex` `0`
 on arriving. On the last site `NEXT SITE` is left out and the menu is the
-other two entries in the same order. `NEXT SITE` opens the next site's `build`
-screen, `REPLAY` returns to this site's `build` screen, and `SITE SELECT` and
-`back` return to `select`.
+other two entries in the same order.
+
+| Entry | Where it leads |
+| --- | --- |
+| `NEXT SITE` | Opens the next site and shows its `build` screen |
+| `REPLAY` | Opens this site again and shows its `build` screen |
+| `SITE SELECT` | Returns to `select`, opening no site |
+
+Opening a site is the operation `specs/state.md` fixes, so `NEXT SITE` and
+`REPLAY` both return the camera to its start pose, empty the undo history, and
+put the run back to its idle placeholder, while every site's stored structure
+and tape stand as they were built. `back` does what `SITE SELECT` does.
 
 A clear records the site's best score: the first clear as it stands, and a
 later clear replaces it when its cost is lower, or equal with a lower time.
@@ -147,7 +162,7 @@ these cues:
 | `collapse` | a run fails as `collapse` or `ring-overload` |
 | `complete` | a run clears the site |
 | `fail` | a run fails, whatever the cause |
-| `motor` | loops while any axis's rate is nonzero, and is silent otherwise |
+| `motor` | loops while a run is in progress and any axis's rate is nonzero, and is silent otherwise: a run that ends stops it, whatever rates its axes were left holding |
 
 Each cue is a distinct sound. A cue plays once for the event that raises it,
 and at most once on a given tick or edit; `motor` is the one loop. The title

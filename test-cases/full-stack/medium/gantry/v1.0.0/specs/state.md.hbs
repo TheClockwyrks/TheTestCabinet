@@ -19,7 +19,10 @@ facts.
 - The screen the game is showing, one of `title`, `howto`, `select`, `build`,
   `program`, `run`, and `results`, and the highlighted entry of whichever menu
   that screen shows, counted from `0`. The snapshot reports the second as
-  `menuIndex`.
+  `menuIndex`. A screen with no menu highlights nothing and leaves it as it
+  stands, and a menu with no entry at that index highlights its last entry
+  instead: `confirm` takes the highlighted entry, and `up` and `down` move from
+  it (`specs/ui.md`).
 - The site the yard screens are showing, counted from `0`, which is `0` before
   any site has been opened.
 - Per site: whether it has ever been cleared this session, and the best score
@@ -79,11 +82,12 @@ target, and a rate.
 - The pointer position, in the stage's logical units, and whether a press is
   live; where the live press began, in those same units; and whether that press
   has reached `CLICK_SLOP` from where it began, which is what makes it an orbit
-  drag rather than a click (`specs/controls.md`). The last three are the state's
-  own record of the press it is following rather than a reading taken afresh
-  each update, so a press that began as a click and a press that has become a
-  drag are told apart by what the state kept. `specs/instrumentation.md` gives
-  what sets each of the six fields.
+  drag rather than a click (`specs/controls.md`). Whether a press is live, where
+  it began, and whether it has become a drag are the state's own record of the
+  press it is following rather than a reading taken afresh each update, so a
+  click and an orbit drag are told apart by what the state kept.
+  `specs/instrumentation.md` gives what sets each of the six fields the snapshot
+  reports.
 
 ### The run
 
@@ -294,7 +298,7 @@ export interface AxisState {
 
 export type LoadPhase = "waiting" | "attached" | "placed" | "lost";
 
-/** One load during a run, index-aligned with the open site's loads. */
+/** One load during a run: one entry per load that run started with. */
 export interface LoadState {
   phase: LoadPhase;
   /** The lift point's current position (specs/world.md). */
@@ -513,7 +517,7 @@ first.
 - `speedIndex` — the watch speed, as an index into `RUN_SPEEDS`.
 - `stepIndex` — the tape step the run is on, counted from `0`, which reaches
   the tape's length once every step is complete. The run screen shows it as
-  `step m / n` with `m` one greater (`specs/ui.md`).
+  `step m / n` (`specs/ui.md`).
 - `stepLive` — whether the step at `stepIndex` has been taken and is not yet
   complete. A move step is live from the tick that issues its commands until
   the tick that finds every one of its axes arrived; an action step is taken,
@@ -572,7 +576,11 @@ and containers of them, so a site is posed by building a state that differs in
 the fields posed and read back by reading them.
 
 - `screen` — the screen currently shown.
-- `menuIndex` — the highlighted entry of whichever menu `screen` shows.
+- `menuIndex` — the highlighted entry of whichever menu `screen` shows. A
+  screen with no menu highlights nothing and leaves it as it stands, and a menu
+  with no entry at that index highlights its last entry instead: `confirm`
+  takes the highlighted entry, and `up` and `down` move from it
+  (`specs/ui.md`).
 - `siteIndex` — the site the build, program, and run screens show, counted
   from `0`, and `0` before any site has been opened.
 - `cleared` — one entry per site, `true` once that site has been cleared this
@@ -593,7 +601,7 @@ the fields posed and read back by reading them.
   screens and returns to its start pose when a site is opened.
 - `pointer` — the pointer as of this frame: `x` and `y` refreshed from the
   engine on every update, and `down`, `pressX`, `pressY`, and `dragging` the
-  state's own, carried from the frame the press went down.
+  state's own; `specs/instrumentation.md` gives what sets each.
 - `run` — the run in progress, the run last ended, or the idle placeholder.
 - `muted` — the game's readable copy of the engine's mute bit, which every
   `update` carries into the state it returns. The engine owns muting, and this
@@ -754,7 +762,7 @@ export interface AxisState {
 
 export type LoadPhase = "waiting" | "attached" | "placed" | "lost";
 
-/** One load during a run, index-aligned with the open site's loads. */
+/** One load during a run: one entry per load that run started with. */
 export interface LoadState {
   phase: LoadPhase;
   /** The lift point's current position (specs/world.md). */
@@ -1021,7 +1029,7 @@ first.
 - `speedIndex` — the watch speed, as an index into `RUN_SPEEDS`.
 - `stepIndex` — the tape step the run is on, counted from `0`, which reaches
   the tape's length once every step is complete. The run screen shows it as
-  `step m / n` with `m` one greater (`specs/ui.md`).
+  `step m / n` (`specs/ui.md`).
 - `stepLive` — whether the step at `stepIndex` has been taken and is not yet
   complete. A move step is live from the tick that issues its commands until
   the tick that finds every one of its axes arrived; an action step is taken,
@@ -1076,7 +1084,11 @@ of them, so a site is posed by writing the fields posed and read back by
 reading them.
 
 - `screen` — the screen currently shown.
-- `menuIndex` — the highlighted entry of whichever menu `screen` shows.
+- `menuIndex` — the highlighted entry of whichever menu `screen` shows. A
+  screen with no menu highlights nothing and leaves it as it stands, and a menu
+  with no entry at that index highlights its last entry instead: `confirm`
+  takes the highlighted entry, and `up` and `down` move from it
+  (`specs/ui.md`).
 - `siteIndex` — the site the build, program, and run screens show, counted
   from `0`, and `0` before any site has been opened.
 - `cleared` — one entry per site, `true` once that site has been cleared this
@@ -1097,7 +1109,7 @@ reading them.
   screens and returns to its start pose when a site is opened.
 - `pointer` — the pointer as of this frame: `x` and `y` refreshed by the player
   controller every tick, and `down`, `pressX`, `pressY`, and `dragging` the
-  state's own, carried from the tick the press went down.
+  state's own; `specs/instrumentation.md` gives what sets each.
 - `run` — the run in progress, the run last ended, or the idle placeholder.
 - `muted` — the game's readable copy of the engine's mute bit. The engine owns
   muting; the mode's tick copies the bit into this field every frame, so the

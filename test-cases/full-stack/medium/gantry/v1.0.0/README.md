@@ -133,7 +133,7 @@ The case is `experimental = true` and must not be scheduled. What is authored
 and committed today: all twelve specs, the five that branch three ways
 included, all three starter workspaces, the prompt, `asset_dimension = "3d"` so
 a run schedules onto the 3D full-stack image, the four scoring domains, and a
-reviewer-rated checklist of 70 items across 9 categories. What is missing is
+reviewer-rated checklist of 72 items across 9 categories. What is missing is
 everything that would let a run be rated.
 
 The manifest is still on the **legacy single `workspace` key**
@@ -203,7 +203,7 @@ from the version directory as it stands, and the reference implementations
 listed above are what will change that — they need the same core. With the
 simulation in hand, most of this section comes back and one part of it does not:
 
-| Figures | What produces them |
+| Claim | What backs it |
 | --- | --- |
 | The summary table above — each site's cost, clear time, and peak utilization | The simulation, run per site over the worked crane and tape it holds for that site |
 | The room figures for Sites 3 and 4 — the eleven variants' costs, how many of them clear, and the margins over them | The simulation, driven over a fixed list of ordinary perturbations of each worked crane |

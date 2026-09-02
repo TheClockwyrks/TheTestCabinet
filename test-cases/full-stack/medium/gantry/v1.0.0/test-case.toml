@@ -316,7 +316,7 @@ description = "addMember assigns the structure's next member id, so a crane pose
 [[review.categories.items]]
 id = "check-reports-statics"
 title = "check reports readiness and static forces"
-description = "check returns the issues that would refuse a run by their stable ids — the readiness issues, and empty-program for an empty tape — the cost and budget, and, on a structure with no readiness issue, whether it stands at the run-start posture plus each member's static force and utilization in id order."
+description = "check returns the issues that would refuse a run by their stable ids — the readiness issues, and empty-program for an empty tape — the cost and budget, and, on a structure with no readiness issue, whether it stands at the run-start posture, with each member's static force and utilization in id order when it stands and no member at all when it does not."
 [[review.categories.items]]
 id = "run-determinism"
 title = "The same structure and tape replay identically"
@@ -369,7 +369,7 @@ description = "The first click holds a marked pending node; a refused second cli
 [[review.categories.items]]
 id = "delete-and-undo"
 title = "Delete and undo work as specified"
-description = "The delete tool removes the picked member, counterweight, or ring; undo restores the structure to before the most recent edit, step by step, as far back as the site was opened."
+description = "The delete tool removes the picked member, counterweight, or ring; undo restores the structure to before the most recent structure-changing edit, step by step, as far back as the site was opened."
 
 # --- The tape -------------------------------------------------------------------
 [[review.categories]]
@@ -583,8 +583,16 @@ title = "The select screen lists, highlights, and enters"
 description = "All six sites show number, name, and state without relying on hue alone, plus best scores; the highlight arrives on the site last entered or cleared; confirm enters an open or cleared site and does nothing on a locked one; back returns to title."
 [[review.categories.items]]
 id = "build-readouts"
-title = "The build screen's readouts and check"
-description = "Site name, cost against budget, the tool palette with bindings and selection, and the tape's step count all show. check displays what the static check reports: the issues that would refuse a run, by name, empty-program for an empty tape included; and, on a structure with no readiness issue, whether it stands with each member colored by its static utilization on the ramp — so a ready crane with an empty tape shows empty-program and the utilizations together. What check shows clears as soon as the structure changes, so it always describes the structure on screen. A refused edit is visible in the moment."
+title = "The build screen's readouts"
+description = "Site name, cost against budget, the tool palette with bindings and selection, and the tape's step count all show, and a refused edit is visible in the moment it is refused."
+[[review.categories.items]]
+id = "check-on-build"
+title = "The build screen draws what check reports"
+description = "check displays the issues that would refuse a run by name and, on a structure with no readiness issue, whether it stands, coloring each member by its static utilization on the ramp when it stands and none when it does not — so a ready crane with an empty tape shows empty-program and the utilizations together."
+[[review.categories.items]]
+id = "check-result-lifetime"
+title = "A shown check result describes the crane on screen"
+description = "What check displayed goes back to none as soon as the structure or the tape changes, so the build screen never shows a result taken over a crane or a tape that has since been edited."
 [[review.categories.items]]
 id = "program-editor"
 title = "The tape editor covers the tape"
@@ -608,7 +616,7 @@ description = "speed cycles 1x, 2x, 4x on the run screen; the run's outcome, ver
 [[review.categories.items]]
 id = "cue-timing"
 title = "Cues play on their events"
-description = "place, delete, run-start, attach, placed, break, collapse, complete, and fail each play on the tick of their event, at most once on that tick, and creak respects its threshold and cooldown."
+description = "place, delete, run-start, attach, placed, break, collapse, complete, and fail each play on the event that raises it, at most once on a given tick or edit, and creak respects its threshold and cooldown."
 [[review.categories.items]]
 id = "motor-loop"
 title = "The motor loop tracks motion"

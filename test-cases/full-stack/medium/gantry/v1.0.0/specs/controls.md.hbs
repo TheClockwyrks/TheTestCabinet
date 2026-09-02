@@ -38,16 +38,16 @@ point in it, and the world's camera turns one into the other.
 | Action | Binding (`KeyboardEvent.code`) | Does |
 | --- | --- | --- |
 | `up`, `down`, `left`, `right` | `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight` | menu navigation; camera orbit on the 3D screens |
-| `zoom-in`, `zoom-out` | `Equal`, `Minus` | camera distance |
-| `confirm` | `Enter` | take the highlighted menu item |
-| `back` | `Escape` | leave the screen, as `specs/ui.md` states per screen; abort on the run screen; cancel a pending first node on the build screen |
-| `tool-strut` | `Digit1` | select the strut tool |
-| `tool-cable` | `Digit2` | select the cable tool |
-| `tool-rail` | `Digit3` | select the rail tool |
-| `tool-ring` | `Digit4` | select the ring tool |
-| `tool-counterweight` | `Digit5` | select the counterweight tool |
-| `tool-delete` | `Digit6` | select the delete tool |
-| `undo` | `KeyZ` | undo the most recent structure edit |
+| `zoom-in`, `zoom-out` | `Equal`, `Minus` | camera distance on the 3D screens |
+| `confirm` | `Enter` | take the highlighted menu item, on the screens showing a menu |
+| `back` | `Escape` | back out, as the table below states |
+| `tool-strut` | `Digit1` | select the strut tool, on the build screen |
+| `tool-cable` | `Digit2` | select the cable tool, on the build screen |
+| `tool-rail` | `Digit3` | select the rail tool, on the build screen |
+| `tool-ring` | `Digit4` | select the ring tool, on the build screen |
+| `tool-counterweight` | `Digit5` | select the counterweight tool, on the build screen |
+| `tool-delete` | `Digit6` | select the delete tool, on the build screen |
+| `undo` | `KeyZ` | undo the most recent structure edit, on the build screen |
 | `check` | `KeyC` | the static check, on the build screen (`specs/structure.md`) |
 | `program` | `KeyP` | build screen to program screen |
 | `build` | `KeyB` | program screen to build screen |
@@ -56,9 +56,17 @@ point in it, and the world's camera turns one into the other.
 | `mute` | `KeyM` | toggle sound, on every screen |
 
 `ACTIONS` holds those action names in the order above, and `BINDINGS` the keys
-that fire each. The tool, undo, check, and screen-switch actions apply where
-the table says and do nothing elsewhere; the menus are driven by the four
-directions, `confirm`, and `back` alone.
+that fire each. Every action applies where the table says and does nothing
+elsewhere; the menus are driven by the four directions, `confirm`, and `back`
+alone.
+
+`back` resolves against the first of these that applies:
+
+| Where | What `back` does |
+| --- | --- |
+| The build screen, with a pending node held | Clears the pending node and stays on the build screen |
+| The run screen, with a run in progress | Aborts the run and returns to the build screen (`specs/program.md`) |
+| Anywhere else | Leaves the screen for the one `specs/ui.md` gives it, and does nothing on `title`, which has none |
 
 ## The camera
 
@@ -103,18 +111,21 @@ one; the movement that carried it across the boundary turns nothing.
 
 A drag edits nothing, and a click edits the structure on the build screen
 alone: a press that starts on one of the program screen's tape widgets works
-that widget rather than the camera, and the run screen is watched rather than
-worked.
+that widget rather than the camera, and a press on the run screen turns the
+camera and nothing else.
 
 On the build screen a click picks by screen distance:
 
 - A node pick considers every lattice node in the envelope that stands in
   front of the camera, projected to the stage; the candidate is the nearest at
   most `NODE_PICK_PX` (`20`) logical pixels from the click, ties going to the
-  node nearest the camera. The candidate under the pointer is highlighted
-  before the click, so the player sees what a click would take.
+  node nearest the camera, and then to the node lower in `x`, then in `y`,
+  then in `z`. The candidate under the pointer is highlighted before the
+  click, so the player sees what a click would take.
 - A member pick considers every member's projected segment; the candidate is
-  the nearest at most `MEMBER_PICK_PX` (`12`) logical pixels from the click.
+  the nearest at most `MEMBER_PICK_PX` (`12`) logical pixels from the click,
+  ties going to the member whose nearest point on that segment is nearest the
+  camera, and then to the lower member id.
 
 A click with no candidate in range does nothing.
 
@@ -129,8 +140,6 @@ beyond the refusal being visible in the moment (`specs/ui.md`).
   them and clears the pending node. A second click on the pending node itself,
   or `back`, clears it without placing. A second click that the rules refuse
   leaves the pending node held, so a slip does not cost the selection.
-  Switching tools keeps a pending node; it belongs to the placement, not the
-  material.
 - Ring: a click places the ring by its base corner at the picked node.
 - Counterweight: a click on a node without a counterweight places one there; a
   click on a node carrying one removes it.
@@ -138,6 +147,12 @@ beyond the refusal being visible in the moment (`specs/ui.md`).
   member within `MEMBER_PICK_PX`, a counterweight within `NODE_PICK_PX` of its
   node, or the ring within `NODE_PICK_PX` of any of its eight flange nodes. A
   tie goes to the member, then the counterweight, then the ring.
+
+A pending node belongs to the placement rather than the tool, so it survives
+every tool switch. The ring, counterweight, and delete tools neither read it
+nor clear it: a click under one of them does what its bullet says and leaves
+the pending node held. Placing the member, a click on the pending node itself,
+`back`, and opening a site are the whole of what clears it.
 
 `undo` reverses the most recent structure-changing edit, as far back as the
 site was opened, exactly as `specs/structure.md` states.
@@ -153,6 +168,6 @@ reflected in the state's program (`specs/state.md`).
 
 ## The run screen
 
-The run screen takes the camera actions, `speed`, `mute`, and `back` alone:
-the player turns the camera and watches rather than steering, with `back`
-aborting as `specs/program.md` states.
+The run screen takes the camera actions, a pointer drag on the camera,
+`speed`, `mute`, and `back` alone: the player turns the camera and watches
+rather than steering, with `back` aborting as `specs/program.md` states.

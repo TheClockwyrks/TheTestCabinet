@@ -233,13 +233,13 @@ picks none.
 | Operation | Effect |
 | --- | --- |
 | `reset` | Returns the game to its title state, as below. |
-| `setScreen(screen)` | Shows a named screen and sets nothing else. `screen` is one of the seven identifiers of `specs/ui.md`. |
-| `setMenuIndex(index)` | Sets the highlighted entry of the menu on the screen showing, counted from `0`. |
+| `setScreen(screen)` | Shows a named screen and sets nothing else; `menuIndex` is left as it stands (`specs/state.md`), so a caller posing a screen with a menu sets it with `setMenuIndex` afterwards. `screen` is one of the seven identifiers of `specs/ui.md`. |
+| `setMenuIndex(index)` | Sets the highlighted entry of the menu on the screen showing, counted from `0`; the domain is the entry count of the menu that screen shows (`specs/ui.md`). |
 | `openSite(index)` | Opens site `index`, counted from `0`, locked or not, as below. |
 | `setCleared(index, cleared)` | Sets whether site `index` has been cleared this session, and with it which sites are open. |
 | `setBest(index, cost, time)` | Records `{ cost, time }` as site `index`'s best score, whatever it held. |
 | `clearBest(index)` | Returns site `index` to having no recorded score. |
-| `setCamera(yaw, pitch, dist)` | Sets the orbit camera's pose, within the limits `specs/controls.md` fixes. |
+| `setCamera(yaw, pitch, dist)` | Sets the orbit camera's pose as the orbit controls set it (`specs/controls.md`): the pitch and the distance are held inside their limits, and the yaw wraps to at or above `0` and below `360`. |
 | `startRun` | Poses the `run` action: the same refusals, the same `run-start`, and the same move to the run screen as `specs/program.md` states. |
 | `abortRun` | Poses the abort, ending a running run with no verdict: `run` goes back to its idle placeholder and the build screen returns. |
 
@@ -257,13 +257,15 @@ run records its score on the way to `results`. Each of those belongs to the
 operation that carries it, which is why entering a site is `openSite` rather
 than `setScreen("build")`.
 
-The first eight of these apply on every screen. `startRun` applies on the build
-and program screens, where the `run` action does, and `abortRun` while a run is
-in progress. `startRun` is refused exactly as the action is, leaving the state
-as it was; `check` says why it would refuse. A run that begins is the ordinary
-run, and it starts as `specs/state.md` says a run starts: nothing has ticked at
-the call, so `run.tick` reads `0` immediately after it, and the axes, the
-pivot, and the bob stand at the run-start values that file gives.
+The first eight of these apply on every screen, `setMenuIndex` aside: it applies
+on the three screens that show a menu — `title`, `select`, and `results` — and
+does nothing on the other four, whatever the index. `startRun` applies on the
+build and program screens, where the `run` action does, and `abortRun` while a
+run is in progress. `startRun` is refused exactly as the action is, leaving the
+state as it was; `check` says why it would refuse. A run that begins is the
+ordinary run, and it starts as `specs/state.md` says a run starts: nothing has
+ticked at the call, so `run.tick` reads `0` immediately after it, and the axes,
+the pivot, and the bob stand at the run-start values that file gives.
 
 `reset` restores every field the snapshot reports to its title-screen value, bar
 one: the `title` screen with `menuIndex` `0`, site `0` open, every site
@@ -273,8 +275,9 @@ gives it, the strut tool, no pending node, an empty history, the camera at its
 start pose, no check result showing, an idle run, and `simTime` at `0`. The one
 field left alone is `muted`, the game's readable copy of a mute bit it does not
 own (`specs/state.md`), which `reset` leaves as it stands rather than turning a
-player's preference off. Because `reset` restores exactly those fields, anything
-else the build keeps across frames is derived from them.
+player's preference off. Because `reset` restores exactly those fields and the
+six the table below gives, anything else the build keeps across frames is
+derived from them.
 
 The pointer is six fields, and this table is the whole of what sets each:
 
@@ -316,7 +319,9 @@ exactly as it stands and push no history.
 `clearStructure` empties the structure as opening a site with nothing built
 leaves it, so the next member placed after it takes id `0` and a posed crane's
 ids run upward in the order its members were added. It is refused by nothing:
-removal is always allowed.
+removal is always allowed. On a structure that is already empty it removes
+nothing and pushes no history, like every other removal with nothing to remove,
+and `nextMemberId` goes back to `0` whether or not anything went.
 
 A caller that wants a whole crane poses it as the sequence of edits that builds
 it, which is what puts it under the same rules a player builds under.
@@ -384,10 +389,11 @@ an anchor set, or a budget opens the site carrying the one it is about.
 | `setLoadPhase(index, phase)` | Sets a load's phase to `"waiting"`, `"attached"`, `"placed"`, or `"lost"`. |
 | `setSpeedIndex(index)` | Sets the watch speed to that index into `RUN_SPEEDS`. |
 
-These pose the run while one is in progress. Each sets what it names and leaves
-the rest of the run as it stands, and none of them reaches a verdict: the run's
-own rules decide clearing, breakage, and every failure on the ticks that
-follow.
+The first six pose the run while one is in progress. `setSpeedIndex` poses the
+watch speed on the run screen, as the `speed` action does, whether or not the
+run that screen is showing has ended. Each sets what it names and leaves the
+rest of the run as it stands, and none of them reaches a verdict: the run's own
+rules decide clearing, breakage, and every failure on the ticks that follow.
 
 `setLoadPhase` to `"attached"` hangs that load on the hook exactly as a
 successful `attach` leaves it, without the candidate search and without the
@@ -536,6 +542,7 @@ gives the value each rests at.
 
 | Field | Resting value |
 | --- | --- |
+| `menuIndex` | `0` before a menu has been moved, and on a screen with no menu — `howto`, `build`, `program`, and `run` — what the last menu screen left it holding |
 | `pendingNode` | `null` until a first node is held, and again once it is placed or cleared |
 | `historyDepth` | `0` on a site opened and not yet edited |
 | `pointer` | `{ x: 0, y: 0, down: false, pressX: 0, pressY: 0, dragging: false }` before the pointer has been used; after that, what the pointer table under `reset` above gives each field |
@@ -564,8 +571,9 @@ gives the value each rests at.
 - `run.stepLive` is whether the step at `run.stepIndex` has been taken and is
   not yet complete, and `run.pivot` is the point the cable hangs from at the
   most recent tick's geometry, which the pendulum reads on the tick after
-  (`specs/rigging.md`); before a run's first tick it is the run-start pivot
-  `specs/state.md` gives.
+  (`specs/rigging.md`); from a run's start until its first tick it is the
+  run-start pivot `specs/state.md` gives, and the idle placeholder's is the
+  zero vector that file states.
 - `run.forces` is the latest solve's, in member-id order, and covers the
   members still intact. It is empty until a run's first solve.
 - `muted` is the game's readable copy of the mute bit `specs/state.md`

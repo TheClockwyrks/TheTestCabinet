@@ -33,6 +33,7 @@
 // engine's mute bit into the state. The engine's own documentation, seeded at
 // `engine/`, defines all of this and the classes below; read it before you
 // start.
+//
 // THE FRAMEWORK'S STATE IS LIVE. A game state, an actor's transform, a
 // component's offset, and the world's camera are objects the game writes into:
 // a tick advances the fields it moves in place rather than building a

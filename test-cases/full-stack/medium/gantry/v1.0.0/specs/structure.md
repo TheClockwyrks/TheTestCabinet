@@ -183,16 +183,16 @@ or collapse under its first load, as `specs/statics.md` states.
 The `check` action on the build screen (`specs/ui.md`) reads the structure as
 it stands, without starting a run. It reports:
 
-- the issues that would refuse a run: the readiness issues above, and
-  `empty-program` for an empty tape (`specs/program.md`);
-- the crane's cost and the site's budget;
-- whether the structure stands;
-- each intact member's force and utilization, in member-id order
-  (`specs/state.md`).
+| What it reports | Changes with |
+| --- | --- |
+| The issues that would refuse a run: the readiness issues above, and `empty-program` for an empty tape (`specs/program.md`) | The structure and the tape |
+| The crane's cost, and the site's budget it is measured against | The structure |
+| Whether the structure stands | The structure |
+| Each intact member's force and utilization, in member-id order (`specs/state.md`) | The structure |
 
-The build screen shows the result the action left until the structure changes,
-when it goes back to none, so what is shown always describes the structure on
-screen.
+The result the action leaves stands until the structure or the tape changes,
+when it goes back to none. The build screen shows it until then, so what is
+shown always describes the crane and the tape on screen.
 
 With any readiness issue the structure is not solved. Otherwise the two solves
 of `specs/statics.md` run at the run-start posture `specs/program.md` fixes,
