@@ -164,8 +164,10 @@ six. The take runs 30.3 s from the title screen to the end of the cascade.
 Two hundred and eighty-six of the two thousand deals came in inside a
 hundred-and-two gestures, and the eight best on the plan figures were played
 (1016, 1102, 822, 75, 865, 1427, 549 and 1474). Seed 822 was taken over the two
-shorter takes because it is the least stock-bound game of the eight: no two stock
-turns in a row anywhere in it.
+shorter takes because it is the least stock-bound game of the eight: the joint
+fewest turns of the stock (twelve, with seed 75) and the joint shortest run of
+them (two, with seed 865), in a field that mostly turns the stock seventeen to
+nineteen times and sits on it three or four turns together.
 
 Its game is 90 gestures: 12 turns of the stock, one of them the recycle that
 brings the waste back around; 26 runs carried between piles (12 between columns,
@@ -192,6 +194,32 @@ TCAB_SHOWCASE_OUT=/tmp/showcase-out \
 The game that is played is fixed by the seed and by the search — `MAX_MOVES`,
 `MAX_NODES` and `WEIGHT` at the top of the driver — so changing any of those
 changes the plan and therefore the clip, and the stills with it. What does move
-between hosts is the clip's exact length, by a few tenths of a second: the pace
-figures are floors under the browser's own round trips, and a slower host spends
-a little more than the floor.
+between hosts is the clip's exact length, by as much as a second over a take this
+long: the pace figures are floors under the browser's own round trips, and a
+slower host — or a busier one — spends a little more than the floor on every one
+of ninety gestures.
+
+### What comes back byte for byte, and what cannot
+
+Two of the four files reproduce exactly and two do not, and the split is the
+difference between a settled table and one in motion.
+
+`title.png` and `mid-play.png` are both taken with nothing moving — the title
+screen before the first gesture, and a table left to settle after one — so a
+re-run reproduces them byte for byte. A difference in either is a real change in
+the build, and worth chasing.
+
+`the-cascade.png` and `cascade-solved.webm` are of the game in motion, and
+nothing here touches the clock. The still is taken after a wall-clock wait while
+fifty-two cards are in flight on the page's own animation frame, so on a host
+that got there sooner it lands a frame or two further along; the clip is a
+real-time screencast, re-encoded. Neither will ever match byte for byte, and a
+checksum says nothing about either.
+
+Compare them by what they show. Decode the clip to frames and match it against a
+second take of the SAME seed, allowing for the drift in length — the figure that
+decides it is whether the committed file differs from a fresh take by more than
+two fresh takes differ from EACH OTHER. If it does not, nothing has moved. Both
+committed clips were checked that way and both cleared it: on downscaled frames,
+draw one's committed take sits 0.84/255 mean absolute difference from a fresh one
+where two fresh ones sit 1.12 apart, and draw three's sits 1.39 against 1.15.
