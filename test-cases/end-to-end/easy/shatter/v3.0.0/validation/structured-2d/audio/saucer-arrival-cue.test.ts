@@ -42,7 +42,7 @@ import {
   SAFE_X,
   SAFE_Y,
   SAUCER_FIRST_DELAY,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,

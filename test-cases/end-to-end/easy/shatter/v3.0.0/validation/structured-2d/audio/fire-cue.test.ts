@@ -33,7 +33,7 @@
 // reviewer's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FIRE_INTERVAL_TICKS, TICK_HZ } from "../../src/constants";
+import { CUES, FIRE_INTERVAL_TICKS, TICK_HZ } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

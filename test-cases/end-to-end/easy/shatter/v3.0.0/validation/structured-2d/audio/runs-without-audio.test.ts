@@ -55,7 +55,7 @@ import {
   SAFE_Y,
   SCORE_SMALL,
   WAVE_BANNER_TIME,
-} from "../../src/constants";
+} from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   aimedRound,

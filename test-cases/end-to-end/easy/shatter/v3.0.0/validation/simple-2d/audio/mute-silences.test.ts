@@ -32,12 +32,7 @@
 // `controls/mute-m`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  MUZZLE_SPEED,
-  ROCK_RADIUS,
-  SHIP_R,
-  START_LIVES,
-} from "../../src/constants";
+import { MUZZLE_SPEED, ROCK_RADIUS, SHIP_R, START_LIVES } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   aimedRound,

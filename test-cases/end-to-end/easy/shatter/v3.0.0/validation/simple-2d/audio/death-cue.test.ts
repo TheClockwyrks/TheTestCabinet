@@ -33,7 +33,7 @@
 // respawn, which is `lives/respawns-*`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, ROCK_RADIUS, SHIP_R, START_LIVES } from "../../src/constants";
+import { CUES, ROCK_RADIUS, SHIP_R, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

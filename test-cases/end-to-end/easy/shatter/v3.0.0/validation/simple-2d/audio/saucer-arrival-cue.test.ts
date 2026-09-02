@@ -29,7 +29,7 @@
 // `saucer/enters-at-an-edge`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, SAUCER_FIRST_DELAY } from "../../src/constants";
+import { CUES, SAUCER_FIRST_DELAY } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,

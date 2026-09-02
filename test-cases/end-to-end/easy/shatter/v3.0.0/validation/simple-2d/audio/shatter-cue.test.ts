@@ -26,7 +26,7 @@
 // ear, which is the reviewer's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, MUZZLE_SPEED, ROCK_RADIUS } from "../../src/constants";
+import { CUES, MUZZLE_SPEED, ROCK_RADIUS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   aimedRound,

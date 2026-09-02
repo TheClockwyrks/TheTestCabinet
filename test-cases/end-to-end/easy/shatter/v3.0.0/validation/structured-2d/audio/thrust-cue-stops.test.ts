@@ -31,7 +31,7 @@
 // check about sound.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, TICK_HZ } from "../../src/constants";
+import { CUES, TICK_HZ } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

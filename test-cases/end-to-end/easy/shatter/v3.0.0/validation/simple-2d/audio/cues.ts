@@ -19,7 +19,7 @@
 //
 // THE CUE IS READ BY NAME, AND SO IS ITS GAIN. Under this engine the bus belongs
 // to the runtime: the game asks for a cue BY NAME and the bus announces the play,
-// so these checks assert the exact name `src/constants.ts`'s `CUES` fixes and
+// so these checks assert the exact name `specs/audio.md`'s `CUES` fixes and
 // assert that it sounded exactly ONCE on its tick — which is the "at most once on
 // that tick" half of the requirement, and a half an engineless build's checks
 // cannot reach at all. A play is announced whether or not the bus has been

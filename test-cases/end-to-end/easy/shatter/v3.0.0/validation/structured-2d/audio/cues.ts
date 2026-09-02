@@ -21,7 +21,7 @@
 // (`specs/instrumentation.md`): the game declares its cues from the instance's
 // `initialize` and plays them BY NAME from the world's audio inside a tick, and
 // the engine announces every play on `cue:played` whether or not anything is
-// audible. So these checks assert the exact name `src/constants.ts`'s `CUES` fixes
+// audible. So these checks assert the exact name `specs/audio.md`'s `CUES` fixes
 // and assert that it sounded exactly ONCE on its tick — which is the "at most once
 // on that tick" half of the requirement. Nothing here has to arm audio: a play is
 // announced whether or not the bus has been unlocked and whether or not it is

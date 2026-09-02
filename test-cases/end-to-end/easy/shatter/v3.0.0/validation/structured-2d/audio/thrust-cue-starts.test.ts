@@ -34,7 +34,7 @@
 // `presentation/thrust-flame-while-thrusting`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

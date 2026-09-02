@@ -28,12 +28,7 @@
 // and the announcement on the field, which is `presentation/extra-ship-indication`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CUES,
-  EXTRA_LIFE_STEP,
-  MUZZLE_SPEED,
-  SCORE_SMALL,
-} from "../../src/constants";
+import { CUES, EXTRA_LIFE_STEP, MUZZLE_SPEED, SCORE_SMALL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   aimedRound,
