@@ -1416,22 +1416,51 @@ describe("cloneModel", () => {
     expect(skinned(model.scene).skeleton.bones[0]?.rotation.y).toBe(0);
   });
 
-  it("clones a model decoded from glTF, geometry and material included", async () => {
+  it("clones a model decoded from glTF, sharing its geometry", async () => {
     const { loader } = modelLoader(walkerGlb());
     const model = await loader.loadModel("models/walker.glb");
 
     const placed = cloneModel(model);
     const hull = placed.getObjectByName("hull") as THREE.Mesh;
+    const template = model.scene.getObjectByName("hull") as THREE.Mesh;
 
     expect(hull).toBeInstanceOf(THREE.Mesh);
-    // Geometry and materials are shared by reference, as three's own clone shares
-    // them: a hundred placed walkers are a hundred transforms over one buffer.
-    expect(hull.geometry).toBe(
-      (model.scene.getObjectByName("hull") as THREE.Mesh).geometry,
+    // Geometry is shared by reference, as three's own clone shares it: a hundred
+    // placed walkers are a hundred transforms over one buffer.
+    expect(hull.geometry).toBe(template.geometry);
+    // The material is not, because the pipeline writes each component's opacity
+    // onto the materials under its own object.
+    expect(hull.material).not.toBe(template.material);
+    expect(hull.material).toBeInstanceOf(
+      (template.material as THREE.Material).constructor as new () => unknown,
     );
-    expect(hull.material).toBe(
-      (model.scene.getObjectByName("hull") as THREE.Mesh).material,
-    );
+  });
+
+  it("gives each clone materials of its own, sharing the maps they sample", () => {
+    const map = new THREE.Texture();
+    const material = new THREE.MeshStandardMaterial({ color: "#336699", map });
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
+    mesh.name = "hull";
+    const scene = new THREE.Group();
+    scene.add(mesh);
+    const model: Model = { scene, animations: [], nodes: ["hull"] };
+
+    const first = cloneModel(model).getObjectByName("hull") as THREE.Mesh;
+    const second = cloneModel(model).getObjectByName("hull") as THREE.Mesh;
+    const alpha = first.material as THREE.MeshStandardMaterial;
+    const beta = second.material as THREE.MeshStandardMaterial;
+
+    // Two placements are drawn through two materials, so a fade applied to one
+    // leaves the other — and the template — as they stood.
+    expect(alpha).not.toBe(beta);
+    expect(alpha).not.toBe(material);
+    alpha.opacity = 0.25;
+    expect(beta.opacity).toBe(1);
+    expect(material.opacity).toBe(1);
+    // What the copies sample is the loaded texture itself, not a copy of it.
+    expect(alpha.map).toBe(map);
+    expect(beta.map).toBe(map);
+    expect(`#${beta.color.getHexString()}`).toBe("#336699");
   });
 
   it("carries the clips a clone is animated with unchanged on the template", async () => {

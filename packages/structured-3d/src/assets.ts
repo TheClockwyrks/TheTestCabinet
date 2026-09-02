@@ -275,12 +275,29 @@ function nodeNames(root: THREE.Object3D): string[] {
  * crew members cloned from one rig would share one set of bones and walk in
  * lockstep; this rebinds each clone to the bones inside it. Node names survive, so
  * a `NodeHandle` finds on a clone the joint the exporter named in the file.
+ *
+ * Materials are copied per clone for the same reason the bones are. A skeleton-aware
+ * clone still hands every copy the template's own material instances, and the pipeline
+ * writes a component's `opacity` onto the materials under its object every frame — so
+ * two crew members cloned from one rig would be drawn through one alpha, and the one
+ * synced last would decide what both of them look like. Each copy shares the textures
+ * and the geometry it was made from, which are the expensive things: a hundred placed
+ * walkers stay a hundred transforms over one buffer.
  */
 export function cloneModel(model: Model): THREE.Group {
   // `clone` is declared as returning the base `Object3D` because it accepts one,
   // but it reproduces the type of what it was given, and a model's `scene` is
   // always a `Group`.
-  return cloneSkeletal(model.scene) as THREE.Group;
+  const placed = cloneSkeletal(model.scene) as THREE.Group;
+  placed.traverse((object) => {
+    const carrier = object as { material?: THREE.Material | THREE.Material[] };
+    const held = carrier.material;
+    if (held === undefined) return;
+    carrier.material = Array.isArray(held)
+      ? held.map((material) => material.clone())
+      : held.clone();
+  });
+  return placed;
 }
 
 /**

@@ -1244,6 +1244,37 @@ describe("models and subtrees", () => {
     expect(material.opacity).toBeCloseTo(0.8, 6);
   });
 
+  it("fades two placements of one model apart", () => {
+    // "Several components share one loaded model" is a statement about the
+    // template, not about the picture: each component's `opacity` writes onto
+    // the materials under its own object, so two placements must not be drawn
+    // through one material instance.
+    const material = new THREE.MeshStandardMaterial();
+    const scene = new THREE.Group();
+    scene.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material));
+    const loaded: Model = { scene, animations: [], nodes: [] };
+
+    const { pipeline, world, spawn } = rig();
+    const ghost = new ModelComponent({ model: loaded });
+    ghost.opacity = 0.25;
+    spawn(new ModelComponent({ model: loaded }));
+    spawn(ghost);
+    pipeline.syncScene(world, 0);
+
+    const alphas = pipeline.scene.children.map((root) => {
+      let found: THREE.Material | null = null;
+      root.traverse((object) => {
+        if (object instanceof THREE.Mesh) found = object.material;
+      });
+      return found as THREE.Material | null;
+    });
+    expect(alphas[0]).not.toBe(alphas[1]);
+    expect(alphas[0]?.opacity).toBe(1);
+    expect(alphas[1]?.opacity).toBeCloseTo(0.25, 6);
+    // And the template the two were cloned from is untouched.
+    expect(material.opacity).toBe(1);
+  });
+
   it("turns a billboard to the camera while keeping its position and scale", () => {
     const { pipeline, world, camera, spawn } = rig();
     const card = new MeshComponent({
