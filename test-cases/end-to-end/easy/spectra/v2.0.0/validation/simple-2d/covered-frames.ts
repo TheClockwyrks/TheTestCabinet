@@ -49,9 +49,25 @@
 //     anything: a canvas keeps everything recorded before a `save` that is still
 //     open.
 //
-// A build that opens its frames some other way — an opaque background IMAGE, say
-// — is not covered by any of this, and pays what the canvas charges. Nothing here
-// can make that build's pixels differ from what it drew.
+// WHAT IS NOT COVERED. Two shapes of frame, and both pay what the canvas charges:
+// one opened with an opaque background IMAGE rather than a fill, and one whose
+// covering fill is issued under an open `save`. Neither is a defect this module
+// could fix. The image is not a rectangle whose cover can be proved from the
+// arguments; the save is a level of the stack the canvas keeps everything before,
+// measured here at 23.7 s against 0.21 s for the same clear at the base, so a
+// clear issued there would cost the pixels nothing and buy nothing either. The
+// BROWSER implementation, `validation/none/raster-init.js`, carries no such depth
+// guard, because Chromium truncates for a clear under an open save exactly as it
+// does at the base: the same scene costs 0.26 s to drive and screenshot from
+// either, against 27.4 s with no clear. The rule is one rule; where they differ is
+// in what a clear is worth, and each implementation is written to its own.
+//
+// Neither shape bites the engines this case ships. `simple-2d` and
+// `structured-2d` both open a frame by painting the declared background at the
+// base of the stack, or by clearing when a build declares none, so an
+// engine-backed frame is truncated whatever the build draws after it.
+//
+// Nothing here can make a build's pixels differ from what it drew.
 //
 // WHAT THE BUILD CAN SEE. Nothing. The clear is issued against the context
 // underneath the harness's own recorder, so it appears in no draw-call list and

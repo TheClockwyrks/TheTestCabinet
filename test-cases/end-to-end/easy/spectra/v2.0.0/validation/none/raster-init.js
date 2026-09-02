@@ -43,6 +43,20 @@
  *     and `reset`, and the tracking is dropped whenever the backing store is
  *     resized, since a resize clears the state this script would be remembering.
  *
+ * WHAT IS NOT ON THAT LIST, AND WHY. The DEPTH of the save stack. The canvas
+ * implementations the other two engines rasterise on keep everything recorded
+ * before a `save` that is still open, so their `covered-frames.ts` refuses to
+ * clear anywhere but the base of the stack: measured on `@napi-rs/canvas` at
+ * 23.7 s against 0.21 s for the same clear at the base. Chromium does not behave
+ * that way. A clear issued under an open `save` truncates exactly as one issued
+ * at the base does, measured here at 0.26 s to drive and screenshot either way
+ * against 27.4 s with no clear at all, so a depth guard here would refuse a clear
+ * that works and leave a build that opens its frame inside a `save` paying the
+ * whole bill. The rule the three implementations enforce is one rule; what a
+ * clear is worth differs by platform, and each is written to the platform it
+ * runs on. `raster-init.test.ts` holds this one to that difference, scene for
+ * scene against the other two.
+ *
  * A build that opens its frames some other way — an opaque background IMAGE, say
  * — is not covered by any of this and pays what the browser charges. Nothing here
  * can make a build's pixels differ from what it drew.
