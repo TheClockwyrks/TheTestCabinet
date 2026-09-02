@@ -6,7 +6,7 @@
 // not use yet). Linting is not type-aware, so it runs without a TypeScript
 // program and stays fast.
 //
-// THIS COPY IS THE REFERENCE WORKSPACE'S, NOT THE SEEDED ONE. It carries three
+// THIS COPY IS THE REFERENCE WORKSPACE'S, NOT THE SEEDED ONE. It carries five
 // blocks the seeded `workspaces/**/eslint.config.js` does not, all of them about
 // `validation/` — the case's validator project, staged in beside the build by
 // hand the same way `.gitignore` describes. A run never sees them: `validation/`
@@ -53,8 +53,10 @@ export default tseslint.config(
   // nothing: the check collapses to "does the build agree with itself", and a
   // build walking the wrong number passes a clean sheet. So every figure a suite
   // asserts is transcribed from `specs/` into `validation/constants.ts`, and
-  // that file is the only one allowed to reach into the build — and only to
-  // re-export a value the specification genuinely leaves to the build.
+  // that file is the only one allowed to reach into the build for a figure — and
+  // only for a value the specification genuinely leaves to the build. The one
+  // other exemption is `validation/harness.ts` in the block after this, which
+  // takes the build's ENTRY rather than any figure.
   //
   // A type carries no figure, so a type-only clause is allowed anywhere.
   // ---------------------------------------------------------------------------
