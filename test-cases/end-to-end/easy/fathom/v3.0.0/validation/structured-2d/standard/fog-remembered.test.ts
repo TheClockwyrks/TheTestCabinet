@@ -35,7 +35,7 @@
 // drawn DIFFERENTLY, not what color either one is.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { VISION_GAIN, VISION_MIN } from "../../src/constants";
+import { VISION_GAIN, VISION_MIN } from "../constants";
 import { assertEqual, assertGreaterThan, fail } from "../assert";
 import { poseMaze } from "../fixtures";
 import {

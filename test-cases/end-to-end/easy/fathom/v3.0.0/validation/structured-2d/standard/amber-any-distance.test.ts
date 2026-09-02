@@ -34,7 +34,7 @@
 // on a wander it does not claim.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { VISION_GAIN, VISION_MIN } from "../../src/constants";
+import { VISION_GAIN, VISION_MIN } from "../constants";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
