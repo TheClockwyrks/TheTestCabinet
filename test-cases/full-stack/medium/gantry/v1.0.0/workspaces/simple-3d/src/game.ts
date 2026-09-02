@@ -31,7 +31,7 @@
 // handed it over, which is how the game is driven from code
 // (`specs/instrumentation.md`). Because no one holds a writable state, the
 // surface is written in the shape of `update`: a pose takes the current state
-// and returns the next (`setStructure(state, doc)`), a reading takes the state
+// and returns the next (`setTool(state, "cable")`), a reading takes the state
 // and returns what it read (`snapshot(state)`), and a caller drives them through
 // `engine.apply` and `engine.state`.
 //
@@ -59,8 +59,10 @@
 // container's `PATH` produces each model and sound, and every produced file is
 // committed under ASSET_ROOT, which the engine's asset loader resolves every
 // path against. That loader is also the decoder: `loadModel` hands a committed
-// `.glb` back as a model whose meshes carry the file's own per-vertex colors and
-// materials, and `cloneModel` places a copy of one in the scene.
+// `.glb` back as a model whose meshes carry the file's own per-vertex colors,
+// and `cloneModel` places a copy of one in the scene. A produced model declares
+// no material of its own, so those meshes arrive on the loader's default one,
+// which is yours to replace.
 
 import type {
   DeepReadonly,

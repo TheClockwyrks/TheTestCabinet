@@ -126,15 +126,16 @@ belongs to the build.
 
 The case is `experimental = true` and must not be scheduled. What is authored
 and committed today: all twelve specs with their three-way branches, all three
-starter workspaces, the prompt, the four scoring domains, and a reviewer-rated
+starter workspaces, the prompt, `asset_dimension = "3d"` so a run schedules onto
+the 3D full-stack image, the four scoring domains, and a reviewer-rated
 checklist of 69 items across 9 categories. What is missing is everything that
-would let a run be rated, plus one manifest change the engine format needs.
+would let a run be rated.
 
 The manifest is still on the **legacy single `workspace` key**
 (`workspace = "workspaces/none"`), with `engines`, the two `[[engine]]` tables,
-and `[workspaces]` commented in beside it. Both 3D engines are now in the engine
-catalogue (`crates/core/src/engine.rs`), so the catalogue is no longer what
-blocks the declaration: what blocks it is that the engine format makes a case
+and `[workspaces]` commented in beside it. Both 3D engines are in the engine
+catalogue (`crates/core/src/engine.rs`), so the catalogue is not what blocks the
+declaration: what blocks it is that the engine format makes a case
 **validator-rated**, and a validator-rated case requires every graded review
 point to carry `validation`, `failure_cap`, and `domains`. This version is not
 frozen, so restoring the format edits it in place rather than minting a new
@@ -142,12 +143,6 @@ version.
 
 ## Still to do before the case leaves experimental
 
-- **Declare `asset_dimension = "3d"`.** A full-stack case selects its run image
-  from the type and this key, and the key defaults to `2d`. Gantry does not
-  declare it, so it currently resolves onto `test-cabinet-full-stack-2d`, which
-  carries no `voxel` binary at all. The 3D image
-  (`test-cabinet-full-stack-3d`, `containers/full-stack-3d/`) exists and
-  carries the four tools `specs/assets.md` names.
 - **Decide the multi-model `voxel` workflow.** The binary's config workflow
   produces one model per working directory; Gantry asks for eight. Either
   per-model working directories or config overrides, settled before the case is
@@ -182,10 +177,33 @@ version.
 The numbers pass this list used to call for is **done**. Every site in
 `specs/sites.md` has a worked crane and tape that clears it inside its budget,
 inside par cost and inside par time, with no member breaking and peak
-utilization between `0.81` and `0.94`; the par figures are set from those
-builds. Site 4's delivery pad sits at `(14, 2, 6)` and its budget at `5600`
-because of that pass: with the pad at `(16, 2, 6)` the four-anchor square
-cannot hold the eighteen-unit jib the reach demands, whichever crane is built.
+utilization between `0.81` and `0.93`; the par figures are set from those
+builds.
+
+Site 4's delivery pad moved from `(16, 2, 6)` to `(14, 2, 6)` in that pass, and
+it is worth being exact about why. The longer reach demands an eighteen-unit jib
+off the four-anchor square, and of roughly 25,000 cranes searched at that reach
+not one held it: the best reached utilization `1.216`, and the rest either
+exceeded the budget or collapsed on the first slew tick. That is what was
+measured, not what was proved. No crane clearing `(16, 2, 6)` was found, and
+none was shown not to exist. At `(14, 2, 6)` the worked crane costs `4992.4`
+against the site's `5200` budget, clears in `44.10 s` against par time `70`, and
+peaks at utilization `0.909`. The pad is the only figure that moved on this
+site; the budget stayed at `5200`.
+
+Site 3's budget moved from `3600` to `4000` in the follow-up pass, and for the
+opposite reason: nothing about the site changed, only the room it leaves. The
+wall is eight units tall, so a crate carried over it needs its underside at
+`y 8`, its hook at `y 10`, and — with `HOIST_MIN` `1` — a trolley at `y 11` or
+higher, which puts the ring at `y 10` and fixes the tower at three braced
+levels. That floor is real: among the tower and arm variants searched at that
+height the leanest build that clears costs `3329.6` and peaks at utilization
+`0.977`, and the worked crane costs `3369.6`, so a `3600` budget left a player
+`230` to be wrong with. Going around the wall rather than over it is not the
+escape it looks like — the wall stops two units short of the envelope at each
+end, but every tape that tried that gap struck the wall on the swing. The
+budget is now `4000`, `630.4` above the worked crane, and par cost stays
+`3500`.
 
 ## Versioning
 

@@ -41,7 +41,11 @@ a value outside its axis's range at that moment ends the run as
 The trolley's range is the one that moves during a run: its upper bound is the
 track's current length (`specs/structure.md`), and a rail breaking mid-run
 shortens the track. A `trolley` target that was inside the range while an
-earlier step ran is out of range if the track has since fallen short of it.
+earlier step ran is out of range when its own step starts if the track has
+since fallen short of it, and a `trolley` command already running is judged
+again the same way at the top of every tick: the first tick that finds the
+track no longer reaching its target ends the run as `command-out-of-range`,
+before any axis moves.
 
 ## Axis motion
 
@@ -80,11 +84,15 @@ During a run, each tick performs the following, in order. The first failure a
 tick reaches ends the run with that cause and the later stages of that tick do
 not run.
 
-1. The tape: a live move step whose axes have all arrived completes. If no
-   step is live, this tick takes the next one: an action step executes
-   (`specs/rigging.md`), a move step issues its commands to their axes. After
-   the last step completes the run ends: cleared if every load is `placed`,
-   otherwise failed as `loads-unplaced`.
+1. The tape: a live move step whose axes have all arrived completes, and a
+   live `trolley` command whose target the track no longer reaches ends the
+   run as `command-out-of-range`. If no step is live, this tick takes the next
+   one: an action step executes (`specs/rigging.md`), a move step issues its
+   commands to their axes. A tick that finds no live step and no step left to
+   take is the tick the run ends on: cleared if every load is `placed`,
+   otherwise failed as `loads-unplaced`. That tick counts like any other and
+   runs none of the stages below, so the run clock the run ends on is that
+   tick's own number over `TICK_HZ`.
 2. Axis motion: advance every commanded axis under the controller above.
 3. Geometry: the track, from the rail members that remain
    (`specs/structure.md`), then the arm rotation, the trolley point, and the
@@ -107,7 +115,10 @@ A tick takes at most one step from the tape. A move step's axes arrive during
 a tick's axis motion, and the step is found complete at the top of the tick
 after that, which is the tick that takes the step following it. An action step
 is taken, executed, and complete on one tick, and the step after it is taken
-on the next, so two actions in a row occupy two ticks and never one.
+on the next, so two actions in a row occupy two ticks and never one. The
+tape's last step is no different: the run ends at the top of the first tick
+that finds it complete and no step left to take, so a final action step's own
+tick runs in full and the tick after it is the one that ends the run.
 
 ## Starting and ending a run
 
@@ -124,8 +135,8 @@ nothing else. The `back` action aborts a run early and returns to the build
 screen; an aborted run has no verdict.
 
 A run that ends cleared records the site's score, the crane's cost and the run
-clock at the final tick, and moves to the results screen. A failed run stays
-on the run screen with its cause read out and the scene as it stood, so the
-player reads what went wrong before going back to edit. Either way the
+clock at the tick it ended on, and moves to the results screen. A failed run
+stays on the run screen with its cause read out and the scene as it stood, so
+the player reads what went wrong before going back to edit. Either way the
 structure, the tape, and the loads' starting poses are untouched: every run
 begins from the same authored state, and running is always repeatable.

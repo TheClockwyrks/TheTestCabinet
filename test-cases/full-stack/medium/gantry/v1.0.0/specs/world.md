@@ -48,10 +48,13 @@ the ground.
 
 An obstacle is a fixed axis-aligned box, stated as a minimum corner and a size
 per axis. An obstacle blocks only where something reaches inside it: a body
-meets an obstacle when the two overlap over a positive interval on every axis,
-so a segment grazing a face and a box resting flush against one are both clear
-of it. Contact is not collision. This one rule governs every obstacle test in
-the game: the editor's, the structure's during a run, and the carried load's.
+meets an obstacle when some point of the body lies inside the box, strictly
+between the box's minimum and its maximum on all three axes. Contact is not
+collision, so a segment grazing a face, a segment lying flush along one, and a
+box resting flush against one are all clear of it. This one rule governs every
+obstacle test in the game: the editor's, the structure's during a run, and the
+carried load's. A member's body is its segment, and a load's is its box at its
+current position and yaw.
 
 - The editor refuses a member whose segment reaches inside an obstacle
   (`specs/structure.md`).

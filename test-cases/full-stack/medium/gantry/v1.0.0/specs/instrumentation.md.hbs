@@ -207,10 +207,12 @@ clock is already doing, so a scenario that must be reproducible calls
 ```
 
 `stable` is whether the structure stands and `members` is in member-id order.
-`specs/structure.md` fixes the issues, the solve the check runs, and what a
-structure with an issue reports. The reading is pure: it computes the check and
-returns it, and it displays nothing, so the result the build screen is showing
-is untouched.
+`issues` carries each issue once, in the order `specs/structure.md` lists them:
+`no-ring`, `no-rail`, `invalid-rail`, `disconnected-members`, and then
+`empty-program` last. `specs/structure.md` fixes the issues, the solve the
+check runs, and what a structure with an issue reports. The reading is pure: it
+computes the check and returns it, and it displays nothing, so the result the
+build screen is showing is untouched.
 {{#if (eq engine.slug "none")}}
 
 | Operation | Returns |
@@ -221,8 +223,9 @@ is untouched.
 in front of the camera and inside the stage. It is a pure reading and moves
 nothing. Because `specs/controls.md` fixes how a click picks rather than how the
 yard is drawn, this is how a caller finds the point a node is drawn at without
-knowing the projection: a press and release at a visible node's projected point
-picks that node, and one `NODE_PICK_PX` away from every node picks none.
+knowing the projection: a press and release at a visible node's projected
+point picks that node, and one further than `NODE_PICK_PX` from every node
+picks none.
 {{/if}}
 
 ### The run and the screens
@@ -255,12 +258,13 @@ run, and its verdict comes from the ticks that follow.
 `title` screen with `menuIndex` `0`, site `0` open, every site uncleared with no
 recorded score, every site's stored structure and tape emptied, the open site's
 loads and obstacles back to the ones `specs/sites.md` gives it, the strut tool,
-no pending node, an empty history, the camera at its start pose, no press live,
-no check result showing, an idle run, and `simTime` at `0`. Two fields are
-deliberately untouched, because both belong to the runtime rather than to the
-game: the mute bit, which is a player preference, and the pointer's position.
-Because `reset` restores exactly those fields, anything else the build keeps
-across frames is derived from them.
+no pending node, an empty history, the camera at its start pose, no check result
+showing, an idle run, and `simTime` at `0`. Two things are deliberately
+untouched, because neither is the game's own: the mute bit, which is a player
+preference, and the whole of `pointer`, which every update reads afresh from
+outside the game, so there is nothing in it for `reset` to put back. Because
+`reset` restores exactly those fields, anything else the build keeps across
+frames is derived from them.
 
 ### The structure
 
@@ -280,8 +284,13 @@ across frames is derived from them.
 These pose single edits on the build screen, entering the rule pipeline the
 build tools feed, so every refusal in `specs/structure.md` applies unchanged and
 a refused edit leaves the structure exactly as it was. Each edit that lands
-pushes the undo history exactly as a click would. `addMember` assigns the
-structure's next member id.
+pushes the undo history exactly as a click would. `addMember` gives the member
+the structure's `nextMemberId` and advances it by one.
+
+A removal with nothing to remove is a refusal rather than an invalid argument,
+so it is silent: `clearRing` on a crane carrying no ring and
+`removeCounterweight` on a lattice node carrying none both leave the structure
+exactly as it stands and push no history.
 
 `clearStructure` empties the structure as opening a site with nothing built
 leaves it, so the next member placed after it takes id `0` and a posed crane's
@@ -334,6 +343,14 @@ is posed stays where it is, and the run that follows ends as
 editor's refusals govern edits to the structure, and posing the site is not one
 of those.
 
+The loads and the obstacles are the whole of what a site puts in the yard and
+the whole of what these operations reach. A site's name, envelope, anchors,
+budget, and par are the site's own figures, read by the open site's index
+against `specs/sites.md` rather than carried anywhere, so no operation sets one
+and `openSite` is what chooses between them: the six sites carry six
+envelopes, six anchor sets, and six budgets, and a scenario about an envelope,
+an anchor set, or a budget opens the site carrying the one it is about.
+
 ### The run in progress
 
 | Operation | Effect |
@@ -355,9 +372,12 @@ follow.
 successful `attach` leaves it, without the candidate search and without the
 `attach-missed` verdict, and it is refused while another load is attached. The
 grip's value is left as it is, so a caller that wants the hook square on the
-load sets the grip too. Every other phase takes the load off the hook and leaves
-it at the pose it holds. A `"placed"` load sits where it is for the rest of the
-run, as `specs/world.md` states.
+load sets the grip too. Every other phase takes the load off the hook, so the
+run's attachment clears when the load posed was the one hanging. `"placed"`
+sets the load down exactly as a successful `release` leaves it: it sits at
+exactly its target pose and stays there for the rest of the run
+(`specs/world.md`), and `"waiting"` and `"lost"` leave the load at the pose it
+holds when it comes off.
 
 `setAxis` takes any value the axis can hold. The ranges in `specs/program.md`
 are what a step's target is judged against when the step starts, not a bound on
@@ -417,10 +437,10 @@ after it.
     par: { cost: <number>, time: <number> },
     loads: [
       {
-        cls: "crate" | "container" | "drum",
+        class: "crate" | "container" | "drum",
         mass: <number>,
-        from: { pos: { x, y, z }, yaw: <number> },
-        to:   { pos: { x, y, z }, yaw: <number> },
+        from: { x, y, z, yaw },   // the lift point it starts at, and its yaw
+        to:   { x, y, z, yaw },   // the pad it is wanted on
       },
     ],
     obstacles: [{ min: { x, y, z }, size: { x, y, z } }],
@@ -432,6 +452,8 @@ after it.
   pointer: {
     x: <number>, y: <number>,      // logical stage units
     down: <boolean>,               // a press is live
+    pressX: <number>,              // where the live press went down
+    pressY: <number>,
     dragging: <boolean>,           // the live press has passed CLICK_SLOP
   },
   pick: {                          // what a click at the pointer would take
@@ -440,6 +462,7 @@ after it.
   },
   structure: {
     members: [{ id, a: { x, y, z }, b: { x, y, z }, material }],
+    nextMemberId: <number>,        // the id the next member takes
     ring: { corner: { x, y, z } } | null,
     counterweights: [{ x, y, z }],
     cost: <number>,
@@ -463,12 +486,14 @@ after it.
     time: <number>,                // tick / TICK_HZ, seconds
     speedIndex: <number>,          // into RUN_SPEEDS
     stepIndex: <number>,
+    stepLive: <boolean>,           // that step is taken and not yet complete
     axes: {
       slew:    { value, rate, command: { target, rate } | null },
       trolley: { value, rate, command: { target, rate } | null },
       hoist:   { value, rate, command: { target, rate } | null },
       grip:    { value, rate, command: { target, rate } | null },
     },
+    pivot: { x, y, z },            // the point the cable hangs from
     bob: { pos: { x, y, z }, vel: { x, y, z } },
     attached: <number> | null,     // the attached load's index
     loads: [{ phase, pos: { x, y, z }, yaw }],
@@ -481,7 +506,8 @@ after it.
 ```
 
 The shape is fixed and every field is present whatever the screen. `site`,
-`structure`, and `program` report the open site's, and `run.loads` is
+`structure`, and `program` report the open site's, and the structure and tape
+authored on another site are read by opening that site. `run.loads` is
 index-aligned with `site.loads`. A field the current screen does not use reports
 the value it is holding rather than going missing, and the table below gives the
 value each rests at.
@@ -490,22 +516,34 @@ value each rests at.
 | --- | --- |
 | `pendingNode` | `null` until a first node is held, and again once it is placed or cleared |
 | `historyDepth` | `0` on a site opened and not yet edited |
-| `pointer` | `{ x: 0, y: 0, down: false, dragging: false }` before the pointer has been moved |
+| `pointer` | `{ x: 0, y: 0, down: false, pressX: 0, pressY: 0, dragging: false }` before the pointer has been used |
 | `pick` | `{ node: null, member: null }` on every screen but `build`, and where nothing is in range |
 | `checkResult` | `null` while the build screen is showing no check result |
 | `run` | the idle placeholder `specs/state.md` gives it, whenever no run is in progress |
 
+- `site.name`, `site.envelope`, `site.anchors`, `site.budget`, and `site.par`
+  are the open site's own figures, read by `siteIndex` against
+  `specs/sites.md`; `site.loads` and `site.obstacles` are the yard as it stands.
 - `structure.cost` and `structure.issues` are derived from the rules in
   `specs/structure.md`, so `issues` is empty exactly when the structure is
-  ready.
+  ready. `structure.issues` and `checkResult.issues` are in the order `check`
+  reports them.
+- `structure.nextMemberId` is the id the next member placed takes, which
+  `clearStructure` returns to `0` and which no removal gives back.
 - `pick` is the node candidate and the member candidate a click at the pointer's
   current position would take, decided by the pick radii and the tie-breaks
   `specs/controls.md` fixes. Either is `null` when nothing is in range.
-- `pointer.dragging` is false whenever no press is live, and turns true on the
+- `pointer.pressX` and `pointer.pressY` are where the live press went down, in
+  the same logical stage units, and they rest where the last press began.
+  `pointer.dragging` is false whenever no press is live, and turns true on the
   move that carries a live press past `CLICK_SLOP`, which is the move that makes
   it an orbit drag rather than a click.
 - `checkResult` is the result the build screen is currently showing, exactly as
   the `check` action left it. The `check` reading never sets it.
+- `run.stepLive` is whether the step at `run.stepIndex` has been taken and is
+  not yet complete, and `run.pivot` is the point the cable hangs from at the
+  most recent tick's geometry, which the pendulum reads on the tick after
+  (`specs/rigging.md`).
 - `run.forces` is the latest solve's, in member-id order, and covers the
   members still intact.
 - `muted` mirrors the runtime's mute bit, and `simTime` accumulates every
@@ -514,7 +552,10 @@ value each rests at.
 Every field is read straight off the game's own state or derived from it at the
 call, so what the snapshot reports is what the game holds. Every field an
 operation above sets is reported here, so a call is checked by setting a value
-and reading it back.
+and reading it back. Two are read a step apart. The undo stack is reported as
+`historyDepth`, and each entry comes back through `structure` as an `undo`
+restores it. A site that is not open reports the structure and tape stored on it
+through `structure` and `program` once it is opened.
 
 ## Diagnostics
 

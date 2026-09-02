@@ -80,8 +80,10 @@ two rail nodes the trolley's mass is.
 
 ## The two solves
 
-The ring's rigidity is expressed by solving the arm and the tower separately
-and carrying the arm's reactions across the ring.
+The ring is expressed by solving the arm and the tower separately and carrying
+the arm's reactions across the ring. It contributes no stiffness to either
+solve: what holds the arm is the top flange it is supported on, and what holds
+the bottom flange is the tower's own members.
 
 A solve's nodes are the ends of its intact members, together with the four
 flange nodes the ring gives it: the top flange for the arm, the bottom flange
@@ -115,8 +117,9 @@ positive in tension, negative in compression.
    the anchor nodes. Applied forces: the tower's lumped masses, plus, at each
    bottom-flange node, the negated reaction read at the top-flange node it
    shares a ring corner with (`specs/structure.md`), which is how the arm's
-   weight and overturning moment bear on the tower. The corner pairing is the
-   ring's own and holds at every slew angle.
+   weight and overturning moment bear on the tower. The reaction crosses the
+   corner as it was read, in world components, negated and turned no further.
+   The corner pairing is the ring's own and holds at every slew angle.
 
 Each corner carries the reaction at its top-flange node down to its
 bottom-flange node, so the force at a corner's two flange connections has one
@@ -148,13 +151,18 @@ unchanged by it.
 ## Singularity
 
 A structure that cannot resist its loads has no equilibrium: the supported
-system `K u = F` is singular. Detect it during factorization: a pivot whose
-magnitude falls below `SINGULAR_TOL` (`1e-8`) times the largest diagonal entry
-of the assembled `K` marks the system singular. A singular solve, in either the
-arm or the tower, at any point in the slack-cable iteration or the breakage
-sequence, ends the run as `collapse`. An under-braced 3D truss is the ordinary
-way to get here: a flat frame with nothing resisting out-of-plane motion is a
-mechanism even though every member is sound.
+system `K u = F` is singular. The supported system is what is left once the
+support rows and columns are gone, and it is symmetric, so it is factored
+symmetrically and without pivoting: `K = L D L^T` with `L` unit lower
+triangular and `D` diagonal, eliminating the unknowns in the order the system
+holds them and exchanging no row and no column. The pivots are the diagonal
+entries of `D`. The system is singular when a pivot's magnitude falls below
+`SINGULAR_TOL` (`1e-8`) times the largest diagonal entry of that same
+supported `K`, and the factorization stops there. A singular solve, in either
+the arm or the tower, at any point in the slack-cable iteration or the
+breakage sequence, ends the run as `collapse`. An under-braced 3D truss is the
+ordinary way to get here: a flat frame with nothing resisting out-of-plane
+motion is a mechanism even though every member is sound.
 
 ## Utilization and breakage
 

@@ -47,7 +47,7 @@ No obstacles. Two crates, each straight across the yard.
 | --- | --- |
 | Envelope | `x -10..12`, `y 0..18`, `z -8..8` |
 | Anchors | `(0,0,0)`, `(2,0,0)`, `(0,0,2)`, `(2,0,2)` |
-| Budget | `3600` |
+| Budget | `4000` |
 | Par | cost `3500`, time `60` |
 
 | Load | Class | Mass | From | To |
@@ -66,8 +66,8 @@ One crate whose path crosses the wall: the lift goes up, over, and down.
 | --- | --- |
 | Envelope | `x -10..20`, `y 0..20`, `z -8..8` |
 | Anchors | `(0,0,0)`, `(2,0,0)`, `(0,0,2)`, `(2,0,2)` |
-| Budget | `5600` |
-| Par | cost `5250`, time `70` |
+| Budget | `5200` |
+| Par | cost `5150`, time `70` |
 
 | Load | Class | Mass | From | To |
 | --- | --- | --- | --- | --- |

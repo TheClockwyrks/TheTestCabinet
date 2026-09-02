@@ -382,7 +382,7 @@ export interface GantryState {
   camera: Camera;
   pointer: PointerState;
   run: RunState;
-  /** The runtime's mute bit, mirrored every update. */
+  /** The engine's mute bit, mirrored every update. */
   muted: boolean;
   /** Accumulated delta time of every update, in seconds. */
   simTime: number;
@@ -394,11 +394,11 @@ export interface GantryState {
 `MaterialName` names the three materials `specs/structure.md` gives and
 `AxisName` the four axes `specs/program.md` gives. `Screen` is the top-level
 state machine and every build carries all seven; `Tool` names the six build
-tools. `ReadinessIssue` is the
-four issues `specs/structure.md` names and `StartIssue` adds the one a tape can
-raise, so `StartIssue` is exactly the set a refused start lists. `LoadPhase`
-and `RunPhase` name where a load and a run stand, and `FailCause` is the closed
-vocabulary of failures `specs/statics.md` collects.
+tools. `ReadinessIssue` is the four issues `specs/structure.md` names and
+`StartIssue` adds the one a tape can raise, so `StartIssue` is exactly the set
+a refused start lists. `LoadPhase` and `RunPhase` name where a load and a run
+stand, and `FailCause` is the closed vocabulary of failures `specs/statics.md`
+collects.
 
 ## `Structure`
 
@@ -446,7 +446,7 @@ until the structure changes (`specs/structure.md`, `specs/ui.md`). It is
 ## `PointerState`
 
 Where the pointer is and what the press being held has done so far, as the
-frame read it from the runtime layer.
+frame read it from the engine.
 
 - `x`, `y` — the pointer position in the stage's logical units, the units a
   pick radius is measured in.
@@ -526,11 +526,11 @@ the fields posed and read back by reading them.
 - `checkResult` — the check result the build screen is showing, or `null`.
 - `camera` — the orbit camera's pose, which persists across the three yard
   screens and returns to its start pose when a site is opened.
-- `pointer` — the pointer as of this frame, refreshed from the runtime layer
-  on every update.
+- `pointer` — the pointer as of this frame, refreshed from the engine on every
+  update.
 - `run` — the run in progress, or its idle placeholder.
-- `muted` — the game's readable copy of the runtime's mute bit, which every
-  `update` carries into the state it returns. The runtime owns muting, and this
+- `muted` — the game's readable copy of the engine's mute bit, which every
+  `update` carries into the state it returns. The engine owns muting, and this
   field is what the debug surface reports.
 - `simTime` — accumulated simulation time, in seconds. Every `update` adds its
   `dt`, whatever the screen, the menus included.
@@ -869,18 +869,17 @@ export class GantryState extends GameState {
 `MaterialName` names the three materials `specs/structure.md` gives and
 `AxisName` the four axes `specs/program.md` gives. `Screen` is the top-level
 state machine and every build carries all seven; `Tool` names the six build
-tools. `ReadinessIssue` is the
-four issues `specs/structure.md` names and `StartIssue` adds the one a tape can
-raise, so `StartIssue` is exactly the set a refused start lists. `LoadPhase`
-and `RunPhase` name where a load and a run stand, and `FailCause` is the closed
-vocabulary of failures `specs/statics.md` collects.
+tools. `ReadinessIssue` is the four issues `specs/structure.md` names and
+`StartIssue` adds the one a tape can raise, so `StartIssue` is exactly the set
+a refused start lists. `LoadPhase` and `RunPhase` name where a load and a run
+stand, and `FailCause` is the closed vocabulary of failures `specs/statics.md`
+collects.
 
 ## `Structure`
 
 What is built on one site, and `{ members: [], nextMemberId: 0, ring: null,
 counterweights: [] }` on a site nothing has been built on. Each site gets its
-own, which is why the initializer above builds one per entry rather than
-sharing a single record.
+own.
 
 - `members` — every member, each carrying the id it was assigned.
 - `nextMemberId` — the id the next member takes. Removing a member never gives
@@ -904,10 +903,8 @@ opened. The initializer above is site `0`'s, the site the game opens on.
 
 The state owns these all the way down. A copy reaches every part: the load
 list, each load, each of its two poses, the obstacle list, each obstacle, and
-its corner and size. Spreading a load or a box alone would leave the poses and
-the sizes pointing into `SITES`, and posing a load would then rewrite the site
-table for every later opening of that site, which is why the initializer
-rebuilds each nested record too.
+its corner and size, so nothing here points into `SITES` and posing a load on
+one site leaves every other site as it was.
 
 The site's name, envelope, anchors, budget, and par figures are not carried;
 they are read by `siteIndex` against `SITES`.

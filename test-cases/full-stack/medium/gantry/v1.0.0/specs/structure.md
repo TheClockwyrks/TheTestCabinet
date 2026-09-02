@@ -41,14 +41,16 @@ LATTICE_PITCH)`, and the top flange, the same four nodes at `y +
 LATTICE_PITCH`. The slew axis is the vertical line through the flange square's
 center, `(x + LATTICE_PITCH / 2, y, z + LATTICE_PITCH / 2)`.
 
-The ring is a bearing, and it is rigid in every direction but one. Each flange
-holds its four nodes fixed relative to one another, and the two flanges hold
-fixed relative to one another in every direction but rotation about the slew
-axis. That single freedom is the slew: the ring turns the whole top flange
-about the slew axis by the slew angle and holds it against everything else. It
-weighs `RING_MASS` (`20`), costs `RING_COST` (`300`), and each of its eight
-flange connections carries force up to `RING_CAP` (`6000`), as
-`specs/statics.md` states.
+The ring is a bearing: it turns the arm and it carries force. It turns the top
+flange about the slew axis by the slew angle and takes the whole arm with it,
+so an arm node stands at its lattice position turned by that angle and nothing
+else moves it, while the bottom flange stands still. Force crosses between the
+flanges corner by corner, and that is the only path between the arm and the
+tower. The ring holds nothing else: it adds no stiffness of its own, so the
+arm's equilibrium is supported on the top flange and the bottom flange is held
+by nothing but the members that reach it, both as `specs/statics.md` states.
+The ring weighs `RING_MASS` (`20`), costs `RING_COST` (`300`), and each of its
+eight flange connections carries force up to `RING_CAP` (`6000`).
 
 The ring has four corners, and each corner is a pair of flange nodes: a
 bottom-flange node and the top-flange node at the same `x` and `z`, the one
@@ -73,9 +75,10 @@ its rail and weighs `TROLLEY_MASS` (`15`).
 The rail members must form a single straight track for it:
 
 - Every rail member is horizontal: its two ends share a `y`.
-- All rail members are collinear, along one line, and consecutive: ordered
-  along that line, each shares an end node with the next, with no gap and no
-  branch.
+- All rail members are collinear, along one line, and cover one unbroken
+  stretch of it exactly once: no two rails overlap and no gap is left between
+  them. They therefore meet end to end, each sharing an end node with the next,
+  and a track of `n` rails runs over `n + 1` nodes, two of them its ends.
 - Every rail member is in the arm.
 - The track's two end nodes lie at distinct horizontal distances from the slew
   axis.
@@ -86,7 +89,10 @@ and the trolley begins every run at `0`. The trolley is on a rail member when
 its position lies between that member's two ends along the track, both ends
 included, so at a node two rail members share it is on both. The first rule is
 enforced the moment a rail member is placed; the rest are checked whenever the
-structure is readied, under Readiness below.
+structure is readied, under Readiness below. The last two rules speak of the
+arm and the slew axis, and a crane without a ring has neither, so the track is
+judged only on a crane that has one: with no ring the track rules go unchecked
+and `invalid-rail` is not raised.
 
 ### Counterweights
 
@@ -163,7 +169,7 @@ identifier, reported wherever readiness is reported:
 | --- | --- |
 | `no-ring` | The crane has no slew ring. |
 | `no-rail` | The crane has no rail members. |
-| `invalid-rail` | The rail members break one of the track rules above. |
+| `invalid-rail` | The crane has a ring, and its rail members break one of the track rules above. |
 | `disconnected-members` | Some member belongs to neither the tower nor the arm: it has no member path to an anchor or to a flange node. |
 
 A structure with no readiness issues is ready to run. Whether it stands is the
@@ -182,12 +188,15 @@ it stands, without starting a run. It reports:
 - each intact member's force and utilization, in member-id order
   (`specs/state.md`).
 
-With any readiness issue the structure is not solved: it does not stand, and
-the member list is empty. Otherwise the two solves of `specs/statics.md` run at
-the run-start posture, `slew` `0`, `trolley` `0`, `hoist` `HOIST_START`, the
-bare hook hanging at rest and nothing moving, and the structure stands when
-both solves are regular. A ready structure is solved whether or not it has a
-tape, so `empty-program` on its own still reports the forces and the verdict.
+With any readiness issue the structure is not solved. Otherwise the two solves
+of `specs/statics.md` run at the run-start posture, `slew` `0`, `trolley` `0`,
+`hoist` `HOIST_START`, the bare hook hanging at rest and nothing moving, and
+the structure stands when both solves are regular. A structure that is not
+solved does not stand, whether a readiness issue refused the solve or a solve
+went singular, and it reports no member at all: the member list is empty
+exactly when the structure does not stand. A ready structure is solved whether
+or not it has a tape, so `empty-program` on its own still reports the forces
+and the verdict.
 
 Nothing breaks and nothing fails during a check: a utilization above `1` is
 reported and no more.

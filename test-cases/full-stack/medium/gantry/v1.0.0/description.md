@@ -17,8 +17,7 @@ steel.
 Gantry is a full-stack case with a 3D asset contract. The build produces its
 own voxel models with the asset tools: the ring, trolley, hook, counterweight,
 and mounts, plus the crate, container, and drum load classes. It produces all
-of its audio the same way and wires both into the scene it renders with
-`three` and the voxel runtime.
+of its audio the same way and wires both into the 3D scene it renders.
 
 The simulation is exact. Programmed motion gives closed-form accelerations,
 the solve has a unique answer, and the pendulum is specified to the tick, so a

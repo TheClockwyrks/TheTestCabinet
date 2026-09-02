@@ -81,33 +81,36 @@ import.meta.url)`) and use the URL that comes back. The project's Vite config
 already emits relative URLs.
 {{else if (eq engine.slug "simple-3d")}}
 The {{engine.name}} engine loads the models and decodes them. Its asset loader
-resolves every path under one root, `assets/`, relative to the page the build
-is served from, and its model loader decodes glTF 2.0, which is what `voxel`
-writes, so a committed `.glb` comes back as the node tree, meshes, and
-per-vertex colors the file carries. Load each model through that loader rather
-than fetching a URL of your own, writing the path relative to that root, and
-place a copy of what comes back in the engine's scene for each subject it
-draws. No part of the
-build decodes glTF itself, and nothing else fetches an asset.
+resolves every path under one root, `ASSET_ROOT` (`assets/`), relative to the
+page the build is served from, and its model loader decodes glTF 2.0, which is
+what `voxel` writes, so a committed `.glb` comes back as the node tree, meshes,
+and per-vertex colors the file carries. Load each model through that loader
+rather than fetching a URL of your own, writing the path relative to that root,
+and place a copy of what comes back in the engine's scene for each subject it
+draws. No part of the build decodes glTF itself, and nothing else fetches an
+asset.
 
-The built site serves every produced file under that root, so a path the
-loader resolves reaches the file at whatever base path the site is served
-from. The engine's own documentation is the authoritative API.
+A path the loader resolves reaches the file at whatever base path the site is
+served from, but only where the built site carries that file under the root:
+the supplied toolchain does not copy `assets/` into `dist/`, so the built
+output carrying every produced file under that root is the build's to arrange.
+The engine's own documentation is the authoritative API.
 {{else}}
 The {{engine.name}} engine loads the models and decodes them. Its asset loader
 resolves every path under one root, `ASSET_ROOT` (`assets/`), relative to the
 page the build is served from, and its model loader decodes glTF 2.0, which is
-what `voxel` writes, so a committed `.glb` comes back as the node tree,
-meshes, and per-vertex colors the file carries. Load each model through that
-loader rather than fetching a URL of your own, writing the path relative to
-that root, and draw it with a model component, which clones the loaded model
-onto the actor it belongs to, so one load backs every copy of that part on
-screen. No part of
-the build decodes glTF itself, and nothing else fetches an asset.
+what `voxel` writes, so a committed `.glb` comes back as the node tree, meshes,
+and per-vertex colors the file carries. Load each model through that loader
+rather than fetching a URL of your own, writing the path relative to that root,
+and draw it with a model component, which clones the loaded model onto the
+actor it belongs to, so one load backs every copy of that part on screen. No
+part of the build decodes glTF itself, and nothing else fetches an asset.
 
-The built site serves every produced file under that root, so a path the
-loader resolves reaches the file at whatever base path the site is served
-from. The engine's own documentation is the authoritative API.
+A path the loader resolves reaches the file at whatever base path the site is
+served from, but only where the built site carries that file under the root:
+the supplied toolchain does not copy `assets/` into `dist/`, so the built
+output carrying every produced file under that root is the build's to arrange.
+The engine's own documentation is the authoritative API.
 {{/if}}
 
 ## The sound

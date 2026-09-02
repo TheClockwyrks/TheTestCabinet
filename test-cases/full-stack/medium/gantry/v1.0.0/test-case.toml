@@ -9,34 +9,28 @@
 slug = "gantry"
 
 # EXPERIMENTAL, deliberately, because this is the first 3D full-stack case and it
-# runs ahead of infrastructure that does not exist yet:
+# still runs ahead of two things it needs:
 #
-#   - The run image. `type = "full-stack"` today schedules onto
-#     `test-cabinet-full-stack-2d`, whose six binaries are the 2D set. This case's
-#     asset contract (`specs/assets.md`) needs a 3D full-stack image carrying
-#     `voxel`, `sfx-synth`, `sfx-sample`, and `music`.
-#   - The `simple-3d` engine, which is not in the engine catalogue yet. Its
-#     branches in the seeded specs and its starter workspace are written against
-#     the simple-2d-shaped contract (`Game<State, Debug>` / `initialize` /
-#     `update` / `render`, `engine.apply`, `engine.debug`) and must be reconciled
-#     against the real engine when it lands. Because the catalogue is closed, the
-#     engine cannot merely be *declared* ahead of itself — the version would fail
-#     to resolve — so the declaration is parked and the case ships `none`-only
-#     until then. The `workspace` key below carries the restoration steps.
-#   - The validator suites. The engine manifest format (`engines` +
-#     `[workspaces]`) makes a case validator-rated, and a validator-rated case
+#   - The validator suites. The engine manifest format (`engines` + `[[engine]]`
+#     + `[workspaces]`) makes a case validator-rated, and a validator-rated case
 #     requires every graded review point to carry `validation`, `failure_cap`,
-#     and `domains` — suites this case defers until it can run at all. So the
-#     engine format itself is parked with the engine: the case declares the
-#     legacy single `workspace` and its checklist is reviewer-rated until both
-#     are restored together.
+#     and `domains` — projects this case has not written yet. So the engine
+#     format itself is parked: the case declares the legacy single `workspace`
+#     and its checklist stays reviewer-rated until the suites land with it. The
+#     `workspace` key below carries the restoration steps. Nothing about the
+#     three engines blocks it: `none`, `simple-3d`, and `structured-3d` are all
+#     in the catalogue (`crates/core/src/engine.rs`).
+#   - The multi-model `voxel` workflow. The binary's config workflow produces one
+#     model per working directory and `specs/assets.md` asks for eight, so how a
+#     run drives it — per-model directories or config overrides — is settled
+#     before the case is scheduled.
 #
-# Note that `experimental` is not what makes any of the above safe: it is read
+# Note that `experimental` is not what makes either of the above safe: it is read
 # off an already-resolved version, so it hides a case that is otherwise VALID.
 # Everything this case declares must still resolve today.
 #
-# Until both exist the case must not be scheduled; experimental keeps it hidden
-# from the catalog unless a deployment opts in with
+# Until both are settled the case must not be scheduled; experimental keeps it
+# hidden from the catalog unless a deployment opts in with
 # `TCAB_BACKEND_ALLOW_EXPERIMENTAL`.
 experimental = true
 
@@ -86,26 +80,40 @@ max_runtime_hours = 8
 
 # The test type: an end-to-end playable game whose assets the model also
 # produces during the run. A root key, so it sits above the first table header.
-# See the `experimental` note above for what the type must grow before this case
-# can run.
 type = "full-stack"
 
+# The dimension the produced art is in, which is what picks between the two
+# full-stack run images. `3d` schedules onto `test-cabinet-full-stack-3d`, whose
+# `PATH` carries `voxel`, `voxel-anim`, and `particle-3d` on top of the 2D set —
+# and `voxel` is what `specs/assets.md` produces all eight models with, so the
+# default `2d` image would leave the contract unbuildable. A root key, so it sits
+# above the first table header, and a property of the whole version: every
+# variant runs in the one image.
+asset_dimension = "3d"
+
 # Init command, run in the container once the workspace and specs are seeded and
-# before the harness starts. `npm install` (not `npm ci`) because `packages`
-# injects the `@test-cabinet/voxel-runtime` `file:` dependency, so the lockfile
-# completes at seed time; the same command downloads the Playwright Chromium
-# build so the model can look at its game in a browser without further setup.
+# before the harness starts. `npm install` (not `npm ci`) because seeding writes
+# baked-in `file:` dependencies into the workspace's `package.json` — the
+# `packages` runtime below, and, once the engine format is restored, the selected
+# engine — so the lockfile completes at seed time rather than being committed
+# ahead of it; the same command downloads the Playwright Chromium build so the
+# model can look at its game in a browser without further setup.
 init = "npm install && npx playwright install chromium"
 
 # NOTE: no `assets = [...]` of pre-made art, deliberately: the model produces the
 # game's models and audio itself, during the run (`specs/assets.md`).
 
 # Test Cabinet runtime libraries installed into the run. `voxel-runtime` is the
-# same library the review UI renders a produced voxel model with: the build
-# decodes its committed `.glb`s with `parseGlb` and puts them on screen through
-# the package's `three` binding. Both seeded workspaces already depend on it via
-# its `file:` path under `.tcab/packages/`. (A root key, so it sits above the
-# first table header.)
+# same library the review UI renders a produced voxel model with, and it is the
+# ENGINELESS build's glTF decoder: that build reads its committed `.glb`s with
+# `parseGlb` and puts them on screen through the package's `three` binding. Only
+# `workspaces/none/package.json` declares it, via its baked-in `file:` path under
+# `.tcab/packages/` — the two engine workspaces declare their engine alone,
+# because both 3D engines' asset loaders decode glTF themselves. The key is
+# case-wide with no per-engine scope, so the library is staged into every run and
+# an engine run simply never imports it; resolution only requires that a shipped
+# workspace `package.json` carry the `file:` spec, which `none`'s does. (A root
+# key, so it sits above the first table header.)
 packages = ["@test-cabinet/voxel-runtime"]
 
 # Variants: exactly one runs per run. Gantry declares exactly ONE — every run is
@@ -114,36 +122,32 @@ packages = ["@test-cabinet/voxel-runtime"]
 # `engine.slug`. A root key, so it must precede the first table header.
 variants = ["variants/base.toml"]
 
-# The starter project seeded into the root of every run. It carries the
-# Vite/TypeScript/ESLint/Prettier/Vitest configuration the `[toolchain]` commands
-# run against, an `index.html` holding the canvas, and the `three` +
-# `@test-cabinet/voxel-runtime` dependencies the scene and the produced models
-# are drawn with — that configuration and nothing else: no `src/`. Every run is
-# engineless, so the build writes the frame loop, input, audio, overlay, and the
-# `window.__gantry` surface itself. Rendering is the game's either way.
+# The starter project seeded into the root of every run. On this key it is the
+# ENGINELESS one, `workspaces/none`: the Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands run against, an `index.html` holding
+# the canvas, and the `three` + `@test-cabinet/voxel-runtime` dependencies the
+# scene and the produced models are drawn with — that configuration and nothing
+# else: no `src/`. Nothing supplies a runtime, so the build writes the frame
+# loop, input, audio, overlay, and the `window.__gantry` surface itself.
 #
-# Gantry is DESIGNED for two engines, but the whole ENGINE MANIFEST FORMAT
-# (`engines` + `[workspaces]`) is PARKED here, not abandoned, for two reasons
-# that end at the same place — see the `experimental` note:
-#
-#   - The `simple-3d` engine is not in the catalogue
-#     (`crates/core/src/engine.rs`), and declaring a slug the catalogue does not
-#     carry makes this whole version fail to resolve. `experimental` cannot hold
-#     it: that flag is read off an already-resolved version and only hides a
-#     case that is otherwise valid.
-#   - The engine format makes a case VALIDATOR-RATED, which requires every
-#     graded review point below to declare `validation`, `failure_cap`, and
-#     `domains` — and the validator suites are deferred until the case can run.
+# Gantry is DESIGNED for THREE engines — `none`, `simple-3d`, `structured-3d` —
+# and seeds a starter project for each (`workspaces/none`,
+# `workspaces/simple-3d`, `workspaces/structured-3d`; each engine workspace
+# declares its engine in its `package.json` and seeds `src/constants.ts` +
+# `src/main.ts`, leaving the build to write `src/game.ts`). The whole ENGINE
+# MANIFEST FORMAT (`engines` + `[[engine]]` + `[workspaces]`) is PARKED here,
+# not abandoned, for ONE reason — see the `experimental` note: the format makes
+# a case VALIDATOR-RATED, which requires every graded review point below to
+# declare `validation`, `failure_cap`, and `domains`, and the validator projects
+# are not written. The catalogue is not an obstacle: both 3D engines are in
+# `crates/core/src/engine.rs`.
 #
 # So the case declares the legacy single `workspace` and stays reviewer-rated.
-# The `simple-3d` starter workspace (`workspaces/simple-3d`, which declares the
-# engine in its `package.json` and seeds `src/constants.ts` + `src/main.ts`,
-# leaving the build to write `src/game.ts`), the specs' `engine.slug` branches,
-# and the reference notes in `variants/base.toml` are all still authored and
-# still on disk; nothing audits for unreferenced files, so they sit inert. When
-# the engine lands, restore the engine format in place of this key — this
-# version is not frozen, so that restoration edits it in place rather than
-# minting a new one — and author the validator suites with it:
+# The two engine workspaces, the specs' `engine.slug` branches, and the
+# reference notes in `variants/base.toml` are all authored and on disk; nothing
+# audits for unreferenced files, so they sit inert. When the suites land,
+# restore the engine format in place of this key — this version is not frozen,
+# so that restoration edits it in place rather than minting a new one:
 #
 #   engines = ["none"]
 #
@@ -151,9 +155,14 @@ variants = ["variants/base.toml"]
 #   slug = "simple-3d"
 #   min_version = "1.0.0"
 #
+#   [[engine]]
+#   slug = "structured-3d"
+#   min_version = "1.0.0"
+#
 #   [workspaces]
 #   none = "workspaces/none"
 #   "simple-3d" = "workspaces/simple-3d"
+#   "structured-3d" = "workspaces/structured-3d"
 workspace = "workspaces/none"
 
 # How validation (and the per-run static deploy) turns a produced implementation
@@ -299,9 +308,9 @@ id = "edits-share-rules"
 title = "Posed edits pass the same rules as clicks"
 description = "addMember, removeMember, setRing, clearRing, and the counterweight operations enter the same placement pipeline the build tools feed: an edit a click would refuse is refused when posed, silently, leaving the structure exactly as it was."
 [[review.categories.items]]
-id = "set-structure-atomic"
-title = "setStructure applies whole or not at all"
-description = "A structure document with any refused element leaves the structure the call found untouched; a valid document replaces it with member ids assigned in list order from 0."
+id = "member-ids-and-clear"
+title = "Member ids run in placement order and reset with clearStructure"
+description = "addMember assigns the structure's next member id, so a crane posed as the sequence of edits that builds it carries ids running upward in the order its members were added, and clearStructure empties the structure as opening a site with nothing built leaves it, so the next member placed after it takes id 0."
 [[review.categories.items]]
 id = "check-reports-statics"
 title = "check reports readiness and static forces"
@@ -539,8 +548,8 @@ title = "The three load models fill their classes"
 description = "The crate, container, and drum are produced voxel models that read as their subjects and fill their class boxes, drawn at each load's pose through waiting, hanging, and placed."
 [[review.categories.items]]
 id = "models-via-runtime"
-title = "Models load through the provided runtime"
-description = "The committed .glb files are decoded with @test-cabinet/voxel-runtime's parseGlb and rendered through its three binding, referenced page-relative so the build runs from a sub-path."
+title = "Models load through the runtime the project provides"
+description = "No part of the build decodes glTF itself: an engineless build decodes each committed .glb with @test-cabinet/voxel-runtime's parseGlb and renders it through the package's three binding, and an engine build loads each one through the engine's own asset loader under its asset root. Either way the files are referenced page-relative, so the build runs from a sub-path."
 [[review.categories.items]]
 id = "produced-cues"
 title = "The cues are produced audio"

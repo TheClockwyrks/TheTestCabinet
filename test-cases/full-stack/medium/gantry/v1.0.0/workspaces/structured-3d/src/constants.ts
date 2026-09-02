@@ -260,7 +260,8 @@ export const CUES = [
 export type CueName = (typeof CUES)[number];
 
 /**
- * The creak plays when a utilization crosses this, at most once per cooldown.
+ * The creak plays when a utilization first reaches this, at most once per
+ * cooldown in run-clock seconds (specs/ui.md).
  */
 export const CREAK_THRESHOLD = 0.8;
 export const CREAK_COOLDOWN = 0.5;
@@ -417,7 +418,7 @@ export const SITES: readonly Site[] = [
       { x: 0, y: 0, z: 2 },
       { x: 2, y: 0, z: 2 },
     ],
-    budget: 3600,
+    budget: 4000,
     par: { cost: 3500, time: 60 },
     loads: [
       {
@@ -442,8 +443,8 @@ export const SITES: readonly Site[] = [
       { x: 0, y: 0, z: 2 },
       { x: 2, y: 0, z: 2 },
     ],
-    budget: 5600,
-    par: { cost: 5250, time: 70 },
+    budget: 5200,
+    par: { cost: 5150, time: 70 },
     loads: [
       {
         class: "container",

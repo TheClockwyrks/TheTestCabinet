@@ -15,10 +15,11 @@ each tick, the rendering pipeline and the camera it draws through, collision
 detection, the input actions, the pointer, audio, loading the produced files
 under one root, and the debug overlay. Asset loading includes the decoding: the
 engine's model loader hands a produced `.glb` back as a node tree with its
-meshes, per-vertex colors, and materials, which a model component clones onto
-an actor. `three` is installed for the yard's geometry, and it is a peer
-dependency of the engine, so the engine and your own code share the one copy
-this project declares.
+meshes and per-vertex colors, which a model component clones onto an actor. A
+produced model declares no material of its own, so those meshes arrive on the
+loader's default one, which is yours to replace. `three` is installed for the
+yard's geometry, and it is a peer dependency of the engine, so the engine and
+your own code share the one copy this project declares.
 
 ## What you own
 
@@ -61,6 +62,15 @@ the world's own, which the mode poses. `specs/controls.md` fixes the orbit and
 what a click picks; the pointer reaches you through the player controller's
 input reader, already in logical stage units, and the world camera converts
 between a point on the stage and a line in the yard.
+
+The debug surface is a required deliverable. The engine returns it from
+`engine.debug` exactly as the instance's `initialize` handed it over, and that
+is how the game is driven from code, so it is present and exactly as
+`specs/instrumentation.md` specifies. Its operations act on the live world at
+the call: a pose takes only its own arguments, arranges the running game
+through the same systems play uses, and returns nothing, as
+`engine.debug.setTool("cable")`; a reading returns plain data and changes
+nothing, as `engine.debug.snapshot()`. Nothing is published to the page.
 
 You also produce the game's models and audio with the asset tools on this
 machine's `PATH` and commit the produced files under `assets/`;

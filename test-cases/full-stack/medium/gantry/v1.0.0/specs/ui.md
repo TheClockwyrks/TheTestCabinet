@@ -42,15 +42,17 @@ and setting a load down inside the tolerances. It names the tool, `undo`,
 
 `select` lists the `SITE_COUNT` (`6`) sites in order, each showing its number,
 its name, and its state: locked, open, or cleared, with a cleared site's best
-score, cost and time, beside it. Site `1` is open from the start; clearing
-site `n` opens site `n + 1`, and cleared and open sites stay so for the
-session. A site's state reads without relying on hue alone.
+score, cost and time, beside it. A site's displayed number is its index plus
+one, so the first site is index `0` and shows as `1`. The site at index `0` is
+open from the start, the site at index `n + 1` opens once the site at index
+`n` is cleared, and cleared and open sites stay so for the session. A site's
+state reads without relying on hue alone.
 
 `confirm` on an open or cleared site enters it, opening the `build` screen
 with that site's stored structure and tape; `confirm` on a locked site does
 nothing; and `back` returns to `title`. On arriving, the highlight sits on the
-site most recently entered or cleared, and on site `1` before any has been
-entered.
+site most recently entered or cleared, and on the site at index `0`,
+`menuIndex` `0`, before any has been entered.
 
 ### Build
 
@@ -140,7 +142,7 @@ these cues:
 | `run-start` | a run starts |
 | `attach` | a load attaches |
 | `placed` | a load is set down on its pad |
-| `creak` | a member's utilization crosses `CREAK_THRESHOLD` (`0.8`) upward; at most once per `CREAK_COOLDOWN` (`0.5`) seconds across the structure |
+| `creak` | a member's utilization reaches `CREAK_THRESHOLD` (`0.8`) on a tick having been below it on the tick before, and no member creaks on a run's first tick; at most one `creak` per `CREAK_COOLDOWN` (`0.5`) run-clock seconds across the structure, so a run's creaks fall on the same ticks at every watch speed |
 | `break` | a tick breaks one or more members, once for the tick |
 | `collapse` | a run fails as `collapse` or `ring-overload` |
 | `complete` | a run clears the site |

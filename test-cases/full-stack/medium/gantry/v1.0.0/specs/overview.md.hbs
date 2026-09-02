@@ -387,6 +387,8 @@ The simulation advances on a fixed tick of `TICK_HZ` (`60`) ticks per simulated
 second, and every run of a tape is the same sequence of ticks whatever the frame
 rate: each frame's delta time accumulates, whole ticks are consumed from the
 accumulation, and a remainder shorter than a tick waits for the next frame.
+The accumulation belongs to the run: it is empty when a run starts, so no time
+measured on the menus, in the editor, or by an earlier run is carried into it.
 Outside a run nothing ticks; menus and the editor respond to input as it
 arrives, and the camera moves against the frame's delta time.
 

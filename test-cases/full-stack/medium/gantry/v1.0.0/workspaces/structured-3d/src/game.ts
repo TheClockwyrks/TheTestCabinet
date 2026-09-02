@@ -70,8 +70,10 @@
 // container's `PATH` produces each model and sound, and every produced file is
 // committed under ASSET_ROOT, which the engine's asset loader resolves every
 // path against. That loader is also the decoder: it hands a committed `.glb`
-// back as a model whose meshes carry the file's own per-vertex colors and
-// materials, and a model component clones one of those onto an actor.
+// back as a model whose meshes carry the file's own per-vertex colors, and a
+// model component clones one of those onto an actor. A produced model declares
+// no material of its own, so those meshes arrive on the loader's default one,
+// which is yours to replace.
 
 import { GameInstance, GameMode } from "@test-cabinet/structured-3d";
 import type { GameDefinition, InitApi } from "@test-cabinet/structured-3d";

@@ -13,10 +13,11 @@ screen layer composited over that picture for the readouts, the input actions,
 the pointer and the world-space ray it casts through the camera, audio, loading
 the produced files under one root, and the debug overlay. Asset loading includes
 the decoding: the engine's model loader hands a produced `.glb` back as a node
-tree with its meshes, per-vertex colors, and materials, ready to be cloned into
-the scene. `three` is installed for the yard's geometry, and it is a peer
-dependency of the engine, so the engine and your own code share the one copy
-this project declares.
+tree with its meshes and per-vertex colors, ready to be cloned into the scene. A
+produced model declares no material of its own, so those meshes arrive on the
+loader's default one, which is yours to replace. `three` is installed for the
+yard's geometry, and it is a peer dependency of the engine, so the engine and
+your own code share the one copy this project declares.
 
 ## What you own
 
