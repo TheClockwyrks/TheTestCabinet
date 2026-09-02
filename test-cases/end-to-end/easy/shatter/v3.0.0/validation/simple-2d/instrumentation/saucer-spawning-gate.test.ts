@@ -74,10 +74,17 @@ afterEach(() => {
 it("keeps the saucer away with the gate off, and lets one arrive with it on", async () => {
   // ---- The gate shut ------------------------------------------------------
   openRun(false);
-  const watched = await h.until((s) => s.saucer !== null, {
-    maxFrames: WATCH_FRAMES,
-    poll: 1,
-  });
+  // Undrawn: a minute of game time sampled every tick is 7 200 frames, and what
+  // the sweep reads is the saucer slot. The tick it stops on, and the state it
+  // reports, are the same either way.
+  const watched = await h.quiet(() =>
+    h.until((s) => s.saucer !== null, {
+      maxFrames: WATCH_FRAMES,
+      poll: 1,
+    }),
+  );
+  // One drawn tick, so the still is the empty field the sweep just watched.
+  await h.advance(1);
   captureStill(h, "quiet");
   assertNull(
     watched.snapshot.saucer,
@@ -87,10 +94,12 @@ it("keeps the saucer away with the gate off, and lets one arrive with it on", as
 
   // ---- And the same minute with the gate open -----------------------------
   openRun(true);
-  const arrived = await h.until((s) => s.saucer !== null, {
-    maxFrames: WATCH_FRAMES,
-    poll: 1,
-  });
+  const arrived = await h.quiet(() =>
+    h.until((s) => s.saucer !== null, {
+      maxFrames: WATCH_FRAMES,
+      poll: 1,
+    }),
+  );
   assertTrue(
     arrived.hit,
     "a saucer arrived over a minute of game time with " +

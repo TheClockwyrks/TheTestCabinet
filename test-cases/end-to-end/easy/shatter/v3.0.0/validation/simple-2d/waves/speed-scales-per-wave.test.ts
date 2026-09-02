@@ -145,6 +145,9 @@ it("drifts wave 6's rocks WAVE_SPEED_STEP per wave faster than wave 1's", async 
     firstSeed: SCALED_FIRST_SEED,
   });
   // The faster rocks of a later wave, as the last flight of wave 6 left them.
+  // The sample above runs undrawn, so one tick is drawn for the picture — after
+  // every speed the verdict rests on has been read.
+  await h.advance(1);
   captureStill(h, "wave");
 
   // What `specs/progression.md` says the ratio is, for the two waves the build

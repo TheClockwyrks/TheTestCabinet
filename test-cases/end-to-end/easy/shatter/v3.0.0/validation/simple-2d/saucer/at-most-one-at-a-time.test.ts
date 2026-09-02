@@ -67,14 +67,19 @@ async function traceVisits(h: Harness, ticks: number): Promise<Change[]> {
   const changes: Change[] = [];
   let held = read();
   changes.push({ tick: 0, id: held });
-  for (let tick = 1; tick <= ticks; tick += 1) {
-    await h.advance(1);
-    const id = read();
-    if (id !== held) {
-      changes.push({ tick, id });
-      held = id;
+  // The sweep is undrawn: what it reads is one id per tick, and drawing the
+  // fourteen thousand pictures it would otherwise leave behind is most of what
+  // the check would cost. The ticks and the samples are unchanged.
+  await h.quiet(async () => {
+    for (let tick = 1; tick <= ticks; tick += 1) {
+      await h.advance(1);
+      const id = read();
+      if (id !== held) {
+        changes.push({ tick, id });
+        held = id;
+      }
     }
-  }
+  });
   return changes;
 }
 
@@ -92,6 +97,10 @@ it("never turns one live saucer straight into another", async () => {
   openSaucerGame(h);
 
   const changes = await traceVisits(h, SPAN_TICKS);
+  // One drawn tick after the sweep, so the still is the field the trace ended on
+  // rather than an older frame; the reading the verdict rests on is already in
+  // `changes`.
+  await h.advance(1);
   captureStill(h, "visit");
 
   const visits = changes.filter((change) => change.id !== null);

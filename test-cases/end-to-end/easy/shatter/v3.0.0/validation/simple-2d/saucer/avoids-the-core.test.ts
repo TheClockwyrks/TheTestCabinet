@@ -167,24 +167,30 @@ async function crossingApproach(h: Harness): Promise<number> {
   const path: Point[] = [];
   let ran = 0;
   let entered = false;
-  while (ran < CROSSING_CEILING) {
-    const saucer = h.snapshot().saucer;
-    if (saucer === null) break;
-    const inside = Math.abs(foldX(saucer.x - STAR_X)) <= WINDOW;
-    if (inside) {
-      path.push({ x: saucer.x, y: saucer.y });
-      entered = true;
-    } else if (entered) {
-      break;
+  // Undrawn: the reading is a path of centres out of the snapshot, and
+  // fifty-four crossings of twelve seconds each is a hundred thousand frames
+  // nothing looks at. The crossing the check ends on is flown again below, with
+  // the recorder armed, and THAT is what a reviewer sees.
+  return h.quiet(async () => {
+    while (ran < CROSSING_CEILING) {
+      const saucer = h.snapshot().saucer;
+      if (saucer === null) break;
+      const inside = Math.abs(foldX(saucer.x - STAR_X)) <= WINDOW;
+      if (inside) {
+        path.push({ x: saucer.x, y: saucer.y });
+        entered = true;
+      } else if (entered) {
+        break;
+      }
+      const step = Math.min(
+        inside ? SAMPLE_STRIDE : APPROACH_STRIDE,
+        CROSSING_CEILING - ran,
+      );
+      await h.advance(step);
+      ran += step;
     }
-    const step = Math.min(
-      inside ? SAMPLE_STRIDE : APPROACH_STRIDE,
-      CROSSING_CEILING - ran,
-    );
-    await h.advance(step);
-    ran += step;
-  }
-  return closestApproachTo(STAR, path).distance;
+    return closestApproachTo(STAR, path).distance;
+  });
 }
 
 let h: Harness;
@@ -241,13 +247,18 @@ it("keeps every one of 54 crossings clear of CORE_R + SAUCER_R", async () => {
   }
 
   poseCrossing(worstCrossing);
-  for (
-    let ran = 0;
-    ran < CROSSING_CEILING && columnGap(h) > WINDOW;
-    ran += APPROACH_STRIDE
-  ) {
-    await h.advance(APPROACH_STRIDE);
-  }
+  // The march up to the window is not the evidence; the pass through it is, and
+  // the recorder below is armed for that. A frame the recorder is capturing is
+  // drawn whatever a march asked for, so arming it is what decides the picture.
+  await h.quiet(async () => {
+    for (
+      let ran = 0;
+      ran < CROSSING_CEILING && columnGap(h) > WINDOW;
+      ran += APPROACH_STRIDE
+    ) {
+      await h.advance(APPROACH_STRIDE);
+    }
+  });
   await captureReplay(h, "closest", async () => {
     await h.advance(WINDOW_TICKS + TAIL_TICKS);
   });

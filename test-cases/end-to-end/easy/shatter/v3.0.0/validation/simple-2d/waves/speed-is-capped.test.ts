@@ -131,6 +131,9 @@ it("stops the per-wave scaling at 1 + WAVE_SPEED_CAP", async () => {
     firstSeed: CAPPED_FIRST_SEED,
   });
   // Wave 20's rocks, at the capped drift speed, as the last flight left them.
+  // The sample above runs undrawn, so one tick is drawn for the picture — after
+  // every speed the verdict rests on has been read.
+  await h.advance(1);
   captureStill(h, "wave");
 
   // What `specs/progression.md` says the ratio is, for the two waves the build

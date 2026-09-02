@@ -123,23 +123,33 @@ export async function readAimErrors(h: Harness): Promise<number[]> {
   const wanted = Math.atan2(toShip.y, toShip.x);
   const errors: number[] = [];
 
-  for (let shot = 0; shot < SHOT_COUNT; shot += 1) {
-    if (shot > 0 && shot % SHOTS_PER_VISIT === 0) standSaucer(h);
-    const volley = await nextVolley(h, { maxTicks: SHOT_CEILING });
-    const carried = volley.saucer ?? { vx: 0, vy: 0 };
-    const round = volley.fired[0];
-    const aim = headingOf({
-      vx: round.vx - carried.vx,
-      vy: round.vy - carried.vy,
-    });
-    if (aim === null) {
-      fail(
-        "a round leaving at SAUCER_BULLET_SPEED along a bearing " +
-          "(specs/saucer.md)",
-        "a saucer bullet with no velocity of its own",
-      );
+  // UNDRAWN, BECAUSE THE READING IS SIXTY VELOCITIES. Ninety-six seconds of game
+  // time reach the sixty shots, sampled a tick at a time so that no shot is
+  // stepped over, and every one of those ticks would otherwise be drawn for a
+  // picture nothing reads. The ticks, the snapshots and the shots caught are the
+  // same either way; only the eleven thousand renders are gone.
+  await h.quiet(async () => {
+    for (let shot = 0; shot < SHOT_COUNT; shot += 1) {
+      if (shot > 0 && shot % SHOTS_PER_VISIT === 0) standSaucer(h);
+      const volley = await nextVolley(h, { maxTicks: SHOT_CEILING });
+      const carried = volley.saucer ?? { vx: 0, vy: 0 };
+      const round = volley.fired[0];
+      const aim = headingOf({
+        vx: round.vx - carried.vx,
+        vy: round.vy - carried.vy,
+      });
+      if (aim === null) {
+        fail(
+          "a round leaving at SAUCER_BULLET_SPEED along a bearing " +
+            "(specs/saucer.md)",
+          "a saucer bullet with no velocity of its own",
+        );
+      }
+      errors.push(degrees(angleBetween(wanted, aim)));
     }
-    errors.push(degrees(angleBetween(wanted, aim)));
-  }
+  });
+  // One drawn tick, after every reading is taken, so the still the three items
+  // capture is the field they read rather than an older frame.
+  await h.advance(1);
   return errors;
 }
