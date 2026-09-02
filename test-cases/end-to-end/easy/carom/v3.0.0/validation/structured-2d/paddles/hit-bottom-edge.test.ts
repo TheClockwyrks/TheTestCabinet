@@ -10,7 +10,7 @@
 // most one sub-step, far less than the `BALL_R` it sits short of the cap.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CY, MAX_BOUNCE_ANGLE, PADDLE_HALF } from "../../src/constants";
+import { FIELD_CY, MAX_BOUNCE_ANGLE, PADDLE_HALF } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

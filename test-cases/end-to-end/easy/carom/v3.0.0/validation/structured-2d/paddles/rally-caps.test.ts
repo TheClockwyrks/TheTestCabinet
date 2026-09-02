@@ -5,7 +5,7 @@
 // exceeds it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPEED_CAP } from "../../src/constants";
+import { SPEED_CAP } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeRally,
