@@ -46,7 +46,7 @@ import {
   SONAR_RANGE_BASE,
   SONAR_WAVE_SPEED,
   TICK_HZ,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import {
   captureStill,
