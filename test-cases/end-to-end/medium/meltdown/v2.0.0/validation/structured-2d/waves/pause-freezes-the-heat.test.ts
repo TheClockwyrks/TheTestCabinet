@@ -50,9 +50,11 @@
 // falling silent.
 //
 // THE HEAT STARTS AT `0`, where a placed tower starts
-// (`specs/instrumentation.md`). `specs/heat.md` makes air cooling proportional
-// to `H / 100`, so a tower that opened the window hot would shed as fast as it
-// gained and the running leg would read a plateau rather than a climb. The climb
+// (`specs/instrumentation.md`), and that is asserted rather than assumed.
+// `specs/heat.md` makes air cooling proportional to `H / 100`, so a tower that
+// opened the window hot would shed as fast as it gained and the running leg
+// would read a plateau rather than a climb — a failure of the pose rather than
+// of the pause, and the precondition says which. The climb
 // also stays clear of the `100` trip, which would take the guns offline and end
 // the running leg early.
 //
@@ -70,6 +72,7 @@ import {
   poseTarget,
   poseTower,
   startRun,
+  towerById,
   windowOfRealTime,
   type Harness,
 } from "../harness";
@@ -151,6 +154,11 @@ it("holds a firing tower's heat across a paused window it climbed the one before
   });
 
   assertEqual(legs.screen, "paused", "precondition: the press paused the game");
+  assertEqual(
+    towerById(legs.running.opened, gun)?.heat,
+    0,
+    `precondition: the heat the ${TOWER} opened the running leg at`,
+  );
   assertGreaterThan(
     heatMoved(legs.running, gun, "running leg"),
     MIN_HEAT_GAIN,

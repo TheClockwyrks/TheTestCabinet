@@ -257,9 +257,14 @@ export function runUntilLeaked(h: Harness): Promise<boolean> {
 export const GUN = FREE_SITE;
 
 /**
- * The tile the mark stands on: three tiles right of the gun's anchor, so it is
- * off the footprint and comfortably inside the Arc's `6.0`-tile range measured
- * from the footprint's centre (`specs/combat.md`).
+ * The tile the mark stands on: three tiles right of the gun's anchor.
+ *
+ * Off the footprint of every emitter posed here and `48` logical units from the
+ * footprint's centre, which is the point a range is measured from
+ * (`specs/combat.md`). That is comfortably inside the shortest range any gun this
+ * group stands at {@link GUN} carries — the Stutter's `5.0` tiles, `95` units —
+ * and inside the Arc's `6.0` (`specs/towers.md`), so the same pair of tiles serves
+ * the kill scenarios and the paused-heat one alike.
  */
 export const MARK = { col: GUN.col + 3, row: GUN.row } as const;
 

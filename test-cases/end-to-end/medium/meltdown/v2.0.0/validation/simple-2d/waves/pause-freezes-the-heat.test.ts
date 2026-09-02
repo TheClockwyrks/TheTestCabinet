@@ -44,10 +44,11 @@
 // for the whole of both legs and neither leg ends early with the guns falling
 // silent.
 //
-// THE HEAT STARTS AT `0`, where a placed tower starts (specs/instrumentation.md).
-// specs/heat.md makes air cooling proportional to `H / 100`, so a tower that opened
-// the window hot would shed as fast as it gained and the running leg would read a
-// plateau rather than a climb.
+// THE HEAT STARTS AT `0`, where a placed tower starts (specs/instrumentation.md),
+// and that is asserted rather than assumed. specs/heat.md makes air cooling
+// proportional to `H / 100`, so a tower that opened the window hot would shed as
+// fast as it gained and the running leg would read a plateau rather than a climb —
+// a failure of the pose rather than of the pause, and the precondition says which.
 //
 // WHAT EVERY WRONG MODEL READS. A build whose pause leaves the heat pass running
 // climbs through the paused leg exactly as it did through the running one; a build
@@ -65,6 +66,7 @@ import {
   poseTower,
   startRun,
   ticksFor,
+  towerOf,
   type Harness,
 } from "../harness";
 
@@ -134,6 +136,11 @@ it("holds a firing tower's heat across a paused window it climbed the one before
   });
 
   assertEqual(legs.screen, "paused", "precondition: the press paused the game");
+  assertEqual(
+    towerOf(legs.running.before, gun).heat,
+    0,
+    `precondition: the heat the ${TOWER} opened the running leg at`,
+  );
   assertGreaterThan(
     legs.running.heatChange(gun),
     MIN_HEAT_GAIN,
