@@ -46,12 +46,18 @@ specification is written against them:
   whatever the screen. The snapshot reports it as `simTime`.
 - The runtime's mute bit, mirrored into the state every update and reported
   by the snapshot as `muted`.
+- Whether a boundary that satisfies every set's target completes the run,
+  which is on while the game is played and which the surface of
+  `specs/instrumentation.md` sets. The snapshot reports it as `completion`.
+- Whether the frame loop advances the simulation from the wall clock, which
+  is on while the game is played and which that same surface sets. The
+  snapshot reports it as `autoStep`.
 
 Progress for both modes is carried whatever the mode being played, so the
 state has one shape. Fields nothing has touched yet hold their resting
 values: no challenge open, an empty editor, no run, nothing solved, and only
 the first campaign challenge unlocked.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` declares and exports the state the game is written against.
 This section is that declaration: write it into `src/game.ts` exactly as it
 stands here. The state is a value the engine holds and every frame replaces,
@@ -239,6 +245,7 @@ export interface OrreryState {
   readonly sim: SimState | null;
 
   readonly pointer: PointerState;
+  readonly completion: boolean;
   readonly simTime: number;
   readonly muted: boolean;
 }
@@ -345,6 +352,10 @@ them.
   `null` away from the editor.
 - `editor`, `sim` — the machine and the run.
 - `pointer` — the pointer as of this frame, in stage units.
+- `completion` — whether a boundary that satisfies every set's target
+  completes the run, `true` while the game is played.
+  `specs/instrumentation.md` states the switch and what holding it off
+  leaves the run doing.
 - `simTime` — accumulated simulation time, in seconds. Every `update` adds
   its `dt`, whatever the screen.
 - `muted` — the game's readable copy of the engine's mute bit, which every
@@ -370,4 +381,356 @@ The declaration above is what the debug surface reads and poses.
   `OrreryState` built from the one they received; `render`, the sources, and
   `snapshot` return no state. The type is what guarantees that rendering
   changes nothing and that nothing but a transition advances the game.
+{{else}}
+`src/game.ts` declares and exports the state the game is written against.
+This section is that declaration: write it into `src/game.ts` exactly as it
+stands here. The state is the world's game state: a class extending the
+engine's `GameState`, named by the game mode as its `gameStateClass`, so the
+engine builds one instance of it when the world opens and
+`engine.world.state` is that instance. Wherever this specification writes
+`state.foo`, it means a field of that instance.
+
+The game runs in one world for the whole session. The game definition
+registers a single level, the game never opens another, and every screen is
+a value of `screen`, so the state below is built once and lives until the
+page closes. The framework's states are live objects: a tick writes the
+fields it advances in place, and each field initializer below is that
+field's title-screen value, the same value the debug surface's `reset`
+restores. `GameState` comes from the engine's package.
+
+```ts
+export type Screen = "title" | "howto" | "select" | "editor";
+
+export type Mode = "campaign" | "extras";
+
+export type MoteType =
+  | "dust" | "nebula" | "comet" | "nova" | "meteor"
+  | "mercury"
+  | "saturn" | "jupiter" | "mars" | "venus" | "luna" | "sol"
+  | "umbra" | "lumen" | "aether";
+
+export type PartKind =
+  | "arm" | "biarm" | "triarm" | "hexarm" | "piston" | "wheel" | "track"
+  | "bind" | "manifold" | "triune" | "sunder"
+  | "wane" | "mirror" | "ascend" | "conjoin" | "eclipse"
+  | "confluence" | "dispersion" | "void"
+  | "rise" | "set";
+
+export type Instruction =
+  | "grab" | "drop"
+  | "rotate-cw" | "rotate-ccw"
+  | "pivot-cw" | "pivot-ccw"
+  | "extend" | "retract"
+  | "advance" | "recede";
+
+export type TapeCell = Instruction | null;
+
+export type SimStatus = "running" | "paused" | "faulted" | "complete";
+
+export type FaultKind =
+  | "collision" | "torn"
+  | "overextended" | "overretracted"
+  | "unmounted" | "track-end" | "impossible";
+
+export type Focus = "field" | "tape";
+
+export interface Hex {
+  q: number;
+  r: number;
+}
+
+export interface PatternFilament {
+  a: Hex;
+  b: Hex;
+  weight: number;
+}
+
+export interface Molecule {
+  motes: { q: number; r: number; type: MoteType }[];
+  filaments: PatternFilament[];
+  repeat: { vector: Hex; link: PatternFilament } | null;
+}
+
+export interface Challenge {
+  name: string;
+  reagents: Molecule[];
+  products: Molecule[];
+  permitted: PartKind[];
+  target: number;
+}
+
+export interface PartState {
+  id: number;
+  kind: PartKind;
+  q: number;
+  r: number;
+  rotation: number;
+  length: number;
+  cells: Hex[] | null;
+  closed: boolean | null;
+  index: number | null;
+  tape: TapeCell[] | null;
+}
+
+export type DragState =
+  | {
+      kind: "place";
+      part: PartKind;
+      index: number | null;
+      rotation: number;
+      length: number;
+      at: Hex | null;
+    }
+  | { kind: "move"; part: number; from: Hex; at: Hex | null }
+  | { kind: "lay"; part: number; end: "first" | "last" };
+
+export interface EditorState {
+  parts: PartState[];
+  nextId: number;
+  selected: number | null;
+  focus: Focus;
+  cursor: { part: number; col: number } | null;
+  drag: DragState | null;
+  undo: PartState[][];
+  redo: PartState[][];
+}
+
+export interface MoteState {
+  id: number;
+  q: number;
+  r: number;
+  type: MoteType;
+  wheel: number | null;
+}
+
+export interface SimFilament {
+  a: number;
+  b: number;
+  weight: number;
+}
+
+export interface Pose {
+  part: number;
+  rotation: number;
+  length: number;
+  cell: Hex;
+}
+
+export interface Grip {
+  part: number;
+  spoke: number;
+  mote: number;
+}
+
+export interface Metrics {
+  cost: number;
+  cycles: number;
+  area: number;
+}
+
+export interface SimState {
+  status: SimStatus;
+  cycle: number;
+  fraction: number;
+  speed: number;
+  motes: MoteState[];
+  nextMoteId: number;
+  filaments: SimFilament[];
+  poses: Pose[];
+  grips: Grip[];
+  tallies: number[];
+  areaHexes: Hex[];
+  fault: { kind: FaultKind; parts: number[]; motes: number[] } | null;
+  metrics: Metrics | null;
+}
+
+export interface PointerState {
+  x: number;
+  y: number;
+  down: boolean;
+}
+
+export class OrreryState extends GameState {
+  screen: Screen = "title";
+  mode: Mode = "campaign";
+  menuIndex = 0;
+  selectIndex = 0;
+  howtoPage = 0;
+
+  unlockedCount = 1;
+  campaignSolved: number[] = [];
+  extrasSolved: number[] = [];
+  campaignRecords: (Metrics | null)[] = [];
+  extrasRecords: (Metrics | null)[] = [];
+  campaignMachines: (PartState[] | null)[] = [];
+  extrasMachines: (PartState[] | null)[] = [];
+  campaignLast = 0;
+  extrasLast = 0;
+
+  challenge: Challenge | null = null;
+  challengeRef: { mode: Mode; index: number } | null = null;
+  editor: EditorState = {
+    parts: [],
+    nextId: 1,
+    selected: null,
+    focus: "field",
+    cursor: null,
+    drag: null,
+    undo: [],
+    redo: [],
+  };
+  sim: SimState | null = null;
+
+  pointer: PointerState = { x: 0, y: 0, down: false };
+  completion = true;
+  simTime = 0;
+  muted = false;
+}
+```
+
+## The type aliases
+
+`Screen` is the top-level state machine and `screen` names the screen the
+game is showing; the solved panel and the fault display are drawn on
+`editor` from `sim.status` rather than being screens. `Mode` names the
+course `select` and `editor` serve. `MoteType`, `PartKind`, `Instruction`,
+and `FaultKind` are the rosters of `specs/field.md`, `specs/parts.md`,
+`specs/instructions.md`, and `specs/simulation.md`, and `TapeCell` adds the
+blank. `Hex` is an axial coordinate. `PatternFilament`, `Molecule`, and
+`Challenge` are the formats of `specs/formats.md` as data: a molecule
+filament's `a` and `b` are pattern hexes, and `weight` is `1` or `3`.
+
+## `PartState`
+
+One placed part, carrying exactly the facts a solution records, plus `id`, a
+number unique among the machine's parts for its lifetime, granted from
+`editor.nextId`.
+
+- `q`, `r` — the anchor hex. For a track this mirrors the first cell of
+  `cells`.
+- `rotation` — `0` to `5` as `specs/field.md` counts them, and `0` for a
+  track.
+- `length` — the rest length, `1` to `3`, for arms and pistons; `1` for
+  everything else.
+- `cells`, `closed` — the path and loop flag for a track; `null` for
+  everything else.
+- `index` — which reagent or product, for a rise or set; `null` for
+  everything else.
+- `tape` — the tape, for arms and wheels; `null` for everything else. Its
+  length is trimmed: the last entry is never `null`, and an entirely blank
+  tape is the empty array.
+
+`parts` holds the machine in placement order, which is the order the tape
+panel lists its rows in. Cost, the period, and what is mounted on what are
+derived, never stored.
+
+## `EditorState`
+
+The machine and the hands on it. `selected`, `cursor.part`, and a drag's
+`part` name parts by `id`. `drag` is `null` outside a press; a `place` drag
+carries what the tray handed out and the ghost's live `rotation` and
+`length`, a `move` drag carries the hex the press grabbed in `from` and its
+target in `at`, and a `lay` drag names which end of the track it is
+extending. `undo` and `redo` are the histories of `specs/editor.md`,
+holding machines exactly as `parts` holds one. On entering a challenge the
+editor holds the stashed machine or an empty one, `selected` and `cursor`
+are `null`, `focus` is `field`, `drag` is `null`, and both histories are
+empty.
+
+## `SimState`
+
+The whole of a run, and `null` while editing.
+
+- `status`, `cycle`, `fraction`, `speed` — the clock of
+  `specs/simulation.md`: completed cycles, the fraction through the current
+  one, and the `SPEEDS` index, `DEFAULT_SPEED_INDEX` (`1`) at run start.
+- `motes` — every mote, fixtures included. `q` and `r` are the mote's hex at
+  the last boundary; a mote's drawn mid-cycle position is derived from its
+  motion and `fraction`. `wheel` names the wheel a fixture belongs to and is
+  `null` on every real mote.
+- `nextMoteId` — grants identities, so a mote's `id` is stable for the run
+  and never reused.
+- `filaments` — every filament, by mote ids, `weight` `1` or `3`.
+- `poses` — one entry per arm and wheel: its live rotation, length, and base
+  cell. Parts at rest between instructions still have their entry.
+- `grips` — one entry per holding gripper: the part, the spoke direction the
+  gripper currently sits on, and the mote at the gripper. Constellation
+  membership is derived from `filaments`.
+- `tallies` — one entry per product, in product order.
+- `areaHexes` — the area bank, each hex once.
+- `fault`, `metrics` — set exactly when `status` is `faulted` and `complete`
+  respectively, `null` otherwise.
+
+## `OrreryState`
+
+The whole of Orrery's state. Every field is present from the moment the
+world opens, and every one is plain data, so a scenario is posed by writing
+the fields posed and read back by reading them.
+
+- `screen`, `mode`, `menuIndex`, `selectIndex`, `howtoPage` — where the
+  player is. `selectIndex` is the highlighted select row of the current mode,
+  and `howtoPage` the how-to's current page, `0` whenever the screen is not
+  `howto`.
+- `unlockedCount` — how many campaign challenges are open, `1` at the start.
+- `campaignSolved`, `extrasSolved` — solved indices, ascending, no
+  duplicates.
+- `campaignRecords`, `extrasRecords` — per-challenge records, `null` until a
+  challenge's first completion; each metric is the session's best
+  independently.
+- `campaignMachines`, `extrasMachines` — the per-challenge stashes of
+  `specs/editor.md`, `null` for a challenge never opened.
+- `campaignLast`, `extrasLast` — the index each mode's select screen lands
+  on, `0` until something is entered or solved.
+- `challenge`, `challengeRef` — the challenge open in the editor and where
+  it came from; `challengeRef` is `null` when the challenge was loaded
+  directly through the surface of `specs/instrumentation.md`. Both are
+  `null` away from the editor.
+- `editor`, `sim` — the machine and the run.
+- `pointer` — the pointer as of this frame, in stage units, refreshed by the
+  player controller every tick.
+- `completion` — whether a boundary that satisfies every set's target
+  completes the run, `true` while the game is played.
+  `specs/instrumentation.md` states the switch and what holding it off
+  leaves the run doing.
+- `simTime` — accumulated simulation time, in seconds. Every frame adds its
+  `dt`, whatever the screen; the game mode's tick is where it accumulates.
+- `muted` — the game's readable copy of the engine's mute bit, refreshed
+  every frame. The engine owns muting, and this field is what the debug
+  surface reports.
+
+The four per-challenge arrays hold one entry per challenge of their mode,
+`campaignRecords` and `campaignMachines` at the course length the build
+ships and `extrasRecords` and `extrasMachines` at `EXTRA_COUNT` (`10`).
+They are built to those lengths when the world opens, and a `reset` rebuilds
+them the same way.
+
+`OrreryState` extends the engine's `GameState`, so an instance also carries
+the framework's own `world`, `players`, `phase`, and `elapsed`. Orrery's
+screens run on `screen` rather than on the match phase: the mode never calls
+`setPhase`, so `phase` stays `"waiting"` and `elapsed` stays `0`, and the
+one player the mode adds is `players[0]`, whose controller is where input is
+read.
+
+Progress for both modes is carried whatever the mode being played, so the
+state has one shape.
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+- The engine builds the state when the world opens, through the mode's
+  `gameStateClass`, so every field is present by the time a frame can
+  observe it, and none of them is optional.
+- The state is the whole of the authoritative game. Every value the game
+  carries from one frame to the next lives in it; nothing is kept in a
+  module-level variable or a closure, and any field an actor, component, or
+  controller holds of its own is derived data rebuilt from the declared
+  ones.
+- The state is written only through the paths play runs on: the player
+  controller resolves the frame's input into it, the game mode's tick
+  advances it, and the debug surface's poses arrange it at the call.
+  Rendering reads it and writes nothing.
+- A `reset` restores the declared fields to the initializers above, so those
+  fields are the whole of the authoritative state.
 {{/if}}
