@@ -30,9 +30,36 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    // In-process stepping is fast, but a few scenarios are long: the saucer's
-    // avoidance sweep flies 54 crossings, and `saucer/at-most-one-at-a-time`
-    // samples two minutes of game time every tick.
-    testTimeout: 120_000,
+    // FOUR WORKERS, NOT ONE PER CORE.
+    //
+    // Left unset, vitest fans this project out across every core the machine
+    // has, and each worker of this project is a whole engine stepping a
+    // simulation: the project then competes with itself for the processor it is
+    // already saturating, and holds one engine's worth of memory per worker while
+    // it does. The host running this is also running a model's build, so the
+    // cores were never all this project's to take.
+    //
+    // It is also what keeps the runner's own reporting honest. Every worker
+    // reports each finished test back to the main thread over an RPC whose
+    // timeout is vitest's own sixty seconds and is not configurable: on a box
+    // with more workers than cores, a main thread busy collecting from all of
+    // them can leave a worker's `onTaskUpdate` unanswered past that, and the
+    // worker throws an unhandled error that vitest itself warns "might cause
+    // false positive tests". A run of this project on a loaded host reproduces
+    // exactly that. Four workers do not.
+    maxWorkers: 4,
+    minWorkers: 1,
+    // A ceiling on a suite that never terminates, not a schedule any check is
+    // written to. Every scenario here is stepped in whole ticks and none of them
+    // measures the wall clock, so what a check costs is processor time on a host
+    // this project does not own — and a check that a busy host pushes past its
+    // allowance is a check that failed a correct build for a fact about the
+    // machine. The figure is therefore many times the longest scenario rather
+    // than a snug fit around it: the longest here — `saucer/at-most-one-at-a-time`
+    // sampling two minutes of game time every tick, the avoidance sweep's 54
+    // crossings — run in a couple of seconds of processor time, and five minutes
+    // is room for a host twenty times oversubscribed.
+    testTimeout: 300_000,
+    hookTimeout: 300_000,
   },
 });
