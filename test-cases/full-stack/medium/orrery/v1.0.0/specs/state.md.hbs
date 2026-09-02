@@ -8,8 +8,9 @@ The one contract fixed over the state is the debugging and automation surface
 specified for this build. Every operation that surface carries is a read or a
 pose of the running game, so the state holds what those operations read,
 honors what they write, and returns to its title-screen values when the
-surface's `reset` is called. Beyond satisfying that surface, how the state is
-organized is yours to decide.
+surface's `reset` is called, but for the fields `specs/instrumentation.md`
+states that call leaves as they stand. Beyond satisfying that surface, how
+the state is organized is yours to decide.
 
 Whatever its shape, the state carries the following, because the rest of this
 specification is written against them:
@@ -386,7 +387,8 @@ The declaration above is what the debug surface reads and poses.
 - `initialize` builds the whole state in one go, so every field is present
   by the time a frame can observe it, and none of them is optional.
 - Fields you add hold derived data you can rebuild from the declared ones. A
-  `reset` restores the declared fields to their title-screen values, so
+  `reset` restores the declared fields to their title-screen values, but for
+  the fields `specs/instrumentation.md` states it leaves as they stand, so
   those fields are the whole of the authoritative state.
 - The state handed to `update` is the whole of the game, and the state
   `update` returns is the whole of the next frame. Every value the game
@@ -419,7 +421,8 @@ a value of `screen`, so the state below is built once and lives until the
 page closes. The framework's states are live objects: a tick writes the
 fields it advances in place, and each field initializer below is that
 field's title-screen value, the same value the debug surface's `reset`
-restores. `GameState` comes from the engine's package.
+restores, but for the fields `specs/instrumentation.md` states that call
+leaves as they stand. `GameState` comes from the engine's package.
 
 ```ts
 export type Screen = "title" | "howto" | "select" | "editor";
@@ -776,6 +779,7 @@ The declaration above is what the debug surface reads and poses.
   controller resolves the frame's input into it, the game mode's tick
   advances it, and the debug surface's poses arrange it at the call.
   Rendering reads it and writes nothing.
-- A `reset` restores the declared fields to the initializers above, so those
-  fields are the whole of the authoritative state.
+- A `reset` restores the declared fields to the initializers above, but for
+  the fields `specs/instrumentation.md` states it leaves as they stand, so
+  those fields are the whole of the authoritative state.
 {{/if}}

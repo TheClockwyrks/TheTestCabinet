@@ -4,7 +4,7 @@
 // THE RULE. `specs/ui.md` gives the cue one event: "| `start` | `CUES.start` | A
 // run starts. |" `specs/editor.md` separates `step`'s two jobs: "`step` under the
 // same condition starts the run paused at its settle. AFTER THAT, `step` acts
-// immediately and always leaves the run paused: a run mid-cycle, running or
+// immediately and never leaves the run running: a run mid-cycle, running or
 // paused, completes its current cycle to the boundary, and a run paused at a
 // boundary runs one full cycle." A step within a run starts no run, so the cue's
 // event has not occurred.
@@ -73,7 +73,7 @@ it("sounds nothing when step runs a live run to its next boundary", async () => 
   assertEqual(
     after.sim?.status,
     "paused",
-    "step always leaves the run paused, which is what makes this press a step the run answered",
+    "a step that neither faults nor completes leaves the run paused, which is what makes this press a step the run answered",
   );
   assertGreaterThan(
     after.sim?.cycle ?? -1,

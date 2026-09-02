@@ -2,7 +2,7 @@
 // boundary runs exactly one cycle, all five of its phases, and leaves the run paused
 // on the next boundary.
 //
-// THE RULE. "After that, `step` acts immediately and always leaves the run paused: a
+// THE RULE. "After that, `step` acts immediately and never leaves the run running: a
 // run mid-cycle, running or paused, completes its current cycle to the boundary, and
 // a run paused at a boundary runs one full cycle, as `specs/simulation.md` defines
 // one" (`specs/editor.md`, Running the machine). What one cycle is, and what its
@@ -123,7 +123,7 @@ it("runs one full cycle and leaves the run paused on the next boundary", async (
   assertEqual(
     stepped.sim?.status,
     "paused",
-    "step always leaves the run paused",
+    "a step that neither faults nor completes leaves the run paused",
   );
   assertEqual(
     stepped.sim?.cycle,

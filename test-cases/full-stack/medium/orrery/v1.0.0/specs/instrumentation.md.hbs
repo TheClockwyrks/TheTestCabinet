@@ -95,7 +95,14 @@ precision. Two more properties make it driveable from code:
 
 Audio belongs to the frames. A pose changes the state alone and sounds
 nothing, the pointer operations included; the cues a scenario hears come
-from the frames advanced after it.
+from the frames advanced after it. The cues of `specs/ui.md` answer the
+player's hands and the run's own consequences. The three pointer operations
+feed the player's input path, so the edit one of them commits sounds on the
+next frame advanced; no other pose raises a cue at all, on that frame or any
+later one — a part the machine group places, moves, or removes is silent,
+and so is a run `startRun` begins. What a scenario hears after such a pose
+is only what the frames it advances produce on their own: a set consuming a
+constellation, a fault, a completion.
 
 ## What the runtime provides instead
 
@@ -202,7 +209,7 @@ it read and changes nothing.
 
 | Operation | Effect |
 | --- | --- |
-| `setAutoStep(enabled)` | Takes the game off real time, and gives it back. `setAutoStep(false)` stops the frame loop advancing the simulation from the wall clock, so the game changes only when `advance` says so. `setAutoStep(true)` returns it to running itself, which is how a build starts and how it is played. It changes no game state. |
+| `setAutoStep(enabled)` | Takes the game off real time, and gives it back. `setAutoStep(false)` stops the frame loop advancing the simulation from the wall clock, so the game changes only when `advance` says so. `setAutoStep(true)` returns it to running itself, which is how a build starts and how it is played. It changes nothing but the switch itself: no screen, no machine, no run, and no cue moves at the call. |
 | `advance(seconds, frames)` | Runs `frames` whole frames covering `seconds` of game time, each worth `seconds / frames`, immediately and in order. `frames` is a whole number of at least `1` and defaults to `1`. Each is a real frame, the same update the loop runs followed by a render, so the game's own simulation, sigils, cues, and completion test produce the result and the canvas reflects it. |
 
 Drawing and input are unaffected by the switch either way: the loop keeps
@@ -314,8 +321,10 @@ Five rules hold across the whole group:
 - While a run is live, a part one of them adds enters the run at its rest
   pose holding nothing, with a wheel's six fixtures on its spoke hexes, and
   a part one of them removes takes its live pose, its grips, and its
-  fixtures off the field with it. A part's rest pose and its live pose are
-  separate, so `setPartRotation`, `setPartLength`, and `movePart` leave
+  fixtures off the field with it. Nothing else goes with it: a mote the
+  part merely carried is left unheld, resting on the hex it stood on,
+  exactly as `releaseGrip` leaves one. A part's rest pose and its live pose
+  are separate, so `setPartRotation`, `setPartLength`, and `movePart` leave
   `sim.poses` as it stands.
 
 ### The editor's hands

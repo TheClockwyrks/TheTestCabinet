@@ -67,6 +67,12 @@ arriving; `left` and `right` move it by one, stopping at `0` and
    that a fault stops the machine and where to read what went wrong.
 5. Finishing: the target tally, the three metrics, and that lower is better.
 
+Where a page names a key it names the key itself rather than the action it
+fires, spelled as the keyboard spells it: a letter key by its capital letter
+standing on its own, `Space`, `Delete`, and `Backspace` by their names, and
+the comma and period keys by the character each types or by that character's
+name.
+
 ### `select`
 
 The list of the current mode's challenges. `specs/modes/campaign.md` and
@@ -77,7 +83,10 @@ and differ only in the list they show and the locking they apply.
 
 The machine screen `specs/editor.md` defines, hosting both editing and the
 run. The two panels below are drawn over it while a run is in the matching
-status, and the field stays visible behind them.
+status, and the field stays visible behind them. Neither panel hides what it
+covers: at every hex under a panel the machine, the motes, and any effect
+playing there show through it, so what changes beneath a panel changes the
+frame.
 
 ## The solved panel
 
@@ -175,7 +184,8 @@ event fired within it.
 
 Every cue is played from a frame, so an event raised outside one — an edit
 a pointer pose of `specs/instrumentation.md` commits between frames —
-sounds on the next frame advanced rather than at the call.
+sounds on the next frame advanced rather than at the call. No other
+operation of that surface raises an event at all, as that file states.
 
 `LOOPING_CUES` holds the one cue that loops until stopped rather than playing
 once. `music` is looping on every frame the game runs, on `title`, `howto`,
@@ -198,6 +208,10 @@ Muting and the first-gesture unlock belong to the engine. The game binds the
 mirrors `world.audio.muted()` into `state.muted` every frame. The game stays
 fully playable with sound muted.
 {{/if}}
+
+Sound is on when the game starts: the mute bit is off on the first frame, so
+`state.muted` reports `false` until the `mute` action is first pressed, and
+that first press mutes.
 
 ## Out of scope
 

@@ -79,11 +79,19 @@ hue alone:
 | unlocked | Reached and not yet solved. Can be entered. |
 | solved | Completed at least once. Can be entered again. |
 
-A solved row also shows its three records, `cost`, `cycles`, and `area`, each
-labelled. An unsolved row shows none. One row is highlighted, drawn
-distinctly from the rest. On arriving at the screen the highlight sits on the
-challenge most recently entered or solved, and on challenge `1` before any
-has been entered.
+Every row of the list is on the screen at once: however many challenges the
+list holds, up to `CAMPAIGN_MAX` (`16`), every row is drawn on the same
+frame, and the list never scrolls.
+
+A solved row also shows its three records, `cost`, `cycles`, and `area`,
+each figure drawn beside a label naming its metric. An unsolved row shows
+none of the three, and apart from its records the only figure a row carries
+is its own challenge number. One row is highlighted, drawn distinctly from
+the rest, and nothing else on the screen reads off the highlight: moving it
+changes how the row it left and the row it reached are drawn, and leaves the
+rest of the screen as it was. On arriving at the screen the highlight sits on
+the challenge most recently entered or solved, and on challenge `1` before
+any has been entered.
 
 `up` and `down` move the highlight by one row, wrapping at both ends.
 `confirm` on an unlocked or solved challenge opens it in the editor;

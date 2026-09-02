@@ -2,7 +2,7 @@
 // a cycle finishes THAT cycle and stops on its boundary, rather than running a whole
 // cycle from where it stood.
 //
-// THE RULE. "`step` acts immediately and always leaves the run paused: a run
+// THE RULE. "`step` acts immediately and never leaves the run running: a run
 // mid-cycle, running or paused, completes its current cycle to the boundary, and a
 // run paused at a boundary runs one full cycle" (`specs/editor.md`, Running the
 // machine). The two halves of that sentence are two different amounts of work, and
@@ -113,7 +113,7 @@ it("finishes the part cycle to its boundary rather than a whole cycle beyond it"
   assertEqual(
     finished.sim?.status,
     "paused",
-    "step always leaves the run paused",
+    "a step that neither faults nor completes leaves the run paused",
   );
   assertEqual(
     finished.sim?.cycle,

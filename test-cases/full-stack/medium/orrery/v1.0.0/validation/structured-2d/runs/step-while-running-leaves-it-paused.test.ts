@@ -2,7 +2,7 @@
 // the cycle it is in and leaves it PAUSED, so the game time that follows moves
 // nothing.
 //
-// THE RULE. "`step` acts immediately and always leaves the run paused: a run
+// THE RULE. "`step` acts immediately and never leaves the run running: a run
 // mid-cycle, running or paused, completes its current cycle to the boundary"
 // (`specs/editor.md`, Running the machine). What "paused" then means for the clock is
 // `specs/simulation.md`: "The fraction advances only while the status is `running`, so

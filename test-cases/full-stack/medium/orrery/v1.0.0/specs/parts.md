@@ -132,12 +132,18 @@ solution legal.
 2. Sigil footprints, rise and set footprints included, are pairwise disjoint,
    and no track cell lies on any of them.
 3. No hex is a cell of two tracks, or of one track twice.
-4. No two arms or wheels share an anchor hex. An arm or wheel's anchor may sit
-   on any sigil footprint hex, a rise's and a set's included, or on a track
-   cell; sitting on a track cell is what mounts it.
+4. No two arms or wheels share an anchor hex, and no two wheels' rings meet:
+   no hex is adjacent to the anchors of two wheels. An arm or wheel's anchor
+   may sit on any sigil footprint hex, a rise's and a set's included, or on a
+   track cell; sitting on a track cell is what mounts it.
 5. Each rise and each set is placed at most once.
 6. A track's consecutive cells are adjacent, and a closed track's last cell
    is adjacent to its first and its path holds at least three cells.
+
+Each rule is named by the number it is listed under, `1` to `6`. Wherever a
+refusal names the rule a placement broke, as the machine operations of
+`specs/instrumentation.md` do, its message tells which of the six stopped
+the placement: by that number, or by the condition the rule states.
 
 ## Costs
 

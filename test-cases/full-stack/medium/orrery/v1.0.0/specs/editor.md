@@ -25,9 +25,16 @@ Every extent above, and every rectangle this file fixes, includes its lower
 bound and excludes its upper, so a point on a shared edge belongs to the
 region below and to the right of it.
 
+Each region draws from its own contents alone: what a region holds is drawn
+inside that region's extent and nowhere else on the stage. The motes on the
+field are the field's — no other region draws one or counts what rests there.
+
 During a run the readout shows at least the status, the cycle count, the
-period, the speed step, and each set's tally against the challenge's `target`;
-while editing it may rest.
+period, the speed, and each set's tally against the challenge's `target`;
+while editing it may rest. Each figure the readout carries reaches the frame
+as a number — the cycle count, the period, the speed, and each set's tally
+drawn beside the challenge's `target` — so the figures themselves are read
+rather than a bar or a gauge standing in for them.
 
 ## The tray
 
@@ -64,9 +71,10 @@ Selecting an arm or wheel also points the tape cursor at its row, cell `0`,
 leaving the focus on the field. The field-focus actions of
 `specs/controls.md` act on the selected part: `part-cw` and `part-ccw` turn
 an arm, a wheel, or a sigil one rotation step; `part-grow` and `part-shrink`
-change an arm's length within the bounds `specs/parts.md` fixes; and
-`part-delete` removes any part. A rotation or length change that would make
-the placement illegal under `specs/parts.md` does not happen.
+change an arm's length by one, within the bounds `specs/parts.md` fixes, and
+do nothing at either bound; and `part-delete` removes any part. A rotation
+or length change that would make the placement illegal under
+`specs/parts.md` does not happen.
 
 ## Dragging
 
@@ -181,9 +189,11 @@ rotating or resizing a part, and each write to a tape, the macros counting as
 one edit apiece. An edit that changes nothing, such as writing the
 instruction a cell already holds, commits nothing and pushes no entry. The
 entry holds the machine as it stood before the edit: the parts with their
-poses, paths, and tapes. Selection, cursor, focus, and drags are not part of
-history. The history holds every edit of the visit, with no bound on its
-depth.
+poses, paths, and tapes. A part an entry restores is the part it was, its
+identity included, so a selection or a cursor that named it names it still,
+and only a part the restored machine does not hold counts as removed.
+Selection, cursor, focus, and drags are not part of history. The history
+holds every edit of the visit, with no bound on its depth.
 
 The `undo` action restores the machine from the latest entry and moves that
 edit onto the redo side; `redo` re-applies the latest undone edit. A new
@@ -196,16 +206,19 @@ clears the cursor.
 
 ## Running the machine
 
-The `play` action starts a run when every rise and every set is placed;
-otherwise it does nothing and the heading states which are missing. `step`
-under the same condition starts the run paused at its settle. After that,
-`step` acts immediately and always leaves the run paused: a run mid-cycle,
-running or paused, completes its current cycle to the boundary, and a run
-paused at a boundary runs one full cycle, as `specs/simulation.md` defines
-one. While the status is `running` or `paused`, `play` toggles between the
-two and `speed-up` and `speed-down` move the speed step; while it is
-`faulted` or `complete`, `play`, `step`, and the speed actions do nothing.
-`back` stops the run and returns to editing from any status, as
+The `play` action starts a run when every rise and every set is placed, and
+the run it starts is `running`; otherwise it does nothing and the heading
+states which are missing. `step` under the same condition starts the run
+paused at its settle. After that, `step` acts immediately and never leaves
+the run running: a run mid-cycle, running or paused, completes its current
+cycle to the boundary, and a run paused at a boundary runs one full cycle,
+as `specs/simulation.md` defines one. A cycle a step carries to a boundary
+that faults or completes leaves the status `faulted` or `complete`, as
+`specs/simulation.md` states; every other step leaves the run `paused`.
+While the status is `running` or `paused`, `play` toggles between the two
+and `speed-up` and `speed-down` move the speed step; while it is `faulted`
+or `complete`, `play`, `step`, and the speed actions do nothing. `back`
+stops the run and returns to editing from any status, as
 `specs/simulation.md` states.
 
 While a run is active, in any status, a press on the field or the tape panel

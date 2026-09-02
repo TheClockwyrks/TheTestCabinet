@@ -4666,7 +4666,7 @@ validation = { script = "editor/columns-rest-at-zero-with-no-cursor.test.ts", ou
 [[review.categories.items]]
 id = "a-blank-cell-is-drawn-empty"
 title = "A blank cell is drawn empty"
-description = "The rectangle of a blank cell inside a tape is drawn the same as the rectangle of a column past that tape's end, carrying no glyph of its own."
+description = "A blank cell inside a tape carries no glyph of its own, and neither does a column past that tape's end, which specs/instructions.md makes blank; how a row marks where its own tape ends is the build's."
 domains = ["workshop", "presentation"]
 failure_cap = "passable"
 validation = { script = "editor/a-blank-cell-is-drawn-empty.test.ts", outputs = [ { id = "blank", name = "A blank cell between two written ones", kind = "image" } ] }

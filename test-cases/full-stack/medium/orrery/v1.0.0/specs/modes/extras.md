@@ -31,8 +31,9 @@ the surface `specs/instrumentation.md` defines.
 Choosing `EXTRAS` on the title menu goes to the select screen in extras mode.
 It lists the ten challenges in order, each row showing its number, its name,
 and whether it is solved, with solved readable without relying on hue alone.
-Every row can be entered. The highlight, its movement, its resting position
-on arrival, the records a solved row shows, and `confirm` and `back` are as
-`specs/modes/campaign.md` states them.
+Every row can be entered. That every row is on the screen at once, the
+highlight, its movement, its resting position on arrival, the records a
+solved row shows, and `confirm` and `back` are as `specs/modes/campaign.md`
+states them.
 
 Completing a challenge shows the solved panel `specs/ui.md` defines.

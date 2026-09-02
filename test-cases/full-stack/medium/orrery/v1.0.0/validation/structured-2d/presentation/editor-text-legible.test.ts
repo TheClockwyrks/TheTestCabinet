@@ -18,7 +18,7 @@
 //
 // and each of them is required to carry words: the tray's entries each "show the
 // part's name and its cost from `PART_COSTS`"; "during a run the readout shows at
-// least the status, the cycle count, the period, the speed step, and each set's
+// least the status, the cycle count, the period, the speed, and each set's
 // tally against the challenge's `target`"; and in the tape panel "each row is
 // annotated with its tape length against the machine's period" beside the label
 // that "spans `x` `224` to `304`".

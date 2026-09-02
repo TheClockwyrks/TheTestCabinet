@@ -1,7 +1,7 @@
 // runs/step-lands-a-fault-within-the-step — when the cycle a `step` runs is the cycle
 // that faults, the run is already `faulted` when the step is over.
 //
-// THE RULE. "`step` acts immediately and always leaves the run paused ... a run
+// THE RULE. "`step` acts immediately and never leaves the run running ... a run
 // paused at a boundary runs one full cycle, as `specs/simulation.md` defines one"
 // (`specs/editor.md`, Running the machine), and one full cycle includes its first
 // step: "Fetch. Each part reads its tape cell for this cycle ... A non-blank cell the

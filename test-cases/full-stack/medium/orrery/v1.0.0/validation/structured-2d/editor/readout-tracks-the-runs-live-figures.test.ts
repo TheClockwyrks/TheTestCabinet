@@ -2,7 +2,7 @@
 // figures `specs/editor.md` names, rather than resting.
 //
 // THE RULE. "During a run the readout shows at least the status, the cycle count,
-// the period, the speed step, and each set's tally against the challenge's
+// the period, the speed, and each set's tally against the challenge's
 // `target`; while editing it may rest" (`specs/editor.md`, Layout). The readout's
 // extent is the same file's layout table: "`x` `READOUT_X0` (`1008`) to `STAGE_W`
 // (`1280`), `y` `HEADING_H` (`48`) to `TAPE_Y0` (`560`)", and its internal layout

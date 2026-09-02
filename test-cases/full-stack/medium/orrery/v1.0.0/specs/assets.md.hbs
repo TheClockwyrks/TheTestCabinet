@@ -150,13 +150,20 @@ Each rise and each set on the field draws frame
 sheet, centered on its anchor hex, under the pattern the build draws in code, so
 both apertures turn continuously. `APERTURE_FRAME_TIME` is `0.12`.
 
+The six frames are six stages of one turn, advancing by an equal step through
+exactly one period of the aperture's own motif: frame `5` runs back into frame
+`0`, and no two frames of a sheet are the same image.
+
 ### The art bar
 
 - The fifteen mote sprites are pairwise distinguishable on the field without
   reading a label, and the six planets read as one family whose rungs run in
   the ladder order of `PLANETS`.
 - Every mote's paint stays inside `MOTE_R` (`22`) of its center, so motes on
-  adjacent hexes never blur together.
+  adjacent hexes never blur together. The radius bounds the form drawn rather
+  than the pixels it lands on: a form drawn to `MOTE_R` meets the bound wherever
+  a hex center falls between two pixels, and paint sits outside the radius only
+  where the whole of a pixel does.
 - The triune strip reads as clearly heavier than the plain one at a glance.
 - A fixture reads as mounted on its wheel rather than as resting loose.
 - The twelve sigil glyphs are told apart from one another at `48` units.
@@ -185,6 +192,10 @@ authored radially symmetric, so an instance reads correctly wherever on the
 field it plays. The player fits a system's field to the context it is handed,
 so placing and scaling an instance at its event's position is the build's own
 code. Each play of a system varies, and that variation is correct.
+
+A play is watched rather than glimpsed: an instance fired on one frame goes on
+changing the picture at its event's position over the frames that follow it,
+decaying to empty across them rather than being over by the next frame.
 
 Play them through `@test-cabinet/particle-runtime`, an installed dependency
 imported by its bare name, using its `./canvas` binding: a player is
@@ -283,6 +294,14 @@ file named beside it fixes its behavior and what a player must read.
 | The marks on the parts and motes a fault names | `specs/ui.md` |
 | The title, howto, and select screens, the solved panel, and all text | `specs/ui.md` |
 | The debug overlay | `specs/instrumentation.md` |
+
+Every word the game puts on the stage is drawn as text. The screens' copy and
+the solved panel's, the heading's name, cost, and messages, the tray's names and
+costs, the readout's figures, the tape rows' labels and length annotations, the
+identifier on each arm and wheel, and the banner a fault raises all reach the
+frame as text drawn where the player reads them, rather than as shapes traced
+into the form of letters or assembled from images of glyphs. Which typeface
+carries them is yours.
 
 An arm's shaft and spokes are drawn at the angle and the length the arm stands
 at on the frame, both of which change continuously within a cycle as

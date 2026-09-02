@@ -1,7 +1,7 @@
 // runs/step-lands-a-completion-within-the-step — the step that reaches a
 // completing boundary lands the completion inside the step.
 //
-// THE RULE. `step` "acts immediately and always leaves the run paused: a run
+// THE RULE. `step` "acts immediately and never leaves the run running: a run
 // mid-cycle, running or paused, completes its current cycle to the boundary, and
 // a run paused at a boundary runs one full cycle, as `specs/simulation.md`
 // defines one" (`specs/editor.md`, Running the machine). And a cycle's boundary

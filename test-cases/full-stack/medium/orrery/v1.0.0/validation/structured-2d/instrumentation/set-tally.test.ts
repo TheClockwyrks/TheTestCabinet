@@ -5,7 +5,7 @@
 // product `index` to `n`, a whole number of at least `0`"
 // (`specs/instrumentation.md`, The run). What the readout owes the figure:
 // "During a run the readout shows at least the status, the cycle count, the
-// period, the speed step, and each set's tally against the challenge's `target`"
+// period, the speed, and each set's tally against the challenge's `target`"
 // (`specs/editor.md`, Layout). And what a delivery does with it: "An accepted
 // constellation is consumed whole, and the set's tally rises by `1` for a plain
 // product" (`specs/sigils.md`, `set`).

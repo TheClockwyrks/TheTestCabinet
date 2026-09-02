@@ -17,7 +17,7 @@
 // fixed — "`x` `TRAY_REGION_W` (`224`) to `READOUT_X0` (`1008`), `y` `HEADING_H`
 // (`48`) to `TAPE_Y0` (`560`)" (`specs/editor.md`) — which is what separates the
 // banner from the readout beside it, whose own contents are fixed by the same
-// file ("the status, the cycle count, the period, the speed step, and each set's
+// file ("the status, the cycle count, the period, the speed, and each set's
 // tally") and which sits outside it. Nothing here reads where inside the field
 // the banner sits, how large it is, or what it says beyond the fault's name.
 //
