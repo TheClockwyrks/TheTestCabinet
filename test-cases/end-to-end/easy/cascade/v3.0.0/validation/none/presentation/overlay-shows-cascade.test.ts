@@ -62,6 +62,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
 import { STAGE_W } from "../constants";
 import {
+  RUNOUT_HZ,
   captureStill,
   createHarness,
   openTable,
@@ -117,6 +118,7 @@ it("draws the launched count and the cards in flight on the overlay", async () =
 
   const swept = await h.skipUntil((state) => state.launched >= LAUNCHED_AT, {
     maxSeconds: SWEEP_SECONDS,
+    hz: RUNOUT_HZ,
   });
   assertTrue(
     swept.hit,

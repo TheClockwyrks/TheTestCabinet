@@ -33,6 +33,7 @@ import {
   WIN_TEXT,
 } from "../constants";
 import {
+  RUNOUT_HZ,
   captureStill,
   createHarness,
   drewText,
@@ -78,10 +79,12 @@ const POLL_SECONDS = 0.5;
  *
  * The wait is not the subject: what it has to do is run the game's own cascade to
  * its end. `specs/instrumentation.md` requires the simulation to be integrated
- * against whatever delta a frame supplies, so `120` Hz reaches the same end as
- * any other rate, and it halves the frames the wait costs.
+ * against whatever delta a frame supplies, so the project's shared
+ * {@link RUNOUT_HZ} reaches the same end as any other rate at a quarter of the
+ * frames — which is what keeps this point's cost the build's rather than the
+ * host's.
  */
-const WAIT_HZ = 120;
+const WAIT_HZ = RUNOUT_HZ;
 
 let h: Harness;
 

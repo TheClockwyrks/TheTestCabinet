@@ -25,10 +25,11 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { DECK_SIZE } from "../constants";
 import {
-  type Harness,
+  RUNOUT_HZ,
   captureReplay,
   createHarness,
   framesFor,
+  type Harness,
 } from "../harness";
 import { CASCADE_RUNOUT_SECONDS, openCascade } from "./flight";
 
@@ -61,7 +62,7 @@ it("launches all fifty-two cards, retires them all, and marks itself done", asyn
   // The long middle of the cascade, run off camera at the same real update.
   await harness.skipUntil(
     (s) => s.cascadeDone || (s.launched >= DECK_SIZE && s.flyers.length <= 2),
-    { maxSeconds: CASCADE_RUNOUT_SECONDS, pollSeconds: 0.25 },
+    { maxSeconds: CASCADE_RUNOUT_SECONDS, pollSeconds: 0.25, hz: RUNOUT_HZ },
   );
 
   const done = await captureReplay(harness, "cascade", async () => {

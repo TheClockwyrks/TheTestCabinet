@@ -45,10 +45,30 @@ export default defineConfig({
     // model's build under it.
     maxWorkers: 4,
     minWorkers: 1,
-    // A cascade advanced in frames of 1/240 s is thousands of frames, each of
-    // them a crossing into the page; generous here, and still seconds in
-    // practice.
-    testTimeout: 120_000,
-    hookTimeout: 60_000,
+    // WHAT THESE TWO BOUND, AND WHAT THEY MUST NOT DECIDE. Every suite here is
+    // deterministic: it poses a board, drives a counted number of frames through
+    // the build's own `advance`, and reads what they left. Not one assertion in
+    // the project reads a wall clock. So what a timeout can measure is how much
+    // of this machine the suite was given — and a figure a correct build can
+    // cross on a busy host is not a bound on the build at all, it is a second
+    // verdict on the host, and it fails the wrong thing.
+    //
+    // They are set from the longest scenario the checklist asks for. The victory
+    // cascade runs for a little over twelve seconds of game time with up to
+    // fifty-two cards in the air, and every frame of it is a full update and
+    // render inside a real browser; the waits are taken at `RUNOUT_HZ` so the
+    // cost is a quarter of what it was, and the whole of one still runs to tens
+    // of seconds on an idle host. Ten minutes is that with an order of magnitude
+    // of room, which is what it takes to survive a host running many times its
+    // own number of cores. It remains a ceiling and not a target: a suite that
+    // hangs costs this and no more, and every suite here finishes in seconds when
+    // the machine is its own.
+    testTimeout: 600_000,
+    // A hook opens a page, loads the build, waits for its surface and resets it —
+    // half a dozen crossings and a page load, every one of them the host's cost
+    // rather than the build's. Matched to the test allowance, because a hook that
+    // expires reports no verdict at all: the point is lost to a failure that names
+    // nothing the build did.
+    hookTimeout: 600_000,
   },
 });

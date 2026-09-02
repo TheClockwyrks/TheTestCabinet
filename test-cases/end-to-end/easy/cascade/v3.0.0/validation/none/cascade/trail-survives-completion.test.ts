@@ -46,10 +46,11 @@ import {
 } from "../assert";
 import { DECK_SIZE } from "../constants";
 import {
-  type Harness,
+  RUNOUT_HZ,
   captureStill,
   createHarness,
   framesFor,
+  type Harness,
 } from "../harness";
 import {
   CASCADE_RUNOUT_SECONDS,
@@ -102,7 +103,7 @@ it("keeps the painted table once cascadeDone is true", async () => {
   // Near the end: every card launched and the last of them still in the air.
   await harness.skipUntil(
     (s) => s.cascadeDone || (s.launched >= DECK_SIZE && s.flyers.length <= 2),
-    { maxSeconds: CASCADE_RUNOUT_SECONDS, pollSeconds: 0.25 },
+    { maxSeconds: CASCADE_RUNOUT_SECONDS, pollSeconds: 0.25, hz: RUNOUT_HZ },
   );
   const before = await paintedFelt(
     harness,
@@ -120,6 +121,7 @@ it("keeps the painted table once cascadeDone is true", async () => {
   const done = await harness.skipUntil((s) => s.cascadeDone, {
     maxSeconds: CASCADE_RUNOUT_SECONDS,
     pollSeconds: 0.25,
+    hz: RUNOUT_HZ,
   });
   assertEqual(
     done.hit,

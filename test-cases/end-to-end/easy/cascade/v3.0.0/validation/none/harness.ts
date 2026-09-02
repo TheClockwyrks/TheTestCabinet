@@ -469,6 +469,35 @@ export function framesFor(duration: number): number {
   return Math.round(duration * TICK_HZ);
 }
 
+/**
+ * The frames per second of game time a WAIT is run at.
+ *
+ * Several checks have to sit through a stretch of the victory cascade before they
+ * can read anything — the whole run-out for `cascade/cascade-completes`,
+ * `screens/won-shows-message` and `cascade/trail-survives-completion`, and twenty
+ * launches for `presentation/overlay-shows-cascade`. Twelve and a half seconds of
+ * game time at {@link TICK_HZ} is three thousand frames, and every one of them is
+ * a full update and render of up to fifty-two cards inside a real browser. The
+ * WAIT, and not the reading, is what those checks cost — and what they cost is
+ * what a busy host turns into a timeout against a build that did nothing wrong.
+ *
+ * NOTHING IS READ DURING A WAIT. What the checks read afterwards is where the
+ * cascade ENDED: the build's own end flag, the launched count, the flight being
+ * empty, the text the next frame drew, how much of the table is still painted.
+ * None of it is quantised to a frame, which is what the fine step above exists
+ * for. `specs/instrumentation.md` has the game integrate whatever delta a frame
+ * supplies and `instrumentation/advances-in-frames` is the point that grades
+ * exactly that, so a wait taken in coarser frames arrives at the same place — the
+ * references were measured at 240, 120, 60 and 30 Hz and end `cascadeDone` with
+ * all fifty-two launched and nothing in flight at the same `12.57` s of game time
+ * at every one of them.
+ *
+ * Sixty is also what a browser gives a game on an ordinary display, so it is the
+ * rate the ending a player sees really runs at. A check reads at {@link TICK_HZ}
+ * either side of the wait; only the wait itself is coarse.
+ */
+export const RUNOUT_HZ = 60;
+
 /* -------------------------------------------------------------------------- */
 /* The harness                                                                */
 /* -------------------------------------------------------------------------- */
@@ -530,6 +559,20 @@ export interface HarnessOptions {
    * so.
    */
   reset?: boolean;
+}
+
+/**
+ * One operation on the build's surface: the name the specification gives it, and
+ * the arguments it takes.
+ *
+ * What {@link Harness.pose} performs. A pose is a run of surface calls with
+ * nothing to decide between them — thirteen `addCard`s that lay a foundation, say
+ * — and performing them one await at a time costs a round trip into the page
+ * each, which is a cost of the HOST rather than of the build.
+ */
+export interface SurfaceCall {
+  op: string;
+  args: readonly unknown[];
 }
 
 /** How far a sweep may run, and how many frames it drives per crossing. */
@@ -621,6 +664,17 @@ export interface Harness {
 
   /** A fresh read of the game's state through the build's `snapshot`. */
   snapshot(): Promise<CascadeSnapshot>;
+  /**
+   * Perform surface operations back to back, in one crossing, and hand back what
+   * each of them returned.
+   *
+   * The SAME operations in the SAME order a run of awaits performs, and the build
+   * cannot tell the difference: nothing advances between them either way, because
+   * every pose operation `specs/instrumentation.md` names resolves the moment it
+   * is called. What it spares is a round trip per operation. An operation that
+   * throws stops the run there, exactly as an awaited one does.
+   */
+  pose(calls: readonly SurfaceCall[]): Promise<unknown[]>;
   /** Run `frames` frames back to back, each the length the clock says. */
   advance(frames: number): Promise<void>;
   /** Advance until `predicate` holds, reading the state every frame left. */
@@ -1224,6 +1278,33 @@ export async function createHarness(
     },
 
     sample: (frames) => runFrames(frames, true),
+
+    async pose(calls) {
+      if (surfaceFault !== null) refuse();
+      if (calls.length === 0) return [];
+      const raw = await page.evaluate(
+        ([handle, ops, nonFinite]) => {
+          const api = (
+            window as unknown as Record<
+              string,
+              Record<string, (...a: unknown[]) => unknown>
+            >
+          )[handle];
+          const results = ops.map((call) => api[call.op](...call.args));
+          return JSON.stringify(results, (_key, value: unknown) =>
+            typeof value === "number" && !Number.isFinite(value)
+              ? { [nonFinite]: String(value) }
+              : value,
+          );
+        },
+        [
+          HANDLE,
+          calls.map((call) => ({ op: call.op, args: [...call.args] })),
+          NON_FINITE_KEY,
+        ] as const,
+      );
+      return parseCrossing<unknown[]>(raw);
+    },
 
     async until(predicate, untilOptions = {}) {
       const maxFrames = untilOptions.maxFrames ?? framesFor(5);
@@ -3213,10 +3294,12 @@ export async function openTable(h: Harness): Promise<void> {
  * Add cards to the top of a pile, first given first, and hand back their ids in
  * the same order.
  *
- * The loop over `addCard`, which is the atomic operation: the surface takes no
- * layout, so a pile is built one card at a time. The ids come from a single
- * snapshot afterwards rather than one per card, and they are the pile's last
- * entries because `addCard` appends (`specs/instrumentation.md`).
+ * A run of `addCard`, which is the atomic operation: the surface takes no layout,
+ * so a pile is built one card at a time. They go over in one crossing
+ * ({@link Harness.pose}) because nothing decides anything between them and a
+ * round trip each is a cost the host sets. The ids come from a single snapshot
+ * afterwards rather than one per card, and they are the pile's last entries
+ * because `addCard` appends (`specs/instrumentation.md`).
  */
 async function addCards(
   h: Harness,
@@ -3224,15 +3307,12 @@ async function addCards(
   index: number,
   specs: readonly CardSpec[],
 ): Promise<number[]> {
-  for (const spec of specs) {
-    await h.debug.addCard(
-      pile,
-      index,
-      spec.suit,
-      spec.rank,
-      spec.faceUp ?? true,
-    );
-  }
+  await h.pose(
+    specs.map((spec) => ({
+      op: "addCard",
+      args: [pile, index, spec.suit, spec.rank, spec.faceUp ?? true],
+    })),
+  );
   if (specs.length === 0) return [];
   const placed = pileOf(await h.snapshot(), pile, index);
   if (placed.length < specs.length) {
