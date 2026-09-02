@@ -84,11 +84,11 @@ import {
 import { sizeOf } from "../geometry";
 import {
   captureStill,
-  createHarness,
+  createDriveHarness,
+  driveFrames,
   lastUnit,
   poseTower,
   startRun,
-  ticksFor,
   towerOf,
   type Harness,
 } from "../harness";
@@ -133,7 +133,20 @@ const FAR_TILES = 7.5;
 /** Where the fire-rate window's target sits: inside every level's range. */
 const CLOSE_TILES = 3;
 
-/** How long each fire-rate window runs, in seconds of game time. */
+/**
+ * How long each fire-rate window runs, in seconds of game time: twenty.
+ *
+ * THE LENGTH IS WHAT MAKES THE READING DISCRIMINATE, so it stays. The count is
+ * whole shots and {@link SHOT_TOLERANCE} is stated in whole shots, so the band is
+ * a fixed width however long the window is, while the gap between two levels'
+ * expectations grows with it. At this tower's `2.0` shots a second twenty seconds
+ * puts consecutive levels six and seven shots apart against a band a shot and a
+ * half wide, and nothing between the levels fits; at eight seconds they would be
+ * two and a half apart and the bands would overlap, so a build whose multiplier
+ * was out by a tenth would pass. What is cut instead is the number of FRAMES the
+ * twenty seconds is divided into — see {@link createDriveHarness} — which changes
+ * no figure this check reads.
+ */
 const WINDOW_SECONDS = 20;
 
 /**
@@ -142,8 +155,9 @@ const WINDOW_SECONDS = 20;
  * The fire clock resolves a shot each time its accumulator reaches the interval and
  * carries the remainder (specs/combat.md), so a window that neither opens nor closes
  * on an interval boundary reports the whole shots it covered — within one of the
- * product either way. Half a shot of headroom is added on top, and the three levels'
- * expectations are six shots apart, so no wrong multiplier fits inside the band.
+ * product either way. Half a shot of headroom is added on top, and consecutive
+ * levels' expectations are six and seven shots apart over
+ * {@link WINDOW_SECONDS}, so no wrong multiplier fits inside the band.
  */
 const SHOT_TOLERANCE = 1.5;
 
@@ -154,6 +168,13 @@ const SHOT_TOLERANCE = 1.5;
  * is float noise again. The gap between consecutive levels' figures on this tower is
  * over three whole points of heat, so the band is two orders of magnitude below the
  * smallest distinction it has to make.
+ *
+ * AND IT IS EXACT AT ANY FRAME LENGTH, which is what lets this check run on the
+ * coarser drive clock. `specs/heat.md` computes every loss term from the heat
+ * the frame OPENED with and scales it by the frame's `dt`; the tower is pinned to
+ * a heat of zero before the shot is waited for, so every one of those terms is
+ * zero times `dt` and the reading is `heatPerShot` over the mass whether a frame
+ * is a thirtieth of a second or a hundred and twentieth.
  */
 const HEAT_TOLERANCE = 0.02;
 
@@ -161,10 +182,11 @@ const HEAT_TOLERANCE = 0.02;
  * How many frames the first shot from cold is waited for.
  *
  * specs/combat.md lands the first shot one full interval after the target was
- * acquired, which at this tower's slowest level is half a second; at the harness's
- * 120 frames a second that is sixty frames, and this is twice that.
+ * acquired, which at this tower's slowest level is half a second; at this check's
+ * long-drive clock of thirty frames a second (`harness.ts`, The long-drive clock)
+ * that is fifteen frames, and this is twice a whole second of them.
  */
-const SHOT_FRAMES = 120;
+const SHOT_FRAMES = driveFrames(1);
 
 /** The tower's footprint centre, which specs/combat.md measures range from. */
 const CENTRE = footprintCentre(AT.col, AT.row, sizeOf(HELD));
@@ -195,7 +217,7 @@ function poseTargetAt(h: Harness, tiles: number): number {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(() => {
@@ -256,7 +278,7 @@ it("multiplies the damage, the fire rate and the heat per shot and adds to the r
       0,
       `${at}: the per-shot damage the shot count below is divided by`,
     );
-    await h.advance(ticksFor(WINDOW_SECONDS));
+    await h.advance(driveFrames(WINDOW_SECONDS));
     const closing = towerOf(h.snapshot(), id);
     const shots = (closing.damageDealt - opening.damageDealt) / opening.damage;
     assertBetween(
