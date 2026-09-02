@@ -11,7 +11,7 @@
 // where the clamp would pin it still.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   LEAD_TICKS,

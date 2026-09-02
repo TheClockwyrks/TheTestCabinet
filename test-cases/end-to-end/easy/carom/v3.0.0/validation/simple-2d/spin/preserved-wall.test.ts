@@ -7,7 +7,7 @@
 // is read on the frame the normal component reverses.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPIN_HALFLIFE } from "../../src/constants";
+import { SPIN_HALFLIFE } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeLiveBall,

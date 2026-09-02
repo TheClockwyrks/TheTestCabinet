@@ -5,7 +5,7 @@
 // the bounce, and the spin it does or does not add, are the build's own physics.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CY } from "../../src/constants";
+import { FIELD_CY } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   LEAD_TICKS,
