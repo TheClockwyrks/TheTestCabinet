@@ -64,6 +64,15 @@
 # means. Both are POSIX-ish shell and awk on purpose — the gate has to run in a
 # job with no toolchain, before anything is installed.
 #
+# WHAT IT CANNOT SEE, stated so nobody assumes otherwise. The gate reads the
+# text; a specifier that exists only at run time is invisible to it —
+# `await import("..".concat("/../src/constants"))`, a `readFileSync(join("..",
+# "..", "src", "constants.ts"))`. Both were tried against it and both pass. No
+# textual gate can close that, and neither can be written by accident: the
+# defect this exists to catch is the ordinary import an author reaches for
+# without thinking, and every static spelling of one is refused. A computed
+# specifier in a validator is a deliberate act, and reads like one in review.
+#
 # WHAT IT REPORTS EVEN WHEN IT PASSES. Every name a project takes across the
 # boundary, per file. "One import site" is only worth having if the names that
 # cross it can be read at a glance, and a list that grows is the signal that a
