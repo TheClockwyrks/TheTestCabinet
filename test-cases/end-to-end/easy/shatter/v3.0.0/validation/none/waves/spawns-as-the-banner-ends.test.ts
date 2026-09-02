@@ -68,6 +68,18 @@ const WITNESS_TICKS = ticksFor(0.25);
  */
 const ARRIVAL_GRACE_TICKS = 1;
 
+/**
+ * How long the roster is watched after the banner runs out, in ticks.
+ *
+ * Half a second. Nothing on this field can take a rock off it — `startPlaying`
+ * leaves no ship near the wave, `specs/progression.md` has the star RECYCLE a rock
+ * rather than remove one, and a wave spawns no closer than `WAVE_MIN_STAR_DIST`
+ * and drifts at most `154` units per second, which is `77` units in half a second —
+ * so over the window the roster can only GROW, and it grows only if the build put
+ * more rocks up.
+ */
+const SETTLE_TICKS = ticksFor(0.5);
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -113,5 +125,24 @@ it("puts every rock of the announced wave up as the banner reaches zero", async 
       `${raised.waveBanner} down to ${seen.ended.snapshot.waveBanner} over ` +
       `${seen.ended.ticks} ticks (WAVE_BANNER_TIME is ${WAVE_BANNER_TIME}) and ` +
       `the game reported wave ${seen.arrived.wave}`,
+  );
+
+  // WHOLE, AND IN ONE BEAT. The count above says the announced wave was up within
+  // a tick of the banner ending; this says nothing followed it. A build that
+  // trickles its wave in over the second after the banner has not spawned it "as
+  // the banner ends", and the count alone cannot tell that build from a
+  // conformant one, because it reads a roster that is on its way to being right.
+  await h.advance(SETTLE_TICKS);
+  const settled = await h.snapshot();
+
+  assertLength(
+    settled.rocks,
+    ARRIVING_ROCKS,
+    `rocks on the field ${String(SETTLE_TICKS)} ticks after the banner ran ` +
+      `out, against the ${String(ARRIVING_ROCKS)} that were up within a tick ` +
+      `of it — nothing on this field can take a rock off it and the star ` +
+      `recycles rather than removes, so a roster that grew is a build that ` +
+      `spawned again, trickling the wave in rather than putting it up as the ` +
+      `banner ends (specs/progression.md)`,
   );
 });
