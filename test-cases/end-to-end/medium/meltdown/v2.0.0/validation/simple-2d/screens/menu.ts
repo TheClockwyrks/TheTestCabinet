@@ -30,7 +30,7 @@ import {
   PAUSE_ITEMS,
   STAGE_W,
   TITLE_ITEMS,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import type { Point } from "../geometry";
 import {

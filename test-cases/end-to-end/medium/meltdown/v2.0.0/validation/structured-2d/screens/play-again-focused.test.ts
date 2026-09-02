@@ -37,7 +37,7 @@
 // in loss, not in victory", so the winning leg is posed well clear of that.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ENDING_ITEMS, RIGHT_EXHAUST_ROWS } from "../../src/constants";
+import { COLS, ENDING_ITEMS, RIGHT_EXHAUST_ROWS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

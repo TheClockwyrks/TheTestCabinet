@@ -33,7 +33,7 @@
 // (specs/instrumentation.md), so what is graded here is the RESUME row alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, PAUSE_ITEMS } from "../../src/constants";
+import { BINDINGS, PAUSE_ITEMS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { tileCentre } from "../geometry";
 import {

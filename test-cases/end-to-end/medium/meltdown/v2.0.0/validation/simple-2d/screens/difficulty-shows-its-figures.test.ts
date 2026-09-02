@@ -27,7 +27,7 @@
 // same pair three times, is missing four of the six and the failure names which.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTIES, DIFFICULTY_ITEMS } from "../../src/constants";
+import { DIFFICULTIES, DIFFICULTY_ITEMS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,

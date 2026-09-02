@@ -42,7 +42,7 @@
 // `controls.pause-key` and `controls.esc-pauses`; this item reads the screen.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS, TILE, tileLeft, tileTop } from "../../src/constants";
+import { PAUSE_ITEMS, TILE, tileLeft, tileTop } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, fail } from "../assert";
 import {
   captureStill,

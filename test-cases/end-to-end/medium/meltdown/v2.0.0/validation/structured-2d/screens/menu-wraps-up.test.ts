@@ -23,7 +23,7 @@
 // binding out of the case-fixed `BINDINGS` table.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_ITEMS } from "../../src/constants";
+import { MODE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

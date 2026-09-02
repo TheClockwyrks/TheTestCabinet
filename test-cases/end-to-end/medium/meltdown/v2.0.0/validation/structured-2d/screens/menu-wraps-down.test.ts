@@ -31,7 +31,7 @@
 // `controls.menu-down` is about the binding.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_ITEMS } from "../../src/constants";
+import { MODE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

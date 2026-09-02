@@ -19,7 +19,7 @@
 // away, and the press resolves on the screen.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseMenu } from "./menu";

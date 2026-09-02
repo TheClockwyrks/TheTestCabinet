@@ -24,7 +24,7 @@
 // THE ROW INDEX COMES OFF `ENDING_ITEMS` rather than being written as `1`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENDING_ITEMS } from "../../src/constants";
+import { ENDING_ITEMS } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
 import {
   captureStill,

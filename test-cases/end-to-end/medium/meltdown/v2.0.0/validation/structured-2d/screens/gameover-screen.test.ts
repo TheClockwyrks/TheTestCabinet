@@ -27,7 +27,7 @@
 // run reaches it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENDING_ITEMS } from "../../src/constants";
+import { ENDING_ITEMS } from "../constants";
 import { assertEqual, assertNotEqual, assertTrue } from "../assert";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 import { readScreen, readsNumber, requireRun, textOf } from "./menu";

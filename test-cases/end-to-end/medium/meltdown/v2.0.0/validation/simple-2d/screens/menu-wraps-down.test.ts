@@ -22,7 +22,7 @@
 // would have behind it rather than over the untouched fields of a title screen.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { MENUS, poseMenu } from "./menu";

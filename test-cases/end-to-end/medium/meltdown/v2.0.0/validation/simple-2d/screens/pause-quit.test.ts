@@ -18,7 +18,7 @@
 // reaches the pause screen is `controls.esc-pauses` and `controls.pause-key`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, PAUSE_ITEMS } from "../../src/constants";
+import { BINDINGS, PAUSE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseMenu } from "./menu";

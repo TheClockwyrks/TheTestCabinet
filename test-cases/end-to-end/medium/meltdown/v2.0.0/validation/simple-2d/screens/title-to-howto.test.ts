@@ -16,7 +16,7 @@
 // that item alone rather than every item that needs the second row.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, TITLE_ITEMS } from "../../src/constants";
+import { BINDINGS, TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseMenu } from "./menu";

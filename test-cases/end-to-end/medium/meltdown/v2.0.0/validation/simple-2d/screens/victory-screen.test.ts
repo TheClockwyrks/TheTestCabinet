@@ -27,7 +27,7 @@
 // effect and drives the real transition.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENDING_ITEMS } from "../../src/constants";
+import { ENDING_ITEMS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,

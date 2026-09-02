@@ -25,7 +25,7 @@
 // `modes` group's business, not this item's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, DIFFICULTIES, DIFFICULTY_ITEMS } from "../../src/constants";
+import { BINDINGS, DIFFICULTIES, DIFFICULTY_ITEMS } from "../constants";
 import { assertEqual, assertNotEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { poseMenu } from "./menu";

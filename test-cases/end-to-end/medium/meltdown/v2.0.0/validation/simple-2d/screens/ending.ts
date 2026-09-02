@@ -26,7 +26,7 @@
 // its own reasons and states them in its own terms, and neither group's
 // arrangement is the other's to change.
 
-import { COLS, RIGHT_EXHAUST_ROWS } from "../../src/constants";
+import { COLS, RIGHT_EXHAUST_ROWS } from "../constants";
 import { tileCentre } from "../geometry";
 import {
   poseWalker,

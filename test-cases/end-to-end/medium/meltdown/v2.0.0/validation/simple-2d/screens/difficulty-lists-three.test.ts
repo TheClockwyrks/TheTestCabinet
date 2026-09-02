@@ -18,7 +18,7 @@
 // nothing is confirmed here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTY_ITEMS } from "../../src/constants";
+import { DIFFICULTY_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

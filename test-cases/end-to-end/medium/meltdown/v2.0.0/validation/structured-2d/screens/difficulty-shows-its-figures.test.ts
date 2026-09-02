@@ -38,7 +38,7 @@ import {
   DIFFICULTIES,
   DIFFICULTY_ITEMS,
   DIFFICULTY_TABLE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 import { readScreen, readsNumber, textOf } from "./menu";

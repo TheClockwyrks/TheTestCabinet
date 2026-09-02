@@ -18,7 +18,7 @@
 // vertical list of rows" and no more.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIFFICULTY_ITEMS } from "../../src/constants";
+import { DIFFICULTY_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
 import { readScreen, requireRun } from "./menu";

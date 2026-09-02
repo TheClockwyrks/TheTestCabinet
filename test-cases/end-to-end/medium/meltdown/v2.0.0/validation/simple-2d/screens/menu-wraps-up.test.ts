@@ -20,7 +20,7 @@
 // precondition rests on the pose rather than on `reset` being right.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS } from "../../src/constants";
+import { BINDINGS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { MENUS, poseMenu } from "./menu";

@@ -19,7 +19,7 @@
 // this check confirms is the row the case's own copy puts second.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
