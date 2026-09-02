@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# Runs the front-end unit tests (vitest) across every npm workspace that has any.
+# Runs the Node-side unit tests: the front-end suites (vitest) across every npm
+# workspace that has any, plus the repository scripts' own suites.
+#
+# WHY THE SCRIPTS RUN HERE. `scripts/` is not an npm workspace, so
+# `npm run test --workspaces` cannot reach it and the `node:test` suites under
+# `scripts/lib/` would be executed by no gate at all. They are hermetic (no network,
+# no ffmpeg, no R2) and take under a second, so they belong with the other Node tests
+# rather than in a job of their own.
 #
 # WHY THE PACKAGES ARE BUILT FIRST. The workspace runtime packages —
 # `run-record`, `run-stats`, and the two runtimes — publish their entry points
@@ -23,3 +30,6 @@ npm run build:packages
 
 log "test the npm workspaces"
 npm run test --workspaces --if-present
+
+log "test the repository scripts"
+npm run test:scripts
