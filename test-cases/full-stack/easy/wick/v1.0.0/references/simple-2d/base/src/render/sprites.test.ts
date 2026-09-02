@@ -17,6 +17,7 @@ import {
   STAGE_CY,
   STAGE_H,
   STAGE_W,
+  WALK_FRAME_TIME,
 } from "../constants";
 import { freshRun, initialState, type Draft, type Zone } from "../state";
 import { spawnEnemy } from "../sim/enemies";
@@ -306,6 +307,30 @@ describe("the produced sprites in the frame", () => {
         run.chestResult = { kind: "evolve", weapon: "chandelier" };
       expect(() => frame(state)).not.toThrow();
     }
+  });
+
+  it("draws the almanac's pictures from the produced files", () => {
+    const state = initialState(1);
+    state.screen = "almanac";
+    // The detail pane's picture box, where every tab draws its picture.
+    const box = [782, 282, 132, 132] as const;
+    const tools = frame(state);
+    clearSprites();
+    const withoutSprites = frame(state);
+    install();
+    expect(differs(tools, withoutSprites, ...box)).toBe(true);
+    // The tool's icon sits beside its effect, left of the box.
+    expect(differs(tools, withoutSprites, 712, 312, 72, 72)).toBe(true);
+  });
+
+  it("animates the almanac's enemy over its walk sheet", () => {
+    const state = initialState(1);
+    state.screen = "almanac";
+    state.almanacTab = 2;
+    const box = [782, 282, 132, 132] as const;
+    const first = frame(state);
+    state.simTime = WALK_FRAME_TIME;
+    expect(differs(first, frame(state), ...box)).toBe(true);
   });
 
   it("draws every icon in the HUD's slots", () => {

@@ -29,6 +29,7 @@ export const COLORS = {
   panel: "rgba(10, 8, 20, 0.86)",
   panelEdge: "#5b527f",
   dim: "rgba(5, 4, 12, 0.6)",
+  hurt: "#e2564f",
   health: "#e2564f",
   healthBack: "#3a1d24",
   xp: "#5fc9ff",

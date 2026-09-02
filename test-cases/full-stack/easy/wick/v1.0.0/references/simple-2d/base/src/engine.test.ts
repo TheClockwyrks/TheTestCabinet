@@ -9,6 +9,10 @@
 // returned beside it, the engine's cue events, and the pixels the render
 // produced.
 //
+// The pointer is driven the same way, by dispatching pointer- and wheel-shaped
+// events at that target; the surface is the stage's own size at a device pixel
+// ratio of one, so a client position is a stage position.
+//
 // Nothing in this process can fetch a file, so every produced asset fails to
 // load here. That is deliberate: it is the check that a build whose assets
 // are unavailable still initializes, still ticks, still takes input, and
@@ -24,8 +28,23 @@ import {
 import type { DeepReadonly } from "ts-essentials";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { spriteCount } from "./assets";
-import { CUES, LAYOUT, STAGE_H, STAGE_W, TICK_DT } from "./constants";
-import { BACKGROUND, game, type WickDebugApi, type WickState } from "./game";
+import {
+  ALMANAC_ROWS,
+  CUES,
+  LAYOUT,
+  STAGE_H,
+  STAGE_W,
+  TICK_DT,
+  WHEEL_ROW,
+} from "./constants";
+import { entriesOf } from "./almanac";
+import {
+  BACKGROUND,
+  game,
+  type WickDebugApi,
+  type WickRect,
+  type WickState,
+} from "./game";
 import { SWITCH_NAMES } from "./state";
 
 const FRAME_MS = 1000 / 60;
@@ -41,6 +60,38 @@ class KeyEvent extends Event {
   }
 }
 
+class PointerEventShape extends Event {
+  readonly pointerId = 1;
+  readonly isPrimary = true;
+  readonly pointerType = "mouse";
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: "pointermove" | "pointerdown" | "pointerup",
+    readonly clientX: number,
+    readonly clientY: number,
+  ) {
+    super(type);
+    this.button = type === "pointermove" ? -1 : 0;
+    this.buttons = type === "pointerdown" ? 1 : 0;
+  }
+}
+
+class WheelEventShape extends Event {
+  readonly deltaX = 0;
+  readonly deltaMode = 0;
+
+  constructor(readonly deltaY: number) {
+    super("wheel");
+  }
+}
+
+/** The middle of a rectangle the debug surface reported. */
+function middle(rect: WickRect): [number, number] {
+  return [rect.x + rect.width / 2, rect.y + rect.height / 2];
+}
+
 interface Harness {
   readonly engine: Engine<WickState, WickDebugApi>;
   readonly state: DeepReadonly<WickState>;
@@ -52,6 +103,9 @@ interface Harness {
   tap(code: string, repeat?: boolean): void;
   down(code: string): void;
   up(code: string): void;
+  hover(x: number, y: number): void;
+  click(x: number, y: number): void;
+  scroll(travel: number): void;
   pose(transition: (state: DeepReadonly<WickState>) => WickState): void;
   dispose(): void;
 }
@@ -119,6 +173,14 @@ async function createHarness(stepMs = FRAME_MS): Promise<Harness> {
     },
     down: (code) => events.dispatchEvent(new KeyEvent("keydown", code)),
     up: (code) => events.dispatchEvent(new KeyEvent("keyup", code)),
+    hover: (x, y) =>
+      events.dispatchEvent(new PointerEventShape("pointermove", x, y)),
+    click: (x, y) => {
+      events.dispatchEvent(new PointerEventShape("pointermove", x, y));
+      events.dispatchEvent(new PointerEventShape("pointerdown", x, y));
+      events.dispatchEvent(new PointerEventShape("pointerup", x, y));
+    },
+    scroll: (travel) => events.dispatchEvent(new WheelEventShape(travel)),
     pose: (transition) => void engine.apply(transition),
     dispose: () => engine.destroy(),
   };
@@ -208,7 +270,7 @@ describe("the keyboard", () => {
     expect(snap().run.player.facing).toBe("right");
   });
 
-  it("pauses with KeyP, resumes with KeyP, and abandons with Escape", async () => {
+  it("pauses with KeyP or Escape, and both resume", async () => {
     h.tap("Enter");
     await h.engine.advance(5);
     h.tap("KeyP");
@@ -221,9 +283,19 @@ describe("the keyboard", () => {
     await h.engine.advance(1);
     expect(snap().screen).toBe("playing");
     expect(snap().run.tick).toBe(6);
+    h.tap("Escape");
+    await h.engine.advance(1);
+    expect(snap().screen).toBe("paused");
+    h.tap("Escape");
+    await h.engine.advance(1);
+    expect(snap().screen).toBe("playing");
+    // MAIN MENU is the way out of the night from here. Each press is its own
+    // frame, since every edge is read against the screen its frame began on.
     h.tap("KeyP");
     await h.engine.advance(1);
-    h.tap("Escape");
+    h.tap("ArrowDown");
+    await h.engine.advance(1);
+    h.tap("Enter");
     await h.engine.advance(1);
     expect(snap().screen).toBe("title");
     expect(h.stops).toContain(CUES.music);
@@ -239,6 +311,75 @@ describe("the keyboard", () => {
     h.tap("KeyM");
     await h.engine.advance(1);
     expect(snap().muted).toBe(false);
+  });
+});
+
+describe("the pointer", () => {
+  it("moves the title highlight to the item it rests on, sounding menu-move", async () => {
+    h.hover(...middle(h.debug.menuRects(h.engine.state)[1]));
+    await h.engine.advance(1);
+    expect(snap().menuIndex).toBe(1);
+    expect(h.cues.filter((cue) => cue === CUES.menuMove)).toHaveLength(1);
+    await h.engine.advance(1);
+    expect(h.cues.filter((cue) => cue === CUES.menuMove)).toHaveLength(1);
+  });
+
+  it("changes nothing while it rests off every rectangle", async () => {
+    h.hover(4, 4);
+    h.click(4, 4);
+    await h.engine.advance(1);
+    expect(snap().menuIndex).toBe(0);
+    expect(snap().screen).toBe("title");
+    expect(h.cues).toEqual([]);
+  });
+
+  it("takes the item it clicks, from the title through the almanac", async () => {
+    h.click(...middle(h.debug.menuRects(h.engine.state)[1]));
+    await h.engine.advance(1);
+    expect(snap().screen).toBe("almanac");
+    expect(h.cues).toContain(CUES.menuConfirm);
+    expect(snap().run.tick).toBe(0);
+
+    // An entry carries no confirm, so a click on one only moves the highlight.
+    h.click(...middle(h.debug.menuRects(h.engine.state)[2]));
+    await h.engine.advance(1);
+    expect(snap().screen).toBe("almanac");
+    expect(snap().menuIndex).toBe(2);
+
+    // A click inside a tab shows that tab, back at its first entry.
+    h.click(...middle(h.debug.tabRects(h.engine.state)[2]));
+    await h.engine.advance(1);
+    expect(snap().almanacTab).toBe(2);
+    expect(snap().menuIndex).toBe(0);
+    expect(snap().almanacScroll).toBe(0);
+  });
+
+  it("scrolls the almanac's list by the wheel, held within it", async () => {
+    h.pose((s) => h.debug.setScreen(s, "almanac"));
+    h.scroll(WHEEL_ROW);
+    await h.engine.advance(1);
+    expect(snap().almanacScroll).toBe(1);
+    expect(snap().menuIndex).toBe(0);
+    h.scroll(WHEEL_ROW * 100);
+    await h.engine.advance(1);
+    expect(snap().almanacScroll).toBe(entriesOf(0).length - ALMANAC_ROWS);
+    h.scroll(-WHEEL_ROW * 100);
+    await h.engine.advance(1);
+    expect(snap().almanacScroll).toBe(0);
+  });
+
+  it("starts a run from the title and resumes from the pause menu", async () => {
+    h.click(...middle(h.debug.menuRects(h.engine.state)[0]));
+    await h.engine.advance(1);
+    expect(snap().screen).toBe("playing");
+    expect(snap().run.tick).toBe(1);
+    h.tap("Escape");
+    await h.engine.advance(1);
+    expect(snap().screen).toBe("paused");
+    h.click(...middle(h.debug.menuRects(h.engine.state)[0]));
+    await h.engine.advance(1);
+    expect(snap().screen).toBe("playing");
+    expect(snap().run.tick).toBe(2);
   });
 });
 

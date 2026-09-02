@@ -1,7 +1,14 @@
 // Wick — small drawing helpers shared by the world, the HUD, the screens,
 // and the overlay.
 
-import { FONT } from "./theme";
+import { STAGE_H, STAGE_W } from "../constants";
+import { COLORS, FONT } from "./theme";
+
+/** Quiet the world beneath a menu or an overlay. */
+export function dim(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = COLORS.dim;
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+}
 
 export interface TextOptions {
   size?: number;

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { Keyboard } from "./input";
+import { Keyboard, Pointer, type StageMapping } from "./input";
+
+/** A mapping that halves a client position, offset by the letterbox. */
+const HALVED: StageMapping = {
+  point: (x, y) => ({ x: x / 2 - 10, y: y / 2 - 20 }),
+  travel: (delta) => delta / 2,
+};
 
 describe("the keyboard", () => {
   it("reports held values and one edge per press", () => {
@@ -75,5 +81,78 @@ describe("the keyboard", () => {
       Object.assign(new Event("keydown"), { code: "KeyD", repeat: false }),
     );
     expect(keyboard.held("right")).toBe(0);
+  });
+});
+
+describe("the pointer", () => {
+  it("reports where it rests, mapped into stage units", () => {
+    const pointer = new Pointer();
+    expect(pointer.drain(HALVED).at).toBeNull();
+    pointer.moveTo(400, 200);
+    expect(pointer.drain(HALVED).at).toEqual({ x: 190, y: 80 });
+    // A resting pointer keeps hovering, frame after frame.
+    expect(pointer.drain(HALVED).at).toEqual({ x: 190, y: 80 });
+    pointer.leave();
+    expect(pointer.drain(HALVED).at).toBeNull();
+  });
+
+  it("keeps each primary press in order and drains them once", () => {
+    const pointer = new Pointer();
+    pointer.pressAt(100, 100);
+    pointer.pressAt(200, 100);
+    expect(pointer.drain(HALVED).presses).toEqual([
+      { x: 40, y: 30 },
+      { x: 90, y: 30 },
+    ]);
+    expect(pointer.drain(HALVED).presses).toEqual([]);
+  });
+
+  it("sums a frame's wheel travel and drains it once", () => {
+    const pointer = new Pointer();
+    pointer.roll(120);
+    pointer.roll(-40);
+    expect(pointer.drain(HALVED).wheel).toBe(40);
+    expect(pointer.drain(HALVED).wheel).toBe(0);
+  });
+
+  it("listens on a target for moves, primary presses, the wheel, and leaving", () => {
+    const pointer = new Pointer();
+    const target = new EventTarget();
+    pointer.attach(target);
+    target.dispatchEvent(
+      Object.assign(new Event("pointermove"), { clientX: 60, clientY: 80 }),
+    );
+    target.dispatchEvent(
+      Object.assign(new Event("pointerdown"), {
+        clientX: 60,
+        clientY: 80,
+        button: 0,
+      }),
+    );
+    target.dispatchEvent(
+      Object.assign(new Event("pointerdown"), {
+        clientX: 20,
+        clientY: 20,
+        button: 2,
+      }),
+    );
+    target.dispatchEvent(
+      Object.assign(new Event("wheel"), {
+        deltaY: 100,
+        preventDefault: () => {},
+      }),
+    );
+    const frame = pointer.drain(HALVED);
+    // The secondary press moved the pointer and armed nothing.
+    expect(frame.at).toEqual({ x: 0, y: -10 });
+    expect(frame.presses).toEqual([{ x: 20, y: 20 }]);
+    expect(frame.wheel).toBe(50);
+    target.dispatchEvent(new Event("pointerleave"));
+    expect(pointer.drain(HALVED).at).toBeNull();
+    pointer.release();
+    target.dispatchEvent(
+      Object.assign(new Event("pointermove"), { clientX: 60, clientY: 80 }),
+    );
+    expect(pointer.drain(HALVED).at).toBeNull();
   });
 });

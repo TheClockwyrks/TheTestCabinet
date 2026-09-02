@@ -30,7 +30,12 @@ import { defineCues, syncLoops } from "./audio";
 import { createDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { runFrame } from "./flow";
-import { pressedActions, readHeld, registerActions } from "./input";
+import {
+  pressedActions,
+  readHeld,
+  readPointer,
+  registerActions,
+} from "./input";
 import { renderGame } from "./render/render";
 import { COLORS } from "./render/theme";
 import { initialState } from "./state";
@@ -42,6 +47,7 @@ export type { EnemyId, GemTier, OfferId, PassiveId, PickupKind, WeaponId };
 export type Screen =
   | "title"
   | "howto"
+  | "almanac"
   | "playing"
   | "levelup"
   | "chest"
@@ -175,6 +181,7 @@ export interface RunState {
   readonly xp: number;
   readonly kills: number;
   readonly player: PlayerState;
+  readonly hurtFlash: number;
   readonly weapons: readonly WeaponSlot[];
   readonly passives: readonly PassiveSlot[];
   readonly enemies: readonly EnemyState[];
@@ -200,6 +207,8 @@ export interface RunState {
 export interface WickState {
   readonly screen: Screen;
   readonly menuIndex: number;
+  readonly almanacTab: number;
+  readonly almanacScroll: number;
   readonly run: RunState;
   readonly accumulator: number;
   readonly simTime: number;
@@ -221,6 +230,8 @@ export interface WickSnapshot {
   version: number;
   screen: Screen;
   menuIndex: number;
+  almanacTab: number;
+  almanacScroll: number;
   spawning: boolean;
   events: boolean;
   despawning: boolean;
@@ -236,6 +247,7 @@ export interface WickSnapshot {
     xpToNext: number;
     kills: number;
     player: { x: number; y: number; facing: Facing; hp: number };
+    hurtFlash: number;
     maxHp: number;
     armor: number;
     moveSpeed: number;
@@ -310,6 +322,14 @@ export interface WickSnapshot {
   rngState: number;
 }
 
+/** A rectangle on the stage, as `menuRects` and `tabRects` report one. */
+export interface WickRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface WickDebugApi {
   readonly version: number;
   reset(
@@ -317,6 +337,8 @@ export interface WickDebugApi {
     options?: { readonly seed?: number },
   ): WickState;
   snapshot(state: DeepReadonly<WickState>): WickSnapshot;
+  menuRects(state: DeepReadonly<WickState>): readonly WickRect[];
+  tabRects(state: DeepReadonly<WickState>): readonly WickRect[];
   setScreen(state: DeepReadonly<WickState>, name: Screen): WickState;
   choose(state: DeepReadonly<WickState>, index: number): WickState;
   setSpawning(state: DeepReadonly<WickState>, on: boolean): WickState;
@@ -473,6 +495,7 @@ export const game: Game<WickState, WickDebugApi> = {
       dt,
       pressed: pressedActions(api),
       held: readHeld(api),
+      pointer: readPointer(api),
       toggleMute: () => api.audio.setMuted(!api.audio.muted()),
     });
     syncLoops(api, draft);

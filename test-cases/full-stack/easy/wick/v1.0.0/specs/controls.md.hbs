@@ -105,8 +105,9 @@ its update:
    `i` sets `menuIndex` to `i`, playing `menu-move` if that changed it, and then
    takes that item exactly as `confirm` on it does. A primary press edge inside
    no rectangle does nothing. On `almanac` an entry carries no `confirm`, so a
-   click on an entry only moves the highlight; a click inside a tab's rectangle
-   selects that tab exactly as `right` reaching it does.
+   click on an entry only moves the highlight; a click inside the rectangle of a
+   tab the almanac is not showing selects that tab exactly as `right` reaching
+   it does, and a click inside the shown tab's rectangle changes nothing.
 3. The wheel. On `almanac`, wheel travel moves the list. A frame's travel is
    that frame's wheel deltas summed in stage units, divided by `WHEEL_ROW`
    (`100`) and truncated toward zero to give the number of rows `almanacScroll`

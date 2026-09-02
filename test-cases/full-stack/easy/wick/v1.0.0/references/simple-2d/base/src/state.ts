@@ -5,8 +5,8 @@
 // transition returns. A transition, `update` or a pose of the debug surface,
 // clones the current state into a mutable `Draft`, runs the game over it,
 // and returns it; the view it was handed is never written. The idle run is
-// what `title` and `howto` hold, and a fresh run is the idle run with Taper
-// in the first weapon slot.
+// what `title`, `howto`, and `almanac` hold, and a fresh run is the idle run
+// with Taper in the first weapon slot.
 
 import type { DeepReadonly, DeepWritable } from "ts-essentials";
 import { BASE_MAX_HP, DEFAULT_SEED } from "./constants";
@@ -52,7 +52,7 @@ export const SWITCH_NAMES = [
 
 export type SwitchName = (typeof SWITCH_NAMES)[number];
 
-/** The idle run `title` and `howto` hold. */
+/** The idle run `title`, `howto`, and `almanac` hold. */
 export function idleRun(): DraftRun {
   return {
     tick: 0,
@@ -60,6 +60,7 @@ export function idleRun(): DraftRun {
     xp: 0,
     kills: 0,
     player: { x: 0, y: 0, facing: "right", hp: BASE_MAX_HP },
+    hurtFlash: 0,
     weapons: [],
     passives: [],
     enemies: [],
@@ -88,13 +89,16 @@ export function freshRun(): DraftRun {
 }
 
 /**
- * The title-screen state: the idle run, the accumulator and `simTime` at
- * `0`, every driver switch on, unmuted, and the generator seeded by `seed`.
+ * The title-screen state: the idle run, the highlight, the almanac's tab and
+ * its window, the accumulator, and `simTime` all at `0`, every driver switch
+ * on, unmuted, and the generator seeded by `seed`.
  */
 export function initialState(seed: number = DEFAULT_SEED): Draft {
   return {
     screen: "title",
     menuIndex: 0,
+    almanacTab: 0,
+    almanacScroll: 0,
     run: idleRun(),
     accumulator: 0,
     simTime: 0,
@@ -142,6 +146,7 @@ function cloneRun(run: DeepReadonly<RunState>): DraftRun {
     xp: run.xp,
     kills: run.kills,
     player: { ...run.player },
+    hurtFlash: run.hurtFlash,
     weapons: run.weapons.map((weapon) => ({ ...weapon })),
     passives: run.passives.map((passive) => ({ ...passive })),
     enemies: run.enemies.map((enemy) => ({
@@ -173,6 +178,8 @@ export function cloneState(view: DeepReadonly<WickState>): Draft {
   return {
     screen: view.screen,
     menuIndex: view.menuIndex,
+    almanacTab: view.almanacTab,
+    almanacScroll: view.almanacScroll,
     run: cloneRun(view.run),
     accumulator: view.accumulator,
     simTime: view.simTime,

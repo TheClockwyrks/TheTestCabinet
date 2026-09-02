@@ -75,7 +75,7 @@ export type {
   ZoneKind,
   ZoneState,
 } from "./state";
-export type { WickSnapshot } from "./debug";
+export type { WickRect, WickSnapshot } from "./debug";
 export type { WickDebugApi };
 export { WickState, wickState };
 

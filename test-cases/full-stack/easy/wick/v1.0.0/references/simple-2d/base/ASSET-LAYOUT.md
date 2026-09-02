@@ -27,7 +27,9 @@ canvas, and `src/assets.test.ts` checks each file is committed at that size.
 ## Sprites, `scripts/gen-sprites.mjs`
 
 All transparent, straight alpha, drawn at one unit per pixel and centered on
-the thing they depict, and drawn by the game with image smoothing off.
+the thing they depict, and drawn by the game with image smoothing off. The
+enemy, gem, and pickup sprites are drawn a second time, fitted to the picture
+box, by `src/render/almanac.ts`.
 
 | Files | Canvas | Count | Drawn by | Notes |
 | --- | --- | --- | --- | --- |
@@ -61,7 +63,9 @@ the thing they depict, and drawn by the game with image smoothing off.
 
 Each is produced on its canvas and scaled in code to the live hitbox by
 `src/render/effects.ts`: a slash over its `width x height`, everything else
-over its circle. A sheet's frame comes from the ticks since the shape appeared.
+over its circle. A sheet's frame comes from the ticks since the shape
+appeared. `src/render/almanac.ts` draws each one again beside its tool's icon,
+fitted to the picture box and looped off `simTime`.
 
 | Files | Canvas | Count | Drawn over | Form |
 | --- | --- | --- | --- | --- |
@@ -85,10 +89,11 @@ over its circle. A sheet's frame comes from the ticks since the shape appeared.
 ## The icons, `scripts/gen-sprites.mjs`
 
 Twenty-seven 24 x 24 plates at `icons/<id>.png`, drawn by `src/render/hud.ts`
-in the slots and by `src/render/screens.ts` in the level-up and chest
-overlays. The rim says what a thing is: slate for a base weapon, gold for an
-evolved one, brown for a passive, green for lamp oil. An evolved weapon's
-symbol is its base's burning hotter.
+in the slots, by `src/render/screens.ts` in the level-up and chest overlays,
+and by `src/render/almanac.ts` on the tools and trinkets tabs. The rim says
+what a thing is: slate for a base weapon, gold for an evolved one, brown for a
+passive, green for lamp oil. An evolved weapon's symbol is its base's burning
+hotter.
 
 | Ids | Symbols |
 | --- | --- |

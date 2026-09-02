@@ -1,7 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { TICK_DT } from "./constants";
+import { ALMANAC_ROWS, TICK_DT, WHEEL_ROW } from "./constants";
+import { almanacEntries } from "./almanac";
 import { Game } from "./game";
+import {
+  almanacRowRects,
+  almanacTabRects,
+  endRects,
+  levelUpLayout,
+  pauseRects,
+  titleRects,
+  type Rect,
+} from "./layout";
 import { idleRun } from "./state";
+import type { StagePoint } from "./viewport";
+
+/** The middle of a rectangle, which is where a pointer test aims. */
+function middle(rect: Rect): StagePoint {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+function hover(g: Game, at: StagePoint): void {
+  g.handlePointer({ at, presses: [], wheel: 0 });
+}
+
+function click(g: Game, at: StagePoint): void {
+  g.handlePointer({ at: null, presses: [at], wheel: 0 });
+}
+
+function wheel(g: Game, travel: number): void {
+  g.handlePointer({ at: null, presses: [], wheel: travel });
+}
 
 function game(): { game: Game; mute: { on: boolean } } {
   const mute = { on: false };
@@ -22,10 +50,10 @@ describe("the title screen", () => {
     expect(g.state.run).toEqual(idleRun());
   });
 
-  it("wraps the highlight both ways and sounds menu-move", () => {
+  it("wraps the highlight both ways over three items and sounds menu-move", () => {
     const { game: g } = game();
     g.handleAction("up");
-    expect(g.state.menuIndex).toBe(1);
+    expect(g.state.menuIndex).toBe(2);
     g.handleAction("down");
     expect(g.state.menuIndex).toBe(0);
     g.handleAction("down");
@@ -50,8 +78,20 @@ describe("the title screen", () => {
     expect(g.wantedLoops().has("music")).toBe(true);
   });
 
+  it("opens the almanac on THE ALMANAC with every index at zero", () => {
+    const { game: g } = game();
+    g.handleAction("down");
+    g.handleAction("confirm");
+    expect(g.state.screen).toBe("almanac");
+    expect(g.state.menuIndex).toBe(0);
+    expect(g.state.almanacTab).toBe(0);
+    expect(g.state.almanacScroll).toBe(0);
+    expect(g.state.run).toEqual(idleRun());
+  });
+
   it("opens howto on HOW TO PLAY and back returns", () => {
     const { game: g } = game();
+    g.handleAction("down");
     g.handleAction("down");
     g.handleAction("confirm");
     expect(g.state.screen).toBe("howto");
@@ -87,13 +127,227 @@ describe("pause", () => {
     expect(g.state.run.tick).toBe(tick);
   });
 
-  it("abandons the run on back", () => {
+  it("opens on back as it does on pause, and both resume", () => {
     const { game: g } = game();
     g.startRun();
-    g.pause();
+    g.update(0.5);
+    const tick = g.state.run.tick;
     g.handleAction("back");
+    expect(g.state.screen).toBe("paused");
+    expect(g.state.menuIndex).toBe(0);
+    g.handleAction("back");
+    expect(g.state.screen).toBe("playing");
+    expect(g.state.run.tick).toBe(tick);
+    expect(g.drainCues()).toEqual([]);
+  });
+
+  it("carries a two-item menu that wraps, resumes, and abandons", () => {
+    const { game: g } = game();
+    g.startRun();
+    g.update(0.5);
+    const tick = g.state.run.tick;
+    g.pause();
+    g.handleAction("up");
+    expect(g.state.menuIndex).toBe(1);
+    g.handleAction("down");
+    expect(g.state.menuIndex).toBe(0);
+    g.handleAction("confirm");
+    expect(g.state.screen).toBe("playing");
+    expect(g.state.run.tick).toBe(tick);
+    expect(g.drainCues()).toEqual(["menu-move", "menu-confirm"]);
+    g.pause();
+    g.handleAction("down");
+    g.handleAction("confirm");
     expect(g.state.screen).toBe("title");
     expect(g.state.run).toEqual(idleRun());
+  });
+});
+
+describe("the almanac", () => {
+  function almanac(): Game {
+    const { game: g } = game();
+    g.toAlmanac();
+    return g;
+  }
+
+  it("advances nothing and carries no music", () => {
+    const g = almanac();
+    g.update(1);
+    expect(g.state.run.tick).toBe(0);
+    expect(g.state.accumulator).toBe(0);
+    expect(g.wantedLoops().size).toBe(0);
+  });
+
+  it("moves the entry highlight over the tab and wraps at both ends", () => {
+    const g = almanac();
+    const tools = almanacEntries(0).length;
+    g.handleAction("down");
+    expect(g.state.menuIndex).toBe(1);
+    g.handleAction("up");
+    g.handleAction("up");
+    expect(g.state.menuIndex).toBe(tools - 1);
+    g.handleAction("down");
+    expect(g.state.menuIndex).toBe(0);
+  });
+
+  it("moves the tab, wraps it, and returns to the first entry", () => {
+    const g = almanac();
+    g.handleAction("down");
+    g.handleAction("down");
+    g.handleAction("right");
+    expect(g.state.almanacTab).toBe(1);
+    expect(g.state.menuIndex).toBe(0);
+    expect(g.state.almanacScroll).toBe(0);
+    g.handleAction("left");
+    expect(g.state.almanacTab).toBe(0);
+    g.handleAction("left");
+    expect(g.state.almanacTab).toBe(3);
+    g.handleAction("right");
+    expect(g.state.almanacTab).toBe(0);
+  });
+
+  it("follows the highlight with the list's window", () => {
+    const g = almanac();
+    for (let i = 0; i < ALMANAC_ROWS - 1; i += 1) g.handleAction("down");
+    expect(g.state.menuIndex).toBe(ALMANAC_ROWS - 1);
+    expect(g.state.almanacScroll).toBe(0);
+    g.handleAction("down");
+    expect(g.state.almanacScroll).toBe(1);
+    g.handleAction("up");
+    expect(g.state.almanacScroll).toBe(1);
+    for (let i = 0; i < ALMANAC_ROWS - 1; i += 1) g.handleAction("up");
+    expect(g.state.menuIndex).toBe(0);
+    expect(g.state.almanacScroll).toBe(0);
+  });
+
+  it("holds the window at the end when the highlight wraps to the last entry", () => {
+    const g = almanac();
+    const tools = almanacEntries(0).length;
+    g.handleAction("up");
+    expect(g.state.menuIndex).toBe(tools - 1);
+    expect(g.state.almanacScroll).toBe(tools - ALMANAC_ROWS);
+  });
+
+  it("answers no confirm and returns to the title on back", () => {
+    const g = almanac();
+    g.handleAction("confirm");
+    g.handleAction("pause");
+    expect(g.state.screen).toBe("almanac");
+    g.handleAction("back");
+    expect(g.state.screen).toBe("title");
+    expect(g.state.menuIndex).toBe(0);
+    expect(g.state.almanacTab).toBe(0);
+    expect(g.state.almanacScroll).toBe(0);
+  });
+});
+
+describe("the pointer", () => {
+  it("highlights the item it rests in and sounds menu-move once", () => {
+    const { game: g } = game();
+    const rects = titleRects();
+    hover(g, middle(rects[1]));
+    expect(g.state.menuIndex).toBe(1);
+    expect(g.drainCues()).toEqual(["menu-move"]);
+    hover(g, middle(rects[1]));
+    expect(g.drainCues()).toEqual([]);
+  });
+
+  it("leaves the highlight alone inside no rectangle", () => {
+    const { game: g } = game();
+    hover(g, { x: 20, y: 20 });
+    expect(g.state.menuIndex).toBe(0);
+    click(g, { x: 20, y: 20 });
+    expect(g.state.screen).toBe("title");
+    expect(g.state.menuIndex).toBe(0);
+    expect(g.drainCues()).toEqual([]);
+  });
+
+  it("moves the highlight and then takes the item on a click", () => {
+    const { game: g } = game();
+    click(g, middle(titleRects()[2]));
+    expect(g.state.screen).toBe("howto");
+    expect(g.drainCues()).toEqual(["menu-move", "menu-confirm"]);
+    g.toTitle();
+    click(g, middle(titleRects()[0]));
+    expect(g.state.screen).toBe("playing");
+  });
+
+  it("accepts a level-up offer and takes a pause item", () => {
+    const { game: g } = game();
+    g.startRun();
+    g.state.run.pendingLevelUps = 1;
+    g.openLevelUp();
+    const offer = g.state.run.offers[1];
+    click(g, middle(levelUpLayout(g.state.run.offers.length).offers[1]));
+    expect(g.state.screen).toBe("playing");
+    expect(
+      [...g.state.run.weapons, ...g.state.run.passives].some(
+        (held) => held.id === offer,
+      ),
+    ).toBe(true);
+    g.pause();
+    hover(g, middle(pauseRects()[1]));
+    expect(g.state.menuIndex).toBe(1);
+    click(g, middle(pauseRects()[1]));
+    expect(g.state.screen).toBe("title");
+  });
+
+  it("takes an end screen's item", () => {
+    const { game: g } = game();
+    g.startRun();
+    g.endRun("fallen");
+    hover(g, middle(endRects()[1]));
+    expect(g.state.menuIndex).toBe(1);
+    click(g, middle(endRects()[0]));
+    expect(g.state.screen).toBe("playing");
+  });
+
+  it("moves the almanac's highlight without leaving the screen", () => {
+    const { game: g } = game();
+    g.toAlmanac();
+    const rows = almanacRowRects(almanacEntries(0).length);
+    click(g, middle(rows[2]));
+    expect(g.state.menuIndex).toBe(2);
+    expect(g.state.screen).toBe("almanac");
+  });
+
+  it("reads an almanac row through the list's window", () => {
+    const { game: g } = game();
+    g.toAlmanac();
+    g.state.almanacScroll = 3;
+    const rows = almanacRowRects(almanacEntries(0).length);
+    hover(g, middle(rows[2]));
+    expect(g.state.menuIndex).toBe(5);
+  });
+
+  it("selects a tab exactly as right reaching it does", () => {
+    const { game: g } = game();
+    g.toAlmanac();
+    g.handleAction("down");
+    g.drainCues();
+    click(g, middle(almanacTabRects()[2]));
+    expect(g.state.almanacTab).toBe(2);
+    expect(g.state.menuIndex).toBe(0);
+    expect(g.state.almanacScroll).toBe(0);
+    expect(g.drainCues()).toEqual(["menu-move"]);
+  });
+
+  it("scrolls the almanac's list by the wheel, clamped, and nowhere else", () => {
+    const { game: g } = game();
+    g.toAlmanac();
+    const tools = almanacEntries(0).length;
+    wheel(g, WHEEL_ROW);
+    expect(g.state.almanacScroll).toBe(1);
+    expect(g.state.menuIndex).toBe(0);
+    wheel(g, WHEEL_ROW / 2);
+    expect(g.state.almanacScroll).toBe(1);
+    wheel(g, WHEEL_ROW * 40);
+    expect(g.state.almanacScroll).toBe(tools - ALMANAC_ROWS);
+    wheel(g, -WHEEL_ROW * 40);
+    expect(g.state.almanacScroll).toBe(0);
+    g.toTitle();
+    wheel(g, WHEEL_ROW * 3);
+    expect(g.state.almanacScroll).toBe(0);
   });
 });
 

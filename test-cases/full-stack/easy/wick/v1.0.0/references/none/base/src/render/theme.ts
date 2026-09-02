@@ -31,6 +31,8 @@ export const COLORS = {
   dim: "rgba(5, 4, 12, 0.6)",
   health: "#e2564f",
   healthBack: "#3a1d24",
+  /** The hurt cast's channels alone, so its alpha can ride the flash. */
+  hurt: "226, 86, 79",
   xp: "#5fc9ff",
   xpBack: "#1a2a3d",
   slot: "rgba(20, 18, 36, 0.85)",

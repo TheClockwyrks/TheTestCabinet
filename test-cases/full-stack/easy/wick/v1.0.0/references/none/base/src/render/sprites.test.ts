@@ -11,7 +11,9 @@ import {
   STAGE_CY,
   STAGE_H,
   STAGE_W,
+  WALK_FRAME_TIME,
 } from "../constants";
+import { ALMANAC } from "../layout";
 import { freshRun, initialState, type WickState, type Zone } from "../state";
 import { spawnEnemy } from "../sim/enemies";
 import { drawZone } from "./effects";
@@ -288,6 +290,41 @@ describe("the produced sprites in the frame", () => {
       if (screen === "levelup") run.offers = ["ember", "brass", "lamp-oil"];
       if (screen === "chest")
         run.chestResult = { kind: "evolve", weapon: "chandelier" };
+      expect(() => frame(state)).not.toThrow();
+    }
+  });
+
+  it("draws the almanac's produced picture and walks its enemy sheet", () => {
+    const state = initialState(1);
+    state.screen = "almanac";
+    const pane = [
+      ALMANAC.paneX,
+      ALMANAC.paneY,
+      ALMANAC.paneWidth,
+      ALMANAC.paneHeight,
+    ] as const;
+    // The tools tab draws Taper's produced icon and effect, not the stand-ins.
+    expect(differs(frame(state), frame(state, new Assets()), ...pane)).toBe(
+      true,
+    );
+    // The enemies tab's walk sheet advances on `simTime`, which every frame
+    // raises whatever the screen, so the almanac animates while nothing ticks.
+    state.almanacTab = 2;
+    const early = frame(state);
+    state.simTime = WALK_FRAME_TIME;
+    expect(differs(early, frame(state), ...pane)).toBe(true);
+    // One entry of each picture the four tabs draw: a tool whose effect is a
+    // sheet, a trinket, an enemy, a gem, and a pickup.
+    for (const [tab, index] of [
+      [0, 6],
+      [1, 0],
+      [2, 12],
+      [3, 2],
+      [3, 4],
+    ] as const) {
+      state.almanacTab = tab;
+      state.menuIndex = index;
+      state.almanacScroll = 0;
       expect(() => frame(state)).not.toThrow();
     }
   });

@@ -1,13 +1,15 @@
 // Wick — the HUD over the live world (specs/ui.md "`playing`").
 //
 // Health with its numbers, experience with the level, the clock, the kill
-// count, and the twelve slots with their level pips and each weapon's
-// cooldown state, laid out in logical stage units from the stage's top-left.
+// count, the twelve slots with their level pips and each weapon's cooldown
+// state, and the cast the view carries while the lamplighter's hurt flash
+// runs, laid out in logical stage units from the stage's top-left.
 // The HUD component translates the context to the stage's top-left in world
 // space before calling in, so everything here is stage coordinates.
 
 import type { WickAssets } from "../assets";
 import {
+  HURT_FLASH,
   ICON_PATHS,
   ICON_SIZE,
   LEVEL_LABEL,
@@ -37,6 +39,34 @@ export function formatClock(seconds: number): string {
   const minutes = Math.floor(whole / 60);
   const rest = whole % 60;
   return `${minutes}:${rest < 10 ? "0" : ""}${rest}`;
+}
+
+/**
+ * The hurt cast: while `hurtFlash` runs, red bled in from the edges of the
+ * view and a rim around it, fading as the flash counts down, so the stage
+ * drawn on a tick with a flash differs from the same stage without one.
+ */
+export function drawHurt(ctx: CanvasRenderingContext2D, seconds: number): void {
+  const strength = Math.max(0, Math.min(1, seconds / HURT_FLASH));
+  if (strength === 0) return;
+  const reach = Math.hypot(STAGE_W, STAGE_H) / 2;
+  const cast = ctx.createRadialGradient(
+    STAGE_W / 2,
+    STAGE_H / 2,
+    reach * 0.35,
+    STAGE_W / 2,
+    STAGE_H / 2,
+    reach,
+  );
+  cast.addColorStop(0, "rgba(226, 86, 79, 0)");
+  cast.addColorStop(1, `rgba(226, 86, 79, ${(0.55 * strength).toFixed(3)})`);
+  ctx.fillStyle = cast;
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+  ctx.strokeStyle = COLORS.hurt;
+  ctx.globalAlpha = strength;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(3, 3, STAGE_W - 6, STAGE_H - 6);
+  ctx.globalAlpha = 1;
 }
 
 function bar(

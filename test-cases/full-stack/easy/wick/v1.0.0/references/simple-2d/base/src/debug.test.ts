@@ -1,8 +1,17 @@
 import type { DeepReadonly } from "ts-essentials";
 import { describe, expect, it } from "vitest";
-import { TICK_DT } from "./constants";
+import {
+  ALMANAC_ROWS,
+  ALMANAC_TABS,
+  END_ITEMS,
+  HURT_FLASH,
+  PAUSE_ITEMS,
+  TICK_DT,
+  TITLE_ITEMS,
+} from "./constants";
+import { entriesOf } from "./almanac";
 import { createDebugApi } from "./debug";
-import { runFrame } from "./flow";
+import { NO_POINTER, runFrame } from "./flow";
 import type { WickDebugApi, WickState } from "./game";
 import { DAWN_TICK } from "./sim/lamplighter";
 import { NOTHING_HELD } from "./sim/context";
@@ -38,6 +47,7 @@ class Drive {
       dt: seconds,
       pressed: [],
       held: NOTHING_HELD,
+      pointer: NO_POINTER,
       toggleMute: () => {},
     }).draft;
   }
@@ -59,6 +69,9 @@ describe("the snapshot", () => {
     const snap = d.snap();
     expect(snap.version).toBe(1);
     expect(snap.screen).toBe("title");
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
     for (const name of [
       "spawning",
       "events",
@@ -78,6 +91,7 @@ describe("the snapshot", () => {
       xpToNext: 5,
       kills: 0,
       player: { x: 0, y: 0, facing: "right", hp: 100 },
+      hurtFlash: 0,
       maxHp: 100,
       armor: 0,
       moveSpeed: 180,
@@ -161,6 +175,85 @@ describe("reset", () => {
     expect(d.state).toEqual({ ...initialState(7), muted: true });
     d.pose((s) => d.api.reset(s));
     expect(d.snap().rngState).toBe(1);
+  });
+
+  it("restores the highlight, the tab, and the window to zero", () => {
+    const d = build();
+    d.pose((s) => d.api.setScreen(s, "almanac"));
+    d.state = { ...d.state, menuIndex: 12, almanacTab: 2, almanacScroll: 3 };
+    d.pose((s) => d.api.reset(s));
+    const snap = d.snap();
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
+    expect(snap.run.hurtFlash).toBe(0);
+  });
+});
+
+describe("the almanac readings", () => {
+  it("enters the almanac with the idle run and every index at zero", () => {
+    const d = playing();
+    d.pose((s) => d.api.setKills(s, 4));
+    d.pose((s) => d.api.setScreen(s, "almanac"));
+    const snap = d.snap();
+    expect(snap.screen).toBe("almanac");
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
+    expect(snap.run.kills).toBe(0);
+    expect(snap.run.tick).toBe(0);
+  });
+
+  it("reports the tab and the window it holds, and zero off the screen", () => {
+    const d = build();
+    d.pose((s) => d.api.setScreen(s, "almanac"));
+    d.state = { ...d.state, almanacTab: 2, almanacScroll: 3 };
+    expect(d.snap().almanacTab).toBe(2);
+    expect(d.snap().almanacScroll).toBe(3);
+    d.pose((s) => d.api.setScreen(s, "title"));
+    expect(d.snap().almanacTab).toBe(0);
+    expect(d.snap().almanacScroll).toBe(0);
+  });
+
+  it("reports the seconds left of the hurt flash", () => {
+    const d = playing();
+    d.pose((s) => d.api.setSpawning(s, false));
+    d.pose((s) => d.api.setWeaponFire(s, false));
+    d.pose((s) => d.api.setEnemyMotion(s, false));
+    expect(d.snap().run.hurtFlash).toBe(0);
+    d.pose((s) => d.api.spawnEnemy(s, "moth", 0, 0));
+    d.step();
+    expect(d.snap().run.hurtFlash).toBe(HURT_FLASH);
+    d.step();
+    expect(d.snap().run.hurtFlash).toBeCloseTo(HURT_FLASH - TICK_DT, 9);
+  });
+});
+
+describe("the rectangle readings", () => {
+  it("report one rectangle per item of the menu each screen shows", () => {
+    const d = playing();
+    expect(d.api.menuRects(d.state)).toEqual([]);
+    d.pose((s) => d.api.setScreen(s, "paused"));
+    expect(d.api.menuRects(d.state)).toHaveLength(PAUSE_ITEMS.length);
+    d.pose((s) => d.api.setScreen(s, "fallen"));
+    expect(d.api.menuRects(d.state)).toHaveLength(END_ITEMS.length);
+    d.pose((s) => d.api.setScreen(s, "title"));
+    const title = d.api.menuRects(d.state);
+    expect(title).toHaveLength(TITLE_ITEMS.length);
+    for (const rect of title) {
+      expect(Object.keys(rect).sort()).toEqual(["height", "width", "x", "y"]);
+    }
+  });
+
+  it("report the almanac's rows and its tabs, and no tab elsewhere", () => {
+    const d = build();
+    d.pose((s) => d.api.setScreen(s, "almanac"));
+    expect(d.api.menuRects(d.state)).toHaveLength(ALMANAC_ROWS);
+    expect(d.api.tabRects(d.state)).toHaveLength(ALMANAC_TABS.length);
+    d.state = { ...d.state, almanacTab: 3 };
+    expect(d.api.menuRects(d.state)).toHaveLength(entriesOf(3).length);
+    d.pose((s) => d.api.setScreen(s, "title"));
+    expect(d.api.tabRects(d.state)).toEqual([]);
   });
 });
 

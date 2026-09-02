@@ -6,6 +6,7 @@
 
 import type { DeepReadonly } from "ts-essentials";
 import type { WickState } from "../game";
+import { drawAlmanac } from "./almanac";
 import { drawHud } from "./hud";
 import {
   drawChest,
@@ -33,6 +34,10 @@ export function renderGame(
       drawWorld(ctx, run);
       drawHowto(ctx);
       break;
+    case "almanac":
+      drawWorld(ctx, run);
+      drawAlmanac(ctx, state);
+      break;
     case "playing":
       drawWorld(ctx, run);
       drawHud(ctx, run);
@@ -50,7 +55,7 @@ export function renderGame(
     case "paused":
       drawWorld(ctx, run);
       drawHud(ctx, run);
-      drawPaused(ctx);
+      drawPaused(ctx, state);
       break;
     case "fallen":
     case "dawn":
