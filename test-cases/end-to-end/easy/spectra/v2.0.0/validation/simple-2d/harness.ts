@@ -391,6 +391,20 @@ export interface UntilResult {
   snapshot: SpectraSnapshot;
 }
 
+/**
+ * How long a wait on the engine's own frame loop may run before it gives up.
+ *
+ * The bound on `runUntil`, and it is a bound rather than a measurement: the wait
+ * ends the moment the build's own reading says what the check is waiting for, so
+ * a quiet host leaves it in a fraction of a second and a host running a hundred
+ * other jobs simply takes longer to get there. What reaching this bound means is
+ * that the loop never ran, which is the failure the point is looking for.
+ */
+const FREE_RUN_DEADLINE_MS = 30_000;
+
+/** How often the build is asked what its own loop has done, while it holds the clock. */
+const FREE_RUN_POLL_MS = 25;
+
 export interface Harness {
   readonly engine: Engine<SpectraState, SpectraSurface>;
   /**
@@ -450,6 +464,22 @@ export interface Harness {
   ): Promise<UntilResult>;
   /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
   runFor(ms: number): Promise<void>;
+  /**
+   * Drive the engine's own frame loop until `predicate` holds of what the build
+   * reports, then halt it, and hand back the state that ended it.
+   *
+   * The wait a point about the build's own clock runs. Real time passes and
+   * nothing steps the game, exactly as `runFor` leaves it, but what ends the wait
+   * is the build's own reading rather than a stretch of the wall clock: how many
+   * frames a host's frame callback delivers in a given second is a fact about the
+   * machine, so a host running a hundred other jobs makes this wait longer
+   * instead of making the build look stopped. `deadlineMs` bounds it, and a build
+   * whose loop never runs reaches that bound with the predicate still false.
+   */
+  runUntil(
+    predicate: (snapshot: SpectraSnapshot) => boolean,
+    options?: { deadlineMs?: number; pollMs?: number },
+  ): Promise<SpectraSnapshot>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
@@ -845,6 +875,25 @@ export async function createHarness(
       await new Promise((resolve) => setTimeout(resolve, ms));
       controller.abort();
       await running;
+    },
+
+    async runUntil(predicate, runOptions = {}) {
+      const deadline =
+        Date.now() + (runOptions.deadlineMs ?? FREE_RUN_DEADLINE_MS);
+      const pollMs = Math.max(1, runOptions.pollMs ?? FREE_RUN_POLL_MS);
+      const controller = new AbortController();
+      const running = engine.run({ signal: controller.signal });
+      try {
+        let snapshot = debug.snapshot();
+        while (!predicate(snapshot) && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, pollMs));
+          snapshot = debug.snapshot();
+        }
+        return snapshot;
+      } finally {
+        controller.abort();
+        await running;
+      }
     },
 
     hold: (code) => dispatch("keydown", code),

@@ -11,10 +11,10 @@
 // and be unplayable, and this is the point that catches it.
 //
 // SO THIS IS THE ONE READING IN THE PROJECT TAKEN OFF THE WALL CLOCK. The game is
-// handed back to its own frame loop, half a second of real time is allowed to
-// pass, and the loop is taken away again. Nothing is stepped in between: whatever
-// moved, moved because the build's own loop measured a frame and ran an update
-// with it.
+// handed back to its own frame loop, real time is allowed to pass until the
+// build's own clock says the game has moved, and the loop is taken away again.
+// Nothing is stepped in between: whatever moved, moved because the build's own
+// loop measured a frame and ran an update with it.
 //
 // WHAT IS READ, AND WHY BOTH. `simTime` "accumulates the time the game's sub-steps
 // cover" (`specs/instrumentation.md`), so a build whose loop runs is one whose
@@ -23,11 +23,14 @@
 // too. Neither reading on its own decides it.
 //
 // NOTHING HERE MEASURES A RATE, AND THAT IS DELIBERATE. What a browser's frame
-// loop delivers in half a second of real time is the machine's business, not the
-// build's, so the bars below are set where nothing-happened ends rather than at
-// any figure: a tenth of the wall time on the clock, and a single logical unit of
-// travel. A build running at a tenth of the frame rate of the machine next door
-// passes here, and `swarm/dive-speed` is what grades the dive against
+// loop delivers in a given stretch of real time is the machine's business, not
+// the build's, so the wait ends the moment the build's OWN clock says the game
+// moved rather than after a fixed stretch of the wall clock: on a quiet host it
+// is over in a few frames, and on one running a hundred other jobs it simply
+// takes longer to get there. The bars are set where nothing-happened ends rather
+// than at any figure: a tenth of a second on the clock, and a single logical unit
+// of travel. A build running at a tenth of the frame rate of the machine next
+// door passes here, and `swarm/dive-speed` is what grades the dive against
 // `DIVE_SPEED`.
 //
 // THE FIELD IS OTHERWISE EMPTY AND QUIET. `startPosed` clears the four rosters and
@@ -55,26 +58,34 @@ import {
 /** Where the diving drone starts: mid-field, clear of both HUD strips. */
 const DIVER_AT = { x: 640, y: 220 } as const;
 
-/** How long the game is left on its own clock, in milliseconds of REAL time. */
-const WAIT_MS = 500;
+/**
+ * The game time the build's own loop must accumulate, in seconds, for the wait to
+ * be over.
+ *
+ * A tenth of a second, which a loop running at any frame rate at all reaches in a
+ * handful of frames. It is set where "the clock never moved" ends rather than at
+ * any frame rate, which is the machine's business and not the specification's.
+ */
+const SIM_MIN = 0.1;
 
 /**
- * The least game time that must have accumulated over that wait, in seconds.
+ * The most real time the build's loop is given to get there, in milliseconds.
  *
- * A tenth of the wall time. A build whose loop runs at all covers far more — the
- * wait is half a second and a frame loop delivers tens of frames in it — so this
- * is set where "the clock never moved" ends rather than at any frame rate, which
- * is the machine's business and not the specification's.
+ * A bound on the wait, not a figure the build is measured against: a browser
+ * delivering frames at all covers `SIM_MIN` in a fraction of a second, and this
+ * stands two orders of magnitude above that so a starved host lengthens the wait
+ * instead of failing a build that is running perfectly well. Reaching it means
+ * the loop never ran.
  */
-const SIM_MIN = WAIT_MS / 1000 / 10;
+const DEADLINE_MS = 30_000;
 
 /**
  * The least the diving drone must have travelled over that wait, in logical
  * units.
  *
  * One unit. `specs/swarm.md` flies a dive at `DIVE_SPEED` (`300`) units per
- * second, which is `150` units over the wait, so this is three orders of
- * magnitude below the figure: it reads that the world moved, and
+ * second, so the `SIM_MIN` of game time the wait runs for covers `30` units: this
+ * is well under the figure, and it reads that the world moved while
  * `swarm/dive-speed` reads how fast.
  */
 const MOVED_MIN = 1;
@@ -104,8 +115,11 @@ it("advances itself while it holds its own clock", async () => {
   await captureStill(h, "before");
   const posed = requireDrone(before, diver, "the drone posed into its dive");
 
-  // The wait: the build's own loop, and nothing else, for half a second.
-  await h.runFor(WAIT_MS);
+  // The wait: the build's own loop, and nothing else, until the build's own clock
+  // says the game has moved.
+  await h.runUntil((s) => s.simTime - before.simTime > SIM_MIN, {
+    deadlineMs: DEADLINE_MS,
+  });
 
   const after = await h.snapshot();
   await captureStill(h, "after");
@@ -113,18 +127,18 @@ it("advances itself while it holds its own clock", async () => {
   assertGreaterThan(
     after.simTime - before.simTime,
     SIM_MIN,
-    `the game time that accumulated over ${WAIT_MS} ms of real time with the ` +
-      `game on its own clock — setAutoStep(true) returns it to running itself ` +
-      `(specs/instrumentation.md)`,
+    `the game time that accumulated over up to ${String(DEADLINE_MS)} ms of ` +
+      `real time with the game on its own clock — setAutoStep(true) returns it ` +
+      `to running itself (specs/instrumentation.md)`,
   );
 
   const moved = requireDrone(after, diver, "the drone posed into its dive");
   assertGreaterThan(
     distance(moved, posed),
     MOVED_MIN,
-    `how far the diving drone travelled over that same ${WAIT_MS} ms, from ` +
-      `the (${posed.x.toFixed(1)}, ${posed.y.toFixed(1)}) it stood at — a ` +
-      `clock that rises over a world that never steps is not the game ` +
-      `advancing itself`,
+    `how far the diving drone travelled over that same wait, from the ` +
+      `(${posed.x.toFixed(1)}, ${posed.y.toFixed(1)}) it stood at — a clock ` +
+      `that rises over a world that never steps is not the game advancing ` +
+      `itself`,
   );
 });
