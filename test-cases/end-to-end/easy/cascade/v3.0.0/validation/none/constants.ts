@@ -1,19 +1,39 @@
 // Cascade — every figure the specification fixes, restated on the validator's
 // side. CASE-PROVIDED.
 //
-// WHY THIS FILE EXISTS AT ALL, AND WHY IT IS NOT A DUPLICATE. Under the two
-// engines the case seeds `src/constants.ts` into the workspace and the build is
-// asked not to edit it, so `validation/simple-2d/` and `validation/structured-2d/`
-// import the figures from the build's own tree. An engineless run seeds NO `src/`
-// (`specs/overview.md`: "Everything under `src/`. The directory does not exist
-// yet."), so there is nothing to import and the figures are restated here, each
-// under the name the specification gives it.
+// WHY THIS FILE EXISTS AT ALL, AND WHY IT IS NOT A DUPLICATE. Every project
+// under `validation/` owns one of these, and the reason is the same under all
+// three engines: a check decides whether the build matches the SPECIFICATION,
+// so the figure it asserts has to come from the specification. Read that figure
+// out of the build instead and the comparison collapses to "does the build do
+// what the build says it does" — which is true of every build, including one
+// that overlaps a column's face-up cards at a pitch of 30 and writes
+// `FACE_UP_OFFSET = 30` to match. It agrees with itself exactly, on every frame,
+// forever, and a full sheet of green would say nothing about whether it overlaps
+// at the `34` `specs/table.md` fixes.
 //
-// NOTHING HERE IS READ FROM A BUILD. That is the whole point. A check that
-// compared a build's own constant against itself would grade nothing, and would
-// pass a build that named every figure consistently and wrongly. Each value below
-// is transcribed from `specs/`, and the spec is authoritative: if a value here
-// disagrees with the spec file cited beside it, this file is wrong.
+// UNDER THE TWO ENGINES THERE IS SOMETHING TO BE TEMPTED BY, AND IT IS STILL
+// THE BUILD'S. The case does seed `src/constants.ts` into those workspaces and
+// `specs/overview.md` lists it among the files that stay as they are — but it
+// lands in the build's own tree, nothing re-checks that the file a run produced
+// is the file that was seeded, and a validator that imported from it would be
+// reading the graded thing's account of itself. So `validation/simple-2d/` and
+// `validation/structured-2d/` transcribe their figures too, into a
+// `constants.ts` of their own exactly like this one.
+//
+// UNDER `none` THERE IS NOT EVEN THAT. An engineless run seeds no `src/` at all
+// (`specs/overview.md`: "Everything under `src/`. The directory does not exist
+// yet."), so every figure this specification fixes is named somewhere in code
+// the build wrote, under a name the build chose, in a module the build laid
+// out. Nothing here could be imported even if importing were allowed — and it
+// is not: the reference workspace's `eslint.config.js` refuses any reach into
+// the build's `src/` from a file under `validation/`, and this file is the one
+// exemption, which it spends on nothing.
+//
+// NOTHING HERE IS READ FROM A BUILD. Each value below is transcribed from
+// `specs/` by hand, under the name the specification gives it, and the spec is
+// authoritative: if a value here disagrees with the spec file cited beside it,
+// this file is wrong.
 //
 // WHAT IS DELIBERATELY ABSENT.
 //
