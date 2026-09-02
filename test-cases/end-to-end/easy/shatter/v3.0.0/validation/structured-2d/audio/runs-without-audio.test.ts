@@ -49,13 +49,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  DEFAULT_SEED,
   FACE_UP,
   SAFE_X,
   SAFE_Y,
   SCORE_SMALL,
   WAVE_BANNER_TIME,
 } from "../constants";
+import { DEFAULT_SEED } from "../surface";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   aimedRound,

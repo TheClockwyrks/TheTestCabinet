@@ -42,7 +42,8 @@
 // `screens/howto-reachable`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEFAULT_SEED, TITLE_ITEMS } from "../constants";
+import { TITLE_ITEMS } from "../constants";
+import { DEFAULT_SEED } from "../surface";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import {
   canvasPixels,

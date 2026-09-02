@@ -324,8 +324,3 @@ export const CUES = {
   death: "death",
   extraLife: "extra-life",
 } as const;
-
-/* ---- The debug surface (specs/instrumentation.md) ------------------------- */
-
-/** The seed `reset()` uses when its caller names none. */
-export const DEFAULT_SEED = 1;

@@ -57,7 +57,8 @@
 // and still be one streak, and how long a tail must be are each check's own
 // figures, stated in the check beside the specification rule it serves.
 
-import { DEFAULT_SEED, FIELD_W } from "../constants";
+import { FIELD_W } from "../constants";
+import { DEFAULT_SEED } from "../surface";
 import { fail } from "../assert";
 import { shortestDelta } from "../geometry";
 import { poseBullet, resetTo, startPlaying, type Harness } from "../harness";

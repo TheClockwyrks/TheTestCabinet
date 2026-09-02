@@ -21,13 +21,13 @@
 
 import {
   BULLET_R,
-  DEFAULT_SEED,
   FIELD_H,
   FIELD_W,
   MUZZLE_SPEED,
   STAR_X,
   STAR_Y,
 } from "../constants";
+import { DEFAULT_SEED } from "../surface";
 import { fail } from "../assert";
 import {
   directDistanceToStar,

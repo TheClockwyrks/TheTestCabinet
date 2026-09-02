@@ -47,7 +47,7 @@
 // and still be one streak, and how long a tail must be are each check's own
 // figures, stated in the check beside the specification rule it serves.
 
-import { DEFAULT_SEED } from "../constants";
+import { DEFAULT_SEED } from "../surface";
 import { foldX } from "../geometry";
 import { fail } from "../assert";
 import { poseBullet, startPlaying, type Harness } from "../harness";
