@@ -29,7 +29,8 @@
 // check asks for a number of frames and gets exactly that number — no polling, no
 // waiting, and no measurement of the machine it ran on. The one check that is
 // ABOUT the loop running itself (`gameplay/advances-in-real-time`) hands it back
-// with `runFor`.
+// with `runUntil`, which watches the game's OWN clock while real time passes
+// rather than measuring one against the other.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
