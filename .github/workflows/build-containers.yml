@@ -122,14 +122,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Node serves two things here. `build.sh` runs `scripts/presign-sample-pack.mjs`
-      # (node-only) to mint the R2 download URL for the sfx-sample/music audio packs; and
-      # building `gg` below reflects the TypeScript and JavaScript arms' signature
-      # catalogues with the workspace's PINNED `typescript`, which is a devDependency, so
-      # `npm ci` is a build prerequisite for two of the eleven arms. The version matches
-      # ci.yml's and release.yml's rather than the 20.x this step used to pin for the
-      # presign script alone — one Node for the job, and the one the rest of CI builds gg
-      # with.
+      # Node serves two things here. `build.sh` runs `scripts/stage-audio-image.mjs`
+      # (node-only) to download and verify the audio clips the sfx-sample, music and
+      # full-stack-2d images bake; and building `gg` below reflects the TypeScript and
+      # JavaScript arms' signature catalogues with the workspace's PINNED `typescript`,
+      # which is a devDependency, so `npm ci` is a build prerequisite for two of the
+      # eleven arms. The version matches ci.yml's and release.yml's rather than the 20.x
+      # this step used to pin for the audio stager alone — one Node for the job, and the
+      # one the rest of CI builds gg with.
       - uses: actions/setup-node@v6
         with:
           node-version: 22.23.1
@@ -231,11 +231,13 @@ jobs:
       # arch tag is written here; the bare `:latest` manifest list is created by the
       # manifest job, so a half-finished matrix never leaves `:latest` single-arch.
       #
-      # The CLOUDFLARE_AUDIO_R2_* values let build.sh presign a READ-only download of
-      # the sfx-sample and music images' audio packs (see build_audio_image). They are
-      # read-scoped — CI never writes the bucket; publishing is a local step. They are
-      # REQUIRED: a pack that is not pinned (or that cannot be presigned) fails the
-      # build rather than shipping an image with an empty palette, so these must be set.
+      # The CLOUDFLARE_AUDIO_R2_* values let scripts/stage-audio-image.mjs presign a
+      # READ-only download of every clip the sfx-sample, music and full-stack-2d images
+      # bake, verifying each against containers/sample-packs/objects.lock.json as it
+      # lands (see build_audio_image). They are read-scoped — CI never writes the bucket;
+      # publishing a clip is a local step. They are REQUIRED: a clip that is unpublished,
+      # unrecorded in the lock, or that fails its digest check fails the build rather than
+      # shipping an image with a missing palette, so these must be set.
       #
       # `--gg-selfcheck` is what makes this job a gate on the `-gg` variants rather than
       # only a publisher of them: build.sh drives every language arm's real bootstrap turn

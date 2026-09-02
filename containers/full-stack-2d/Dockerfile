@@ -25,8 +25,8 @@
 # This image inherits everything from base-wasm — the Node build toolchain, the Rust +
 # `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack` toolchain, the unprivileged
 # `node` run user, the `/work` working directory, and the keep-alive CMD — so it only
-# adds the six binaries and the two audio packs. The image a run resolves is selected
-# by its test type (see crate `harness::resolve_run_image`).
+# adds the six binaries and the baked audio palette. The image a run resolves is
+# selected by its test type (see crate `harness::resolve_run_image`).
 
 # `BASE_IMAGE` is the base image to extend — the Rust/wasm base (`base-wasm`), so a
 # full-stack build may author its simulation core in Rust and ship it as committed
@@ -52,7 +52,7 @@ ARG TOOLS_IMAGE=test-cabinet-tools:latest
 # this stage.
 FROM ${TOOLS_IMAGE} AS tools
 
-# --- The run image: the base-wasm, plus the binaries + the audio packs ------
+# --- The run image: the base-wasm, plus the binaries + the audio palette ----
 # `FROM` the base-wasm built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
@@ -68,64 +68,45 @@ COPY --from=tools /out/sfx-synth /usr/local/bin/sfx-synth
 COPY --from=tools /out/sfx-sample /usr/local/bin/sfx-sample
 COPY --from=tools /out/music /usr/local/bin/music
 
-# --- Bake in the sample pack `sfx-sample` mixes over ------------------------
+# --- Bake in the audio palette `sfx-sample` and `music` read ----------------
 #
-# Identical mechanism to the dedicated `sfx-sample` image (see
-# `containers/sfx-sample/Dockerfile`): the sample pack is a separately-versioned,
-# content-addressed object-storage tarball (the audio files are NOT committed to this
-# repo). The build PINS it BY DIGEST — `SAMPLE_PACK_SHA256`, enforced by `ADD
-# --checksum` — so the baked palette is immutable and versioned with the image; a run
-# container is offline, so the fetch happens at BUILD time, pinned. `build.sh`'s
-# `build_full_stack_2d` presigns a short-lived R2 GET URL from the pin in
-# `containers/sample-packs/packs.lock.json` and supplies all three args (the defaults
-# are placeholders that fail the build until a real pack is pinned):
-#   --build-arg SAMPLE_PACK=combat-core@0.1.0
-#   --build-arg SAMPLE_PACK_SHA256=sha256:<digest printed by build-sample-pack.mjs>
-#   --build-arg SAMPLE_PACK_URL=<presigned R2 URL of combat-core-0.1.0.tar>
-ARG SAMPLE_PACK=combat-core@0.1.0
-ARG SAMPLE_PACK_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG SAMPLE_PACK_URL
+# Identical mechanism to the dedicated `sfx-sample` and `music` images (see
+# `containers/sfx-sample/Dockerfile` and `containers/music/Dockerfile`), with one tree
+# serving both tools. The audio is not committed to this repository: the clip bytes
+# live in the private audio object store, and `containers/build.sh`
+# (`build_full_stack_2d`) stages the tree this image bakes with
+# `scripts/stage-audio-image.mjs` before the build, verifying every object against
+# `containers/sample-packs/objects.lock.json` as it lands. `AUDIO_STAGE_DIR` is that
+# staged tree's path within the build context (the repository root):
+#   --build-arg AUDIO_STAGE_DIR=dist/audio-image/<hash>/audio
+# Its default points nowhere, so a build that does not go through `build.sh` fails at
+# the COPY below rather than shipping an image with a missing palette.
+ARG AUDIO_STAGE_DIR=dist/audio-image/unstaged/audio
 
-# Fetch + verify the pinned tarball and unpack it to the path the `audio-core` loader
-# reads (`load_pack` in `crates/audio-core/src/sample.rs`: a `*.toml` manifest plus the
-# `<name>.wav` audio beside it). The dir name is pack-agnostic (the loader is pointed at
-# it by env below). Make it world-readable for the unprivileged run user.
+# Copy the staged tree to the path the `audio-core` loader reads. It holds
+# `clips/<clip-id>.<profile-id>.wav` plus one `packs/<name>/pack.toml` per pack — the
+# `combat-core` sample pack `sfx-sample` mixes over AND every instrument bank `music`
+# can play (`gm-lite`, `cinematic`, `synthwave`), because a full-stack case may name
+# any of them and a bank that is not baked is a load error rather than a fallback.
+# Entries
+# reference the shared clip files relatively, so a clip several packs name is carried
+# once (`load_pack` in `crates/audio-core/src/sample.rs` resolves each entry's `file`
+# against its pack directory). Make it world-readable for the unprivileged run user;
+# COPY writes as root, so bracket it with the root/node USER switch the base image's
+# `USER node` otherwise leaves in force.
 USER root
-ADD --checksum=${SAMPLE_PACK_SHA256} ${SAMPLE_PACK_URL} /tmp/sample-pack.tar
-RUN mkdir -p /opt/sample-packs/pack \
-	&& tar -xf /tmp/sample-pack.tar -C /opt/sample-packs/pack \
-	&& rm /tmp/sample-pack.tar \
-	&& chmod -R a+rX /opt/sample-packs
+COPY ${AUDIO_STAGE_DIR} /opt/audio
+RUN chmod -R a+rX /opt/audio
 USER node
 
-# Point `sfx-sample` at the baked pack (the run config only names it as
-# `sample_pack = "<name>@<version>"`; the image owns where it physically lives).
-ENV TCAB_SAMPLE_PACK=${SAMPLE_PACK}
-ENV TCAB_SAMPLE_PACK_DIR=/opt/sample-packs/pack
-
-# --- Bake in the instrument bank the `music` sequencer plays ----------------
-#
-# Identical mechanism to the dedicated `music` image (see `containers/music/Dockerfile`):
-# a pinned, content-addressed instrument-bank tarball, fetched + verified at build time.
-# `build.sh`'s `build_full_stack_2d` presigns it from the same pin file and supplies:
-#   --build-arg INSTRUMENT_BANK=gm-lite@0.1.0
-#   --build-arg INSTRUMENT_BANK_SHA256=sha256:<digest printed by build-sample-pack.mjs>
-#   --build-arg INSTRUMENT_BANK_URL=<presigned R2 URL of gm-lite-0.1.0.tar>
-ARG INSTRUMENT_BANK=gm-lite@0.1.0
-ARG INSTRUMENT_BANK_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG INSTRUMENT_BANK_URL
-
-# Fetch + verify the pinned tarball and unpack it to the path the `audio-core` loader
-# reads. Make it world-readable for the unprivileged run user.
-USER root
-ADD --checksum=${INSTRUMENT_BANK_SHA256} ${INSTRUMENT_BANK_URL} /tmp/instrument-bank.tar
-RUN mkdir -p /opt/instrument-banks/gm-lite \
-	&& tar -xf /tmp/instrument-bank.tar -C /opt/instrument-banks/gm-lite \
-	&& rm /tmp/instrument-bank.tar \
-	&& chmod -R a+rX /opt/instrument-banks
-USER node
-
-# Point `music` at the baked bank (the run config only names it as
-# `instrument_bank = "<name>@<version>"`; the image owns where it physically lives).
-ENV TCAB_INSTRUMENT_BANK=${INSTRUMENT_BANK}
-ENV TCAB_INSTRUMENT_BANK_DIR=/opt/instrument-banks/gm-lite
+# Point both tools at the packs ROOT, under which a config's `sample_pack` /
+# `instrument_bank` name selects a subdirectory (see `select_pack_dir` in
+# `crates/audio-core/src/config.rs`); a name with no subdirectory there is a load error
+# rather than some other palette. A full-stack model authors its own
+# `sfx-sample.config.json` / `music.config.json` and typically names no palette, so
+# `TCAB_SAMPLE_PACK` and `TCAB_INSTRUMENT_BANK` state which of the baked palettes such a
+# run reads. The image, not a run's config, owns where the audio physically lives.
+ENV TCAB_SAMPLE_PACK_DIR=/opt/audio/packs
+ENV TCAB_SAMPLE_PACK=combat-core
+ENV TCAB_INSTRUMENT_BANK_DIR=/opt/audio/packs
+ENV TCAB_INSTRUMENT_BANK=gm-lite

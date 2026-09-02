@@ -468,3 +468,24 @@
 # This is not hypothetical here: the primary development host is macOS running the tree
 # through a Linux VM's shared mount, so Finder and the builder see the same directories.
 **/.DS_Store
+
+# The staged AUDIO TREE, and the one thing under dist/ that belongs in this context.
+# The audio clips the sfx-sample, music and full-stack-2d images bake are not committed
+# to this repository: `containers/build.sh` runs scripts/stage-audio-image.mjs, which
+# downloads and verifies them out of the private audio object store into
+# dist/audio-image/<hash>/audio, and those three Dockerfiles then `COPY` that directory
+# (named through the AUDIO_STAGE_DIR build arg) to /opt/audio. The blanket `**/dist/`
+# re-exclusion above would keep it out, so re-include just this subtree — and only it,
+# so every OTHER dist/ (a local `npm run build`'s output) stays out as before. This
+# re-inclusion has to come after `**/dist/` to win, which is why it lives here rather
+# than with the allowlist proper.
+#
+# The pattern names the `audio` directory one level under a `<hash>` stage rather than
+# the whole `dist/audio-image` root, which is as narrow as this file's format goes: it
+# is exactly what a COPY reads, so the stager's content-addressed DOWNLOAD CACHE at
+# dist/audio-image/.cache — a second copy of every clip it has ever verified, which no
+# image reads — stays out, and so does anything else that ends up beside a stage. The
+# `*` covers one path segment and no more, so it admits the stage directories and not
+# a tree of them. Every image build sees only ONE such directory anyway: the stager
+# prunes the stages it did not just write.
+!/dist/audio-image/*/audio

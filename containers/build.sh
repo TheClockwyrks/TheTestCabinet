@@ -833,50 +833,101 @@ build_asset_image() {
 	fi
 }
 
-# Build an audio image (sfx-sample / music) that bakes a content-addressed audio
-# pack. Unlike a plain asset image, the pack is fetched from the private R2 bucket at
-# build time: this resolves the pack's pinned digest + object key from
-# `containers/sample-packs/packs.lock.json`, mints a SHORT-LIVED presigned R2 GET URL
-# for it (needs the read-only PRESIGN credentials in the environment — see
-# `scripts/lib/r2.mjs`), and passes the pack ref, that URL, and the digest as build
-# args. The Dockerfile's `ADD --checksum` then pulls + verifies the tarball; no
-# credential ever enters an image layer.
+# The audio packs each image bakes, by `<name>@<version>` ref into
+# `containers/sample-packs/`. One list per image so a pack's version is stated once:
+# `sfx-sample` mixes over the combat sample pack, `music` plays every instrument bank
+# (a case's `instrument_bank` selects which), and full-stack-2d carries BOTH tools, so
+# it bakes the sample pack AND every bank — a full-stack case may name any of them, and
+# a bank that is not baked is a hard load error at run time, not a fallback.
+AUDIO_PACKS_SFX_SAMPLE=("combat-core@0.1.0")
+AUDIO_PACKS_MUSIC=("gm-lite@0.1.0" "cinematic@0.1.0" "synthwave@0.1.0")
+AUDIO_PACKS_FULL_STACK_2D=(
+	"combat-core@0.1.0"
+	"gm-lite@0.1.0"
+	"cinematic@0.1.0"
+	"synthwave@0.1.0"
+)
+
+# Stage the audio tree an image bakes and echo its path RELATIVE TO THE BUILD CONTEXT.
 #
-# The pack MUST be published: a missing pin, or a presign that fails (missing creds,
-# no node), is a HARD error that fails the build — an audio image is never shipped
-# with an empty palette. Publish a pack with `node scripts/build-sample-pack.mjs
-# <pack> --publish` and commit the pin before building its image.
+# The clip bytes are not committed to this repository: they live in the private audio
+# object store as already-normalized objects, and `scripts/stage-audio-image.mjs`
+# materializes the tree an image bakes under `dist/audio-image/<hash>/audio` — one
+# `clips/<clip-id>.<profile-id>.wav` per clip, shared across the packs that name it,
+# plus one `packs/<name>/pack.toml` per pack. The stager presigns a SHORT-LIVED
+# read-only GET for each object (needs the PRESIGN credentials in the environment —
+# see `scripts/lib/r2.mjs`) and verifies every download against
+# `containers/sample-packs/objects.lock.json` before it lands, so no credential ever
+# enters an image layer and the build has no path to the original source.
 #
-# Arguments: <image-name> <pack-ref> <pack-arg> <url-arg> <sha-arg>.
+# EVERY named pack MUST be published: a clip missing from the registry, an object with
+# no record in `objects.lock.json`, a failed download, or a digest mismatch aborts the
+# stager, and that is a HARD error here rather than a skip — an audio image is never
+# shipped with a missing or partial palette. Publish with
+# `node scripts/build-sample-pack.mjs <pack> --publish` and commit the updated
+# `objects.lock.json` before building the image.
+#
+# The staged tree must be reachable by the Dockerfile's `COPY`, which resolves against
+# the build context (the repository root, as for every image here), so this echoes a
+# context-relative path and rejects a stage root outside the repository instead of
+# letting the COPY fail obscurely. The root `.dockerignore` re-includes
+# `/dist/audio-image/*/audio` for exactly this, which is the staged tree and nothing
+# else beside it.
+#
+# This runs inside a command substitution (its stdout IS the path), where an `exit`
+# would end only the subshell, so it reports to stderr and RETURNS non-zero; the caller
+# turns that into the build's failure.
+#
+# Arguments: <image> <pack-ref>...
+stage_audio_tree() {
+	local image="$1"
+	shift
+
+	local root
+	if ! root="$(node "${SCRIPT_DIR}/../scripts/stage-audio-image.mjs" "$@")"; then
+		echo "ERROR: cannot build ${image}: staging the audio tree for $* failed." >&2
+		echo "       Every pack it names must be published (node scripts/build-sample-pack.mjs <pack> --publish)," >&2
+		echo "       and this build needs node plus the CLOUDFLARE_AUDIO_R2_PRESIGN credentials." >&2
+		return 1
+	fi
+
+	local repo_root
+	repo_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
+	if [[ "${root}" != "${repo_root}/"* ]]; then
+		echo "ERROR: cannot build ${image}: the staged audio tree" >&2
+		echo "       ${root}" >&2
+		echo "       is outside the build context ${repo_root}, so the image's COPY cannot reach it." >&2
+		echo "       Leave the stager's output directory at its dist/audio-image default." >&2
+		return 1
+	fi
+
+	echo "${root#"${repo_root}/"}/audio"
+}
+
+# Build an image that bakes an audio palette (sfx-sample / music / full-stack-2d).
+#
+# Unlike a plain asset image, the audio these tools read is not in the build context
+# until it is staged: `stage_audio_tree` above downloads and verifies it, and the
+# resulting context-relative directory is passed as `AUDIO_STAGE_DIR` for the
+# Dockerfile to `COPY` to `/opt/audio`. A failure staging ANY named pack fails the
+# build, so an image either carries its complete palette or is not built.
+#
+# Arguments: <image-name> <base-image> <pack-ref>...
 build_audio_image() {
-	local name="$1" pack_ref="$2" pack_arg="$3" url_arg="$4" sha_arg="$5"
+	local name="$1" base="$2"
+	shift 2
 	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
-	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
 
-	# A missing pin is a hard error (not a skip): the pack must be published first.
-	if [[ ! -f "${lock}" ]] || ! grep -q "\"${pack_ref}\"" "${lock}"; then
-		echo "ERROR: cannot build ${image}: pack ${pack_ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
-		echo "       Publish it with: node scripts/build-sample-pack.mjs <pack> --publish" >&2
-		exit 1
-	fi
+	# `|| exit 1` rather than leaning on `set -e`: the helper has already said what went
+	# wrong, and the build must stop here rather than build an image with no palette.
+	local stage_dir
+	stage_dir="$(stage_audio_tree "${image}" "$@")" || exit 1
 
-	# Presign a download URL from the pin. The helper prints two lines: URL, then digest.
-	local presign
-	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${pack_ref}")"; then
-		echo "ERROR: ${pack_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
-		exit 1
-	fi
-	local lines
-	mapfile -t lines <<<"${presign}"
-	local url="${lines[0]}" sha="${lines[1]}"
-
-	echo "==> building ${image} (FROM ${BASE_IMAGE}) with ${pack_arg}=${pack_ref}"
+	echo "==> building ${image} (FROM ${base}) with audio packs: $*"
 	"$DOCKER" build \
-		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "BASE_IMAGE=${base}" \
 		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
-		--build-arg "${pack_arg}=${pack_ref}" \
-		--build-arg "${url_arg}=${url}" \
-		--build-arg "${sha_arg}=${sha}" \
+		--build-arg "AUDIO_STAGE_DIR=${stage_dir}" \
 		-t "${image}" \
 		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
 
@@ -888,114 +939,23 @@ build_audio_image() {
 }
 
 # Build the music image, which bakes EVERY instrument bank as a per-name subdirectory
-# so a `music` case's `instrument_bank` selects which palette it plays (see
-# `select_pack_dir` in crates/audio-core/src/config.rs and containers/music/Dockerfile).
-# Each bank is a separately-pinned, content-addressed pack presigned from the private R2
-# bucket at build time; a missing pin or a failed presign for ANY bank is a HARD error
-# (the image is never shipped with a missing palette). The FIRST bank is the default
-# recorded in TCAB_INSTRUMENT_BANK. Each bank's build-arg prefix pairs with the matching
-# ARG block in the Dockerfile, and each name must match its per-name subdir there.
+# under `/opt/audio/packs`, so a `music` case's `instrument_bank` selects which palette
+# it plays (see `select_pack_dir` in crates/audio-core/src/config.rs and
+# containers/music/Dockerfile). A bank with no subdirectory of its own is a load error,
+# not a fallback to some other palette, so every bank a case may name is staged here.
 build_music_image() {
-	local image="${IMAGE_NAME_PREFIX}music:${IMAGE_TAG}"
-	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
-	# The banks baked into the music image, and the Dockerfile ARG prefix each maps to.
-	local banks=("gm-lite@0.1.0" "cinematic@0.1.0" "synthwave@0.1.0")
-	local prefixes=("INSTRUMENT_BANK" "INSTRUMENT_BANK_CINEMATIC" "INSTRUMENT_BANK_SYNTHWAVE")
-
-	local build_args=(
-		--build-arg "BASE_IMAGE=${BASE_IMAGE}"
-		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}"
-	)
-	local i ref presign lines
-	for i in "${!banks[@]}"; do
-		ref="${banks[$i]}"
-		if [[ ! -f "${lock}" ]] || ! grep -q "\"${ref}\"" "${lock}"; then
-			echo "ERROR: cannot build ${image}: bank ${ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
-			echo "       Publish it with: node scripts/build-sample-pack.mjs <bank> --publish" >&2
-			exit 1
-		fi
-		if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${ref}")"; then
-			echo "ERROR: ${ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
-			exit 1
-		fi
-		mapfile -t lines <<<"${presign}"
-		build_args+=(
-			--build-arg "${prefixes[$i]}=${ref}"
-			--build-arg "${prefixes[$i]}_URL=${lines[0]}"
-			--build-arg "${prefixes[$i]}_SHA256=${lines[1]}"
-		)
-	done
-
-	echo "==> building ${image} (FROM ${BASE_IMAGE}) with banks: ${banks[*]}"
-	"$DOCKER" build "${build_args[@]}" \
-		-t "${image}" \
-		-f "${SCRIPT_DIR}/music/Dockerfile" "${SCRIPT_DIR}/.."
-
-	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${image}" music)"
-		echo "==> music reference: ${reference}"
-	fi
+	build_audio_image music "${BASE_IMAGE}" "${AUDIO_PACKS_MUSIC[@]}"
 }
 
 # Build the 2D full-stack image: base-wasm plus the six 2D asset-generation binaries
-# (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the two audio packs
-# those tools need (the combat-core sample pack for `sfx-sample`, the gm-lite instrument
-# bank for `music`). It is the union of a plain asset image and BOTH audio images, so it
-# presigns two content-addressed packs from the private R2 bucket at build time (see
-# build_audio_image for the mechanism and credentials) and passes both — plus the base —
-# to the one Dockerfile. Like the audio images, a missing pin or a failed presign for
-# EITHER pack is a HARD error: a full-stack image is never shipped with an empty audio
-# palette. Publish a pack with `node scripts/build-sample-pack.mjs <pack> --publish` and
-# commit the pin before building this image.
+# (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the audio palette
+# those tools read. It is the union of a plain asset image and BOTH audio images, so it
+# stages the combat sample pack `sfx-sample` mixes over together with every instrument
+# bank `music` can play, and the one Dockerfile copies that shared tree to `/opt/audio`.
+# As for the audio images, a pack that cannot be staged is a HARD error: a full-stack
+# image is never shipped with a missing audio palette.
 build_full_stack_2d() {
-	local image="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
-	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
-	local sample_ref="combat-core@0.1.0" bank_ref="gm-lite@0.1.0"
-
-	# Both packs must be pinned (not a skip): the image bakes both.
-	local ref
-	for ref in "${sample_ref}" "${bank_ref}"; do
-		if [[ ! -f "${lock}" ]] || ! grep -q "\"${ref}\"" "${lock}"; then
-			echo "ERROR: cannot build ${image}: pack ${ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
-			echo "       Publish it with: node scripts/build-sample-pack.mjs <pack> --publish" >&2
-			exit 1
-		fi
-	done
-
-	# Presign a download URL + digest for each pack (two lines each: URL, then digest).
-	local presign lines
-	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${sample_ref}")"; then
-		echo "ERROR: ${sample_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
-		exit 1
-	fi
-	mapfile -t lines <<<"${presign}"
-	local sample_url="${lines[0]}" sample_sha="${lines[1]}"
-	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${bank_ref}")"; then
-		echo "ERROR: ${bank_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
-		exit 1
-	fi
-	mapfile -t lines <<<"${presign}"
-	local bank_url="${lines[0]}" bank_sha="${lines[1]}"
-
-	echo "==> building ${image} (FROM ${BASE_WASM_IMAGE}) with ${sample_ref} + ${bank_ref}"
-	"$DOCKER" build \
-		--build-arg "BASE_IMAGE=${BASE_WASM_IMAGE}" \
-		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
-		--build-arg "SAMPLE_PACK=${sample_ref}" \
-		--build-arg "SAMPLE_PACK_URL=${sample_url}" \
-		--build-arg "SAMPLE_PACK_SHA256=${sample_sha}" \
-		--build-arg "INSTRUMENT_BANK=${bank_ref}" \
-		--build-arg "INSTRUMENT_BANK_URL=${bank_url}" \
-		--build-arg "INSTRUMENT_BANK_SHA256=${bank_sha}" \
-		-t "${image}" \
-		-f "${SCRIPT_DIR}/full-stack-2d/Dockerfile" "${SCRIPT_DIR}/.."
-
-	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${image}" full-stack-2d)"
-		echo "==> full-stack-2d reference: ${reference}"
-	fi
+	build_audio_image full-stack-2d "${BASE_WASM_IMAGE}" "${AUDIO_PACKS_FULL_STACK_2D[@]}"
 }
 
 # Build the game-jam image: the full-stack-2d image plus nothing but its own
@@ -1090,7 +1050,7 @@ build_performance() {
 }
 
 # Build one image by its short name, dispatching to the right builder: the sfx-sample
-# image carries its pack ref + build-arg names; music bakes every instrument bank
+# image carries the sample pack it mixes over; music bakes every instrument bank
 # (build_music_image); base, adversarial, and performance have dedicated builders;
 # everything else is a plain asset-generation image built `FROM` the base.
 build_one() {
@@ -1099,19 +1059,18 @@ build_one() {
 		base-wasm)    build_base_wasm ;;
 		adversarial)  build_adversarial ;;
 		performance)  build_performance ;;
-		# The full-stack-2d image bakes six binaries AND two content-addressed audio
-		# packs pulled from the private R2 bucket at build time (see
-		# build_full_stack_2d). Both packs must be published + pinned first.
+		# The full-stack-2d image bakes six binaries AND the audio palette they read,
+		# staged from the private audio object store at build time (see
+		# build_full_stack_2d). Every pack it names must be published first.
 		full-stack-2d) build_full_stack_2d ;;
 		# The game-jam image is built `FROM` the full-stack-2d image (see
 		# build_game_jam); the layered build below ensures full-stack-2d is present
 		# first when only game-jam is selected.
 		game-jam)     build_game_jam ;;
-		# The sfx-sample and music images bake a content-addressed audio pack pulled
-		# from the private R2 bucket at build time (see build_audio_image). Each pack
-		# ref must match the SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and
-		# be published + pinned in packs.lock.json first.
-		sfx-sample)   build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256 ;;
+		# The sfx-sample and music images bake an audio palette staged from the private
+		# audio object store at build time (see build_audio_image). Every clip a named
+		# pack lists must be published and recorded in objects.lock.json first.
+		sfx-sample)   build_audio_image sfx-sample "${BASE_IMAGE}" "${AUDIO_PACKS_SFX_SAMPLE[@]}" ;;
 		# The music image bakes ALL instrument banks (one per-name subdir) so a case's
 		# `instrument_bank` selects its palette — see build_music_image.
 		music)        build_music_image ;;
@@ -1357,8 +1316,8 @@ fi
 # selected it is built in the main loop below; but when only game-jam is selected we
 # must build its parent first so the `FROM ${FULL_STACK_2D_IMAGE}` resolves. An
 # existing full-stack-2d is reused untouched — select `full-stack-2d` explicitly to
-# rebuild it. (Building it needs the R2 pack credentials; a bare game-jam rebuild
-# against an already-present full-stack-2d does not.)
+# rebuild it. (Building it needs the audio object store's presign credentials; a bare
+# game-jam rebuild against an already-present full-stack-2d does not.)
 if ! select_has full-stack-2d \
 	&& select_needs_full_stack_2d \
 	&& ! image_present "${FULL_STACK_2D_IMAGE}"; then

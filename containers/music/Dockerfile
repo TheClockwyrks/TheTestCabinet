@@ -1,9 +1,9 @@
 # The music run-container image for The Test Cabinet.
 #
 # Every music run (a case with `asset_kind = "music"`) executes in this one image. It is
-# the base run-container image plus the baked-in `music` binary AND a baked-in instrument
-# bank — the fixed palette of sample-based instruments the sequencer plays (see the
-# asset-generation docs under
+# the base run-container image plus the baked-in `music` binary AND the baked-in
+# instrument banks — the fixed palettes of sample-based instruments the sequencer plays,
+# one per bank a case may name (see the asset-generation docs under
 # `apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md` and the
 # sample-library section of `containers/README.md`). The audio tools render on the CPU,
 # so — like the sprite image and unlike the voxel family — this image needs no
@@ -36,7 +36,7 @@ ARG TOOLS_IMAGE=test-cabinet-tools:latest
 # this stage.
 FROM ${TOOLS_IMAGE} AS tools
 
-# --- The run image: the base, plus `music` + the instrument bank ------------
+# --- The run image: the base, plus `music` + the instrument banks -----------
 # `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
@@ -46,58 +46,35 @@ FROM ${BASE_IMAGE}
 # node`, `WORKDIR /work`, and the keep-alive CMD.
 COPY --from=tools /out/music /usr/local/bin/music
 
-# --- Bake in the instrument bank the `music` sequencer plays ----------------
+# --- Bake in the instrument banks the `music` sequencer plays ---------------
 #
-# The instrument bank is a separately-versioned, content-addressed artifact (an
-# object-storage tarball) assembled by `scripts/build-sample-pack.mjs` from a manifest
-# under `containers/sample-packs/` (the audio files are NOT committed to this repo). The
-# build PINS a bank BY DIGEST: `build-sample-pack.mjs` prints the tarball's `sha256:…`,
-# which is passed as `INSTRUMENT_BANK_SHA256` and enforced by `ADD --checksum` below, so
-# the baked palette is immutable and versioned with the image — a run container is
-# offline, so nothing is fetched at RUN time; this fetch happens at BUILD time, pinned.
-#
-# The image bakes EVERY instrument bank as a per-name subdirectory under
-# `/opt/instrument-banks/`, so a `music` case's `instrument_bank = "<name>@<version>"`
-# selects which palette it plays (see `select_pack_dir` in
-# `crates/audio-core/src/config.rs`). The FIRST bank (gm-lite) is the default recorded
-# in `TCAB_INSTRUMENT_BANK`. Each bank is a separately-pinned, content-addressed pack;
-# `containers/build.sh` (`build_music_image`) presigns each from R2 and passes its three
-# build args. The defaults are placeholders that fail the build until a real bank is
-# pinned:
-#   --build-arg INSTRUMENT_BANK=gm-lite@0.1.0 (+_URL, +_SHA256)
-#   --build-arg INSTRUMENT_BANK_CINEMATIC=cinematic@0.1.0 (+_URL, +_SHA256)
-#   --build-arg INSTRUMENT_BANK_SYNTHWAVE=synthwave@0.1.0 (+_URL, +_SHA256)
-ARG INSTRUMENT_BANK=gm-lite@0.1.0
-ARG INSTRUMENT_BANK_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG INSTRUMENT_BANK_URL
+# The audio is not committed to this repository: the clip bytes live in the private
+# audio object store, and `containers/build.sh` stages the tree this image bakes with
+# `scripts/stage-audio-image.mjs` before the build, verifying every object against
+# `containers/sample-packs/objects.lock.json` as it lands. `AUDIO_STAGE_DIR` is that
+# staged tree's path within the build context (the repository root):
+#   --build-arg AUDIO_STAGE_DIR=dist/audio-image/<hash>/audio
+# Its default points nowhere, so a build that does not go through `build.sh` fails at
+# the COPY below rather than shipping an image with a missing palette.
+ARG AUDIO_STAGE_DIR=dist/audio-image/unstaged/audio
 
-ARG INSTRUMENT_BANK_CINEMATIC=cinematic@0.1.0
-ARG INSTRUMENT_BANK_CINEMATIC_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG INSTRUMENT_BANK_CINEMATIC_URL
-
-ARG INSTRUMENT_BANK_SYNTHWAVE=synthwave@0.1.0
-ARG INSTRUMENT_BANK_SYNTHWAVE_SHA256=sha256:0000000000000000000000000000000000000000000000000000000000000000
-ARG INSTRUMENT_BANK_SYNTHWAVE_URL
-
-# Fetch each pinned tarball (BuildKit verifies it against its …_SHA256 — a mismatch or a
-# missing URL fails the build) and unpack it into its per-name subdir. Each bank tar's
-# root holds `pack.toml` + the `.wav` files (exactly what `load_pack` in
-# `crates/audio-core/src/sample.rs` reads), so the subdir name must equal the bank name
-# (`gm-lite`, `cinematic`, `synthwave`). Make them world-readable for the run user.
+# Copy the staged tree to the path the `audio-core` loader reads. It holds
+# `clips/<clip-id>.<profile-id>.wav` plus one `packs/<name>/pack.toml` per bank
+# (`gm-lite`, `cinematic`, `synthwave`), whose entries reference the shared clip files
+# relatively, so a clip several banks name is carried once (`load_pack` in
+# `crates/audio-core/src/sample.rs` resolves each entry's `file` against its pack
+# directory). The subdirectory name is the bank name a case selects by. Make it
+# world-readable for the unprivileged run user; COPY writes as root, so bracket it with
+# the root/node USER switch the base image's `USER node` otherwise leaves in force.
 USER root
-ADD --checksum=${INSTRUMENT_BANK_SHA256} ${INSTRUMENT_BANK_URL} /tmp/bank-gm-lite.tar
-ADD --checksum=${INSTRUMENT_BANK_CINEMATIC_SHA256} ${INSTRUMENT_BANK_CINEMATIC_URL} /tmp/bank-cinematic.tar
-ADD --checksum=${INSTRUMENT_BANK_SYNTHWAVE_SHA256} ${INSTRUMENT_BANK_SYNTHWAVE_URL} /tmp/bank-synthwave.tar
-RUN mkdir -p /opt/instrument-banks/gm-lite /opt/instrument-banks/cinematic /opt/instrument-banks/synthwave \
-	&& tar -xf /tmp/bank-gm-lite.tar -C /opt/instrument-banks/gm-lite \
-	&& tar -xf /tmp/bank-cinematic.tar -C /opt/instrument-banks/cinematic \
-	&& tar -xf /tmp/bank-synthwave.tar -C /opt/instrument-banks/synthwave \
-	&& rm /tmp/bank-*.tar \
-	&& chmod -R a+rX /opt/instrument-banks
+COPY ${AUDIO_STAGE_DIR} /opt/audio
+RUN chmod -R a+rX /opt/audio
 USER node
 
 # Point the `music` binary at the banks ROOT; the run's `instrument_bank` name selects
-# the subdir (see `select_pack_dir`). `TCAB_INSTRUMENT_BANK` records the default bank.
-# Kept here so the image, not a run's seeded config, owns where the palettes live.
-ENV TCAB_INSTRUMENT_BANK=${INSTRUMENT_BANK}
-ENV TCAB_INSTRUMENT_BANK_DIR=/opt/instrument-banks
+# the subdirectory under it (see `select_pack_dir` in `crates/audio-core/src/config.rs`),
+# and a bank with no subdirectory there is a load error rather than some other palette.
+# `TCAB_INSTRUMENT_BANK` names the bank a run gets when its config names none. Kept here
+# so the image, not a run's seeded config, owns where the palettes live.
+ENV TCAB_INSTRUMENT_BANK_DIR=/opt/audio/packs
+ENV TCAB_INSTRUMENT_BANK=gm-lite
