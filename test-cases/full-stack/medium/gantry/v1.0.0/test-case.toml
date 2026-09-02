@@ -357,15 +357,15 @@ description = "A member that would create a path between a bottom-flange or anch
 [[review.categories.items]]
 id = "rail-track-rules"
 title = "The rail forms one straight horizontal track"
-description = "A non-horizontal rail member is refused at placement, and readiness reports invalid-rail unless the rail members form a single collinear, consecutive, arm-side track whose ends sit at distinct distances from the slew axis."
+description = "A non-horizontal rail member is refused at placement, and readiness reports invalid-rail when a crane that has a ring has rail members that do not form a single collinear, consecutive, arm-side track whose ends sit at distinct distances from the slew axis; a crane with a ring and no rails raises no-rail alone, and a crane with no ring leaves the track rules unchecked."
 [[review.categories.items]]
 id = "counterweights"
 title = "Counterweights place and remove on used nodes"
-description = "A counterweight places on a node a member ends at, one per node, is refused elsewhere, and is removed by the delete tool or a second toggle."
+description = "A counterweight places on any node the structure uses — a node a member ends at or a flange node of the ring — one per node, is refused elsewhere, and is removed by the delete tool or a second toggle."
 [[review.categories.items]]
 id = "pending-node"
 title = "Two-click placement holds and survives refusal"
-description = "The first click holds a marked pending node; a refused second click keeps it, a click on the pending node or back clears it, and switching materials keeps it."
+description = "The first click holds a marked pending node; a refused second click keeps it, a click on the pending node or back clears it, and switching tools keeps it, because the pending node belongs to the placement rather than the material."
 [[review.categories.items]]
 id = "delete-and-undo"
 title = "Delete and undo work as specified"
@@ -389,8 +389,12 @@ title = "An axis ramps, cruises, and brakes"
 description = "A commanded axis visibly accelerates at its fixed acceleration, holds its commanded rate, and brakes to stop at its target rather than jumping between speeds."
 [[review.categories.items]]
 id = "out-of-range-fails"
-title = "An unreachable target fails the run when its step starts"
-description = "A step whose command targets a value outside its axis's range at that moment — a trolley target beyond the track included — ends the run as command-out-of-range."
+title = "An unreachable target fails the run"
+description = "A step whose command targets a value outside its axis's range when the step starts — a trolley target beyond the track included — ends the run as command-out-of-range, and a live trolley command is judged again the same way at the top of every tick, against the track the rails still intact form."
+[[review.categories.items]]
+id = "tape-ends-unplaced"
+title = "A tape that runs out with a load still waiting fails"
+description = "A tick that finds no live step and no step left to take is the tick the run ends on: cleared when every load is placed, and failed as loads-unplaced when any is not."
 [[review.categories.items]]
 id = "start-refusals"
 title = "Starting refuses on readiness issues"
@@ -580,7 +584,7 @@ description = "All six sites show number, name, and state without relying on hue
 [[review.categories.items]]
 id = "build-readouts"
 title = "The build screen's readouts and check"
-description = "Site name, cost against budget, the tool palette with bindings and selection, and the tape's step count all show; check displays readiness issues or static utilizations until the next edit; a refused edit is visible in the moment."
+description = "Site name, cost against budget, the tool palette with bindings and selection, and the tape's step count all show; check displays the readiness issues by name, or, on a structure with none, whether it stands with each member colored by its static utilization; a refused edit is visible in the moment."
 [[review.categories.items]]
 id = "program-editor"
 title = "The tape editor covers the tape"

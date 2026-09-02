@@ -235,36 +235,42 @@ picks none.
 | `reset` | Returns the game to its title state, as below. |
 | `setScreen(screen)` | Moves to a named screen, exactly as reaching it in play does. `screen` is one of the seven identifiers of `specs/ui.md`. |
 | `setMenuIndex(index)` | Sets the highlighted entry of the menu on the screen showing, counted from `0`. |
-| `openSite(index)` | Opens site `index`, counted from `0`, exactly as entering it from the select screen does, locked or not. |
+| `openSite(index)` | Opens site `index`, counted from `0`, locked or not, as below. |
 | `setCleared(index, cleared)` | Sets whether site `index` has been cleared this session, and with it which sites are open. |
 | `setBest(index, cost, time)` | Records `{ cost, time }` as site `index`'s best score, whatever it held. |
 | `clearBest(index)` | Returns site `index` to having no recorded score. |
 | `setCamera(yaw, pitch, dist)` | Sets the orbit camera's pose, within the limits `specs/controls.md` fixes. |
-| `startRun` | Poses the `run` action: the same refusals, the same `run-start`, and the same first tick as `specs/program.md` states. |
+| `startRun` | Poses the `run` action: the same refusals, the same `run-start`, and the same move to the run screen as `specs/program.md` states. |
 | `abortRun` | Poses the abort, ending a running run with no verdict: `run` goes back to its idle placeholder and the build screen returns. |
 
-`openSite` carries the effects `specs/state.md` states for opening a site, and
-it is the surface's way onto any site without playing to it. A site opened this
-way carries the loads and obstacles `specs/sites.md` gives it, so a caller that
-wants a different set poses it with the site operations below.
+`openSite` carries the effects `specs/state.md` states for opening a site and
+then shows the `build` screen; the two together are what entering a site from
+the select screen does (`specs/ui.md`). It is the surface's way onto any site
+without playing to it, and a site opened this way carries the loads and
+obstacles `specs/sites.md` gives it, so a caller that wants a different set
+poses it with the site operations below.
 
 The first eight of these apply on every screen. `startRun` applies on the build
 and program screens, where the `run` action does, and `abortRun` while a run is
 in progress. `startRun` is refused exactly as the action is, leaving the state
 as it was; `check` says why it would refuse. A run that begins is the ordinary
-run, and its verdict comes from the ticks that follow.
+run: it starts at `speedIndex` `0` and ticks nothing at the call, so `run.tick`
+reads `0` immediately after it. The run's first tick is the next frame
+advanced, numbered tick `1`, and the verdict comes from the ticks that follow.
 
 `reset` restores every field the snapshot reports to its title-screen value, bar
 one: the `title` screen with `menuIndex` `0`, site `0` open, every site
 uncleared with no recorded score, every site's stored structure and tape
 emptied, the open site's loads and obstacles back to the ones `specs/sites.md`
 gives it, the strut tool, no pending node, an empty history, the camera at its
-start pose, the pointer at the origin with no press live, its press origin at
-zero and no drag, no check result showing, an idle run, and `simTime` at `0`.
-The pointer goes back whole, the press origin and the drag bit included: those
-two are the game's own record of a press it has been following rather than
-anything the next update reads afresh from outside, so nothing but `reset`
-clears them. The one field left alone is `muted`, the game's readable copy of a
+start pose, no check result showing, an idle run, and `simTime` at `0`. The
+pointer goes back field by field: `x` and `y` to `0`, `down` to `false`,
+`pressX` and `pressY` to `0`, and `dragging` to `false`. The position and the
+hold are read afresh from outside the game on the next update, so a `reset`
+shows in them only until then; the press origin and the drag bit are the game's
+own record of a press it has been following, so `reset` puts both back, and a
+release clears `dragging` alone and leaves `pressX` and `pressY` where the last
+press began. The one field left alone is `muted`, the game's readable copy of a
 mute bit it does not own (`specs/state.md`), which `reset` leaves as it stands
 rather than turning a player's preference off. Because `reset` restores exactly
 those fields, anything else the build keeps across frames is derived from them.
@@ -511,9 +517,10 @@ after it.
 The shape is fixed and every field is present whatever the screen. `site`,
 `structure`, and `program` report the open site's, and the structure and tape
 authored on another site are read by opening that site. `run.loads` is
-index-aligned with `site.loads`. A field the current screen does not use reports
-the value it is holding rather than going missing, and the table below gives the
-value each rests at.
+index-aligned with `site.loads` for a run in progress and for the run left in
+place after one ends; the idle placeholder carries no load entries. A field the
+current screen does not use reports the value it is holding rather than going
+missing, and the table below gives the value each rests at.
 
 | Field | Resting value |
 | --- | --- |

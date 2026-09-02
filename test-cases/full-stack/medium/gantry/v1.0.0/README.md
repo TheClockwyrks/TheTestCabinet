@@ -51,8 +51,12 @@ Gantry is designed for three engines, and seeds a different project for each:
 | Engine | What the seeded project supplies |
 | --- | --- |
 | `none` | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the runtime, the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, asset loading, the diagnostics overlay and the `window.__gantry` surface, and then the game on top of it. It carries `@test-cabinet/voxel-runtime` as a baked-in `file:` dependency, which is what decodes a produced `.glb`. |
-| `simple-3d` | The [Simple 3D](/engines/simple-3d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: the state, the debug surface, and the game's update and render. The engine holds the state by value, so a pose takes the current state and returns the next, applied through `engine.apply`, and a reading takes the state and returns what it read. |
-| `structured-3d` | The [Structured 3D](/engines/structured-3d/) package, vendored at seed time, plus the same two case-owned modules. The build writes `src/game.ts`: the game definition the engine drives, its instance, its mode, its live state class, and the debug surface its instance's `initialize` returns. The world is live, so a pose acts on it at the call and a reading returns plain data. |
+| `simple-3d` | The [Simple 3D](/engines/simple-3d/) package, vendored at seed time, plus `src/constants.ts`, `src/main.ts`, and a stub `src/game.ts`. The build implements `src/game.ts`: the state, the debug surface, and the game's update and render. The engine holds the state by value, so a pose takes the current state and returns the next, applied through `engine.apply`, and a reading takes the state and returns what it read. |
+| `structured-3d` | The [Structured 3D](/engines/structured-3d/) package, vendored at seed time, plus the same three case-owned modules. The build implements `src/game.ts`: the game definition the engine drives, its instance, its mode, its live state class, and the debug surface its instance's `initialize` returns. The world is live, so a pose acts on it at the call and a reading returns plain data. |
+
+Both stubs are written against `GantryState` and `GantryDebugApi`, so a freshly
+seeded engine workspace does not type-check until the build declares those two
+types.
 
 Neither engine supplies a linear solver, a structural model, or any of the
 crane's geometry, so both solves, the slack-cable iteration, the breakage
@@ -109,11 +113,11 @@ for every run:
 
 ## Assets and media
 
-This is a full-stack case, so the game ships no pre-made art:
-`test-case.toml` declares no `assets` list, and the build produces every model
-and sound it draws and plays. The build must be self-contained — it bundles the
-committed produced files and runs with the generation binaries absent, so a
-build that regenerates its assets at load time fails.
+This is a full-stack case, so the game ships no pre-made art: `test-case.toml`
+declares no `assets` list, and the build produces every model and sound it draws
+and plays. The build must be self-contained — it bundles the committed produced
+files and runs with the generation binaries absent, so a build that regenerates
+its assets at load time fails.
 
 No reference mockup is seeded either. This version declares no `[[reference]]`
 views, no `[[proof]]` artifacts and no `[[check]]` comparisons: nothing shows
@@ -126,11 +130,11 @@ is drawn belongs to the build.
 ## Where the case stands
 
 The case is `experimental = true` and must not be scheduled. What is authored
-and committed today: all twelve specs with their three-way branches, all three
-starter workspaces, the prompt, `asset_dimension = "3d"` so a run schedules onto
-the 3D full-stack image, the four scoring domains, and a reviewer-rated
-checklist of 69 items across 9 categories. What is missing is everything that
-would let a run be rated.
+and committed today: all twelve specs, the five that branch three ways
+included, all three starter workspaces, the prompt, `asset_dimension = "3d"` so
+a run schedules onto the 3D full-stack image, the four scoring domains, and a
+reviewer-rated checklist of 70 items across 9 categories. What is missing is
+everything that would let a run be rated.
 
 The manifest is still on the **legacy single `workspace` key**
 (`workspace = "workspaces/none"`), with `engines`, the two `[[engine]]` tables,
@@ -194,10 +198,10 @@ worked crane is loaded hard and none of them is near breaking.
 The figures were measured with a dependency-free node simulation of the specs —
 the two solves, the slack-cable iteration, the breakage cascade, the pendulum,
 the axis controller, the tape — written against `specs/` alongside these
-passes. That simulation is not in this tree, so the table is the record of a
-measurement rather than something a reader can re-run today; the reference
-implementations listed above are what will make it reproducible, and they need
-the same core.
+passes. That simulation is not in this tree, so every figure in this section —
+the table above, and the site figures below it — is the record of a measurement
+rather than something a reader can re-run today; the reference implementations
+listed above are what will make it reproducible, and they need the same core.
 
 Par is set from that table by one rule, both halves alike: **par cost is 1.05x
 the worked crane's cost rounded up to the next `50`, and par time is 1.05x its
@@ -214,10 +218,11 @@ What can still be measured is a two-crane probe with the target put back at
 all, because the trolley has no station for the point and there is therefore
 no tape to run, and the eighteen-unit jib that does reach it costs `5268.6`
 and collapses at `t = 0.02 s` with one member broken, at any budget. A wider
-search over cranes at that reach was run and turned up nothing that held the
-load, but it left no artifact, so it is recorded here as a claim rather than as
-a figure. No crane clearing `(16, 2, 6)` was found; none was shown not to
-exist. At `(14, 2, 6)` the worked crane clears with `0.909` peak utilization.
+search over cranes at that reach was run against the site's budget of the time,
+`5200`, and turned up nothing that held the load, but it left no artifact, so it
+is recorded here as a claim rather than as a figure. No crane clearing
+`(16, 2, 6)` was found; none was shown not to exist. At `(14, 2, 6)` the worked
+crane clears with `0.909` peak utilization.
 
 Site 4's budget then moved from `5200` to `5600`, for the same reason Site 3's
 moved below: room, not need. At `5200` the site left `207.6` over the worked

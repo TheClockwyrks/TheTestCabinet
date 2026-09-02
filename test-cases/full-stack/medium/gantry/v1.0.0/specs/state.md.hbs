@@ -91,8 +91,9 @@ first:
 
 - Its phase, one of `idle`, `running`, `cleared`, and `failed`, and its failure
   cause, or none, from the vocabulary `specs/statics.md` closes with.
-- The tick count, from which the run clock is `tick / TICK_HZ` seconds, and the
-  watch-speed index into `RUN_SPEEDS`.
+- The tick count — `0` when the run starts, and `1` after its first tick — from
+  which the run clock is `tick / TICK_HZ` seconds, and the watch-speed index
+  into `RUN_SPEEDS`.
 - The tape step the run is on, counted from `0`, and whether that step is live:
   taken, and not yet complete. A move step is live from the tick that issues
   its commands until the tick that finds every one of its axes arrived; an
@@ -108,9 +109,10 @@ first:
   has broken, because the track it was taken along is gone.
 - The pendulum bob's position and velocity.
 - The attached load's index, or none.
-- Each load's run state, index-aligned with the open site's loads: its phase,
-  one of `waiting`, `attached`, `placed`, and `lost`, its lift point's current
-  position, and its yaw.
+- Each load's run state, index-aligned with the open site's loads for a run in
+  progress and for the run left in place after one ends: its phase, one of
+  `waiting`, `attached`, `placed`, and `lost`, its lift point's current
+  position, and its yaw. The idle placeholder carries no load entries.
 - The latest solve's force and utilization per intact member, in member-id
   order.
 - The ids of the members broken so far this run, in the order they broke.
@@ -128,8 +130,10 @@ The idle placeholder is phase `idle`, no cause, a zero tick, step index, and
 speed index, no live step, the four axes at the run-start posture
 `specs/program.md` fixes with no command and zero rate, a zero pivot, a bob at
 the origin with zero velocity, no attachment, and an empty load, force, and
-broken list. It is what the run carries before the first run of a site, and
-what opening a site, aborting a run, and a `reset` put back.
+broken list. It is what the run carries before the first run of a site, and what
+opening a site, aborting a run, and a `reset` put back. Every run starts at the
+placeholder's speed index, `0`, rather than carrying the speed the run before it
+was watched at.
 
 A run that ends is left as it ended until the next one starts: its verdict, its
 cause, its clock, and its broken list stay readable while the results screen
@@ -486,8 +490,8 @@ first.
 - `phase` — `"idle"` with no run to report, `"running"` while the tape plays,
   and `"cleared"` or `"failed"` once one has ended.
 - `cause` — the failure cause, and `null` unless `phase` is `"failed"`.
-- `tick` — ticks since the run started. The run clock is `tick / TICK_HZ`
-  seconds.
+- `tick` — ticks since the run started: `0` when it starts, and `1` after its
+  first tick. The run clock is `tick / TICK_HZ` seconds.
 - `speedIndex` — the watch speed, as an index into `RUN_SPEEDS`.
 - `stepIndex` — the tape step the run is on, counted from `0`, which reaches
   the tape's length once every step is complete. The run screen shows it as
@@ -508,7 +512,9 @@ first.
   attached load's lift point are both `bob.pos`.
 - `attached` — the index of the load on the hook, or `null`. One load is
   attached at a time.
-- `loads` — one entry per load of `site.loads`, in the same order.
+- `loads` — one entry per load of `site.loads`, in the same order, for a run in
+  progress and for the run left in place after one ends. The idle placeholder
+  carries none.
 - `forces` — the latest solve's force and utilization for each member still
   intact, in member-id order.
 - `broken` — the ids of the members broken so far this run, in the order they
@@ -517,14 +523,15 @@ first.
 The idle placeholder is `phase` `"idle"`, `cause` `null`, `tick`, `speedIndex`,
 and `stepIndex` `0`, `stepLive` `false`, the four axes at the run-start posture
 `specs/program.md` fixes with zero rate and no command, `pivot` and both parts
-of `bob` the zero vector, `attached` `null`, and `loads`, `forces`, and
-`broken` empty. It is what `run` carries before the first run of a site, and
-what opening a site, `abortRun`, and a `reset` put back. A run that ends is
-left as it ended until the next one starts, so the results screen and a failed
-run's screen both read their figures off it (`specs/ui.md`), and going back to
-the build screen leaves them as they are. Its `broken` belongs to the run that
-broke those members; the structure itself is untouched, so the build screen and
-its check read every member.
+of `bob` the zero vector, `attached` `null`, and `loads`, `forces`, and `broken`
+empty. It is what `run` carries before the first run of a site, and what opening
+a site, `abortRun`, and a `reset` put back. Every run starts at the
+placeholder's `speedIndex`, `0`, rather than carrying the speed the run before
+it was watched at. A run that ends is left as it ended until the next one
+starts, so the results screen and a failed run's screen both read their figures
+off it (`specs/ui.md`), and going back to the build screen leaves them as they
+are. Its `broken` belongs to the run that broke those members; the structure
+itself is untouched, so the build screen and its check read every member.
 
 ## `GantryState`
 
@@ -935,7 +942,8 @@ its corner and size, so nothing here points into `SITES` and posing a load on
 one site leaves every other site as it was.
 
 The site's name, envelope, anchors, budget, and par figures are not carried;
-they are read by `siteIndex` against `SITES`.
+they are read by `siteIndex`, the name against `SITE_NAMES` and the rest
+against `SITES`.
 
 ## `CheckResult`
 
@@ -974,8 +982,8 @@ first.
 - `phase` — `"idle"` with no run to report, `"running"` while the tape plays,
   and `"cleared"` or `"failed"` once one has ended.
 - `cause` — the failure cause, and `null` unless `phase` is `"failed"`.
-- `tick` — ticks since the run started. The run clock is `tick / TICK_HZ`
-  seconds.
+- `tick` — ticks since the run started: `0` when it starts, and `1` after its
+  first tick. The run clock is `tick / TICK_HZ` seconds.
 - `speedIndex` — the watch speed, as an index into `RUN_SPEEDS`.
 - `stepIndex` — the tape step the run is on, counted from `0`, which reaches
   the tape's length once every step is complete. The run screen shows it as
@@ -996,7 +1004,9 @@ first.
   attached load's lift point are both `bob.pos`.
 - `attached` — the index of the load on the hook, or `null`. One load is
   attached at a time.
-- `loads` — one entry per load of `site.loads`, in the same order.
+- `loads` — one entry per load of `site.loads`, in the same order, for a run in
+  progress and for the run left in place after one ends. The idle placeholder
+  carries none.
 - `forces` — the latest solve's force and utilization for each member still
   intact, in member-id order.
 - `broken` — the ids of the members broken so far this run, in the order they
@@ -1004,11 +1014,13 @@ first.
 
 The initializer above is the idle placeholder: what `run` carries before the
 first run of a site, and what opening a site, `abortRun`, and a `reset` put
-back. A run that ends is left as it ended until the next one starts, so the
-results screen and a failed run's screen both read their figures off it
-(`specs/ui.md`), and going back to the build screen leaves them as they are.
-Its `broken` belongs to the run that broke those members; the structure itself
-is untouched, so the build screen and its check read every member.
+back. Every run starts at the placeholder's `speedIndex`, `0`, rather than
+carrying the speed the run before it was watched at. A run that ends is left as
+it ended until the next one starts, so the results screen and a failed run's
+screen both read their figures off it (`specs/ui.md`), and going back to the
+build screen leaves them as they are. Its `broken` belongs to the run that broke
+those members; the structure itself is untouched, so the build screen and its
+check read every member.
 
 ## `GantryState`
 
@@ -1076,7 +1088,7 @@ them, so they answer to the state as it stands.
 | The rotated arm, the trolley point, and the tick's pivot | `run.axes` and the structure (`specs/statics.md`) |
 | The run clock | `run.tick / TICK_HZ` seconds |
 | Whether a site is open | Site `0`, and site `n + 1` once site `n` is cleared (`specs/ui.md`) |
-| The site's name, envelope, anchors, budget, and par | `siteIndex`, against `SITES` |
+| The site's name, envelope, anchors, budget, and par | `siteIndex`, the name against `SITE_NAMES`, the rest against `SITES` |
 | The node or member a click would take | `pointer` and the world camera (`specs/controls.md`) |
 | The bob's previous velocity | `run.bob.vel` as the tick found it |
 
