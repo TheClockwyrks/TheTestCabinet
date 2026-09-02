@@ -28,7 +28,7 @@
 // that costs one (specs/progression.md).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, tileCX, tileLeft } from "../../src/constants";
+import { START_LIVES, tileCX, tileLeft } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureReplay,

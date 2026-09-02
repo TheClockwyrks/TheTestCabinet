@@ -19,7 +19,7 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { ICE_LANES, ITEM_LEN } from "../../src/constants";
+import { ICE_LANES, ITEM_LEN } from "../constants";
 import {
   captureStill,
   createHarness,

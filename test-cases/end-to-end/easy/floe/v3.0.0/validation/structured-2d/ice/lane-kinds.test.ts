@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { ICE_LANES } from "../../src/constants";
+import { ICE_LANES } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { layOutLevel, vehiclesAlong } from "./harness";
 

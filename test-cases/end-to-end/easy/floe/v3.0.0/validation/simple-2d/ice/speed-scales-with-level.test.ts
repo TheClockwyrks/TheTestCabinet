@@ -23,7 +23,7 @@
 // speed is set.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_LANES, laneSpeed } from "../../src/constants";
+import { ICE_LANES, laneSpeed } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import { captureStill, createHarness, laneAt, type Harness } from "../harness";
 import { layOutLevel } from "./harness";

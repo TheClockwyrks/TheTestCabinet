@@ -28,7 +28,7 @@
 // the same shapes, poses its own scenarios through its own file, and the shared
 // harness is edited by every group at once.
 
-import { ICE_TOP, ICE_BOTTOM, STRAIT_W, TILE } from "../../src/constants";
+import { ICE_TOP, ICE_BOTTOM, STRAIT_W, TILE } from "../constants";
 import {
   resetTo,
   type FloeSnapshot,

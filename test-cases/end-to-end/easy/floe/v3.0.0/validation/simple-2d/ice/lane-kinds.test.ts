@@ -16,7 +16,7 @@
 // that shifted the table by one fails on six.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_LANES } from "../../src/constants";
+import { ICE_LANES } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

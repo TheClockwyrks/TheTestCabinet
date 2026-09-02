@@ -14,7 +14,7 @@
 // have graded a third of the requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_LANES, ITEM_LEN } from "../../src/constants";
+import { ICE_LANES, ITEM_LEN } from "../constants";
 import {
   assertContains,
   assertEqual,

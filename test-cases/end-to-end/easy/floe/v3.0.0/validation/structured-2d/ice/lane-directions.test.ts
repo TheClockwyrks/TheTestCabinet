@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertEqual, assertGreaterThan } from "../assert";
-import { ICE_LANES } from "../../src/constants";
+import { ICE_LANES } from "../constants";
 import {
   captureReplay,
   createHarness,

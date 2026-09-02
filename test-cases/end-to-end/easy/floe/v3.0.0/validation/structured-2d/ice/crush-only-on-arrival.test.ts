@@ -29,7 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
-import { START_LIVES, tileCX, tileLeft } from "../../src/constants";
+import { START_LIVES, tileCX, tileLeft } from "../constants";
 import {
   captureReplay,
   createHarness,

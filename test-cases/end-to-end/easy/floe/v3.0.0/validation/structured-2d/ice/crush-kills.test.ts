@@ -42,7 +42,7 @@
 
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, tileCX, tileLeft } from "../../src/constants";
+import { START_LIVES, tileCX, tileLeft } from "../constants";
 import {
   captureReplay,
   createHarness,

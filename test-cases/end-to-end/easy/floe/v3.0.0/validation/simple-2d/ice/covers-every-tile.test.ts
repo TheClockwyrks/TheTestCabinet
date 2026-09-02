@@ -27,7 +27,7 @@
 // standing still three times.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileLeft } from "../../src/constants";
+import { tileLeft } from "../constants";
 import { assertDeepEqual, assertTrue } from "../assert";
 import {
   captureReplay,

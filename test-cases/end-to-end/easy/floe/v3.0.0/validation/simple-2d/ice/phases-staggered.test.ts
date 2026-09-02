@@ -31,7 +31,7 @@
 // reach both edges of the strait, so an empty lane fails here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ICE_LANES } from "../../src/constants";
+import { COLS, ICE_LANES } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
 import {
   captureStill,

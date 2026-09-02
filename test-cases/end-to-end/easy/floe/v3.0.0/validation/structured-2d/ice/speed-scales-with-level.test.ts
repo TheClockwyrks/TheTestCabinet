@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertLessThanOrEqual } from "../assert";
-import { ICE_LANES, laneSpeed } from "../../src/constants";
+import { ICE_LANES, laneSpeed } from "../constants";
 import {
   captureStill,
   createHarness,

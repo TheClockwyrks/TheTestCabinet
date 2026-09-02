@@ -23,7 +23,7 @@
 // `midStraitVehicle`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_LANES } from "../../src/constants";
+import { ICE_LANES } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

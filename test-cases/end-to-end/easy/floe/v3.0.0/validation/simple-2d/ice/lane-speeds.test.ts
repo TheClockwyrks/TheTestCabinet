@@ -24,7 +24,7 @@
 // being measured, so the displacement is travel rather than a jump.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_LANES, laneSpeed, TILE } from "../../src/constants";
+import { ICE_LANES, laneSpeed, TILE } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

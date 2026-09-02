@@ -15,7 +15,7 @@
 // before a tick of lane motion has run.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_LANES } from "../../src/constants";
+import { ICE_LANES } from "../constants";
 import { assertDeepEqual, assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { layOutLevel } from "./harness";

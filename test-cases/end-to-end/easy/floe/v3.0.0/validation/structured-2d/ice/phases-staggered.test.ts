@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
-import { COLS, ICE_LANES } from "../../src/constants";
+import { COLS, ICE_LANES } from "../constants";
 import {
   captureStill,
   createHarness,

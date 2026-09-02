@@ -35,7 +35,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertTrue } from "../assert";
-import { tileLeft } from "../../src/constants";
+import { tileLeft } from "../constants";
 import {
   captureReplay,
   createHarness,
