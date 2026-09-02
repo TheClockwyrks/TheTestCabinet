@@ -1,0 +1,21 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`. Every pattern here is
+# ANCHORED to the repository root on purpose: the voxel runtime is vendored into
+# this repository under `.tcab/`, prebuilt, and its own `dist/` directory is
+# committed with the seed. An unanchored `dist/` would match that too and leave
+# the build unable to resolve the package.
+/dist/
+/build/
+/out/
+
+# Coverage reports — produced by `npm test`.
+coverage/
+
+# Playwright verification scratch.
+test-results/
+playwright-report/
+
+# Logs.
+*.log
