@@ -52,9 +52,9 @@ import {
 } from "../constants";
 import {
   captureStill,
-  createHarness,
+  createDriveHarness,
+  driveFrames,
   distance,
-  framesFor,
   poseWalker,
   startRun,
   type Harness,
@@ -81,13 +81,17 @@ const OVERSHOOT_MAX = 1;
 const WATCH_SECONDS = 60;
 
 /**
- * Frames between two readings: a tenth of a second, in which the fastest unit in
- * the game covers twelve of the nineteen units a tile is wide.
+ * Frames between two readings: three of the long-drive clock's (`harness.ts`, The
+ * long-drive clock), a tenth of a second, in which the fastest unit in the game
+ * covers twelve of the nineteen units a tile is wide.
  *
  * So a unit that stepped through the wall is read while it is still only just
- * through, rather than after it has had time to wander back.
+ * through, rather than after it has had time to wander back. The interval is the
+ * same tenth of a second it has always been; what changed is how many frames a
+ * tenth of a second is, because the minute this check watches is diced at thirty
+ * frames a second rather than a hundred and twenty.
  */
-const POLL_FRAMES = 12;
+const POLL_FRAMES = 3;
 
 /**
  * The distance the ten units must cover between them, in logical units: one
@@ -136,7 +140,7 @@ function outside(unit: UnitView): number {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(async () => {
@@ -174,12 +178,12 @@ it("never lets a unit's centre out of the floor rectangle", async () => {
   // walls rather than standing where it was posed.
   const opening = 2;
   await h.until(watch, {
-    maxFrames: framesFor(opening),
+    maxFrames: driveFrames(opening),
     poll: POLL_FRAMES,
   });
   await captureStill(h, "casing");
   await h.until(watch, {
-    maxFrames: framesFor(WATCH_SECONDS - opening),
+    maxFrames: driveFrames(WATCH_SECONDS - opening),
     poll: POLL_FRAMES,
   });
 

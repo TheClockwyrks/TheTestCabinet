@@ -65,12 +65,12 @@ import { heatMultiplier, type Tile } from "../constants";
 import { freeSite } from "../fixtures";
 import {
   captureStill,
-  createHarness,
-  framesFor,
+  createDriveHarness,
+  driveFrames,
+  driveSeconds,
   poseTarget,
   poseTower,
   requireTower,
-  seconds,
   startRun,
   type Harness,
   type MeltdownSnapshot,
@@ -107,22 +107,23 @@ const MINUTE = 60;
 const TAIL = 10;
 
 /**
- * How often the minute is sampled, in frames of the default clock.
+ * How often the minute is sampled, in frames of the long-drive clock
+ * (`harness.ts`, The long-drive clock).
  *
  * Four samples a second. Measurement geometry: `specs/heat.md` gives the
  * cooldown five seconds, so an offline period this misses is twenty times
  * shorter than the shortest legal one.
  */
-const POLL = framesFor(1 / 4);
+const POLL = driveFrames(1 / 4);
 
 /**
  * How long a sample that found neither is given before it is called an outage,
- * in frames of the default clock.
+ * in frames of the long-drive clock.
  *
- * Two frames, `0.0167` of a second. See the head: one frame of neither is the
+ * Two frames, a fifteenth of a second. See the head: one frame of neither is the
  * handover a build is free to resolve on either side of, and two frames is the
  * shortest window that tells that apart from a tower that has actually stopped.
- * It is three hundred times shorter than the cooldown this reading is really
+ * It is seventy-five times shorter than the cooldown this reading is really
  * watching for, so nothing a trip does can hide inside it. Geometry, not a
  * tolerance.
  */
@@ -185,7 +186,7 @@ async function watch(
     assertTrue(
       gun.firing || gun.tripped,
       `a tower under ${UNITS} units to be either firing or serving a trip ` +
-        `cooldown, ${(since + seconds(spent)).toFixed(2)}s into the minute: ` +
+        `cooldown, ${(since + driveSeconds(spent)).toFixed(2)}s into the minute: ` +
         `it reported firing false with tripped false and ` +
         `${gun.tripTimer.toFixed(3)}s of cooldown`,
     );
@@ -195,7 +196,7 @@ async function watch(
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(async () => {
@@ -234,14 +235,14 @@ it("The trip is the only failure", async () => {
   // the chance to acquire one. Geometry, not a tolerance.
   await h.advance(1);
 
-  await watch(h, id, framesFor(MINUTE - TAIL), 0);
+  await watch(h, id, driveFrames(MINUTE - TAIL), 0);
   const midway = requireTower(
     await h.snapshot(),
     id,
     `the tower ${MINUTE - TAIL}s into the minute`,
   );
 
-  await watch(h, id, framesFor(TAIL), MINUTE - TAIL);
+  await watch(h, id, driveFrames(TAIL), MINUTE - TAIL);
   await captureStill(h, "intact");
   const closing = await h.snapshot();
   const gun = requireTower(closing, id, `the tower after ${MINUTE}s`);

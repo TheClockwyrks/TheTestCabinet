@@ -44,9 +44,9 @@ import { assertLessThanOrEqual } from "../assert";
 import { SURGE_DEFS, tileCX, tileCY } from "../constants";
 import { remainingFrom } from "../routes";
 import {
-  TICK_HZ,
+  DRIVE_HZ,
   captureReplay,
-  createHarness,
+  createDriveHarness,
   distance,
   poseWalker,
   requireUnit,
@@ -63,9 +63,12 @@ const START_ROW = 26;
 const START: Point = { x: tileCX(START_COL), y: tileCY(START_ROW) };
 const AIM: Point = exhaustPoint("right");
 
-/** How long the flight is watched, and how often it is sampled. */
+/**
+ * How long the flight is watched, and how often it is sampled: half a second, in
+ * frames of the long-drive clock (`harness.ts`, The long-drive clock).
+ */
 const WINDOW_SECONDS = 4;
-const SAMPLE_FRAMES = 60;
+const SAMPLE_FRAMES = 15;
 
 /** The Drift's own speed, in logical units per second (`specs/surge.md`). */
 const DRIFT_SPEED = SURGE_DEFS.drift.speed;
@@ -84,12 +87,13 @@ const MAX_OFF_LINE = 1.0;
 /**
  * How far the distance covered may sit from `80 * seconds`, in logical units.
  *
- * One frame of this suite's clock is `1 / 120` s, which at the Drift's own `80`
- * units per second is `0.667` units. The bound is three of those, which allows a
- * build that resolves the pose or the first frame a whisker differently and is
- * still under a hundredth of the `320` units the window buys.
+ * One frame of this check's long-drive clock (`harness.ts`, The long-drive clock)
+ * is `1 / 30` s, which at the Drift's own `80` units per second is `2.67` units.
+ * The bound is three of those, which allows a build that resolves the pose or the
+ * first frame a whisker differently and is still under a fortieth of the `320`
+ * units the window buys.
  */
-const MAX_SPEED_DRIFT = (3 * DRIFT_SPEED) / TICK_HZ;
+const MAX_SPEED_DRIFT = (3 * DRIFT_SPEED) / DRIVE_HZ;
 
 /** The flyer's own route from the start point, in tiles: 30.2200. */
 const STRAIGHT_TILES = flyerRemaining(START, "right");
@@ -114,7 +118,7 @@ const TILES_TOLERANCE = 0.02;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(async () => {
@@ -148,14 +152,14 @@ it("flies a Drift along the straight line to its exhaust at its own speed", asyn
       const path: Point[] = [];
       for (
         let frames = 0;
-        frames < WINDOW_SECONDS * TICK_HZ;
+        frames < WINDOW_SECONDS * DRIVE_HZ;
         frames += SAMPLE_FRAMES
       ) {
         await h.advance(SAMPLE_FRAMES);
         const seen = requireUnit(
           await h.snapshot(),
           drift,
-          `the Drift ${((frames + SAMPLE_FRAMES) / TICK_HZ).toFixed(2)} s into ` +
+          `the Drift ${((frames + SAMPLE_FRAMES) / DRIVE_HZ).toFixed(2)} s into ` +
             `its flight`,
         );
         path.push({ x: seen.x, y: seen.y });
@@ -165,7 +169,7 @@ it("flies a Drift along the straight line to its exhaust at its own speed", asyn
   );
 
   for (const [index, at] of flight.entries()) {
-    const t = ((index + 1) * SAMPLE_FRAMES) / TICK_HZ;
+    const t = ((index + 1) * SAMPLE_FRAMES) / DRIVE_HZ;
     assertLessThanOrEqual(
       offLine(at, START, AIM),
       MAX_OFF_LINE,

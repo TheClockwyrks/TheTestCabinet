@@ -35,6 +35,7 @@ import { FORGE_SETPOINT, TRIP_HEAT, type TowerType } from "../constants";
 import {
   captureStill,
   createHarness,
+  DRIVE_HZ,
   startRun,
   type Harness,
 } from "../harness";
@@ -82,7 +83,9 @@ it("The Forge carries no heat", async () => {
   let elapsed = 0;
   while (elapsed < WATCH_SECONDS) {
     const step = Math.min(SAMPLE_SECONDS, WATCH_SECONDS - elapsed);
-    await h.skip(step);
+    // Diced on the long-drive clock (`harness.ts`, The long-drive clock): the
+    // minute is the requirement, the frame rate is this check's to choose.
+    await h.skip(step, DRIVE_HZ);
     elapsed += step;
     assertCloseTo(
       await readHeat(h, forge, "the Forge against the white-hot Lance"),

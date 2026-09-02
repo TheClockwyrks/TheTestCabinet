@@ -40,11 +40,11 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { ROWS, TOWER_DEFS, tileCX, tileCY, type TowerType } from "../constants";
 import {
-  TICK_HZ,
+  DRIVE_HZ,
   captureStill,
-  createHarness,
+  createDriveHarness,
+  driveFrames,
   distance,
-  framesFor,
   poseWalker,
   startRun,
   unitById,
@@ -74,8 +74,13 @@ const WALL_ROWS = Array.from(
 
 const WALL = stackedWall(WALL_TYPE, WALL_COL, WALL_ROWS);
 
-/** Frames between two samples of a flight: `5.33` logical units of travel. */
-const POLL_FRAMES = 8;
+/**
+ * Frames between two samples of a flight: two of the long-drive clock's
+ * (`harness.ts`, The long-drive clock), a fifteenth of a second and `5.33`
+ * logical units of travel — the same interval this check has always sampled at,
+ * counted in the frames the flight is now diced into.
+ */
+const POLL_FRAMES = 2;
 
 /**
  * How long a flight may run before the check gives up on it, in frames.
@@ -85,7 +90,7 @@ const POLL_FRAMES = 8;
  * (`specs/surge.md`). Twenty seconds is nearly three times that and still bounds
  * a flight that never arrives.
  */
-const CAP_FRAMES = framesFor(20);
+const CAP_FRAMES = driveFrames(20);
 
 /**
  * How far a walled sample may sit from the open sample taken at the same frame,
@@ -150,7 +155,7 @@ async function fly(
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(async () => {
@@ -188,7 +193,7 @@ it("flies a Drift the same line in the same time with a wall across it", async (
 
   const shared = Math.min(open.path.length, walled.path.length);
   for (let index = 0; index < shared; index += 1) {
-    const t = ((index * POLL_FRAMES) / TICK_HZ).toFixed(2);
+    const t = ((index * POLL_FRAMES) / DRIVE_HZ).toFixed(2);
     assertLessThanOrEqual(
       distance(open.path[index], walled.path[index]),
       MAX_PATH_DIFF,

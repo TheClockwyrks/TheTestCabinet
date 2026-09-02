@@ -40,7 +40,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { BUILD_PHASE_TIME } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  DRIVE_HZ,
+  type Harness,
+} from "../harness";
 import { poseOpening } from "./run";
 
 /**
@@ -85,7 +90,9 @@ it("holds the opening phase at a zero timer for a minute of game time", async ()
       snapshot.phase !== "opening" ||
       Math.abs(snapshot.buildTimer) > TIMER_TOLERANCE ||
       snapshot.surge.length > 0,
-    { maxSeconds: WATCH_SECONDS, pollSeconds: SAMPLE_SECONDS },
+    // Diced on the long-drive clock (`harness.ts`, The long-drive clock): the
+    // minute is the requirement, the frame rate is this check's to choose.
+    { maxSeconds: WATCH_SECONDS, pollSeconds: SAMPLE_SECONDS, hz: DRIVE_HZ },
   );
 
   await captureStill(h, "opening");

@@ -44,7 +44,7 @@ export default defineConfig({
     // browser process rather than a core, and the host running this is running a
     // model's build under it.
     //
-    // EIGHT RATHER THAN FOUR, AND THE REASON IS THE RUNNER'S OWN TWENTY-MINUTE
+    // TWELVE RATHER THAN FOUR, AND THE REASON IS THE RUNNER'S OWN TWENTY-MINUTE
     // CAP ON THE WHOLE RUN (`VITEST_TIMEOUT`,
     // `crates/core/src/vitest_validator.rs`). That cap is not a per-check
     // ceiling: when it expires nothing is scored at all, the checklist is
@@ -55,10 +55,14 @@ export default defineConfig({
     // been measured at four hundred and fifty. The same project at twelve workers
     // took the SAME twenty minutes with the load average at four hundred and
     // fifty, which is the shape of a run bound by round trips rather than by
-    // cores: a page waiting on a crossing is not competing for one. Eight takes
-    // most of that back while doubling rather than tripling what a run costs the
-    // shared browser in memory, which is the reason there is a cap here at all.
-    maxWorkers: 8,
+    // cores: a page waiting on a crossing is not competing for one. At eight, and
+    // with the longest drives in this project cut to a quarter of the frames they
+    // used to spend, the same run took twenty-nine minutes with the load average
+    // at four hundred and twenty — still past the cap. Twelve is what the
+    // measurement supports, and it is still a cap: what it bounds is memory in the
+    // one shared browser, which is why there is a figure here at all rather than
+    // the core count.
+    maxWorkers: 12,
     minWorkers: 1,
     // Most of Meltdown's operations take effect the moment they are called, so a
     // posed scenario is a few hundred crossings into the page rather than

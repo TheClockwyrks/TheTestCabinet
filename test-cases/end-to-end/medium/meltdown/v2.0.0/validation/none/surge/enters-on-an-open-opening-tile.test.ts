@@ -58,8 +58,8 @@ import {
 } from "../constants";
 import {
   captureStill,
-  createHarness,
-  framesFor,
+  createDriveHarness,
+  driveFrames,
   poseTower,
   type Harness,
   type MeltdownSnapshot,
@@ -98,14 +98,14 @@ const OPEN_TILE = { col: 0, row: LEFT_VENT_ROWS[3] } as const;
 const LEFT_UNITS_READ = 3;
 
 /** How long the sweep may run: the whole of the wave's release, with a second over. */
-const SWEEP_FRAMES = framesFor(
+const SWEEP_FRAMES = driveFrames(
   WAVE_SPAWN_INTERVAL * waveSize(WAVE, WAVE_COUNT) + 1,
 );
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createDriveHarness();
 });
 
 afterEach(async () => {
@@ -117,9 +117,12 @@ it("enters every left-vent unit on the one opening tile no footprint covers", as
     for (const wall of WALLS) await poseTower(h, "arc", wall.col, wall.row);
   });
 
-  // Each unit at the tile it was first seen on, sampled every frame so that is
-  // the tile it entered on. Only the left vent's are kept: the top vent's opening
-  // is untouched and says nothing about this rule.
+  // Each unit at the tile it was first seen on, sampled every frame of the
+  // long-drive clock (`harness.ts`, The long-drive clock) so that is the tile it
+  // entered on: one of its frames is a thirtieth of a second, in which the fastest
+  // unit in the game covers four of the nineteen logical units a tile is wide, so
+  // a unit is still on its entry tile when it is read. Only the left vent's are
+  // kept: the top vent's opening is untouched and says nothing about this rule.
   const seen = new Set<number>();
   const entries: {
     id: number;

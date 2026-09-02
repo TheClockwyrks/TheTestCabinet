@@ -41,6 +41,7 @@ import { BUILD_PHASE_TIME, START_LIVES } from "../constants";
 import {
   captureStill,
   createHarness,
+  DRIVE_HZ,
   startRun,
   type Harness,
 } from "../harness";
@@ -93,6 +94,8 @@ it("never raises the lives across a wave cleared and the build phase after it", 
   const held = await h.skipUntil((snapshot) => snapshot.lives > LIVES, {
     maxSeconds: WATCH_SECONDS,
     pollSeconds: SAMPLE_SECONDS,
+    // Diced on the long-drive clock (`harness.ts`, The long-drive clock).
+    hz: DRIVE_HZ,
   });
 
   await captureStill(h, "lives");

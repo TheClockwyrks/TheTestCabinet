@@ -568,6 +568,68 @@ export function framesForShots(shots: number, fireRate: number): number {
   return Math.round(((shots + 0.5) / fireRate) * TICK_HZ);
 }
 
+
+/* ---- The long-drive clock ------------------------------------------------- */
+//
+// A HANDFUL OF POINTS IN THIS PROJECT NEED MINUTES OF GAME TIME. What each reads
+// is something held over a long stretch — no unit released while the world gate
+// is shut, no countdown started in the opening phase, no heat on a Forge under a
+// minute of fire, no offline period that is not a cooldown, no unit's centre out
+// of the floor rectangle — and the length of the stretch IS the requirement, so
+// it cannot be shortened.
+//
+// WHAT CAN BE CHOSEN IS HOW FINELY THAT STRETCH IS DICED, AND THE SPECIFICATION
+// SAYS SO. `specs/waves.md` mandates no fixed timestep: every rate is per second
+// and integrated against the game time a frame advances by, so "an interval of
+// game time reaches the same state however it was divided into frames", and
+// `instrumentation/deterministic-core` is the point that grades that claim on its
+// own. {@link TICK_HZ} is this suite's convenience for stating tolerances in
+// frames, not a figure any specification fixes.
+//
+// AND THE COST OF DICING IT AT `120` Hz IS NOT SMALL HERE EITHER. Every frame
+// {@link Harness.advance} runs is a real frame INSIDE THE PAGE — the same update
+// the build's own loop runs, followed by its render — so a minute of game time is
+// seven thousand two hundred of them, on a browser that is sharing this machine
+// with everything else running on it. Under the contention this repository's own
+// runner has been measured at, that is the difference between a check that costs
+// a minute and one that costs eight, against a per-check ceiling and against the
+// runner's cap on the whole run. A point lost to either is a point lost to the
+// load on the machine, which is the one thing a validator must never measure.
+//
+// SO A LONG DRIVE RUNS AT `30` Hz. A frame of a thirtieth of a second is still
+// eighteen frames inside one `WAVE_SPAWN_INTERVAL` (`0.6` s), a hundred and fifty
+// inside a `TRIP_TIME` cooldown (`5` s), and four hundred and fifty inside a
+// `BUILD_PHASE_TIME` (`15` s), so every period these points count is resolved
+// many times over — and the drive costs a quarter of what it did. A check whose
+// reading has a finer resolution than a thirtieth of a second does NOT use this
+// clock: it states its own, as the checks on a fire rate and a spawn cadence do.
+
+/** The clock a check that drives minutes of game time runs on, in frames a second. */
+export const DRIVE_HZ = 30;
+
+/** Frames of {@link DRIVE_HZ} covering `duration` seconds of game time, rounded up. */
+export function driveFrames(duration: number): number {
+  return Math.ceil(duration * DRIVE_HZ);
+}
+
+/** Seconds of game time in `frames` frames of {@link DRIVE_HZ}. */
+export function driveSeconds(frames: number): number {
+  return frames / DRIVE_HZ;
+}
+
+/**
+ * A harness on the {@link DRIVE_HZ} clock, for a check that needs minutes of game
+ * time. Everything else about it is {@link createHarness}'s default.
+ */
+export function createDriveHarness(
+  options: Omit<HarnessOptions, "clock"> = {},
+): Promise<Harness> {
+  return createHarness({
+    ...options,
+    clock: new ConstantClock(1000 / DRIVE_HZ),
+  });
+}
+
 /** A rate in units per second from a displacement measured over `frames` frames. */
 export function speedOverFrames(delta: number, frames: number): number {
   return (Math.abs(delta) * TICK_HZ) / frames;
