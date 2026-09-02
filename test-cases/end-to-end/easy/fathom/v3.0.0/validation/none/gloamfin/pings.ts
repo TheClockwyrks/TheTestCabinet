@@ -134,9 +134,16 @@ export function castFromOwnTile(sighting: PingSighting): boolean {
 /**
  * Run `ticks` real ticks, handing every `SWEEP_POLL`th snapshot to `visit`.
  *
- * `advance`, so the whole watch is what a recorded clip shows when the sweep is
- * wrapped in one; a check that wants a stretch off camera calls this outside its
- * capture.
+ * `advance` rather than `skip`, so the whole watch is what a recorded clip shows
+ * when the sweep is wrapped in one; a check that wants a stretch off camera calls
+ * this outside its capture.
+ *
+ * ONE CROSSING, NOT ONE PER SAMPLE. A watch here runs its whole length whatever
+ * it sees — nothing about a cadence is decided early — so the loop belongs on the
+ * page's side of the line rather than the suite's, which is what
+ * {@link Harness.scan} is. The ticks are the same ticks stepped the same way, one
+ * `advance(poll)` per sample; what is dropped is the round trip between them, and
+ * on a loaded host a round trip costs more than the tick it carries.
  */
 export async function sweep(
   h: Harness,
@@ -144,10 +151,7 @@ export async function sweep(
   visit: (snap: FathomSnapshot) => void,
   poll: number = SWEEP_POLL,
 ): Promise<void> {
-  for (let run = 0; run < ticks; run += poll) {
-    await h.advance(Math.min(poll, ticks - run));
-    visit(await h.snapshot());
-  }
+  for (const reading of await h.scan(ticks, poll)) visit(reading.snapshot);
 }
 
 /** The Gloamfin's own entry in a snapshot, by the index the scenario spawned it at. */

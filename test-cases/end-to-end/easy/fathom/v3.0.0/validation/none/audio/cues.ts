@@ -38,6 +38,25 @@
 import type { FathomSnapshot, Harness } from "../harness";
 import { watchCues } from "../harness";
 
+/**
+ * How many ticks one crossing into the page carries.
+ *
+ * THE MEASUREMENT IS STILL PER TICK. Every tick is stepped on its own — one
+ * `advance(1)`, one reading, one sound count — because that is what attributes a
+ * sound to the tick that made it. What this decides is only how many of those
+ * readings are carried back out at a time, and so how many round trips a watch
+ * costs: a tenth of a second's worth, rather than one apiece.
+ *
+ * WHAT IT COSTS. A watch stops at the end of the chunk its event landed in rather
+ * than on the event's own tick, so the run can stand up to a chunk short of a
+ * tenth of a second past it. Nothing a check reads moves — the tick the event
+ * landed on, the sounds on it, the sounds before it and the state it left are all
+ * read out of the chunk exactly as a tick-at-a-time loop read them — and every
+ * scenario in this directory is held still around its event, so the ticks past it
+ * carry nothing.
+ */
+const CHUNK_TICKS = 12;
+
 /** What one driven tick sounded. */
 export interface TickCues {
   /** Which tick of this watch it was, from `1`. */
@@ -96,30 +115,58 @@ export async function watchForEvent(
   options: WatchOptions = {},
 ): Promise<CueWatch> {
   const { quietLead = 0, arm, mark } = options;
-  const sink = watchCues(h);
+  // A sink attached for the whole check, before a tick runs. The counts below are
+  // read straight off the readings rather than out of it, but a harness with a
+  // sink on it steps EVERY drive one tick at a time (see the harness's own
+  // `strideFor`), which is what keeps the tail a capture films after the watch as
+  // fine-grained as the watch itself.
+  watchCues(h);
   const ticks: TickCues[] = [];
-  let read = 0;
+  let taken = 0;
   let marked = -1;
-  let armed = arm === undefined;
+  let last: FathomSnapshot | null = null;
 
-  for (let step = 1; step <= maxTicks; step += 1) {
-    if (!armed && step > quietLead) {
-      await arm?.();
-      armed = true;
+  /** Step one chunk, one tick at a time, and report where the event first held. */
+  const chunk = async (
+    length: number,
+    watching: boolean,
+  ): Promise<CueWatch | null> => {
+    for (const reading of await h.scan(length, 1)) {
+      taken += 1;
+      ticks.push({ step: taken, sounds: reading.sounds });
+      last = reading.snapshot;
+      if (marked < 0 && mark?.(reading.snapshot) === true) marked = taken;
+      if (watching && event(reading.snapshot)) {
+        return {
+          hit: true,
+          at: taken,
+          marked,
+          ticks,
+          snapshot: reading.snapshot,
+        };
+      }
     }
-    await h.advance(1);
-    const tick = h.tick();
-    const sounds = sink.slice(read).filter((cue) => cue.tick === tick).length;
-    read = sink.length;
-    ticks.push({ step, sounds });
+    return null;
+  };
 
-    const snapshot = await h.snapshot();
-    if (marked < 0 && mark?.(snapshot) === true) marked = step;
-    if (armed && event(snapshot)) {
-      return { hit: true, at: step, marked, ticks, snapshot };
-    }
+  const lead = Math.min(arm === undefined ? 0 : quietLead, maxTicks);
+  if (lead > 0) {
+    const seen = await chunk(lead, false);
+    if (seen !== null) return seen;
   }
-  return { hit: false, at: -1, marked, ticks, snapshot: await h.snapshot() };
+  await arm?.();
+
+  for (let done = lead; done < maxTicks; done += CHUNK_TICKS) {
+    const seen = await chunk(Math.min(CHUNK_TICKS, maxTicks - done), true);
+    if (seen !== null) return seen;
+  }
+  return {
+    hit: false,
+    at: -1,
+    marked,
+    ticks,
+    snapshot: last ?? (await h.snapshot()),
+  };
 }
 
 /** How many sounds the build emitted on the event's own tick. */

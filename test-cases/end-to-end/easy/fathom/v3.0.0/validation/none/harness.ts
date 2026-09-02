@@ -392,6 +392,23 @@ export interface UntilResult {
   snapshot: FathomSnapshot;
 }
 
+/**
+ * One reading of a batched run: the state one step of ticks left, and what it
+ * sounded.
+ *
+ * What {@link Harness.scan} hands back, one entry per step it took.
+ */
+export interface Reading {
+  /** The harness tick the step ended on, 1-based, as a recorded frame counts it. */
+  tick: number;
+  /** The simulated time those ticks covered, in milliseconds. */
+  timeMs: number;
+  /** How many sounds the build emitted over the step's ticks. */
+  sounds: number;
+  /** The state the step left. */
+  snapshot: FathomSnapshot;
+}
+
 /** A device pixel, as `[r, g, b, a]`. */
 export type Pixel = [number, number, number, number];
 
@@ -452,6 +469,20 @@ export interface Harness {
     predicate: (snapshot: FathomSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
+  /**
+   * Run `count` ticks in steps of `poll`, reading the state after each step, in
+   * ONE crossing into the page.
+   *
+   * The batched form of a watch that runs to a fixed length: `until` and
+   * `skipUntil` stop the moment a predicate holds and so have to come back out to
+   * the suite between samples, while a watch that is going to run its whole
+   * length whatever it sees does not. The ticks are the same ticks stepped the
+   * same way — one `advance(poll)` per reading, exactly as a loop of
+   * `advance(poll)` calls would — and what is saved is one crossing per reading,
+   * which on a loaded host is the larger half of what such a watch costs.
+   */
+  scan(count: number, poll?: number): Promise<Reading[]>;
+
   /** Hand the game back to its own frame loop for `ms` of real time, then take it back. */
   runFor(ms: number): Promise<void>;
 
@@ -534,6 +565,24 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  * because the poll returns the instant the global appears.
  */
 const SURFACE_TIMEOUT_MS = 15_000;
+
+/**
+ * The most recorded frames one driven run closes while a capture is keeping them.
+ *
+ * The same 300 a written recording holds ({@link MAX_REPLAY_FRAMES}), because a
+ * run filmed at a finer grain than that is thinned back to it on the way to disk
+ * anyway — `thinReplay` decimates, and the injected recorder decimates again at
+ * twice this while the section is still running. So a run longer than this is
+ * filmed at a stride, and what a reviewer is handed is the clip they were going
+ * to be handed either way.
+ *
+ * WHY THAT IS WORTH DOING. `specs/instrumentation.md` has `advance` REDRAW, so
+ * every call costs a whole frame of the build's own rendering — tens of
+ * milliseconds on a host that is running other work — while the ticks themselves
+ * cost microseconds. A section that steps ten thousand ticks one at a time pays
+ * ten thousand renders to keep three hundred frames.
+ */
+const CAPTURE_FRAME_BUDGET = 300;
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -777,22 +826,92 @@ export async function createHarness(
 
   const view = fitViewport(cssWidth, cssHeight, dpr);
   const cueSinks: TimedCue[][] = [];
+  // Whether a `captureReplay` is keeping this harness's frames right now. Held as
+  // a box rather than a plain flag because {@link drive} closes over it before the
+  // harness it belongs to exists, and `captureReplay` flips it from outside.
+  const filming = { on: false };
   let tickCount = 0;
   let timeMs = 0;
 
   /**
-   * Run `count` ticks as `count` recorded frames, and read the state they left,
-   * in one crossing.
+   * How finely `count` ticks are stepped: how many of them one `advance` call —
+   * and so one recorded frame, and one of the build's own renders — covers.
    *
-   * Each tick is opened and closed around a single `advance(1)`, all inside one
-   * synchronous evaluation, so nothing the page's own animation frame renders can
-   * land inside a recorded frame — and so a frame the recorder keeps is exactly
-   * one tick the game ran.
+   * `specs/instrumentation.md` has `advance(n)` run `n` whole ticks "immediately
+   * and in order" and then REDRAW, so the state a batch reaches and the state the
+   * same ticks reach one at a time are the same state — which is exactly what
+   * `instrumentation/manual-clock` is the point for — while the redraw costs a
+   * whole frame of the build's own rendering per call. On a host that is running
+   * other work a render is tens of milliseconds and a tick is microseconds, so a
+   * run stepped one tick at a time is paying for pictures nothing looks at.
+   *
+   * The ticks are therefore stepped as finely as something is actually WATCHING
+   * them, and no finer:
+   *
+   *   * A cue watch reads what sounded on each tick, and `specs/progression.md`
+   *     states its claim per tick, so a harness with a sink attached steps one at
+   *     a time. That is the one reading whose grain is the tick itself.
+   *   * A capture keeps a frame per step, so it steps finely enough to fill the
+   *     {@link CAPTURE_FRAME_BUDGET} a written clip holds and no finer.
+   *   * With neither watching, the whole run is one `advance` — the same ticks in
+   *     the same order, closing the single frame {@link Harness.frameCalls} reads
+   *     back.
+   *
+   * Nothing a check asserts moves with this. The simulation is identical, the
+   * state read at the end is the state those ticks left, and the clip a reviewer
+   * is handed is the one decimation was going to leave anyway.
    */
-  const drive = async (count: number): Promise<FathomSnapshot> => {
+  const strideFor = (count: number): number => {
+    if (cueSinks.length > 0) return 1;
+    if (filming.on) return Math.max(1, Math.ceil(count / CAPTURE_FRAME_BUDGET));
+    return Math.max(1, count);
+  };
+
+  /**
+   * How many steps one recorded frame spans, or `0` to close none at all.
+   *
+   * A SECOND COST, AND A LARGER ONE THAN THE RENDER. Closing a frame is not free
+   * even when nothing is keeping it: the injected recorder encodes every operation
+   * the frame issued so `frameCalls` can read the last one back, and one frame of
+   * this game is a whole maze of them. So a frame is closed only while a capture
+   * is actually keeping frames — and then no more of them than the
+   * {@link CAPTURE_FRAME_BUDGET} a written clip holds, whatever grain the ticks
+   * underneath are being stepped at. A cue watch is the case that needs both at
+   * once: it steps one tick at a time because that is what attributes a sound, and
+   * it films at a stride because a clip does not need a frame apiece.
+   *
+   * Nothing outside a capture reads a closed frame except
+   * {@link Harness.frameCalls}, which asks for its one frame by name.
+   */
+  const filmEvery = (steps: number): number =>
+    filming.on ? Math.max(1, Math.ceil(steps / CAPTURE_FRAME_BUDGET)) : 0;
+
+  /**
+   * Step `count` ticks in runs of `stride`, and hand back one reading per step.
+   *
+   * The one place ticks are driven. Everything happens inside a single
+   * synchronous evaluation in the page, so nothing the page's own animation frame
+   * renders can land inside a recorded frame, and the sounds counted around a
+   * step are the ones that step produced.
+   *
+   * `film` is how many steps one recorded frame spans, or `0` for a run nothing
+   * is keeping frames off — see {@link filmEvery}.
+   *
+   * `every` decides how much comes back: a watch that reads the state after each
+   * step asks for every reading, and a drive that only wants where it ended asks
+   * for the last. A snapshot is cheap to take and not cheap to carry back out —
+   * a board is three grids of tiles — so a run of thousands of steps that nothing
+   * samples does not pay to serialize thousands of them.
+   */
+  const run = async (
+    count: number,
+    stride: number,
+    every: boolean,
+    film: number,
+  ): Promise<Reading[]> => {
     if (surfaceFault !== null) refuse();
     const result = (await page.evaluate(
-      ([handle, howMany, tickMs]) => {
+      ([handle, howMany, step, tickMs, keepAll, filmEach]) => {
         const api = (
           window as unknown as Record<
             string,
@@ -807,30 +926,91 @@ export async function createHarness(
         const audio = (
           window as unknown as { __fathomAudio: { started(): number } }
         ).__fathomAudio;
+        const ticks: number[] = [];
         const sounds: number[] = [];
-        for (let i = 0; i < howMany; i += 1) {
+        const snapshots: unknown[] = [];
+        let done = 0;
+        // Every `filmEach`th step is bracketed as one recorded frame; the steps
+        // between it and the last one run unbracketed, and the ticks they covered
+        // are carried into the next frame's delta so the clip still plays at the
+        // rate the game ran at. Bracketing a run of steps together instead would
+        // cost the same as filming every one of them — a frame pools every
+        // operation issued while it is OPEN, so a frame held open across four
+        // renders pools four renders' worth.
+        let sinceFilmed = 0;
+        let carriedTicks = 0;
+        do {
+          const ran = Math.min(step, howMany - done);
           const before = audio.started();
-          rec.begin();
-          api.advance(1);
-          rec.end(tickMs);
+          const keepFrame = filmEach > 0 && sinceFilmed === 0;
+          if (keepFrame) rec.begin();
+          api.advance(ran);
+          done += ran;
+          carriedTicks += ran;
+          if (keepFrame) {
+            rec.end(tickMs * carriedTicks);
+            carriedTicks = 0;
+          }
+          sinceFilmed = filmEach > 0 ? (sinceFilmed + 1) % filmEach : 0;
+          ticks.push(ran);
           sounds.push(audio.started() - before);
-        }
-        return { snapshot: api.snapshot(), sounds };
+          if (keepAll || done >= howMany) snapshots.push(api.snapshot());
+        } while (done < howMany);
+        return { ticks, sounds, snapshots };
       },
-      [HANDLE, count, TICK_MS] as const,
-    )) as {
-      snapshot: FathomSnapshot;
-      sounds: number[];
-    };
+      [
+        HANDLE,
+        count,
+        Math.max(1, stride),
+        TICK_MS,
+        every,
+        Math.max(0, film),
+      ] as const,
+    )) as { ticks: number[]; sounds: number[]; snapshots: FathomSnapshot[] };
 
-    for (const emitted of result.sounds) {
-      tickCount += 1;
-      timeMs += TICK_MS;
-      for (let n = 0; n < emitted; n += 1) {
+    const readings: Reading[] = [];
+    result.ticks.forEach((ran, index) => {
+      tickCount += ran;
+      timeMs += ran * TICK_MS;
+      for (let n = 0; n < result.sounds[index]; n += 1) {
         for (const sink of cueSinks) sink.push({ tick: tickCount, t: timeMs });
       }
-    }
-    return result.snapshot;
+      const snapshot = every
+        ? result.snapshots[index]
+        : index === result.ticks.length - 1
+          ? result.snapshots[0]
+          : undefined;
+      if (snapshot !== undefined) {
+        readings.push({
+          tick: tickCount,
+          timeMs,
+          sounds: result.sounds[index],
+          snapshot,
+        });
+      }
+    });
+    return readings;
+  };
+
+  /**
+   * Run `count` ticks as recorded frames, and read the state they left, in one
+   * crossing.
+   *
+   * Each step is opened and closed around a single `advance`, all inside one
+   * synchronous evaluation, so nothing the page's own animation frame renders can
+   * land inside a recorded frame — and so a frame the recorder keeps is exactly
+   * the ticks the game ran under it. How many ticks that is, is
+   * {@link strideFor}'s.
+   */
+  const drive = async (count: number): Promise<FathomSnapshot> => {
+    const stride = strideFor(count);
+    const readings = await run(
+      count,
+      stride,
+      false,
+      filmEvery(Math.ceil(count / stride)),
+    );
+    return readings[readings.length - 1].snapshot;
   };
 
   /**
@@ -978,6 +1158,12 @@ export async function createHarness(
     skipUntil: (predicate, untilOptions = {}) =>
       sweep(() => debug.snapshot(), march, predicate, untilOptions),
 
+    scan: async (count, poll = 1) => {
+      if (count <= 0) return [];
+      const stride = Math.max(1, poll);
+      return run(count, stride, true, filmEvery(Math.ceil(count / stride)));
+    },
+
     async runFor(ms) {
       if (surfaceFault !== null) refuse();
       // The one thing here that depends on real elapsed time, so the one thing a
@@ -1030,7 +1216,10 @@ export async function createHarness(
     },
 
     async frameCalls() {
-      await drive(1);
+      // The one reader of a closed frame outside a capture, so this one is always
+      // framed: `filmEvery` closes none when nothing is filming, and the ops this
+      // reads back are exactly the ops the frame it asks for issued.
+      await run(1, 1, false, 1);
       const ops = (await page.evaluate(() =>
         (
           window as unknown as { __fathomRec: { last(): unknown[] } }
@@ -1101,6 +1290,7 @@ export async function createHarness(
   };
 
   harnessCues.set(harness, cueSinks);
+  harnessFilming.set(harness, filming);
   return harness;
 }
 
@@ -1139,6 +1329,16 @@ async function sweep(
 
 /** Where {@link watchCues} attaches, per harness. */
 const harnessCues = new WeakMap<Harness, TimedCue[][]>();
+
+/**
+ * Whether a {@link captureReplay} is keeping each harness's frames right now.
+ *
+ * What tells a driven run that its frames are being WATCHED, and so how finely it
+ * has to close them — see the harness's own `strideFor`. A capture that is not
+ * running leaves a run free to cover its ticks in one `advance` and one of the
+ * build's renders instead of one apiece.
+ */
+const harnessFilming = new WeakMap<Harness, { on: boolean }>();
 
 /* ---- Reaching live play --------------------------------------------------- */
 
@@ -2022,9 +2222,12 @@ export async function captureReplay<T>(
       ).__fathomRec.arm(design),
     { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
   );
+  const filming = harnessFilming.get(h);
+  if (filming !== undefined) filming.on = true;
   try {
     return await scenario();
   } finally {
+    if (filming !== undefined) filming.on = false;
     // In a `finally`, so a scenario that failed still leaves its evidence behind.
     const recording = (await h.page.evaluate(() =>
       (
