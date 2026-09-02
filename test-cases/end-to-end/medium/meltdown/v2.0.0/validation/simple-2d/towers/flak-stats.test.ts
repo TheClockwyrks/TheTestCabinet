@@ -46,7 +46,7 @@
 // and is not read here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,

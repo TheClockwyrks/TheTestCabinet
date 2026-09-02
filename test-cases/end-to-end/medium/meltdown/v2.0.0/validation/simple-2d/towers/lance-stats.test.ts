@@ -45,7 +45,7 @@
 // floor's north-west corner and still leaves both on the grid.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,

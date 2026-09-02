@@ -40,7 +40,7 @@
 // that charges 25 for it plays a different game.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,

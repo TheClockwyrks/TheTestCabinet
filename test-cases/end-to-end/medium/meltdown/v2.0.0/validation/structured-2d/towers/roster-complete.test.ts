@@ -35,7 +35,7 @@
 // in the wrong order is a different build from one carrying all eight.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TOWER_TYPES } from "../../src/constants";
+import { TOWER_TYPES } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

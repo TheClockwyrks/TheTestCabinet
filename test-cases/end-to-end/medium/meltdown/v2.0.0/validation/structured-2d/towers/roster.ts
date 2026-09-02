@@ -65,7 +65,7 @@ import {
   UPGRADE_RANGE,
   moverOutput,
   type EmitterDef,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import {
   TICK_HZ,

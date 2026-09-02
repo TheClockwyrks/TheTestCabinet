@@ -59,7 +59,7 @@ import {
   footprintCentre,
   moverOutput,
   type EmitterDef,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import { sizeOf, tileAt, type Point, type Tile } from "../geometry";
 import {

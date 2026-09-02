@@ -45,7 +45,7 @@
 // due, and its cooling at half what it must be.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,

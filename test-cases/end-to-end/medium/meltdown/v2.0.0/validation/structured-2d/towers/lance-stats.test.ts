@@ -43,7 +43,7 @@
 // anchor reads the boundary in the wrong place by that much.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import {
   assertCloseTo,
   assertDeepEqual,
