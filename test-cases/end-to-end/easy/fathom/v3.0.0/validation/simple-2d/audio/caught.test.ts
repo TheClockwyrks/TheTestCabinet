@@ -34,7 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { clearWorld } from "../fixtures";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

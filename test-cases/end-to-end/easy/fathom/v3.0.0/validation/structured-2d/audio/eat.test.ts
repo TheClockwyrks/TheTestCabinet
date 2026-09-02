@@ -27,7 +27,7 @@
 // what it does to brightness, which is `brightness/from-eating`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertEqual } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {

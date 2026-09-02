@@ -32,7 +32,7 @@
 // `flarefish/flare-reveals`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FLARE_CHARGE, FLARE_INTERVAL } from "../../src/constants";
+import { CUES, FLARE_CHARGE, FLARE_INTERVAL } from "../constants";
 import { assertEqual } from "../assert";
 import { poseApart, spawnPredator } from "../fixtures";
 import {

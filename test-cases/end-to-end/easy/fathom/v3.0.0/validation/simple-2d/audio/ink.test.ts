@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { clearWorld } from "../fixtures";
-import { BINDINGS, CUES } from "../../src/constants";
+import { BINDINGS, CUES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
