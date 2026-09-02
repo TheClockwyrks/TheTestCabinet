@@ -38,6 +38,7 @@ import {
   captureStill,
   createHarness,
   startPlaying,
+  ticksFor,
   type Harness,
 } from "../harness";
 
@@ -64,6 +65,18 @@ const MENU_TO = 1;
  */
 const SETTLE_TICKS = 1;
 
+/**
+ * The quiet stretch driven on the posed menu before the key goes down, in ticks.
+ *
+ * A quarter of a second. Without it, "the highlight ended on `MENU_TO`" is also
+ * true of a build whose highlight moves on its own — one that cycles the selection
+ * on a timer, or advances it every tick the menu is up — and the item would be
+ * decided by where that drift happened to be rather than by the key it is about.
+ * `specs/controls.md` moves the highlight on a menu INPUT; a menu left alone holds
+ * still, and `specs/ui.md` advances nothing on a paused game.
+ */
+const QUIET_TICKS = ticksFor(0.25);
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -85,12 +98,16 @@ it("raises menuIndex by one when ArrowDown is pressed on a menu", async () => {
   await h.debug.setScreen("paused");
   await h.debug.setMenuIndex(MENU_FROM);
 
+  await h.advance(QUIET_TICKS);
+
   const posed = await h.snapshot();
   assertEqual(posed.screen, "paused", "the screen the menu was posed on");
   assertEqual(
     posed.menuIndex,
     MENU_FROM,
-    "the entry the highlight was posed on",
+    `the highlighted entry after ${String(QUIET_TICKS)} ticks on the ` +
+      "paused screen with no key down — the highlight was posed there and " +
+      "moves only on a menu input (specs/controls.md)",
   );
 
   await h.tap(KEY);
