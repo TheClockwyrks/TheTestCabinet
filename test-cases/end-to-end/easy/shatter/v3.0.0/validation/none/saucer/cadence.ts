@@ -30,6 +30,7 @@ import {
   type SaucerView,
   type ShatterSnapshot,
   type ShotView,
+  type UntilResult,
 } from "../harness";
 
 /* -------------------------------------------------------------------------- */
@@ -74,6 +75,80 @@ export interface Arrival {
   snapshot: ShatterSnapshot;
 }
 
+/** What a page-side sweep hands back: what it read, or why it could not read. */
+interface Traced<T> {
+  fault?: string;
+  read?: T;
+}
+
+/** Fail with what the specification requires when a page-side sweep could not run. */
+function requireTrace<T>(traced: Traced<T>): T {
+  if (traced.fault !== undefined || traced.read === undefined) {
+    failSurface(traced.fault ?? "the surface answered a sweep with nothing");
+  }
+  return traced.read;
+}
+
+/**
+ * The sweep {@link nextArrival} describes, run inside the page.
+ *
+ * The same sweep {@link Harness.skipUntil} would run: the state it starts from is
+ * the first sample, every sample after it is a real `advance(stride)`, the last
+ * stride is trimmed to the ceiling, and the sample it stops on is the first whose
+ * reported saucer carries an id other than `afterId`. What comes back is what a
+ * sweep through the harness comes back with — whether it hit, the ticks it took,
+ * and the state at that sample.
+ */
+async function traceNextArrival(
+  h: Harness,
+  afterId: number | null,
+  stride: number,
+  maxTicks: number,
+): Promise<UntilResult> {
+  if (h.surfaceFault !== null) failSurface(h.surfaceFault);
+  const traced = (await h.page.evaluate(
+    ([handle, spec]) => {
+      const api = (window as unknown as Record<string, unknown>)[handle] as
+        | {
+            advance(n: number): void;
+            snapshot(): { saucer: { id: number } | null | undefined };
+          }
+        | undefined;
+      if (
+        api === undefined ||
+        typeof api.advance !== "function" ||
+        typeof api.snapshot !== "function"
+      ) {
+        return { fault: "advance and snapshot on the debug surface" };
+      }
+      try {
+        const arrived = (snapshot: {
+          saucer: { id: number } | null | undefined;
+        }): boolean =>
+          snapshot.saucer !== null &&
+          snapshot.saucer !== undefined &&
+          snapshot.saucer.id !== spec.afterId;
+        let snapshot = api.snapshot();
+        let ticks = 0;
+        while (!arrived(snapshot) && ticks < spec.maxTicks) {
+          const step = Math.min(spec.stride, spec.maxTicks - ticks);
+          api.advance(step);
+          ticks += step;
+          snapshot = api.snapshot();
+        }
+        return { read: { hit: arrived(snapshot), ticks, snapshot } };
+      } catch (error) {
+        return { fault: String(error) };
+      }
+    },
+    [HANDLE, { afterId, stride, maxTicks }] as [
+      string,
+      { afterId: number | null; stride: number; maxTicks: number },
+    ],
+  )) as Traced<UntilResult>;
+  return requireTrace(traced);
+}
+
 /**
  * Run until a saucer is on the field whose id is not `afterId`, and report it.
  *
@@ -95,13 +170,15 @@ export async function nextArrival(
 ): Promise<Arrival> {
   const stride = options.stride ?? 1;
   const maxTicks = options.maxTicks ?? ARRIVAL_CEILING_TICKS;
-  const found = await h.skipUntil(
-    (snapshot) =>
-      snapshot.saucer !== null &&
-      snapshot.saucer !== undefined &&
-      snapshot.saucer.id !== afterId,
-    { poll: stride, maxTicks },
-  );
+  // THE SWEEP RUNS INSIDE THE PAGE, for the reason the section below states at
+  // length. A wait for an arrival covers eighteen to thirty-five seconds of game
+  // time and reads one id off each sample, so at any stride the cost is round
+  // trips rather than ticks: sixteen arrivals under four seeds is nine hundred
+  // crossings, and on a host also running a model's build that is what decides
+  // how long these items take. The loop calls the BUILD's own `advance` and the
+  // BUILD's own `snapshot()`, in the same order and at the same stride a sweep
+  // through the harness calls them, and stops on the same sample.
+  const found = await traceNextArrival(h, afterId, stride, maxTicks);
   if (!found.hit) {
     fail(
       `a saucer arriving within ${secondsFor(maxTicks)} seconds of game time (specs/saucer.md)`,
@@ -289,20 +366,6 @@ export async function sampleEvery(
 //
 // A build whose surface cannot answer is reported as the surface fault it is,
 // rather than as an exception thrown out of the page.
-
-/** What a page-side sweep hands back: what it read, or why it could not read. */
-interface Traced<T> {
-  fault?: string;
-  read?: T;
-}
-
-/** Fail with what the specification requires when a page-side sweep could not run. */
-function requireTrace<T>(traced: Traced<T>): T {
-  if (traced.fault !== undefined || traced.read === undefined) {
-    failSurface(traced.fault ?? "the surface answered a sweep with nothing");
-  }
-  return traced.read;
-}
 
 /** Every moment the reported saucer id changed, and what it changed to. */
 export interface VisitTrace {

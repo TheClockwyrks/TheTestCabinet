@@ -130,7 +130,9 @@ export async function watchForEvent(
       armedAt = step - 1;
       armedTotal = await h.sounds();
     }
-    await h.advance(1);
+    // The state the tick left comes back off the step that ran it, rather than
+    // from a second crossing asking for the reading the first one already had.
+    const snapshot = await h.advance(1);
     const tick = h.tick();
     ticks.push({
       step,
@@ -141,7 +143,6 @@ export async function watchForEvent(
     readSounds = sounds.length;
     readStops = stops.length;
 
-    const snapshot = await h.snapshot();
     if (armed && event(snapshot)) {
       return {
         hit: true,
