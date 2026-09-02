@@ -25,7 +25,7 @@
 // `swarm/dive-leaves-slot`, and what the later gaps are is `swarm/dive-cadence`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_FIRST_DELAY, FORM_COLS, FORM_ROWS } from "../../src/constants";
+import { DIVE_FIRST_DELAY, FORM_COLS, FORM_ROWS } from "../constants";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

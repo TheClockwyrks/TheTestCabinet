@@ -25,7 +25,7 @@
 // neither costs a life nor ends the wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_FIRE_Y, FORM_CENTER_X } from "../../src/constants";
+import { DIVE_FIRE_Y, FORM_CENTER_X } from "../constants";
 import { assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

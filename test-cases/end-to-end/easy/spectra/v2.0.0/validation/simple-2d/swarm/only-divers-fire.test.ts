@@ -28,7 +28,7 @@
 // formation was silent and the diver was not.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_FIRST_DELAY } from "../../src/constants";
+import { DIVE_FIRST_DELAY } from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,

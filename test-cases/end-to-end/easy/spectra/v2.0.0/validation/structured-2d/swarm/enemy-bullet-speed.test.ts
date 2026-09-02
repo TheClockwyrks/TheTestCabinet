@@ -27,7 +27,7 @@ import {
   FIELD_TOP,
   FORM_CENTER_X,
   bulletSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

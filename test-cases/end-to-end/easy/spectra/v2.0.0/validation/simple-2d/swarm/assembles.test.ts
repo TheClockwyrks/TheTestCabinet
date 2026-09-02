@@ -23,7 +23,7 @@
 // interrupts the wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SWAY_AMP } from "../../src/constants";
+import { SWAY_AMP } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

@@ -32,7 +32,7 @@
 // once has no stagger to measure, which is the failure it reports.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENTER_GROUP_GAP } from "../../src/constants";
+import { ENTER_GROUP_GAP } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

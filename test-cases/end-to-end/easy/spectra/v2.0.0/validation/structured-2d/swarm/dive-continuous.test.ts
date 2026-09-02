@@ -37,7 +37,7 @@ import {
   FIELD_TOP,
   FORM_CENTER_X,
   droneSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

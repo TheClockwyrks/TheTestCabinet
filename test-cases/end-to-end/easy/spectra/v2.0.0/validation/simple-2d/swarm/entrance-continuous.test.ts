@@ -23,7 +23,7 @@
 // thing moving a drone during the watch is the entrance under test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENTER_SPEED, droneSpeedScale } from "../../src/constants";
+import { ENTER_SPEED, droneSpeedScale } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

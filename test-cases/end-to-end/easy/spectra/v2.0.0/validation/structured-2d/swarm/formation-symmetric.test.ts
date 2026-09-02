@@ -23,7 +23,7 @@
 // is shut so nothing reaching the ship interrupts the wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FORM_CENTER_X } from "../../src/constants";
+import { FORM_CENTER_X } from "../constants";
 import { assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

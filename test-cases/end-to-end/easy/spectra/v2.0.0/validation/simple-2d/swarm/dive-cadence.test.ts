@@ -28,7 +28,7 @@ import {
   FORM_COLS,
   FORM_ROWS,
   diveGapScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertTrue } from "../assert";
 import {
   captureReplay,

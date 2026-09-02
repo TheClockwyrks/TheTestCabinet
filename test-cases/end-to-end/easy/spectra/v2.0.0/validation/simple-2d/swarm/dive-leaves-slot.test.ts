@@ -27,7 +27,7 @@
 // itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_FIRST_DELAY, SWAY_AMP, slotX, slotY } from "../../src/constants";
+import { DIVE_FIRST_DELAY, SWAY_AMP, slotX, slotY } from "../constants";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

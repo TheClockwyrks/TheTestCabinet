@@ -24,7 +24,7 @@
 // once it is home.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SWAY_AMP, slotX, slotY } from "../../src/constants";
+import { SWAY_AMP, slotX, slotY } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,

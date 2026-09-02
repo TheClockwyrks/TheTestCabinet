@@ -29,7 +29,7 @@
 // is hundreds of units past it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENTER_SPEED, FIELD_TOP, droneSpeedScale } from "../../src/constants";
+import { ENTER_SPEED, FIELD_TOP, droneSpeedScale } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

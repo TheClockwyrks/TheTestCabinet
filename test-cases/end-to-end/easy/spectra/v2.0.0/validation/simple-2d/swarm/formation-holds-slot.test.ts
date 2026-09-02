@@ -31,7 +31,7 @@
 // covers both extremes of the swing and everything between them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SWAY_PERIOD, slotX, slotY, swayOffset } from "../../src/constants";
+import { SWAY_PERIOD, slotX, slotY, swayOffset } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

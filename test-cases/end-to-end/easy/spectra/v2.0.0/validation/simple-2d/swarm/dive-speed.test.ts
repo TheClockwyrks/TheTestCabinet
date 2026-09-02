@@ -30,7 +30,7 @@ import {
   FIELD_TOP,
   FORM_CENTER_X,
   droneSpeedScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

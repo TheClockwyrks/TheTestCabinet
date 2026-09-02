@@ -24,7 +24,7 @@
 // contact gates are shut, so nothing but the entrance is moving.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENTER_SPEED, droneSpeedScale } from "../../src/constants";
+import { ENTER_SPEED, droneSpeedScale } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

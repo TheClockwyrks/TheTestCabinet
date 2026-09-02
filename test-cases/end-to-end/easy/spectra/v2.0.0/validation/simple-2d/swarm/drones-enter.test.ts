@@ -25,7 +25,7 @@
 // are shut so nothing else moves a drone while the entrance is watched.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_TOP } from "../../src/constants";
+import { FIELD_TOP } from "../constants";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureReplay,

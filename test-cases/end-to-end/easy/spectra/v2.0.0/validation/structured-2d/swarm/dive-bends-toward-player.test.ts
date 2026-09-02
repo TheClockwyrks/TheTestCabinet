@@ -28,7 +28,7 @@
 // a dive that presses all the way home neither costs a life nor stops the wave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_TOP, SHIP_X_MAX, SHIP_X_MIN, slotX } from "../../src/constants";
+import { FIELD_TOP, SHIP_X_MAX, SHIP_X_MIN, slotX } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

@@ -26,7 +26,7 @@ import {
   DIVE_GAP_MAX,
   DIVE_GAP_MIN,
   diveGapScale,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertTrue } from "../assert";
 import {
   captureReplay,

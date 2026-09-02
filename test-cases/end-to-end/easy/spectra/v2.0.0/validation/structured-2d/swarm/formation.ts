@@ -11,7 +11,7 @@
 // specs/field.md — and it holds no threshold. A point that wants a different
 // composition writes its own entries, as `swarm/only-divers-fire` does.
 
-import { FORM_COLS, FORM_ROWS } from "../../src/constants";
+import { FORM_COLS, FORM_ROWS } from "../constants";
 import type { DroneKind, DronePose, FormationEntry } from "../harness";
 
 /**
