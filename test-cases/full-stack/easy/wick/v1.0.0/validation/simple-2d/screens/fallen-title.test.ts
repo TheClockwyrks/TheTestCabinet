@@ -9,11 +9,11 @@
 //   ... `TITLE` returns to `title` with `menuIndex = 0`", with `END_ITEMS`
 //   "`TRY AGAIN`, `TITLE`, in that order".
 //   specs/state.md ("The idle run"): "`run` holds the values below whenever
-//   `screen` is `title` or `howto` ... leaving a run for the title restores
-//   them", the table restated as `IDLE_RUN`.
+//   `screen` is `title`, `howto`, or `almanac` ... leaving a run for the title
+//   restores them", the table restated as `IDLE_RUN`.
 //   specs/instrumentation.md (`setScreen`): "`title` | any | Discards the run
-//   exactly as `TITLE` on an end screen or `back` on `paused` does: the idle
-//   run."
+//   exactly as `TITLE` on an end screen or `MAIN MENU` on `paused` does: the
+//   idle run."
 //
 // THE DRIVE. An isolated `playing` run ended through `setScreen`, which "Ends
 // the run exactly as that ending does, the run kept for the end screen to

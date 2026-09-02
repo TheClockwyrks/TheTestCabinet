@@ -5,7 +5,8 @@
 //   - specs/ui.md (Audio): "`menu-move` | `CUES.menuMove` | A menu highlight
 //     moves", and "Each is played ... on the frame for a menu event".
 //   - specs/ui.md (Menu navigation): "Every move of a highlight plays
-//     `menu-move`, on the level-up overlay included".
+//     `menu-move`, whichever of the two moved it, the level-up overlay's offers
+//     and the almanac's tab bar included".
 //   - specs/ui.md: on `title` "`up` and `down` move the highlight by one item
 //     and wrap at both ends"; on `levelup` "`up` and `down` move the highlight
 //     and wrap at both ends"; on the end screens "`up` and `down` move the
@@ -21,7 +22,9 @@
 // WHY THE SCREENS ARE REACHED AS THEY ARE. Each is entered through the debug
 // surface, "exactly as the real transition into it enters it"
 // (specs/instrumentation.md, `setScreen`), so a build with a broken menu route
-// still reaches the screen this point is about. The level-up overlay is opened
+// still reaches the screen this point is about. On each of the three the item
+// the press lands on exists, since `title` carries three items and both of the
+// others carry at least two. The level-up overlay is opened
 // from an isolated night with nothing on the field and every driver switch off,
 // through a queued level-up rather than a gem, so no other cue lands on the
 // frames recorded. Only `down` is pressed, since the requirement is that a move

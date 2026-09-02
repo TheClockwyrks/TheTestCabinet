@@ -2,13 +2,14 @@
 //
 // WHERE THE THRESHOLD COMES FROM. `specs/ui.md`, The loops: "`music` is
 // looping on every frame exactly when `screen` is `playing`, `levelup`,
-// `chest`, or `paused` ... `title` and `howto` carry no music." "Exactly
-// when" makes the rule two-sided, and `title` falls on the silent side, so
-// the threshold is `false` on every frame of it.
+// `chest`, or `paused` ... `title`, `howto`, and `almanac` carry no music."
+// "Exactly when" makes the rule two-sided, and `title` falls on the silent
+// side, so the threshold is `false` on every frame of it.
 //
 // WHY THE WORLD IS POSED AS IT IS. `reset` alone, which "Restores every
 // declared field of the game's state to its title-screen value: the `title`
-// screen with `menuIndex` `0`, the idle run of `specs/state.md` ... A reset
+// screen with `menuIndex`, `almanacTab`, and `almanacScroll` all `0`, the
+// idle run of `specs/state.md` ... A reset
 // leaves the game indistinguishable from a freshly started session". That is
 // the fresh boot this point is about, and the title is then held for `FRAMES`
 // frames with no key pressed, so nothing lights the lamp.

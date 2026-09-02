@@ -7,8 +7,8 @@
 //     `TICK_DT / 2` leaves it at exactly `0`. A timer is due on every tick on
 //     which it is `0` after its count-down ... and a timer at `0` stays due on
 //     every tick until it is set again. The weapon cooldown timers, the contact
-//     cooldowns, the re-hit entries, the spawn timer, and every `ttl` all count
-//     this way."
+//     cooldowns, the lamplighter's `hurtFlash`, the re-hit entries, the spawn
+//     timer, and every `ttl` all count this way."
 //   - `specs/instrumentation.md` ("The driver switches"): with `enemyContact`
 //     off, "No enemy hits. Every `contactCooldown` still counts down."
 //   - `specs/instrumentation.md` (`setEnemyContactCooldown`): "Sets enemy

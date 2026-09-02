@@ -95,6 +95,7 @@ import {
   STAGE_W,
   TICK_HZ,
   TICK_MS,
+  WHEEL_ROW,
   XP_BASE,
   type EnemyId,
   type GemTier,
@@ -118,6 +119,7 @@ import {
   type SnapshotZone,
   type SwitchName,
   type WickDebugApi,
+  type WickRect,
   type WickSnapshot,
   type ZoneKind,
 } from "./surface";
@@ -136,6 +138,7 @@ export type {
   SnapshotZone,
   SwitchName,
   WickDebugApi,
+  WickRect,
   WickSnapshot,
   ZoneKind,
 };
@@ -217,6 +220,8 @@ export interface CallGeometry {
   smoothing: boolean;
   width?: number;
   textAlign?: string;
+  /** The CSS font shorthand in force, for a call that drew a run of text. */
+  font?: string;
 }
 
 /** One recorded operation on the 2D context, in the order the render made it. */
@@ -463,7 +468,8 @@ function serveWorkspaceAssets(): void {
   hostServed = true;
   const host = globalThis as unknown as Record<string, unknown>;
   const inherited = host.fetch as
-    ((input: string, init?: unknown) => Promise<Response>) | undefined;
+    | ((input: string, init?: unknown) => Promise<Response>)
+    | undefined;
 
   host.fetch = async (input: unknown, init?: unknown): Promise<Response> => {
     const url = typeof input === "string" ? input : String(input);
@@ -656,6 +662,26 @@ export interface Harness {
   /** Release a key held by {@link Harness.holdKey}. */
   releaseKey(code: string): void;
 
+  /**
+   * Move the pointer to the STAGE point `(x, y)`, running no frame. Follow it
+   * with a frame to let the build read it, or take {@link hoverAt}.
+   */
+  movePointer(x: number, y: number, init?: PointerInit): void;
+  /**
+   * Press the primary button at the STAGE point `(x, y)` and leave it down,
+   * running no frame: the press edge the next frame reads.
+   */
+  pressPointer(x: number, y: number, init?: PointerInit): void;
+  /** Release the primary button at the STAGE point `(x, y)`, running no frame. */
+  releasePointer(x: number, y: number, init?: PointerInit): void;
+  /**
+   * Turn the wheel by `(dx, dy)` STAGE units, running no frame. Travel
+   * accumulates until the frame that reads it closes, so several turns before
+   * one frame are one frame's travel, exactly as `specs/controls.md` sums
+   * them.
+   */
+  turnWheel(dx: number, dy: number): void;
+
   /** Every operation the LAST frame's render issued. */
   lastCalls(): DrawCall[];
   /** Run exactly one frame and hand back everything its render issued. */
@@ -702,6 +728,70 @@ export class KeyEvent extends Event {
     this.code = code;
     this.repeat = init.repeat ?? false;
     this.key = init.key ?? code;
+  }
+}
+
+/**
+ * A `PointerEvent`-shaped event's extra fields.
+ *
+ * The engine reads a pointer event STRUCTURALLY (any object carrying the
+ * fields drives it), so a check drives the pointer with these plain events
+ * exactly as a browser's would. The defaults are one primary mouse.
+ */
+export interface PointerInit {
+  pointerId?: number;
+  isPrimary?: boolean;
+  pointerType?: "mouse" | "pen" | "touch";
+  /** `0` is the primary button; a move reports `-1`, meaning none. */
+  button?: number;
+  /** The held-button mask: `1` while the primary button is down. */
+  buttons?: number;
+}
+
+/**
+ * A `PointerEvent`-shaped event, dispatched at the same target the key events
+ * go to. Its `clientX`/`clientY` are CSS pixels from the canvas's corner,
+ * which is what the engine maps onto the stage.
+ */
+export class PointerInputEvent extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly pointerId: number;
+  readonly isPrimary: boolean;
+  readonly pointerType: string;
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: "pointermove" | "pointerdown" | "pointerup" | "pointercancel",
+    clientX: number,
+    clientY: number,
+    init: PointerInit = {},
+  ) {
+    super(type);
+    this.clientX = clientX;
+    this.clientY = clientY;
+    this.pointerId = init.pointerId ?? 0;
+    this.isPrimary = init.isPrimary ?? true;
+    this.pointerType = init.pointerType ?? "mouse";
+    this.button = init.button ?? (type === "pointermove" ? -1 : 0);
+    this.buttons = init.buttons ?? (type === "pointerdown" ? 1 : 0);
+  }
+}
+
+/**
+ * A `WheelEvent`-shaped event. `deltaMode` is `0`, pixels, so a delta is CSS
+ * pixels and the engine divides it by the same fit a position goes through.
+ */
+export class WheelInputEvent extends Event {
+  readonly deltaX: number;
+  readonly deltaY: number;
+  readonly deltaMode = 0;
+
+  constructor(deltaX: number, deltaY: number) {
+    super("wheel");
+    this.deltaX = deltaX;
+    this.deltaY = deltaY;
   }
 }
 
@@ -777,6 +867,7 @@ function recorder(
           if (method !== "drawImage" && typeof args[0] === "string") {
             at.width = object.measureText(args[0]).width;
             at.textAlign = object.textAlign;
+            at.font = object.font;
           }
           call.at = at;
         }
@@ -991,6 +1082,34 @@ export async function createHarness(
     keys.dispatchEvent(new KeyEvent(type, code, init));
   };
 
+  // WHERE A STAGE POINT LANDS AS A CLIENT POSITION. `specs/controls.md` reads
+  // the pointer "in the stage's own coordinates, `0` to `STAGE_W` across and
+  // `0` to `STAGE_H` down, whatever the canvas's size on the page and wherever
+  // the letterbox bars fall", and the engine does that mapping itself: it
+  // takes the client position relative to the surface's origin, scales it by
+  // the device pixel ratio, and runs it back through the viewport fit. This
+  // surface declares no `origin`, so the origin reads `(0, 0)` and a check
+  // driving the DEFAULT harness — `cssWidth`/`cssHeight` of `STAGE_W`/`STAGE_H`
+  // at a `dpr` of `1` — sends a stage point through unchanged. Inverting the
+  // engine's own mapping here rather than assuming that identity is what keeps
+  // a check correct when it builds its harness at another size or ratio.
+  const stageToClient = (x: number, y: number): { x: number; y: number } => {
+    const view = engine.viewport();
+    return {
+      x: (view.offsetX + x * view.scale) / dpr,
+      y: (view.offsetY + y * view.scale) / dpr,
+    };
+  };
+  const pointerAt = (
+    type: "pointermove" | "pointerdown" | "pointerup",
+    x: number,
+    y: number,
+    init?: PointerInit,
+  ): void => {
+    const at = stageToClient(x, y);
+    keys.dispatchEvent(new PointerInputEvent(type, at.x, at.y, init));
+  };
+
   let armed = false;
   const armAudio = (): void => {
     if (armed) return;
@@ -1070,6 +1189,19 @@ export async function createHarness(
 
     holdKey: (code, init) => dispatch("keydown", code, init),
     releaseKey: (code) => dispatch("keyup", code),
+
+    movePointer: (x, y, init) => pointerAt("pointermove", x, y, init),
+    pressPointer: (x, y, init) => pointerAt("pointerdown", x, y, init),
+    releasePointer: (x, y, init) => pointerAt("pointerup", x, y, init),
+    turnWheel: (dx, dy) => {
+      // The engine accumulates `delta x dpr / scale` as logical units, so the
+      // CSS delta that is worth `dx` stage units is `dx x scale / dpr` — the
+      // same inversion `stageToClient` performs on a position.
+      const view = engine.viewport();
+      keys.dispatchEvent(
+        new WheelInputEvent((dx * view.scale) / dpr, (dy * view.scale) / dpr),
+      );
+    },
 
     lastCalls: () => [...bucket.calls],
     async frameDraw() {
@@ -1251,6 +1383,118 @@ export function toggleOverlay(h: Harness): Promise<WickSnapshot> {
   return tap(h, OVERLAY_TOGGLE_CODE);
 }
 
+/* ---- The pointer -------------------------------------------------------- */
+//
+// `specs/controls.md`, The pointer, applies three rules "on every frame, after
+// that frame's press edges and before its update": a hover moves the
+// highlight, a primary press edge takes the item under it, and wheel travel
+// scrolls the almanac's list. All three are read from what a FRAME collected,
+// so every helper below dispatches its events and then runs the one frame that
+// reads them — a gesture that ran no frame reaches the game as nothing.
+//
+// Positions are STAGE coordinates throughout, "0 to STAGE_W across and 0 to
+// STAGE_H down", the coordinates `menuRects` and `tabRects` report their
+// rectangles in. The harness converts them to the client positions the engine
+// maps back onto the stage, so a check names the same point under any surface
+// size.
+
+/**
+ * The rectangles of the current screen's vertical menu, in menu order.
+ *
+ * A thin, typed name over the surface's own reading, spelled the same way on
+ * every engine so a pointer check reads identically under each. On `almanac`
+ * these are the VISIBLE entry rows, so the rectangle at position `i` belongs
+ * to the entry at `menuIndex` `almanacScroll + i` (`specs/controls.md`).
+ */
+export function menuRects(h: Harness): readonly WickRect[] {
+  return h.debug.menuRects();
+}
+
+/** The rectangles of the almanac's tab bar, in `ALMANAC_TABS` order. */
+export function tabRects(h: Harness): readonly WickRect[] {
+  return h.debug.tabRects();
+}
+
+/**
+ * The middle of a rectangle: the one point inside it that no build's padding,
+ * border, or rounding can put outside it, and, because "no two of a screen's
+ * rectangles overlap" (`specs/controls.md`), inside no other.
+ */
+export function centerOf(rect: WickRect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+/**
+ * Move the pointer to the STAGE point `(x, y)`, run the one frame that reads
+ * it, and hand back what that frame left.
+ *
+ * The hover rule is applied per frame, so the move alone changes nothing: the
+ * frame is what carries "the pointer inside the rectangle of the item at
+ * `menuIndex` `i` ... sets `menuIndex` to `i` and plays `menu-move`". The
+ * pointer stays where it was put, so a later frame sees it there still.
+ */
+export async function hoverAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y);
+  await h.advance(1);
+  return h.snapshot();
+}
+
+/** Rest the pointer in the middle of a reported rectangle. */
+export function hoverRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return hoverAt(h, at.x, at.y);
+}
+
+/**
+ * Click the primary button at the STAGE point `(x, y)`, run the one frame that
+ * reads the press edge, and hand back the snapshot that frame left.
+ *
+ * The move, the press, and the release are all delivered before the frame, the
+ * way a real click between two frames arrives, so the frame sees the pointer at
+ * the point AND the press edge armed there, and no contact is left open behind
+ * it. "A primary press edge inside the rectangle of the item at `menuIndex` `i`
+ * sets `menuIndex` to `i`, playing `menu-move` if that changed it, and then
+ * takes that item exactly as `confirm` on it does" (`specs/controls.md`), and
+ * that whole rule lands on this one frame.
+ */
+export async function clickAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y);
+  h.pressPointer(x, y);
+  h.releasePointer(x, y);
+  await h.advance(1);
+  return h.snapshot();
+}
+
+/** Click the middle of a reported rectangle. */
+export function clickRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return clickAt(h, at.x, at.y);
+}
+
+/**
+ * Turn the wheel by `rows` rows and run the one frame that reads the travel.
+ *
+ * `specs/controls.md` makes a frame's travel "that frame's wheel deltas summed
+ * in stage units, divided by `WHEEL_ROW` (`100`) and truncated toward zero to
+ * give the number of rows `almanacScroll` moves, downward travel moving it
+ * toward the end of the list" — so `rows` whole rows are `rows x WHEEL_ROW`
+ * units of downward travel, positive scrolling toward the end. A fractional
+ * `rows` poses the remainder the rule discards.
+ */
+export async function wheelBy(h: Harness, rows: number): Promise<WickSnapshot> {
+  h.turnWheel(0, rows * WHEEL_ROW);
+  await h.advance(1);
+  return h.snapshot();
+}
+
 /** The operation that sets each driver switch, by the switch's name. */
 const SWITCH_OPS: Readonly<
   Record<SwitchName, keyof WickDebugApi & `set${string}`>
@@ -1379,7 +1623,8 @@ export function freshRun(h: Harness, seed?: number): WickSnapshot {
  * The idle run of `specs/state.md`, as the snapshot reports it: every stored
  * field at the value the table "The idle run" gives, and every derived field
  * (`specs/instrumentation.md`, "Snapshot shape") at what those values derive
- * to with no passive held. What `run` holds on `title` and `howto`, and what
+ * to with no passive held. What `run` holds on `title`, `howto`, and
+ * `almanac`, and what
  * `reset` and `setScreen("title")` restore; a check compares a whole run
  * against it with `assertDeepEqual`.
  */
@@ -1391,6 +1636,7 @@ export const IDLE_RUN: SnapshotRun = {
   xpToNext: XP_BASE,
   kills: 0,
   player: { x: 0, y: 0, facing: "right", hp: BASE_MAX_HP },
+  hurtFlash: 0,
   maxHp: BASE_MAX_HP,
   armor: 0,
   moveSpeed: MOVE_SPEED,
@@ -2025,6 +2271,19 @@ export interface TextDraw {
   width: number;
   /** The alignment that places the run about its anchor. */
   textAlign: string;
+  /**
+   * The pixel size of the font in force, in the call's space, or `0` where the
+   * shorthand named no pixel size. The height a run of glyphs stands off its
+   * baseline is under this figure, so it is the slack a reading that has only
+   * the anchor to go on can allow either side of the glyphs.
+   */
+  fontSize: number;
+}
+
+/** The pixel size a CSS font shorthand names, or `0` where it names none. */
+function fontSizeOf(font: string | undefined): number {
+  const px = /(\d*\.?\d+)px/.exec(font ?? "");
+  return px === null ? 0 : Number(px[1]);
 }
 
 /** Every run of text the frame drew, with its anchor in device pixels. */
@@ -2043,6 +2302,7 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
       y: anchor.y,
       width: call.at.width ?? 0,
       textAlign: call.at.textAlign ?? "start",
+      fontSize: fontSizeOf(call.at.font),
     });
   }
   return draws;

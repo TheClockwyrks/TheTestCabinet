@@ -10,8 +10,8 @@
 //
 // THE SPEC IT RESTS ON.
 //   specs/controls.md ("What each screen reads"): "`title` | none | `up`,
-//   `down` move the highlight, wrapping at both ends; `confirm` takes the
-//   highlighted item; `mute`", which omits `pause`; "`howto` | none | `back`
+//   `down` move the highlight, wrapping; `confirm` takes the highlighted
+//   item; `mute`", which omits `pause`; "`howto` | none | `back`
 //   returns to `title`; `mute`", which omits `confirm`. "An action a row omits
 //   does nothing on that screen. `menuIndex` is `0` on entering every screen,
 //   and on a screen with no highlight it stays `0`."

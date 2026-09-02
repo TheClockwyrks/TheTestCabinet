@@ -5,10 +5,13 @@
 // `CUES.menuMove` | A menu highlight moves", and under the table: "Each is played
 // on the tick its event happens, or on the frame for a menu event".
 // specs/ui.md ("Menu navigation") says which menus that covers: "`up` and `down`
-// move the highlight ... Every move of a highlight plays `menu-move`, on the
-// level-up overlay included." So each of the three menus below plays `menu-move`
-// on the frame its highlight moves, and a build that sounds one menu and not
-// another must grade differently from one that sounds none.
+// move the highlight ... Every move of a highlight plays `menu-move`, whichever
+// of the two moved it, the level-up overlay's offers and the almanac's tab bar
+// included." So each of the three menus below plays `menu-move` on the frame its
+// highlight moves, and a build that sounds one menu and not another must grade
+// differently from one that sounds none. "Whichever of the two moved it" is the
+// keyboard here; what a hover that moves a highlight sounds is
+// `pointer/title-hover-plays-menu-move`.
 //
 // WHY THE HIGHLIGHT IS MOVED WITH A REAL KEY. specs/controls.md binds `down` to
 // `ArrowDown`, and the surface carries no operation for the keyboard:
@@ -18,9 +21,9 @@
 //
 // WHY EACH MENU IS REACHED THE WAY IT IS.
 //   - THE TITLE. `reset` "Restores every declared field of the game's state to
-//     its title-screen value: the `title` screen with `menuIndex` `0`", which is
-//     the front door with `TITLE_ITEMS` under it, two items, so one `down` moves
-//     the highlight to `1`.
+//     its title-screen value: the `title` screen with `menuIndex`, `almanacTab`,
+//     and `almanacScroll` all `0`", which is the front door with `TITLE_ITEMS`
+//     under it, three items, so one `down` moves the highlight to `1`.
 //   - THE LEVEL-UP OVERLAY. An isolated night with every driver switch off,
 //     nothing alive, nothing dropped, and no slot held, so the pool is every
 //     candidate and the overlay carries `OFFER_COUNT` (`3`) offers; one queued

@@ -109,6 +109,7 @@ import {
   TICK_DT,
   TICK_MS,
   UNBOUND_KEY,
+  WHEEL_ROW,
   type ActionName,
   type EnemyId,
   type GemTier,
@@ -138,6 +139,7 @@ import {
   type SwitchName,
   type WeaponSnapshot,
   type WickDebugApi,
+  type WickRect,
   type WickSnapshot,
   type ZoneKind,
   type ZoneSnapshot,
@@ -158,6 +160,7 @@ export type {
   SwitchName,
   WeaponSnapshot,
   WickDebugApi,
+  WickRect,
   WickSnapshot,
   ZoneKind,
   ZoneSnapshot,
@@ -953,6 +956,24 @@ export interface Harness {
   /** Release a key held by {@link Harness.holdKey}. */
   releaseKey(code: string): void;
 
+  /**
+   * Move the pointer to a LOGICAL STAGE point, `0` to `STAGE_W` across and `0`
+   * to `STAGE_H` down, which are the coordinates specs/controls.md reads the
+   * pointer in. Runs no frame: the rules are applied by the frame that follows,
+   * so a check reads the move's effect after one {@link Harness.tick}.
+   */
+  movePointer(x: number, y: number): void;
+  /** Press the primary button at a logical stage point. Runs no frame. */
+  pressPointer(x: number, y: number): void;
+  /** Release the primary button at a logical stage point. Runs no frame. */
+  releasePointer(x: number, y: number): void;
+  /**
+   * Turn the wheel by `x` and `y` of travel in LOGICAL STAGE UNITS, the units
+   * specs/controls.md sums a frame's travel in. Runs no frame; the frame that
+   * follows reads what accumulated.
+   */
+  turnWheel(x: number, y: number): void;
+
   /** Forget every call recorded so far. */
   clearCalls(): void;
   /** Run exactly one frame and hand back everything its render issued. */
@@ -1016,6 +1037,56 @@ class KeyEvent extends Event {
     this.code = code;
     this.key = options.key ?? code;
     this.repeat = options.repeat ?? false;
+  }
+}
+
+/**
+ * A `PointerEvent`-shaped event.
+ *
+ * The engine reads a pointer event STRUCTURALLY: `clientX`/`clientY` place it,
+ * `pointerId` and `isPrimary` identify the pointer, `pointerType` names the
+ * device, and `button`/`buttons` say what is held. A move names no button, so
+ * it carries `button` `-1` and an empty mask, exactly as a browser's does; a
+ * primary press carries `button` `0` and `buttons` `1`, and the release that
+ * ends it carries `button` `0` and an empty mask.
+ */
+class PointerEventShape extends Event {
+  readonly pointerId = 1;
+  readonly isPrimary = true;
+  readonly pointerType = "mouse";
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: "pointermove" | "pointerdown" | "pointerup",
+    clientX: number,
+    clientY: number,
+  ) {
+    super(type);
+    this.clientX = clientX;
+    this.clientY = clientY;
+    this.button = type === "pointermove" ? -1 : 0;
+    this.buttons = type === "pointerdown" ? 1 : 0;
+  }
+}
+
+/**
+ * A `WheelEvent`-shaped event, its travel in CSS pixels.
+ *
+ * `deltaMode` is `0`, the pixel mode, so the engine takes the deltas as CSS
+ * pixels and puts them through the same fit a position goes through.
+ */
+class WheelEventShape extends Event {
+  readonly deltaMode = 0;
+  readonly deltaX: number;
+  readonly deltaY: number;
+
+  constructor(deltaX: number, deltaY: number) {
+    super("wheel");
+    this.deltaX = deltaX;
+    this.deltaY = deltaY;
   }
 }
 
@@ -1199,6 +1270,41 @@ export async function createHarness(
     keys.dispatchEvent(new KeyEvent(type, code, keyOptions));
   };
 
+  /**
+   * The CSS point the page would report for a logical stage point, run through
+   * the inverse of the fit the engine places an event by: a client position
+   * becomes `((client - origin) * dpr - offset) / scale` on the stage, and this
+   * surface states no `origin`. At the harness's default shape the fit is 1:1,
+   * so a stage point IS its client point; a check that built its harness with a
+   * `cssWidth`, `cssHeight`, or `dpr` of its own still lands where it aimed.
+   */
+  const clientOf = (x: number, y: number): { x: number; y: number } => {
+    const view = engine.viewport();
+    return {
+      x: (view.offsetX + x * view.scale) / dpr,
+      y: (view.offsetY + y * view.scale) / dpr,
+    };
+  };
+
+  const dispatchPointer = (
+    type: "pointermove" | "pointerdown" | "pointerup",
+    x: number,
+    y: number,
+  ): void => {
+    announced = null;
+    const at = clientOf(x, y);
+    keys.dispatchEvent(new PointerEventShape(type, at.x, at.y));
+  };
+
+  /** Wheel travel, in stage units, as the CSS-pixel deltas an event carries. */
+  const dispatchWheel = (x: number, y: number): void => {
+    announced = null;
+    const { scale } = engine.viewport();
+    keys.dispatchEvent(
+      new WheelEventShape((x * scale) / dpr, (y * scale) / dpr),
+    );
+  };
+
   let lastFrameStart = 0;
   let lastFrameEnd = 0;
 
@@ -1312,6 +1418,11 @@ export async function createHarness(
 
     holdKey: (code, keyOptions) => dispatch("keydown", code, keyOptions),
     releaseKey: (code) => dispatch("keyup", code),
+
+    movePointer: (x, y) => dispatchPointer("pointermove", x, y),
+    pressPointer: (x, y) => dispatchPointer("pointerdown", x, y),
+    releasePointer: (x, y) => dispatchPointer("pointerup", x, y),
+    turnWheel: (x, y) => dispatchWheel(x, y),
 
     clearCalls: () => {
       calls.length = 0;
@@ -1464,6 +1575,118 @@ export async function holdTogether(
 /** Press the overlay's toggle once: one real key edge, one frame. */
 export function pressToggle(h: Harness): Promise<WickSnapshot> {
   return tap(h, OVERLAY_TOGGLE_CODE);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The pointer, as a player's mouse delivers it                               */
+/* -------------------------------------------------------------------------- */
+//
+// Every point below is a LOGICAL STAGE point: "The pointer is read in the
+// stage's own coordinates, 0 to STAGE_W across and 0 to STAGE_H down, whatever
+// the canvas's size on the page and wherever the letterbox bars fall, and wheel
+// travel is read in those same units" (specs/controls.md, The pointer). The
+// engine delivers the position and the travel already in those units, so the
+// harness only has to undo the fit on the way in, which {@link Harness}'s four
+// pointer members do.
+//
+// The three rules are applied "on every frame, after that frame's press edges
+// and before its update", so a gesture reaches the game through the frame that
+// follows it, exactly as a key edge does through {@link tap}. The helpers here
+// therefore dispatch and then run one frame, and hand back what that frame
+// left.
+
+/**
+ * The rectangles of the current screen's vertical menu, in menu order.
+ *
+ * On `almanac` these are the visible entry rows, so the rectangle at position
+ * `i` belongs to the entry at `menuIndex` `almanacScroll + i`
+ * (specs/instrumentation.md, Menus).
+ */
+export function menuRects(h: Harness): readonly WickRect[] {
+  return h.debug.menuRects();
+}
+
+/** The rectangles of the almanac's tab bar, in `ALMANAC_TABS` order. */
+export function tabRects(h: Harness): readonly WickRect[] {
+  return h.debug.tabRects();
+}
+
+/**
+ * The middle of a rectangle: the one point inside it that no build's padding,
+ * border, or rounding can put outside it.
+ */
+export function centerOf(rect: WickRect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+}
+
+/**
+ * Rest the pointer on a logical stage point, run the one frame that reads it,
+ * and hand back what that frame left.
+ *
+ * "The pointer inside the rectangle of the item at `menuIndex` `i`, with
+ * `menuIndex` not `i`, sets `menuIndex` to `i` and plays `menu-move`"
+ * (specs/controls.md). The pointer stays where it was put, so a second frame
+ * reads the same rest, which is how a check decides that a hover that already
+ * moved the highlight moves nothing again.
+ */
+export async function hoverAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y);
+  return h.tick(1);
+}
+
+/** Rest the pointer in the middle of a reported rectangle. */
+export function hoverRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return hoverAt(h, at.x, at.y);
+}
+
+/**
+ * Click a logical stage point with the primary button, run the one frame that
+ * reads the press edge, and hand back the snapshot that frame left.
+ *
+ * The move, the press, and the release are all delivered before the frame, the
+ * way a real click between two frames arrives, so the frame sees the pointer at
+ * the point AND the press edge armed there, and no contact is left open behind
+ * it. "A primary press edge inside the rectangle of the item at `menuIndex` `i`
+ * sets `menuIndex` to `i`, playing `menu-move` if that changed it, and then
+ * takes that item exactly as `confirm` on it does" (specs/controls.md), and
+ * that whole rule lands on this one frame.
+ */
+export async function clickAt(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<WickSnapshot> {
+  h.movePointer(x, y);
+  h.pressPointer(x, y);
+  h.releasePointer(x, y);
+  return h.tick(1);
+}
+
+/** Click the middle of a reported rectangle. */
+export function clickRect(h: Harness, rect: WickRect): Promise<WickSnapshot> {
+  const at = centerOf(rect);
+  return clickAt(h, at.x, at.y);
+}
+
+/**
+ * Turn the wheel by `rows` rows of travel, run the one frame that reads it, and
+ * hand back what that frame left.
+ *
+ * A frame's travel is "that frame's wheel deltas summed in stage units, divided
+ * by `WHEEL_ROW` (`100`) and truncated toward zero to give the number of rows
+ * `almanacScroll` moves, downward travel moving it toward the end of the list"
+ * (specs/controls.md), so `rows` rows is `rows × WHEEL_ROW` of downward travel
+ * and a negative `rows` is upward. A fractional `rows` is how a check poses the
+ * remainder the rule discards.
+ */
+export function wheelBy(h: Harness, rows: number): Promise<WickSnapshot> {
+  h.turnWheel(0, rows * WHEEL_ROW);
+  return h.tick(1);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1808,6 +2031,7 @@ export interface RunFields {
   xp: number;
   kills: number;
   player: PlayerSnapshot;
+  hurtFlash: number;
   weapons: WeaponSnapshot[];
   passives: PassiveSnapshot[];
   enemies: EnemySnapshot[];
@@ -1825,7 +2049,7 @@ export interface RunFields {
 }
 
 /**
- * The nineteen STORED fields of a run, projected off a snapshot, for comparison
+ * The twenty STORED fields of a run, projected off a snapshot, for comparison
  * against the `IDLE_RUN` and `FRESH_RUN` of `constants.ts`.
  *
  * The derived readings (`time`, `xpToNext`, `maxHp`, `armor`, `moveSpeed`,
@@ -1841,6 +2065,7 @@ export function runFields(run: RunSnapshot): RunFields {
     xp: run.xp,
     kills: run.kills,
     player: run.player,
+    hurtFlash: run.hurtFlash,
     weapons: run.weapons,
     passives: run.passives,
     enemies: run.enemies,
@@ -2139,8 +2364,9 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
  *
  * What a check about a piece of the case's COPY reads. The specification fixes
  * the words a screen shows (`THE LAMP BURNS BRIGHTER`, `LEVEL 4`) and, by
- * "Wick fixes no palette, no font, no layout, and no styling for any screen"
- * (specs/ui.md), nothing about how they are laid out, so a build is free to
+ * "Wick fixes no palette, no font, and no styling for any screen, and each
+ * screen's layout is yours" (specs/ui.md), nothing about how they are laid
+ * out, so a build is free to
  * wrap a heading over two lines, draw a tag's label and its number as two runs,
  * or put a marker between them. The frame's runs are read as one corpus and the
  * words are matched in order with any non-alphanumeric separator between them,
@@ -2286,8 +2512,8 @@ export function drawOps(calls: readonly DrawCall[]): number {
 /* Colour and pixels                                                          */
 /* -------------------------------------------------------------------------- */
 //
-// `specs/ui.md`: "Wick fixes no palette, no font, no layout, and no styling for
-// any screen." So nothing here reads a hex value. What the appearance points may
+// `specs/ui.md`: "Wick fixes no palette, no font, and no styling for any
+// screen." So nothing here reads a hex value. What the appearance points may
 // assert is PRESENCE and DISTINGUISHABILITY, and the readings below are what
 // that is decided with: a colour at a point, the pixels of a rectangle, and how
 // many of two rectangles' pixels differ.

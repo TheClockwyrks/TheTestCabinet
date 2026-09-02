@@ -3,9 +3,9 @@
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, the
 // `setScreen` table, row `title` from any: "Discards the run exactly as
-// `TITLE` on an end screen or `back` on `paused` does: the idle run", and the
-// heading: "with `menuIndex` `0`". `specs/state.md`, "The idle run", is the
-// table `IDLE_RUN` transcribes.
+// `TITLE` on an end screen or `MAIN MENU` on `paused` does: the idle run", and
+// the heading: "with `menuIndex` `0`". `specs/state.md`, "The idle run", is
+// the table `IDLE_RUN` transcribes, `hurtFlash` `0` among its fields.
 //
 // THE POSE. An isolated run disturbed enough that a discard is told from a
 // keep — kills, an enemy, a gem, a moved lamplighter — then the pose, read at

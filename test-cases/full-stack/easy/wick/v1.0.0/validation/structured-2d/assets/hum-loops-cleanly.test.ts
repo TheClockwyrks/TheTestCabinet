@@ -64,7 +64,12 @@ it("runs the hum's end into its start with no step a player hears", () => {
     );
   }
   const seam = wavSeam(wav);
-  showSeam(h, `${LOOP} — the loop junction, step ${seam.toFixed(5)}`, wav, SEAM_WINDOW);
+  showSeam(
+    h,
+    `${LOOP} — the loop junction, step ${seam.toFixed(5)}`,
+    wav,
+    SEAM_WINDOW,
+  );
   captureStill(h, "seam");
 
   assertLessThanOrEqual(

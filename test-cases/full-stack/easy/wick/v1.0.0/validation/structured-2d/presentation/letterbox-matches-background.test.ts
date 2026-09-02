@@ -7,7 +7,8 @@
 // color string: the stage background. `src/main.ts` hands it to the engine as
 // the color the canvas is cleared to each frame, so the letterbox bars around
 // the stage match the night." Which colour it is belongs to the build ("Wick
-// fixes no palette, no font, no layout", `specs/ui.md`), so what is decided
+// fixes no palette, no font, and no styling for any screen", `specs/ui.md`),
+// so what is decided
 // here is that the bars really are THAT colour once the build's frame has been
 // drawn.
 //

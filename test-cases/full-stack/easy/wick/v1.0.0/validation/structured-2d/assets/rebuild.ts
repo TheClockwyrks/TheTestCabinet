@@ -164,7 +164,8 @@ export function rebuildWithoutTools(): RebuildResult {
       builtOutput = true;
       outputDir = name;
       const page = join(output, "index.html");
-      if (existsSync(page)) htmlRefs.push(...pageRefs(readFileSync(page, "utf8")));
+      if (existsSync(page))
+        htmlRefs.push(...pageRefs(readFileSync(page, "utf8")));
       break;
     }
 

@@ -272,9 +272,7 @@ export function clearPixels(image: DecodedImage): number {
  * is absent, that does not decode, that decoded to another canvas, or that is
  * blank fails the point by its own path.
  */
-export function assertProduced(
-  reads: readonly SpriteRead[],
-): DecodedImage[] {
+export function assertProduced(reads: readonly SpriteRead[]): DecodedImage[] {
   const images: DecodedImage[] = [];
   for (const { sprite, image, reason } of reads) {
     if (image === null) {

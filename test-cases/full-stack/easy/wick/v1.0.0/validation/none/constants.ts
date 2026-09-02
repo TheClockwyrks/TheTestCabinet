@@ -99,11 +99,12 @@ export const DEFAULT_SEED = 1;
 export const MAX_SEED = 2 ** 32 - 1;
 
 /**
- * The eight screens, as `snapshot().screen` names them (specs/ui.md — "Screens").
+ * The nine screens, as `snapshot().screen` names them (specs/ui.md — "Screens").
  */
 export const SCREENS = [
   "title",
   "howto",
+  "almanac",
   "playing",
   "levelup",
   "chest",
@@ -159,6 +160,9 @@ export const REQUIRED_OPS: readonly string[] = [
   // Screens
   "setScreen",
   "choose",
+  // Menus
+  "menuRects",
+  "tabRects",
   // The driver switches
   "setSpawning",
   "setEvents",
@@ -252,6 +256,44 @@ export const LAYOUT = "dpad-4";
  */
 export const UNBOUND_KEY = "KeyZ";
 
+/* ---- The pointer (specs/controls.md — "The pointer") --------------------- */
+//
+// "The pointer is read in the stage's own coordinates, `0` to `STAGE_W` across
+// and `0` to `STAGE_H` down, whatever the canvas's size on the page and wherever
+// the letterbox bars fall, and wheel travel is read in those same units." So a
+// check names a point in the same units it names a sprite's position in, and the
+// harness carries it through the page's fit.
+
+/**
+ * "A frame's travel is that frame's wheel deltas summed in stage units, divided
+ * by `WHEEL_ROW` (`100`) and truncated toward zero to give the number of rows
+ * `almanacScroll` moves".
+ */
+export const WHEEL_ROW = 100;
+
+/**
+ * "Every screen that shows a vertical menu answers the pointer: `title`,
+ * `almanac`, `levelup`, `paused`, `fallen`, and `dawn`."
+ */
+export const MENU_SCREENS: readonly ScreenName[] = [
+  "title",
+  "almanac",
+  "levelup",
+  "paused",
+  "fallen",
+  "dawn",
+];
+
+/**
+ * The three screens with no vertical menu: "`howto`, `playing`, and `chest`
+ * report an empty list" (specs/instrumentation.md — `menuRects`).
+ */
+export const MENULESS_SCREENS: readonly ScreenName[] = [
+  "howto",
+  "playing",
+  "chest",
+];
+
 /* -------------------------------------------------------------------------- */
 /* The lamplighter (specs/world.md — "The lamplighter", "Contact damage")      */
 /* -------------------------------------------------------------------------- */
@@ -276,6 +318,17 @@ export const CONTACT_COOLDOWN = 0.5;
 
 /** "Least health a hit removes | `MIN_DAMAGE_TAKEN` | `1`". */
 export const MIN_DAMAGE_TAKEN = 1;
+
+/** "Seconds the hurt flash runs | `HURT_FLASH` | `0.3`". */
+export const HURT_FLASH = 0.3;
+
+/**
+ * Ticks a hurt flash runs: `HURT_FLASH` (`0.3`) seconds at `TICK_HZ` (`60`),
+ * rounded, because the timer "counts down with the contact cooldowns in phase
+ * 7" and every tick is `TICK_DT` long. The tick the hit lands on sets the timer,
+ * so the flash is over this many ticks later.
+ */
+export const HURT_FLASH_TICKS = Math.round(HURT_FLASH * TICK_HZ);
 
 export type Facing = "left" | "right";
 
@@ -1521,8 +1574,15 @@ export const TITLE_TEXT = "WICK";
 /** "Tagline | `TAGLINE_TEXT` | `KEEP THE LIGHT`". */
 export const TAGLINE_TEXT = "KEEP THE LIGHT";
 
-/** "Menu | `TITLE_ITEMS` | `LIGHT THE LAMP`, `HOW TO PLAY`, in that order". */
-export const TITLE_ITEMS = ["LIGHT THE LAMP", "HOW TO PLAY"] as const;
+/**
+ * "Menu | `TITLE_ITEMS` | `LIGHT THE LAMP`, `THE ALMANAC`, `HOW TO PLAY`, in
+ * that order".
+ */
+export const TITLE_ITEMS = [
+  "LIGHT THE LAMP",
+  "THE ALMANAC",
+  "HOW TO PLAY",
+] as const;
 
 /** "labeled with `LEVEL_LABEL` (`LEVEL`)". */
 export const LEVEL_LABEL = "LEVEL";
@@ -1538,6 +1598,12 @@ export const CHEST_TEXT = "A CHEST OPENS";
 
 /** "under `PAUSED_TEXT` (`PAUSED`)". */
 export const PAUSED_TEXT = "PAUSED";
+
+/**
+ * "the menu `PAUSE_ITEMS` below it: `RESUME`, `MAIN MENU`, in that order"
+ * (specs/ui.md — `paused`).
+ */
+export const PAUSE_ITEMS = ["RESUME", "MAIN MENU"] as const;
 
 /** "`fallen` shows `FALLEN_TEXT` (`THE LIGHT WENT OUT`)". */
 export const FALLEN_TEXT = "THE LIGHT WENT OUT";
@@ -1574,6 +1640,280 @@ export function clockText(tick: number): string {
   const minutes = Math.floor(whole / 60);
   const seconds = whole % 60;
   return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The almanac (specs/ui.md — `almanac`, "Descriptions")                       */
+/* -------------------------------------------------------------------------- */
+
+/** "It shows `ALMANAC_TEXT` (`THE ALMANAC`)". */
+export const ALMANAC_TEXT = "THE ALMANAC";
+
+/**
+ * "the tab bar `ALMANAC_TABS` (`TOOLS`, `TRINKETS`, `ENEMIES`, `PICKUPS`, in
+ * that order) across the top".
+ */
+export const ALMANAC_TABS = [
+  "TOOLS",
+  "TRINKETS",
+  "ENEMIES",
+  "PICKUPS",
+] as const;
+
+export type AlmanacTab = (typeof ALMANAC_TABS)[number];
+
+/**
+ * "The list shows `ALMANAC_ROWS` (`10`) entries at a time, beginning at the
+ * entry at `almanacScroll`, and a tab of `ALMANAC_ROWS` entries or fewer shows
+ * all of them."
+ */
+export const ALMANAC_ROWS = 10;
+
+/** The gems' display names, as the table under `almanac` spells them. */
+export const GEM_NAMES: Readonly<Record<GemTier, string>> = {
+  small: "Small Gem",
+  medium: "Medium Gem",
+  large: "Large Gem",
+};
+
+/** The pickups' display names, as the same table spells them. */
+export const PICKUP_NAMES: Readonly<Record<PickupKind, string>> = {
+  chest: "Chest",
+  bread: "Bread",
+  draft: "Draft",
+};
+
+/* ---- The lines every entry carries --------------------------------------- */
+//
+// "Every tool, trinket, enemy, gem, and pickup carries one fixed line of copy,
+// and the lines below are those strings exactly." Copied character for character
+// from the Descriptions section of `specs/ui.md`, because the almanac and the
+// level-up overlay are decided by what they DRAW and an engineless build seeds
+// no constants a check could read them from.
+
+/** "`WEAPON_DESCRIPTIONS`", the sixteen lines by weapon id. */
+export const WEAPON_DESCRIPTIONS: Readonly<Record<WeaponId, string>> = {
+  taper: "A slash in the way you face, striking everything the arc covers.",
+  ember: "A bolt at the nearest enemy, spent on the first thing it hits.",
+  pin: "A fan of darts at the nearest enemy, each one piercing.",
+  lantern: "Lanterns that circle the lamp and burn what they pass through.",
+  halo: "A ring of light around the lamp that pulses on its own rhythm.",
+  "oil-splash":
+    "Puddles scattered nearby that burn everything standing in them.",
+  spark: "Strikes on random enemies within range of the lamp.",
+  shard: "A shard that bounces off the edges of the view and keeps going.",
+  sconce: "A boomerang that slows, turns, and comes back to the lamp.",
+  flare: "A burst that catches every enemy around the lamp at once.",
+  pyre: "Taper transformed: a wider slash that feeds the lamp as it lands.",
+  beacon: "Ember transformed: a faster bolt that carries through a crowd.",
+  hail: "Pin transformed: a wider fan of darts that pierce further.",
+  chandelier: "Lantern transformed: lanterns that never go out.",
+  corona: "Halo transformed: a wider ring that feeds the lamp as it pulses.",
+  blaze: "Oil Splash transformed: puddles that burn hotter and faster.",
+};
+
+/** "`PASSIVE_DESCRIPTIONS`", the ten lines by passive id. */
+export const PASSIVE_DESCRIPTIONS: Readonly<Record<PassiveId, string>> = {
+  wick: "Every tool you carry does more damage.",
+  oil: "Every tool you carry fires more often.",
+  glass: "Every shape your tools make covers more ground.",
+  brass: "Armor: every hit against you takes less health.",
+  mirror: "Your tools make one more of whatever they make.",
+  bellows: "The lamplighter walks faster.",
+  tallow: "The lamp holds more health.",
+  tinder: "The lamp recovers health as the night goes on.",
+  soot: "Gems are worth more experience.",
+  lure: "Gems are drawn to the lamp from further away.",
+};
+
+/** "`ENEMY_DESCRIPTIONS`", the thirteen lines by enemy id. */
+export const ENEMY_DESCRIPTIONS: Readonly<Record<EnemyId, string>> = {
+  moth: "The first thing the light draws. Slow, weak, and never alone.",
+  bat: "Quicker than a moth and just as thin.",
+  rat: "Low and steady, and it takes more than one hit.",
+  gnat: "Drifts in a straight line and never turns. Arrives in swarms.",
+  beetle: "Armored and slow, and it hurts more than it looks like it should.",
+  wisp: "Weaves as it comes, so it never quite arrives where you expect.",
+  spider: "Fast and tough, and it closes the distance quickly.",
+  crow: "Fast, and it hits hard for its size.",
+  shade: "Heavy and slow, and it leaves a larger gem behind.",
+  hound: "The heaviest of the common dark, and the fastest of the heavy.",
+  mothwing: "An elite: a great moth that drops a chest when it falls.",
+  owl: "An elite: silent, heavy, and it drops a chest when it falls.",
+  dark: "The night itself, from nine minutes on. It outlasts almost anything.",
+};
+
+/** "`GEM_DESCRIPTIONS`", the three lines by tier. */
+export const GEM_DESCRIPTIONS: Readonly<Record<GemTier, string>> = {
+  small: "The experience a common death leaves behind.",
+  medium: "A heavier gem, worth more toward the next level.",
+  large: "The heaviest gem, left by the heaviest of the dark.",
+};
+
+/** "`PICKUP_DESCRIPTIONS`", the three lines by kind. */
+export const PICKUP_DESCRIPTIONS: Readonly<Record<PickupKind, string>> = {
+  chest: "Opens beside the lamp and transforms a tool at its top level.",
+  bread: "Restores 30 health to the lamplighter who walks over it.",
+  draft: "Draws every gem in the night to the lamp at once.",
+};
+
+/** "`LAMP_OIL_DESCRIPTION` holds lamp oil's". */
+export const LAMP_OIL_DESCRIPTION = "Restores 30 health and fills no slot.";
+
+/**
+ * The line the almanac draws for an entry, and the line the level-up overlay
+ * draws beneath its offer list for a weapon, a passive, or lamp oil.
+ */
+export function descriptionOf(id: OfferId): string {
+  if (id === LAMP_OIL_ID) return LAMP_OIL_DESCRIPTION;
+  if (isPassiveId(id)) return PASSIVE_DESCRIPTIONS[id];
+  return WEAPON_DESCRIPTIONS[id];
+}
+
+/* ---- The tabs and their entries ------------------------------------------ */
+
+/**
+ * A stat line of an entry's detail: "each the label written exactly as it
+ * appears there and its figure beside it".
+ */
+export interface AlmanacStat {
+  label: string;
+  value: number;
+}
+
+/** The labels the detail table names, spelled as `specs/ui.md` spells them. */
+export const STAT_LABELS = {
+  damage: "DAMAGE",
+  cooldown: "COOLDOWN",
+  maxLevel: "MAX LEVEL",
+  health: "HEALTH",
+  speed: "SPEED",
+  experience: "EXPERIENCE",
+  heals: "HEALS",
+} as const;
+
+/** One row of a tab's list, and the detail the highlight shows for it. */
+export interface AlmanacEntry {
+  /** The id in its own domain: a weapon, passive, or enemy id, a gem tier, or a pickup kind. */
+  id: string;
+  /** The name the row shows and the detail heads with. */
+  name: string;
+  /** The stat lines the detail shows, in the order the table names them. */
+  stats: readonly AlmanacStat[];
+  /** The entry's one line from the Descriptions section. */
+  description: string;
+}
+
+/** The `TOOLS` tab: "the ten of `BASE_WEAPON_IDS`, then the six of `EVOLUTION_IDS`". */
+const TOOL_ENTRIES: readonly AlmanacEntry[] = WEAPON_IDS.map((id) => {
+  const row = weaponRow(id, 1);
+  const stats: AlmanacStat[] = [
+    { label: STAT_LABELS.damage, value: row.damage },
+  ];
+  // "an evolved weapon's fixed row is that row, and Chandelier, whose fixed row
+  // carries no cooldown, shows `DAMAGE` alone".
+  if (row.cooldown !== undefined) {
+    stats.push({ label: STAT_LABELS.cooldown, value: row.cooldown });
+  }
+  return {
+    id,
+    name: WEAPON_NAMES[id],
+    stats,
+    description: WEAPON_DESCRIPTIONS[id],
+  };
+});
+
+/** The `TRINKETS` tab: "the ten of `PASSIVE_IDS`". */
+const TRINKET_ENTRIES: readonly AlmanacEntry[] = PASSIVE_IDS.map((id) => ({
+  id,
+  name: PASSIVES[id].name,
+  stats: [{ label: STAT_LABELS.maxLevel, value: PASSIVES[id].maxLevel }],
+  description: PASSIVE_DESCRIPTIONS[id],
+}));
+
+/** The `ENEMIES` tab: "the thirteen of `ENEMY_IDS`". */
+const ENEMY_ENTRIES: readonly AlmanacEntry[] = ENEMY_IDS.map((id) => ({
+  id,
+  name: ENEMIES[id].name,
+  stats: [
+    { label: STAT_LABELS.health, value: ENEMIES[id].hp },
+    { label: STAT_LABELS.speed, value: ENEMIES[id].speed },
+    { label: STAT_LABELS.damage, value: ENEMIES[id].damage },
+  ],
+  description: ENEMY_DESCRIPTIONS[id],
+}));
+
+/** The `PICKUPS` tab: "the three of `GEM_TIERS`, then the three of `PICKUP_KINDS`". */
+const PICKUP_ENTRIES: readonly AlmanacEntry[] = [
+  ...GEM_TIERS.map((tier) => ({
+    id: tier,
+    name: GEM_NAMES[tier],
+    stats: [{ label: STAT_LABELS.experience, value: GEM_VALUES[tier] }],
+    description: GEM_DESCRIPTIONS[tier],
+  })),
+  ...PICKUP_KINDS.map((kind) => ({
+    id: kind,
+    name: PICKUP_NAMES[kind],
+    // "`bread`: `HEALS` and `BREAD_HEAL` (`30`); `chest` and `draft`: none".
+    stats:
+      kind === "bread"
+        ? [{ label: STAT_LABELS.heals, value: BREAD_HEAL }]
+        : ([] as AlmanacStat[]),
+    description: PICKUP_DESCRIPTIONS[kind],
+  })),
+];
+
+/** Each tab's entries, in the order the tab lists them. */
+export const ALMANAC_ENTRIES: Readonly<
+  Record<AlmanacTab, readonly AlmanacEntry[]>
+> = {
+  TOOLS: TOOL_ENTRIES,
+  TRINKETS: TRINKET_ENTRIES,
+  ENEMIES: ENEMY_ENTRIES,
+  PICKUPS: PICKUP_ENTRIES,
+};
+
+/** The entries of the tab at `almanacTab`. */
+export function almanacEntries(tab: number): readonly AlmanacEntry[] {
+  const name = ALMANAC_TABS[tab];
+  if (name === undefined) return [];
+  return ALMANAC_ENTRIES[name];
+}
+
+/** The names the tab at `almanacTab` lists, top to bottom. */
+export function almanacNames(tab: number): string[] {
+  return almanacEntries(tab).map((entry) => entry.name);
+}
+
+/**
+ * The greatest `almanacScroll` a tab of `count` entries reaches:
+ * "`almanacScroll` is held within `0` and `max(0, count − ALMANAC_ROWS)`".
+ */
+export function maxAlmanacScroll(count: number): number {
+  return Math.max(0, count - ALMANAC_ROWS);
+}
+
+/**
+ * Where `almanacScroll` lands once the highlight is at `index`: "after every
+ * move of `menuIndex` it becomes the lesser of `almanacScroll` and `menuIndex`,
+ * then the greater of that and `menuIndex − ALMANAC_ROWS + 1`, and is then held
+ * between `0` and `max(0, count − ALMANAC_ROWS)`".
+ */
+export function almanacScrollFor(
+  scroll: number,
+  index: number,
+  count: number,
+): number {
+  const followed = Math.max(Math.min(scroll, index), index - ALMANAC_ROWS + 1);
+  return Math.min(Math.max(followed, 0), maxAlmanacScroll(count));
+}
+
+/**
+ * The rows the list shows from `almanacScroll`: `ALMANAC_ROWS` of them, or
+ * every remaining entry where the tab holds fewer.
+ */
+export function visibleAlmanacRows(count: number, scroll: number): number {
+  return Math.max(0, Math.min(ALMANAC_ROWS, count - scroll));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1932,6 +2272,8 @@ export const SNAPSHOT_FIELDS = [
   "version",
   "screen",
   "menuIndex",
+  "almanacTab",
+  "almanacScroll",
   "autoStep",
   ...SWITCH_NAMES,
   "run",
@@ -1950,6 +2292,7 @@ export const RUN_FIELDS = [
   "xpToNext",
   "kills",
   "player",
+  "hurtFlash",
   "maxHp",
   "armor",
   "moveSpeed",

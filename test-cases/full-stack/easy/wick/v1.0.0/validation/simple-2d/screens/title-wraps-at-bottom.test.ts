@@ -6,10 +6,11 @@
 //
 // THE SPEC IT RESTS ON.
 //   specs/ui.md (`title`): "`up` and `down` move the highlight by one item and
-//   wrap at both ends"; the menu is `TITLE_ITEMS`, "`LIGHT THE LAMP`, `HOW TO
-//   PLAY`, in that order", so the last item's index is `TITLE_ITEMS.length − 1`.
-//   specs/controls.md ("What each screen reads"): "`up`, `down` move the
-//   highlight, wrapping at both ends".
+//   wrap at both ends"; the menu is `TITLE_ITEMS`, "`LIGHT THE LAMP`, `THE
+//   ALMANAC`, `HOW TO PLAY`, in that order", so the last item's index is
+//   `TITLE_ITEMS.length − 1`, which is `2`.
+//   specs/controls.md ("What each screen reads"): "`title` | none | `up`,
+//   `down` move the highlight, wrapping".
 //
 // THE DRIVE. A reset to the title, then `ArrowDown` pressed to the last item,
 // asserted, then the press this point is about. The surface poses no

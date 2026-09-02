@@ -16,17 +16,17 @@
 //   and a key event whose `repeat` flag is set arms nothing." Its key
 //   listeners read "`KeyboardEvent.code` and `KeyboardEvent.repeat`".
 //   specs/controls.md ("What each screen reads"): on `title`, "`up`, `down`
-//   move the highlight, wrapping at both ends"; specs/ui.md (`title`): the
-//   two items of `TITLE_ITEMS`.
+//   move the highlight, wrapping"; specs/ui.md (`title`): the three items of
+//   `TITLE_ITEMS`.
 //
 // THE DRIVE. The title, reached through `reset`, with the highlight read back
 // at `0`. A real `ArrowDown` goes down and one frame delivers its edge, which
 // is the precondition the item names ("while `ArrowDown` is already held")
 // and is read back as `1` before the event under test. Then a second
 // `keydown` for the same code with `repeat: true` is dispatched, one more
-// frame runs, and the key is released. On the two-item menu a build that
-// treated the repeat as a fresh press wraps the highlight back to `0`, so
-// reading `1` after the repeat frame is the whole verdict.
+// frame runs, and the key is released. A build that treated the repeat as a
+// fresh press moves the highlight on to the next item, so reading `1` after the
+// repeat frame is the whole verdict.
 //
 // WHAT THIS POINT CAN AND CANNOT SEPARATE UNDER THIS ENGINE. The repeat rule
 // is the ENGINE's: `InputRegistry` drops a keydown whose `repeat` flag is set

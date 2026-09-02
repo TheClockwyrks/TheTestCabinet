@@ -1,8 +1,10 @@
-// screens/paused-copy — the pause screen draws PAUSED and the HUD over the
-// world the pause held.
+// screens/paused-copy — the pause screen draws PAUSED, the pause menu beneath
+// it, and the HUD over the world the pause held.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("`paused`"): "The world held
-// still, with the HUD, under `PAUSED_TEXT` (`PAUSED`)." The HUD's readouts are
+// still, with the HUD, under `PAUSED_TEXT` (`PAUSED`), and the menu
+// `PAUSE_ITEMS` below it: `RESUME`, `MAIN MENU`, in that order." The HUD's
+// readouts are
 // specs/ui.md's `playing` table: the experience bar "labeled with `LEVEL_LABEL`
 // (`LEVEL`) and the current level, as `LEVEL 4`", the clock "as `m:ss`,
 // counting up from `0:00` in whole seconds, the seconds always two digits", and
@@ -21,16 +23,24 @@
 // that pauses ticks nothing, so what the paused frame draws is the tick the
 // pause held.
 //
+// WHAT THIS DELIBERATELY DOES NOT READ. The order the two menu items run in.
+// That the names of `PAUSE_ITEMS` are on the frame at all, `RESUME` above
+// `MAIN MENU`, is `paused-lists-items`; what is read here is the heading above
+// the menu, which is the relation the `paused` row states of the heading.
+//
 // THE TOLERANCE. The copy is matched folded, the level and the kill count are
 // matched as whole numbers standing alone rather than as digits inside another
 // figure, and the moth's drawn center is within `BLIT_TOL` (`1` unit) of the
 // camera's point, the case's allowance for a build that rounds a world position
-// to the pixel grid before it blits.
+// to the pixel grid before it blits. specs/ui.md ("Presentation") leaves the
+// layout to the build, so the only arrangement asserted is the one the `paused`
+// row states of the heading: `PAUSED` above each item of the menu below it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear, assertNotNull } from "../assert";
 import {
   BLIT_TOL,
+  PAUSE_ITEMS,
   PAUSED_TEXT,
   clockText,
   enemySpriteSize,
@@ -47,7 +57,7 @@ import {
   stagePoint,
   type Harness,
 } from "../harness";
-import { assertNames, assertShows, night, shown } from "./stage";
+import { assertNames, assertShows, assertStacked, night, shown } from "./stage";
 
 /** Figures the HUD must read off the run rather than off a fresh one. */
 const POSED = { tick: 4500, level: 7, kills: 250 };
@@ -67,7 +77,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws PAUSED, the HUD's figures, and the moth where the camera puts it", async () => {
+it("draws PAUSED above the menu, the HUD's figures, and the held moth", async () => {
   await night(h);
   await h.debug.setTick(POSED.tick);
   await h.debug.setLevel(POSED.level);
@@ -80,6 +90,10 @@ it("draws PAUSED, the HUD's figures, and the moth where the camera puts it", asy
   await captureStill(h, "paused");
 
   assertShows(page, PAUSED_TEXT, "the pause screen");
+  for (const item of PAUSE_ITEMS) {
+    assertShows(page, item, "the pause screen's menu");
+    assertStacked(page, PAUSED_TEXT, item, "the pause screen");
+  }
   assertShows(page, clockText(POSED.tick), "the pause screen's clock");
   assertShows(page, `${LEVEL_LABEL} ${POSED.level}`, "the pause screen's HUD");
   assertNames(page, String(POSED.kills), "the pause screen's kill count");

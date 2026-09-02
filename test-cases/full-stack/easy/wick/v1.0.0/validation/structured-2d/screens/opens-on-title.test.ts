@@ -3,10 +3,11 @@
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, "`title`": "The game
 // opens here", and "`menuIndex` is `0` on arriving". `specs/state.md`, "The
-// idle run": "`run` holds the values below whenever `screen` is `title` or
-// `howto`: `initialize` and `reset` build them", the table this suite spells
-// as `IDLE_RUN`. `specs/instrumentation.md`, Snapshot shape: "`run` reports
-// the idle run of `specs/state.md` on `title` and `howto`".
+// idle run": "`run` holds the values below whenever `screen` is `title`,
+// `howto`, or `almanac`: `initialize` and `reset` build them", the table this
+// suite spells as `IDLE_RUN`. `specs/instrumentation.md`, Snapshot shape:
+// "`run` reports the idle run of `specs/state.md` on `title`, `howto`, and
+// `almanac`".
 //
 // THE DRIVE. None at all, which is the point: the harness opens the engine,
 // the build's `initialize` runs, and the very first snapshot is read with no

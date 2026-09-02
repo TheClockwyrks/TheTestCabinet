@@ -3,15 +3,17 @@
 //
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("`title`"): "`confirm` takes the
 // highlighted item", and the item row "`HOW TO PLAY` | Sets `screen = howto`
-// and `menuIndex = 0`." specs/ui.md ("Menu navigation"): "`menuIndex` is `0` on
-// entering every screen, and on a screen with no menu it stays `0`."
+// and `menuIndex = 0`." The item is the last of `TITLE_ITEMS`, "`LIGHT THE
+// LAMP`, `THE ALMANAC`, `HOW TO PLAY`, in that order". specs/ui.md ("Menu
+// navigation"): "`menuIndex` is `0` on entering every screen, and on a screen
+// with no menu it stays `0`."
 //
 // WHY THE WORLD IS POSED AS IT IS. The surface carries no pose for `menuIndex`,
-// so `HOW TO PLAY` is highlighted the only way it can be: one `ArrowDown` from
-// the `0` the title is entered on, with the index read back before the confirm
-// so that a build whose `down` is broken fails on the precondition rather than
-// confirming the wrong item. Both presses are REAL keys through Chromium's
-// input pipeline, each held across exactly one frame.
+// so `HOW TO PLAY` is highlighted the only way it can be: one `ArrowDown` per
+// item above it, from the `0` the title is entered on, with the index read back
+// before the confirm so that a build whose `down` is broken fails on the
+// precondition rather than confirming the wrong item. Every press is a REAL key
+// through Chromium's input pipeline, each held across exactly one frame.
 //
 // THE TOLERANCE. None: a screen name and an index are exact comparisons.
 

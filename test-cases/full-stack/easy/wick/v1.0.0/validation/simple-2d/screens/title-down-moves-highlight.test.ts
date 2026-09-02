@@ -1,9 +1,9 @@
 // screens/title-down-moves-highlight — down moves the title highlight down.
 //
 // WHAT THIS DECIDES. One thing, in one direction: on `title` with the first
-// item highlighted, one `down` press leaves the highlight on the second item.
-// The `up` direction, the two wraps, and what `confirm` does with the item are
-// each their own point.
+// item highlighted, one `down` press leaves the highlight on the second of the
+// three items. The `up` direction, the two wraps, and what `confirm` does with
+// the item are each their own point.
 //
 // THE SPEC IT RESTS ON.
 //   specs/ui.md (`title`): "`menuIndex` is `0` on arriving. `up` and `down`
@@ -11,7 +11,7 @@
 //   specs/controls.md ("Actions and bindings"): `down` is `ArrowDown`, `KeyS`,
 //   read as an "edge elsewhere" than `playing`.
 //   specs/controls.md ("What each screen reads"): "`title` | none | `up`,
-//   `down` move the highlight, wrapping at both ends".
+//   `down` move the highlight, wrapping".
 //
 // THE DRIVE. A reset to the title, which specs/instrumentation.md's `reset`
 // leaves on `title` with `menuIndex` 0, then one real `ArrowDown` press

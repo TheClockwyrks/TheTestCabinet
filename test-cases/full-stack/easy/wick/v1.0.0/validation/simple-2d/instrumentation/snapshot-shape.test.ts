@@ -5,18 +5,25 @@
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "Snapshot shape":
 // the block itself, field for field, restated as the field lists in
 // `helpers.ts`; "The shape is fixed, and every field is present whatever the
-// screen"; "`width` and `height` appear on a slash alone"; "Every zone's `x`,
-// `y` is its center". The entry shapes are the ones specs/state.md declares
-// for `EnemyState`, `ProjectileState`, `ZoneState`, `GemState`,
-// `PickupState`, `WeaponSlot`, `PassiveSlot`, and `EnemyHit`.
+// screen"; "`almanacTab` and `almanacScroll` sit beside `menuIndex`, outside
+// `run`, and are `0` on every screen but `almanac`"; "`hurtFlash`: seconds left
+// of the hurt flash", inside `run`; "`width` and `height` appear on a slash
+// alone"; "Every zone's `x`, `y` is its center". The entry shapes are the ones
+// specs/state.md declares for `EnemyState`, `ProjectileState`, `ZoneState`,
+// `GemState`, `PickupState`, `WeaponSlot`, `PassiveSlot`, and `EnemyHit`.
 //
 // THE POSE. `poseBusyNight` holds a disturbed lamplighter, two weapons, two
 // passives, four enemies, three projectiles, a puddle, three gems, and three
 // pickups, every one through its own atomic operation with figures chosen to
-// read back as themselves. One tick with every switch off then places Halo's
-// aura under the placement rule and lets the shard sitting on the hound record
-// a `hits` entry, so no list of the block is read empty. What each figure is
-// WORTH belongs to the point of its own operation; what this decides is that
+// read back as themselves. It poses a `playing` night with `enemyContact` off
+// and every enemy placed clear of the lamplighter, so `almanacTab`,
+// `almanacScroll`, and `run.hurtFlash` are read at the `0` the specification
+// gives them off the almanac and with no hit taken; what each carries when it
+// is NOT `0` is the point of its own beside this one. One tick with every
+// switch off then places Halo's aura under the placement rule and lets the
+// shard sitting on the hound record a `hits` entry, so no list of the block is
+// read empty. What each figure is WORTH belongs to the point of its own
+// operation; what this decides is that
 // every field is there, typed as documented, carrying the value posed.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -79,6 +86,10 @@ it("reports the whole documented shape off a posed run", async () => {
   assertEqual(s.version, WICK_DEBUG_VERSION, "snapshot().version");
   assertTrue(SCREENS.includes(s.screen), `snapshot().screen ${s.screen}`);
   assertEqual(typeof s.menuIndex, "number", "snapshot().menuIndex");
+  assertEqual(typeof s.almanacTab, "number", "snapshot().almanacTab");
+  assertEqual(typeof s.almanacScroll, "number", "snapshot().almanacScroll");
+  assertEqual(s.almanacTab, 0, "snapshot().almanacTab off the almanac");
+  assertEqual(s.almanacScroll, 0, "snapshot().almanacScroll off the almanac");
   for (const field of [
     "spawning",
     "events",
@@ -114,9 +125,15 @@ it("reports the whole documented shape off a posed run", async () => {
     "spawnWindow",
     "aliveCommons",
     "nextId",
+    "hurtFlash",
   ] as const) {
     assertEqual(typeof run[field], "number", `snapshot().run.${field}`);
   }
+  assertEqual(
+    run.hurtFlash,
+    0,
+    "snapshot().run.hurtFlash on a night that has taken no contact hit",
+  );
   for (const field of [
     "weapons",
     "passives",

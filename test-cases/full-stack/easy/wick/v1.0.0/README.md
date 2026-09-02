@@ -104,10 +104,10 @@ for every run:
 | `passives.md`        | The ten passives and the derived stats their levels feed.                                                            |
 | `progression.md`     | Experience, levels, slots, the offer pool, and the two overlays.                                                     |
 | `enemies.md`         | The thirteen enemies, their behaviors, and the spawn director with its events.                                       |
-| `controls.md`        | The eight actions, the keys bound to them, and what each screen reads.                                               |
+| `controls.md`        | The eight actions, the keys bound to them, what each screen reads, and the pointer.                                  |
 | `state.md`           | The shape of the state the game carries.                                                                             |
 | `instrumentation.md` | The debug and automation surface, the driver switches, the snapshot, and the overlay.                                |
-| `ui.md`              | The eight screens, the HUD, the audio cues, and the two loops.                                                       |
+| `ui.md`              | The nine screens, the HUD, the almanac, the descriptions, the audio cues, and the two loops.                         |
 | `assets.md`          | The production contract for the assets the build must make.                                                          |
 
 `world.md`, `weapons.md`, `evolutions.md`, `passives.md`, `progression.md` and

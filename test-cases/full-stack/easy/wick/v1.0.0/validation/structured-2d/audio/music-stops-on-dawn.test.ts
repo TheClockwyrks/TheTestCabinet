@@ -3,8 +3,9 @@
 // WHERE THE THRESHOLD COMES FROM. `specs/ui.md`, The loops: "`music` is
 // looping on every frame exactly when `screen` is `playing`, `levelup`,
 // `chest`, or `paused` ... and it stops on the frame the run ends, fallen or
-// at dawn, or `back` on `paused` abandons it." `dawn` is not one of the four
-// screens the rule names, so the threshold is `false` on every frame of it.
+// at dawn, or `MAIN MENU` on `paused` abandons it." `dawn` is not one of the
+// four screens the rule names, so the threshold is `false` on every frame of
+// it.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated run with the bed already up
 // (the frame `isolatedRun` spends is the one the loops are reconciled on),

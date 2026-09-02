@@ -4,10 +4,13 @@
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`: "Any
 // row not listed, `chest` from anywhere or `levelup` from `title` among them,
-// leaves the state as it was"; the `paused` row is from `playing` alone.
+// leaves the state as it was"; the `paused` row is from `playing` alone. Of the
+// nine screens only `chest` has no row of its own: `almanac` is listed, from
+// "any", so it is not one of the pairs read here.
 //
 // THE POSE. Each unlisted pair from its own fresh scene, the whole snapshot
-// read before and after the call and compared field for field.
+// read before and after the call and compared field for field, which carries
+// `almanacTab`, `almanacScroll`, and `run.hurtFlash` with the rest.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";

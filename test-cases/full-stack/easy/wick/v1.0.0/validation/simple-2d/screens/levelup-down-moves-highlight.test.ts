@@ -8,8 +8,8 @@
 //   specs/ui.md (`levelup`): "`menuIndex` is `0` on opening. `up` and `down`
 //   move the highlight and wrap at both ends".
 //   specs/controls.md ("What each screen reads"): "`levelup` | none | `up`,
-//   `down` move the highlight, wrapping at both ends; `confirm` accepts the
-//   highlighted offer; `mute`", and `down` is `ArrowDown`, `KeyS`.
+//   `down` move the highlight, wrapping; `confirm` accepts the highlighted
+//   offer; `mute`", and `down` is `ArrowDown`, `KeyS`.
 //   specs/instrumentation.md (`setNextOffers`): "the overlay then presents
 //   exactly that list in that order."
 //

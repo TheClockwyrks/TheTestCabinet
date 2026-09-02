@@ -47,6 +47,8 @@ import {
   PIN_LEVELS,
   STAGE_CX,
   STAGE_CY,
+  STAGE_H,
+  STAGE_W,
   TICK_DT,
   TICK_MS,
   TITLE_ITEMS,
@@ -65,6 +67,8 @@ import {
   blitsNear,
   captureReplay,
   captureStill,
+  centerOf,
+  clickAt,
   createHarness,
   cuesNamed,
   disable,
@@ -82,7 +86,9 @@ import {
   holdPassive,
   holdTogether,
   holdWeapon,
+  hoverAt,
   isolate,
+  menuRects,
   mirroredRect,
   onCue,
   openChest,
@@ -108,6 +114,7 @@ import {
   unit,
   wavPeak,
   wavSeam,
+  wheelBy,
   type Harness,
 } from "./harness";
 import { REQUIRED_OPS, SCREENS, SWITCH_NAMES } from "./surface";
@@ -290,6 +297,53 @@ it("refuses a partial frame under a foreign clock", async () => {
   }
 });
 
+it("drives the pointer in stage coordinates: hover, click, and the wheel", async () => {
+  // The three pointer rules are applied per frame (specs/controls.md), and
+  // every rectangle is reported "in stage coordinates, 0 to STAGE_W across and
+  // 0 to STAGE_H down" (specs/instrumentation.md) — so the helpers aim at a
+  // rectangle the surface reported and let one frame read the gesture. The
+  // title menu answers the pointer, so its second item's rectangle is where a
+  // hover lands the highlight.
+  h.reset();
+  const rects = menuRects(h);
+  expect(rects).toHaveLength(TITLE_ITEMS.length);
+  const second = centerOf(rects[1]);
+  expect((await hoverAt(h, second.x, second.y)).menuIndex).toBe(1);
+
+  // LIGHT THE LAMP is entry 0 (specs/ui.md), and a click takes the item under
+  // it exactly as `confirm` does — proving the press edge reaches the frame.
+  h.reset();
+  const first = centerOf(menuRects(h)[0]);
+  expect((await clickAt(h, first.x, first.y)).screen).toBe("playing");
+
+  // The wheel: WHEEL_ROW units of downward travel move the almanac's list one
+  // row, and the tools tab holds more entries than ALMANAC_ROWS, so the row is
+  // there to reach (specs/controls.md, specs/ui.md).
+  h.reset();
+  poseScreen(h, "almanac");
+  expect((await wheelBy(h, 1)).almanacScroll).toBe(1);
+});
+
+it("maps a stage point through a surface that is not one to one", async () => {
+  // The mapping is the harness's own, and a fault in it would aim every
+  // pointer check at the wrong place under any surface but the default. A
+  // canvas laid out at half the stage's CSS size on a 2x display draws the
+  // same device pixels, so the SAME stage point must still land on the same
+  // menu item.
+  const own = await createHarness({
+    cssWidth: STAGE_W / 2,
+    cssHeight: STAGE_H / 2,
+    dpr: 2,
+  });
+  try {
+    own.reset();
+    const second = centerOf(menuRects(own)[1]);
+    expect((await hoverAt(own, second.x, second.y)).menuIndex).toBe(1);
+  } finally {
+    own.dispose();
+  }
+});
+
 /* -------------------------------------------------------------------------- */
 /* Isolation and the posed screens                                            */
 /* -------------------------------------------------------------------------- */
@@ -456,14 +510,18 @@ it("opens the overlays and the endings through the real ticks", async () => {
 /* -------------------------------------------------------------------------- */
 
 it("taps with real key events: one tap, one menu step, one cue", async () => {
-  // The title carries two entries (specs/ui.md), so one `down` moves the
-  // highlight to 1 and a second wraps it back to 0, each playing menu-move —
-  // which also proves the cue collector hears the frames and not the poses.
+  // The title menu wraps (specs/ui.md), so `TITLE_ITEMS.length` taps of `down`
+  // walk the highlight all the way round and back to 0, each playing
+  // menu-move — which also proves the cue collector hears the frames and not
+  // the poses.
   h.reset();
   const played = onCue(h);
-  expect((await tap(h, "ArrowDown")).menuIndex).toBe(1);
-  expect((await tap(h, "ArrowDown")).menuIndex).toBe(TITLE_ITEMS.length % 2);
-  expect(cuesNamed(played, CUES.menuMove)).toHaveLength(2);
+  for (let step = 1; step <= TITLE_ITEMS.length; step += 1) {
+    expect((await tap(h, "ArrowDown")).menuIndex).toBe(
+      step % TITLE_ITEMS.length,
+    );
+  }
+  expect(cuesNamed(played, CUES.menuMove)).toHaveLength(TITLE_ITEMS.length);
 });
 
 it("holds a key for a counted number of ticks", async () => {

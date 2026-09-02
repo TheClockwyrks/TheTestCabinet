@@ -1,7 +1,7 @@
 // screens/mute-toggles-from-any-screen — mute toggles from every screen.
 //
-// WHAT THIS DECIDES. One thing, over all eight screens: the `mute` key flips
-// the reported mute bit wherever it is pressed. The eight share one point
+// WHAT THIS DECIDES. One thing, over all nine screens: the `mute` key flips
+// the reported mute bit wherever it is pressed. The nine share one point
 // because they exercise one rule, "`mute` is read on every screen", the same
 // way; what the flip does to a running loop is its own point.
 //
@@ -19,14 +19,14 @@
 //
 // THE DRIVE. Each screen is reached the shortest way the specification allows
 // and never through another screen's menu: `title` by `reset`, `howto` and
-// `paused` and `fallen` through `setScreen`, which enters each "exactly as the
-// real transition into it" does (specs/instrumentation.md), `playing` through
-// `isolate`, `levelup` by the tick a queued level-up opens it, `chest` by the
-// tick that collects a chest at the lamplighter's center, and `dawn` by the
-// tick that crosses `DAWN_TIME × TICK_HZ`, which `setTick` cannot pose. The bit
-// is read before each press and compared against its opposite after, so the
-// reading is a FLIP rather than a value, whichever way the bit was left by the
-// screen before.
+// `almanac` and `paused` and `fallen` through `setScreen`, which enters each
+// "exactly as the real transition into it" does (specs/instrumentation.md),
+// `playing` through `isolate`, `levelup` by the tick a queued level-up opens
+// it, `chest` by the tick that collects a chest at the lamplighter's center,
+// and `dawn` by the tick that crosses `DAWN_TIME × TICK_HZ`, which `setTick`
+// cannot pose. The bit is read before each press and compared against its
+// opposite after, so the reading is a FLIP rather than a value, whichever way
+// the bit was left by the screen before.
 //
 // WHY A FRAME FOLLOWS EACH PRESS. The specification requires the mirror "every
 // frame" and fixes no order within one, so a build that mirrors before it reads
@@ -53,7 +53,7 @@ let h: Harness;
 
 /** Reach `screen` through the shortest path specs/instrumentation.md gives it. */
 async function reach(harness: Harness, screen: Screen): Promise<void> {
-  if (screen === "title" || screen === "howto") {
+  if (screen === "title" || screen === "howto" || screen === "almanac") {
     poseScene(harness, screen);
     return;
   }
@@ -83,7 +83,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("flips the mute bit on every one of the eight screens", async () => {
+it("flips the mute bit on every one of the nine screens", async () => {
   for (const screen of SCREENS) {
     await reach(h, screen);
     const before = h.snapshot();

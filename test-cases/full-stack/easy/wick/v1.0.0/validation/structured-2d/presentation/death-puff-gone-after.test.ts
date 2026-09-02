@@ -6,7 +6,7 @@
 // tick it died, in `[0, PUFF_TIME)`, and is gone after." `PUFF_TIME` is `0.4`
 // seconds. `specs/world.md`, Timers, fixes what that is in ticks with no
 // rounding to argue about: "An interval of `s` seconds anywhere in this
-// specification is likewise `round(s x TICK_HZ)` ticks", so the half-open
+// specification is likewise `round(s × TICK_HZ)` ticks", so the half-open
 // window `[0, PUFF_TIME)` is the 24 ticks numbered 0 to 23 and the puff is gone
 // from tick 24 on.
 //

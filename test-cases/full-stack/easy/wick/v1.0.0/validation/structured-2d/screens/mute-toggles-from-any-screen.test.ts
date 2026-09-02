@@ -1,5 +1,5 @@
 // Wick — screens/mute-toggles-from-any-screen: `mute` flips the sound from
-// every one of the eight screens.
+// every one of the nine screens.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, Audio: "The game
 // binds the `mute` action to `world.audio.setMuted` and toggles it from any
@@ -9,18 +9,18 @@
 // `KeyM`. `specs/instrumentation.md` makes `muted` the game's readable copy of
 // the runtime's bit, "refreshed in every frame".
 //
-// WHAT IS READ. `muted` before and after each press, on each of the eight
+// WHAT IS READ. `muted` before and after each press, on each of the nine
 // screens in turn: every press must flip it, so the bit alternates down the
 // list and a screen that swallows the key is the one whose reading stops
 // alternating. Nothing about sound itself is read here; the loops are
 // `screens/mute-keeps-loop-looping` and `screens/unmute-returns-loop`.
 //
 // THE DRIVE. Each screen reached by its own route: `reset` for `title`, the
-// debug surface for `howto`, an isolated `playing` world for `playing`, the
-// tick that opens each overlay for `levelup` and `chest`, the debug surface
-// for `paused`, and the ending rule for `fallen` and `dawn`. Every `playing`
-// scenario is isolated with every driver switch off, so nothing changes the
-// screen under the press.
+// debug surface for `howto` and `almanac`, an isolated `playing` world for
+// `playing`, the tick that opens each overlay for `levelup` and `chest`, the
+// debug surface for `paused`, and the ending rule for `fallen` and `dawn`.
+// Every `playing` scenario is isolated with every driver switch off, so
+// nothing changes the screen under the press.
 //
 // THE TOLERANCE. None: a boolean, read before and after.
 
@@ -50,7 +50,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("flips muted on title, howto, playing, levelup, chest, paused, fallen, and dawn", async () => {
+it("flips muted on title, howto, almanac, playing, levelup, chest, paused, fallen, and dawn", async () => {
   /** Reach each screen, in turn, by the route the specification gives it. */
   const reach: ReadonlyArray<readonly [Screen, () => Promise<void>]> = [
     ["title", async () => h.reset()],
@@ -59,6 +59,13 @@ it("flips muted on title, howto, playing, levelup, chest, paused, fallen, and da
       async () => {
         h.reset();
         poseScreen(h, "howto");
+      },
+    ],
+    [
+      "almanac",
+      async () => {
+        h.reset();
+        poseScreen(h, "almanac");
       },
     ],
     ["playing", async () => void isolate(h)],

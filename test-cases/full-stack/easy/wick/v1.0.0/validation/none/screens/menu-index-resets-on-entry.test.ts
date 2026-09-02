@@ -5,25 +5,25 @@
 // is `0` on entering every screen, and on a screen with no menu it stays `0`."
 // specs/controls.md ("What each screen reads") repeats it word for word. Each
 // screen's own section says the same of its arrival: "`menuIndex` is `0` on
-// arriving" on `title` and on the end screens, "`menuIndex` is `0` on opening"
-// on `levelup`, "`menuIndex = 0`" on the `howto` and `chest` rows and on the
-// two transitions back to `title`. specs/instrumentation.md fixes it for the
-// posed transitions too: `setScreen(name)` "Enters screen `name` ... exactly as
-// the real transition into it from the current screen enters it, with
-// `menuIndex` `0`."
+// arriving" on `title`, `almanac`, `paused` and the end screens, "`menuIndex` is
+// `0` on opening" on `levelup`, "`menuIndex = 0`" on the `howto` and `chest`
+// rows and on the two transitions back to `title`. specs/instrumentation.md
+// fixes it for the posed transitions too: `setScreen(name)` "Enters screen
+// `name` ... exactly as the real transition into it from the current screen
+// enters it, with `menuIndex` `0`."
 //
-// WHY THE WORLD IS POSED AS IT IS. All eight screens are entered in one drive,
+// WHY THE WORLD IS POSED AS IT IS. All nine screens are entered in one drive,
 // each by a real transition rather than a pose where a real one exists, and the
-// index is read the moment each is arrived at. Four of them are entered from a
-// screen whose highlight had been moved to `1` first, which is what makes the
-// requirement visible: `howto` from a title on its second item, `playing` from
-// an overlay on its second offer, `levelup` from an overlay on its second offer
-// with another level-up still queued, and `title` from an end screen on its
-// second item. The other four — `chest`, `paused`, `fallen` and `dawn` — are
-// only ever entered from `playing`, which carries no highlight to move, so each
-// is entered from there and read on arrival. The night is isolated before the
-// run screens, so nothing spawns into a tick and no gain opens an overlay this
-// drive did not queue.
+// index is read the moment each is arrived at. Five of them are entered from a
+// screen whose highlight had been moved off `0` first, which is what makes the
+// requirement visible: `almanac` from a title on its second item, `howto` from
+// a title on its third, `playing` from an overlay on its second offer,
+// `levelup` from an overlay on its second offer with another level-up still
+// queued, and `title` from an end screen on its second item. The other four —
+// `chest`, `paused`, `fallen` and `dawn` — are only ever entered from
+// `playing`, which carries no highlight to move, so each is entered from there
+// and read on arrival. The night is isolated before the run screens, so nothing
+// spawns into a tick and no gain opens an overlay this drive did not queue.
 //
 // THE TOLERANCE. None: an index is an exact comparison, and each screen is
 // asserted as well so an arrival that never happened fails rather than passing
@@ -31,6 +31,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -41,6 +42,7 @@ import {
   pressDown,
   pressPause,
   type Harness,
+  type WickSnapshot,
 } from "../harness";
 import {
   assertHighlight,
@@ -53,6 +55,10 @@ import {
 /** Three candidates of an empty loadout's pool. */
 const OFFERS = ["ember", "pin", "wick"] as const;
 
+/** Where `THE ALMANAC` and `HOW TO PLAY` sit in `TITLE_ITEMS`. */
+const ALMANAC_ITEM = TITLE_ITEMS.indexOf("THE ALMANAC");
+const HOW_TO_PLAY = TITLE_ITEMS.indexOf("HOW TO PLAY");
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -63,16 +69,34 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("arrives on each of the eight screens with menuIndex 0", async () => {
-  // howto, from a title standing on its second item.
-  const title = await h.snapshot();
-  assertEqual(title.screen, "title", "the screen the drive starts on");
-  const onSecond = await pressDown(h);
-  assertEqual(
-    onSecond.menuIndex,
-    1,
-    "the title's highlight before entering howto",
+it("arrives on each of the nine screens with menuIndex 0", async () => {
+  /** Move the title's highlight onto `item`, from the `0` the title is entered on. */
+  const highlight = async (item: number): Promise<WickSnapshot> => {
+    const title = await h.snapshot();
+    assertEqual(title.screen, "title", "the screen the highlight is moved on");
+    assertEqual(title.menuIndex, 0, "the title's highlight before it is moved");
+    let posed = title;
+    for (let i = 0; i < item; i += 1) posed = await pressDown(h);
+    assertEqual(
+      posed.menuIndex,
+      item,
+      "the title's highlight before the item is taken",
+    );
+    return posed;
+  };
+
+  // almanac, from a title standing on its second item.
+  await highlight(ALMANAC_ITEM);
+  assertHighlight(
+    await pressConfirm(h),
+    "almanac",
+    0,
+    "on arriving at almanac",
   );
+  assertHighlight(await pressBack(h), "title", 0, "on returning to the title");
+
+  // howto, from a title standing on its third item.
+  await highlight(HOW_TO_PLAY);
   assertHighlight(await pressConfirm(h), "howto", 0, "on arriving at howto");
   assertHighlight(await pressBack(h), "title", 0, "on returning to the title");
 

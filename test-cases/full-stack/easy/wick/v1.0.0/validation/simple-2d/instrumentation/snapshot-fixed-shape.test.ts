@@ -1,79 +1,37 @@
 // instrumentation/snapshot-fixed-shape — the snapshot carries every documented
-// field on each of the eight screens, `run` reporting the idle run on title
-// and howto and the run that just ended on fallen and dawn, `pool` empty on
-// every screen but levelup, and `menuIndex` at rest where there is no menu.
+// field on each of the nine screens, `almanacTab`, `almanacScroll`, and
+// `run.hurtFlash` among them, `run` reporting the idle run on title, howto, and
+// almanac and the run that just ended on fallen and dawn, `pool` empty on every
+// screen but levelup, and `menuIndex` at rest where there is no menu.
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "Snapshot shape":
 // "The shape is fixed, and every field is present whatever the screen. `run`
-// reports the idle run of `specs/state.md` on `title` and `howto`, and the run
-// that just ended on `fallen` and `dawn`"; `pool` is "on every other screen an
-// empty list". specs/ui.md, "Menu navigation": "`menuIndex` is `0` on entering
-// every screen, and on a screen with no menu it stays `0`", the screens with
-// no menu being howto, playing, chest, and paused.
+// reports the idle run of `specs/state.md` on `title`, `howto`, and `almanac`,
+// and the run that just ended on `fallen` and `dawn`"; "`almanacTab` and
+// `almanacScroll` sit beside `menuIndex`, outside `run`, and are `0` on every
+// screen but `almanac`"; `pool` is "on every other screen an empty list".
+// specs/controls.md: "`menuIndex` is `0` on entering every screen, and on a
+// screen with no highlight it stays `0`", the screens with no menu being howto,
+// playing, and chest.
 //
 // EACH SCREEN IS REACHED THROUGH THE SURFACE ALONE, so a build whose menus
 // cannot be walked still answers for its shape, and a broken shape names its
-// screen. `title` is the reset; `howto`, `playing`, `paused`, `fallen`, and
-// `dawn` are `setScreen` rows; `levelup` and `chest` have no row of their own
-// and are opened by the tick that opens them, with a queued level-up and a
-// chest under the lamplighter. Whether a value is RIGHT on a screen belongs to
-// the points about that screen's transition.
+// screen. `title` is the reset; `howto`, `almanac`, `playing`, `paused`,
+// `fallen`, and `dawn` are `setScreen` rows; `levelup` and `chest` have no row
+// of their own and are opened by the tick that opens them, with a queued
+// level-up and a chest under the lamplighter. Whether a value is RIGHT on a
+// screen belongs to the points about that screen's transition.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertHasProperty, assertLength } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  openChest,
-  openLevelUp,
-  poseScene,
-  type Harness,
-  type Screen,
-} from "../harness";
+import { captureStill, createHarness, type Harness } from "../harness";
 import {
   assertIdleRun,
   MENU_FREE_SCREENS,
   RUN_FIELDS,
+  SCREEN_ROUTES,
   SNAPSHOT_FIELDS,
 } from "./helpers";
-
-/** The eight screens, each reached through the surface. */
-const SCREEN_ROUTES: readonly [Screen, (h: Harness) => Promise<void>][] = [
-  ["title", async (on) => on.reset()],
-  ["howto", async (on) => void poseScene(on, "howto")],
-  ["playing", async (on) => void poseScene(on, "playing")],
-  [
-    "levelup",
-    async (on) => {
-      poseScene(on, "playing");
-      await openLevelUp(on, 1);
-    },
-  ],
-  [
-    "chest",
-    async (on) => {
-      poseScene(on, "playing");
-      await openChest(on);
-    },
-  ],
-  ["paused", async (on) => void poseScene(on, "paused")],
-  [
-    "fallen",
-    async (on) => {
-      poseScene(on, "playing");
-      await on.tick(3);
-      on.debug.setScreen("fallen");
-    },
-  ],
-  [
-    "dawn",
-    async (on) => {
-      poseScene(on, "playing");
-      await on.tick(3);
-      on.debug.setScreen("dawn");
-    },
-  ],
-];
 
 let h: Harness;
 
@@ -98,13 +56,16 @@ it("carries the whole documented shape on every screen", async () => {
       assertHasProperty(s.run, field, `snapshot().run on ${screen}`);
     }
     assertEqual(typeof s.menuIndex, "number", `menuIndex on ${screen}`);
+    assertEqual(typeof s.almanacTab, "number", `almanacTab on ${screen}`);
+    assertEqual(typeof s.almanacScroll, "number", `almanacScroll on ${screen}`);
     assertEqual(typeof s.run.tick, "number", `run.tick on ${screen}`);
+    assertEqual(typeof s.run.hurtFlash, "number", `run.hurtFlash on ${screen}`);
     assertEqual(typeof s.accumulator, "number", `accumulator on ${screen}`);
     assertEqual(typeof s.simTime, "number", `simTime on ${screen}`);
     assertEqual(typeof s.rngState, "number", `rngState on ${screen}`);
     assertEqual(typeof s.muted, "boolean", `muted on ${screen}`);
 
-    if (screen === "title" || screen === "howto") {
+    if (screen === "title" || screen === "howto" || screen === "almanac") {
       assertIdleRun(s.run, `run on ${screen}: the idle run`);
     }
     if (screen === "fallen" || screen === "dawn") {
@@ -117,6 +78,14 @@ it("carries the whole documented shape on every screen", async () => {
     }
     if (screen !== "levelup") {
       assertLength(s.run.pool, 0, `pool on ${screen}: empty off levelup`);
+    }
+    if (screen !== "almanac") {
+      assertEqual(s.almanacTab, 0, `almanacTab resting at 0 on ${screen}`);
+      assertEqual(
+        s.almanacScroll,
+        0,
+        `almanacScroll resting at 0 on ${screen}`,
+      );
     }
     if ((MENU_FREE_SCREENS as readonly string[]).includes(screen)) {
       assertEqual(s.menuIndex, 0, `menuIndex resting at 0 on ${screen}`);

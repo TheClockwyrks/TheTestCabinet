@@ -1,16 +1,19 @@
 // Wick — instrumentation/snapshot-fixed-shape: the snapshot carries every
-// documented field on each of the eight screens, `run` reports the idle run on
-// `title` and `howto` and the run that just ended on `fallen` and `dawn`, `pool`
-// is empty on every screen but `levelup`, and `menuIndex` rests at `0` on a
-// screen with no menu.
+// documented field on each of the nine screens, `almanacTab`, `almanacScroll`
+// and `run.hurtFlash` among them, `run` reports the idle run on `title`,
+// `howto` and `almanac` and the run that just ended on `fallen` and `dawn`,
+// `pool` is empty on every screen but `levelup`, and `menuIndex` rests at `0` on
+// a screen with no menu.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — "Snapshot shape"):
 // "The shape is fixed, and every field is present whatever the screen. `run`
-// reports the idle run of `specs/state.md` on `title` and `howto`, and the run
-// that just ended on `fallen` and `dawn`"; `pool`: "on `levelup`, the candidate
-// pool ...; on every other screen an empty list". specs/controls.md: "`menuIndex`
-// is `0` on entering every screen, and on a screen with no highlight it stays
-// `0`". The idle run is specs/state.md's list, restated by `idleRun()`.
+// reports the idle run of `specs/state.md` on `title`, `howto`, and `almanac`,
+// and the run that just ended on `fallen` and `dawn`"; `pool`: "on `levelup`,
+// the candidate pool ...; on every other screen an empty list". The nine field
+// names are `SNAPSHOT_FIELDS` and `RUN_FIELDS`, which restate that block.
+// specs/state.md: "`menuIndex` ... is `0` on entering every screen, and on a
+// screen with no menu it stays `0`", and, of the almanac, "The almanac holds the
+// idle run". The idle run is specs/state.md's list, restated by `idleRun()`.
 //
 // WHY THE WORLD IS POSED AS IT IS. Each screen is entered by the `setScreen` row
 // the specification gives it, except `chest`, which "is reached through
@@ -64,7 +67,7 @@ function requireShape(s: WickSnapshot, screen: ScreenName): void {
   assertEqual(s.screen, screen, "the screen the snapshot reports");
 }
 
-it("carries every field on all eight screens, with the run each reports", async () => {
+it("carries every field on all nine screens, with the run each reports", async () => {
   // title: the harness's opening reset leaves the game here.
   await h.debug.reset();
   const title = await h.snapshot();
@@ -78,6 +81,12 @@ it("carries every field on all eight screens, with the run each reports", async 
   assertDeepEqual(documentedRun(howto.run), idleRun(), "the run on howto");
   assertLength(howto.run.pool, 0, "the pool on howto");
   assertEqual(howto.menuIndex, 0, "menuIndex on howto, a screen with no menu");
+
+  // almanac, which holds the idle run as `title` and `howto` do.
+  const almanac = await poseScreen(h, "almanac");
+  requireShape(almanac, "almanac");
+  assertDeepEqual(documentedRun(almanac.run), idleRun(), "the run on almanac");
+  assertLength(almanac.run.pool, 0, "the pool on almanac");
 
   // playing, on an isolated night.
   const playing = await isolate(h);

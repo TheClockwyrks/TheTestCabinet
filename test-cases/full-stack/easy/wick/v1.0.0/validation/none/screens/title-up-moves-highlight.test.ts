@@ -4,7 +4,7 @@
 // WHERE THE THRESHOLD COMES FROM. specs/ui.md ("`title`"): "`up` and `down`
 // move the highlight by one item and wrap at both ends". specs/controls.md
 // ("What each screen reads"), the `title` row: "`up`, `down` move the
-// highlight, wrapping at both ends". specs/controls.md ("Actions and
+// highlight, wrapping". specs/controls.md ("Actions and
 // bindings"): "`up` | `ArrowUp`, `KeyW`".
 //
 // WHY THE WORLD IS POSED AS IT IS. The surface carries no pose for `menuIndex`,

@@ -1,16 +1,19 @@
 // Wick — instrumentation/snapshot-fixed-shape: the snapshot carries every
-// documented field on each of the eight screens, with `run` the idle run on
-// `title` and `howto`, the run that just ended on `fallen` and `dawn`, `pool`
-// empty everywhere but `levelup`, and `menuIndex` `0` on a screen with no menu.
+// documented field on each of the nine screens, `almanacTab`, `almanacScroll`,
+// and `run.hurtFlash` among them, with `run` the idle run on `title`, `howto`,
+// and `almanac`, the run that just ended on `fallen` and `dawn`, `pool` empty
+// everywhere but `levelup`, and `menuIndex` `0` on a screen with no menu.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
 // "Snapshot shape": "The shape is fixed, and every field is present whatever
-// the screen. `run` reports the idle run of `specs/state.md` on `title` and
-// `howto`, and the run that just ended on `fallen` and `dawn`"; the `pool` row
-// of the derived table: "on every other screen an empty list". `specs/state.md`,
-// "The idle run", the table `IDLE_RUN` transcribes, and "`menuIndex` ... on a
-// screen with no menu it stays `0`" — `playing`, `howto`, `chest`, and `paused`
-// show no menu (`specs/ui.md`).
+// the screen. `run` reports the idle run of `specs/state.md` on `title`,
+// `howto`, and `almanac`, and the run that just ended on `fallen` and `dawn`";
+// the `pool` row of the derived table: "on every other screen an empty list";
+// and "`almanacTab` and `almanacScroll` sit beside `menuIndex`, outside
+// `run`". `specs/state.md`, "The idle run", the table `IDLE_RUN` transcribes,
+// and "`menuIndex` ... on a screen with no menu it stays `0`" — `howto`,
+// `playing`, and `chest` show no menu, while `title`, `almanac`, `levelup`,
+// `paused`, `fallen`, and `dawn` each show one (`specs/ui.md`).
 //
 // THE SWEEP. Each screen is reached through the surface and the real ticks
 // (`reset`, `setScreen`, and the harness's `openLevelUp`, `openChest`,
@@ -40,6 +43,8 @@ const SNAPSHOT_FIELDS = [
   "version",
   "screen",
   "menuIndex",
+  "almanacTab",
+  "almanacScroll",
   "spawning",
   "events",
   "despawning",
@@ -62,6 +67,7 @@ const RUN_FIELDS = [
   "xpToNext",
   "kills",
   "player",
+  "hurtFlash",
   "maxHp",
   "armor",
   "moveSpeed",
@@ -86,7 +92,7 @@ const RUN_FIELDS = [
 ] as const;
 
 /** The screens that show no menu (specs/ui.md). */
-const MENULESS: readonly Screen[] = ["howto", "playing", "chest", "paused"];
+const MENULESS: readonly Screen[] = ["howto", "playing", "chest"];
 
 /** Kills posed on the run that ends, so the ended run reads apart from idle. */
 const POSED_KILLS = 3;
@@ -118,13 +124,16 @@ function checkShape(s: WickSnapshot, screen: Screen): void {
   }
 }
 
-it("carries every field on all eight screens, run and pool as each screen states", async () => {
+it("carries every field on all nine screens, run and pool as each screen states", async () => {
   h.reset();
   checkShape(h.snapshot(), "title");
   assertDeepEqual(h.snapshot().run, IDLE_RUN, "run on title");
 
   checkShape(poseScreen(h, "howto"), "howto");
   assertDeepEqual(h.snapshot().run, IDLE_RUN, "run on howto");
+
+  checkShape(poseScreen(h, "almanac"), "almanac");
+  assertDeepEqual(h.snapshot().run, IDLE_RUN, "run on almanac");
 
   checkShape(isolate(h), "playing");
 

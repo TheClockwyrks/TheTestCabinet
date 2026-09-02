@@ -12,20 +12,21 @@
 //   specs/ui.md (`title`): the menu is `TITLE_ITEMS`, "stacked one above the
 //   next", and "`menuIndex` is `0` on arriving".
 //
-// THE DRIVE. A reset to the title, whose menu is the shortest one the case has
-// and whose two items are read off the frame's own text to find where the build
-// put them. The stage is split in two at the midpoint between the two anchors,
-// which is layout-free: whatever the build's spacing, each item lies on its own
-// side of the line between them. Two frames are drawn before the highlight
+// THE DRIVE. A reset to the title, whose first two items are read off the
+// frame's own text to find where the build put them. The stage is split in two
+// at the midpoint between those two anchors, which is layout-free: whatever the
+// build's spacing, the first item lies above the line and the item the
+// highlight moves onto below it. Two frames are drawn before the highlight
 // moves and their difference is the DRIFT a build that animates its title
 // carries; the highlight is then moved with the menu's own `down` key, which is
 // `title-down-moves-highlight`'s point, and each half of the stage must differ
 // from the frame before it by more than its own drift.
 //
 // WHAT IS NOT ASSERTED, AND WHY. Nothing about HOW the item is drawn
-// distinctly. specs/ui.md "fixes no palette, no font, no layout, and no styling
-// for any screen", so a colour, a marker, a plate behind the text, a size, and
-// a shift are all conformant and all move pixels.
+// distinctly. specs/ui.md "fixes no palette, no font, and no styling for any
+// screen", and leaves each screen's layout to the build except where a table
+// places one element relative to another, so a colour, a marker, a plate behind
+// the text, a size, and a shift are all conformant and all move pixels.
 //
 // THE TOLERANCE. A pixel count against the drift measured on the same scene, so
 // a build whose title is still passes on any visible highlight and a build that
@@ -68,7 +69,7 @@ it("changes the pixels of both title items when the highlight moves", async () =
   assertGreaterThan(
     split,
     0,
-    "the line between the two title items, in stage units",
+    "the line between the first two title items, in stage units",
   );
 
   const halves = (): [PixelRect, PixelRect] => [

@@ -4,23 +4,26 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/ui.md`, "Menu navigation":
 // "`menuIndex` is `0` on entering every screen, and on a screen with no menu
 // it stays `0`." `specs/state.md` says the same of the field, and each
-// screen's own section repeats it: `title`, `levelup`, and the end screens all
-// arrive on `0`, and `HOW TO PLAY` "Sets `screen = howto` and
-// `menuIndex = 0`", `paused` and `title` are reached "with `menuIndex = 0`".
+// screen's own section repeats it: `title`, `almanac`, `levelup`, `paused`,
+// and the end screens all arrive on `0`, `THE ALMANAC` sets "`menuIndex`,
+// `almanacTab`, and `almanacScroll` all `0`", `HOW TO PLAY` "Sets
+// `screen = howto` and `menuIndex = 0`", and `MAIN MENU` and `TITLE` return to
+// `title` "with `menuIndex = 0`".
 //
-// THE DRIVE. Every one of the eight screens is entered once, by the route the
-// specification gives it, and the arrival is read. Four of those routes start
-// from a screen whose highlight was moved to `1` first, which is what makes
-// the point bite: `howto` is entered from a title standing on its second item;
-// the second `levelup` overlay and the return to `playing` are entered by
-// accepting the SECOND offer of an overlay with two level-ups queued
-// (`specs/progression.md`: "When level-ups remain queued the next overlay
-// opens immediately"); and `title` is entered by confirming `TITLE` on a
-// fallen screen standing on its second item. The other four screens have no
-// menu to leave a highlight on: `chest` is reached through a chest posed at
-// the lamplighter's centre and the tick that collects it, `paused` through a
-// real `KeyP`, and the two endings through the ending rule of
-// `specs/world.md`.
+// THE DRIVE. Every one of the nine screens is entered once, by the route the
+// specification gives it, and the arrival is read. Five of those routes start
+// from a screen whose highlight was moved off `0` first, which is what makes
+// the point bite: `almanac` is entered from a title standing on its second
+// item and `howto` from a title standing on its third, the two items
+// `TITLE_ITEMS` lists after `LIGHT THE LAMP`; the second `levelup` overlay and
+// the return to `playing` are entered by accepting the SECOND offer of an
+// overlay with two level-ups queued (`specs/progression.md`: "When level-ups
+// remain queued the next overlay opens immediately"); and `title` is entered
+// by confirming `TITLE` on a fallen screen standing on its second item. The
+// other three screens have no highlight to leave off `0`: `chest` is reached
+// through a chest posed at the lamplighter's centre and the tick that collects
+// it, `paused` through a real `KeyP`, and the two endings through the ending
+// rule of `specs/world.md`.
 //
 // Each `playing` scenario is an isolated world with every driver switch off,
 // so nothing autonomous opens a screen the drive did not ask for.
@@ -29,6 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -44,6 +48,10 @@ import {
 /** How many level-ups the overlay scenario queues: one to leave, one to take. */
 const QUEUED = 2;
 
+/** Where `THE ALMANAC` and `HOW TO PLAY` stand in `TITLE_ITEMS` (specs/ui.md). */
+const THE_ALMANAC = TITLE_ITEMS.indexOf("THE ALMANAC");
+const HOW_TO_PLAY = TITLE_ITEMS.indexOf("HOW TO PLAY");
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -54,14 +62,30 @@ afterEach(() => {
   h.dispose();
 });
 
-it("arrives on every screen with menuIndex 0", async () => {
-  h.reset();
-  const moved = await tap(h, "ArrowDown");
+/** Stand on the title item at `index`, from a title freshly reset onto `0`. */
+async function standOnTitleItem(
+  harness: Harness,
+  index: number,
+): Promise<void> {
+  harness.reset();
+  let state = harness.snapshot();
+  for (let press = 0; press < index; press += 1) {
+    state = await tap(harness, "ArrowDown");
+  }
   assertEqual(
-    moved.menuIndex,
-    1,
-    "the title's highlight before entering howto",
+    state.menuIndex,
+    index,
+    `the title's highlight before confirming ${TITLE_ITEMS[index]}`,
   );
+}
+
+it("arrives on every screen with menuIndex 0", async () => {
+  await standOnTitleItem(h, THE_ALMANAC);
+  const almanac = await tap(h, "Enter");
+  assertEqual(almanac.screen, "almanac", "the screen THE ALMANAC entered");
+  assertEqual(almanac.menuIndex, 0, "menuIndex on arriving at almanac");
+
+  await standOnTitleItem(h, HOW_TO_PLAY);
   const howto = await tap(h, "Enter");
   assertEqual(howto.screen, "howto", "the screen HOW TO PLAY entered");
   assertEqual(howto.menuIndex, 0, "menuIndex on arriving at howto");

@@ -37,12 +37,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
 import { SILENCE_FLOOR } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  wavPeak,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, wavPeak, type Harness } from "../harness";
 import { showLines } from "./produced";
 import { CUE_SOUNDS, readCues, soundLines } from "./sounds";
 

@@ -2,8 +2,9 @@
 // ended, not a fresh or an idle one.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
-// Snapshot shape: "`run` reports the idle run of `specs/state.md` on `title`
-// and `howto`, and the run that just ended on `fallen` and `dawn`."
+// Snapshot shape: "`run` reports the idle run of `specs/state.md` on `title`,
+// `howto`, and `almanac`, and the run that just ended on `fallen` and
+// `dawn`."
 // `specs/state.md`, "The idle run": "The `fallen` and `dawn` screens keep the
 // run that just ended, since they report its time, level, and kills."
 // `specs/ui.md`, "`fallen` and `dawn`", draws those three: "The run clock at

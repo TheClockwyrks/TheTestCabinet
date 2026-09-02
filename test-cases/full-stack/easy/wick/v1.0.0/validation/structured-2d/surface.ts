@@ -21,11 +21,13 @@
 // returns plain data built at the call (`snapshot()`). The harness's `h.debug`
 // IS this object rather than a driver over it.
 //
-// There is NO clock operation and NO key operation here, and that is
-// deliberate: the engine owns the frame loop and the keyboard, so a check
-// steps the game with `engine.advance` under a scripted clock, one frame one
-// tick by default, and dispatches keyboard-shaped events at the surface's own
-// listener.
+// There is NO clock operation and NO input operation here, and that is
+// deliberate: the engine owns the frame loop, the keyboard, and the pointer,
+// so a check steps the game with `engine.advance` under a scripted clock, one
+// frame one tick by default, and dispatches keyboard-, pointer- and
+// wheel-shaped events at the surface's own listener. `menuRects` and
+// `tabRects` are readings rather than drives: they say WHERE the pointer rules
+// of `specs/controls.md` act, and the check aims its own gesture there.
 
 import type {
   EnemyId,
@@ -42,6 +44,7 @@ export type { EnemyId, GemTier, OfferId, PassiveId, PickupKind, WeaponId };
 export type Screen =
   | "title"
   | "howto"
+  | "almanac"
   | "playing"
   | "levelup"
   | "chest"
@@ -49,10 +52,11 @@ export type Screen =
   | "fallen"
   | "dawn";
 
-/** The eight screens, in the order `specs/ui.md` tabulates them. */
+/** The nine screens, in the order `specs/ui.md` tabulates them. */
 export const SCREENS: readonly Screen[] = [
   "title",
   "howto",
+  "almanac",
   "playing",
   "levelup",
   "chest",
@@ -103,6 +107,8 @@ export type SwitchName = (typeof SWITCH_NAMES)[number];
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuRects",
+  "tabRects",
   "setScreen",
   "choose",
   "setSpawning",
@@ -152,6 +158,18 @@ export type OperationName = (typeof REQUIRED_OPS)[number];
 /** `reset`'s options: the seed the generator is laid with. */
 export interface ResetOptions {
   readonly seed?: number;
+}
+
+/**
+ * One rectangle of a menu or a tab bar, in STAGE coordinates: `0` to `STAGE_W`
+ * across and `0` to `STAGE_H` down, the coordinates `specs/controls.md` reads
+ * the pointer in.
+ */
+export interface WickRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 export interface SnapshotPlayer {
@@ -242,7 +260,10 @@ export interface SnapshotPickup {
   y: number;
 }
 
-/** The run in progress or just ended, and the idle run on `title` and `howto`. */
+/**
+ * The run in progress or just ended, and the idle run on `title`, `howto`, and
+ * `almanac`.
+ */
 export interface SnapshotRun {
   tick: number;
   /** `tick / TICK_HZ`, seconds. */
@@ -253,6 +274,8 @@ export interface SnapshotRun {
   xpToNext: number;
   kills: number;
   player: SnapshotPlayer;
+  /** Seconds left of the hurt flash. */
+  hurtFlash: number;
   maxHp: number;
   armor: number;
   /** Units per second. */
@@ -293,6 +316,10 @@ export interface WickSnapshot {
   screen: Screen;
   /** The highlighted item, `0` on a screen with no menu. */
   menuIndex: number;
+  /** The tab the almanac is showing; `0` on every other screen. */
+  almanacTab: number;
+  /** The almanac list's first visible row; `0` on every other screen. */
+  almanacScroll: number;
   spawning: boolean;
   events: boolean;
   despawning: boolean;
@@ -327,7 +354,8 @@ export interface WickDebugApi {
   readonly version: number;
   /**
    * Restores every declared field to its title-screen value: `title` with
-   * `menuIndex` `0`, the idle run, the accumulator and `simTime` at `0`, every
+   * `menuIndex`, `almanacTab`, and `almanacScroll` all `0`, the idle run, the
+   * accumulator and `simTime` at `0`, every
    * driver switch on. `options.seed` seeds the generator, defaulting to
    * `DEFAULT_SEED` (`1`). `muted` stays as it is; any loop stops on the next
    * tick.
@@ -335,6 +363,23 @@ export interface WickDebugApi {
   reset(options?: ResetOptions): void;
   /** A pure read of the state; changes nothing. */
   snapshot(): WickSnapshot;
+  /**
+   * The rectangles of the current screen's vertical menu, in menu order, in
+   * stage coordinates. `title`, `levelup`, `paused`, `fallen`, and `dawn`
+   * report one per item of the menu they show; `almanac` reports one per
+   * VISIBLE entry row, in list order from `almanacScroll` and at most
+   * `ALMANAC_ROWS` of them; `howto`, `playing`, and `chest` report an empty
+   * list. Each is the area a hover or a click selects that item inside.
+   * Changes nothing.
+   */
+  menuRects(): readonly WickRect[];
+  /**
+   * The rectangles of the almanac's tab bar on `almanac`, one per tab in
+   * `ALMANAC_TABS` order, in stage coordinates; every other screen reports an
+   * empty list. Each meets no rectangle `menuRects` reports on that screen.
+   * Changes nothing.
+   */
+  tabRects(): readonly WickRect[];
   /**
    * Enters screen `name` exactly as the real transition into it from the
    * current screen enters it, with `menuIndex` `0`, per the table

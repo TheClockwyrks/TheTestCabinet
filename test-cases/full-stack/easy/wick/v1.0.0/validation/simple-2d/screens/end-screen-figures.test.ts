@@ -11,8 +11,8 @@
 //   `paused` | Ends the run exactly as that ending does, the run kept for the
 //   end screen to report."
 //   specs/instrumentation.md ("Snapshot shape"): "`run` reports the idle run of
-//   `specs/state.md` on `title` and `howto`, and the run that just ended on
-//   `fallen` and `dawn`."
+//   `specs/state.md` on `title`, `howto`, and `almanac`, and the run that just
+//   ended on `fallen` and `dawn`."
 //   specs/ui.md ("`fallen` and `dawn`"): the figures table, "Time survived |
 //   The run clock at the end, as `m:ss`", "Level | The level reached", "Kills |
 //   The kill count".
