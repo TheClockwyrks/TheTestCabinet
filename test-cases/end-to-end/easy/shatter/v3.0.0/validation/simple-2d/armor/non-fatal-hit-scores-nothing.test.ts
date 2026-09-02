@@ -23,9 +23,22 @@ import {
   poseRock,
   shootRock,
   startPlaying,
+  ticksFor,
   type Harness,
 } from "../harness";
 import { CHIP_SPOT, chippedRock, healthOf } from "./scene";
+
+/**
+ * How long the score is watched after the chipping hit, in ticks.
+ *
+ * Half a second. The reading on the hit tick alone is a claim about one moment,
+ * and a build that credits a hit a frame or two late — one that pays out of a
+ * queue drained on the next tick, or that scores on the damage animation ending —
+ * reads the posed score there and a raised one shortly after. Nothing else on this
+ * field can score in the window: `startPlaying` leaves it empty but for the rock
+ * under test, and the rock is standing far out of the well's reach.
+ */
+const SETTLE_TICKS = ticksFor(0.5);
 
 let h: Harness;
 
@@ -60,5 +73,17 @@ it("leaves the score unchanged when a hit only chips the rock", async () => {
     after.score,
     before,
     "the score after a hit that destroyed nothing (specs/scoring.md)",
+  );
+
+  // AND IT IS STILL PAYING NOTHING HALF A SECOND LATER.
+  await h.advance(SETTLE_TICKS);
+
+  assertEqual(
+    h.snapshot().score,
+    before,
+    `the score ${String(SETTLE_TICKS)} ticks after the chipping round landed ` +
+      "— a build that credits a hit late is caught here rather than passing " +
+      "on the one tick it had not yet paid (specs/scoring.md pays for a rock " +
+      "DESTROYED, and this hit destroyed nothing)",
   );
 });
