@@ -41,7 +41,7 @@
 // whole scenario is `62` ticks, a seventh of `TORPEDO_LIFE`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG } from "../../src/constants";
+import { DEG, TICK_DT, TORPEDO_TURN } from "../../src/constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { angleBetween, bearing } from "../geometry";
 import {
@@ -95,10 +95,12 @@ const STRAIGHT_TOLERANCE = 1 * DEG;
 
 /**
  * How far the heading may sit from the bearing to the second rock once it has come
- * round, in radians: `3` degrees, a tick of `TORPEDO_TURN` and a little slack, the
- * same reading `torpedo/picks-the-nearest-in-the-cone` takes.
+ * round, in radians.
+ *
+ * TWO TICKS OF THE TURN RATE `specs/weapons.md` FIXES: `2 * TORPEDO_TURN * TICK_DT`,
+ * some `2.67` degrees, the figure every engine's guidance reading uses.
  */
-const AIM_TOLERANCE = 3 * DEG;
+const AIM_TOLERANCE = 2 * TORPEDO_TURN * TICK_DT;
 
 let h: Harness;
 

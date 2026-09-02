@@ -39,13 +39,20 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
-import { DEG } from "../../src/constants";
-import { angleBetween, angleGap, degrees } from "../geometry";
+import { DEG, TICK_DT, TORPEDO_TURN } from "../../src/constants";
+import {
+  angleBetween,
+  angleGap,
+  degrees,
+  separation,
+  type Point,
+} from "../geometry";
 import {
   captureStill,
   createHarness,
   poseRock,
   poseTorpedo,
+  rockById,
   startPlaying,
   torpedoById,
   type Harness,
@@ -83,6 +90,39 @@ const TURN_NEEDED = 4 * DEG;
  * still turning at the ceiling would sweep `40`.
  */
 const STRAIGHT_TOLERANCE = 1 * DEG;
+
+/**
+ * How much longer the torpedo is flown before the heading is read against the
+ * bearing, in ticks.
+ *
+ * `TURN_TICKS` is chosen so the FLOOR above reads a turn in progress: six ticks of
+ * `TORPEDO_TURN` is eight degrees, which is enough to say the torpedo swung back
+ * the other way and not enough to have finished a twelve-degree turn. Twenty more
+ * is twenty-six degrees of available turn against the twelve it owes, so a build
+ * that tracks its target has arrived and one that swung part of the way and
+ * stopped has not.
+ */
+const SETTLE_TICKS = 20;
+
+/**
+ * How far the heading may end from the bearing to the second rock, in radians.
+ *
+ * TWO TICKS OF THE TURN RATE `specs/weapons.md` FIXES: `2 * TORPEDO_TURN * TICK_DT`,
+ * some `2.67` degrees, the same figure `instrumentation/torpedo-homing-gate` reads.
+ *
+ * IT IS WHY THE ITEM SAYS ONTO. The turn floor above says the torpedo swung back
+ * the other way; on its own it also passes a build that swings a few degrees and
+ * stops, which has turned TOWARD the second rock and never onto it. This item's
+ * criteria is that it "turns onto a second rock brought into its cone", so the
+ * heading is read against the bearing itself.
+ */
+const AIM_TOLERANCE = 2 * TORPEDO_TURN * TICK_DT;
+
+/** The bearing from `from` to `to`, along the shortest wrapped separation. */
+function bearingFrom(from: Point, to: Point): number {
+  const away = separation(from, to);
+  return Math.atan2(away.y, away.x);
+}
 
 let h: Harness;
 
@@ -145,7 +185,7 @@ it("turns onto a rock, flies straight when it is taken away, then turns onto a s
     coasting.heading - OFF_AXIS_DEG * DEG,
     SECOND_RANGE,
   );
-  poseRock(h, "small", secondAt.x, secondAt.y);
+  const second = poseRock(h, "small", secondAt.x, secondAt.y);
   await h.advance(TURN_TICKS);
   const reacquired = torpedoById(
     h.snapshot(),
@@ -163,5 +203,28 @@ it("turns onto a rock, flies straight when it is taken away, then turns onto a s
       `${TURN_TICKS} ticks (specs/weapons.md: it re-evaluates every tick, so it ` +
       "acquires, loses, and re-acquires targets over its flight); a build still " +
       "turning the way it was reads a negative number here",
+  );
+
+  // AND IT ENDED ON THE ROCK, not merely swung its way.
+  await h.advance(SETTLE_TICKS);
+  const settled = h.snapshot();
+  const onTarget = torpedoById(
+    settled,
+    id,
+    "the torpedo with its second target acquired",
+  );
+  const target = rockById(
+    settled,
+    second,
+    "the second rock the torpedo turned onto",
+  );
+  assertLessThanOrEqual(
+    angleGap(onTarget.heading, bearingFrom(onTarget, target)),
+    AIM_TOLERANCE,
+    "the radians between the torpedo's heading and the bearing to the second " +
+      `rock, ${TURN_TICKS + SETTLE_TICKS} ticks after it entered the cone — specs/weapons.md ` +
+      "turns an acquired torpedo ONTO its target's current position every " +
+      "tick, so a build that swings part of the way and stops is caught here " +
+      "rather than by the floor above",
   );
 });
