@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
-import { BAY_COUNT } from "../../src/constants";
+import { BAY_COUNT } from "../constants";
 import { captureStill, createHarness, keysFor, type Harness } from "../harness";
 
 /** Five bays, none of them filled: what `specs/bays.md` opens a level with. */

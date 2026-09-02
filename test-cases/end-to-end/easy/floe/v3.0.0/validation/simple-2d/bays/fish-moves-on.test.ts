@@ -34,12 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual, assertNotNull } from "../assert";
-import {
-  BAY_COUNT,
-  FISH_INTERVAL,
-  FISH_LINGER,
-  TICK_HZ,
-} from "../../src/constants";
+import { BAY_COUNT, FISH_INTERVAL, FISH_LINGER, TICK_HZ } from "../constants";
 import {
   captureStill,
   createHarness,

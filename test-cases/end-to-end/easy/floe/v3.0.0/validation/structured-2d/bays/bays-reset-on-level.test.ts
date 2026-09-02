@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { BAY_COUNT, CLEAR_PAUSE } from "../../src/constants";
+import { BAY_COUNT, CLEAR_PAUSE } from "../constants";
 import {
   captureReplay,
   createHarness,

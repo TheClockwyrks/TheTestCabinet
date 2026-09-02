@@ -29,7 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
-import { FISH_LINGER, TICK_HZ } from "../../src/constants";
+import { FISH_LINGER, TICK_HZ } from "../constants";
 import {
   captureStill,
   createHarness,

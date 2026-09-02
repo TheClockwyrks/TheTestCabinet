@@ -31,7 +31,7 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { BAY_COUNT, TICK_HZ } from "../../src/constants";
+import { BAY_COUNT, TICK_HZ } from "../constants";
 import {
   COARSE_TICKS,
   captureStill,

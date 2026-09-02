@@ -15,7 +15,7 @@
 // Local to this group rather than on the shared harness because entering a bay is
 // the bays' own business: no other category on the checklist does it.
 
-import { BAYS, WATER_TOP } from "../../src/constants";
+import { BAYS, WATER_TOP } from "../constants";
 import { poseLane, type Harness } from "../harness";
 
 /**

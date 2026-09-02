@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual } from "../assert";
-import { BAYFILL_PAUSE, ROW_NEAR, START_COL } from "../../src/constants";
+import { BAYFILL_PAUSE, ROW_NEAR, START_COL } from "../constants";
 import {
   captureReplay,
   createHarness,

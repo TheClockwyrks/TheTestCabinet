@@ -30,7 +30,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertNull } from "../assert";
-import { FISH_INTERVAL, FISH_LINGER, TICK_HZ } from "../../src/constants";
+import { FISH_INTERVAL, FISH_LINGER, TICK_HZ } from "../constants";
 import {
   captureStill,
   createHarness,

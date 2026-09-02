@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
-import { BAY_COUNT } from "../../src/constants";
+import { BAY_COUNT } from "../constants";
 import {
   captureReplay,
   createHarness,
