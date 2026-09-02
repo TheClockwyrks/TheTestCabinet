@@ -64,8 +64,8 @@ Coverage carries three meanings in The Test Cabinet, and they are not the same
 thing:
 
 1. The measurement: how much of a declared matrix actually has runs. A coverage
-   plan declares version-pinned test cases crossed with
-   [combinations](#combination) and a target run count per cell, and its
+   plan declares test cases pinned to a version, variant and engine, crossed
+   with [combinations](#combination) and a target run count per cell, and its
    coverage is how many of those cells have met their target. This is the older
    and narrower sense. See [Coverage plans](/components/backend/coverage/).
 2. The feature area: the reviewer scheduling surface as a whole, which is plans,

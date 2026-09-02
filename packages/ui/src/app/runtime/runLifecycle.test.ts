@@ -5,6 +5,7 @@ import { runListAction } from "./runLifecycle";
 function tracked(
   runId: string,
   state: InProgressRun["state"] = "running",
+  engine: string | null = null,
 ): InProgressRun {
   return {
     runId,
@@ -13,6 +14,7 @@ function tracked(
     variant: "base",
     harnessSlug: "claude",
     modelId: "claude-opus-4-8",
+    engine,
     state,
   };
 }
@@ -21,6 +23,7 @@ function event(
   kind: RunLifecycleEvent["kind"],
   state: RunLifecycleEvent["state"],
   runId = "a",
+  engine?: string,
 ): RunLifecycleEvent {
   return {
     kind,
@@ -30,6 +33,7 @@ function event(
     variant: "base",
     harnessSlug: "claude",
     modelId: "claude-opus-4-8",
+    ...(engine ? { engine } : {}),
     state,
   };
 }
@@ -39,6 +43,18 @@ describe("runListAction", () => {
     expect(runListAction(event("enqueued", "queued"), [])).toEqual({
       kind: "track",
       run: tracked("a", "queued"),
+    });
+  });
+
+  it("carries the engine the event named onto the row it seeds", () => {
+    // The engine is a segment of a run's coverage cell, and a row seeded from an
+    // event is filtered by the same identity as one seeded from the active list —
+    // a rung listing its own live runs drops a row whose engine it cannot see.
+    expect(
+      runListAction(event("enqueued", "queued", "a", "simple-2d"), []),
+    ).toEqual({
+      kind: "track",
+      run: tracked("a", "queued", "simple-2d"),
     });
   });
 

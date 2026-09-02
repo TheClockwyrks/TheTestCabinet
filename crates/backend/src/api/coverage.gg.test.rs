@@ -483,6 +483,8 @@ fn a_gg_cell_is_keyed_by_the_configuration_id_and_the_models_it_binds() {
             "pong".to_string(),
             "v1.0.0".to_string(),
             "base".to_string(),
+            // A case pinned to no engine keys as the engineless run it asks for.
+            "none".to_string(),
             "gg".to_string(),
             "opus".to_string(),
             // The configuration's id: what it is across time, whatever it is called and
@@ -496,8 +498,44 @@ fn a_gg_cell_is_keyed_by_the_configuration_id_and_the_models_it_binds() {
     // And a gg cell never collides with the harness cell of the same model, whose two gg
     // segments are empty.
     let harness = cell_key(&c, &member(combo("opus")));
-    assert_eq!((harness.5.as_str(), harness.6.as_str()), ("", ""));
+    assert_eq!((harness.6.as_str(), harness.7.as_str()), ("", ""));
     assert_ne!(key, harness);
+}
+
+#[test]
+fn a_top_up_launches_a_gg_cell_on_the_cases_pinned_engine() {
+    let m = gg_member("opus", "haiku");
+    let lowered = |case: &ReviewPlanCase| {
+        top_up_launch_body(&TopUpCell {
+            rung_id: None,
+            case,
+            member: &m,
+            runs: 1,
+        })
+    };
+
+    // A gg cell is lowered through a different builder from a harness cell, so the pin has
+    // to be proved through both: a gg run of a case pinned to an engine is built on that
+    // engine, not on the engineless default gg would otherwise take.
+    let pinned = ReviewPlanCase {
+        engine: Some("simple-2d".to_string()),
+        ..case("pong")
+    };
+    let body = lowered(&pinned);
+    assert_eq!(body.harness, HarnessSlug::Gg);
+    assert_eq!(body.engine.as_deref(), Some("simple-2d"));
+    // The rest of the lowering is untouched: the set it launches is the bound one, so the
+    // run lands in the very cell the pin was crossed with.
+    assert_eq!(
+        body.gg_capability_set
+            .as_ref()
+            .and_then(|set| set.preset_id.as_deref()),
+        Some("cfg-1")
+    );
+
+    // And an unpinned gg cell sends no engine key at all, so it keeps asking for exactly
+    // the runs it always asked for.
+    assert_eq!(lowered(&case("pong")).engine, None);
 }
 
 #[test]
@@ -505,7 +543,7 @@ fn a_hand_launched_run_and_a_scheduled_run_of_one_configuration_share_a_cell() {
     let c = case("pong");
     // What a plan schedules, and the cell its runs are counted in.
     let scheduled = gg_member("opus", "haiku");
-    let (_, _, _, harness, model, config_id, models) = cell_key(&c, &scheduled);
+    let (_, _, _, _, harness, model, config_id, models) = cell_key(&c, &scheduled);
 
     // What the console launches by hand from the very same configuration: its set, bound to
     // the same models, carrying the configuration's name and its id. The id arrives in the

@@ -23,8 +23,16 @@ the difference.
 
 ## Rungs
 
-A **rung** is exactly one test case, pinned to an exact `(slug, version, variant)`.
-The rungs' order, low to high, *is* the climb.
+A **rung** is exactly one [pinned
+case](/components/backend/coverage/#pinned-cases): a slug, an exact version, a
+variant, and the engine the rung's runs are built on, with an absent engine
+meaning `none`. The rungs' order, low to high, *is* the climb.
+
+A rung's pin is its identity within the climb, so one ladder holds the same case
+at the same version and variant twice when the two pins name different engines.
+That is a real pair of steps: clearing a case with a runtime underneath is a
+different achievement from clearing it with nothing, and a climb may ask for
+both.
 
 Each rung carries a **stable opaque id**, minted when the rung is added and never
 reused — emphatically not its position. Rungs get reordered, and rungs get bumped
@@ -59,8 +67,9 @@ Both belong in a coverage plan, which wants runs to exist rather than verdicts t
 compare, and the error says so. Silently stalling would be the genuinely hard
 failure to diagnose: a ladder that looks healthy and never moves.
 
-A rung pinned to a version the backend has not ingested is *allowed* — the driver
-reports that far better than an author-time check can.
+A rung pinned to a version the backend has not ingested, or to an engine the
+pinned version does not declare, is *allowed* — the driver reports that far better
+than an author-time check can.
 
 ## Climbers
 
@@ -238,12 +247,12 @@ a rung was decided.
 Every recorded verdict stores the **exact case version it was decided against**.
 That is part of the verdict's identity, not decoration.
 
-Rungs pin exact versions, and cases get revised. When a rung is bumped to a newer
-version, a verdict earned on the old one is neither erased nor silently inherited:
-it is kept, flagged `stale`, and no longer allowed to govern the climb — the rung is
-re-opened, because a model clearing v1.0.0 says nothing certain about v1.1.0.
-Re-pinning back restores it. A ladder that quietly carried old verdicts forward
-would be claiming evidence it does not have.
+Rungs pin exact versions on exact engines, and cases get revised. When a rung is
+bumped to a newer version, a verdict earned on the old one is neither erased nor
+silently inherited: it is kept, flagged `stale`, and no longer allowed to govern
+the climb — the rung is re-opened, because a model clearing v1.0.0 says nothing
+certain about v1.1.0. Re-pinning back restores it. A ladder that quietly carried
+old verdicts forward would be claiming evidence it does not have.
 
 The board also reports each rung's `latestVersion` and whether the pin has fallen
 behind, so bumping is an informed choice rather than something noticed months later.

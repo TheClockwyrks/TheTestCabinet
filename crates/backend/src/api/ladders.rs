@@ -228,7 +228,8 @@ impl LadderSchedule {
     }
 }
 
-/// One rung: exactly one test case, pinned to an exact version and variant.
+/// One rung: exactly one [pinned case](ReviewPlanCase) — a slug, an exact version, a
+/// variant, and the engine its runs are built on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -247,6 +248,15 @@ pub struct LadderRung {
     pub version: String,
     /// The variant to climb.
     pub variant: String,
+    /// The engine to climb on, or null for the `none` engine.
+    ///
+    /// Part of the rung's identity within the climb, because clearing a case with a
+    /// runtime underneath is a different achievement from clearing it with nothing: one
+    /// ladder holds the same case at the same version and variant twice when the two
+    /// pins name different engines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub engine: Option<String>,
     /// This rung's override of the ladder's runs-per-cell target, or null to inherit
     /// it — so one pivotal step can demand more evidence without making the whole
     /// climb more expensive.
@@ -272,6 +282,10 @@ pub struct LadderRungInput {
     pub version: String,
     /// The variant to climb.
     pub variant: String,
+    /// The engine to climb on, or null for the `none` engine.
+    #[serde(default)]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub engine: Option<String>,
     /// This rung's override of the ladder's runs-per-cell target, or null to inherit.
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
@@ -1936,6 +1950,7 @@ fn rung_case(rung: &StoredLadderRung) -> ReviewPlanCase {
         slug: rung.slug.clone(),
         version: rung.version.clone(),
         variant: rung.variant.clone(),
+        engine: rung.engine.clone(),
     }
 }
 
@@ -1946,6 +1961,7 @@ fn rung_to_wire(rung: &StoredLadderRung) -> LadderRung {
         slug: rung.slug.clone(),
         version: rung.version.clone(),
         variant: rung.variant.clone(),
+        engine: rung.engine.clone(),
         runs: rung.runs_override,
     }
 }
@@ -2046,6 +2062,7 @@ fn ladder_from_input(
             slug: rung.slug,
             version: rung.version,
             variant: rung.variant,
+            engine: rung.engine,
             runs_override: rung.runs.map(clamp_runs_per_cell),
         });
     }

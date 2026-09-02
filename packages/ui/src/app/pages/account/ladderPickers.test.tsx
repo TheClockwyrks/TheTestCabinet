@@ -10,10 +10,12 @@ import {
 import {
   GateEditor,
   LADDER_AXIS_LABELS,
+  LadderAxisPicker,
   RungListEditor,
   describeGate,
   gateExample,
   requiredRuns,
+  rungInput,
 } from "./ladderPickers";
 
 function galleryValue(): GalleryDataInput {
@@ -48,6 +50,52 @@ function backendValue() {
   };
 }
 
+// A backend that actually resolves a case, for the add-a-rung half: the Engine
+// dropdown offers exactly what the resolved version declares support for, so a test
+// about the engine has to have a version to resolve.
+function catalogValue(engines: string[]) {
+  return {
+    client: {
+      listTestCases: async () => [
+        { slug: "alpha", versions: ["v1.0.0"], name: "Alpha" },
+      ],
+      resolveVersion: async () => ({
+        slug: "alpha",
+        version: "v1.0.0",
+        name: "Alpha",
+        variants: [{ slug: "base", name: "Base" }],
+        engines,
+        maxRuntimeSeconds: 600,
+      }),
+    } as unknown as BackendClient,
+    identity: null,
+    status: "ready" as const,
+    error: null,
+    url: null,
+    setUrl: () => {},
+  };
+}
+
+/** The one case the catalog above offers, so the add-row's category filter shows it. */
+function catalogGalleryValue(): GalleryDataInput {
+  return {
+    ...galleryValue(),
+    testCases: [
+      {
+        slug: "alpha",
+        name: "Alpha",
+        testType: "end-to-end",
+        assetKind: null,
+        difficulty: "easy",
+        tags: [],
+        summary: null,
+        versions: ["v1.0.0"],
+        latestVersion: "v1.0.0",
+      },
+    ],
+  } as unknown as GalleryDataInput;
+}
+
 function gate(over: Partial<Gate> = {}): Gate {
   return {
     floor: "scuffed",
@@ -69,9 +117,100 @@ describe("ladder axis labels", () => {
   });
 });
 
+// One setting with one answer, sat in a column of other settings, so it reads as a
+// setting row whose control column shows that answer rather than as two pills.
+describe("LadderAxisPicker", () => {
+  function order(): HTMLSelectElement {
+    return screen.getByLabelText("Climb order") as HTMLSelectElement;
+  }
+
+  it("shows the current order as the row's value and offers the other", () => {
+    render(<LadderAxisPicker value="rung" onChange={vi.fn()} />);
+    expect(order().value).toBe("rung");
+    expect(Array.from(order().options).map((o) => o.textContent)).toEqual([
+      "Rung by rung",
+      "Model by model",
+    ]);
+  });
+
+  it("reports the order that was picked", () => {
+    const onChange = vi.fn();
+    render(<LadderAxisPicker value="rung" onChange={onChange} />);
+    fireEvent.change(order(), { target: { value: "combination" } });
+    expect(onChange).toHaveBeenCalledWith("combination");
+  });
+
+  it("describes the selected order, not the one beside it", () => {
+    const { rerender } = render(
+      <LadderAxisPicker value="rung" onChange={vi.fn()} />,
+    );
+    expect(screen.getByText(/before anyone moves on/i)).toBeTruthy();
+    rerender(<LadderAxisPicker value="combination" onChange={vi.fn()} />);
+    expect(screen.getByText(/as high as it can/i)).toBeTruthy();
+  });
+
+  // Which order a ladder starts in is not written on the row, so the reset control is
+  // the only thing that says the ladder is no longer as it came.
+  it("offers a reset only once the order has moved off the default", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <LadderAxisPicker value="rung" onChange={onChange} />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Reset Climb order" }),
+    ).toBeNull();
+    rerender(<LadderAxisPicker value="combination" onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reset Climb order" }));
+    expect(onChange).toHaveBeenCalledWith("rung");
+  });
+});
+
 // The console re-derives the threshold only to *show* what a setting means before any
 // run exists; it must round exactly as the Rust gate does or the preview would promise
 // a bar the server does not apply.
+// A save rewrites the climb whole, so this projection decides what an edit keeps. It
+// is shared by the editor's load and the dashboard's version bump precisely because a
+// field one of them forgot is a field the ladder loses.
+describe("rungInput", () => {
+  const stored = {
+    id: "r1",
+    slug: "alpha",
+    version: "v1.0.0",
+    variant: "base",
+  };
+
+  it("keeps the stable id, which is what a climber's verdicts hang off", () => {
+    expect(rungInput(stored).id).toBe("r1");
+  });
+
+  it("carries the engine through, rather than re-pinning the rung to the engineless run", () => {
+    expect(rungInput({ ...stored, engine: "simple-2d" })).toEqual({
+      id: "r1",
+      slug: "alpha",
+      version: "v1.0.0",
+      variant: "base",
+      engine: "simple-2d",
+    });
+  });
+
+  it("carries a rung's own run override through", () => {
+    expect(rungInput({ ...stored, runs: 7 }).runs).toBe(7);
+  });
+
+  it("omits an absent engine and run override rather than sending them as null", () => {
+    // Absent is how the wire spells "the engineless run" and "inherit the ladder's
+    // target"; a null would be a different instruction on both.
+    expect(rungInput(stored)).toEqual({
+      id: "r1",
+      slug: "alpha",
+      version: "v1.0.0",
+      variant: "base",
+    });
+    expect("engine" in rungInput(stored)).toBe(false);
+    expect("runs" in rungInput(stored)).toBe(false);
+  });
+});
+
 describe("requiredRuns", () => {
   it("passes an absolute count straight through", () => {
     expect(requiredRuns({ kind: "count", runs: 2 }, 5)).toBe(2);
@@ -235,6 +374,128 @@ describe("RungListEditor", () => {
     return onChange;
   }
 
+  // A rung pins an engine for the same reason a plan's case does, and one extra: a
+  // climb may legitimately hold the same case twice when the two rungs name different
+  // engines, because clearing a case on a runtime is a different achievement.
+  describe("the engine a rung pins", () => {
+    async function renderAdd(
+      rungs: LadderRungInput[] = [],
+      engines: string[] = ["none", "simple-2d"],
+      onChange = vi.fn(),
+    ) {
+      render(
+        <BackendProvider value={catalogValue(engines)}>
+          <GalleryDataProvider value={catalogGalleryValue()}>
+            <RungListEditor rungs={rungs} runsPerCell={3} onChange={onChange} />
+          </GalleryDataProvider>
+        </BackendProvider>,
+      );
+      await act(async () => {});
+      return onChange;
+    }
+
+    const engineSelect = () =>
+      screen.getByLabelText("Engine") as HTMLSelectElement;
+
+    it("offers the engines the resolved version supports", async () => {
+      await renderAdd();
+      expect([...engineSelect().options].map((o) => o.textContent)).toEqual([
+        "None",
+        "Simple 2D",
+      ]);
+    });
+
+    it("names a single supported engine read-only rather than hiding it", async () => {
+      await renderAdd([], ["structured-2d"]);
+      expect(engineSelect().value).toBe("structured-2d");
+      expect(engineSelect()).toBeDisabled();
+    });
+
+    it("sends the chosen engine on the rung it adds", async () => {
+      const onChange = await renderAdd();
+      fireEvent.change(engineSelect(), { target: { value: "simple-2d" } });
+      fireEvent.click(screen.getByRole("button", { name: "+ Add rung" }));
+      expect(onChange).toHaveBeenCalledWith([
+        {
+          slug: "alpha",
+          version: "v1.0.0",
+          variant: "base",
+          engine: "simple-2d",
+        },
+      ]);
+    });
+
+    it("omits the engine entirely for the engineless run", async () => {
+      const onChange = await renderAdd();
+      fireEvent.click(screen.getByRole("button", { name: "+ Add rung" }));
+      expect(onChange).toHaveBeenCalledWith([
+        { slug: "alpha", version: "v1.0.0", variant: "base" },
+      ]);
+    });
+
+    it("lets one climb hold the same case on two engines", async () => {
+      const onChange = await renderAdd([
+        { slug: "alpha", version: "v1.0.0", variant: "base" },
+      ]);
+      fireEvent.change(engineSelect(), { target: { value: "simple-2d" } });
+      fireEvent.click(screen.getByRole("button", { name: "+ Add rung" }));
+      expect(onChange).toHaveBeenCalledWith([
+        { slug: "alpha", version: "v1.0.0", variant: "base" },
+        {
+          slug: "alpha",
+          version: "v1.0.0",
+          variant: "base",
+          engine: "simple-2d",
+        },
+      ]);
+    });
+
+    it("still refuses the same case on the same engine", async () => {
+      const onChange = await renderAdd([
+        {
+          slug: "alpha",
+          version: "v1.0.0",
+          variant: "base",
+          engine: "none",
+        },
+      ]);
+      fireEvent.click(screen.getByRole("button", { name: "+ Add rung" }));
+      // Absent and `none` are one pin, so the second add is the rung already there.
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    // `backendValue` resolves no version at all, which is what the editor renders
+    // against for the first frames after it opens. A select with no options paints as
+    // an empty box beside an Add button that would file a perfectly real rung.
+    it("names the engineless run rather than going blank before the version resolves", async () => {
+      await renderList([]);
+      expect(engineSelect().value).toBe("none");
+      expect([...engineSelect().options].map((o) => o.textContent)).toEqual([
+        "None",
+      ]);
+      expect(engineSelect()).toBeDisabled();
+    });
+
+    it("names each rung's engine on its row, leaving the engineless one unnamed", async () => {
+      await renderAdd([
+        { id: "a", slug: "alpha", version: "v1.0.0", variant: "base" },
+        {
+          id: "b",
+          slug: "alpha",
+          version: "v1.0.0",
+          variant: "base",
+          engine: "simple-2d",
+        },
+      ]);
+      // Two rows of one case that read alike are two the reviewer cannot order,
+      // reorder, or remove with any confidence.
+      expect(screen.getByText("Alpha · base · v1.0.0")).toBeTruthy();
+      expect(
+        screen.getByText("Alpha · base · v1.0.0 · Simple 2D"),
+      ).toBeTruthy();
+    });
+  });
+
   it("numbers the rungs from one, in climb order", async () => {
     await renderList([rung({ id: "a" }), rung({ id: "b", slug: "zeta" })]);
     expect(screen.getByText("1")).toBeTruthy();
@@ -341,7 +602,10 @@ describe("RungListEditor", () => {
       rung({ id: "b", slug: "zeta" }),
       rung({ id: "c", slug: "mu" }),
     ]);
-    await dragWithKeyboard(screen.getByLabelText(/^Reorder rung 3,/), "ArrowUp");
+    await dragWithKeyboard(
+      screen.getByLabelText(/^Reorder rung 3,/),
+      "ArrowUp",
+    );
     expect(onChange).toHaveBeenCalledWith([
       rung({ id: "a" }),
       rung({ id: "c", slug: "mu" }),

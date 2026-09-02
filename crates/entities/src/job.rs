@@ -47,6 +47,19 @@ pub struct Model {
     pub harness_slug: String,
     /// The opaque model id, lifted for the active-run list.
     pub model_id: String,
+    /// The slug of the engine the queued run's case pin names (see
+    /// `test_cabinet_core::engine`), lifted out of the launch request at enqueue and
+    /// mirroring `run.engine_slug` on the run the job produces.
+    ///
+    /// Part of a job's coverage cell: results are only comparable within one engine, so
+    /// one case at one version and variant on two engines is two cells. It is a column
+    /// for the same reason `harness_slug` and `model_id` are — a plan counts a cell's
+    /// in-flight runs with a grouped query, and deserializing `request_json` per row
+    /// cannot be part of a `GROUP BY`. `NULL` where the launch named no engine, which is
+    /// the `none` engine: every grouped count coalesces it to that slug rather than
+    /// treating it as unknown.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub engine_slug: Option<String>,
     /// The **gg** run's declarative capability set, serialized to JSON and lifted
     /// out of the launch request at enqueue so a gg job's exact configuration is a
     /// first-class, queryable column rather than only buried in `request_json`.

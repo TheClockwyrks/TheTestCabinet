@@ -1255,6 +1255,15 @@ export interface InProgressRun {
   variant: string;
   harnessSlug: string;
   modelId: string;
+  // The engine the run is built on, off the job's own lifted column. Absent (or
+  // `none`) is the engineless run, exactly as an absent `engine` on the launch
+  // request is — resolve it through `resolveEngineSlug` before comparing, never by
+  // equality on the raw field.
+  //
+  // It is here because a run's coverage cell includes the engine: a listing of one
+  // cell's runs — a ladder rung, a plan's cell — has to keep another engine's live
+  // rows out, and an in-flight run has no record to read the engine from.
+  engine?: string | null;
   // The gg configuration the run was launched from, off the job's stored capability
   // set. A gg run has no single harness model — `modelId` is only its representative
   // primary-slot binding — so the run log names a live gg row by its configuration
@@ -1336,6 +1345,10 @@ export interface RunLifecycleEvent {
   variant: string;
   harnessSlug: string;
   modelId: string;
+  // The engine the run is built on, as `InProgressRun.engine` carries it — the event
+  // seeds a row for a run this console has never seen, so it names the whole identity
+  // that row is filtered by.
+  engine?: string | null;
   state:
     | "queued"
     | "pending"

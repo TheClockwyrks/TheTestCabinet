@@ -10,9 +10,10 @@
 import type { HarnessSlug } from "./index";
 
 /**
- * One test case in a plan or a case group, pinned to an exact version (and
- * variant). Coverage is counted against exactly this version; the matrix flags it
- * when a newer version has since been ingested.
+ * One **pinned case** in a plan or a case group: a slug, an exact version, a variant,
+ * and the [engine](test_cabinet_core::engine) its runs are built on. Coverage is counted
+ * against exactly this pin; the matrix flags it when a newer version has since been
+ * ingested.
  */
 export type ReviewPlanCase = {
   /**
@@ -27,6 +28,21 @@ export type ReviewPlanCase = {
    * The variant to cover (e.g. `base`).
    */
   variant: string;
+  /**
+   * The engine to cover (e.g. `simple-2d`), or null for the `none` engine — the
+   * engineless run every case supports, and exactly what a plan scheduled before the
+   * pin carried an engine asked for.
+   *
+   * The engine is in the pin because a result is only comparable with another result
+   * on the same engine: a model handed a runtime and a documented API is doing
+   * different work from the same model starting from nothing, so one case at one
+   * version and variant on two engines is two pinned cases and two sets of cells.
+   *
+   * A pin naming an engine the version does not declare support for is accepted here
+   * and reported by the run, exactly as an uningested version is. The catalogue moves
+   * under a standing plan, so the check belongs where a run executes.
+   */
+  engine?: string;
 };
 
 /**
@@ -394,6 +410,12 @@ export type CoverageCell = {
    */
   variant: string;
   /**
+   * The engine this cell counts against, resolved: `none` where the pin names none.
+   * Always concrete, because a run recorded with no engine is a `none` run and the
+   * two must land in one cell.
+   */
+  engine: string;
+  /**
    * The harness — `gg` on a gg cell.
    */
   harness: HarnessSlug;
@@ -586,6 +608,11 @@ export type TopUpLaunch = {
    */
   variant: string;
   /**
+   * The engine the enqueued runs are built on, resolved: `none` where the cell's pin
+   * names none.
+   */
+  engine: string;
+  /**
    * The harness.
    */
   harness: HarnessSlug;
@@ -651,6 +678,11 @@ export type TopUpBlocked = {
    * The variant.
    */
   variant: string;
+  /**
+   * The engine the cell would have launched on, resolved: `none` where the pin names
+   * none.
+   */
+  engine: string;
   /**
    * The harness — `gg` on a gg member.
    */
@@ -749,6 +781,10 @@ export type CoverageQueueEntry = {
    * The variant.
    */
   variant: string;
+  /**
+   * The engine the run was built on, resolved: `none` where the cell's pin names none.
+   */
+  engine: string;
   /**
    * The harness.
    */

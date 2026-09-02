@@ -37,7 +37,15 @@ import {
 } from "../../data/testCaseTabs";
 import { useTestCases } from "../../data/useTestCases";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { useEngineChoice } from "../../data/useEngineChoice";
 import { useCatalog } from "../../runtime/useCatalog";
+import { CaseEngineField } from "./CaseEngineField";
+import {
+  caseEngine,
+  caseLabel,
+  pinnedEngine,
+  samePinnedCase,
+} from "./caseLabels";
 import { SettingRow } from "../../components/SettingRow";
 import { Switch } from "../../components/Switch";
 import exec from "../runs/RunExec.module.scss";
@@ -81,12 +89,21 @@ export const LADDER_AXIS_LABELS: Readonly<Record<LadderAxis, string>> = {
   combination: "Model by model",
 };
 
-/** The longer form shown beside the picker, saying what the choice buys. */
+/** What the selected order does, in one line: the row's description. */
 const LADDER_AXIS_HINTS: Readonly<Record<LadderAxis, string>> = {
-  rung: "Every climber comes up a rung before anyone moves on, so a rung's runs arrive together and can be judged against each other.",
-  combination:
-    "One climber goes as high as it can before the next one starts, so you find out how far a single model gets soonest.",
+  rung: "Every climber comes up a rung before anyone moves on.",
+  combination: "One climber goes as high as it can before the next starts.",
 };
+
+/**
+ * What the choice buys, which is the same sentence whichever order is selected.
+ *
+ * One string rather than a second per-axis record: a reviewer weighing the two orders
+ * needs both halves of the comparison, and a help tip that only described the order
+ * already chosen would answer the question they are not asking.
+ */
+const LADDER_AXIS_HELP =
+  "Runs are enqueued in this order, so it is also the order they arrive and become reviewable in. Rung by rung lands a rung's runs together, where they can be judged against each other; model by model tells you how far a single climber gets soonest.";
 
 /** The order a ladder's runs will arrive in, named the way the console names it. */
 export function ladderAxisLabel(axis: LadderAxis): string {
@@ -98,7 +115,7 @@ export const DEFAULT_LADDER_AXIS: LadderAxis = "rung";
 
 /**
  * The ordering setting: a dropdown over {@link LADDER_AXIS_LABELS}, described by what
- * the selected order buys.
+ * the selected order does.
  *
  * A dropdown rather than a pair of pills, because this is one setting with one answer
  * sitting in a column of other settings — the row's control column should read as a
@@ -123,6 +140,7 @@ export function LadderAxisPicker({
     <SettingRow
       label="Climb order"
       description={LADDER_AXIS_HINTS[value]}
+      help={LADDER_AXIS_HELP}
       modified={value !== DEFAULT_LADDER_AXIS}
       onReset={() => onChange(DEFAULT_LADDER_AXIS)}
     >
@@ -410,16 +428,56 @@ const RUNG_CATEGORIES = CATALOG_CATEGORIES.filter(
   (entry) => !INELIGIBLE_CATEGORIES.has(entry.value),
 );
 
+/** The pin fields an existing rung carries, in whichever shape it arrived — the
+ *  editor reads them off `LadderRung`, the dashboard's bump off the same. */
+export interface ExistingRung {
+  id: string;
+  slug: string;
+  version: string;
+  variant: string;
+  engine?: string;
+  runs?: number;
+}
+
+/**
+ * An existing rung as a create/update body writes it back.
+ *
+ * A save rewrites the climb whole, so this projection is the entirety of what survives
+ * an edit: a field it forgets is a field the ladder silently loses. It has forgotten
+ * one before — the engine, which re-pinned an entire climb to the engineless run on the
+ * next version bump — so both surfaces that rewrite rungs (the editor's load, and the
+ * dashboard's version bump) build them here rather than each spelling the projection
+ * out and drifting.
+ *
+ * The id is carried because it is what makes a reorder or a bump keep every climber's
+ * recorded verdicts instead of minting fresh rungs. An absent engine or run override is
+ * *dropped* rather than sent as null: absent is exactly how the wire spells "the
+ * engineless run" and "inherit the ladder's target".
+ */
+export function rungInput(rung: ExistingRung): LadderRungInput {
+  return {
+    id: rung.id,
+    slug: rung.slug,
+    version: rung.version,
+    variant: rung.variant,
+    ...(rung.engine === undefined ? {} : { engine: rung.engine }),
+    ...(rung.runs === undefined ? {} : { runs: rung.runs }),
+  };
+}
+
 /**
  * The identity a rung is tracked by while the draft is being edited.
  *
  * A saved rung has a server id, which is the thing the save reconciles on. One added
  * in this session has none yet, so it falls back to the coordinates that make it the
  * rung it is — and those are unique within a climb because {@link RungListEditor}
- * refuses to add a case at a version and variant the climb already holds.
+ * refuses to add a case at a version, variant and engine the climb already holds.
  */
 function rungKey(rung: LadderRungInput): string {
-  return rung.id ?? `${rung.slug}@${rung.version}@${rung.variant}`;
+  return (
+    rung.id ??
+    `${rung.slug}@${rung.version}@${rung.variant}@${caseEngine(rung)}`
+  );
 }
 
 /**
@@ -450,7 +508,7 @@ function SortableRung({
   index: number;
   /** How many rungs the climb has, so the ends know not to offer a move off it. */
   total: number;
-  /** The rung's case named as a reviewer sees it, for the row and its drag handle. */
+  /** The whole pin named as a reviewer sees it, for the row and its drag handle. */
   label: string;
   /** The ladder's default target, shown as this rung's inherited placeholder. */
   runsPerCell: number;
@@ -491,9 +549,7 @@ function SortableRung({
         ⠿
       </button>
       <span className={ladder.rungEditIndex}>{index + 1}</span>
-      <span className={ladder.rungEditName}>
-        {label} · {rung.variant} · {rung.version}
-      </span>
+      <span className={ladder.rungEditName}>{label}</span>
       <label className={ladder.rungEditRuns}>
         runs
         <input
@@ -645,6 +701,10 @@ export function RungListEditor({
   // showed, so the add-row stays disabled until the two agree.
   const selectionShown = sortedCases.some((c) => c.slug === sel.slug);
 
+  // The engine this rung will be climbed on, held to what the resolved version
+  // supports.
+  const engineChoice = useEngineChoice(sel.versionInfo?.engines);
+
   // Catalog versions are oldest-first; show the dropdown newest-first.
   const versions = [
     ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
@@ -701,23 +761,19 @@ export function RungListEditor({
 
   function addRung() {
     if (!selectionShown || !sel.slug || !sel.version || !sel.variant) return;
-    // The same case at the same version and variant twice in one climb would be two
-    // rungs a climber must clear with identical evidence — the second is always
-    // already decided by the first.
-    if (
-      rungs.some(
-        (r) =>
-          r.slug === sel.slug &&
-          r.version === sel.version &&
-          r.variant === sel.variant,
-      )
-    ) {
-      return;
-    }
-    onChange([
-      ...rungs,
-      { slug: sel.slug, version: sel.version, variant: sel.variant },
-    ]);
+    const pin: LadderRungInput = {
+      slug: sel.slug,
+      version: sel.version,
+      variant: sel.variant,
+      ...pinnedEngine(engineChoice.engine),
+    };
+    // The same case at the same version, variant and engine twice in one climb would
+    // be two rungs a climber must clear with identical evidence — the second is always
+    // already decided by the first. On a different engine it is not: clearing a case
+    // with a runtime underneath is a different achievement from clearing it with
+    // nothing, so both rungs are real and the climb is entitled to hold them.
+    if (rungs.some((r) => samePinnedCase(r, pin))) return;
+    onChange([...rungs, pin]);
   }
 
   return (
@@ -749,7 +805,7 @@ export function RungListEditor({
                   rung={rung}
                   index={index}
                   total={rungs.length}
-                  label={testCaseName(rung.slug)}
+                  label={caseLabel(testCaseName(rung.slug), rung)}
                   runsPerCell={runsPerCell}
                   onMove={(to) => move(index, to)}
                   onRunsChange={(runs) =>
@@ -773,8 +829,13 @@ export function RungListEditor({
         </DndContext>
       )}
 
-      <div className={styles.inputRow}>
-        <label className={`${exec.field} ${exec.comboField}`}>
+      {/* The same grid the plan editor's case picker uses, which is the new-run
+          form's Test grid: a rung pins exactly what a run is launched with, so it is
+          chosen through exactly the same controls in the same places. */}
+      <div
+        className={`${exec.fields} ${exec.testFields} ${styles.editorFields}`}
+      >
+        <label className={exec.field}>
           <span className={exec.fieldLabel}>Test case type</span>
           <select
             className={exec.select}
@@ -790,7 +851,7 @@ export function RungListEditor({
             ))}
           </select>
         </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
+        <label className={exec.field}>
           <span className={exec.fieldLabel}>Test case</span>
           <select
             className={exec.select}
@@ -804,7 +865,7 @@ export function RungListEditor({
             ))}
           </select>
         </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
+        <label className={exec.field}>
           <span className={exec.fieldLabel}>Version</span>
           <select
             className={exec.select}
@@ -818,7 +879,7 @@ export function RungListEditor({
             ))}
           </select>
         </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
+        <label className={exec.field}>
           <span className={exec.fieldLabel}>Variant</span>
           <select
             className={exec.select}
@@ -833,9 +894,15 @@ export function RungListEditor({
             ))}
           </select>
         </label>
+        {/* The same field the plan editor's case picker renders, for the same reason
+            — see `CaseEngineField`. */}
+        <CaseEngineField
+          choice={engineChoice}
+          title="The runtime this rung's runs are built against. A climb holds the same case twice when the two rungs name different engines, because clearing it on a runtime is a different achievement."
+        />
         <button
           type="button"
-          className={exec.secondary}
+          className={`${exec.secondary} ${styles.editorAdd}`}
           onClick={addRung}
           disabled={
             !selectionShown || !sel.slug || !sel.version || !sel.variant

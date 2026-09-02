@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import type {
   CoverageAxis,
@@ -23,25 +23,33 @@ import {
 import { useTestCases } from "../../data/useTestCases";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { useEngineChoice } from "../../data/useEngineChoice";
 import { ModelCombobox } from "../../components/ModelCombobox";
 import { SettingRow } from "../../components/SettingRow";
 import { routes } from "../../routes";
+import { CaseEngineField } from "./CaseEngineField";
 import { launchModelSlots } from "../runs/gg/ggConfigDraft";
 import { findGgConfig, useGgConfigs } from "../runs/gg/useGgConfigs";
 import {
   comboDetail,
-  comboModels,
   ggConfigKey,
   ggConfigLabel,
+  ggModelSummary,
   isGgCombo,
 } from "./comboLabels";
+import {
+  caseEngine,
+  caseLabel,
+  pinnedEngine,
+  samePinnedCase,
+} from "./caseLabels";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
 // The combination and version-pinned-case pickers, shared by the coverage plan editor
 // (its one-off members) and the group editor (a group's members). Each is a
-// self-contained editor over an array: it renders the current entries as pills grouped
-// by section and an add-a-row control, and reports the new array back through
+// self-contained editor over an array: it renders the current entries under the section
+// each belongs to and an add-a-row control, and reports the new array back through
 // `onChange`. Lifted out of the old single-plan config page so the plan editor and
 // group editor stay byte-for-byte identical.
 //
@@ -66,20 +74,38 @@ export const AXIS_LABELS: Readonly<Record<CoverageAxis, string>> = {
   combination: "One model at a time",
 };
 
-/** The longer form shown under the picker, saying what the choice buys. */
+/** What the selected order does, in one line: the row's description. */
 const AXIS_HINTS: Readonly<Record<CoverageAxis, string>> = {
-  case: "Every model runs a case before the next case starts, so a case's runs arrive together and can be judged against each other.",
-  combination:
-    "One model climbs the whole case list before the next model starts, so a model's runs arrive together.",
+  case: "Every model runs a case before the next case starts.",
+  combination: "One model climbs the whole case list before the next starts.",
 };
+
+/**
+ * What the choice buys, which is the same sentence whichever order is selected.
+ *
+ * One string rather than a second per-axis record: a reviewer weighing the two orders
+ * needs both halves of the comparison, and a help tip that only described the order
+ * already chosen would answer the question they are not asking.
+ */
+const AXIS_HELP =
+  "Runs are enqueued in this order, so it is also the order they arrive and become reviewable in. One case at a time lands a case's runs together, where they can be judged against each other; one model at a time lands a model's runs together, so you learn what a single model does across the list soonest.";
 
 /** The order runs will arrive in, named the way the console names it everywhere. */
 export function axisLabel(axis: CoverageAxis): string {
   return AXIS_LABELS[axis];
 }
 
+/** The order a new plan starts in, and the one the picker resets to. */
+export const DEFAULT_COVERAGE_AXIS: CoverageAxis = "case";
+
 /**
- * The ordering control: two mutually exclusive pills over {@link AXIS_LABELS}.
+ * The ordering setting: a dropdown over {@link AXIS_LABELS}, described by what the
+ * selected order does.
+ *
+ * A dropdown rather than a pair of pills, for the reason `LadderAxisPicker` gives:
+ * this is one setting with one answer sitting in a column of other settings, so its
+ * control column should read as a value ("One case at a time") the way the review
+ * buffer's reads as a number, not as two buttons of which one happens to be lit.
  *
  * The choice is real and not cosmetic — a top-up emits whole cells in this order,
  * `job.queue_seq` is monotonic, and the dispatcher claims in ascending order, so the
@@ -96,26 +122,31 @@ export function AxisPicker({
   disabled?: boolean;
 }) {
   return (
-    <>
-      <div className={styles.kindRow} role="radiogroup" aria-label="Run order">
-        {(Object.keys(AXIS_LABELS) as CoverageAxis[]).map((axis) => (
-          <button
-            key={axis}
-            type="button"
-            role="radio"
-            aria-checked={value === axis}
+    <SettingRow
+      label="Run order"
+      description={AXIS_HINTS[value]}
+      help={AXIS_HELP}
+      modified={value !== DEFAULT_COVERAGE_AXIS}
+      onReset={() => onChange(DEFAULT_COVERAGE_AXIS)}
+    >
+      {(id) => (
+        <span className={styles.settingSelect}>
+          <select
+            id={id}
+            className={exec.select}
+            value={value}
             disabled={disabled}
-            className={`${styles.groupPick} ${
-              value === axis ? styles.groupPickOn : ""
-            }`}
-            onClick={() => onChange(axis)}
+            onChange={(e) => onChange(e.target.value as CoverageAxis)}
           >
-            {AXIS_LABELS[axis]}
-          </button>
-        ))}
-      </div>
-      <p className={styles.fieldHint}>{AXIS_HINTS[value]}</p>
-    </>
+            {(Object.keys(AXIS_LABELS) as CoverageAxis[]).map((axis) => (
+              <option key={axis} value={axis}>
+                {AXIS_LABELS[axis]}
+              </option>
+            ))}
+          </select>
+        </span>
+      )}
+    </SettingRow>
   );
 }
 
@@ -192,33 +223,29 @@ function harnessName(slug: string): string {
   return recordedHarnesses.find((h) => h.slug === slug)?.displayName ?? slug;
 }
 
-/** One block of member pills: the axis its pills vary within, named, over the members
- *  that vary within it. Each item keeps its original index in the member list so
- *  removal targets the right entry after grouping and sorting. */
+/** One block of member pills: the harness its pills vary within, named, over the
+ *  members that vary within it. Each item keeps its original index in the member list
+ *  so removal targets the right entry after grouping and sorting. */
 interface ComboGroup {
   key: string;
-  /** The heading — the harness, or the gg configuration, the pills vary within. */
+  /** The heading — the harness the pills vary within. */
   title: string;
   items: { combo: ReviewPlanCombo; i: number; label: string }[];
 }
 
 /**
- * Member pills grouped under the axis they vary within.
+ * Harness member pills grouped under the harness they run.
  *
  * A harness member varies by the model it runs, so its block is its harness and its
- * pill is the model. A gg member varies by the models it binds within one
- * configuration, so its block is the configuration and its pill is those models. One
- * block per configuration is what makes the heading name a real axis and the block's
- * Clear all mean "drop this configuration's arm" rather than "drop every gg member".
+ * pill is the model. gg members are deliberately absent: a gg member is a configuration
+ * *and* a model per launch slot, which is more than a pill holds, so they are listed
+ * below as rows under one heading of their own (see {@link useGgMembers}).
  */
-function useComboGroups(
-  combos: ReviewPlanCombo[],
-  /** The current name of each configuration, keyed by {@link ggConfigKey}. */
-  ggNames: ReadonlyMap<string, string>,
-): ComboGroup[] {
+function useComboGroups(combos: ReviewPlanCombo[]): ComboGroup[] {
   return useMemo(() => {
-    const indexed = combos.map((combo, i) => ({ combo, i }));
-    const harnessMembers = indexed.filter(({ combo }) => !isGgCombo(combo));
+    const harnessMembers = combos
+      .map((combo, i) => ({ combo, i }))
+      .filter(({ combo }) => !isGgCombo(combo));
     const known = harnesses.map((h) => h.slug);
     const extra = harnessMembers
       .map(({ combo }) => combo.harness)
@@ -236,42 +263,148 @@ function useComboGroups(
         });
       }
     }
-    // One block per configuration, headed by the name it carries *now*: a stored member
-    // carries whatever name the server resolved when it read it, so preferring the
-    // option in hand renames the block along with the configuration.
-    const byConfig = new Map<string, ComboGroup>();
-    for (const { combo, i } of indexed) {
-      if (!isGgCombo(combo)) continue;
-      const key = ggConfigKey(combo.ggConfigId);
-      let group = byConfig.get(key);
-      if (!group) {
-        group = {
-          key: `gg:${key}`,
-          title: ggNames.get(key) ?? ggConfigLabel(combo),
-          items: [],
-        };
-        byConfig.set(key, group);
-      }
-      // The configuration is already the heading, so the pill is only what varies under
-      // it. A configuration that pins every model itself binds none, and says so rather
-      // than reading as an empty pill.
-      group.items.push({
-        combo,
-        i,
-        label: comboModels(combo) || "pinned models",
-      });
-    }
-    groups.push(
-      ...[...byConfig.values()].sort((a, b) => a.title.localeCompare(b.title)),
-    );
-    // Sorted on what the pill actually reads, not on the model alone: a gg member's
-    // model is empty until a read fills it, so sorting on that field would leave every
-    // gg pill in an arbitrary order.
+    // Sorted on what the pill actually reads rather than on the model alone, so a
+    // provider-routed member sorts where the reviewer sees it.
     for (const group of groups) {
       group.items.sort((a, b) => a.label.localeCompare(b.label));
     }
     return groups;
+  }, [combos]);
+}
+
+/** One gg member as the list renders it: the configuration it names, the models it
+ *  binds, and the binding behind them. It keeps its original index in the member list
+ *  so removal targets the right entry after sorting. */
+interface GgMemberEntry {
+  combo: ReviewPlanCombo;
+  i: number;
+  /** The configuration's name as it reads now. */
+  name: string;
+  /** The models it binds, on one line. */
+  summary: string;
+  /** Every launch slot it binds, in slot-name order. */
+  bindings: { slot: string; model: string }[];
+}
+
+/**
+ * The gg members, one row each, ordered by configuration and then by what they bind.
+ *
+ * One row per *member* and not per configuration: two members of one configuration that
+ * bind different models are two cells the plan will run and two entries the reviewer can
+ * remove, and a block per configuration spent a heading, a divider and a Clear all on
+ * what is one line of the list.
+ */
+function useGgMembers(
+  combos: ReviewPlanCombo[],
+  /** The current name of each configuration, keyed by {@link ggConfigKey}. */
+  ggNames: ReadonlyMap<string, string>,
+): GgMemberEntry[] {
+  return useMemo(() => {
+    const rows = combos
+      .map((combo, i) => ({ combo, i }))
+      .filter(({ combo }) => isGgCombo(combo))
+      .map(({ combo, i }) => ({
+        combo,
+        i,
+        // The name it carries *now*: a stored member carries whatever name the server
+        // resolved when it read it, so preferring the option in hand renames the row
+        // along with the configuration.
+        name:
+          ggNames.get(ggConfigKey(combo.ggConfigId)) ?? ggConfigLabel(combo),
+        // A configuration that pins every model itself binds none and has no root model
+        // until a read fills one in, so the row says what it is rather than reading as a
+        // blank line.
+        summary: ggModelSummary(combo) || "pinned models",
+        // Every declared slot, including one nothing is bound to: an unbound slot is
+        // exactly why the cell it makes can never launch, so the disclosure has to name
+        // it rather than quietly leave it out.
+        bindings: Object.keys(combo.ggSlotModels ?? {})
+          .sort()
+          .map((slot) => ({
+            slot,
+            model: (combo.ggSlotModels?.[slot] ?? "").trim(),
+          })),
+      }));
+    rows.sort(
+      (a, b) =>
+        a.name.localeCompare(b.name) || a.summary.localeCompare(b.summary),
+    );
+    return rows;
   }, [combos, ggNames]);
+}
+
+/**
+ * One gg member: the configuration and the models it binds, over the slot-by-slot
+ * binding it discloses.
+ *
+ * The row answers "which member is this" and the disclosure answers "which model is on
+ * which slot" — the second is what tells two arms of one study apart, and it is also as
+ * many lines of model ids as the configuration has slots, so it stays folded until it is
+ * asked for. The remove control is a sibling of the disclosure button rather than a
+ * child of it: nested, a press aimed at opening the row could land on the destructive
+ * control instead, and that is not a guess worth offering.
+ */
+function GgMemberRow({
+  entry,
+  onRemove,
+}: {
+  entry: GgMemberEntry;
+  onRemove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  // A generated id rather than one built from the configuration's name: a name is
+  // operator-authored and may hold spaces, which an `aria-controls` IDREF cannot.
+  const panelId = useId();
+  return (
+    <li className={styles.ggMember}>
+      <div className={styles.ggMemberRow}>
+        <button
+          type="button"
+          className={styles.ggMemberOpen}
+          aria-expanded={open}
+          // Only while the panel exists — a control pointing at an absent id is a broken
+          // reference, not an empty one.
+          aria-controls={open ? panelId : undefined}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className={styles.twisty} aria-hidden>
+            {open ? "▾" : "▸"}
+          </span>
+          <span className={styles.ggMemberName}>{entry.name}</span>
+          <span className={styles.ggMemberModels}>{entry.summary}</span>
+        </button>
+        <button
+          type="button"
+          className={styles.chipRemove}
+          aria-label="Remove combination"
+          onClick={onRemove}
+        >
+          ✕
+        </button>
+      </div>
+      {open &&
+        (entry.bindings.length === 0 ? (
+          <p id={panelId} className={styles.ggBindingsNone}>
+            This configuration pins every model itself, so it binds none.
+          </p>
+        ) : (
+          <dl id={panelId} className={styles.ggBindings}>
+            {entry.bindings.map(({ slot, model }) => (
+              <Fragment key={slot}>
+                <dt className={styles.ggBindingSlot}>{slot}</dt>
+                <dd
+                  className={`${styles.ggBindingModel} ${
+                    model ? "" : styles.ggBindingUnbound
+                  }`}
+                >
+                  {model || "not bound"}
+                </dd>
+              </Fragment>
+            ))}
+          </dl>
+        ))}
+    </li>
+  );
 }
 
 /** The two shapes the add-row can produce, in the order it offers them. */
@@ -302,13 +435,15 @@ function comboIdentity(combo: ReviewPlanCombo): string {
 
 /**
  * The member editor shared by the group, plan and ladder editors: the combinations
- * already chosen, as removable pills grouped by harness, over an add-row that builds
- * the next one.
+ * already chosen, over an add-row that builds the next one.
  *
- * The add-row has two modes because a combination has two shapes — a harness and the
+ * The add-row asks for a kind because a combination has two shapes — a harness and the
  * model it runs, or a saved [gg configuration](../runs/gg/useGgConfigs) and a model for
  * every launch slot it declares. They land in one list rather than in two pickers, so a
- * plan that crosses both against its cases needs no second axis.
+ * plan that crosses both against its cases needs no second axis. The two shapes are
+ * listed differently for the same reason: a harness member is one model and reads as a
+ * pill under its harness, while a gg member is a configuration and a model per slot,
+ * which is a row that discloses what it binds.
  */
 export function ComboPicker({
   combos,
@@ -344,7 +479,8 @@ export function ComboPicker({
     () => new Map(ggOptions.map((o) => [ggConfigKey(o.key), o.name] as const)),
     [ggOptions],
   );
-  const comboGroups = useComboGroups(combos, ggNames);
+  const comboGroups = useComboGroups(combos);
+  const ggMembers = useGgMembers(combos, ggNames);
 
   // The launch inputs each configuration asks for — its own configuration slots, then
   // its agents' passthrough slots — memoized per configuration so the add-row does not
@@ -553,7 +689,7 @@ export function ComboPicker({
 
   return (
     <>
-      {comboGroups.length > 0 && (
+      {(comboGroups.length > 0 || ggMembers.length > 0) && (
         <div className={styles.chipGroups}>
           {comboGroups.map((group) => (
             <div key={group.key} className={styles.chipGroup}>
@@ -562,8 +698,8 @@ export function ComboPicker({
                 <button
                   type="button"
                   className={styles.chipGroupClear}
-                  // Scoped by the indices the block actually holds, so clearing a
-                  // configuration's arm leaves every other configuration's alone.
+                  // Scoped by the indices the block actually holds, so clearing one
+                  // harness leaves every other harness's members alone.
                   onClick={() => {
                     const dropped = new Set(group.items.map((item) => item.i));
                     onChange(combos.filter((_, j) => !dropped.has(j)));
@@ -592,28 +728,59 @@ export function ComboPicker({
               </ul>
             </div>
           ))}
+          {/* One section for every gg member, under the same divided heading a harness
+              block carries. The heading names the shape rather than a configuration
+              because the configuration names each row: one block per configuration made
+              a heading and a divider out of a single entry, and stacked several of them
+              between the reviewer and the add-row. */}
+          {ggMembers.length > 0 && (
+            <div className={styles.chipGroup}>
+              <div className={styles.chipGroupHead}>
+                <span className={styles.chipGroupTitle}>gg Configurations</span>
+                <button
+                  type="button"
+                  className={styles.chipGroupClear}
+                  // Every gg member, since the section is every gg member. Decided on
+                  // what makes a member a gg member rather than on the row list, so a
+                  // member the rows could not name is still cleared.
+                  onClick={() => onChange(combos.filter((c) => !isGgCombo(c)))}
+                >
+                  Clear all
+                </button>
+              </div>
+              <ul className={styles.ggMemberList}>
+                {ggMembers.map((entry) => (
+                  <GgMemberRow
+                    key={`${comboIdentity(entry.combo)}:${entry.i}`}
+                    entry={entry}
+                    onRemove={() =>
+                      onChange(combos.filter((_, j) => j !== entry.i))
+                    }
+                  />
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
-      <div
-        className={styles.kindRow}
-        role="radiogroup"
-        aria-label="Combination kind"
-      >
-        {(Object.keys(ADD_MODES) as AddMode[]).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            role="radio"
-            aria-checked={addMode === mode}
-            className={`${styles.groupPick} ${
-              addMode === mode ? styles.groupPickOn : ""
-            }`}
-            onClick={() => setAddMode(mode)}
-          >
-            {ADD_MODES[mode]}
-          </button>
-        ))}
-      </div>
+      {/* One labelled field rather than two lit pills: the shape is a choice from a
+          fixed set, which is what a select is for, and a pair of filled pills directly
+          under a list of member pills read as members of it. Matches the comparison
+          editor's own Kind field, which offers this same choice. */}
+      <label className={`${exec.field} ${styles.kindField}`}>
+        <span className={exec.fieldLabel}>Combination kind</span>
+        <select
+          className={exec.select}
+          value={addMode}
+          onChange={(e) => setAddMode(e.target.value as AddMode)}
+        >
+          {(Object.keys(ADD_MODES) as AddMode[]).map((mode) => (
+            <option key={mode} value={mode}>
+              {ADD_MODES[mode]}
+            </option>
+          ))}
+        </select>
+      </label>
       {addMode === "harness" ? (
         <div className={styles.inputRow}>
           <label className={`${exec.field} ${exec.comboField}`}>
@@ -685,7 +852,12 @@ export function ComboPicker({
         // launch slots as it likes, and laid out beside each other they squeeze every
         // one below the width a model id is legible in.
         <div className={styles.ggAdd}>
-          <label className={`${exec.field} ${exec.comboFieldWide}`}>
+          {/* Every field in this stack takes `comboSlotField`, which is width and
+              nothing else. `comboField`/`comboFieldWide` are for a row: their flex
+              basis is a *main-axis* size, and the main axis of a column is the vertical
+              one, so a 14rem basis here is 14rem of height and a field-sized hole under
+              every control. */}
+          <label className={`${exec.field} ${exec.comboSlotField}`}>
             <span className={exec.fieldLabel}>gg configuration</span>
             <select
               className={exec.select}
@@ -706,7 +878,7 @@ export function ComboPicker({
             </p>
           )}
           {ggSlots.length > 1 && (
-            <label className={`${exec.field} ${exec.comboFieldWide}`}>
+            <label className={`${exec.field} ${exec.comboSlotField}`}>
               <span className={exec.fieldLabel}>Fan out across</span>
               <select
                 className={exec.select}
@@ -753,10 +925,6 @@ export function ComboPicker({
                     + Model
                   </button>
                 </div>
-                <p className={styles.fieldHint}>
-                  Pick as many models as you like — one combination is added per
-                  model, and the other slots take the models on screen.
-                </p>
                 {addGgModels.length > 0 && (
                   <ul className={styles.chipList}>
                     {addGgModels.map((id) => (
@@ -908,7 +1076,10 @@ export function CasePicker({
             (a, b) =>
               testCaseName(a.c.slug).localeCompare(testCaseName(b.c.slug)) ||
               a.c.variant.localeCompare(b.c.variant) ||
-              a.c.version.localeCompare(b.c.version),
+              a.c.version.localeCompare(b.c.version) ||
+              // Last, because it is the finest split: two pins that agree on
+              // everything else differ only here, and they are two pills.
+              caseEngine(a.c).localeCompare(caseEngine(b.c)),
           ),
       }))
       .filter((group) => group.items.length > 0);
@@ -920,23 +1091,23 @@ export function CasePicker({
   // showed, so the add-row stays disabled until the two agree.
   const selectionShown = sortedCases.some((c) => c.slug === sel.slug);
 
+  // The engine this pin will name, held to what the resolved version supports.
+  const engineChoice = useEngineChoice(sel.versionInfo?.engines);
+
   function addCase() {
     if (!selectionShown) return;
     if (!sel.slug || !sel.version || !sel.variant) return;
-    if (
-      cases.some(
-        (c) =>
-          c.slug === sel.slug &&
-          c.version === sel.version &&
-          c.variant === sel.variant,
-      )
-    ) {
-      return;
-    }
-    onChange([
-      ...cases,
-      { slug: sel.slug, version: sel.version, variant: sel.variant },
-    ]);
+    const pin: ReviewPlanCase = {
+      slug: sel.slug,
+      version: sel.version,
+      variant: sel.variant,
+      ...pinnedEngine(engineChoice.engine),
+    };
+    // The same case at the same version, variant *and* engine is the same cell twice.
+    // A different engine is a different case: the runs are not comparable, so the plan
+    // is entitled to hold both and the refusal must not swallow the second.
+    if (cases.some((c) => samePinnedCase(c, pin))) return;
+    onChange([...cases, pin]);
   }
 
   // Catalog versions are oldest-first; show the dropdown newest-first.
@@ -971,12 +1142,13 @@ export function CasePicker({
               <ul className={styles.chipList}>
                 {group.items.map(({ c, i }) => (
                   <li
-                    key={`${c.slug}@${c.version}@${c.variant}`}
+                    key={`${c.slug}@${c.version}@${c.variant}@${caseEngine(c)}`}
                     className={styles.chip}
                   >
-                    <span>
-                      {testCaseName(c.slug)} · {c.variant} · {c.version}
-                    </span>
+                    {/* Through the shared pin label, so a pill spells the engine the
+                        same way the matrix and the review queue do — and so two pills
+                        differing only on engine are not the same line of text. */}
+                    <span>{caseLabel(testCaseName(c.slug), c)}</span>
                     <button
                       type="button"
                       className={styles.chipRemove}
@@ -992,8 +1164,15 @@ export function CasePicker({
           ))}
         </div>
       )}
-      <div className={styles.inputRow}>
-        <label className={`${exec.field} ${exec.comboField}`}>
+      {/* The new-run form's Test grid, so choosing a case reads the same wherever it
+          is done: the type, case and version on the first row, and the variant, the
+          engine and the add control — everything the resolved version decides, plus
+          the press that commits it — on the second. `editorFields` is the panel's
+          variant of that grid; see Coverage.module.scss. */}
+      <div
+        className={`${exec.fields} ${exec.testFields} ${styles.editorFields}`}
+      >
+        <label className={exec.field}>
           <span className={exec.fieldLabel}>Test case type</span>
           <select
             className={exec.select}
@@ -1009,7 +1188,7 @@ export function CasePicker({
             ))}
           </select>
         </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
+        <label className={exec.field}>
           <span className={exec.fieldLabel}>Test case</span>
           <select
             className={exec.select}
@@ -1023,7 +1202,7 @@ export function CasePicker({
             ))}
           </select>
         </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
+        <label className={exec.field}>
           <span className={exec.fieldLabel}>Version</span>
           <select
             className={exec.select}
@@ -1037,7 +1216,7 @@ export function CasePicker({
             ))}
           </select>
         </label>
-        <label className={`${exec.field} ${exec.comboField}`}>
+        <label className={exec.field}>
           <span className={exec.fieldLabel}>Variant</span>
           <select
             className={exec.select}
@@ -1052,9 +1231,15 @@ export function CasePicker({
             ))}
           </select>
         </label>
+        {/* Shared with the ladder editor's rung list — see `CaseEngineField`, which
+            also says why the field stays on screen once the version has decided. */}
+        <CaseEngineField
+          choice={engineChoice}
+          title="The runtime this case's runs are built against. Coverage is counted per engine, because a result is only comparable with another result on the same engine."
+        />
         <button
           type="button"
-          className={exec.secondary}
+          className={`${exec.secondary} ${styles.editorAdd}`}
           onClick={addCase}
           disabled={
             !selectionShown || !sel.slug || !sel.version || !sel.variant

@@ -324,6 +324,18 @@ pub struct JobSummary {
     pub harness_slug: String,
     /// The opaque model id passed to the harness.
     pub model_id: String,
+    /// The [engine](crate::engine) the run is built on, as its slug. `None` is the
+    /// `none` engine, exactly as an absent `engine` on the launch request is.
+    ///
+    /// It rides with the harness and the model because those three plus the case pin
+    /// are a run's [coverage cell](https://docs.testcabinet.ai/components/backend/coverage/),
+    /// and an in-flight run has no record to read one out of. A console listing the runs
+    /// behind one cell — a ladder rung, a plan's cell — would otherwise show a live row
+    /// from every other engine's cell of the same case, and count it toward a figure it
+    /// will never join.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub engine: Option<String>,
     /// The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
     /// was launched from, lifted out of its stored capability set. A gg run has no
     /// single harness model — [`model_id`](Self::model_id) is only its representative

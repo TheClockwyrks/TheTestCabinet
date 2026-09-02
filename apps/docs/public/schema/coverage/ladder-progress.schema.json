@@ -80,6 +80,10 @@
           "minimum": 0,
           "type": "integer"
         },
+        "engine": {
+          "description": "The engine this cell counts against, resolved: `none` where the pin names none.\nAlways concrete, because a run recorded with no engine is a `none` run and the\ntwo must land in one cell.",
+          "type": "string"
+        },
         "ggConfigId": {
           "description": "The gg configuration this cell's runs are launched from, as the member names it, or\nnull on a harness cell.",
           "type": ["string", "null"]
@@ -180,6 +184,7 @@
         "slug",
         "version",
         "variant",
+        "engine",
         "harness",
         "model",
         "desired",
@@ -299,6 +304,10 @@
     "LadderProgressRung": {
       "description": "One rung as the progress board describes it: the declaration plus how its pin has\naged.",
       "properties": {
+        "engine": {
+          "description": "The engine to climb on, or null for the `none` engine.\n\nPart of the rung's identity within the climb, because clearing a case with a\nruntime underneath is a different achievement from clearing it with nothing: one\nladder holds the same case at the same version and variant twice when the two\npins name different engines.",
+          "type": ["string", "null"]
+        },
         "id": {
           "description": "The rung's **stable opaque id**, minted when the rung is added and never\nreused.\n\nEmphatically not its position. Rungs get reordered and re-pinned, and every\nrecorded verdict references this id — a positional identifier would silently\nreattribute a climber's verdicts to a different case the moment the ladder was\nrearranged.",
           "type": "string"

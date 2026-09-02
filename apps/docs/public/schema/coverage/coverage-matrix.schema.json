@@ -30,6 +30,10 @@
           "minimum": 0,
           "type": "integer"
         },
+        "engine": {
+          "description": "The engine this cell counts against, resolved: `none` where the pin names none.\nAlways concrete, because a run recorded with no engine is a `none` run and the\ntwo must land in one cell.",
+          "type": "string"
+        },
         "ggConfigId": {
           "description": "The gg configuration this cell's runs are launched from, as the member names it, or\nnull on a harness cell.",
           "type": ["string", "null"]
@@ -110,6 +114,7 @@
         "slug",
         "version",
         "variant",
+        "engine",
         "harness",
         "model",
         "desired",

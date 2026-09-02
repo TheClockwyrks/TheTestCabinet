@@ -48,6 +48,10 @@ export function runListAction(
     variant: event.variant,
     harnessSlug: event.harnessSlug,
     modelId: event.modelId,
+    // Carried so a row seeded from an event is filtered by the same identity as one
+    // seeded from the active list: a listing narrowed to one coverage cell drops a
+    // live row whose engine it cannot see.
+    engine: event.engine ?? null,
     state: phase,
   };
 

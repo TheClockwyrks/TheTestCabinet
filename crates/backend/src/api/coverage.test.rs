@@ -52,6 +52,15 @@ pub(super) fn case(slug: &str) -> ReviewPlanCase {
         slug: slug.to_string(),
         version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        engine: None,
+    }
+}
+
+/// The same pinned case on an explicit engine.
+fn case_on(slug: &str, engine: &str) -> ReviewPlanCase {
+    ReviewPlanCase {
+        engine: Some(engine.to_string()),
+        ..case(slug)
     }
 }
 
@@ -151,6 +160,129 @@ fn resolve_dedupes_a_member_shared_by_two_groups() {
     assert_eq!(
         cases.iter().map(|c| c.slug.as_str()).collect::<Vec<_>>(),
         vec!["pong", "carom"]
+    );
+}
+
+#[test]
+fn a_stored_pin_from_before_the_engine_existed_still_deserializes() {
+    // A plan's and a group's cases are stored as a JSON blob, so the serde default on the
+    // new field is the whole of what keeps an existing row readable — there is no
+    // migration for it, and an existing plan must keep asking for exactly the engineless
+    // runs it always asked for.
+    let stored = r#"[{"slug":"pong","version":"v1.0.0","variant":"base"}]"#;
+    let cases: Vec<ReviewPlanCase> =
+        serde_json::from_str(stored).expect("a pre-engine pin still parses");
+    assert_eq!(cases[0].engine, None);
+    assert_eq!(cases[0].engine_slug(), "none");
+    // And a pin with no engine is written back without the key, so a round trip does not
+    // rewrite every stored plan.
+    assert_eq!(serde_json::to_string(&cases).unwrap(), stored);
+}
+
+#[test]
+fn one_case_on_two_engines_is_two_pinned_cases() {
+    let groups: HashMap<String, CoverageGroup> = [combo_group("g1", vec![combo("opus")])]
+        .into_iter()
+        .map(|g| (g.id.clone(), g))
+        .collect();
+    // The engine is part of the pin because results are only comparable within one
+    // engine, so these are two cases the plan crosses its combinations with separately —
+    // not one case listed twice.
+    let p = plan(
+        vec!["g1"],
+        vec![],
+        vec![],
+        vec![case("pong"), case_on("pong", "simple-2d")],
+    );
+
+    let (combos, cases) = resolve_members(&p, &groups, &no_configs());
+    assert_eq!(
+        cases.iter().map(|c| c.engine_slug()).collect::<Vec<_>>(),
+        vec!["none", "simple-2d"]
+    );
+    // And two cells, counted apart: a run built on one engine satisfies nothing pinned to
+    // the other.
+    assert_ne!(
+        cell_key(&cases[0], &combos[0]),
+        cell_key(&cases[1], &combos[0])
+    );
+}
+
+#[test]
+fn a_pin_naming_no_engine_and_one_naming_none_are_the_same_case() {
+    let groups: HashMap<String, CoverageGroup> = HashMap::new();
+    // `none` is the engineless run, which is exactly what an absent pin asks for. Two
+    // spellings of one pin must be one case, or a plan saved by a console that writes the
+    // slug out would silently double every cell it already had.
+    let p = plan(
+        vec![],
+        vec![],
+        vec![],
+        vec![case("pong"), case_on("pong", "none")],
+    );
+
+    let (_, cases) = resolve_members(&p, &groups, &no_configs());
+    assert_eq!(cases.len(), 1);
+    assert_eq!(
+        cell_key(&case("pong"), &member(combo("opus"))),
+        cell_key(&case_on("pong", "none"), &member(combo("opus")))
+    );
+}
+
+#[test]
+fn a_top_up_launches_a_harness_cell_on_the_cases_pinned_engine() {
+    let m = member(combo("opus"));
+    let cell = |case: &ReviewPlanCase| {
+        top_up_launch_body(&TopUpCell {
+            rung_id: None,
+            case,
+            member: &m,
+            runs: 2,
+        })
+    };
+
+    // The whole pin travels onto the launch, engine included. A run built on another
+    // engine satisfies nothing this cell counted, so the cell that asked for the runs and
+    // the runs it gets have to name the same one.
+    let body = cell(&case_on("pong", "simple-2d"));
+    assert_eq!(body.test_case, "pong");
+    assert_eq!(body.version, "v1.0.0");
+    assert_eq!(body.variant, "base");
+    assert_eq!(body.engine.as_deref(), Some("simple-2d"));
+    assert_eq!(body.harness, HarnessSlug::Claude);
+
+    // A case pinning no engine sends no engine key, which is the `none` default — exactly
+    // the engineless build every plan scheduled before the pin carried an engine got.
+    assert_eq!(cell(&case("pong")).engine, None);
+    // And a pin spelling that default out asks for the same run rather than a second one.
+    assert_eq!(
+        cell(&case_on("pong", "none")).engine.as_deref(),
+        Some("none")
+    );
+}
+
+#[test]
+fn a_blocked_cell_reports_the_engine_it_would_have_launched_on() {
+    // A cell nothing can launch is reported rather than dropped, and the report is what
+    // the console names the cell by — so it carries the resolved engine for the same
+    // reason it carries the version: two engines are two cells, and a reason attached to
+    // the wrong one is unactionable.
+    let blocked = blocked_cell(
+        None,
+        &case_on("pong", "simple-2d"),
+        &member(combo("opus")),
+        "no window".to_string(),
+    );
+    assert_eq!(blocked.engine, "simple-2d");
+    assert_eq!(
+        blocked_cell(
+            None,
+            &case("pong"),
+            &member(combo("opus")),
+            "no window".to_string()
+        )
+        .engine,
+        "none"
     );
 }
 
@@ -281,11 +413,11 @@ fn a_cell_is_keyed_by_the_model_the_run_was_launched_with() {
         ..combo_on(HarnessSlug::Opencode, "anthropic/claude-opus-4.8")
     };
     assert_eq!(
-        cell_key(&c, &member(routed)).4,
+        cell_key(&c, &member(routed)).5,
         "openrouter/anthropic/claude-opus-4.8"
     );
     // A harness that is not provider-routed launches its id verbatim.
-    assert_eq!(cell_key(&c, &member(combo("opus"))).4, "opus");
+    assert_eq!(cell_key(&c, &member(combo("opus"))).5, "opus");
 }
 
 #[test]

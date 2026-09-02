@@ -3321,6 +3321,7 @@ impl Db {
             .column(run::Column::TestCaseSlug)
             .column(run::Column::TestCaseVersion)
             .column(run::Column::Variant)
+            .column(run::Column::EngineSlug)
             .column(run::Column::HarnessSlug)
             .column(run::Column::ModelId)
             .column(run::Column::GgConfigId)
@@ -3331,6 +3332,7 @@ impl Db {
             .group_by(run::Column::TestCaseSlug)
             .group_by(run::Column::TestCaseVersion)
             .group_by(run::Column::Variant)
+            .group_by(run::Column::EngineSlug)
             .group_by(run::Column::HarnessSlug)
             .group_by(run::Column::ModelId)
             .group_by(run::Column::GgConfigId)
@@ -3357,6 +3359,7 @@ impl Db {
             .column(job::Column::TestCaseSlug)
             .column(job::Column::TestCaseVersion)
             .column(job::Column::Variant)
+            .column(job::Column::EngineSlug)
             .column(job::Column::HarnessSlug)
             .column(job::Column::ModelId)
             .column(job::Column::GgConfigId)
@@ -3367,6 +3370,7 @@ impl Db {
             .group_by(job::Column::TestCaseSlug)
             .group_by(job::Column::TestCaseVersion)
             .group_by(job::Column::Variant)
+            .group_by(job::Column::EngineSlug)
             .group_by(job::Column::HarnessSlug)
             .group_by(job::Column::ModelId)
             .group_by(job::Column::GgConfigId)
@@ -3410,6 +3414,7 @@ impl Db {
             .column(run::Column::TestCaseSlug)
             .column(run::Column::TestCaseVersion)
             .column(run::Column::Variant)
+            .column(run::Column::EngineSlug)
             .column(run::Column::HarnessSlug)
             .column(run::Column::ModelId)
             .column(run::Column::GgConfigId)
@@ -3441,6 +3446,7 @@ impl Db {
             .group_by(run::Column::TestCaseSlug)
             .group_by(run::Column::TestCaseVersion)
             .group_by(run::Column::Variant)
+            .group_by(run::Column::EngineSlug)
             .group_by(run::Column::HarnessSlug)
             .group_by(run::Column::ModelId)
             .group_by(run::Column::GgConfigId)
@@ -3462,7 +3468,9 @@ impl Db {
     /// same `COALESCE` the counts collapse with (`cell_gg_segment`), so a harness
     /// cell's empty pair selects exactly the rows that carry no configuration — a gate
     /// therefore reads the evidence of the one configuration its climber names, not of
-    /// every gg run of the case.
+    /// every gg run of the case. The engine segment is matched through the same
+    /// collapse (`cell_engine_segment`), so a `none` cell reads the runs recorded before
+    /// the slug was lifted as the engineless runs they are.
     ///
     /// Only `completed` runs are returned. A failed or canceled job is an
     /// infrastructure problem that retries (`job.attempt`) and must never be mistaken
@@ -3475,7 +3483,7 @@ impl Db {
         cell: &CellKey,
         reviewer_user_id: &str,
     ) -> Result<Vec<CellRunRating>> {
-        let (slug, version, variant, harness, model, gg_config_id, gg_models) = cell;
+        let (slug, version, variant, engine, harness, model, gg_config_id, gg_models) = cell;
         let rows: Vec<(String, bool, Option<String>)> = run::Entity::find()
             .select_only()
             .column(run::Column::Id)
@@ -3499,6 +3507,7 @@ impl Db {
             .filter(run::Column::TestCaseSlug.eq(slug))
             .filter(run::Column::TestCaseVersion.eq(version))
             .filter(run::Column::Variant.eq(variant))
+            .filter(Expr::expr(cell_engine_segment(run::Column::EngineSlug)).eq(engine.as_str()))
             .filter(run::Column::HarnessSlug.eq(harness))
             .filter(run::Column::ModelId.eq(model))
             .filter(
@@ -3628,11 +3637,17 @@ fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
 }
 
 /// A coverage cell's identity:
-/// `(slug, version, variant, harness, launch model, gg configuration id, gg models)` —
-/// the key every grouped-count query returns its tallies under, and the identity a gate
+/// `(slug, version, variant, engine, harness, launch model, gg configuration id, gg models)`
+/// — the key every grouped-count query returns its tallies under, and the identity a gate
 /// reads its evidence by.
 ///
-/// The first five segments identify a **harness** cell, and its last two are empty. A
+/// The first four segments are the **case pin**, engine included, because a result is only
+/// comparable with another result on the same engine: one case at one version and variant
+/// on two engines is two cells. A run or job that names no engine is a `none` run, so a
+/// `NULL` column coalesces to that slug (`cell_engine_segment`) rather than to an empty
+/// segment of its own.
+///
+/// The first six segments identify a **harness** cell, and its last two are empty. A
 /// gg run has no such identity to be counted by: it is launched from a saved
 /// configuration and binds a model per agent, so every gg run of one plan would
 /// otherwise pile into a single `gg/<root model>` cell. The two extra segments are what
@@ -3654,28 +3669,40 @@ fn top_up_claim_is_available(held: Option<&str>, now: &str) -> bool {
 /// the id narrows nothing that keying on the name kept. Counts stay
 /// [global](https://docs.testcabinet.ai/components/backend/coverage/) in the sense that
 /// matters — whoever launched a run of *this* configuration, it counts.
-pub type CellKey = (String, String, String, String, String, String, String);
+pub type CellKey = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+);
 
 /// Per-cell counts from a grouped coverage query, keyed by [`CellKey`].
 pub type CellCounts = HashMap<CellKey, u32>;
 
-/// Fold the `(slug, version, variant, harness, model, gg configuration id, gg models, count)`
-/// rows a grouped coverage query returns into a [`CellCounts`] map, reading the two
-/// nullable gg columns as the empty string a harness cell carries.
+/// Fold the
+/// `(slug, version, variant, engine, harness, model, gg configuration id, gg models, count)`
+/// rows a grouped coverage query returns into a [`CellCounts`] map, reading the nullable
+/// engine column as `none` and the two nullable gg columns as the empty string a harness
+/// cell carries.
 ///
-/// Tallies are **summed** into the entry rather than assigned to it, because that
-/// collapse is not injective: SQL groups `NULL` and `''` as different values and both
-/// arrive here as the harness form, so a store holding one row of each would otherwise
+/// Tallies are **summed** into the entry rather than assigned to it, because neither
+/// collapse is injective: SQL groups `NULL` and the concrete value as different rows and
+/// both arrive here as the same segment, so a store holding one of each would otherwise
 /// report only whichever came last. The count is a SQL `COUNT(*)` so it is
 /// non-negative; the clamp is defensive.
 fn cell_counts(rows: Vec<CellCountRow>) -> CellCounts {
     let mut counts = CellCounts::new();
-    for (slug, version, variant, harness, model, gg_config_id, gg_models, count) in rows {
+    for (slug, version, variant, engine, harness, model, gg_config_id, gg_models, count) in rows {
         *counts
             .entry((
                 slug,
                 version,
                 variant,
+                cell_engine(engine),
                 harness,
                 model,
                 gg_config_id.unwrap_or_default(),
@@ -3686,19 +3713,26 @@ fn cell_counts(rows: Vec<CellCountRow>) -> CellCounts {
     counts
 }
 
-/// One row of a grouped coverage count: a [`CellKey`]'s seven segments (the two gg ones
-/// still nullable, as the columns are) followed by the tally. Named because all three
-/// grouped queries select it and the tuple is otherwise spelled out four times.
+/// One row of a grouped coverage count: a [`CellKey`]'s eight segments (the engine one and
+/// the two gg ones still nullable, as the columns are) followed by the tally. Named because
+/// all three grouped queries select it and the tuple is otherwise spelled out four times.
 type CellCountRow = (
     String,
     String,
     String,
+    Option<String>,
     String,
     String,
     Option<String>,
     Option<String>,
     i64,
 );
+
+/// A nullable engine column as its [`CellKey`] segment: an absent engine is the `none`
+/// engine, because a launch that omits the key asks for the engineless run.
+fn cell_engine(engine: Option<String>) -> String {
+    engine.unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string())
+}
 
 /// One of the nullable gg identity columns as its [`CellKey`] segment:
 /// `COALESCE(col, '')`. Filtering through it makes an equality test on a cell segment
@@ -3707,6 +3741,18 @@ type CellCountRow = (
 /// every harness cell in the store.
 fn cell_gg_segment(column: run::Column) -> SimpleExpr {
     Func::coalesce([column.into_expr().into(), Expr::val("").into()]).into()
+}
+
+/// The nullable engine column as its [`CellKey`] segment: `COALESCE(col, 'none')`. The
+/// SQL twin of [`cell_engine`], and load-bearing for the same reason
+/// [`cell_gg_segment`] is — an equality test written against the bare column would match
+/// nothing for every run recorded before the slug was lifted, and those are `none` runs.
+fn cell_engine_segment(column: run::Column) -> SimpleExpr {
+    Func::coalesce([
+        column.into_expr().into(),
+        Expr::val(test_cabinet_core::engine::NONE_SLUG).into(),
+    ])
+    .into()
 }
 
 /// A legacy single-per-account coverage plan awaiting backfill into `coverage_plan`
@@ -3971,8 +4017,8 @@ pub struct StoredLadder {
     pub updated_at: String,
 }
 
-/// One rung of a [`StoredLadder`]: exactly one test case, pinned to an exact version
-/// and variant.
+/// One rung of a [`StoredLadder`]: exactly one test case, pinned to an exact version,
+/// variant, and engine.
 ///
 /// The rung's position is deliberately **not** a field — it is the rung's index in
 /// [`StoredLadder::rungs`], written to the `position` column on save and used to order
@@ -3993,6 +4039,13 @@ pub struct StoredLadderRung {
     pub version: String,
     /// The variant to climb.
     pub variant: String,
+    /// The engine to climb on, or `None` for the `none` engine — the engineless run
+    /// every case supports.
+    ///
+    /// Part of the rung's identity within the climb: the same case at the same version
+    /// and variant on two engines is two rungs, because clearing a case with a runtime
+    /// underneath is a different achievement from clearing it with nothing.
+    pub engine: Option<String>,
     /// This rung's override of [`StoredLadder::runs_per_cell`], or `None` to inherit
     /// it — so one pivotal step can demand more evidence without making the whole
     /// climb more expensive.
@@ -4634,6 +4687,7 @@ async fn write_ladder_rungs(
             slug: Set(rung.slug.clone()),
             version: Set(rung.version.clone()),
             variant: Set(rung.variant.clone()),
+            engine: Set(rung.engine.clone()),
             runs_override: Set(rung.runs_override.map(|runs| runs as i32)),
         });
     ladder_rung::Entity::insert_many(models)
@@ -4644,6 +4698,7 @@ async fn write_ladder_rungs(
                     ladder_rung::Column::Slug,
                     ladder_rung::Column::Version,
                     ladder_rung::Column::Variant,
+                    ladder_rung::Column::Engine,
                     ladder_rung::Column::RunsOverride,
                 ])
                 .to_owned(),
@@ -4677,6 +4732,7 @@ fn stored_ladder_rung(row: ladder_rung::Model) -> StoredLadderRung {
         slug: row.slug,
         version: row.version,
         variant: row.variant,
+        engine: row.engine,
         runs_override: row.runs_override.map(|runs| runs.max(0) as u32),
     }
 }
@@ -5387,6 +5443,14 @@ pub struct NewJob {
     pub harness_slug: String,
     /// The opaque model id, lifted for the active-run list.
     pub model_id: String,
+    /// The engine the launch request names, lifted at enqueue — the fourth segment of a
+    /// queued run's [cell identity](CellKey). `None` where the request named none, which
+    /// is the `none` engine every grouped count coalesces it to.
+    ///
+    /// A column for the reason `harness_slug` and `model_id` are: the queue counts a
+    /// cell's in-flight runs in SQL, and a count that must first deserialize a launch
+    /// request per row is not a count the database can do.
+    pub engine_slug: Option<String>,
     /// The **gg** run's capability set serialized to JSON, lifted from the launch
     /// request at enqueue. `None` for every third-party-harness job.
     pub gg_config_json: Option<String>,
@@ -5462,6 +5526,7 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         test_type: Set(new.test_type),
         harness_slug: Set(new.harness_slug),
         model_id: Set(new.model_id),
+        engine_slug: Set(new.engine_slug),
         gg_config_json: Set(new.gg_config_json),
         gg_preset: Set(new.gg_preset),
         gg_config_id: Set(new.gg_config_id),
@@ -6855,6 +6920,44 @@ impl Db {
             let mut active = row.into_active_model();
             active.gg_models = Set(Some(set.bound_model_key()));
             active.gg_preset = Set(set.preset.clone());
+            active.update(&self.conn()).await?;
+            backfilled += 1;
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill `job.engine_slug` on the **jobs still in flight** at the moment the column
+    /// arrived, re-deriving it from each row's own launch request.
+    ///
+    /// Only a job that actually names an engine needs it. A request with no engine key is a
+    /// `none` run, which is exactly what a `NULL` column already coalesces to, so leaving it
+    /// `NULL` is not a loss — the rows this fixes are the ones whose runs will land in a
+    /// non-`none` cell while the job counts toward the `none` one. That mismatch is the case
+    /// where a missing lift does not merely under-count but over-spends: a plan sees no runs
+    /// coming for a cell that already has several on the way and buys a second set.
+    ///
+    /// Bounded to the non-terminal states for the reason
+    /// [`Self::backfill_in_flight_gg_cells`] is: a finished job's counts come from the `run`
+    /// row it produced, so rewriting the whole job history would be a large write for a
+    /// number nothing reads; what is left in flight across a deploy is at most the queue's
+    /// depth. Best-effort per row — a request that no longer deserializes keeps its `NULL`.
+    pub async fn backfill_in_flight_engine_slugs(&self) -> Result<usize> {
+        let rows = job::Entity::find()
+            .filter(job::Column::EngineSlug.is_null())
+            .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
+            .all(&self.conn())
+            .await?;
+        let mut backfilled = 0usize;
+        for row in rows {
+            let Ok(body) = serde_json::from_str::<test_cabinet_core::LaunchBody>(&row.request_json)
+            else {
+                continue;
+            };
+            let Some(engine) = body.engine.filter(|slug| !slug.trim().is_empty()) else {
+                continue;
+            };
+            let mut active = row.into_active_model();
+            active.engine_slug = Set(Some(engine));
             active.update(&self.conn()).await?;
             backfilled += 1;
         }
