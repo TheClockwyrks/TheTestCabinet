@@ -15,10 +15,20 @@
 // This is the one item in the group where the rule bites hardest, because the
 // question IS the clock: does the game run when nobody is turning the handle? So
 // nothing turns it. The harness is built over a `WallClock` rather than the suite's
-// `ConstantClock`, and the window is spent in `overRealWindow`, which hands the
+// `ConstantClock`, and the window is spent in `overRealGain`, which hands the
 // clock back to the build: the engine's own frame loop schedules its own frames and
 // its clock measures them, exactly as in a browser. No `advance` is called across
 // the window and no pose is made inside it.
+//
+// THE WINDOW IS CLOSED ON THE BUILD'S CLOCK AND THE WALL CLOCK IS ONLY A DEADLINE.
+// An earlier revision spent a fixed stretch of wall clock and then asked how much
+// game time it had bought, which asks two questions at once — did the build advance
+// itself, and did this machine give its loop the frames to do it in. The second is
+// not about the build: a starved loop gets a handful of frames, each worth at most
+// the `WallClock`'s hundred-millisecond clamp, so a second and a half of wall clock
+// can be half a second of game time on a busy runner and a correct build loses the
+// point for it. The window now closes when `simTime` has gained the seconds it
+// names, and the deadline is what a build that never advances on its own runs out.
 //
 // WHAT IS ASSERTED IS THAT TIME REACHED THE GAME, NOT ANY RATE. How fast a Mote
 // walks is `surge.walks-at-its-speed` and how the speed toggle scales game time is
@@ -39,66 +49,53 @@
 // and the canvas is kept again as it closes, so a reviewer sees the same floor at
 // the two ends of a stretch of real time in which nothing touched the game.
 //
-// THE ELAPSED TIME IS CHECKED AS A PRECONDITION, because a window that did not
-// happen would make both readings meaningless; it is a fact about the host rather
-// than about the build, which is why it is stated as a precondition and not as the
-// point.
-//
 // WHAT EVERY WRONG MODEL READS. A build that only advances when something steps it
 // gains no `simTime` and moves nothing; one that draws without simulating moves
 // nothing; one whose loop runs but whose game ignores the frame's elapsed time
 // gains no `simTime`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,
   createRealtimeHarness,
-  overRealWindow,
+  overRealGain,
   startRun,
   type Harness,
 } from "../harness";
 import { poseMote } from "./run";
 
 /**
- * The window spent in REAL time: a second and a half.
+ * The window, measured on the BUILD'S OWN clock: a second and a half of game time.
  *
  * The same length as the legs the pause items spend, so what a reviewer sees here
  * and there is the same stretch of the game. At a Mote's specified `60` logical
- * units per second it is `90` units of travel and `1.5` seconds of `simTime` for a
- * build that runs at the wall clock's own pace.
+ * units per second it is `90` units of travel. It is spent in REAL time — that is
+ * the item — but its LENGTH is a gain in `simTime`, so what it covers is the same
+ * on an idle machine and on one running a hundred other things.
  */
-const WINDOW_MS = 1500;
+const WINDOW_SECONDS = 1.5;
 
 /**
- * The least of the window that must really have elapsed: four fifths of it.
+ * The real time the build is given to gain {@link WINDOW_SECONDS} on its own
+ * clock: a minute.
  *
- * A precondition on the host, not a bound on the build. `runFor` schedules its own
- * halt, and a machine under load can overrun; what would make the readings below
- * meaningless is a window that barely happened at all.
+ * A ceiling on the HOST and the only wall clock left in the item. A build running
+ * at the wall clock's pace closes the window in the second and a half it names;
+ * one whose loop is getting a tenth of the frames takes fifteen and still closes
+ * it. What a minute distinguishes is a build whose simulation never advances
+ * unless something steps it, which does not close it at all.
  */
-const MIN_ELAPSED_MS = WINDOW_MS * 0.8;
-
-/**
- * The least `simTime` must gain: half a second.
- *
- * A third of the window, and the same figure the other two engines' copies of this
- * point hold. A build running at the wall clock's pace gains the whole `1.5`; the
- * floor leaves room for a frame loop that starts late, for a build that clamps a
- * long frame's delta, and for a host that gave the loop a fraction of the time it
- * asked for. It is five times the tenth of a second
- * `waves.pause-freezes-the-floor` allows a PAUSED clock to drift by, so a build
- * that is merely leaking a frame or two cannot pass here.
- */
-const MIN_CLOCK_GAIN = 0.5;
+const WINDOW_DEADLINE_MS = 60_000;
 
 /**
  * The least the Mote must travel: `20` logical units.
  *
  * A floor distance, a little over one `TILE` (`19`), and the same bar the pause
  * items hold their running legs to. A Mote covers it in a third of a second of game
- * time, so it follows from the `MIN_CLOCK_GAIN` above rather than adding a
- * requirement about speed.
+ * time, so it follows from {@link WINDOW_SECONDS} above rather than adding a
+ * requirement about speed — and because the window's length is the build's own game
+ * time, it follows from the specification rather than from the machine.
  */
 const MIN_TRAVEL = 20;
 
@@ -119,24 +116,20 @@ it("walks the floor and gains simTime over a window nothing stepped", async () =
   await h.advance(1);
   captureStill(h, "before");
 
-  const window = await overRealWindow(h, WINDOW_MS);
+  const window = await overRealGain(h, WINDOW_SECONDS, WINDOW_DEADLINE_MS);
 
   captureStill(h, "after");
 
-  assertGreaterThanOrEqual(
-    window.elapsedMs,
-    MIN_ELAPSED_MS,
-    "precondition: the real window the loop was given",
-  );
-  assertGreaterThan(
-    window.clockGain,
-    MIN_CLOCK_GAIN,
-    `the seconds of game time the build's own clock gained over ` +
-      `${WINDOW_MS} ms of real time`,
+  assertTrue(
+    window.reached,
+    `the seconds of game time the build's own clock gained with nothing stepping ` +
+      `it, within ${WINDOW_DEADLINE_MS / 1000}s of real time — it gained ` +
+      `${window.clockGain.toFixed(3)} of the ${WINDOW_SECONDS} asked for`,
   );
   assertGreaterThan(
     window.travel(mote),
     MIN_TRAVEL,
-    `the logical units the Mote walked over ${WINDOW_MS} ms of real time`,
+    `the logical units the Mote walked across the ${WINDOW_SECONDS} seconds the ` +
+      `build's own clock gained`,
   );
 });

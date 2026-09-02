@@ -1,44 +1,51 @@
-// waves/speed-doubles-the-game-time — at speed 2 the game runs twice the game time
-// per unit of elapsed time.
+// waves/speed-doubles-the-game-time — the toggle doubles the game time a frame
+// carries.
 //
 // `specs/waves.md`, Pause and speed: "The game-speed toggle sets `speed` to `1` or
 // `2`, and the game time a frame advances by is that frame's elapsed time
 // multiplied by `speed`, so at `2` the game advances twice the game time per unit
 // of elapsed time and `simTime` gains twice as fast."
+// `specs/instrumentation.md` says the same of the field this reads: "`simTime`
+// accumulates the game time the simulation advanced by, so it holds still while
+// the game is paused and gains at twice the rate at `speed` `2`."
 //
-// THE MULTIPLIER IS BETWEEN ELAPSED TIME AND GAME TIME, so it can only be read
-// against ELAPSED time — which is to say on the build's own clock. A check that
-// asked the debug surface to `advance` a second of game time at each setting would
-// be asking the instrumentation what a second means and would learn nothing about
-// the toggle: `specs/instrumentation.md` defines `advance(seconds, frames)` in
-// terms of the game time it covers, not the wall clock it costs. So the clock is
-// handed back to the build with `withOwnClock`, two real windows of the same
-// length are spent, and nothing inside the scope calls `advance` or anything built
-// on it.
+// THE TWO LEGS ARE THE SAME FRAMES OF THE SAME CLOCK, ONE AT EACH SETTING, and
+// that is what makes this reading exact. `advance(seconds, frames)` runs "whole
+// frames ... Each is a real frame, THE SAME UPDATE THE LOOP RUNS"
+// (`specs/instrumentation.md`), so a frame delivered through it carries the
+// frame's elapsed time into the same multiplication a frame the loop scheduled
+// carries it into. Deliver the identical number of identical frames at each
+// setting and the only thing that can differ between the two legs is the
+// multiplier the specification fixes.
 //
-// TWO READINGS OF THE ONE CLAIM. `simTime`, which the specification names
-// directly, and a walker's travel, because a build could double the clock without
-// doubling what is integrated against it — a run that reports twice the time and
-// plays at the same pace. Both are read from the pair of snapshots that bound each
-// window, so each ratio spans its own window and nothing else.
+// WHY THIS ITEM IS NOT READ OFF A STRETCH OF WALL CLOCK, though an earlier
+// revision of it was. A real window measures the multiplier and the machine at
+// once: the game time a leg gains is the sum of the elapsed times of however many
+// frames the host let the page run, each of them clamped by whatever ceiling the
+// build puts on a long frame's delta (this case's own reference clamps at a tenth
+// of a second, and no spec forbids it). Two legs run seconds apart on a loaded
+// machine get different frame counts and different clamping, so the ratio between
+// them carries the runner's load into a point about the build — and a correct
+// build loses the point for it. Both engine-backed copies of this item next door
+// have always read it off frames of a fixed clock for the same reason; this makes
+// the three agree.
 //
-// THE SETTING IS POSED, NOT PRESSED. `setSpeed` "Sets the game-speed toggle, `1`
-// or `2`" and is a pose of that one field (`specs/instrumentation.md`), which
-// leaves this reading about what the SETTING does. Whether the `speed` action
-// toggles between the two figures is `controls.*`'s requirement, and a build that
-// binds the wrong key should not fail this item as well. Posing a field is not
-// stepping a clock, so it is no part of what the clock rule forbids inside the
-// scope.
+// BOTH READINGS OF THE ONE CLAIM. The clock gain says the multiplier reached
+// `simTime`; the travel says it reached the simulation the field is supposed to be
+// accumulating, so a build that counts a doubled clock while the floor walks at
+// one speed is caught. Each leg's distance and its clock come from the same pair
+// of snapshots, so they describe the same frames.
 //
-// THE LEGS RUN IN THE ORDER 1 THEN 2, and each is read from its own pair of
-// snapshots taken inside the scope, so the press-free handover between them costs
-// neither leg any time.
+// THE SETTING IS POSED, NOT PRESSED. This reading is about what the setting does,
+// not about which key `specs/controls.md` binds the toggle to; `controls.*` grades
+// the binding.
 //
-// WHAT EVERY WRONG MODEL READS. A build whose toggle does nothing reads a ratio of
-// `1`; one that doubles the frame RATE rather than the game time per frame reads
-// `1` as well, since twice as many frames of half the elapsed time cover the same
-// ground; one that squares the setting or applies it twice reads `4`; one that
-// halves instead reads `0.5`. Each is far outside the band below.
+// EACH LEG IS ITS OWN RUN, posed from scratch, so the second leg starts from the
+// same floor as the first and the Mote of each has the whole corridor ahead of it.
+//
+// WHAT EVERY WRONG MODEL READS. A toggle that does nothing reads `1`; one applied
+// twice over reads `4`; an inverted one reads `0.5`. Each is a whole unit from the
+// `2` the specification fixes, and many times the tolerance below.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
@@ -46,58 +53,42 @@ import {
   captureStill,
   createHarness,
   distance,
+  framesFor,
   requireUnit,
   startRun,
   type Harness,
+  type MeltdownSnapshot,
 } from "../harness";
 import { poseRunningFloor } from "./run";
 
 /**
- * The real time each leg is measured over: a second and a half.
+ * The frames each leg spends: a second and a half of the suite's `120` Hz clock.
  *
- * Geometry rather than a tolerance. It is long enough that the handful of
- * milliseconds a snapshot's round trip costs is a rounding error against it, and
- * short enough that both legs and their readings cost a few seconds of wall clock.
+ * The length is geometry, not a tolerance. Both legs together carry the Mote about
+ * fourteen tiles down a forty-nine-tile corridor (`specs/floor.md`), so neither
+ * reading is cut short by a walker reaching its exhaust. It is the same window the
+ * two engine-backed copies of this item spend.
  */
-const SPEED_WINDOW_MS = 1500;
+const LEG_FRAMES = framesFor(1.5);
 
 /** The two settings the toggle offers (`specs/waves.md`). */
 const SLOW = 1;
 const FAST = 2;
 
-/** What the second leg must carry per unit of elapsed time, against the first. */
+/** What doubling the speed must multiply a leg's game time by (`specs/waves.md`). */
 const EXPECTED_RATIO = FAST / SLOW;
 
 /**
- * How far each ratio may miss `2` by: `0.4`.
+ * How far either ratio may fall from `2`: a twentieth.
  *
- * The windows are real time, so what a leg actually covers is the window plus
- * whatever the machine's scheduler took: a frame late at either end of a
- * second-and-a-half window is one per cent, and a suite running four pages at once
- * can lose several. Twenty per cent is generous against that and still names one
- * answer — the band runs from `1.6` to `2.4`, which excludes the `1` a dead toggle
- * reads, the `4` a doubly-applied one reads, and the `0.5` an inverted one reads,
- * by margins many times its own width.
- *
- * It is the one bound in this group WIDER than the other two engines' copies of this
- * point, and the reason is the measurement rather than the requirement: under an
- * engine the two legs are the same number of frames of the same fixed clock, so the
- * ratio is exact and `0.05` is all the room a build needs, while here the legs are
- * real windows a loaded machine can stretch. The rule being decided is the same one,
- * and every wrong reading of it is excluded under all three.
+ * The two legs are the same number of frames of the same fixed clock, so a
+ * conformant build's ratio is exactly `2` and needs none of this room. What the
+ * allowance covers is a build that resolves a posed field on the frame after the
+ * pose: one frame in `180` is `0.006` of a leg, and `0.05` is nine such frames.
+ * Every other reading of the rule — `1`, `4`, `0.5` — is a whole unit away. It is
+ * the figure both engine-backed copies of this item hold.
  */
-const RATIO_TOLERANCE = 0.4;
-
-/**
- * How much `simTime` the first leg must gain for the ratio to mean anything: half
- * a second.
- *
- * Not a tolerance but a guard against dividing by nothing: a build that does not
- * advance at all would otherwise read a ratio of zero over zero. The figure is the
- * one `waves/game-runs-on-its-own-clock` holds a window to, and that item is where
- * a floor that does not advance is graded.
- */
-const MIN_CLOCK_GAIN = 0.5;
+const RATIO_TOLERANCE = 0.05;
 
 let h: Harness;
 
@@ -109,63 +100,67 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("gains twice the game time and twice the travel over the same real window", async () => {
+/** Pose a fresh run at `speed`, spend one leg on it, and report what it did. */
+async function legAt(speed: number): Promise<{
+  opened: MeltdownSnapshot;
+  closed: MeltdownSnapshot;
+  mote: number;
+}> {
   await startRun(h);
   const mote = await poseRunningFloor(h);
-  await h.debug.setSpeed(SLOW);
+  await h.debug.setSpeed(speed);
+  const opened = await h.snapshot();
+  await h.advance(LEG_FRAMES);
+  return { opened, closed: await h.snapshot(), mote };
+}
 
-  const legs = await h.withOwnClock(async (clock) => {
-    const slowOpened = await clock.read();
-    await clock.settle(SPEED_WINDOW_MS);
-    const slowSettled = await clock.read();
-    // A pose of one field, not a step of the clock: the scope stays on the
-    // build's own frame loop throughout.
-    await h.debug.setSpeed(FAST);
-    const fastOpened = await clock.read();
-    await clock.settle(SPEED_WINDOW_MS);
-    return {
-      slowOpened,
-      slowSettled,
-      fastOpened,
-      fastSettled: await clock.read(),
-    };
-  });
+it("gains twice the game time and walks twice as far over the same window", async () => {
+  const slow = await legAt(SLOW);
+  const fast = await legAt(FAST);
 
   await captureStill(h, "doubled");
 
-  const at = (snapshot: typeof legs.slowOpened) =>
-    requireUnit(snapshot, mote, "the two windows on the build's own clock");
+  const travelled = (leg: typeof slow): number =>
+    distance(
+      requireUnit(leg.opened, leg.mote, "the leg's opening frame"),
+      requireUnit(leg.closed, leg.mote, "the leg's closing frame"),
+    );
 
-  const slowClock = legs.slowSettled.simTime - legs.slowOpened.simTime;
-  const fastClock = legs.fastSettled.simTime - legs.fastOpened.simTime;
-  const slowTravel = distance(at(legs.slowOpened), at(legs.slowSettled));
-  const fastTravel = distance(at(legs.fastOpened), at(legs.fastSettled));
+  const slowClock = slow.closed.simTime - slow.opened.simTime;
+  const fastClock = fast.closed.simTime - fast.opened.simTime;
 
   assertEqual(
-    legs.slowSettled.speed,
+    slow.closed.speed,
     SLOW,
-    `precondition: the first window ran at speed ${SLOW}`,
+    `precondition: the first leg ran at speed ${SLOW}`,
   );
   assertEqual(
-    legs.fastOpened.speed,
+    fast.closed.speed,
     FAST,
-    `precondition: the second window ran at speed ${FAST}`,
+    `precondition: the second leg ran at speed ${FAST}`,
   );
   assertGreaterThan(
     slowClock,
-    MIN_CLOCK_GAIN,
-    `precondition: the game advanced at all across the speed ${SLOW} window`,
+    0,
+    `precondition: the leg at speed ${SLOW} advanced the game at all`,
   );
+  assertGreaterThan(
+    travelled(slow),
+    0,
+    `precondition: the Mote walked at speed ${SLOW}`,
+  );
+
   assertBetween(
     fastClock / slowClock,
     EXPECTED_RATIO - RATIO_TOLERANCE,
     EXPECTED_RATIO + RATIO_TOLERANCE,
-    `the simTime speed ${FAST} gained over one real window against speed ${SLOW}'s`,
+    `the simTime one leg gained at speed ${FAST} over the same leg at speed ${SLOW}`,
   );
   assertBetween(
-    fastTravel / slowTravel,
+    travelled(fast) / travelled(slow),
     EXPECTED_RATIO - RATIO_TOLERANCE,
     EXPECTED_RATIO + RATIO_TOLERANCE,
-    `the units a Mote covered at speed ${FAST} over one real window against speed ${SLOW}'s`,
+    `the units the Mote walked in one leg at speed ${FAST} over the same leg at ` +
+      `speed ${SLOW}`,
   );
 });

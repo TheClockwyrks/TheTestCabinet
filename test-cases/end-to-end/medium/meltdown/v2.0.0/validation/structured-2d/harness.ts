@@ -202,6 +202,32 @@ export function ticksFor(duration: number): number {
   return Math.round(duration * TICK_HZ);
 }
 
+/**
+ * How often {@link Harness.gain} asks whether the build's clock has got there
+ * yet: ten times a second.
+ *
+ * Coarse enough that the poll is not competing for the same starved event loop as
+ * the frame callback it is watching, and fine enough that a leg closes within a
+ * frame or two of the game time it asked for.
+ */
+const GAIN_POLL_MS = 100;
+
+/** What a leg spent on the build's own clock cost, and whether it closed. */
+export interface GainResult {
+  /** Whether the build's clock gained the seconds asked for before the deadline. */
+  reached: boolean;
+  /**
+   * The real time the leg took.
+   *
+   * NOT a reading about the build — it is how busy the machine was — so no check
+   * asserts on it. What it is for is giving a leg that must be spent in real time
+   * (a PAUSED window, which cannot be closed on a gain that must never happen)
+   * the same stretch of real time the running leg beside it needed, so the two
+   * offer a build the same opportunity to be caught however loaded the host is.
+   */
+  elapsedMs: number;
+}
+
 /* -------------------------------------------------------------------------- */
 /* The floor, in the space the surface speaks                                 */
 /* -------------------------------------------------------------------------- */
@@ -455,6 +481,32 @@ export interface Harness {
    * step normally on either side of one.
    */
   settle(ms: number): Promise<void>;
+  /**
+   * Hand the frame loop AND a real-time clock back to the build until ITS OWN
+   * clock has gained `seconds`, and report whether it got there before
+   * `deadlineMs` of wall clock ran out.
+   *
+   * THE READING THAT MAKES A REAL WINDOW REPEATABLE, and the form every leg a
+   * check actually asserts on should take. {@link settle} spends a fixed stretch
+   * of the HOST'S clock, so what a leg covers is however many frames this machine
+   * handed the loop, each of them worth at most the `WallClock`'s clamp; on a
+   * runner with a hundred other things on it that is a fraction of the game time
+   * the window really took, and a leg read that way fails a conformant build for
+   * the load on the machine that scored it. Closing the leg on `simTime` — which
+   * `specs/waves.md` says accumulates the game time every frame advances by —
+   * covers the same stretch of the game however long the host takes to deliver
+   * it, so everything read off the leg follows from the game rather than from the
+   * runner.
+   *
+   * Nothing steps the game: the loop is the build's own and the clock is real.
+   * What still fails is the only thing such a leg ever asked — a build whose
+   * simulation does not advance unless something steps it never gains the seconds
+   * and comes back with `reached` false when the deadline runs out.
+   *
+   * The suite's own clock is restored when the leg closes, exactly as
+   * {@link settle} restores it.
+   */
+  gain(seconds: number, deadlineMs: number): Promise<GainResult>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
@@ -746,6 +798,39 @@ export async function createHarness(
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
       }
       return { hit: false, frames, snapshot };
+    },
+
+    async gain(seconds, deadlineMs) {
+      // The same handover `settle` makes, held open on the BUILD'S clock instead
+      // of on the host's.
+      engine.setClock(new WallClock());
+      const from = debug.snapshot().simTime;
+      const controller = new AbortController();
+      const running = engine.run({ signal: controller.signal });
+      const startedMs = Date.now();
+      let reached = false;
+      try {
+        await new Promise<void>((resolve) => {
+          const check = (): void => {
+            if (debug.snapshot().simTime - from >= seconds) {
+              reached = true;
+              resolve();
+              return;
+            }
+            if (Date.now() - startedMs >= deadlineMs) {
+              resolve();
+              return;
+            }
+            setTimeout(check, GAIN_POLL_MS);
+          };
+          setTimeout(check, GAIN_POLL_MS);
+        });
+      } finally {
+        controller.abort();
+        await running;
+        engine.setClock(suiteClock);
+      }
+      return { reached, elapsedMs: Date.now() - startedMs };
     },
 
     async settle(ms) {
@@ -1732,6 +1817,49 @@ export async function windowOfRealTime(
   const opened = h.snapshot();
   await h.settle(ms);
   return { opened, closed: h.snapshot(), ms, frames: 0 };
+}
+
+/** One window on the build's own clock, closed on a gain rather than a stopwatch. */
+export interface GainWindow extends ClockWindow {
+  /** Whether the build's clock gained the seconds asked for before the deadline. */
+  reached: boolean;
+}
+
+/**
+ * Run `act`, snapshot, hand the loop and a real clock back to the build until ITS
+ * OWN clock has gained `seconds`, snapshot again.
+ *
+ * THE FORM EVERY RUNNING LEG A CHECK ASSERTS ON SHOULD TAKE, and the difference
+ * from {@link windowOfRealTime} is only which clock decides when the window
+ * closes. Nothing steps the game either way — that is the rule, and it is what
+ * makes a pause item mean anything — but a window closed by a STOPWATCH covers
+ * however much game time this machine's scheduler allowed the loop to produce,
+ * which on a loaded runner is a fraction of what the same build produces idle. A
+ * bound read off such a window fails a conformant build for the load on the
+ * runner. A window closed on `simTime` covers the stretch of the game it names on
+ * any machine, and takes longer on a slow one instead of covering less.
+ *
+ * `ms` reports the real time it took, which is a fact about the HOST and which
+ * nothing asserts on; it is there so a PAUSED window beside it — the one window
+ * that cannot be closed on a gain, since the whole claim is that the clock does
+ * not move — can be given the same stretch of real time.
+ */
+export async function windowOfClockGain(
+  h: Harness,
+  seconds: number,
+  deadlineMs: number,
+  act?: () => void | Promise<void>,
+): Promise<GainWindow> {
+  if (act !== undefined) await act();
+  const opened = h.snapshot();
+  const gained = await h.gain(seconds, deadlineMs);
+  return {
+    opened,
+    closed: h.snapshot(),
+    ms: gained.elapsedMs,
+    frames: 0,
+    reached: gained.reached,
+  };
 }
 
 /**

@@ -70,7 +70,12 @@
 // model fails the running leg.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThan,
+  assertTrue,
+} from "../assert";
 import { BINDINGS, isEmitter, TOWER_DEFS, TRIP_HEAT } from "../constants";
 import {
   captureReplay,
@@ -84,19 +89,54 @@ import {
 import { GUN, MARK, poseWavePhase } from "./run";
 
 /**
- * The real time each leg is measured over: a second and a half.
+ * The game time the RUNNING leg covers, on the build's own clock: a second and a
+ * half.
  *
  * Geometry rather than a tolerance. At the Stutter's specified `7.0` shots a
- * second the window holds ten of them, so the heat it produces is several times
- * the bound below however the shots fall inside it.
+ * second the leg holds ten of them, so the heat it produces is several times the
+ * bound below however the shots fall inside it.
+ *
+ * IT IS A LENGTH ON THE BUILD'S CLOCK RATHER THAN ON THE HOST'S. Nothing steps the
+ * game across it — the item rests on that — but a leg that spends a fixed stretch
+ * of WALL clock and then asks how much heat was made is asking how many frames a
+ * busy machine handed the page. A page starved by everything else on a loaded
+ * runner fires a fraction of the shots, and a build that clamps a long frame's
+ * delta covers a fraction of the game time the window really took, so a correct
+ * build loses the point for the load on the machine that scored it. Closed on
+ * `simTime`, the leg covers the same stretch of the game however long the host
+ * takes to deliver it, and `PAUSE_MIN_HEAT_GAIN` below follows from the
+ * specification's fire rate rather than from the runner.
  */
-const PAUSE_WINDOW_MS = 1500;
+const RUNNING_LEG_SECONDS = 1.5;
+
+/**
+ * The real time the running leg is given to gain {@link RUNNING_LEG_SECONDS}: a
+ * minute. A ceiling on the HOST, not a bound on the build; failing to close the
+ * leg at all is `waves/game-runs-on-its-own-clock`'s verdict rather than this
+ * item's, so it is reported here as a precondition.
+ */
+const RUNNING_LEG_DEADLINE_MS = 60_000;
+
+/**
+ * The real time the PAUSED leg is spent over: as long as the running leg took, and
+ * never less than a second and a half nor more than ten.
+ *
+ * A paused leg cannot be closed on the build's own clock, because the whole claim
+ * is that the clock does not move; so it is spent in real time, and giving it the
+ * real time the running leg beside it needed keeps the two comparable on a machine
+ * of any speed — a heat pass that kept running gets exactly as many frames to be
+ * caught in as the running leg got to prove itself with. Neither bound can fail a
+ * correct build: a longer paused window only gives a broken pause more room to
+ * show itself.
+ */
+const PAUSE_WINDOW_FLOOR_MS = 1500;
+const PAUSE_WINDOW_CAP_MS = 10_000;
 
 /**
  * How much heat must be gained across the running leg: `30`.
  *
  * `specs/towers.md` fires the Stutter at `7.0` shots a second for `4.2` heat a
- * shot into a mass of `0.5`, which is `8.4` a shot, so this window is ten shots
+ * shot into a mass of `0.5`, which is `8.4` a shot, so this leg is ten shots
  * and `84` points of gain against an air loss proportional to the heat reached — a
  * conformant build ends the leg somewhere in the sixties. The floor is under half
  * of that, so a build whose fire clock or thermal mass differs is not troubled by
@@ -126,6 +166,14 @@ const MARK_TYPE = "mote";
 const GUN_DEF = TOWER_DEFS[GUN_TYPE];
 const HEAT_PER_SHOT = isEmitter(GUN_DEF) ? GUN_DEF.heatPerShot : 0;
 
+/** The paused leg's real length, from the real time the running leg took. */
+function pausedWindowMs(runningElapsedMs: number): number {
+  return Math.min(
+    Math.max(runningElapsedMs, PAUSE_WINDOW_FLOOR_MS),
+    PAUSE_WINDOW_CAP_MS,
+  );
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -145,13 +193,16 @@ it("holds a firing tower's heat across a paused window it climbed across unpause
   const legs = await captureReplay(h, "frozen", () =>
     h.withOwnClock(async (clock) => {
       const opened = await clock.read();
-      await clock.settle(PAUSE_WINDOW_MS);
+      const ran = await clock.gain(
+        RUNNING_LEG_SECONDS,
+        RUNNING_LEG_DEADLINE_MS,
+      );
       await clock.press(BINDINGS.pause);
       // The ONE snapshot on the press: both readings of the paused leg come from
       // it, so the pair spans the paused window and nothing else.
       const pressed = await clock.read();
-      await clock.settle(PAUSE_WINDOW_MS);
-      return { opened, pressed, settled: await clock.read() };
+      await clock.settle(pausedWindowMs(ran.elapsedMs));
+      return { opened, ran, pressed, settled: await clock.read() };
     }),
   );
 
@@ -164,10 +215,17 @@ it("holds a firing tower's heat across a paused window it climbed across unpause
     0,
     `precondition: the ${GUN_TYPE} opened at the heat a placed tower starts at`,
   );
+  assertTrue(
+    legs.ran.reached,
+    `precondition: the build's own clock gained ${RUNNING_LEG_SECONDS} seconds ` +
+      `with nothing stepping it, within ${RUNNING_LEG_DEADLINE_MS / 1000}s of ` +
+      `real time — it gained ${(legs.pressed.simTime - legs.opened.simTime).toFixed(3)}`,
+  );
   assertGreaterThan(
     heatOf(legs.pressed) - heatOf(legs.opened),
     PAUSE_MIN_HEAT_GAIN,
-    `the heat a firing ${GUN_TYPE} gained across the running window, against the ${HEAT_PER_SHOT} a shot adds`,
+    `the heat a firing ${GUN_TYPE} gained across the ${RUNNING_LEG_SECONDS} ` +
+      `seconds the build's own clock gained, against the ${HEAT_PER_SHOT} a shot adds`,
   );
   assertEqual(
     legs.pressed.screen,

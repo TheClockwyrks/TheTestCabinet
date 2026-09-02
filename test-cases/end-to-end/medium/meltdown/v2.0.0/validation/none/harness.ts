@@ -654,6 +654,22 @@ export interface SkipResult {
   snapshot: MeltdownSnapshot;
 }
 
+/** What a leg spent on the build's own clock cost, and whether it closed. */
+export interface GainResult {
+  /** Whether the build's clock gained the seconds asked for before the deadline. */
+  reached: boolean;
+  /**
+   * The real time the leg took.
+   *
+   * NOT a reading about the build — it is how busy the machine was — so no check
+   * asserts on it. What it is for is giving a leg that must be spent in real time
+   * (a PAUSED window, which cannot be closed on a gain that must never happen) the
+   * same stretch of real time the running leg beside it needed, so the two legs
+   * offer a build the same opportunity to be caught however loaded the host is.
+   */
+  elapsedMs: number;
+}
+
 /**
  * The build running itself, handed to a scenario by {@link Harness.withOwnClock}.
  *
@@ -665,6 +681,36 @@ export interface SkipResult {
 export interface OwnClock {
   /** Let the build run itself for `ms` of real time. */
   settle(ms: number): Promise<void>;
+  /**
+   * Let the build run itself until ITS OWN clock has gained `seconds`, and
+   * report whether it got there before `deadlineMs` of real time ran out.
+   *
+   * THE READING THAT MAKES A REAL WINDOW REPEATABLE. A leg that spends a fixed
+   * stretch of wall clock and then asks how far the game got is asking two
+   * questions at once — did the build advance itself, and did this machine give
+   * its loop enough of a core to do it in — and the second one is not about the
+   * build. A host running a hundred other things hands a page's frame callback a
+   * fraction of the frames it asks for, and a leg read that way fails a
+   * conformant build for the load on the runner that scored it.
+   *
+   * So the length of the leg is fixed on the BUILD'S clock and the wall clock is
+   * demoted to a deadline. `simTime` is what `specs/waves.md` says accumulates
+   * the game time every frame advances by, so a leg closed on it covers the same
+   * stretch of the game however many frames the host allowed and however long it
+   * took — and everything read off the leg (how far a Mote walked, how much heat
+   * a tower gained) follows from the game time rather than from the machine.
+   *
+   * WHAT STILL FAILS, and it is the whole of what this leg was ever asking: a
+   * build whose simulation does not advance unless something steps it never
+   * gains the seconds and comes back `false` when the deadline runs out. The
+   * deadline is the only wall clock left, and it is set so wide that reaching it
+   * means the build is not running rather than that the host is busy.
+   *
+   * Nothing here steps the game: the poll is the build's own `snapshot`, which
+   * `specs/instrumentation.md` requires to change nothing, run inside the page
+   * while the build's loop drives itself.
+   */
+  gain(seconds: number, deadlineMs: number): Promise<GainResult>;
   /** Read the game's state. It moves nothing. */
   read(): Promise<MeltdownSnapshot>;
   /**
@@ -843,8 +889,31 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  * (`specs/instrumentation.md`), so a conformant build is here in milliseconds
  * and pays nothing for the ceiling. What the ceiling really bounds is the cost
  * of a build with no surface at all, which pays it once per harness.
+ *
+ * A MINUTE, BECAUSE THIS IS THE ONE PLACE A BUSY MACHINE COULD BE MISREAD AS A
+ * BROKEN BUILD. Everything else this file waits on is stepped, but the surface
+ * has to appear on its own: the page navigates, Chromium parses and runs the
+ * bundle, and the build initializes, all off frames the host may be handing to a
+ * hundred other processes. A ten-second ceiling turned that into
+ * `window.__meltdown was still absent 10s after the page loaded` — a sentence
+ * about the build, recorded against the build, produced by the runner's load.
+ * A conformant build still pays nothing for the longer ceiling, because the wait
+ * returns the instant the global is there; what it costs is a slower verdict on
+ * a build that really installed no surface, which is a build already failing
+ * every point in the project.
  */
-const SURFACE_TIMEOUT_MS = 10_000;
+const SURFACE_TIMEOUT_MS = 60_000;
+
+/**
+ * How often {@link OwnClock.gain} asks the page whether the build's clock has
+ * got there yet: ten times a second.
+ *
+ * Inside the page, so it costs no round trip. Ten a second is fine enough that a
+ * leg closes within a frame or two of the game time it asked for, and coarse
+ * enough that the poll is not competing with the frame callback it is watching
+ * on a machine that is short of both.
+ */
+const OWN_CLOCK_POLL_MS = 100;
 
 /**
  * How long a key is held down inside {@link Harness.withOwnClock}.
@@ -1253,6 +1322,30 @@ export async function createHarness(
    */
   const ownClock: OwnClock = {
     settle: (ms) => page.waitForTimeout(ms),
+    async gain(seconds, deadlineMs) {
+      if (surfaceFault !== null) refuse();
+      const from = (await debug.snapshot()).simTime;
+      const startedMs = Date.now();
+      try {
+        // Polled INSIDE the page, so waiting costs one crossing however long the
+        // wait runs — and so a host that is starving the page's frame callback is
+        // not also being asked to service a round trip ten times a second.
+        await page.waitForFunction(
+          ([handle, target]) =>
+            (
+              window as unknown as Record<
+                string,
+                { snapshot(): { simTime: number } }
+              >
+            )[handle].snapshot().simTime >= (target as number),
+          [HANDLE, from + seconds] as const,
+          { timeout: deadlineMs, polling: OWN_CLOCK_POLL_MS },
+        );
+        return { reached: true, elapsedMs: Date.now() - startedMs };
+      } catch {
+        return { reached: false, elapsedMs: Date.now() - startedMs };
+      }
+    },
     read: () => debug.snapshot(),
     async press(code) {
       await page.keyboard.down(code);

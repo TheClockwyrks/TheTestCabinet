@@ -44,13 +44,14 @@
 // reading below reports as the unit the build lost.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import { BINDINGS } from "../constants";
 import {
   captureStill,
+  clockGain,
   createHarness,
   startRun,
-  windowOfRealTime,
+  windowOfClockGain,
   type Harness,
 } from "../harness";
 import { poseMote, travelled } from "./run";
@@ -58,8 +59,38 @@ import { poseMote, travelled } from "./run";
 /** The key `specs/controls.md` binds the pause to, which also returns to play. */
 const PAUSE_KEY = BINDINGS.pause[0];
 
-/** The length of each window: a second and a half of real time. */
-const WINDOW_MS = 1500;
+/**
+ * The real time the game is HELD PAUSED for before the resume: a second and a
+ * half.
+ *
+ * Nothing is read off it — it only holds the game paused long enough for the
+ * second press to be a resume — so its length is a stretch of wall clock and can
+ * be. What a busy host does to it is give the loop fewer frames in it, which
+ * changes nothing this item asserts.
+ */
+const HOLD_MS = 1500;
+
+/**
+ * The length of the RESUMED window: a second and a half of the BUILD'S OWN clock.
+ *
+ * The one window this item reads. Nothing steps the game across it — the item is
+ * about the floor running again with nobody turning the handle — but a window
+ * closed by a STOPWATCH covers however much game time this machine's scheduler let
+ * the loop produce, so a travel floor read off it fails a conformant build for the
+ * load on the runner. Closed on `simTime` it covers the stretch of the game it
+ * names on any machine, and takes longer on a slow one instead of covering less.
+ */
+const WINDOW_SECONDS = 1.5;
+
+/**
+ * The real time the resumed window is given to gain {@link WINDOW_SECONDS}: a
+ * minute.
+ *
+ * A ceiling on the HOST, not a bound on the build — and here a window that never
+ * closes is this item's own verdict rather than a precondition, because a floor
+ * that does not advance after the resume is exactly what the item looks for.
+ */
+const WINDOW_DEADLINE_MS = 60_000;
 
 /**
  * The least the Mote must travel across the resumed window: `20` logical units.
@@ -67,9 +98,10 @@ const WINDOW_MS = 1500;
  * A floor distance, a little over one `TILE` (`19`), and the same figure
  * `waves.pause-freezes-the-floor` requires of its running leg so the two legs
  * are read against the same bar. A Mote at its specified `60` logical units per
- * second covers `90` in this window, so the floor is under a quarter of what the
- * specification asks for and leaves room for a host that gave the loop a
- * fraction of the frames it asked for.
+ * second covers `90` across the game time the window names, so the floor is under
+ * a quarter of what the specification asks for — and because the window's length
+ * is the build's own game time, the figure follows from the specification and from
+ * nothing about the machine.
  */
 const MIN_TRAVEL = 20;
 
@@ -89,11 +121,11 @@ it("walks the same Mote again over a window of the length the pause held", async
 
   await h.tap(PAUSE_KEY);
   const paused = h.snapshot().screen;
-  await h.settle(WINDOW_MS);
+  await h.settle(HOLD_MS);
 
   await h.tap(PAUSE_KEY);
   const resumed = h.snapshot().screen;
-  const window = await windowOfRealTime(h, WINDOW_MS);
+  const window = await windowOfClockGain(h, WINDOW_SECONDS, WINDOW_DEADLINE_MS);
 
   captureStill(h, "resumed");
 
@@ -103,9 +135,17 @@ it("walks the same Mote again over a window of the length the pause held", async
     "precondition: the first press paused the game",
   );
   assertEqual(resumed, "playing", "the screen the second press returned to");
+  assertTrue(
+    window.reached,
+    `the seconds the build's own clock gained after the resume, with nothing ` +
+      `stepping it, within ${WINDOW_DEADLINE_MS / 1000}s of real time ` +
+      `(specs/waves.md: resuming continues from exactly where the pause left it) ` +
+      `— it gained ${clockGain(window).toFixed(3)} of the ${WINDOW_SECONDS} asked for`,
+  );
   assertGreaterThan(
     travelled(window, mote, "resumed window"),
     MIN_TRAVEL,
-    `the logical units the Mote walked across ${WINDOW_MS} ms of the resumed window`,
+    `the logical units the Mote walked across the ${WINDOW_SECONDS} seconds the ` +
+      `build's own clock gained after the resume`,
   );
 });
