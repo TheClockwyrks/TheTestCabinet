@@ -1275,6 +1275,51 @@ describe("models and subtrees", () => {
     expect(material.opacity).toBe(1);
   });
 
+  it("leaves a game-owned material's own opacity alone at a factor of one", () => {
+    // The component's `opacity` multiplies the material's, so a factor of `1`
+    // is the identity. An `Object3DComponent`'s subtree is the game's to mutate
+    // directly and nothing announces a write to it, so the pipeline reads the
+    // material's own alpha afresh rather than restoring the one it first saw.
+    const material = new THREE.MeshStandardMaterial();
+    const inner = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material);
+    const { pipeline, world, spawn } = rig();
+    spawn(new Object3DComponent({ object: inner }));
+
+    pipeline.syncScene(world, 0);
+    expect(material.opacity).toBe(1);
+
+    material.opacity = 0.4;
+    pipeline.syncScene(world, 0);
+    expect(material.opacity).toBeCloseTo(0.4, 6);
+    // Below full opacity, so it draws in the transparent pass.
+    expect(material.transparent).toBe(true);
+  });
+
+  it("multiplies a factor into the alpha the game most recently wrote", () => {
+    const material = new THREE.MeshStandardMaterial({
+      opacity: 0.8,
+      transparent: true,
+    });
+    const inner = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material);
+    const { pipeline, world, spawn } = rig();
+    const component = new Object3DComponent({ object: inner });
+    spawn(component);
+
+    component.opacity = 0.5;
+    pipeline.syncScene(world, 0);
+    expect(material.opacity).toBeCloseTo(0.4, 6);
+
+    // A fade the game wrote while the component's own factor stands still.
+    material.opacity = 0.2;
+    pipeline.syncScene(world, 0);
+    expect(material.opacity).toBeCloseTo(0.1, 6);
+
+    // And the factor lifting reads back the alpha the game last declared.
+    component.opacity = 1;
+    pipeline.syncScene(world, 0);
+    expect(material.opacity).toBeCloseTo(0.2, 6);
+  });
+
   it("turns a billboard to the camera while keeping its position and scale", () => {
     const { pipeline, world, camera, spawn } = rig();
     const card = new MeshComponent({

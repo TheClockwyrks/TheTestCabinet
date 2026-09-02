@@ -510,18 +510,31 @@ function materialsOf(object: THREE.Object3D): THREE.Material[] {
 }
 
 /**
- * The opacity and transparency a material was declared with, remembered the
- * first time the pipeline writes over them.
+ * What a material's own alpha is, beside the product the pipeline last wrote
+ * over it.
  *
  * A component's `opacity` multiplies its material's, and the material may be
  * one the *game* built — inside an `Object3DComponent`'s subtree, or on a
  * loaded model's mesh. Multiplying in place every frame would compound; writing
- * the product of the remembered base and this frame's factor does not, and
+ * the product of a remembered base and this frame's factor does not, and
  * restores the declaration exactly when the factor returns to `1`.
+ *
+ * The base cannot be latched at the first write, though, because the subtree an
+ * `Object3DComponent` owns is documented to be mutated directly and a fade
+ * written straight onto its material has nothing to announce it. So the product
+ * is remembered alongside the base: a material whose alpha still reads as that
+ * product is one only the pipeline has touched, and a material that reads as
+ * anything else has been written by the game, whose value becomes the new base.
+ * A factor of `1` is then the identity it is documented to be.
  */
 const declaredAlpha = new WeakMap<
   THREE.Material,
-  { opacity: number; transparent: boolean }
+  {
+    opacity: number;
+    transparent: boolean;
+    wroteOpacity: number;
+    wroteTransparent: boolean;
+  }
 >();
 
 /** Opacity as the pipeline applies it: clamped to `0..1` at the draw. */
@@ -543,12 +556,28 @@ function applyOpacity(root: THREE.Object3D, factor: number): void {
     for (const material of materialsOf(object)) {
       let base = declaredAlpha.get(material);
       if (base === undefined) {
-        base = { opacity: material.opacity, transparent: material.transparent };
+        base = {
+          opacity: material.opacity,
+          transparent: material.transparent,
+          wroteOpacity: material.opacity,
+          wroteTransparent: material.transparent,
+        };
         declaredAlpha.set(material, base);
       }
+      // Anything but the product last written here came from the game, and the
+      // game's value is the material's own alpha from now on.
+      if (material.opacity !== base.wroteOpacity) {
+        base.opacity = material.opacity;
+      }
+      if (material.transparent !== base.wroteTransparent) {
+        base.transparent = material.transparent;
+      }
       const opacity = base.opacity * factor;
+      const transparent = base.transparent || opacity < 1;
       material.opacity = opacity;
-      material.transparent = base.transparent || opacity < 1;
+      material.transparent = transparent;
+      base.wroteOpacity = opacity;
+      base.wroteTransparent = transparent;
     }
   });
 }
