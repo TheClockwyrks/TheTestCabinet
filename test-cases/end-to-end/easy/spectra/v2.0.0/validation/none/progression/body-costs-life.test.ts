@@ -35,21 +35,26 @@ import { SHIP_Y, START_LIVES, opposite } from "../constants";
 import {
   captureStill,
   createHarness,
+  framesFor,
   poseDrone,
   startPosed,
   type Harness,
 } from "../harness";
 
 /**
- * Frames the contact is given to resolve.
+ * Frames the contact is given to resolve, in frames of the suite's clock.
  *
- * The overlap stands from the moment the drone is posed, so a build resolves it
- * on the first frame it runs; four frames leave room for one that resolves
- * contact after its motion step, and stop the sweep long before `READY_HOLD`
- * (`1.3 s`, `specs/progression.md`) could end and expose the ship to a second
- * charge from the body still standing there.
+ * A twentieth of a second. specs/simulation.md resolves contacts at the end of
+ * EVERY sub-step, and the overlap stands from the moment the drone is posed, so a
+ * conformant build resolves it on the first update that runs; the window is the
+ * room a build gets to resolve a contact it noticed on the frame before. It is
+ * far inside `READY_HOLD` (`1.3` s, specs/progression.md), so the beat the loss
+ * opens cannot end and put the returning ship back onto the body still standing
+ * there for a second charge. Stated in seconds rather than in frames, so the same
+ * requirement is read to the same amount of GAME TIME under all three engines,
+ * whose harness clocks differ.
  */
-const CONTACT_FRAMES = 4;
+const CONTACT_FRAMES = framesFor(0.05);
 
 let h: Harness;
 

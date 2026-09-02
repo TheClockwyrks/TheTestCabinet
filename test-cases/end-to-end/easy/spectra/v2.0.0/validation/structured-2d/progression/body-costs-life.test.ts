@@ -71,17 +71,19 @@ const DRONE_BAND = "magenta" as const;
 const TOUCHING = SHIP_HALF + SHARD_HALF;
 
 /**
- * Frames the contact is given to resolve, in frames of the harness's 100 Hz
- * clock.
+ * Frames the contact is given to resolve, in frames of the suite's clock.
  *
- * `0.25` s. The body is already on the ship when the frames start, so the rule
- * applies on the first update that runs; the window is the room a build gets to
- * resolve a contact it noticed on the frame before, and 25 frames is far more
- * than any build needs. It is well short of `READY_HOLD` (`1.3` s), so the hold
- * the loss opens cannot end and put the returning ship back onto the body that is
- * still standing there for a second charge.
+ * A twentieth of a second. specs/simulation.md resolves contacts at the end of
+ * EVERY sub-step, and the overlap stands from the moment the drone is posed, so a
+ * conformant build resolves it on the first update that runs; the window is the
+ * room a build gets to resolve a contact it noticed on the frame before. It is
+ * far inside `READY_HOLD` (`1.3` s, specs/progression.md), so the beat the loss
+ * opens cannot end and put the returning ship back onto the body still standing
+ * there for a second charge. Stated in seconds rather than in frames, so the same
+ * requirement is read to the same amount of GAME TIME under all three engines,
+ * whose harness clocks differ.
  */
-const CONTACT_TICKS = ticksFor(0.25);
+const CONTACT_TICKS = ticksFor(0.05);
 
 /** Lives before the contact, and the one specs/progression.md leaves after it. */
 const LIVES_BEFORE = START_LIVES;
