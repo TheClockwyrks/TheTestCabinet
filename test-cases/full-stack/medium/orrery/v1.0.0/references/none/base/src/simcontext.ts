@@ -2,14 +2,19 @@
 //
 // The simulation is written against this and nothing else: the state it
 // advances, the run inside it, the challenge it is running, the machine as the
-// editor placed it, and the one call it makes outward — a cue, played from the
-// frame that raised it (specs/ui.md "Audio"). Keeping it in its own module
-// leaves `src/sim.ts` and `src/cycle.ts` free of a cycle between them.
+// editor placed it, and the two calls it makes outward — a cue, played from the
+// frame that raised it (specs/ui.md "Audio"), and an effect, played at the
+// position of the event that raised it (specs/assets.md "The particle
+// effects"). Both are asked for rather than played: the frame decides what to
+// do with them, so a run driven from code sounds and shows nothing at the call.
+// Keeping it in its own module leaves `src/sim.ts` and `src/cycle.ts` free of a
+// cycle between them.
 
-import type { Cue } from "./constants";
+import type { Cue, ParticleSystemName } from "./constants";
+import type { StagePoint } from "./motion";
 import type { Challenge, OrreryState, PartState, SimState } from "./types";
 
-/** The run, the machine, and the one call the simulation makes outward. */
+/** The run, the machine, and the two calls the simulation makes outward. */
 export interface SimContext {
   /** The whole of the game's state; the run below is `state.sim`. */
   readonly state: OrreryState;
@@ -21,4 +26,6 @@ export interface SimContext {
   readonly parts: readonly PartState[];
   /** Ask for a cue on this frame. Played once, however often it is asked. */
   cue(cue: Cue): void;
+  /** Ask for one produced particle effect, at a position on the stage. */
+  effect(system: ParticleSystemName, at: StagePoint): void;
 }

@@ -9,12 +9,12 @@
 // transcribed challenge is a loud failure at start-up rather than a puzzle
 // that quietly cannot be solved.
 //
-// SEAM: `CAMPAIGN_CHALLENGES` and `REFERENCE_SOLUTIONS` are what the campaign
-// phase of this build fills in. The shape is fixed here — an ordered list of
-// challenge documents and one reference solution per challenge of each mode —
-// so the select screens, the progression, and the debug surface's
-// `referenceSolution` are written against it and need no further change.
+// SEAM: `SOLUTION_DOCUMENTS` is what the reference-solution phase of this
+// build fills in — one solution per challenge of each mode, in the solution
+// format — so the debug surface's `referenceSolution` is written against it
+// and needs no further change.
 
+import { CAMPAIGN_DOCUMENTS } from "./campaign";
 import { parseChallenge, parseSolution } from "./formats";
 import type { Challenge, Mode, Solution } from "./types";
 
@@ -148,9 +148,6 @@ const EXTRA_DOCUMENTS: unknown[] = [
     target: 6,
   },
 ];
-
-/** The build's own campaign course, in order. */
-const CAMPAIGN_DOCUMENTS: unknown[] = [];
 
 /** The ten Extras, parsed and checked. */
 export const EXTRA_CHALLENGES: readonly Challenge[] =

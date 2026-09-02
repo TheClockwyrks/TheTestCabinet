@@ -14,6 +14,7 @@
 import type {
   ArmKind,
   EssenceType,
+  FaultKind,
   Hex,
   Instruction,
   MoteType,
@@ -346,6 +347,17 @@ export const WHEEL_INSTRUCTIONS: readonly Instruction[] = [
 // ---------------------------------------------------------------------------
 // The clock (specs/simulation.md "Cycles and the clock")
 // ---------------------------------------------------------------------------
+
+/** Every way a run halts, in the order specs/simulation.md tabulates them. */
+export const FAULTS: readonly FaultKind[] = [
+  "collision",
+  "torn",
+  "overextended",
+  "overretracted",
+  "unmounted",
+  "track-end",
+  "impossible",
+];
 
 /** The speed steps, in cycles per second of game time. */
 export const SPEEDS: readonly number[] = [1, 3, 10, 30];

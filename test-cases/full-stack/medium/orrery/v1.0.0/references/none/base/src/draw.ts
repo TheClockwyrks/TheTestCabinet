@@ -90,3 +90,95 @@ export function hexPath(
   }
   ctx.closePath();
 }
+
+/**
+ * Draw one produced sprite centered on a point, at the native canvas size its
+ * row in specs/assets.md fixes, turned to `degrees`. Nothing is scaled: the
+ * width and height passed are the sprite's own, in logical units.
+ */
+export function sprite(
+  ctx: CanvasRenderingContext2D,
+  image: CanvasImageSource | null,
+  x: number,
+  y: number,
+  width: number,
+  height: number = width,
+  degrees = 0,
+): boolean {
+  if (image === null) return false;
+  ctx.save();
+  ctx.translate(x, y);
+  if (degrees !== 0) ctx.rotate((degrees * Math.PI) / 180);
+  ctx.drawImage(image, -width / 2, -height / 2, width, height);
+  ctx.restore();
+  return true;
+}
+
+/** Draw one straight line between two points. */
+export function line(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  color: string,
+  width = 1,
+): void {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Fill a rectangle, in logical units. */
+export function fillRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  color: string,
+): void {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, width, height);
+  ctx.restore();
+}
+
+/** Stroke a rectangle's outline, inset by half a unit so it stays crisp. */
+export function strokeRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  color: string,
+  lineWidth = 1,
+): void {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+  ctx.restore();
+}
+
+/** Fill a disc. */
+export function disc(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  color: string,
+): void {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}

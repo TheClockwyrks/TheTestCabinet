@@ -9,7 +9,9 @@
 import { cueUrls } from "./assets";
 import { AudioBus } from "./audio";
 import { Diagnostics, registerGameDiagnostics } from "./diagnostics";
+import { Effects } from "./effects";
 import { Game } from "./game";
+import { ImageStore } from "./images";
 import { Keyboard } from "./keyboard";
 import { claimGestures, Pointer } from "./pointer";
 import { Runtime } from "./runtime";
@@ -51,6 +53,9 @@ function main(): void {
   const diagnostics = new Diagnostics();
   registerGameDiagnostics(diagnostics, game);
 
+  const sprites = new ImageStore();
+  const effects = new Effects();
+
   // Browsers wait for a gesture before a page may make a sound.
   keyboard.onFirstPress(() => audio.unlock());
   canvas.addEventListener("pointerdown", () => audio.unlock());
@@ -64,14 +69,23 @@ function main(): void {
     pointer,
     diagnostics,
     audio,
+    sprites,
+    effects,
   });
+  // The surface is installed as soon as the game has initialized, before the
+  // assets are waited on, so a scenario driven from code never waits on a file
+  // (specs/instrumentation.md).
   installSurface(createSurface(game, runtime));
-  runtime.start();
 
-  // Decoding is independent of the first frame: the game is playable and
-  // silent until the clips are ready, and one that never arrives leaves it
-  // that way (specs/assets.md).
-  void audio.load(cueUrls());
+  // Every image is decoded and every sound is bound to its cue before the
+  // first frame draws. Each load is guarded on its own, so a file that is
+  // missing or will not decode simply leaves that sprite undrawn and that cue
+  // silent, and the loop starts either way (specs/assets.md).
+  void Promise.all([sprites.load(), audio.load(cueUrls())])
+    .catch(() => undefined)
+    .finally(() => {
+      runtime.start();
+    });
 }
 
 main();

@@ -18,7 +18,10 @@
 import { ACTIONS, CUES, SCREEN_ACTIONS } from "./constants";
 import type { AudioBus } from "./audio";
 import type { Diagnostics } from "./diagnostics";
+import type { Effects } from "./effects";
 import type { Game } from "./game";
+import type { Sprites } from "./images";
+import { NO_SPRITES } from "./images";
 import type { Keyboard } from "./keyboard";
 import { drawOverlay } from "./overlay";
 import type { Pointer } from "./pointer";
@@ -39,6 +42,10 @@ export interface RuntimeOptions {
   pointer: Pointer;
   diagnostics: Diagnostics;
   audio: AudioBus;
+  /** The produced sprites the frame draws with; none by default. */
+  sprites?: Sprites;
+  /** The particle effects the frame plays; none by default. */
+  effects?: Effects | null;
   /** The clock the loop measures against; the wall clock by default. */
   now?: () => number;
   /** How a frame is scheduled; `requestAnimationFrame` by default. */
@@ -57,6 +64,8 @@ export class Runtime {
   private readonly pointer: Pointer;
   private readonly diagnostics: Diagnostics;
   private readonly audio: AudioBus;
+  private readonly sprites: Sprites;
+  private readonly effects: Effects | null;
   private readonly now: () => number;
   private readonly schedule: (frame: (now: number) => void) => void;
   private last = 0;
@@ -71,6 +80,8 @@ export class Runtime {
     this.pointer = options.pointer;
     this.diagnostics = options.diagnostics;
     this.audio = options.audio;
+    this.sprites = options.sprites ?? NO_SPRITES;
+    this.effects = options.effects ?? null;
     this.now = options.now ?? ((): number => performance.now());
     this.schedule =
       options.schedule ??
@@ -99,6 +110,7 @@ export class Runtime {
     const step = seconds / frames;
     for (let frame = 0; frame < frames; frame += 1) {
       this.game.update(step);
+      this.playEffects(step);
       this.draw();
     }
   }
@@ -121,10 +133,25 @@ export class Runtime {
   frame(dt: number): void {
     this.readInput();
     if (this.autoStep) this.game.update(dt);
+    // The bed loops from the first frame, on every screen (specs/ui.md).
     this.audio.syncBed(CUES.music);
+    this.playEffects(dt);
     this.draw();
     this.keyboard.endFrame();
     this.pointer.endFrame();
+  }
+
+  /**
+   * Start whatever effects the frame's events raised and advance the ones
+   * already playing. The queue is drained whether or not anything is playing
+   * them, so a scenario that raises effects never accumulates them.
+   */
+  private playEffects(dt: number): void {
+    const raised = this.game.drainEffects();
+    const effects = this.effects;
+    if (effects === null) return;
+    for (const event of raised) effects.fire(event);
+    effects.update(dt);
   }
 
   /** Resolve this frame's pointer samples and action edges, in order. */
@@ -154,7 +181,10 @@ export class Runtime {
     this.ctx.fillRect(0, 0, fit.width, fit.height);
     if (!(fit.scale > 0)) return;
     this.ctx.setTransform(fit.scale, 0, 0, fit.scale, fit.offsetX, fit.offsetY);
-    render(this.ctx, this.game);
+    render(this.ctx, this.game, {
+      sprites: this.sprites,
+      effects: this.effects,
+    });
     if (this.overlay) drawOverlay(this.ctx, this.diagnostics);
   }
 }

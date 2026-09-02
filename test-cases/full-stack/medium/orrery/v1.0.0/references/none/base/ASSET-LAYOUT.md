@@ -33,11 +33,25 @@ chrome around it read as one place. The palette lives once, in
 ## How assets are keyed
 
 Every path below is written relative to the `assets/` root, which is how
-`src/constants.ts` holds it (`MOTE_SPRITE_PATHS`, `CUE_PATHS`, and the rest). The
-loader in `src/assets.ts` bundles each file through Vite and resolves every URL
+`src/constants.ts` holds it (`MOTE_SPRITE_PATHS`, `CUE_PATHS`, and the rest).
+`src/assets.ts` bundles each file through Vite's import glob and resolves every URL
 **page-relative**, never as a root-absolute `/assets/…`, so `dist/` runs unchanged from
-a host's root and from a sub-path alike. A failed load leaves the game running on its
-code-drawn fallback (`specs/assets.md` "Where the files land").
+a host's root and from a sub-path alike. Three lanes come out of that glob:
+
+- **Sprites and sheet frames** are decoded once by `src/images.ts` before the first
+  frame draws, and held by their path under `assets/`. Every one of them is under
+  Vite's inline threshold, so the build emits them into the bundle as `data:` URIs —
+  self-contained by construction, with no URL left to resolve.
+- **Particle systems** are imported as data rather than as URLs, so the three
+  `system.json` documents land inside the bundle and the running game never fetches
+  one. `src/effects.ts` plays them.
+- **Sounds** are emitted as files beside the bundle and fetched page-relative by
+  `src/audio.ts`, which decodes each into the cue bus.
+
+A failed load leaves the game running: a sprite that did not decode falls back to
+what `src/fielddraw.ts` draws in code, an absent system plays no effect, and a
+sound that did not decode leaves its cue silent (`specs/assets.md` "Where the
+files land").
 
 ## Sprites — `scripts/gen-sprites.mjs`
 

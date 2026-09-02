@@ -27,7 +27,7 @@
 
 import { CUES, REPEAT_MIN } from "./constants";
 import { constellations, filamentBetween } from "./constellation";
-import { addHex, rotateHex, scaleHex } from "./hex";
+import { addHex, hexCenter, rotateHex, scaleHex } from "./hex";
 import { addMote, dropMote, isFixture, joinMotes, vacant } from "./motes";
 import { apertureMolecule, moleculeHexes, placeHex } from "./parts";
 import type { SimContext } from "./simcontext";
@@ -187,6 +187,7 @@ export function runSets(ctx: SimContext, sets: readonly PartState[]): void {
     const index = part.index;
     if (molecule === null || index === null) continue;
     const anchor = { q: part.q, r: part.r };
+    let took = false;
     for (const group of constellations(sim)) {
       const copies = acceptedCopies(
         sim,
@@ -198,8 +199,12 @@ export function runSets(ctx: SimContext, sets: readonly PartState[]): void {
       if (copies === null) continue;
       for (const mote of group) dropMote(sim, mote);
       sim.tallies[index] = (sim.tallies[index] ?? 0) + copies;
-      consumed = true;
+      took = true;
     }
+    // The delivery effect plays on each set that took at least one accepted
+    // constellation at this boundary, on its anchor hex (specs/assets.md).
+    if (took) ctx.effect("deliver", hexCenter(anchor));
+    consumed = consumed || took;
   }
   if (consumed) ctx.cue(CUES.constellation);
 }

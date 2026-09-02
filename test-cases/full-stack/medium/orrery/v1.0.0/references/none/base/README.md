@@ -18,8 +18,11 @@ sweep real arcs across the field, and two motes coming too close at any of the
 cycle's sample points halt the machine on the spot.
 
 There are two ways to play, both reached from the title menu. **Extras** is a
-fixed shelf of ten challenges. **Campaign** is a course of hand-designed
-challenges worked through in order.
+fixed shelf of ten standalone challenges, all open from the start. **Campaign**
+is a course of thirteen hand-designed challenges worked through in order, each
+unlocked by the one before it: it teaches the machine one idea at a time, from a
+single arm carrying a single mote up to a turning zodiac wheel feeding four
+essences into one quintessence.
 
 This build runs on **no engine**: the frame loop, the canvas fit, the keyboard
 and pointer, the audio, the diagnostics overlay and the `window.__orrery`

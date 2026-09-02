@@ -12,7 +12,10 @@
 // Cues are asked for, not played. A transition that raises one queues it, and
 // the queue is flushed by the frame, once per cue however often it was asked
 // for (specs/ui.md "Audio"). That is what lets a pose sound nothing at the call
-// and still let the edit it committed sound on the next frame advanced.
+// and still let the edit it committed sound on the next frame advanced. The
+// produced particle effects of specs/assets.md are asked for the same way and
+// drained by the frame that draws them, so nothing the game decides depends on
+// whether anything is watching.
 
 import { challengeCount, challengesOf } from "./challenges";
 import {
@@ -25,9 +28,12 @@ import {
   type Action,
   type ActionContext,
   type Cue,
+  type ParticleSystemName,
 } from "./constants";
+import type { EffectEvent } from "./effects";
 import { applyEditorAction, applyPointerSample } from "./editor";
 import { cloneChallenge } from "./formats";
+import type { StagePoint } from "./motion";
 import type { PointerSample } from "./pointer";
 import {
   advanceRun,
@@ -59,6 +65,9 @@ export interface GameHost {
   play(cue: Cue): void;
 }
 
+/** How many effects the queue holds before the oldest is dropped. */
+const MAX_QUEUED_EFFECTS = 16;
+
 /** A host that does nothing, for a game stood up without a runtime. */
 export const SILENT_HOST: GameHost = {
   muted: () => false,
@@ -73,6 +82,8 @@ export class Game implements RunHost {
   private readonly host: GameHost;
   /** The cues this frame raised, played once each when the frame flushes. */
   private readonly queued = new Set<Cue>();
+  /** The effects raised since the last frame drained them. */
+  private readonly effects: EffectEvent[] = [];
 
   constructor(host: GameHost = SILENT_HOST) {
     this.host = host;
@@ -81,6 +92,23 @@ export class Game implements RunHost {
   /** Ask for a cue on this frame. Played once, however often it is asked. */
   cue(cue: Cue): void {
     this.queued.add(cue);
+  }
+
+  /**
+   * Ask for one produced particle effect at a stage position. The frame that
+   * draws takes them; nothing is played at the call, so a run driven from code
+   * raises them and simply leaves them to be drained.
+   */
+  effect(system: ParticleSystemName, at: StagePoint): void {
+    this.effects.push({ system, at: { x: at.x, y: at.y } });
+    // Nothing is obliged to drain them, so the queue is bounded rather than
+    // left to grow through a scenario that never draws.
+    if (this.effects.length > MAX_QUEUED_EFFECTS) this.effects.shift();
+  }
+
+  /** Take the effects raised since the last call, clearing the queue. */
+  drainEffects(): EffectEvent[] {
+    return this.effects.splice(0, this.effects.length);
   }
 
   /**
@@ -248,6 +276,7 @@ export class Game implements RunHost {
   reset(): void {
     resetState(this.state);
     this.queued.clear();
+    this.effects.length = 0;
   }
 
   // -------------------------------------------------------------------------

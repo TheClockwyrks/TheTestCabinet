@@ -20,10 +20,16 @@
 // stops at the sample the collision rule found rather than at wherever a frame
 // happened to land.
 
-import { CUES, DEFAULT_SPEED_INDEX, SPEEDS, type Cue } from "./constants";
+import {
+  CUES,
+  DEFAULT_SPEED_INDEX,
+  SPEEDS,
+  type Cue,
+  type ParticleSystemName,
+} from "./constants";
 import { runSigilsSetsAndRises } from "./boundary";
 import { planCycle } from "./cycle";
-import { sameHex } from "./hex";
+import { hexCenter, sameHex } from "./hex";
 import { cloneMachine, machinePeriod } from "./machine";
 import {
   armGripperHexes,
@@ -33,10 +39,13 @@ import {
   wheelFixture,
   wheelSpokeHexes,
 } from "./parts";
+import { moteStagePosition } from "./cycle";
+import type { StagePoint } from "./motion";
 import { emptySim, markSolved, recordsOf } from "./state";
 import type { SimContext } from "./simcontext";
 import type {
   CyclePlan,
+  Fault,
   Hex,
   Metrics,
   MoteState,
@@ -51,6 +60,8 @@ export interface RunHost {
   readonly state: OrreryState;
   /** Ask for a cue on this frame. Played once, however often it is asked. */
   cue(cue: Cue): void;
+  /** Ask for one produced particle effect, at a position on the stage. */
+  effect(system: ParticleSystemName, at: StagePoint): void;
 }
 
 /** The context a cycle and a boundary run through, or `null` with no run. */
@@ -63,6 +74,7 @@ export function simContext(host: RunHost): SimContext | null {
     challenge: state.challenge,
     parts: state.editor.parts,
     cue: (cue) => host.cue(cue),
+    effect: (system, at) => host.effect(system, at),
   };
 }
 
@@ -207,12 +219,17 @@ export function checkCompletion(context: SimContext): void {
   sim.status = "complete";
   sim.fraction = 0;
   sim.pending = null;
+  // The solved panel is arrived at here, and its menu opens on its first item
+  // whatever the last menu the player left behind (specs/ui.md).
+  state.menuIndex = 0;
   sim.metrics = {
     cost: machineCost(context.parts),
     cycles: sim.cycle + 1,
     area: sim.areaHexes.length,
   };
   context.cue(CUES.complete);
+  // The completion effect plays over the middle of the field (specs/assets.md).
+  context.effect("complete", hexCenter({ q: 0, r: 0 }));
   recordCompletion(state, sim.metrics);
 }
 
@@ -312,6 +329,34 @@ function raiseFault(context: SimContext, plan: CyclePlan): void {
   sim.status = "faulted";
   sim.fault = plan.fault.fault;
   context.cue(CUES.halt);
+  context.effect("fault", faultPosition(context, plan.fault.fault));
+}
+
+/**
+ * Where the fault effect plays: the position of the mote the fault names,
+ * lowest in `y` and then lowest in `x` among them, and the anchor hex of the
+ * part it names when it names no mote (specs/assets.md "The particle effects").
+ */
+function faultPosition(context: SimContext, fault: Fault): StagePoint {
+  const { sim } = context;
+  let lowest: StagePoint | null = null;
+  for (const id of fault.motes) {
+    const mote = sim.motes.find((entry) => entry.id === id);
+    if (mote === undefined) continue;
+    const at = moteStagePosition(mote, sim);
+    if (
+      lowest === null ||
+      at.y < lowest.y ||
+      (at.y === lowest.y && at.x < lowest.x)
+    ) {
+      lowest = at;
+    }
+  }
+  if (lowest !== null) return lowest;
+  const part = context.parts.find((entry) => fault.parts.includes(entry.id));
+  return hexCenter(
+    part === undefined ? { q: 0, r: 0 } : { q: part.q, r: part.r },
+  );
 }
 
 /** Land the cycle's motion, run the boundary, and begin the next cycle. */
