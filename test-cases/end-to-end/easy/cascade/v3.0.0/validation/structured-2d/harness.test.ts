@@ -39,7 +39,7 @@ import {
   TITLE_TEXT,
   TOP_ROW_Y,
   WASTE_X,
-} from "../src/constants";
+} from "./constants";
 import { drawingSurfacesAvailable } from "./canvas-shim";
 import {
   ACE,

@@ -101,7 +101,7 @@ import {
   TOP_ROW_Y,
   WASTE_X,
   type Rect,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build, type CascadeState } from "../src/game";
 import { fail } from "./assert";
 import {
@@ -196,9 +196,9 @@ export type CascadeDriver = Driver<CascadeState, CascadeSurface>;
 /**
  * The frame the suite steps in, in milliseconds.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately fixes
- * no timestep, because the engine hands the game whatever elapsed time a frame
- * really took. Fixing it here makes a duration a whole number of frames, so a
+ * This is the SUITE's choice, not the game's: the specification deliberately
+ * fixes no timestep, because the engine hands the game whatever elapsed time a
+ * frame really took. Fixing it here makes a duration a whole number of frames, so a
  * tolerance can be stated in frames and mean the same thing on every machine.
  *
  * 240 Hz divides every duration this case is timed against exactly: the launch
@@ -1466,9 +1466,9 @@ export function lastFlyer(snapshot: CascadeSnapshot): FlyerSnapshot {
 /* The geometry of the table                                                  */
 /* -------------------------------------------------------------------------- */
 //
-// Every figure here comes from `src/constants.ts`, which the case seeds and the
-// build does not edit, so what these compute is the geometry specs/table.md fixes
-// rather than the geometry a build chose.
+// Every figure here comes from this project's own `constants.ts`, which
+// transcribes specs/table.md, so what these compute is the geometry the
+// specification fixes rather than the geometry a build wrote down for itself.
 //
 // WHAT THEY ARE FOR IS AIMING, NOT GRADING. A check that has to press a card, or
 // release a run over a column, needs the point that card is drawn at; that is what
@@ -2404,8 +2404,9 @@ export interface TimedCue {
  * gestures and the controls, and a plain `advance` for the cascade's own launches
  * and its win.
  *
- * The cue NAMES are `CUES` in `src/constants.ts`; specs/audio.md says which event
- * each one belongs to.
+ * The cue NAMES are `CUES` in this project's own `constants.ts`, transcribed
+ * from the table in specs/audio.md, which also says which event each one
+ * belongs to.
  */
 export function watchCues(h: Harness): TimedCue[] {
   const played: TimedCue[] = [];

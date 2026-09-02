@@ -6,15 +6,15 @@
 // nothing asserts, and nothing here is a threshold: these are ARRANGEMENTS, and
 // every figure a check holds a build to is stated in that check.
 //
-// The deck itself is `specs/deal.md`'s: four suits, ranks `1` (Ace) through
-// `13` (King), red hearts and diamonds against black spades and clubs. The
-// figures come from the build's own seeded `src/constants.ts`, which the case
-// supplied and the build does not edit, so nothing below restates a number the
-// specification already fixed.
+// The deck itself is `specs/deal.md`'s: four suits, ranks `1` (Ace) through `13`
+// (King), red hearts and diamonds against black spades and clubs. The figures
+// come from this project's own `constants.ts`, which transcribes them from the
+// specs, so nothing below restates a number the specification already fixed and
+// nothing reads one out of the build.
 //
 // `harness.ts` re-exports all of it, so a validator has one import to write.
 
-import { RANK_MAX, RANK_MIN, SUITS } from "../src/constants";
+import { RANK_MAX, RANK_MIN, SUITS } from "./constants";
 import type { CardColor, Suit } from "./surface";
 
 /**

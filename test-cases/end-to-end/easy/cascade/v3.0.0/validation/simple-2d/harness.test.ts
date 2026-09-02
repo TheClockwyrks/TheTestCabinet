@@ -28,7 +28,7 @@ import {
   COLUMN_X,
   DOUBLE_CLICK_WINDOW,
   TABLEAU_Y,
-} from "../src/constants";
+} from "./constants";
 import {
   captureReplay,
   captureStill,

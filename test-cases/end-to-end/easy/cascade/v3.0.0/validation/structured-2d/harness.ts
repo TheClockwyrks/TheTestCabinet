@@ -112,7 +112,7 @@ import {
   TOP_ROW_Y,
   WASTE_X,
   type Rect,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
 import { ALL_SUITS, type CardSpec } from "./fixtures";
@@ -186,7 +186,7 @@ const game = build as unknown as GameDefinition<CascadeSurface>;
 /**
  * The frame the suites step in by default, in hertz.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
+ * This is the SUITE's choice, not the game's: the specification deliberately
  * fixes no timestep, because the engine hands the game whatever elapsed time a
  * frame really took (specs/overview.md). Sixty is what a browser gives a game
  * on an ordinary display, so it is the honest default, and fixing it makes a
@@ -222,8 +222,8 @@ export function secondsFor(frames: number, hz = TICK_HZ): number {
 /* The table, in the space the surface speaks                                 */
 /* -------------------------------------------------------------------------- */
 //
-// Arithmetic over the figures `src/constants.ts` fixes, which the case seeded
-// and the build does not edit. It says where the table's furniture IS, so a
+// Arithmetic over the figures this project's own `constants.ts` transcribes
+// from the specs. It says where the table's furniture IS, so a
 // check can aim a press at a card or read where a build drew one; it decides
 // nothing about the build, and a check that holds a build to one of these
 // positions states that figure itself.
@@ -352,9 +352,8 @@ export function dropRectOf(
  *
  * Draw One shows one card, squared at the waste's anchor. Draw Three fans up to
  * three at a pitch of `26`, beginning at the anchor, and the specification caps
- * the fan's right edge here. It is stated in the harness rather than imported
- * because only the Draw Three build's `src/constants.ts` carries the pitch, and
- * this project serves both deal modes.
+ * the fan's right edge here. It is stated in the harness rather than imported because the pitch is Draw
+ * Three's own figure and this project serves both deal modes.
  */
 const WASTE_FAN_RIGHT_LIMIT = 498;
 
@@ -627,8 +626,7 @@ class PointerEvt extends Event {
 /**
  * A logical point's device pixel, through the world's camera and the engine's
  * fit. The camera opens at the defaults — world and logical coordinates
- * coincide, which is the space every figure in `src/constants.ts` is stated
- * in — so the projection is the identity unless the build moved it, and mapping
+ * coincide, which is the space every figure the specification fixes is stated in — so the projection is the identity unless the build moved it, and mapping
  * through it keeps the reading honest either way.
  */
 function toDevice(world: World, view: Viewport, x: number, y: number): Point {
