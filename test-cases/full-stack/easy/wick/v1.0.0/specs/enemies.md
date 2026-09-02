@@ -118,9 +118,9 @@ position = anchor + perp(heading) * offset(age)
 
 At spawn the offset is `0`, so the anchor is the spawn position and the heading
 is the unit vector from it to the lamplighter's center. A weaver whose anchor
-coincides with the lamplighter's center keeps its heading and stays where it
-is that tick; its age still counts, so on the next tick its anchor is
-recovered from the new age as on any tick.
+coincides with the lamplighter's center keeps its heading and its position that
+tick; its age still counts, so the anchor recovered on the next tick stands off
+the center by the offset the new age carries.
 
 ## Health scaling
 

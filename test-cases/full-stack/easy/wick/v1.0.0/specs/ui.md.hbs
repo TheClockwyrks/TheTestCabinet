@@ -10,13 +10,15 @@ carries the name this specification gives it.
 
 ## Presentation
 
-Wick fixes no palette, no font, no layout, and no styling for any screen. The
-look of the night is yours, and `specs/overview.md` states what a player reads
-at a glance in the world. Two requirements are this file's own. Every piece of
-text a screen shows is legible against whatever sits behind it at the logical
-stage size `STAGE_W x STAGE_H` (`1280 x 720`), the HUD included, which is drawn
-over the live world. On every menu the item at `menuIndex` is drawn distinctly
-from the others, so a player always sees which item `confirm` would accept.
+Wick fixes no palette, no font, and no styling for any screen, and each
+screen's layout is yours except where a table below places one element relative
+to another. The look of the night is yours, and `specs/overview.md` states what
+a player reads at a glance in the world. Two requirements are this file's own.
+Every piece of text a screen shows is legible against whatever sits behind it at
+the logical stage size `STAGE_W x STAGE_H` (`1280 x 720`), the HUD included,
+which is drawn over the live world. On every menu the item at `menuIndex` is
+drawn distinctly from the others, so a player always sees which item `confirm`
+would accept.
 
 ## Screens
 
@@ -89,13 +91,13 @@ The HUD is drawn over the world and reads against it:
 
 | Element | What the player sees |
 | --- | --- |
-| Health | A bar whose filled width scales with `hp / maxHp`, with both numbers beside it, `hp` rounded up to a whole number. |
-| Experience | A bar whose filled width scales with `xp / xpToNext`, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level, as `LEVEL 4`. |
+| Health | A bar filled from its left edge, its filled width `hp / maxHp` of the bar's width, with both numbers beside it, `hp` rounded up to a whole number. |
+| Experience | A bar filled from its left edge, its filled width `xp / xpToNext` of the bar's width, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level, as `LEVEL 4`. |
 | Clock | The run clock as `m:ss`, counting up from `0:00` in whole seconds, the seconds always two digits. |
 | Kills | The kill count. |
-| Weapon slots | `WEAPON_SLOTS` (`6`) slots in slot order, each held weapon as its icon with one pip per level held, and an empty slot visibly empty. |
+| Weapon slots | `WEAPON_SLOTS` (`6`) slots in slot order, each held weapon as its icon with one pip per level held, the pips in a row outside the square the icon is drawn in and the only marks that row gains over a slot holding nothing, and an empty slot visibly empty, drawing neither icon nor pip. |
 | Passive slots | `PASSIVE_SLOTS` (`6`) slots, the same way. |
-| Cooldowns | On each weapon's slot, its cooldown state: the slot's picture on the tick the weapon fires differs from its picture on the tick before, and a weapon whose timer is `0` shows nothing left to run. A Lantern slot's timer covers the set's life and the gap after it together. |
+| Cooldowns | On each weapon's slot, its cooldown state: the slot's picture on the tick the weapon fires differs from its picture on the tick before, and a weapon whose timer is `0` shows nothing left to run, its slot drawing the same picture on every tick the timer stays `0`. A Lantern slot's timer covers the set's life and the gap after it together. |
 
 ### `levelup`
 

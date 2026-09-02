@@ -7,23 +7,24 @@ of health and the light goes out.
 
 Ten base weapons each have their own targeting and shape, from a slash in the
 facing direction to bolts at the nearest enemy, orbiting lanterns, puddles
-scattered at random, strikes on random targets, a bolt that bounces off the
-edges of the view, a decelerating boomerang, and a burst that hits everything
-on screen. Each carries an eight-row level table. Ten passives are single
-terms in ten derived-stat formulas. Six evolutions transform a maxed weapon
-when a chest is opened beside the right passive. Thirteen enemies, among them
-a drifting gnat swarm and a weaving wisp, arrive on a twenty-window spawn
-schedule that ends with two mothwings, an owl, and the Dark, a pursuer the
+scattered at random, strikes on random targets within range, a bolt that
+bounces off the edges of the view, a decelerating boomerang, and a burst that
+catches every enemy around the lamp. Each carries an eight-row level table.
+Ten passives are single terms in ten derived-stat formulas. Six evolutions
+transform a maxed weapon when a chest is opened beside the right passive.
+Thirteen enemies, among them a drifting gnat and a weaving wisp, arrive on a
+twenty-window schedule, and seven scripted events run over it: three gnat
+swarms, two mothwings, an owl, and, at nine minutes, the Dark, a pursuer the
 lamplighter outruns until dawn.
 
 Wick is a full-stack case with a 2D asset contract. The build draws every
 sprite and sheet with the asset tools, from the lamplighter's walk cycle to
-twenty-seven icons and a ground tile, produces every cue and a looping music
-bed, and wires them into the game it renders.
+twenty-seven icons and a ground tile, produces fourteen cues and a looping
+music bed, and wires them into the game it renders.
 
 The simulation advances on a fixed tick, and every random draw comes from one
 seeded generator. A debug surface poses the night directly: spawn an enemy
-here, grant this weapon, set the clock to nine minutes. No operation decides
-an outcome: the hits, kills, gems, and evolutions a build is measured on come
-from stepping the real systems, so any part of the roster can be reached
-without playing a night through to it.
+here, put this weapon in that slot at that level, move the clock to nine
+minutes. No pose decides an outcome: the hits, kills, gems, and evolutions a
+build is measured on come from stepping the real systems, so any part of the
+roster can be reached without playing a night through to it.

@@ -108,7 +108,8 @@ straight-alpha canvas of exactly the size its row states, so a sprite `24`
 pixels wide stands `24` units wide in the world, and the game draws it with
 image smoothing off so it stays crisp at the stage's fit. Each is drawn
 centered on the thing it depicts. A sheet's frames are separate PNG files,
-numbered from `0`, each on a canvas of the sheet's size.
+numbered from `0`, each on a canvas of the sheet's size, and no two frames of
+one sheet are the same picture.
 
 | Sprite | Files | Tool | Frames | Canvas |
 | --- | --- | --- | --- | --- |
@@ -129,7 +130,9 @@ commons. An enemy's sprite may be mirrored across its vertical axis to face
 the sign of its heading's `x`; nothing else about its orientation is fixed.
 The three gem tiers are told apart by size and form. The ground tile sits
 flush against itself on all four sides, since the ground is that tile repeated
-across the world.
+across the world. The game draws the ground as that tile once for every
+`GROUND_TILE_SIZE` cell of world space the view overlaps, each drawing covering
+its cell exactly.
 
 ### The weapon effects
 
@@ -184,8 +187,9 @@ Every animation runs on ticks, so it holds still on every screen but `playing`.
   direction and the idle sprite on every other tick. The walk frame is
   `floor(m × TICK_DT / WALK_FRAME_TIME) mod 6`, with `m` the number of ticks of
   this run on which the lamplighter moved, so the cycle advances one frame per
-  `WALK_FRAME_TIME` seconds of movement and wraps. The sprite faces the way
-  `facing` says: produce one facing and mirror it in code, or produce both.
+  `WALK_FRAME_TIME` seconds of movement and wraps. The produced idle sprite
+  faces right, and the lamplighter drawn facing left is that sprite reflected
+  across its vertical axis.
 - An enemy draws frame `floor(age / WALK_FRAME_TIME) mod 4` of its sheet for as
   long as it lives.
 - The death puff is drawn centered on the position an enemy died at, frame

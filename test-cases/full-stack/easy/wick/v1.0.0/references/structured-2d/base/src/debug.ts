@@ -242,7 +242,7 @@ function real(value: unknown, name: string, min = -Infinity): number {
 function whole(
   value: unknown,
   name: string,
-  min: number,
+  min = -Infinity,
   max = Infinity,
 ): number {
   if (
@@ -464,7 +464,7 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
 
     setScreen,
     choose(index) {
-      whole(index, "index", 0);
+      whole(index, "index");
       if (state().screen !== "levelup") return;
       choose(state(), index, SILENT);
       settle();

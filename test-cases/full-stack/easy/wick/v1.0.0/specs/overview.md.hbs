@@ -362,8 +362,9 @@ downward, with its center at `(STAGE_CX, STAGE_CY)` (`640, 360`). Fitting it to
 the browser window is the runtime's: the uniform scale that preserves the aspect
 ratio, the letterboxed centering, and the device pixel ratio. The complete stage
 is on screen at every window size, on load and at any pixel density. The HUD,
-the menus, and the overlays are laid out in logical stage units, and the
-letterbox bars carry the stage's background color.
+the menus, and the overlays are laid out in logical stage units. The stage has
+one background color, painted across the whole stage before anything else is
+drawn, and the letterbox bars carry that color.
 
 The world is an unbounded plane measured in the same units as the stage, with
 the same axes, and its origin `(0, 0)` is where the lamplighter starts a run.

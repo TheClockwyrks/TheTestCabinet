@@ -350,7 +350,9 @@ describe("the lamplighter and progression poses", () => {
     expect(api.snapshot().run.offers).toEqual(["lure"]);
     api.choose(5);
     expect(api.snapshot().screen).toBe("levelup");
-    expect(() => api.choose(-1)).toThrow();
+    api.choose(-1);
+    expect(api.snapshot().screen).toBe("levelup");
+    expect(api.snapshot().run.offers).toEqual(["lure"]);
   });
 });
 

@@ -188,6 +188,54 @@ looping and `cue:stopped` once when it ends, so a check that a thruster hum
 starts with the key and ends with its release subscribes to both and asserts the
 order, or reads the bus directly through `world.audio.looping`.
 
+## Cues and the produced files
+
+`cue:played` names the cue, and which produced file the cue was bound to is a
+fact the event leaves out. The engine decodes a produced sound through an
+`AudioContext` and sounds it through a buffer source of the same context, so a
+harness that stands a headless `AudioContext` up on `globalThis` reads both.
+Its `decodeAudioData` receives the bytes the served file returned, so the
+buffer it answers with is keyed to the path those bytes came from, and a buffer
+source's `start` names the buffer it plays. The bus announces a cue before it
+starts the source, synchronously, so the source that starts next is that cue's,
+and the cue is attributed to its file.
+
+```ts
+class HeadlessAudioContext {
+  readonly destination = {};
+  readonly state = "running";
+  currentTime = 0;
+  resume = () => Promise.resolve();
+  decodeAudioData(bytes: ArrayBuffer) {
+    const file = servedPaths.get(digest(new Uint8Array(bytes))) ?? "";
+    return Promise.resolve(new FakeBuffer(file));
+  }
+  createBufferSource = () => new FakeSource("file");
+  createOscillator = () => new FakeSource("synth");
+  createGain = () => ({ gain: fakeParam(1), connect() {}, disconnect() {} });
+}
+
+globalThis.AudioContext = HeadlessAudioContext;
+```
+
+A loop's source has `loop` set and runs until `stop`, so the sources started
+and not stopped are the loops sounding, each with its cue and its file. That is
+the reading `world.audio.looping` gives, with the file beside it, and a muted
+play starts no source at all.
+
+An engine holds one context for its loader and its bus, built by whichever asks
+first and kept: the loader while `initialize` decodes the produced sounds, or
+the bus at the unlocking gesture when the game loads none. A harness that runs
+several engines in one process binds a context to the harness that was current
+when it was built, and holds that binding across both `engine.initialize` and
+the gesture.
+
+The engine unlocks on the first `keydown` or `pointerdown` at the surface's
+event target, in the capture phase. A harness arms the bus by dispatching a
+`keydown` for a code the case binds to nothing, so arming changes no game
+state. The gesture is what lets a played cue start a source, so a check that
+reads the file behind a cue arms the bus first; the events need no gesture.
+
 ## Other engine events
 
 `asset:loaded`, `asset:failed`, and `audio:unlocked` are subscribed to the same

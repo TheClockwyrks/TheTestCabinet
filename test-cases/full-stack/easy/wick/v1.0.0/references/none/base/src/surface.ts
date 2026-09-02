@@ -222,7 +222,7 @@ function real(value: unknown, name: string, min = -Infinity): number {
 function whole(
   value: unknown,
   name: string,
-  min: number,
+  min = -Infinity,
   max = Infinity,
 ): number {
   if (
@@ -466,7 +466,7 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
 
     setScreen,
     choose(index) {
-      whole(index, "index", 0);
+      whole(index, "index");
       if (state().screen !== "levelup") return;
       game.choose(index);
       game.discardCues();

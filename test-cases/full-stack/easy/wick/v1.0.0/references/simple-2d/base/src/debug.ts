@@ -86,7 +86,7 @@ function real(value: unknown, name: string, min = -Infinity): number {
 function whole(
   value: unknown,
   name: string,
-  min: number,
+  min = -Infinity,
   max = Infinity,
 ): number {
   if (
@@ -327,7 +327,7 @@ export function createDebugApi(): WickDebugApi {
 
     setScreen,
     choose(state, index) {
-      whole(index, "index", 0);
+      whole(index, "index");
       const draft = cloneState(state);
       chooseOffer(draft, index, new Set<CueName>());
       return draft;

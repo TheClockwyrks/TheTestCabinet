@@ -97,7 +97,9 @@ properties make it so.
   yours.
 
 Given the same seed, the same sequence of operations, and the same number of
-ticks, the game reaches the same `run` and `rngState` every time. `simTime` and
+ticks, the game reaches the same `run` and `rngState` every time. The
+generator's whole sequence follows from its seed, so two runs seeded
+differently draw different sequences from their first draw on. `simTime` and
 `muted` stand outside that: `simTime` rises by every frame's delta time on every
 screen, and `muted` mirrors the runtime.
 
@@ -170,8 +172,8 @@ catching up for the ticks it missed.
 
 Placement is gated by neither `weaponFire` nor `effectMotion`: on every
 `playing` tick, whatever the two hold, the placement part of phase 5 of
-`specs/world.md` runs, so an aura or a lantern set is created, removed,
-re-centered, and resized exactly as that phase states.
+`specs/world.md` runs, so the shapes that phase places are created, removed,
+re-centered, and resized exactly as it states.
 
 ## The operations
 
@@ -330,8 +332,9 @@ the real collection path.
 On `levelup`, accepts the offer at `index`, counted from `0` down the list,
 exactly as moving the highlight there and pressing `confirm` would: the item is
 applied, `pendingLevelUps` falls by one, and either the next queued overlay
-opens with a fresh pool or `screen` returns to `playing`. An `index` outside
-`offers` leaves the state as it was. Sounds nothing.
+opens with a fresh pool or `screen` returns to `playing`. `index` is a whole
+number, and an `index` outside `offers`, a negative one included, leaves the
+state as it was rather than throwing. Sounds nothing.
 
 ### The driver switches
 

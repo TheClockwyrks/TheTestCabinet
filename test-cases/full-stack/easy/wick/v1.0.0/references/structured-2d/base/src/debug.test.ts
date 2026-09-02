@@ -317,7 +317,9 @@ describe("the lamplighter and progression poses", () => {
     expect(debug.snapshot().run.offers).toEqual(["lure"]);
     debug.choose(5);
     expect(debug.snapshot().screen).toBe("levelup");
-    expect(() => debug.choose(-1)).toThrow();
+    debug.choose(-1);
+    expect(debug.snapshot().screen).toBe("levelup");
+    expect(debug.snapshot().run.offers).toEqual(["lure"]);
     expect(h.cues).toEqual([]);
   });
 

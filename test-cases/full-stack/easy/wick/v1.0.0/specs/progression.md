@@ -73,10 +73,10 @@ The overlay therefore opens on the same tick the first level-up is queued, and
 the simulation does not tick while it is open, so the world behind it is
 frozen exactly as that tick left it.
 
-Two ticks open no level-up overlay. A tick that ends the run ends it and opens
-no overlay, chest or level-up. A tick that collects a chest opens the chest
-overlay instead, and the level-ups queued on that tick open their overlay at
-the end of the next `playing` tick.
+Two kinds of tick open no level-up overlay. A tick that ends the run ends it
+and opens no overlay, chest or level-up. A tick that collects a chest opens the
+chest overlay instead, and the level-ups queued on that tick open their overlay
+at the end of the next `playing` tick.
 
 ### The candidate pool
 

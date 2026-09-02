@@ -137,6 +137,12 @@ it exactly as it draws in a browser. The surface reports the logical design size
 at a device pixel ratio of `1` by default, which puts one device pixel on one
 logical unit and makes a sampled coordinate readable without arithmetic.
 
+The options a harness hands `createEngine` beyond the canvas, the clock, and the
+surface are the ones the case's `src/main.ts` hands it: the design size, the
+stage `background`, `imageSmoothing`, and the touch `layout`. A suite passes the
+same set, so the build runs under the harness exactly as it runs on the page,
+and a claim about the fit or the sampling holds in both places.
+
 ## Initialization order
 
 `createEngine` is synchronous, performs no loading, and runs no game code, so a
