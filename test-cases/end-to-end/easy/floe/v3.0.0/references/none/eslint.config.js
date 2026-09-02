@@ -111,8 +111,10 @@ export default tseslint.config(
   // below, may not reach outside itself at all.
   // ------------------------------------------------------------------------
   {
-    // At any depth, in either direction: nothing under the build's `src/`.
-    files: ["validation/**/*.ts"],
+    // At any depth, in either direction: nothing under the build's `src/`. The
+    // engineless project's injected page scripts are `.js`, so the gate is not
+    // written in terms of the extension a suite happens to have.
+    files: ["validation/**/*.ts", "validation/**/*.js"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -123,7 +125,7 @@ export default tseslint.config(
   },
   {
     // A file at the root of the project: anything opening with `../` has left it.
-    files: ["validation/*.ts"],
+    files: ["validation/*.ts", "validation/*.js"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -142,7 +144,7 @@ export default tseslint.config(
   {
     // A suite one directory down: `../constants` is the transcription and stays
     // inside the project, so it is a second `../` that has left it.
-    files: ["validation/*/*.ts"],
+    files: ["validation/*/*.ts", "validation/*/*.js"],
     rules: {
       "no-restricted-imports": [
         "error",
