@@ -323,9 +323,7 @@ async function bracketDraws(h: Harness): Promise<Brackets> {
 
   const { readings } = await h.trials(DRAWS * 2, {
     stage: (round, last, edges) => [
-      ...(last ?? []).map(
-        (id) => ["setDronePhase", id, "formation"] as const,
-      ),
+      ...(last ?? []).map((id) => ["setDronePhase", id, "formation"] as const),
       ["setDiveClock", round % 2 === 0 ? edges.low : edges.high] as const,
     ],
     read: (snapshot) =>

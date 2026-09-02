@@ -126,6 +126,63 @@ export async function watchForEvent(
   return { hit: false, at: -1, frames, snapshot: await h.snapshot() };
 }
 
+/**
+ * {@link watchForEvent}, with the event decided INSIDE the page.
+ *
+ * Identical in what it drives and what it reports: the same frames, one
+ * `advance(dt, 1)` each, the event read off the state after every frame, the
+ * sweep stopping on the frame it first holds, and the same per-frame sound
+ * accounting — `Harness.sweep` opens and closes each frame on the recorder and
+ * attributes what sounded to that frame exactly as {@link watchForEvent}'s own
+ * loop does. What changes is that the frames and the readings happen in the page
+ * instead of a round trip apart, so a watch across a stage's whole flyover costs
+ * one crossing rather than sixteen hundred. A round trip's cost is a fact about
+ * how busy the host is, and a cue check that spends sixteen hundred of them has
+ * made its verdict one too.
+ *
+ * THE EVENT IS CARRIED INTO THE PAGE AS SOURCE, so it must stand on its own: it
+ * sees its two parameters and nothing else, and anything the suite needs to hand
+ * it crosses as `argument`, as JSON. That is the whole of why this is a second
+ * function rather than the only one — most of the watches in this directory read
+ * an event off a helper or a binding of their suite, and a predicate reaching for
+ * one of those fails in the page rather than quietly.
+ *
+ * IT DRIVES AT LEAST ONE FRAME, exactly as {@link watchForEvent} does. `sweep`
+ * would report an event that already held before anything ran, which is not a
+ * frame and so is not a frame a cue could have been played on; a watch that
+ * opened on its own event has staged nothing and is reported as a miss.
+ */
+export async function watchForEventInPage<Argument>(
+  h: Harness,
+  event: (snapshot: SpectraSnapshot, argument: Argument) => boolean,
+  argument: Argument,
+  maxFrames: number,
+): Promise<CueWatch> {
+  const sink = watchCues(h);
+  const read = sink.length;
+  // The frame number the sweep's FIRST frame will carry, so a cue's absolute
+  // frame becomes the step of this watch it landed on.
+  const first = h.frame() + 1;
+
+  const swept = await h.sweep(event, argument, { maxFrames, poll: 1 });
+
+  const frames: FrameCues[] = [];
+  for (let step = 1; step <= swept.frames; step += 1)
+    frames.push({ step, sounds: 0 });
+  for (const cue of sink.slice(read)) {
+    const step = cue.frame - first + 1;
+    if (step >= 1 && step <= frames.length) frames[step - 1].sounds += 1;
+  }
+
+  const hit = swept.hit && swept.frames > 0;
+  return {
+    hit,
+    at: hit ? swept.frames : -1,
+    frames,
+    snapshot: swept.snapshot,
+  };
+}
+
 /** How many sounds the build emitted on the event's own frame. */
 export function soundsOnEvent(watch: CueWatch): number {
   return watch.frames.find((one) => one.step === watch.at)?.sounds ?? 0;

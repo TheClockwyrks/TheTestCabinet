@@ -63,7 +63,7 @@ import {
   quietFrames,
   soundsBeforeEvent,
   soundsOnEvent,
-  watchForEvent,
+  watchForEventInPage,
 } from "./cues";
 
 /** The first challenge stage: `isChallengeStage(stage)` is `stage % 3 === 0`. */
@@ -139,9 +139,16 @@ it("sounds on the frame a stage clears, and not before", async () => {
       "specs/stages.md)",
   );
 
-  const watch = await watchForEvent(
+  // Read inside the page. The flyover is the longest watch in this directory —
+  // eight seconds of it, frame by frame, because a cue has to be attributed to
+  // the frame that produced it — and a watch that took each of those frames a
+  // round trip apart made how busy the host was part of what it decided. The
+  // frames, the per-frame sound accounting and the stopping point are the same;
+  // only the boundary they are read across moves.
+  const watch = await watchForEventInPage(
     h,
     (s) => s.screen === "stageCleared",
+    null,
     ENDING_FRAMES,
   );
   // Held on past the reading, so the still shows the interstitial rather than the
