@@ -797,15 +797,99 @@ const INIT_SCRIPTS = ["recorder-init.js", "audio-init.js"] as const;
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /**
- * How long the surface is waited for before the build is called non-conformant.
+ * How many of the PAGE'S OWN rendered frames the surface is waited for before the
+ * build is called non-conformant.
  *
- * Generous against a conformant build and cheap against one: the wait is a poll
- * that returns the instant the global appears. Cascade seeds no art and declares
- * no assets, so a build has nothing asynchronous to finish before it installs and
- * a conformant one is here on the first poll. What this ceiling really bounds is
- * the cost of a build with no surface at all, which pays it once per harness.
+ * `specs/instrumentation.md` requires the surface "as soon as the game has
+ * initialized", and the honest reading of that deadline is counted in the frames
+ * the page renders, not in seconds of this machine's time. Cascade seeds no art
+ * and declares no assets, so a conformant build installs its surface while its own
+ * module evaluates — before `page.goto(waitUntil: "load")` has even returned — and
+ * is found on the first poll. The grace below is for a build that finishes
+ * initializing asynchronously, and three hundred frames is five seconds of one
+ * that renders at an ordinary rate.
+ *
+ * WHY NOT A NUMBER OF SECONDS, WHICH IS WHAT THIS USED TO BE. A wall-clock
+ * deadline here does not measure the build at all. Playwright polls this
+ * predicate once per animation frame, so on a host with nothing left to give,
+ * BOTH the build's script and the poll that looks for its surface are starved
+ * together — and a ten-second ceiling then reported "this build installs no debug
+ * surface" against a build whose surface was there all along, losing every point
+ * in the checklist to how busy the machine was. Counted in frames, the deadline
+ * stretches with the host exactly as the build does: a page given a tenth of a
+ * core takes a tenth of the frames per second and gets the same three hundred
+ * frames to install its surface in.
  */
-const SURFACE_TIMEOUT_MS = 10_000;
+const SURFACE_GRACE_FRAMES = 300;
+
+/**
+ * The wall-clock ceiling under the frame count above.
+ *
+ * NOT the deadline — {@link SURFACE_GRACE_FRAMES} is. This catches only the page
+ * that renders NOTHING, where no frame ever arrives to count and the wait would
+ * otherwise never end: a browser that has wedged rather than a build that is
+ * missing an operation. Two minutes because a page that is rendering reaches its
+ * three hundred frames long inside it however loaded the host is, so this bound
+ * should never be what ends a wait.
+ */
+const SURFACE_BACKSTOP_MS = 120_000;
+
+/**
+ * What a frame-counted wait is waiting for: the two things a page installs that a
+ * harness cannot begin without.
+ *
+ * `"surface"` is the build's own `window.__cascade`. `"recorder"` is the injected
+ * recorder having a 2D context to record, which a build is free to ask for on the
+ * frame it first draws rather than while it initializes.
+ */
+type PageArrival = "surface" | "recorder";
+
+/**
+ * Wait, in frames of the page's own rendering, for something a page installs.
+ *
+ * Playwright polls a `waitForFunction` predicate once per animation frame, so the
+ * predicate counts its own polls and answers in the PAGE'S frames rather than in
+ * the HOST'S seconds — which is the whole point (see
+ * {@link SURFACE_GRACE_FRAMES}). It resolves `true` on the frame the thing is
+ * first there, and `false` once {@link SURFACE_GRACE_FRAMES} frames have gone by
+ * without it — or if the page renders nothing at all for
+ * {@link SURFACE_BACKSTOP_MS}, which is the one case no frame count can end.
+ *
+ * The count is kept on the page under a key of the arrival's own name, so the two
+ * waits a harness makes do not share a deadline.
+ */
+async function waitInPageFrames(
+  page: Page,
+  arrival: PageArrival,
+  handleName: string,
+): Promise<boolean> {
+  try {
+    const found = await page.waitForFunction(
+      ([kind, handle, grace]) => {
+        const scope = window as unknown as Record<string, unknown>;
+        const there =
+          kind === "surface"
+            ? typeof scope[handle] === "object" && scope[handle] !== null
+            : (
+                scope.__cascadeRec as { ready(): boolean } | undefined
+              )?.ready() === true;
+        if (there) return "there";
+        const key = `__cascadeWaited_${kind}`;
+        const seen = ((scope[key] as number | undefined) ?? 0) + 1;
+        scope[key] = seen;
+        // Neither `null` nor `false` ends a `waitForFunction`, so a frame that
+        // has not answered yet returns one of them and the poll comes round
+        // again on the next frame; only the two strings end the wait.
+        return seen >= grace ? "never" : null;
+      },
+      [arrival, handleName, SURFACE_GRACE_FRAMES] as const,
+      { timeout: SURFACE_BACKSTOP_MS },
+    );
+    return (await found.jsonValue()) === "there";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The most frames one crossing carries a per-frame series back for.
@@ -981,16 +1065,8 @@ export function failSurface(fault: string): never {
  * specification requires.
  */
 async function readSurfaceFault(page: Page): Promise<string | null> {
-  try {
-    await page.waitForFunction(
-      (handle) =>
-        typeof (window as never)[handle] === "object" &&
-        (window as never)[handle] !== null,
-      HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
-    );
-  } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
+  if (!(await waitInPageFrames(page, "surface", HANDLE))) {
+    return `window.${HANDLE} was still absent ${SURFACE_GRACE_FRAMES} rendered frames after the page loaded`;
   }
   const missing = await page.evaluate(
     ([handle, ops]) => {
@@ -1090,16 +1166,7 @@ export async function createHarness(
     // while it initializes, so the surface can be installed and answering
     // before any context exists to record — and a `captureReplay` armed in that
     // window arms nothing and writes no evidence for a section that drew.
-    await page
-      .waitForFunction(
-        () =>
-          (
-            window as unknown as { __cascadeRec: { ready(): boolean } }
-          ).__cascadeRec.ready(),
-        undefined,
-        { timeout: SURFACE_TIMEOUT_MS },
-      )
-      .catch(() => undefined);
+    await waitInPageFrames(page, "recorder", HANDLE);
   }
 
   const view = fitViewport(cssWidth, cssHeight, dpr);
