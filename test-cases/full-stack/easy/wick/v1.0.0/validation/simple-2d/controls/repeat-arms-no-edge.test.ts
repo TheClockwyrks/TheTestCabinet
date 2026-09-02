@@ -28,6 +28,17 @@
 // treated the repeat as a fresh press wraps the highlight back to `0`, so
 // reading `1` after the repeat frame is the whole verdict.
 //
+// WHAT THIS POINT CAN AND CANNOT SEPARATE UNDER THIS ENGINE. The repeat rule
+// is the ENGINE's: `InputRegistry` drops a keydown whose `repeat` flag is set
+// before any value moves, and a build reaches input only through
+// `InitApi.input.register`/`layout` and `UpdateApi.input.value`/`pressed`, so
+// the raw event never passes through the build's own hands. A build that reads
+// `value` where `pressed` belongs fails this point, and fails
+// controls/edge-once-per-press in the same run; no build-side defect fails this
+// point alone. The point is therefore a smoke check over the engine's own
+// filtering here, and carries the build-side discrimination its name promises
+// under the engineless configuration, where the build owns the listener.
+//
 // THE TOLERANCE. None: a menu index is a whole number, compared exactly.
 
 import { afterEach, beforeEach, it } from "vitest";

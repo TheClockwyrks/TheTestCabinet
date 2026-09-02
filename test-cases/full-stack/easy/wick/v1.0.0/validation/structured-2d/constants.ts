@@ -1286,6 +1286,33 @@ export const BREAD_COUNT_BOUNDS: readonly [number, number] = [40, 125];
 export const DRAFT_COUNT_BOUNDS: readonly [number, number] = [3, 45];
 
 /**
+ * How many seeded common kills the check that a kill drops at most ONE of the
+ * two pickups makes, which is a larger sample than the counting checks above
+ * need.
+ *
+ * The rule is "Only when it did not, a second draw drops a draft"
+ * (`specs/world.md`, The drop roll), and the build that breaks it most simply
+ * makes the second draw unconditionally. That build's only visible mark is the
+ * kill where BOTH draws land, which the two stated chances put at
+ * `BREAD_CHANCE × DRAFT_CHANCE` (`0.02 × 0.005`, `1e-4`) per kill. At
+ * `DROP_TRIALS` such a build leaves `0.4` shared centers expected, so it goes
+ * unseen about two times in three; at `60000` it leaves `6` expected and goes
+ * unseen about one time in four hundred. The figure is therefore derived from
+ * the two chances the specification states and the number of shared centers
+ * the check means to expect, not from any build.
+ */
+export const DROP_PAIR_TRIALS = 60_000;
+
+/**
+ * How many of those kills share one tick: fewer than the counting checks pose,
+ * because the work a tick does over a posed field grows with the enemies and
+ * the zones standing on it at once, so a long sample is cheapest in small
+ * batches. Nothing about the roll depends on how the kills are divided between
+ * ticks.
+ */
+export const DROP_PAIR_BATCH = 20;
+
+/**
  * How close a HUD bar's measured fill ratio must be to `hp / maxHp` or
  * `xp / xpToNext`: a tenth. A bar's fill is drawn in whole device pixels, so
  * a bar a hundred units wide places a quarter within a hundredth of the

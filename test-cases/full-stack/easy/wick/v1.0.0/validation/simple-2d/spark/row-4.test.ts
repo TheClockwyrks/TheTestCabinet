@@ -27,24 +27,28 @@
 //     timer counts down and the due weapon fires within the same tick, so
 //     the reading after that tick is the freshly set figure.
 //
-// WHAT IS READ. After the firing tick with 2 hounds within range: the
-// count of Spark strikes, `2`; on each hound exactly one strike centered
-// on its posed center, carrying radius `50` and damage `20`; each hound's
-// hp lower by `20`; and Spark's timer, `1.8`. Every figure of the row is
+// WHAT IS READ. After the firing tick with 3 hounds within range: the count
+// of Spark strikes, `2`; each strike centered on the posed center of a
+// distinct hound, carrying radius `50` and damage `20`; each struck
+// hound's hp lower by `20`; the hound no strike reached standing with its hp
+// exactly as posed; and Spark's timer, `1.8`. Every figure of the row is
 // asserted, so a build whose table departs from the specification in any
-// column at this level fails.
+// column at this level fails, an amount above the row as well as one below it.
 //
-// WHY THE NIGHT IS POSED AS IT IS. 2 hounds and Spark alone at level 4, every
-// switch off but `weaponFire`. The hounds are as many as the row's amount and
-// every one is within `SPARK_RANGE`, so the count read is the row's own and the
-// random choice has one outcome: every hound struck once. No two stand within
-// `70` of each other, beyond any row's area, so each hound's hp after the tick
-// is its own strike's doing alone. `enemyMotion` off holds them where they are
-// posed, the centers the strikes are matched against.
+// WHY THE NIGHT IS POSED AS IT IS. 3 hounds and Spark alone at level 4, every
+// switch off but `weaponFire`. One more hound stands than the row's amount, so
+// a build whose amount is above the row has an enemy for the surplus strike
+// and the count read back is the build's rather than the pose's. Every hound
+// is within `SPARK_RANGE`, so all 3 are eligible and the uniform choice has
+// several outcomes; every reading below is the same under each of them. No two
+// stand within `70` of each other, beyond any row's area, so each hound's hp
+// after the tick is its own strike's doing alone. `enemyMotion` off holds them
+// where they are posed, the centers the strikes are matched against.
 //
 // TOLERANCE. `FIGURE_TOLERANCE` on radius, damage, the hp removed, a strike's
 // center, and the timer, each a stated figure or a product of stated figures
-// read back as a double. None on the count, a whole number the row states.
+// read back as a double. None on the count or on the untouched hound's hp,
+// which is the figure it was posed with read back unchanged.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -76,7 +80,7 @@ afterEach(() => {
 
 it("lands 2 strikes of row 4 at level 4 and sets the timer to 1.8", async () => {
   assertEqual(ROW.amount, 2, "the level-4 row's amount");
-  const volley = armSpark(h, LEVEL, targetsFor(ROW.amount), DURABLE);
+  const volley = armSpark(h, LEVEL, targetsFor(ROW.amount + 1), DURABLE);
 
   const after = await h.tick(1);
   captureStill(h, "row");

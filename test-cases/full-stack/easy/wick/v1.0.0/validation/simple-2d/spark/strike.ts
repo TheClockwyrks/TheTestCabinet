@@ -62,15 +62,18 @@ export const DURABLE: EnemyId = "hound";
 
 /**
  * Where a posed target stands, as an offset from the lamplighter's center, in
- * the order they are spawned: about 150, 200, 269, and 316 units out, every
- * one within `SPARK_RANGE` (600), and no two within 250 of each other, beyond
- * the largest `area` any row states (70).
+ * the order they are spawned: about 150, 200, 269, 316, and 430 units out,
+ * every one within `SPARK_RANGE` (600), and no two within 250 of each other,
+ * beyond the largest `area` any row states (70). There are five because the
+ * row points pose one more enemy than the row's amount, so a build whose
+ * amount is above the table has somewhere to put the surplus strike.
  */
 export const TARGET_OFFSETS: readonly Point[] = [
   { x: 150, y: 0 },
   { x: 0, y: -200 },
   { x: -250, y: 100 },
   { x: 100, y: 300 },
+  { x: -350, y: -250 },
 ];
 
 /** The first `count` of {@link TARGET_OFFSETS}. */
@@ -234,13 +237,23 @@ export function assertTimerOfRow(
 }
 
 /**
- * The firing tick of `volley`, posed with as many durable targets as `row`'s
- * amount, created one strike of `row` on every target and each strike removed
- * `row`'s damage from its target: "`amount` strikes land, each on a distinct
- * enemy" (specs/weapons.md, "Spark"), and "A hit removes the shape's damage
- * per hit from the enemy's `hp`" ("Hits and death"). With every posed enemy
- * within range and as many as the amount, the random choice has exactly one
- * outcome, so every target is struck once.
+ * The firing tick of `volley`, posed with one more durable target than `row`'s
+ * amount, created exactly `row.amount` strikes, each of `row`, each on a
+ * distinct posed enemy, each removing `row`'s damage from the enemy it landed
+ * on, and left every posed enemy no strike reached standing untouched:
+ * "`amount` strikes land, each on a distinct enemy chosen uniformly at random
+ * among the live enemies within `SPARK_RANGE` (`600`) of the player's center"
+ * (specs/weapons.md, "Spark"), and "A hit removes the shape's damage per hit
+ * from the enemy's `hp`" ("Hits and death").
+ *
+ * WHY ONE MORE TARGET THAN THE AMOUNT. With exactly as many enemies as the
+ * amount, a build whose amount is above the table can land no more strikes
+ * than there are enemies to land them on, so the count read back is the pose's
+ * rather than the build's. One spare enemy leaves the surplus strike somewhere
+ * to go, and every assertion here is independent of which enemies the uniform
+ * choice named, so the reading stays a decision rather than a sample: the
+ * count, the distinctness, the figures on each strike, the hp removed from
+ * each struck enemy, and the untouched hp of each enemy left over.
  */
 export function assertVolleyOfRow(
   volley: Volley,
@@ -253,20 +266,39 @@ export function assertVolleyOfRow(
     row.amount,
     "Spark strikes after the firing tick",
   );
-  volley.targets.forEach((target, index) => {
-    const which = `the target ${index + 1} of ${volley.targets.length}`;
-    const landed = strikesOn(strikes, target);
-    assertEqual(landed.length, 1, `strikes centered on ${which}`);
-    assertStrikeOfRow(landed[0], row, `the strike on ${which}`);
-    const struck = present(
-      enemyById(after, target.id),
-      `${which} after the tick`,
-    );
+  const struck = strikes.map((strike, index) =>
+    targetOf(
+      strike,
+      volley.targets,
+      `the strike ${index + 1} of ${strikes.length}`,
+    ),
+  );
+  assertEqual(
+    new Set(struck).size,
+    struck.length,
+    "posed enemies the strikes landed on, counted without repeats",
+  );
+  strikes.forEach((strike, index) => {
+    const target = volley.targets[struck[index]];
+    const which = `the strike on the posed enemy ${struck[index] + 1} of ${
+      volley.targets.length
+    }`;
+    assertStrikeOfRow(strike, row, which);
+    const hit = present(enemyById(after, target.id), `${which}: its target`);
     assertWithin(
-      struck.hp,
+      hit.hp,
       target.hp - row.damage * derived.damageMul({}),
       FIGURE_TOLERANCE,
-      `${which}: hp after the strike`,
+      `${which}: its target's hp after the strike`,
+    );
+  });
+  volley.targets.forEach((target, index) => {
+    if (struck.includes(index)) return;
+    assertUnhurt(
+      volley.posed,
+      after,
+      target.id,
+      `the posed enemy ${index + 1} of ${volley.targets.length}, which no strike landed on`,
     );
   });
 }

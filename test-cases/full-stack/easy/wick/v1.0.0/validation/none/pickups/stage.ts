@@ -6,24 +6,27 @@
 // seeded random generator on the tick it dies. A first draw, uniform on
 // `[0, 1)`, drops bread when it is below `BREAD_CHANCE`. Only when it did not, a
 // second draw drops a draft when it is below `DRAFT_CHANCE`." A probability is
-// only readable over a sample, so `drop-at-most-one`, `drop-kinds-occur`,
-// `bread-rate`, and `draft-rate` each pose the same sample —
-// `DROP_ROLL_KILLS` (`4000`) common kills at distinct points, from one seed —
-// and read a different fact off it. The sample's size and the bounds the counts
-// are held to are `constants.ts`'s, computed from the two probabilities.
+// only readable over a sample, so `drop-kinds-occur`, `bread-rate`, and
+// `draft-rate` each pose the same sample — `DROP_ROLL_KILLS` (`4000`) common
+// kills at distinct points, from one seed — and read a different fact off it.
+// `drop-at-most-one` poses a longer one, `DROP_PAIR_KILLS`, because the design
+// it exists to catch is only visible on the far rarer kill where both draws
+// land. Every sample size and every bound the counts are held to is
+// `constants.ts`'s, computed from the two probabilities.
 //
 // WHY THE KILLS ARE POSED IN ROUNDS. Every kill is a real one: a moth posed at
 // its own point and a level-1 Ember bolt posed on its center, so the next tick's
-// phase 6 takes the moth below `0` and the kill draws. Four thousand of those,
-// one tick each, would be four thousand ticks; the rule does not care how many
-// ticks the kills are spread over, so a round poses `ROUND_KILLS` (`100`) of
-// them at once and one tick resolves all hundred. The points of a round are
+// phase 6 takes the moth below `0` and the kill draws. A kill a tick would be a
+// tick a kill; the rule does not care how many ticks the kills are spread over,
+// so a round poses `ROUND_KILLS` (`100`) of them at once and one tick resolves
+// all hundred. The points of a round are
 // `POINT_SPACING` (`60`) units apart, wider than an Ember bolt's `8` plus a
 // moth's `10`, so each bolt reaches its own moth alone; every point is at least
 // `FIRST_COLUMN` (`500`) units from the lamplighter, far outside both
 // `PICKUP_RADIUS` (`48`) and the pickup collection distance (`28`), so nothing a
-// kill drops is attracted or collected; and no two of the four thousand points
-// coincide, so a pickup's center names the kill that dropped it.
+// kill drops is attracted or collected; and `killPoint` is one-to-one, so no two
+// points of a sample of any length coincide and a pickup's center names the kill
+// that dropped it.
 //
 // The poses of a round go into the page in one evaluation rather than one
 // crossing each. They are the build's own `window.__wick` operations, called in
@@ -32,8 +35,8 @@
 //
 // WHY THE FIELD IS SWEPT BETWEEN ROUNDS. `clearGems` and `clearPickups` remove
 // what a round dropped without collecting anything, so the snapshot a round is
-// read from holds that round's drops alone and the state does not grow to four
-// thousand gems. Neither draws from the generator, and neither grants
+// read from holds that round's drops alone and the state does not grow to a
+// sample's worth of gems. Neither draws from the generator, and neither grants
 // experience, so the sample is exactly the kills' own draws.
 
 import { assertEqual } from "../assert";

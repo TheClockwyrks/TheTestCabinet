@@ -1796,7 +1796,7 @@ export function iconFile(id: OfferId): string {
  * A product of two figures the specification fixes exactly — a damage times a
  * multiplier, a radius times `areaMul`, a heading's unit vector.
  *
- * `10 × 1.1` is `11.000000000000002` in binary floating point, and a build is
+ * `6 × 1.1` is `6.6000000000000005` in binary floating point, and a build is
  * free to multiply in whichever order it likes, so a few ulps either way is the
  * build's arithmetic rather than its rules. The finest figure the specification
  * separates here is `0.1` (a Wick level's tenth), nine orders above this.
@@ -1901,6 +1901,23 @@ export const GROUND_CHANGE_MIN = 0.005;
 export const DROP_ROLL_KILLS = 4000;
 export const BREAD_COUNT_RANGE = { min: 40, max: 125 } as const;
 export const DRAFT_COUNT_RANGE = { min: 3, max: 45 } as const;
+
+/**
+ * The kills the check that a kill drops at most ONE of the two pickups reads,
+ * which is a larger sample than the counting checks above need.
+ *
+ * The rule is "Only when it did not, a second draw drops a draft"
+ * (specs/world.md — "The drop roll"), and the design that breaks it most simply
+ * makes the second draw unconditionally. Its only visible mark is the kill on
+ * which BOTH draws land, which the two stated chances put at
+ * `BREAD_CHANCE × DRAFT_CHANCE` (`0.02 × 0.005`, `1e-4`) per kill. Over
+ * `DROP_ROLL_KILLS` that design leaves `0.4` shared centers expected and so
+ * escapes about two times in three; over `60000` it leaves `6` expected and
+ * escapes about one time in four hundred. The figure is derived from the two
+ * chances the specification states and the number of shared centers the check
+ * means to expect, never from a build.
+ */
+export const DROP_PAIR_KILLS = 60_000;
 
 /* -------------------------------------------------------------------------- */
 /* The snapshot's fields (specs/instrumentation.md — "Snapshot shape")         */

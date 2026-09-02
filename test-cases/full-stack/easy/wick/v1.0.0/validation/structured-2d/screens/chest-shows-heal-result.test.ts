@@ -9,12 +9,19 @@
 // nothing can evolve and no held item is below its max.
 //
 // WHAT IS READ, AND WHY IT IS READ THIS WAY. The wording is the build's, so no
-// particular string can be required. What CAN be required is that the screen
-// says something, and that what it says is not what the other two results say:
-// a build that drew the heading and nothing else, or that drew one line
-// whatever the chest did, is a build whose overlay does not report the result.
-// So all three results are opened in turn and the runs of text each drew BELOW
-// its heading are compared as sets, the heading's own runs left out.
+// particular string can be required. What CAN be required is that the heal
+// frame carries copy OF ITS OWN: at least one run of text drawn beneath the
+// heading that neither the level frame nor the evolve frame drew. So all three
+// results are opened in turn, the runs of text each drew below its heading are
+// collected, and the heal's are taken less the other two's.
+//
+// WHY A DIFFERENCE RATHER THAN AN INEQUALITY. Copy the overlay draws whatever
+// the result is — a footer, an instruction to press on — lands beneath the
+// heading too, so a heal frame carrying only that footer is a NON-EMPTY list,
+// and it is UNEQUAL to the other two results' lists as soon as either of them
+// adds a line of its own on top of the same footer. Both of those readings pass
+// a build that reports the heal with no words at all. What the shared copy
+// cannot do is survive the difference, so the difference is what is read.
 //
 // THE THREE POSES, each an isolated `playing` run with every driver switch
 // off. Heal: nothing held at all, so neither of the first two rules applies.
@@ -24,8 +31,8 @@
 // the one tick that collects it, and each result is read off the snapshot
 // before its frame is compared.
 //
-// THE TOLERANCE. The comparison is set-wise and exact: two results whose
-// below-the-heading text is the same set of strings are not told apart, and
+// THE TOLERANCE. The comparison is set-wise and exact: a run of text the heal
+// drew counts as its own when neither other result drew that same string, and
 // nothing about where or how the words are drawn is read.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -33,7 +40,6 @@ import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThanOrEqual,
-  assertNotDeepEqual,
   assertNotNull,
 } from "../assert";
 import { CHEST_TEXT, MAX_WEAPON_LEVEL } from "../constants";
@@ -91,11 +97,6 @@ it("reports a heal in text of its own that the other results do not carry", asyn
     { kind: "heal" },
     "the chest's result over a loadout with nothing to evolve or level",
   );
-  assertGreaterThanOrEqual(
-    heal.below.length,
-    1,
-    `runs of text the heal drew beneath ${CHEST_TEXT} (specs/ui.md, chest)`,
-  );
 
   const level = await open(() => {
     holdWeapon(h, "ember", 3);
@@ -116,14 +117,12 @@ it("reports a heal in text of its own that the other results do not carry", asyn
     "the chest's result over a weapon at its top level beside its recipe passive",
   );
 
-  assertNotDeepEqual(
-    heal.below,
-    level.below,
-    "the heal's copy beneath the heading, against the level result's",
+  const own = heal.below.filter(
+    (line) => !level.below.includes(line) && !evolve.below.includes(line),
   );
-  assertNotDeepEqual(
-    heal.below,
-    evolve.below,
-    "the heal's copy beneath the heading, against the evolve result's",
+  assertGreaterThanOrEqual(
+    own.length,
+    1,
+    `runs of text the heal drew beneath ${CHEST_TEXT} that the level and evolve results did not (specs/ui.md, chest)`,
   );
 });

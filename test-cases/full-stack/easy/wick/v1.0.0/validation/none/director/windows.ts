@@ -34,7 +34,12 @@
 // and each of them must come up at least once. The cap is read by posing
 // exactly `cap` commons alive and running two whole intervals: nothing spawns,
 // and the timer rests at `0`, as "When the cap is full the timer rests at `0`"
-// states.
+// states. That reading is one-sided on its own — a build whose cap is BELOW the
+// row's satisfies it too — so the cap is read from underneath as well: `cap − 1`
+// commons alive and one due tick, on which exactly one enemy must arrive, since
+// the rule spawns while "`aliveCommons` is below `cap`" and `cap − 1` is below
+// `cap` by the row's own figure. The pair of readings pins the cap from both
+// sides, so each row's own check decides that row's figure.
 //
 // WHY THE FIELD IS CLEARED BETWEEN SPAWNS. `aliveCommons` is "the number of
 // live enemies of rank `common` other than gnats", and rows 0 to 9 cap it below
@@ -99,6 +104,10 @@ export interface WindowReading extends CadenceReading {
   aliveAtCap: number;
   /** `spawnTimer` after the run at the cap. */
   timerAtCap: number;
+  /** How many enemies landed on one due tick with `cap − 1` commons alive. */
+  spawnsUnderCap: number;
+  /** `aliveCommons` with one fewer common than the cap posed. */
+  aliveUnderCap: number;
 }
 
 /** The ticks a cadence run covers: two whole intervals and two ticks over. */
@@ -151,23 +160,49 @@ async function readTypes(h: Harness): Promise<EnemyId[]> {
   return types;
 }
 
-/** Fill the cap with commons and run two whole intervals. */
+/** Clear the field and stand `count` commons well clear of the spawn ring. */
+async function poseCommons(h: Harness, count: number): Promise<void> {
+  await h.debug.clearEnemies();
+  for (let held = 0; held < count; held += 1) {
+    await h.debug.spawnEnemy(CAP_FILLER, FILLER_X + held * FILLER_GAP, 0);
+  }
+}
+
+/**
+ * Read the cap from both sides: `cap` commons alive across two whole intervals,
+ * on which nothing may arrive and the timer must rest, and then `cap − 1`
+ * commons alive across one due tick, on which exactly one enemy must arrive.
+ */
 async function readCap(
   h: Harness,
   index: number,
-): Promise<Pick<WindowReading, "spawnsAtCap" | "aliveAtCap" | "timerAtCap">> {
+): Promise<
+  Pick<
+    WindowReading,
+    | "spawnsAtCap"
+    | "aliveAtCap"
+    | "timerAtCap"
+    | "spawnsUnderCap"
+    | "aliveUnderCap"
+  >
+> {
   const cap = SPAWN_WINDOWS[index]!.cap;
-  await h.debug.clearEnemies();
-  for (let held = 0; held < cap; held += 1) {
-    await h.debug.spawnEnemy(CAP_FILLER, FILLER_X + held * FILLER_GAP, 0);
-  }
+  await poseCommons(h, cap);
   await h.debug.setSpawnTimer(0);
   const before = await h.snapshot();
   const after = await h.step(cadenceTicks(index));
+
+  await poseCommons(h, cap - 1);
+  await h.debug.setSpawnTimer(0);
+  const room = await h.snapshot();
+  const spawned = await h.step(1);
+
   return {
     spawnsAtCap: newEnemies(before, after).length,
     aliveAtCap: before.run.aliveCommons,
     timerAtCap: after.run.spawnTimer,
+    spawnsUnderCap: newEnemies(room, spawned).length,
+    aliveUnderCap: room.run.aliveCommons,
   };
 }
 
@@ -235,5 +270,16 @@ export function assertWindow(index: number, reading: WindowReading): void {
     0,
     TIMER_TOL,
     `spawnTimer after two intervals with window ${index}'s cap full`,
+  );
+
+  assertEqual(
+    reading.aliveUnderCap,
+    row.cap - 1,
+    `aliveCommons with one fewer common than window ${index}'s cap of ${row.cap} posed alive`,
+  );
+  assertEqual(
+    reading.spawnsUnderCap,
+    1,
+    `enemies window ${index} spawned on a due tick one under its cap of ${row.cap}`,
   );
 }

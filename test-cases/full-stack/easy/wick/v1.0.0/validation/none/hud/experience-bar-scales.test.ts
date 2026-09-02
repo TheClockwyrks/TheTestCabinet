@@ -8,10 +8,19 @@
 //
 // THE FIGURES. `xpToNext` is `XP_BASE` (`5`) `+ XP_STEP` (`10`) `x (level - 1)`
 // (specs/instrumentation.md — "Snapshot shape"), so the level posed at `2` puts
-// the next level `15` experience away, and `12` of `15` is four fifths of the
-// bar. `setXp` is the whole of the pose: "No level-up is derived from it: a
-// level-up comes from the next gain", so a bar posed full stays on the screen it
-// was posed on.
+// the next level `15` experience away and the level posed at `3` puts it `25`
+// away, and `12` of `15` is four fifths of the bar. `setXp` is the whole of the
+// pose: "No level-up is derived from it: a level-up comes from the next gain",
+// so a bar posed full stays on the screen it was posed on.
+//
+// WHY THE FULL BAR IS READ AT TWO LEVELS. The share is measured against the
+// build's OWN fill at `xp = xpToNext`, so any wrong DENOMINATOR cancels out of
+// the four-fifths reading and only a bar that scales non-linearly fails it. A
+// full bar is the whole track at every level, so the two full fills must be the
+// same width: a bar reading `xpToNext` for the level after the current one
+// fills fifteen twenty-fifths of the track at level 2 and twenty-five
+// thirty-fifths at level 3, more than twice the tolerance apart. The `xpToNext`
+// the specification names is what the pair of readings pins.
 //
 // HOW A BAR IS MEASURED WITHOUT KNOWING WHERE IT IS. As in
 // `hud/health-bar-scales`: `specs/ui.md` fixes no palette, no layout, and no
@@ -49,8 +58,14 @@ import { drawnPixels, poseNight } from "./stage";
 /** The level posed, which fixes what the next level costs. */
 const LEVEL = 2;
 
+/** The second level the full bar is read at, whose next level costs more. */
+const LEVEL_B = 3;
+
 /** `XP_BASE + XP_STEP x (LEVEL - 1)`: `15`. */
 const TO_NEXT = xpToNext(LEVEL);
+
+/** `XP_BASE + XP_STEP x (LEVEL_B - 1)`: `25`. */
+const TO_NEXT_B = xpToNext(LEVEL_B);
 
 /** The experience the part-full reading is taken at: four fifths of the bar. */
 const XP_MOST = 12;
@@ -120,5 +135,27 @@ it("fills four fifths of the experience bar at four fifths of a level", async ()
     MOST,
     FILL_TOL,
     `the share of the experience bar filled at xp ${XP_MOST} of ${TO_NEXT} (its full fill is ${wide} pixels wide)`,
+  );
+
+  // The same full bar, one level on, where the next level costs more.
+  await h.debug.setLevel(LEVEL_B);
+  await h.debug.setXp(0);
+  const emptyB = await drawnPixels(h);
+  await h.debug.setXp(TO_NEXT_B);
+  const fullB = await drawnPixels(h);
+
+  const posedB = await h.snapshot();
+  assertEqual(
+    posedB.run.xpToNext,
+    TO_NEXT_B,
+    `xpToNext at level ${LEVEL_B}, which is the bar's full width in experience`,
+  );
+
+  const wideB = widestSolidRect(differenceMask(emptyB, fullB)).w;
+  assertNear(
+    wideB / wide,
+    1,
+    FILL_TOL,
+    `the width of the experience bar's full fill at level ${LEVEL_B} (${wideB} pixels) against its width at level ${LEVEL} (${wide} pixels)`,
   );
 });

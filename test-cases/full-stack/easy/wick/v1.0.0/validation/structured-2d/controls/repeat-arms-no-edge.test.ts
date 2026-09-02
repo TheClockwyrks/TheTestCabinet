@@ -24,6 +24,19 @@
 // that took the repeat for a press reads `0` here. The title ticks nothing,
 // so the frames are input frames alone.
 //
+// WHAT THIS POINT CAN AND CANNOT SEPARATE UNDER THIS ENGINE. The repeat rule
+// is the ENGINE's: `InputSystem.onKeyDown` drops a keydown carrying `repeat`
+// before the held set is touched, and even without that guard the code is
+// already in the set, so nothing moves from `0`. A build reaches input through
+// `input.value` and `input.pressed` alone — the public `Engine` exposes no
+// surface to listen on — so the raw event never passes through the build's own
+// hands. A build that reads `value` where `pressed` belongs fails this point,
+// and fails controls/edge-once-per-press in the same run; no build-side defect
+// fails this point alone. The point is therefore a smoke check over the
+// engine's own filtering here, and carries the build-side discrimination its
+// name promises under the engineless configuration, where the build owns the
+// listener.
+//
 // THE TOLERANCE. None: a menu index is a whole number compared exactly.
 
 import { afterEach, beforeEach, it } from "vitest";

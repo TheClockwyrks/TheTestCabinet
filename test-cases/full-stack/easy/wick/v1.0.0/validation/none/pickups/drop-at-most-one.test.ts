@@ -13,16 +13,21 @@
 // both, and the check is that no center in the sample carries two. A conformant
 // build leaves none with certainty, whatever the seed, so the check has no tail
 // of its own; what a sample buys is the chance of catching a build that leaves
-// two. A build that draws for a draft on every kill regardless of the bread
-// draw leaves two on `BREAD_CHANCE × DRAFT_CHANCE` of its kills, four tenths of
-// a kill over `DROP_ROLL_KILLS` (`4000`), so that one design escapes a sample
-// this size more often than not; a build that drops both at any material rate
-// leaves several and fails.
+// two.
+//
+// WHY THIS CHECK'S SAMPLE IS ITS OWN, AND LARGER. A build that draws for a
+// draft on every kill regardless of the bread draw leaves two on
+// `BREAD_CHANCE × DRAFT_CHANCE` of its kills, four tenths of a kill over the
+// `DROP_ROLL_KILLS` (`4000`) the counting checks share, so that design escapes
+// a sample that size more often than not. This check therefore poses
+// `DROP_PAIR_KILLS` (`60000`) kills of its own, where the same design leaves
+// six expected and escapes about one time in four hundred. A build that drops
+// both at any material rate leaves several either way.
 //
 // WHY THE WORLD IS POSED AS IT IS. `sweepCommonKills` in `./stage` poses the
 // sample: an isolated night, every driver switch off and no slot held, so the
-// only draws the ticks make are the kills' own; `DROP_ROLL_KILLS` real kills of
-// a moth by a level-1 Ember bolt, each at its own point, no two of the four
+// only draws the ticks make are the kills' own; `DROP_PAIR_KILLS` real kills of
+// a moth by a level-1 Ember bolt, each at its own point, no two of the sixty
 // thousand points coinciding and every one far outside the radii that attract or
 // collect. So a pickup's center names the kill that dropped it. The field is
 // swept between rounds, so each round's pickups are that round's drops; a kill's
@@ -35,7 +40,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { DROP_ROLL_KILLS } from "../constants";
+import { DROP_PAIR_KILLS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { sweepCommonKills } from "./stage";
 
@@ -49,11 +54,11 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("leaves no two pickups on one center over 4000 seeded common kills", async () => {
-  const sweep = await sweepCommonKills(h);
+it("leaves no two pickups on one center over 60000 seeded common kills", async () => {
+  const sweep = await sweepCommonKills(h, DROP_PAIR_KILLS);
   await captureStill(h, "one");
 
-  assertEqual(sweep.kills, DROP_ROLL_KILLS, "the kills the sample made");
+  assertEqual(sweep.kills, DROP_PAIR_KILLS, "the kills the sample made");
   const shared: string[] = [];
   for (const round of sweep.rounds) {
     const seen = new Map<string, number>();

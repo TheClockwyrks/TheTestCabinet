@@ -21,18 +21,51 @@
 // frame after the pose as well as the pose. The level-up overlay is reached by
 // `setScreen("levelup")` (itself a pose) so `choose` can be made, and the two
 // routes into play are compared on the loop they leave running.
+//
+// AND WHY THE FRAME AFTER EACH POSE IS READ TOO. The bracket alone decides only
+// what sounded INSIDE the call. A build that queues the transition's cue rather
+// than discarding it sounds nothing at the call and plays it on the very next
+// frame, which is a pose sounding by another route: "A cue is played by a tick
+// or a frame, never by a pose of the debug surface" (specs/ui.md). So each pose
+// takes a second reading, opened before the call and closed after a frame that
+// consumes NO tick — `advance(TICK_DT / 4)`, which "poses a partial frame" and
+// on `playing` leaves the delta waiting in the accumulator
+// (specs/instrumentation.md) — and requires that stretch to carry no one-shot
+// cue. A frame that ticks nothing can raise no cue of its own, so anything
+// heard there was the pose's. The delta is a thousandth of a tick, so the
+// deltas of every pose in the check together still leave the accumulator far
+// short of `TICK_DT` and no tick ever runs under them.
+//
+// THE TWO LOOPS ARE EXEMPT, BY THE SPECIFICATION. "The two looping cues are
+// reconciled from the state by the next frame, so a run posed through
+// `setScreen("playing")` sounds exactly as one started from the menu one frame
+// later", so the second reading counts one-shot sounds alone: the frame after
+// `setScreen("playing")` is required to start `music`, not to stay silent, and
+// that requirement is the reading at the foot of this check.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
+import { TICK_DT } from "../constants";
 import {
+  advanceBy,
   bracket,
   captureStill,
   createHarness,
   isLooping,
+  soundCount,
+  soundsSince,
   startRunFromTitle,
   type Harness,
   type WickDebugApi,
 } from "../harness";
+
+/**
+ * The delta the frame after each pose is run with: a thousandth of a tick, so
+ * the frame runs and consumes no tick and can raise no cue of its own. The
+ * deltas of the whole check accumulate on `playing`, so the figure is small
+ * enough that every frame this check runs together stays far inside one tick.
+ */
+const QUIET_DELTA = TICK_DT / 1000;
 
 let h: Harness;
 
@@ -45,14 +78,27 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Make the call, and read the sounds emitted at it and nowhere else. */
+/**
+ * Make the call, and read what sounded at it and on the tickless frame after
+ * it: nothing at all inside the call, and no one-shot cue across the pose and
+ * that frame together.
+ */
 async function requireSilent(
   name: string,
   op: keyof WickDebugApi,
   ...args: readonly unknown[]
 ): Promise<void> {
+  const from = await soundCount(h);
   const { sounds } = await bracket(h, op, args);
   assertLength(sounds, 0, `sounds played at ${name}`);
+
+  await advanceBy(h, QUIET_DELTA);
+  const heard = (await soundsSince(h, from)).filter((sound) => !sound.loop);
+  assertLength(
+    heard.map((sound) => sound.name),
+    0,
+    `one-shot cues sounded at ${name} or on the tickless frame after it`,
+  );
 }
 
 it("plays no cue at a pose, and reconciles the loops on the next frame", async () => {

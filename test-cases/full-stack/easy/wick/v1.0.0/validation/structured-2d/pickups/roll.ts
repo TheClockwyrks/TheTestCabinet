@@ -26,6 +26,8 @@
 // of the real simulation rather than four thousand. Nothing about the roll
 // depends on how the kills are divided between ticks: each is a common killed by
 // a weapon, and the draws are the build's own, in whatever order it makes them.
+// A caller may pose a wider batch, and `drop-at-most-one` does: its sample is
+// fifteen times the others', and the width is what keeps its ticks near theirs.
 //
 // WHERE THE MOTHS STAND. On a lattice `SPACING` (`200`) units apart, starting
 // `FIELD` (`4000`) units from the lamplighter on both axes. That spacing is far
@@ -99,18 +101,24 @@ function post(at: Point, n: number): Point {
  * A build whose moths survived the pulse, or whose kill count did not rise by
  * the batch, fails here: every check that reads this sample is about what a
  * common's death draws, and there were no deaths to draw for.
+ *
+ * `batch` is how many kills share one tick. It changes nothing about the roll
+ * — each kill is still a common killed by a weapon at its own lattice point —
+ * and the check that needs a far larger sample raises it so the extra kills
+ * cost lattice rows rather than ticks.
  */
 export async function sampleDrops(
   h: Harness,
   seed: number,
   trials: number = DROP_TRIALS,
+  batch: number = BATCH,
 ): Promise<Sample> {
   const at = isolate(h, { seed }).run.player;
   const drops: Drop[] = [];
   let killed = 0;
 
   while (killed < trials) {
-    const size = Math.min(BATCH, trials - killed);
+    const size = Math.min(batch, trials - killed);
     for (let n = 0; n < size; n += 1) {
       const where = post(at, killed + n);
       h.debug.spawnEnemy("moth", where.x, where.y);
