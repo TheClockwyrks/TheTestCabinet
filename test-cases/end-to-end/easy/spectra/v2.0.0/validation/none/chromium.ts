@@ -19,6 +19,32 @@ import { pathToFileURL } from "node:url";
 import type { BrowserServer, BrowserType } from "playwright";
 
 /**
+ * Playwright's `chromium`, imported once for the life of this worker.
+ *
+ * The import itself is the expensive part: Playwright is a large package, and
+ * evaluating it costs seconds on a loaded host. Vitest gives each suite file a
+ * module registry of its own, so a module-level cache is thrown away between
+ * suites and every one of the project's suites would pay that import again. The
+ * worker's `globalThis` outlives the registry, so the cost is paid once per
+ * worker instead of once per suite, and what the whole project pays stops
+ * scaling with how many suites it holds.
+ *
+ * The promise is what is kept, not the value, so two harnesses built at once in
+ * one worker share the one import rather than racing to start a second.
+ *
+ * This is scaffolding rather than measurement: nothing about the build is read
+ * through it, and the object handed back is the same `BrowserType` the first
+ * import produced.
+ */
+function importChromium(): Promise<BrowserType> {
+  const worker = globalThis as unknown as {
+    __spectraChromium?: Promise<BrowserType>;
+  };
+  worker.__spectraChromium ??= resolveChromium();
+  return worker.__spectraChromium;
+}
+
+/**
  * Import Playwright's `chromium`, across the layouts our hosts produce.
  *
  * A walkable `node_modules/playwright` is what `npm ci` leaves in the build's
@@ -29,7 +55,7 @@ import type { BrowserServer, BrowserType } from "playwright";
  * resolution does not — which is how Nix's `playwright-driver` exposes the
  * package.
  */
-async function importChromium(): Promise<BrowserType> {
+async function resolveChromium(): Promise<BrowserType> {
   const require = createRequire(import.meta.url);
   const failures: string[] = [];
   for (const pkg of ["playwright", "playwright-core"]) {
