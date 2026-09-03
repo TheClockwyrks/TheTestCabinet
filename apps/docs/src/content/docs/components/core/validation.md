@@ -135,6 +135,12 @@ Deciding the run's points means running that project:
   and reading the outcome from the JSON reporter written to a file.
 - Reuse the dependency install the tree already carries, and install only a tree
   nothing prepared.
+- Remove the staged project once the run returns, whatever the outcome, so the
+  tree is left as validation found it. A directory already standing at that name
+  is held aside for the run and put back afterwards. The tree a run collects is
+  published verbatim, and the tree `tcab validate` and `tcab capture-baselines`
+  are pointed at is a case's committed reference implementation, so the project
+  lives exactly as long as the run that needs it.
 
 ### Only the run's own variant's suites are run
 

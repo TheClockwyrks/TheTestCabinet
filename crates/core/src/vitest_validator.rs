@@ -20,6 +20,12 @@
 //! own location, so a suite resolves the build's modules by the same relative paths
 //! the build itself uses.
 //!
+//! It is staged for the length of the suite run and taken back out again, whatever
+//! the run's outcome, so validation leaves the tree as it found it. The tree a run
+//! collects is published verbatim, and the tree `tcab validate` and
+//! `tcab capture-baselines` are pointed at is a case's committed reference
+//! implementation.
+//!
 //! # The shared harness is staged beside the case's own
 //!
 //! The engineless (`none`) validators of every case that has them are written over one
@@ -160,6 +166,13 @@ pub const VALIDATION_MEDIA_ENV: &str = "TCAB_VALIDATION_MEDIA_DIR";
 
 /// The local vitest binary a produced tree's install leaves behind.
 const VITEST_BIN: &str = "node_modules/.bin/vitest";
+
+/// Where a directory already standing at [`VALIDATION_SCRIPT_DIR`] is held while the
+/// staged validator project needs that name, relative to the produced tree.
+///
+/// Inside the tree so the move is a rename, and under `.tcab/` because that is the
+/// runner's own namespace in a produced tree.
+const DISPLACED_PROJECT_DIR: &str = ".tcab/displaced-validation";
 
 /// The directory inside the staged validator project the shared harness package is
 /// staged at. Every case's suites reach it by a path relative to their own file, so
@@ -342,7 +355,9 @@ fn execute(
              `{engine}`, so there was nothing for the runner to run",
         ));
     }
-    stage_project(&project, &repo.join(VALIDATION_SCRIPT_DIR))?;
+    // Staged for the length of this run and no longer: the guard puts the tree back
+    // as it was found on every path out of here, including the refusals below.
+    let _staged = StagedProject::stage(&project, repo.join(VALIDATION_SCRIPT_DIR))?;
     ensure_dependencies(repo, artifacts, install_command)?;
     if !repo.join(VITEST_BIN).exists() {
         return Err(format!(
@@ -419,13 +434,117 @@ fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
 
+/// The case's validator project, staged into a produced tree for the length of one
+/// suite run and taken out again when this drops.
+///
+/// A validation run leaves the tree as it found it. The tree a run collects is
+/// published verbatim — to the run's repository, its artifact tarball, and the
+/// analysis of what the model authored — and the tree `tcab validate` and
+/// `tcab capture-baselines` are pointed at is a case's committed reference
+/// implementation. The staged project is what validation adds to either, so its
+/// lifetime is the run's: the guard takes it out again whether the suites ran,
+/// failed, or the runner refused them.
+///
+/// A directory already standing at the project's name is held aside while the run
+/// needs it and put back afterwards, so a build that authored one of its own keeps
+/// it.
+struct StagedProject {
+    /// Where the project is staged (the tree's [`VALIDATION_SCRIPT_DIR`]).
+    at: PathBuf,
+    /// Where whatever already stood at [`Self::at`] is held, or `None` when the name
+    /// was free.
+    displaced: Option<PathBuf>,
+}
+
+impl StagedProject {
+    /// Hold aside whatever stands at `at`, then stage `project` there.
+    ///
+    /// A staging that fails part way through is undone as any other outcome is: the
+    /// guard exists before the copy starts, so a host that cannot stage the shared
+    /// harness leaves the tree with the case's files it had already copied in.
+    fn stage(project: &Path, at: PathBuf) -> Result<Self, String> {
+        let staged = Self {
+            displaced: displace(&at)?,
+            at,
+        };
+        stage_project(project, &staged.at)?;
+        Ok(staged)
+    }
+}
+
+impl Drop for StagedProject {
+    fn drop(&mut self) {
+        if let Err(err) = std::fs::remove_dir_all(&self.at)
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(
+                at = %self.at.display(),
+                %err,
+                "the staged validator project could not be removed from the produced tree",
+            );
+        }
+        let Some(held) = &self.displaced else {
+            return;
+        };
+        if let Err(err) = std::fs::rename(held, &self.at) {
+            tracing::warn!(
+                held = %held.display(),
+                at = %self.at.display(),
+                %err,
+                "the tree's own directory could not be put back where the validators were staged",
+            );
+            return;
+        }
+        // Only the directory this displacement created, and only while it is empty:
+        // a tree that carries `.tcab/` for its own reasons keeps it.
+        if let Some(parent) = held.parent() {
+            let _ = std::fs::remove_dir(parent);
+        }
+    }
+}
+
+/// Move whatever stands at `at` into the tree's holding directory, returning where it
+/// is held, or `None` when the name is free.
+///
+/// The holding directory is inside the tree so the move is a rename rather than a
+/// copy, and under `.tcab/` because that is the runner's own namespace in a produced
+/// tree. Anything left there by an earlier run that died mid-validation is cleared:
+/// what the tree carries now is the only copy worth putting back.
+fn displace(at: &Path) -> Result<Option<PathBuf>, String> {
+    if !at.exists() {
+        return Ok(None);
+    }
+    let Some(repo) = at.parent() else {
+        return Ok(None);
+    };
+    let held = repo.join(DISPLACED_PROJECT_DIR);
+    if held.exists() {
+        // Whatever was held is whatever stood at the name, so it is a directory or a
+        // file depending on what that tree carried.
+        std::fs::remove_dir_all(&held)
+            .or_else(|_| std::fs::remove_file(&held))
+            .map_err(|err| format!("could not clear `{}`: {err}", held.display()))?;
+    }
+    if let Some(parent) = held.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("could not create `{}`: {err}", parent.display()))?;
+    }
+    std::fs::rename(at, &held).map_err(|err| {
+        format!(
+            "could not hold `{}` aside for the case's validator project: {err}",
+            at.display(),
+        )
+    })?;
+    Ok(Some(held))
+}
+
 /// Copy the case's validator project for the run's engine into `dest`, replacing
 /// whatever stands there, and stage the shared harness package beside it.
 ///
 /// The destination is the project's required location, so a tree that already carries
 /// a directory of that name has it replaced: the case's validators are what decides
 /// the case's points. Everything that measures the code the model wrote has already
-/// run by this point.
+/// run by this point, and [`StagedProject`] is what puts the tree back afterwards.
 fn stage_project(project: &Path, dest: &Path) -> Result<(), String> {
     if dest.exists() {
         std::fs::remove_dir_all(dest)

@@ -794,11 +794,11 @@ pub fn capture_baseline_media(
 /// suites run over it exactly as they run over a model's collected tree, and the same
 /// [`crate::vitest_validator::run_vitest_suites`] does both.
 ///
-/// The staged validator project and the media scaffolding are removed afterwards.
-/// Everything else the capture touches (`node_modules`, the build output) the build
-/// step put there and the case's own ignore rules already cover; the staged project is
-/// the one thing this step adds to a directory that is committed, so it is the one
-/// thing that has to go.
+/// A reference implementation is committed, so the capture leaves it as it found it:
+/// the suite runner takes its staged project back out and the media scaffolding goes
+/// with the outputs it held. Everything else the capture touches (`node_modules`, the
+/// build output) the build step put there and the case's own ignore rules already
+/// cover.
 fn capture_baseline_suites(
     test_case: &TestCaseVersion,
     variant: &Variant,
@@ -816,7 +816,6 @@ fn capture_baseline_suites(
         &build.install,
         baseline_dir,
     );
-    let _ = std::fs::remove_dir_all(reference_dir.join(VALIDATION_SCRIPT_DIR));
     if results.is_empty() {
         return None;
     }
