@@ -194,6 +194,8 @@ export function describeFrame(input: {
     pendingNode: Vec3 | null;
     pickedNode: Vec3 | null;
   };
+  /** The readouts `specs/ui.md` fixes by name, and whether each is on screen. */
+  readouts: { selectedTool: boolean; rampLegend: boolean };
   texts: readonly { name: string; text: string }[];
   groundSize: number;
 }): DrawnEntry[] {
@@ -382,6 +384,27 @@ export function describeFrame(input: {
         at: midpoint(posture.envelope.min, posture.envelope.max),
         size: span(posture.envelope.min, posture.envelope.max),
         color: palette.ENVELOPE,
+      }),
+    );
+  }
+
+  if (input.readouts.selectedTool) {
+    out.push(
+      entry({
+        kind: "mark",
+        name: "selected-tool",
+        at: [0, 0, 0],
+        color: palette.PAD,
+      }),
+    );
+  }
+  if (input.readouts.rampLegend) {
+    out.push(
+      entry({
+        kind: "aid",
+        name: "ramp-legend",
+        at: [0, 0, 0],
+        color: palette.LATTICE,
       }),
     );
   }

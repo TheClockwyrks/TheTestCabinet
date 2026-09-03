@@ -288,6 +288,14 @@ export function createRenderer(
           name: `run-${index}`,
           text,
         })),
+        readouts: {
+          // `specs/ui.md` fixes both by name: the build screen's readouts show
+          // "the tool palette with each tool's binding and the selected tool
+          // marked", and the run screen carries "a legend for the utilization
+          // ramp".
+          selectedTool: build,
+          rampLegend: state.screen === "run",
+        },
         groundSize: GROUND_SIZE,
       });
     },

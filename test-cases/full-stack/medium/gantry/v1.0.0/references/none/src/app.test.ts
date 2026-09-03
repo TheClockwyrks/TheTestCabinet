@@ -56,6 +56,7 @@ function harness(): Harness {
     },
     installAudio: () => {},
     setDiagnostics: () => {},
+    overlayLines: () => [],
   };
 
   const game = new Game({

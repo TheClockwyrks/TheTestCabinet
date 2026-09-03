@@ -70,6 +70,8 @@ export interface InputFrame {
  * every other cue.
  */
 export interface Runtime {
+  /** The lines the diagnostics overlay is showing, empty while it is hidden. */
+  overlayLines(): readonly string[];
   /** Take and clear the input gathered since the last call. */
   takeInput(): InputFrame;
   /** Whether an action's key is held down right now. */

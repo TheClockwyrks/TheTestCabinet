@@ -109,6 +109,11 @@ export function refreshViews(world: World): void {
       name: `run-${index}`,
       text,
     })),
+    readouts: {
+      // `specs/ui.md` fixes both by name; see the engineless reference.
+      selectedTool: build,
+      rampLegend: state.screen === "run",
+    },
     groundSize: GROUND_REACH,
   });
 }

@@ -241,8 +241,8 @@ Each entry is one thing the frame put on screen:
 | --- | --- | --- |
 | `model` | the model name `specs/assets.md` gives it | placement of that model |
 | `member` | the member's material: `strut`, `cable`, or `rail` | intact member, carrying its `id` |
-| `aid` | `lattice` or `envelope` | aid shown, whole rather than per cell |
-| `mark` | `anchor`, `load-start`, `pad`, `pad-yaw`, `pending-node`, or `picked-node` | mark drawn |
+| `aid` | `lattice`, `envelope`, or `ramp-legend` | aid shown, whole rather than per cell |
+| `mark` | `anchor`, `load-start`, `pad`, `pad-yaw`, `pending-node`, `picked-node`, or `selected-tool` | mark drawn |
 | `obstacle` | `obstacle` | obstacle drawn |
 | `cable` | `hoist` | hoist cable drawn |
 | `ground` | `ground` | the yard floor, once |
@@ -253,6 +253,11 @@ taken after a frame rather than causing one, so a caller that has just advanced
 reads what that advance drew. A thing the frame did not draw has no entry, which
 is how the reading says a mark is absent, an aid is hidden, or a model was never
 placed.
+
+Two of those names are readouts rather than things in the yard, because
+`specs/ui.md` fixes both by name: the build screen marks "the selected tool", and
+the run screen carries "a legend for the utilization ramp". Where either is drawn
+and what it looks like are the build's; that it is on screen is not.
 
 `source` is the produced file the geometry was decoded from, named as
 `specs/assets.md` names it and without any path or bundling suffix a build's

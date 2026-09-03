@@ -50,6 +50,17 @@ export class DiagnosticsOverlay {
     return this.shown;
   }
 
+  /**
+   * The lines the panel is showing, empty while it is hidden.
+   *
+   * `specs/instrumentation.md` has `drawn()` report the text a frame drew
+   * "wherever it is drawn", and the overlay is drawn outside the canvas — so the
+   * frame reads them from here rather than from the layer that paints the yard.
+   */
+  get lines(): readonly string[] {
+    return this.shown ? this.source() : [];
+  }
+
   /** Show it if it is hidden, hide it if it is shown. */
   toggle(): void {
     this.shown = !this.shown;

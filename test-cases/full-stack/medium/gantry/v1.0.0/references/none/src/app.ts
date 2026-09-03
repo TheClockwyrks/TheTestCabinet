@@ -143,7 +143,27 @@ export class Game implements ScreenIo {
 
   /** What the last frame drew (`specs/instrumentation.md`). */
   lastDrawn(): DrawnEntry[] {
-    return this.deps.lastDrawn();
+    // The overlay is drawn OUTSIDE the canvas, by the runtime layer rather than
+    // by the renderer, so its lines are joined on here — `drawn()` reports the
+    // text a frame drew "wherever it is drawn", and a panel the player is
+    // looking at is text the frame drew.
+    const lines = this.deps.runtime.overlayLines();
+    return [
+      ...this.deps.lastDrawn(),
+      ...lines.map((text) => ({
+        kind: "text" as const,
+        name: "overlay",
+        id: null,
+        source: null,
+        x: 0,
+        y: 0,
+        z: 0,
+        yaw: 0,
+        size: [0, 0, 0] as readonly [number, number, number],
+        color: [255, 255, 255] as readonly [number, number, number],
+        text,
+      })),
+    ];
   }
 
   /** One whole frame: advance the game by `dt` seconds, then draw it. */

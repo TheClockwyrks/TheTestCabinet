@@ -51,6 +51,21 @@
 // has no driver for, and the panel is not in it either way. The requirement, the
 // scenario and every figure below are unchanged.
 
+// WHY THIS ONE STILL READS THE PICTURE, when nothing else in this project does.
+//
+// Every other check about drawing asks `drawn()`, which is the frame's own
+// account of what it put on screen. This one cannot: what it is about is the
+// DEBUG OVERLAY, and `specs/instrumentation.md` gives the panel to a different
+// owner on each engine — "The overlay is part of the runtime layer you write"
+// with no engine, and "Drawing the panel, showing and hiding it with the backtick
+// key … are the engine's" under both of them. So under two of the three engines
+// the panel is not the build's drawing at all, and there is nothing for a build
+// to report about it. Neither engine exposes whether its panel is up.
+//
+// The picture is therefore the only instrument that answers the same question on
+// all three, and the question — is the panel there — is one a reader can settle
+// at a glance from the still beside the verdict.
+
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { clearAll, createHarness, openSite, type Harness } from "../harness";

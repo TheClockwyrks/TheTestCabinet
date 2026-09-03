@@ -130,4 +130,9 @@ export class RuntimeCore implements Runtime {
   refreshOverlay(): void {
     this.overlay.refresh();
   }
+
+  /** The lines the overlay is showing, empty while it is hidden. */
+  overlayLines(): readonly string[] {
+    return this.overlay.lines;
+  }
 }

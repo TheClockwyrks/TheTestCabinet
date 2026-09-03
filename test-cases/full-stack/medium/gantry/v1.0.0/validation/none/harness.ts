@@ -309,6 +309,22 @@ export interface Harness {
   /** What the last frame drew (`specs/instrumentation.md`). */
   drawn(): Promise<DrawnEntry[]>;
 
+  /**
+   * The diagnostic lines the build has registered with the overlay, as they read
+   * right now.
+   *
+   * `specs/instrumentation.md` § Diagnostics fixes what a build must register,
+   * and this is how a check reads it — never off the panel's pixels. Under the
+   * two engines the engine keeps the registry and hands back every source's
+   * current reading; under no engine the overlay is the build's own, so its lines
+   * come back through `drawn()` as the text the frame drew.
+   *
+   * The overlay must be SHOWN for the engineless reading to carry anything, since
+   * a panel that is not drawn draws no text.
+   */
+  diagnostics(): Promise<string[]>;
+
+
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
 
@@ -414,6 +430,12 @@ export async function createHarness(
 
     snapshot: () => base.snapshot(),
     check: () => base.debug.check(),
+    diagnostics: async () => {
+      const drawn = await base.debug.drawn();
+      return (drawn as DrawnEntry[])
+        .filter((entry) => entry.kind === "text" && entry.name === "overlay")
+        .map((entry) => entry.text ?? "");
+    },
     drawn: () => base.debug.drawn() as Promise<DrawnEntry[]>,
 
     advance: (count = 1) => base.advance(count),

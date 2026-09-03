@@ -129,6 +129,9 @@ function harness(): Harness {
       muted = !muted;
     },
     installAudio() {},
+    overlayLines(): readonly string[] {
+      return [];
+    },
     setDiagnostics(next) {
       source = next;
     },
