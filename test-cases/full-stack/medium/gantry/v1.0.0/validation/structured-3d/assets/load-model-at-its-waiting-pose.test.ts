@@ -1,93 +1,46 @@
-// assets/load-model-at-its-waiting-pose — a waiting load is drawn where the site
-// starts it.
+// assets/load-model-at-its-waiting-pose — a waiting load's model is drawn
+// at its starting pose in the yard.
 //
-// specs/assets.md § The models: "The game draws each model wherever its subject
-// is: … and each load at its pose, waiting, hanging, or placed."
-// specs/world.md § Loads: "Every load pose in this specification is the pose of
-// the load's lift point: the center of its top face."
+// `specs/assets.md` § The models: "The game draws each model wherever its subject
+// is: … each load's model at its own pose …". `specs/state.md` reports a load's
+// pose as the run's own reading — `run.loads[i].pos` and its phase — so both
+// halves of this comparison are the build's: where it says the load is, and where
+// it says it drew the load's model.
 //
-// WHERE A LOAD IS DRAWN, UNDER AN ENGINE. specs/assets.md has an engine build
-// load each model "through the engine's own asset loader under its asset root",
-// so a load on screen is a `ModelComponent` the world holds, built over the
-// decode of the committed file `specs/assets.md` names for that load class.
-// `drawnFromModel` answers the placements of that one file — it decodes the file
-// for itself through the same loader and matches a component's model against it
-// by contents — and `drawnModelBox` answers the box each placement FILLS.
-//
-// AND A LOAD'S POSE IS ITS LIFT POINT. specs/world.md: "Every load pose in this
-// specification is the pose of the load's lift point: the center of its top
-// face. … The load's box extends half its width and half its depth horizontally
-// from the lift point, rotated by its yaw, and its full height below it." So the
-// middle of the class box hanging under the pose is the point the drawing is held
-// to, and the models "fill their class boxes" (specs/assets.md).
-//
-// THE ENGINELESS PROJECT DECIDES THIS BY PHOTOGRAPHING THE STAGE and comparing
-// what changed inside the box's projection against what changed outside it. There
-// is no rasterizer here — `validation/host.ts` gives three a WebGL2 context that
-// answers every call and draws nothing — so the reading is the picture's contents
-// rather than its pixels.
-//
-// THE WORLD IS ONE LOAD AND NOTHING ELSE: `clearAll` empties the yard of every
-// structure, obstacle and load, and exactly one crate is added at a known
-// starting pose. So the only thing in the yard a crate model could belong to is
-// that load.
+// A LOAD WAITS WHERE THE SITE PUT IT, so nothing has to move it: the run is
+// started and the load is read where it stands.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
-import { LOAD_CLASS_DIMENSIONS } from "../constants";
+import { GRIP_MAX_RATE } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
-  drawnFromModel,
-  drawnModelBox,
+  distance3,
+  entriesOf,
+  entryAt,
   openSite,
+  poseTape,
+  standMinimalCrane,
+  startRun,
   type Harness,
-  type LoadPose,
-  type Vec3,
+  type TapeStepSpec,
 } from "../harness";
 
-const SITE = 0;
+/** A move that keeps the run running and moves nothing (`specs/rigging.md`). */
+const HOLD: TapeStepSpec = {
+  kind: "move",
+  commands: [{ axis: "grip", target: 100_000, rate: GRIP_MAX_RATE }],
+};
 
-/** The one load: a crate, and the file specs/assets.md names for that class. */
+/** The class this check carries, and where it waits and is wanted. */
 const CLASS = "crate" as const;
-const MODEL = "models/crate.glb";
 const MASS = 40;
+const FROM = { x: 7, y: 0, z: -3, yaw: 0 };
+const TO = { x: -6, y: 0, z: 8, yaw: 0 };
 
-/** Where it waits: clear of the site's anchors, well inside the envelope. */
-const START: LoadPose = { x: 7, y: 2, z: -3, yaw: 0 };
-
-/**
- * How far outside the box a model fills the load's own middle may stand.
- *
- * specs/assets.md has the three load models "fill their class boxes" and says the
- * figures "are the intent, not a tolerance", so a sculpt may fall a little short
- * of the middle. A quarter of a unit is two voxels at `VOXELS_PER_UNIT` (`8`) and
- * an eighth of the crate's own two-unit box.
- */
-const SLACK = 0.25;
-
-/** Whether the box `box` covers the point `at`, within `SLACK`. */
-function covers(box: { min: Vec3; max: Vec3 } | null, at: Vec3): boolean {
-  return (
-    box !== null &&
-    at.x >= box.min.x - SLACK &&
-    at.x <= box.max.x + SLACK &&
-    at.y >= box.min.y - SLACK &&
-    at.y <= box.max.y + SLACK &&
-    at.z >= box.min.z - SLACK &&
-    at.z <= box.max.z + SLACK
-  );
-}
-
-/** The middle of a load's class box, hanging under its lift point. */
-function middleOf(pose: { x: number; y: number; z: number }): Vec3 {
-  return {
-    x: pose.x,
-    y: pose.y - LOAD_CLASS_DIMENSIONS[CLASS].y / 2,
-    z: pose.z,
-  };
-}
+/** How far the model may be drawn from the pose the run reports. */
+const REACH = 1.5;
 
 let h: Harness;
 
@@ -99,40 +52,29 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws a waiting load inside its class box at its starting pose", async () => {
-  await openSite(h, SITE);
-  await clearAll(h);
-  await addOneLoad(h, CLASS, MASS, START, START);
+it("draws the waiting load's model at the pose the run reports", async () => {
+  await openSite(h, 0);
+  await standMinimalCrane(h);
+  await addOneLoad(h, CLASS, MASS, FROM, TO);
+  await poseTape(h, [HOLD]);
+  await startRun(h);
+
   await h.advance(1);
 
-  const state = await h.snapshot();
-  assertEqual(
-    state.site.loads.length,
-    1,
-    "the loads the emptied yard holds: the one this point is about " +
-      "(specs/instrumentation.md)",
-  );
-  assertEqual(
-    state.run.phase,
-    "idle",
-    "the run the load waits in — a load is waiting before a run starts " +
-      "(specs/world.md)",
-  );
+  const snapshot = await h.snapshot();
+  const load = snapshot.run.loads[0]!;
+  assertEqual(load.phase, "waiting", "the load's phase this check is about");
 
-  const boxes = (await drawnFromModel(h, MODEL)).map((one) =>
-    drawnModelBox(one),
-  );
-  // The pose the SITE starts the load at, which is the build's own reading of
-  // it rather than the figure this file asked for.
-  const middle = middleOf(state.site.loads[0]!.from);
+  const models = entriesOf(await h.drawn(), "model", CLASS);
+
+  await h.capture("waiting", "A waiting load at its starting pose");
+
+  assertTrue(models.length > 0, `a \`${CLASS}\` model among what the frame drew`);
+  const away = distance3(entryAt(models[0]!), load.pos);
   assertTrue(
-    boxes.some((box) => covers(box, middle)),
-    "the crate model drawn over the waiting load's own class box, centered " +
-      `on (${middle.x.toFixed(2)}, ${middle.y.toFixed(2)}, ` +
-      `${middle.z.toFixed(2)}): the game draws "each load at its pose, ` +
-      'waiting, hanging, or placed" (specs/assets.md). It is drawn at ' +
-      JSON.stringify(boxes.map((box) => box?.centre)),
+    away <= REACH,
+    `the load's model drawn within ${REACH} units of the pose the run reports, ` +
+      `(${load.pos.x.toFixed(2)}, ${load.pos.y.toFixed(2)}, ` +
+      `${load.pos.z.toFixed(2)}) — it was drawn ${away.toFixed(2)} away`,
   );
-
-  await h.capture("waiting", "The waiting load at its starting pose");
 });

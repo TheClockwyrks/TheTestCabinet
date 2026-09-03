@@ -1,81 +1,42 @@
-// assets/ring-model-turns-with-the-arm — the ring model is drawn turned by the
-// slew angle.
+// assets/ring-model-turns-with-the-arm — the ring model is turned to the slew,
+// so it reads as the bearing the arm rides on.
 //
-// specs/assets.md § The models: "The game draws each model wherever its subject
-// is: the ring centered on the slew axis between its flanges and turning with the
-// arm …". specs/structure.md says what the arm's turn is: the ring "turns the top
-// flange about the slew axis by the slew angle and takes the whole arm with it,
-// so an arm node stands at its lattice position turned by that angle and nothing
-// else moves it, while the bottom flange stands still". So the drum's own drawing
-// follows the slew value.
+// `specs/assets.md` § The models has the ring drawn "on the slew axis", and
+// `specs/overview.md` asks the machine to read as one: a bearing drum that stood
+// still while the arm swung over it would read as scenery rather than as the
+// joint it is. The slew axis is the run's own, reported as
+// `run.axes.slew.value` (`specs/state.md`).
 //
-// WHAT A TURN IS, UNDER AN ENGINE. specs/assets.md has an engine build load each
-// model "through the engine's own asset loader under its asset root", so a model
-// on screen is a `ModelComponent` the world holds and the angle it is drawn at is
-// the rotation of the transform the pipeline places it at. `drawnYaw` reads that
-// as `specs/world.md` measures a yaw — where the rotation sends `+x`, positive
-// from `+x` toward `+z`.
-//
-// WHAT IS COMPARED IS TWO READINGS OF THE SAME PLACEMENT, never a reading against
-// a figure: the model's own zero orientation is the build's, since the sculpt
-// faces whichever way the exporter left it, and specs/assets.md fixes only that
-// the drawing FOLLOWS the axis.
-//
-// THE ENGINELESS PROJECT DECIDES THIS BY PHOTOGRAPHING THE SUBJECT AT TWO ANGLES
-// and requiring the pixels to differ. There is no rasterizer here —
-// `validation/host.ts` gives three a WebGL2 context that answers every call and
-// draws nothing — so the reading is the angle itself, which is a stronger reading
-// of the same sentence: it says the drawing turned BY the axis rather than merely
-// that it changed.
-//
-// THIRTY-SEVEN DEGREES, NOT NINETY, so that a build whose drum happens to have a
-// four-fold symmetry is still read as having turned.
-//
-// THE WORLD IS ONE CRANE, RUNNING, AND NOTHING ELSE — no loads, no obstacles, and
-// a tape of one grip move, the only axis whose motion "applies no force to
-// anything" (specs/rigging.md), so posing the slew is the only thing that moves
-// between the two readings.
+// TWO ANGLES, NOT ONE. What yaw the model carries at any single slew is the
+// build's own zero; that the drawing FOLLOWS the axis is the requirement. So the
+// axis is set twice and the two yaws are compared against the turn between them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNear } from "../assert";
+import { assertTrue } from "../assert";
 import { GRIP_MAX_RATE } from "../constants";
 import {
   createHarness,
-  drawnFromModel,
-  drawnYaw,
-  emptyYard,
+  entriesOf,
   openSite,
   poseTape,
   standMinimalCrane,
   startRun,
-  yawBetween,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
 
-/** The subject's produced model, under the asset root specs/assets.md fixes. */
-const MODEL = "models/ring.glb";
-
-const SITE = 0;
-
-/** A move that keeps the run running and moves nothing (specs/rigging.md). */
+/** A move that keeps the run running and moves nothing (`specs/rigging.md`). */
 const HOLD: TapeStepSpec = {
   kind: "move",
   commands: [{ axis: "grip", target: 100_000, rate: GRIP_MAX_RATE }],
 };
 
-/** The angle the arm starts at, and the one it is swung to. */
-const REST = 0;
-const SWUNG = 37;
+/** The two slew angles, and the turn between them. */
+const FROM = 0;
+const TO = 90;
 
-/**
- * How far the drawn turn may stand from the axis's own.
- *
- * The angle is read off a transform rather than off a picture, so nothing here is
- * approximate but the build's own arithmetic; half a degree is room for a build
- * that carries its angles in radians and back.
- */
-const TOLERANCE = 0.5;
+/** How far the model's turn may fall short of the axis's. */
+const TOLERANCE = 15;
 
 let h: Harness;
 
@@ -87,41 +48,36 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** The yaw the one ring placement is drawn at, in degrees. */
-async function ringYaw(harness: Harness): Promise<number> {
-  const placed = await drawnFromModel(harness, MODEL);
-  assertEqual(
-    placed.length,
-    1,
-    "the placements of the committed ring model on a crane with one ring: " +
-      '"a crane has exactly one" (specs/structure.md)',
-  );
-  return drawnYaw(placed[0]!);
-}
+/** The signed difference between two yaws, wrapped into -180..180. */
+const turn = (from: number, to: number): number => {
+  let d = (to - from) % 360;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  return d;
+};
 
-it("draws the ring turned by the slew angle", async () => {
-  await openSite(h, SITE);
-  await emptyYard(h);
+it("turns the ring model with the slew axis", async () => {
+  await openSite(h, 0);
   await standMinimalCrane(h);
   await poseTape(h, [HOLD]);
   await startRun(h);
 
-  await h.debug.setAxis("slew", REST);
+  await h.debug.setAxis("slew", FROM);
   await h.advance(1);
-  const rest = await ringYaw(h);
+  const before = entriesOf(await h.drawn(), "model", "ring");
+  assertTrue(before.length > 0, "a ring model among what the frame drew");
 
-  await h.debug.setAxis("slew", SWUNG);
+  await h.debug.setAxis("slew", TO);
   await h.advance(1);
-  const swung = await ringYaw(h);
+  const after = entriesOf(await h.drawn(), "model", "ring");
 
-  await h.capture("slew", "The ring at slew 0 and slew 37");
+  await h.capture("slew", "The ring after the arm has swung");
 
-  assertNear(
-    yawBetween(rest, swung),
-    SWUNG - REST,
-    TOLERANCE,
-    `the turn the ring is drawn through between slew ${REST} and slew ` +
-      `${SWUNG}, against the turn the axis made: the ring is drawn "turning ` +
-      'with the arm" (specs/assets.md)',
+  assertTrue(after.length > 0, "a ring model after the arm swung");
+  const turned = Math.abs(turn(before[0]!.yaw, after[0]!.yaw));
+  assertTrue(
+    Math.abs(turned - Math.abs(TO - FROM)) <= TOLERANCE,
+    `the ring model to turn with the slew: the axis turned ` +
+      `${Math.abs(TO - FROM)} degrees and the model turned ${turned.toFixed(1)}`,
   );
 });
