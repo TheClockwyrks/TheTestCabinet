@@ -10,13 +10,15 @@
 // running before a mute is the SAME source after the unmute: no second `music`
 // sound is emitted, and the one that was running is still looping.
 //
-// WHY THE WORLD IS POSED AS IT IS. The build's audio is armed with a real
-// browser gesture first, on a key bound to nothing. An isolated night is opened
-// and one frame run, since "Both loops are reconciled from the state on every
-// frame", and the bed is read as running before anything is pressed. The
-// named-cue log is attached only THEN, so that what it collects is what the
-// mute and the unmute produced rather than the start the run itself made. Both
-// presses are REAL `KeyM` keys held across one frame each.
+// WHY THE WORLD IS POSED AS IT IS. The harness is CREATED armed, so the real
+// browser gesture that lets a build's audio open at all — a key bound to
+// nothing — is in before the check begins, delivered before the opening `reset`
+// that puts back whatever it moved. An isolated night is opened and one frame
+// run, since "Both loops are reconciled from the state on every frame", and the
+// bed is read as running before anything is pressed. The named-cue log is
+// attached only THEN, so that what it collects is what the mute and the unmute
+// produced rather than the start the run itself made. Both presses are REAL
+// `KeyM` keys held across one frame each.
 //
 // THE TOLERANCE. None: `muted`, whether a source is looping, and the count of
 // `music` sounds emitted across the two presses are all exact readings.
@@ -40,7 +42,7 @@ const MUSIC = "music";
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -48,7 +50,6 @@ afterEach(async () => {
 });
 
 it("reads the bed still looping and never restarted after KeyM twice", async () => {
-  await h.armAudio();
   const playing = await night(h);
   assertEqual(playing.muted, false, "muted before the presses");
   await h.step(1);

@@ -60,7 +60,7 @@ const QUEUED = 1;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -68,7 +68,6 @@ afterEach(async () => {
 });
 
 it("plays menu-move on the title, the level-up overlay, and an end screen", async () => {
-  await h.armAudio();
   await h.debug.reset();
   await h.step(SETTLE_FRAMES);
 

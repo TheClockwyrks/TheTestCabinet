@@ -14,7 +14,7 @@
 // specification puts the whole load in front of the first frame so the game a
 // player sees is never a game still assembling itself.
 //
-// WHAT IT READS, in three readings of one untouched run.
+// WHAT IT READS, in three readings over two untouched runs.
 //
 //   1. THE FIRST FRAME ALREADY DRAWS PRODUCED IMAGES. The opening frame is
 //      driven, and the distinct sources it drew are counted: a build still
@@ -23,11 +23,21 @@
 //      later, and the sources it draws are the SAME sources — the same drawn
 //      handles, in the same number. A build whose decode resolved during those
 //      frames draws a source on the later frame that the first frame did not have.
-//   3. AND NO PRODUCED FILE FAILED TO ARRIVE. The harness's ledger of produced
-//      files the build asked for and did not get is empty, and by the opening
-//      frames the build is emitting sound — a cue bound to its file, which on the
-//      title screen, where nothing a player did can sound, is the bed
-//      `specs/ui.md` keeps "looping on every frame the game runs".
+//   3. AND NO PRODUCED FILE FAILED TO ARRIVE. Neither run's ledger of produced
+//      files the build asked for and did not get holds anything, and within the
+//      opening frames the build is emitting sound — a cue bound to its file,
+//      which on the title screen, where nothing a player did can sound, is the
+//      bed `specs/ui.md` keeps "looping on every frame the game runs".
+//
+// WHY THE SOUND IS HEARD ON A SECOND RUN. A browser opens no audio context
+// without a user gesture, and the only moment it is safe to hand a build one is
+// before a harness's opening `reset` — so a harness that can hear anything has
+// already run the frames that carry the gesture, and the frame the first reading
+// calls the build's first would be its third. The readings therefore take a run
+// apiece: the unarmed one, whose opening frame is the first frame the build ever
+// drew, and an armed one opened beside it, equally untouched and only listened
+// to. Each is asked for its own ledger, at the end of its own frames, so no
+// stretch of either run goes unwatched.
 //
 // WHY THE TITLE SCREEN. It is where the game opens — the first frame it draws is
 // a frame of it — and no scenario has to be posed to reach it, so the frame this
@@ -55,7 +65,7 @@ import {
 const SETTLE_FRAMES = 45;
 
 /**
- * How many frames a cue is given to be heard on, once audio is armed.
+ * How many frames the armed run below is given to be heard on.
  *
  * A build that plays a produced sound decodes it asynchronously, so the bed
  * starts on whichever frame its file finished decoding on — a property of the
@@ -68,6 +78,10 @@ const CUE_BOUND = 300;
 let h: Harness;
 
 beforeEach(async () => {
+  // UNARMED, and that is the point of the first two readings: an armed harness
+  // runs frames of its own before its opening `reset` to carry the gesture, and
+  // the frame this check calls the opening one would then be the build's third.
+  // The sound the third reading needs is heard on its own armed run instead.
   h = await createHarness();
 });
 
@@ -93,23 +107,38 @@ it("has every produced asset ready before the first frame draws", async () => {
     `the sources the same screen draws ${SETTLE_FRAMES} frames later, which are the ones the first frame already had`,
   );
 
-  await h.armAudio();
-  for (
-    let frame = 0;
-    frame < CUE_BOUND && (await h.sounds()) === 0;
-    frame += 1
-  ) {
-    await h.advance(1);
-  }
-  assertGreaterThan(
-    await h.sounds(),
-    0,
-    "sounds emitted by the opening frames: a cue bound to its file, which on the title screen is the bed",
-  );
-
   assertLength(
     h.assetFailures,
     0,
     `produced files the build asked for and did not get: ${JSON.stringify(h.assetFailures)}`,
   );
+
+  // And the same untouched title screen on a run that can be heard. Nothing is
+  // posed on it and nothing is pressed once it is handed over, so a sound within
+  // the bound is a cue bound to its file, which here is the bed.
+  const armed = await createHarness({ armAudio: true });
+  try {
+    for (
+      let frame = 0;
+      frame < CUE_BOUND && (await armed.sounds()) === 0;
+      frame += 1
+    ) {
+      await armed.advance(1);
+    }
+    assertGreaterThan(
+      await armed.sounds(),
+      0,
+      "sounds emitted by the opening frames: a cue bound to its file, which on the title screen is the bed",
+    );
+    // This run's own ledger, read after its own frames: the hunt above is the
+    // longest stretch either run spends drawing, and a produced file that 404s
+    // part way through it would be caught by nothing otherwise.
+    assertLength(
+      armed.assetFailures,
+      0,
+      `produced files the build asked for and did not get: ${JSON.stringify(armed.assetFailures)}`,
+    );
+  } finally {
+    await armed.dispose();
+  }
 });

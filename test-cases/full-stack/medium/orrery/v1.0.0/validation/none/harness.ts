@@ -106,6 +106,11 @@ const kit = createCaseHarness<OrrerySnapshot, OrrerySurface>({
   // alone" and a press on the editor would select, deselect, or set the focus.
   // `KeyO` is bound to no action in `specs/controls.md`'s whole binding table, so
   // pressing it is inert by specification rather than by accident.
+  //
+  // IT IS PRESSED ONLY FOR A HARNESS THAT ASKED (`HarnessOptions.armAudio`), and
+  // only on the way up: before the opening `reset`, whose restore puts back
+  // anything the press touched. So a build that is not being graded on its sound
+  // is pressed on never, and one that is, is handed a game the restore made.
   arm: { kind: "key", code: INERT_KEY },
   // A build installs its surface while its entry module runs, so a page that has
   // fired `load` has either installed it already or is not going to. Orrery's
@@ -149,6 +154,25 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
+  /**
+   * Give the build the genuine, browser-trusted gesture its audio context needs
+   * before it may sound at all: a press of `INERT_KEY`.
+   *
+   * OPT IN, AND OFF BY DEFAULT, because a real gesture is one the game is
+   * entitled to act on and a check that never reads what the build SOUNDED has
+   * nothing to gain from handing it one. Only the suites that count sounds ask
+   * for it, so a fault in the arming can only ever reach the points about sound.
+   *
+   * IT COSTS THOSE SUITES NOTHING, because of WHEN it happens: the press is
+   * delivered before the harness's opening `reset`, which restores every declared
+   * field of the state, so whatever the key touched is put back before the
+   * harness is handed over — while the audio it opened is a fact about the page's
+   * user activation, which no reset undoes. Two frames run between the press and
+   * the restore, so a build that latches its key edges in the DOM handler and
+   * reads them on a frame has consumed them before the restore rather than on the
+   * first frame a check drives.
+   */
+  armAudio?: boolean;
   /**
    * Produced files whose REQUEST PATH matches are not served, so the build's load
    * of them fails.
@@ -307,8 +331,6 @@ export interface Harness {
   /** The canvas's backing store size, as the build sized it. */
   surface(): Promise<{ width: number; height: number; dpr: number }>;
 
-  /** Give the build a real, trusted gesture, so its audio can open. */
-  armAudio(): Promise<void>;
   /** How many sounds the build has emitted since the game stood up, in total. */
   sounds(): Promise<number>;
   /**
@@ -364,6 +386,7 @@ export async function createHarness(
     cssWidth: options.cssWidth,
     cssHeight: options.cssHeight,
     dpr: options.dpr,
+    armAudio: options.armAudio,
   });
 
   const assetFailures: AssetFailure[] = [];
@@ -563,7 +586,6 @@ export async function createHarness(
     imagePixels: (id) => base.imagePixels(id),
     surface: () => base.surface(),
 
-    armAudio: () => base.armAudio(),
     sounds: () => base.sounds(),
     loopingSounds: () => base.loopingSounds(),
     loopStarts: () => base.loopStarts(),

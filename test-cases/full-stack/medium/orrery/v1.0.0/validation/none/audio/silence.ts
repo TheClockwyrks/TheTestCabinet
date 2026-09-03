@@ -81,15 +81,23 @@ export const TAIL_FRAMES = 8;
 const SILENCE_BOUND = 240;
 
 /**
- * Arm the build's audio and run frames until it has fallen silent, so the window
- * a check opens next is one the check itself fills.
+ * Run frames until the build has fallen silent, so the window a check opens next
+ * is one the check itself fills.
+ *
+ * EXPECTS AN ARMED HARNESS — one created with `{ armAudio: true }`. A browser
+ * opens no audio context without a user gesture and a build is free to open its
+ * own from a real DOM event alone, so a harness that was never handed one is
+ * silent whatever the build does, and the quiet this walk finds would be the
+ * page's rather than the build's. The gesture cannot be given here: it is a
+ * genuine key press, which the game is entitled to act on, and the only moment
+ * that is safe is before the harness's opening `reset` — so it belongs to the
+ * creation the caller makes, not to an arrangement running inside a check.
  *
  * Nothing is asserted: a build that never falls quiet spends the bound and leaves
  * its noise to the check's own fence, where it is reported against the point it
  * belongs to rather than inside a helper.
  */
 export async function openSilence(h: Harness): Promise<void> {
-  await h.armAudio();
   let quiet = 0;
   for (
     let frame = 0;

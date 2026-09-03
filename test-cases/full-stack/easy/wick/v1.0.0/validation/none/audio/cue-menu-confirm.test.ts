@@ -59,7 +59,7 @@ const HOWTO_INDEX = TITLE_ITEMS.indexOf("HOW TO PLAY");
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -67,7 +67,6 @@ afterEach(async () => {
 });
 
 it("plays menu-confirm on HOW TO PLAY and on TRY AGAIN", async () => {
-  await h.armAudio();
   await h.debug.reset();
   await h.step(SETTLE_FRAMES);
 

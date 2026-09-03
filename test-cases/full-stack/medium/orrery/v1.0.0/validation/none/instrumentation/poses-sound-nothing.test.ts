@@ -51,7 +51,15 @@ const MOVED_TO = at(1, -1);
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // ARMED AT CREATION, because the whole reading is a count of sound: unarmed, a
+  // browser opens no audio context and the silence this point asserts would be the
+  // page's rather than the build's — and the closing reading, that the same count
+  // MOVES once frames run, would be unreachable. The press of `INERT_KEY` goes in
+  // before the harness's opening `reset`, whose restore puts back anything it
+  // touched, and two frames run between the two so a build that latches its key
+  // edges in the DOM handler has consumed them before the restore. So no edge of
+  // the gesture is left for the poses below to be blamed for.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -60,8 +68,6 @@ afterEach(async () => {
 
 it("places a machine and starts a run from code without sounding a cue", async () => {
   await openTitle(h);
-  await h.armAudio();
-  await h.advance(2);
 
   const heard = watchCues(h);
   const before = await h.sounds();

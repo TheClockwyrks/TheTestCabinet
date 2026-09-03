@@ -54,7 +54,12 @@ import {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // ARMED AT CREATION, because this suite reads what the build SOUNDED and a
+  // browser opens no audio context without a user gesture: unarmed, `openSilence`
+  // below would find the page's silence rather than the build's. The press of
+  // `INERT_KEY` goes in before the harness's opening `reset`, whose restore puts
+  // back anything it touched, so it costs this check nothing — see `silence.ts`.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {

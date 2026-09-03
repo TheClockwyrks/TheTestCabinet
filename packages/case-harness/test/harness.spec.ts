@@ -206,7 +206,11 @@ it("hands back the operations one frame's render issued", async () => {
 });
 
 it("stamps a sound with the frame of the drive that produced it", async () => {
-  await h.armAudio();
+  // The one check in this file that reads what the build SOUNDED, so the one that
+  // asks for the arming gesture. Every other harness here is handed none: what a
+  // gesture costs, and why it is opt in, is `arming.spec.ts`.
+  await h.dispose();
+  h = await createHarness({ armAudio: true });
   await h.debug.startPlaying();
 
   const played = watchCues(h);

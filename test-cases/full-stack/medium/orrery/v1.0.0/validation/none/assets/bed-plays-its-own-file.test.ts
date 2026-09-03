@@ -75,7 +75,13 @@ const SCORE_REQUEST = /(^|\/)music([-.][^/]*)?\.mid$/;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // ARMED AT CREATION, because the first half of this point is that the bed RUNS:
+  // a browser opens no audio context without a user gesture, so an unarmed page is
+  // silent whatever the build produced, and the reading would be the host's rather
+  // than the build's. The press of `INERT_KEY` goes in before the harness's opening
+  // `reset`, whose restore puts back anything it touched, so the title screen the
+  // recording below opens on is the one an unarmed harness would have handed over.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -84,7 +90,6 @@ afterEach(async () => {
 
 it("runs the bed from assets/audio/music.wav rather than from its score", async () => {
   const sounded = await captureReplay(h, "bed", async () => {
-    await h.armAudio();
     // A few frames unconditionally, so the recording holds the game running its
     // bed whether the bed was already sounding when the window opened or not,
     // and then as many more as the decode needs.
@@ -113,6 +118,8 @@ it("runs the bed from assets/audio/music.wav rather than from its score", async 
     `sounds the build has emitted within ${BED_BOUND} frames of the game opening, which on the title screen is the bed`,
   );
 
+  // Unarmed, deliberately: this half reads what the build REACHED FOR and never
+  // listens, so it is handed no gesture.
   const withheld = await createHarness({
     withoutAssets: new RegExp(`${BED_REQUEST.source}|${SCORE_REQUEST.source}`),
   });

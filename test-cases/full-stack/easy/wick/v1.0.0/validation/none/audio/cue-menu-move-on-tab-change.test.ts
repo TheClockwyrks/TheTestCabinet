@@ -69,7 +69,7 @@ const NEXT_TAB = 1;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -77,7 +77,6 @@ afterEach(async () => {
 });
 
 it("plays menu-move once on the frame ArrowRight changes the almanac's tab", async () => {
-  await h.armAudio();
   await h.debug.reset();
   const opened = await poseScreen(h, "almanac");
   await h.step(SETTLE_FRAMES);

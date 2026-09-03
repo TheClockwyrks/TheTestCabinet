@@ -49,8 +49,9 @@ const POSED_KILLS = 7;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
-  await h.armAudio();
+  // ARMED, because the reading is a silence: "no cue" only says something
+  // about the build once the build's audio could have opened at all.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {

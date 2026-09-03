@@ -36,7 +36,11 @@ const AFTER_TICKS = 30;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed at creation: this check reads what the build SOUNDED, and the gesture
+  // that opens the build's audio is delivered before the opening `reset` puts the
+  // state back — so the board posed below is posed on a game nothing has touched.
+  // See audio/cue-connect for the whole argument.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -45,7 +49,6 @@ afterEach(async () => {
 
 it("sounds on the frame the beams are cleared, and not in the gap before", async () => {
   const board = await loadBoard(h, R3_REDRAW);
-  await h.armAudio();
 
   const played = watchCues(h);
   const cleared = await captureReplay(h, "clear", async () => {

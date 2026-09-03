@@ -353,8 +353,18 @@ describe("what a frame drew, and what it sounded", () => {
   });
 
   it("collects the sounds a frame emitted", async () => {
+    // The one check in this file that reads what the build SOUNDED, so the one
+    // that needs an ARMED harness — and a harness is armed only at creation,
+    // because the gesture that opens the build's audio is a real key press and the
+    // only safe moment for it is before the opening `reset` that puts the state
+    // back. So the shared one is disposed and replaced here rather than every
+    // check in the file being armed: a fault in the arming then cannot reach the
+    // clock, the poses, the pixels or the evidence writers, none of which are
+    // about sound.
+    await h.dispose();
+    h = await createHarness({ armAudio: true });
+
     await openBareRun(h, { challenge: BARE });
-    await h.armAudio();
     const played = watchCues(h);
     await placePart(h, "arm", ORIGIN, 0);
     await h.advance(2);

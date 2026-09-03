@@ -56,7 +56,12 @@ const OBSTACLE = 0;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed at creation: a build is free to open its audio context from a real DOM
+  // event alone, so the harness presses a genuine key as it opens the page. It
+  // presses before its opening `reset`, so the restore takes back whatever the
+  // press moved and the bounce below is arranged in an untouched game; what is
+  // left of the gesture is the user activation, which no reset undoes.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -65,7 +70,6 @@ afterEach(async () => {
 
 it("sounds a cue on the frame of the bounce, and not before it", async () => {
   await startPlaying(h, "versus");
-  await h.armAudio();
   await arrangeObstacleBounce(h, {
     obstacle: OBSTACLE,
     faceX: OBSTACLES[OBSTACLE].x0,

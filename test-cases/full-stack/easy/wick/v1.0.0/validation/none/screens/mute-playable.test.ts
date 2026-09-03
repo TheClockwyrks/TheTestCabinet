@@ -14,15 +14,17 @@
 // is "the runtime's mute bit ... mirrored into `muted` every frame"
 // (specs/ui.md), which every frame of the drive is read for.
 //
-// WHY THE WORLD IS POSED AS IT IS. The audio is armed with a real browser
-// gesture first, on a key bound to nothing, so that the mute is a mute of a
-// running sound rather than of silence, and `KeyM` is pressed on the title
-// before the run is lit, so every frame that follows runs under it. The run is
-// then started the way a player starts one and the driver switches are turned
-// off from inside it, so the walk is the lamplighter's alone and no spawn,
-// contact or firing moves a figure this reads. The level-up is queued through
-// the surface and opened by a real tick, and the offer, the pause and the
-// resume are all REAL keys through Chromium's input pipeline.
+// WHY THE WORLD IS POSED AS IT IS. The harness is CREATED armed, so the real
+// browser gesture — a key bound to nothing — is in before the check begins and
+// the mute is a mute of a running sound rather than of silence; it lands before
+// the opening `reset`, so the title read on the first line below is the one a
+// fresh harness always hands over. `KeyM` is then pressed on that title before
+// the run is lit, so every frame that follows runs under it. The run is then
+// started the way a player starts one and the driver switches are turned off
+// from inside it, so the walk is the lamplighter's alone and no spawn, contact
+// or firing moves a figure this reads. The level-up is queued through the
+// surface and opened by a real tick, and the offer, the pause and the resume
+// are all REAL keys through Chromium's input pipeline.
 //
 // THE TOLERANCE. `POSITION_TOL` (`1e-6`) on the walk, which is ten exact steps
 // of `MOVE_STEP`; everything else — a screen name, a count of queued level-ups,
@@ -53,7 +55,7 @@ const WALK_TICKS = 10;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -61,7 +63,6 @@ afterEach(async () => {
 });
 
 it("lights the lamp, walks, takes an offer, pauses and resumes, all under the mute", async () => {
-  await h.armAudio();
   const title = await h.snapshot();
   assertEqual(title.screen, "title", "the screen the mute is pressed on");
   const muted = await pressMute(h);

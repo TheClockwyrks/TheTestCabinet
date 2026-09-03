@@ -435,15 +435,17 @@ export interface WickDebugApi {
 export const AUDIO_PROBE_GLOBAL = "__wickAudio";
 
 /**
- * How long {@link Harness.armAudio} waits for the build's fifteen cue files to
- * finish decoding before it gives up waiting.
+ * How long an ARMED {@link createHarness} waits for the build's fifteen cue
+ * files to finish decoding before it gives up waiting.
  *
  * A build decodes its audio asynchronously, and a scenario that raised an event
  * before its cue's clip arrived would read silence from a build that was
  * simply still starting up. The wait is a poll that returns the instant the
  * fifteenth file lands, so a healthy build pays nothing; a build that never
  * decodes anything spends the ceiling once per harness and then fails its cue
- * points on their own terms.
+ * points on their own terms. Only a harness that asked to be armed waits: one
+ * handed no gesture can open no audio, and would spend the whole ceiling for a
+ * check that was never going to listen.
  */
 export const AUDIO_LOAD_TIMEOUT_MS = 15_000;
 
@@ -852,11 +854,22 @@ async function settleCues(
  * attached, the sounds the probe logged during the drive are stamped with the
  * drive's frames and handed to every watcher. Nothing is read when no watcher is
  * attached, so a check that never asks about audio pays no extra crossing.
+ *
+ * AND, for a harness created with `armAudio`, the wait for the build's own cue
+ * files. The arming is the kit's: it presses `UNBOUND_KEY` before the opening
+ * `reset`, which is what lets the page open an audio context at all. What the
+ * kit cannot know is whether THIS case's fifteen produced files have arrived, so
+ * that wait belongs here, and here is the one place it costs a check nothing —
+ * before the harness is handed over, with no scenario yet posed to go stale.
+ * See {@link AUDIO_LOAD_TIMEOUT_MS}.
  */
 export async function createHarness(
   options?: HarnessOptions,
 ): Promise<Harness> {
   const base = await kit.createHarness(options);
+  // Armed, so the clips are on their way; unarmed, there is nothing to wait for
+  // and a build that decodes nothing must not cost a check the whole ceiling.
+  if (options?.armAudio ?? false) await waitForCues(base.page);
   const log: CueLog = { cursor: 0, sinks: [] };
 
   /** Run `drive`, then settle the sounds it produced onto its frames. */
@@ -903,10 +916,6 @@ export async function createHarness(
     clickPointer: (x, y, button) =>
       driven(() => base.clickPointer(x, y, button)),
     frameCalls: () => driven(() => base.frameCalls()),
-    async armAudio() {
-      await base.armAudio();
-      await waitForCues(base.page);
-    },
   };
   cueLogs.set(h, log);
   return h;

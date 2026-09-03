@@ -105,9 +105,18 @@ export interface Stage {
  * A build is free to open its audio from a real DOM event alone — both that and
  * an explicit unlock are conformant — so the gesture has to be a GENUINE browser
  * event, and the two shapes here are the two the cases actually use. Carom,
- * Fathom and Volute each fix one key their bindings leave inert and press it;
- * Refract fixes no such key (its menu bindings are the build's own) and instead
- * makes a real mouse press in a corner of the stage that hits nothing.
+ * Fathom, Volute, Wick and Orrery each name one key their specification binds to
+ * nothing and press it; Refract, whose menu bindings are the build's own and
+ * whose every screen is worked from the pointer, makes a real mouse press in a
+ * corner of the stage instead.
+ *
+ * NEITHER SHAPE HAS TO BE INERT, and Refract's cannot be: a build chooses where
+ * its own controls sit, so a press in any corner is a press a build may have put
+ * something under. What makes the gesture safe is when it is delivered — before
+ * the harness's opening `reset`, which restores every declared field of the
+ * state, so whatever the gesture moved is gone before a check reads anything.
+ * It is delivered only for a harness that asked (`HarnessOptions.armAudio`), so
+ * a build that is not being graded on its sound is handed no gesture at all.
  */
 export type ArmGesture =
   | { readonly kind: "key"; readonly code: string }

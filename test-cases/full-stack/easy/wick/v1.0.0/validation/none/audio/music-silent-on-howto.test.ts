@@ -48,7 +48,7 @@ const HOWTO_FRAMES = TICK_HZ;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {

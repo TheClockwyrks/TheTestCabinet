@@ -47,7 +47,10 @@ function soundsOn(cues: readonly TimedCue[], frame: number): number {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed at creation: this check counts what the build SOUNDED on two frames, and
+  // the gesture that opens the build's audio is delivered before the opening
+  // `reset` puts the state back. See audio/cue-connect for the whole argument.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -59,7 +62,6 @@ it("sounds more on the completing add than on a plain add of the same beam", asy
   // to T(2,0) threads the lens and reaches the second emitter — complete
   // (specs/beams.md R6, R7) — while the square channel keeps the board open.
   const board = await loadBoard(h, R2_FOREIGN);
-  await h.armAudio();
 
   const played = watchCues(h);
   const completed = await captureReplay(h, "complete", async () => {

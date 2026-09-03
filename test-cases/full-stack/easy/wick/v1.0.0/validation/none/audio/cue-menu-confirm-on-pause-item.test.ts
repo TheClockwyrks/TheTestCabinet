@@ -65,7 +65,7 @@ const RESUME = PAUSE_ITEMS.indexOf("RESUME");
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {

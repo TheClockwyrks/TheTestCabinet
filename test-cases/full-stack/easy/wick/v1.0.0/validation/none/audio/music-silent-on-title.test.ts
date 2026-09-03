@@ -45,7 +45,7 @@ const TITLE_FRAMES = TICK_HZ;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -53,7 +53,6 @@ afterEach(async () => {
 });
 
 it("loops no music on any frame of the title", async () => {
-  await h.armAudio();
   await h.debug.reset();
   await h.step(SETTLE_FRAMES);
   const booted = await h.snapshot();

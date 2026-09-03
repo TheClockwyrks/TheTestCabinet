@@ -50,7 +50,13 @@ const DEPARTURE_TICKS = 45; // 0.375 s
 let h: MultiHarness;
 
 beforeEach(async () => {
-  h = await createMultiHarness();
+  // The one check here reads what the build sounded, so the harness is created
+  // armed: a browser opens no audio context without a user gesture, and a build
+  // may open its own from a real DOM event alone. The key is pressed before the
+  // harness's opening `reset`, so the restore puts back anything it moved and the
+  // pair below is posed into an untouched game — only the page's user activation
+  // carries over, which is what the build needs to sound at all.
+  h = await createMultiHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -59,7 +65,6 @@ afterEach(async () => {
 
 it("sounds a cue on the frame the pair meets, and not before it", async () => {
   await startPlaying(h);
-  await h.armAudio();
   await isolateBalls(h, PAIR);
   await placeBall(h, { x: LEFT_X, y: FIELD_CY, vx: APPROACH }, PAIR[0]);
   await placeBall(h, { x: RIGHT_X, y: FIELD_CY, vx: -APPROACH }, PAIR[1]);

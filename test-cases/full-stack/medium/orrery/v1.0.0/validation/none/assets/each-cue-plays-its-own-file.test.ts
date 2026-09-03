@@ -125,13 +125,18 @@ const EVERY_CUE_FILE = new RegExp(
  * Run frames until the build has stopped emitting sound, so the window each
  * event below is heard in is one that event filled.
  *
+ * EXPECTS AN ARMED HARNESS — one created with `{ armAudio: true }`. A browser
+ * opens no audio context without a user gesture, so an unarmed page falls quiet on
+ * the first frame whatever the build is doing. The gesture cannot be made here: it
+ * is a genuine key press the game is entitled to act on, and the only safe moment
+ * for it is before the harness's opening `reset`.
+ *
  * A build that loads its own produced bed decodes it asynchronously, so the bed
  * starts on whichever frame its file finished decoding on — a property of the
  * host rather than of the build. Nothing is asserted here: a build that never
  * falls quiet spends the bound and is heard doing so by the readings below.
  */
 async function untilQuiet(h: Harness): Promise<void> {
-  await h.armAudio();
   let quiet = 0;
   for (let frame = 0; frame < QUIET_BOUND && quiet < QUIET_FRAMES; frame += 1) {
     const before = await h.sounds();
@@ -143,7 +148,13 @@ async function untilQuiet(h: Harness): Promise<void> {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // ARMED AT CREATION, because the first half of this point counts the build
+  // EMITTING SOUND on each of the six events: a browser opens no audio context
+  // without a user gesture, so every build is silent on an unarmed page and the
+  // reading would be the host's rather than the build's. The press of `INERT_KEY`
+  // goes in before the harness's opening `reset`, whose restore puts back anything
+  // it touched, so each event below is still driven on an untouched build.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -280,6 +291,9 @@ it("plays each of the six cues from the file CUE_PATHS names for it", async () =
 
   // And what each of them plays is that cue's own produced file: a run with all
   // six withheld names all six, one per cue, at six different paths.
+  //
+  // Unarmed, deliberately: this half reads what the build REACHED FOR and never
+  // listens, so it is handed no gesture.
   const withheld = await createHarness({ withoutAssets: EVERY_CUE_FILE });
   try {
     await withheld.advance(LOAD_FRAMES);

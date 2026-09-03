@@ -308,10 +308,17 @@ const kit = createCaseHarness<RefractSnapshot, RefractDebugApi>({
   // a gesture delivered any other way would leave a perfectly good build silent.
   // Refract fixes no key binding this suite could trust to be inert — the menu
   // bindings are the build's own — so the gesture is a real mouse press in the
-  // stage's top-left corner: farther than NODE_HIT_R from every cell center of
-  // every board, so it matches no row of the grab table and begins no trace, and
-  // the pointer does not operate menus (specs/controls.md, specs/ui.md). Arming
-  // changes no game state beyond the mirrored pointer fields.
+  // stage's top-left corner.
+  //
+  // IT IS NOT INERT, AND NOTHING HERE NEEDS IT TO BE. Every screen is worked from
+  // the pointer, through targets the BUILD places (specs/controls.md), so a build
+  // that seated a control in that corner has this press arm it and its release
+  // take it. What makes the gesture safe is WHEN it is delivered: before the
+  // harness's opening `reset`, which restores every declared field of the state,
+  // so a menu it moved or a screen it left is gone before a check reads anything
+  // — while the audio it opened is a fact about the page's user activation, which
+  // no reset touches. And only a harness created with `armAudio: true` is handed
+  // the gesture, so a check that is not about sound never presses this build.
   arm: { kind: "click", x: 2, y: 2 },
   // A build installs its surface while its entry module runs, so a page that has
   // fired `load` has either installed it already or is not going to. Five seconds

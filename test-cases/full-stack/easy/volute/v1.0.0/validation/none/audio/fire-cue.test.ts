@@ -42,12 +42,17 @@
 // the hall is not posed empty), no emission, no grant, and no swap. Every sound
 // the probe hears therefore belongs to the shot.
 //
-// AUDIO IS ARMED WITH A REAL KEY FIRST, and the bed is left to start BEFORE the
-// probe opens. A browser opens no audio context without a genuine user gesture,
-// so `armAudio` presses `KeyZ` — a key `specs/controls.md` binds to nothing —
-// through Chromium's own input pipeline. And `specs/ui.md` has a music bed
-// looping under `playing`, whose own start is a sound; the probe is opened only
-// once that bed is up, so the bed's start is never mistaken for the shot's cue.
+// THE HARNESS IS CREATED ARMED, and the bed is left to start BEFORE the probe
+// opens. A browser opens no audio context without a genuine user gesture, so
+// `createHarness({ armAudio: true })` presses `KeyZ` — a key `specs/controls.md`
+// binds to nothing — through Chromium's own input pipeline, and delivers it
+// before the harness's opening `reset`. That ordering is what makes the gesture
+// cost this check nothing: the reset restores every declared field of the state,
+// so whatever the press moved is gone before the hall below is posed, while the
+// audio it opened is a fact about the page's user activation that no reset
+// touches. And `specs/ui.md` has a music bed looping under `playing`, whose own
+// start is a sound; the probe is opened only once that bed is up, so the bed's
+// start is never mistaken for the shot's cue.
 //
 // TOLERANCE. None, and none would be honest. The specification fixes the cue to
 // "the tick its event happens", the probe reads whole ticks, and the fire edge is
@@ -103,7 +108,8 @@ const QUIET_CHARGE: ChargeId = "halide";
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed, because the only check in this file reads what the build SOUNDED.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -111,7 +117,6 @@ afterEach(async () => {
 });
 
 it("sounds a cue on the tick the injector fires, and on no tick before it", async () => {
-  await h.armAudio();
   await startRun(h);
 
   // Let the bed get up BEFORE the hall is posed and the probe opened. A produced

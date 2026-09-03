@@ -29,10 +29,16 @@
 // AI or a stray key could still move would make the reading someone else's. The
 // far one is taken at rest and stood out of the lane for the same reason.
 //
-// AUDIO IS ARMED WITH A REAL KEY FIRST. A browser will not open an audio context
-// without a user gesture, and a build is free to open its own only from a genuine
-// DOM event. So `armAudio` presses a key through Chromium's own input pipeline —
-// one the specification binds to nothing, so arming disturbs no game state.
+// THE HARNESS IS CREATED ARMED. A browser will not open an audio context without
+// a user gesture, and a build is free to open its own only from a genuine DOM
+// event, so `{ armAudio: true }` has a real key pressed through Chromium's own
+// input pipeline. It goes in before the harness's opening `reset`, and that is
+// what makes it cost this check nothing: the reset restores every declared field
+// of the state, so whatever the press moved is gone before the scenario below
+// poses anything, while the audio it opened is a fact about the page's user
+// activation that no reset touches. Only a suite that reads what a build SOUNDED
+// asks for it, so a fault in the arming cannot reach a check that is not about
+// sound.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
@@ -63,7 +69,7 @@ const RETURN_TICKS = 90; // 0.75 s
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -72,7 +78,6 @@ afterEach(async () => {
 
 it("sounds a cue on the frame of the contact, and not before it", async () => {
   await startPlaying(h, "versus");
-  await h.armAudio();
   // Posed with the standard run-up rather than on the paddle's face, so the clip
   // opens on a ball approaching. The contact is the same one either way: the
   // struck paddle is still (`vy` defaults to zero, so the lead does not move it),

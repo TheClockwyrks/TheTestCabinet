@@ -55,7 +55,10 @@ export interface FixtureSnapshot {
   sounds: number;
   /** Ticks that ran with at least one key held, which is what a tap makes. */
   heldTicks: number;
+  /** Presses latched in the DOM handler, the moment the event arrived. */
   clicks: number;
+  /** Pointer edges a TICK consumed, the way a buffered input layer reads them. */
+  taken: number;
   keys: string[];
   pointer: { x: number; y: number };
 }

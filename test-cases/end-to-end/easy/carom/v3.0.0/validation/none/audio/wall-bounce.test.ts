@@ -60,7 +60,13 @@ const DESCENT_TICKS = 90; // 0.75 s
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed at creation, because a browser opens no audio context without a user
+  // gesture and a build is free to open its own only from a real DOM event. The
+  // key goes in before the harness's opening `reset`, so the restore puts back
+  // anything the press moved and the flight below starts from the same game an
+  // unarmed harness hands over — with the user activation the build needs to make
+  // a sound at all.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -69,9 +75,6 @@ afterEach(async () => {
 
 it("sounds a cue on the frame of the reflection, and not before it", async () => {
   await arrangeLiveBall(h, { x: FIELD_CX, y: START_Y, vx: 0, vy: -500 });
-  // A browser opens no audio context without a user gesture, and a build is free
-  // to open its own only from a real DOM event. The key is bound to nothing.
-  await h.armAudio();
 
   const played = watchCues(h);
   const bounce = await captureReplay(h, "bounce", async () => {

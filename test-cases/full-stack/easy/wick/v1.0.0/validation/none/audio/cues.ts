@@ -1,19 +1,24 @@
-// audio/cues — what the points of this category share: opening a night with the
-// build's audio awake, waiting for a loop the specification asks for, and
-// reading one cue off one frame. CASE-PROVIDED.
+// audio/cues — what the points of this category share: opening a night on a
+// harness whose audio is awake, waiting for a loop the specification asks for,
+// and reading one cue off one frame. CASE-PROVIDED.
 //
 // No review item names this file. Each function is a compound sequence of the
 // surface's atomic operations or a reading over the named-cue log, which the
 // authoring guide has live beside the checks rather than inside any one of them.
 //
 // WHY A NIGHT IS OPENED THE WAY IT IS. A browser opens no audio context without
-// a genuine user gesture, so `armAudio` presses `UNBOUND_KEY`, a key
-// specs/controls.md binds to nothing, through Chromium's own input pipeline, and
-// then waits for the build's fifteen produced files to decode. Only after that
-// is the world posed: specs/instrumentation.md has "a pose changes the state
-// alone and sounds nothing; the cues a scenario hears come from the ticks and
-// frames run after it", and the two loops are "reconciled from the state by the
-// next frame". So every check here arranges by poses, steps, and reads.
+// a genuine user gesture, so every check here is handed a harness CREATED with
+// `{ armAudio: true }`: the kit presses `UNBOUND_KEY`, a key specs/controls.md
+// binds to nothing, through Chromium's own input pipeline BEFORE the harness's
+// opening `reset`, and this case's `createHarness` waits there for the build's
+// fifteen produced files to decode. Both are done before a check holds the
+// harness at all, and neither can be asked for later — a real browser event is
+// one the build is entitled to act on, and past the opening `reset` there is no
+// restore left to put back what it touched. What is left to do here is pose the
+// world: specs/instrumentation.md has "a pose changes the state alone and sounds
+// nothing; the cues a scenario hears come from the ticks and frames run after
+// it", and the two loops are "reconciled from the state by the next frame". So
+// every check here arranges by poses, steps, and reads.
 //
 // WHY THE SETTLING FRAMES. specs/ui.md loops `music` "on every frame exactly
 // when `screen` is `playing`, `levelup`, `chest`, or `paused`", so the frames
@@ -62,18 +67,23 @@ export const SETTLE_FRAMES = 2;
 export const LOOP_WAIT_FRAMES = TICK_HZ;
 
 /**
- * Wake the build's audio, pose an isolated night, and let the loops settle.
+ * Pose an isolated night on an armed harness, and let the loops settle.
+ *
+ * EXPECTS A HARNESS CREATED WITH `{ armAudio: true }`, and cannot supply the
+ * arming itself: the gesture is delivered once, at creation, before the opening
+ * `reset` that puts back whatever it touched (see the head of this file). A
+ * night opened on an unarmed harness poses and steps exactly the same, and every
+ * cue read off it is a silence the build never chose.
  *
  * `isolate` is the harness's own arrangement: a fresh run on `playing` with
  * every driver switch off, nothing alive, nothing dropped, no slot held, and the
- * level lifted out of reach of any gain. What this adds is the browser gesture
- * that lets a build's audio open at all, and the settling frames above.
+ * level lifted out of reach of any gain. What this adds is the settling frames
+ * above.
  */
 export async function openNight(
   h: Harness,
   options: IsolateOptions = {},
 ): Promise<WickSnapshot> {
-  await h.armAudio();
   await isolate(h, options);
   await h.step(SETTLE_FRAMES);
   return h.snapshot();

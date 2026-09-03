@@ -9,14 +9,16 @@
 // absence, and "on every frame" is why this reads every frame of a stretch
 // rather than one.
 //
-// WHY THE WORLD IS POSED AS IT IS. The build's audio is armed with a real
-// browser gesture first, on a key bound to nothing, because a build is free to
-// open its audio from a real DOM event. The almanac is then entered through
-// `setScreen("almanac")`, which specs/instrumentation.md makes the same arrival
-// as confirming `THE ALMANAC`, and two frames are run before the reading starts,
-// since specs/instrumentation.md has "The two looping cues are reconciled from
-// the state by the next frame". No key is pressed during the stretch, so the
-// screen holds, which is read on every frame to confirm.
+// WHY THE WORLD IS POSED AS IT IS. The harness is CREATED armed, so the real
+// browser gesture — a key bound to nothing — is in before the check begins,
+// because a build is free to open its audio from a real DOM event; it lands
+// before the opening `reset`, which puts back whatever it moved. The almanac is
+// then entered through `setScreen("almanac")`, which specs/instrumentation.md
+// makes the same arrival as confirming `THE ALMANAC`, and two frames are run
+// before the reading starts, since specs/instrumentation.md has "The two
+// looping cues are reconciled from the state by the next frame". No key is
+// pressed during the stretch, so the screen holds, which is read on every frame
+// to confirm.
 //
 // WHY A RUN IS STARTED AFTERWARDS. A silence is only a reading if the build has
 // something to be silent about: a build with no music at all would pass a bare
@@ -61,7 +63,7 @@ const LOOP_WAIT_FRAMES = TICK_HZ;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -69,7 +71,6 @@ afterEach(async () => {
 });
 
 it("loops no music on any frame of the almanac", async () => {
-  await h.armAudio();
   await openAlmanac(h);
   await h.step(SETTLE_FRAMES);
 

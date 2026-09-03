@@ -42,7 +42,12 @@ const AFTERMATH_TICKS = 60; // 0.5 s
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed at creation: a build may open its audio context from a real DOM event
+  // alone, so the harness presses a genuine key — and it presses it before its
+  // own opening `reset`, whose restore erases whatever the press moved. What
+  // survives into this check is only the page's user activation, which is the
+  // half a build cannot make a sound without.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -51,7 +56,6 @@ afterEach(async () => {
 
 it("sounds a cue on the frame the point lands, and not before it", async () => {
   await startPlaying(h, "versus");
-  await h.armAudio();
   await arrangeGoal(h, "right");
 
   const played = watchCues(h);

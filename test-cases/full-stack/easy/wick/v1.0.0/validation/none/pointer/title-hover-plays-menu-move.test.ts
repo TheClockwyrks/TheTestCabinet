@@ -16,9 +16,11 @@
 // highlight is read first, so a build whose pointer moved nothing fails on the
 // move rather than on the silence.
 //
-// HOW THE SCENARIO IS DRIVEN. The audio is armed with a key bound to nothing, so
-// the browser opens the build's audio context on a genuine gesture, and the
-// build's produced cue files are given time to decode. Two settling frames then
+// HOW THE SCENARIO IS DRIVEN. The harness is CREATED armed: a key bound to
+// nothing is pressed before the harness's opening `reset`, so the browser opens
+// the build's audio context on a genuine gesture and the restore puts back
+// whatever that gesture touched, and the build's produced cue files are given
+// time to decode before the harness is handed over. Two settling frames then
 // run before the watcher attaches, so nothing a loop started on lands on the
 // frame the check reads. The pointer is moved to the middle of the SECOND title
 // rectangle from the `menuIndex` `0` the title opens on, so the frame carries a
@@ -50,7 +52,7 @@ const HOVERED = 1;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -58,7 +60,6 @@ afterEach(async () => {
 });
 
 it("sounds menu-move once on the frame the pointer entered the second item", async () => {
-  await h.armAudio();
   await poseTitle(h);
   await h.step(SETTLE_FRAMES);
   const points = await menuPoints(h, TITLE_ITEMS.length, "for the title menu");
