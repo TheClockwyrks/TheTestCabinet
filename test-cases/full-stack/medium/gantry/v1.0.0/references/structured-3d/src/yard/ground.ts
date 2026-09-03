@@ -34,7 +34,8 @@ import { GantryView } from "../actor-view";
 const SKY_RADIUS = 420;
 
 /** How far the ground reaches, and how far the survey grid is ruled. */
-const GROUND_REACH = 600;
+/** How far the yard floor reaches, on each axis (`specs/overview.md`). */
+export const GROUND_REACH = 600;
 const GRID_REACH = 48;
 
 /** Where the sun stands, and the point it is aimed at. */

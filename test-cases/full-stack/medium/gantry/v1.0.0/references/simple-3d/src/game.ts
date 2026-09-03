@@ -49,6 +49,7 @@ import { createDebugSurface } from "./debug";
 import { DIAGNOSTICS } from "./diagnostics";
 import { drawFrame } from "./render";
 import { titleState } from "./state";
+import type { DrawnEntry } from "./render-drawn";
 
 // ---------------------------------------------------------------------------
 // The state (`specs/state.md`)
@@ -469,6 +470,7 @@ export interface GantryDebugApi {
 
   snapshot(state: ReadonlyGantryState): Snapshot;
   check(state: ReadonlyGantryState): CheckReport;
+  drawn(): DrawnEntry[];
 
   // ---- The run and the screens -------------------------------------------
 

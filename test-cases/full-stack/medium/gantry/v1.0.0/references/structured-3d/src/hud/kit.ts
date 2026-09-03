@@ -95,6 +95,10 @@ export class HudGroup {
 
   /** One line, at the baseline `y`. */
   write(x: number, y: number, text: string, spec: TextSpec): TextComponent {
+    // Registered as it is made, so `visibleTextRuns` can answer what the frame
+    // has on screen. The layer is retained rather than repainted, so what a
+    // frame drew is what is visible rather than what was written this tick
+    // (`specs/instrumentation.md`).
     const component = this.add(
       new TextComponent({
         text,
@@ -106,6 +110,7 @@ export class HudGroup {
     );
     component.layer = spec.layer ?? LAYER.text;
     component.offset.position = baseline(x, y, spec.size);
+    written.add(component);
     return component;
   }
 
@@ -115,6 +120,29 @@ export class HudGroup {
     for (const part of this.parts) part.visible = on;
     for (const kid of this.kids) kid.apply(on);
   }
+}
+
+/**
+ * Every line this kit has written, so the frame can say what text it is showing.
+ *
+ * Held weakly: a component belongs to the screen that made it, and this must not
+ * be the thing that keeps a torn-down screen alive.
+ */
+const written = new Set<TextComponent>();
+
+/**
+ * The text the frame has on screen, in the order the lines were written.
+ *
+ * `specs/instrumentation.md` has `drawn()` report the text a frame drew wherever
+ * it drew it. This layer is retained, so what is on screen is every line whose
+ * component is visible rather than every line written this tick.
+ */
+export function visibleTextRuns(): string[] {
+  const out: string[] = [];
+  for (const component of written) {
+    if (component.visible) out.push(component.text);
+  }
+  return out;
 }
 
 /** The CSS font a spec names. */

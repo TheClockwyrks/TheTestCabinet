@@ -58,6 +58,8 @@ import type {
   Snapshot,
   Step,
 } from "./game";
+import type { DrawnEntry } from "./render-drawn";
+import { lastDrawnEntries } from "./scene";
 
 /** What the surface poses and reads: the live state, and the sound it raises. */
 export interface GameAccess {
@@ -336,6 +338,13 @@ export function createDebugSurface(access: GameAccess): GantryDebugApi {
         muted: state.muted,
         simTime: state.simTime,
       };
+    },
+
+    drawn(): DrawnEntry[] {
+      // What the last frame drew. The frame itself describes what it put on
+      // screen, so the reading and the picture cannot disagree
+      // (`specs/instrumentation.md`).
+      return lastDrawnEntries();
     },
 
     check(): CheckReport {

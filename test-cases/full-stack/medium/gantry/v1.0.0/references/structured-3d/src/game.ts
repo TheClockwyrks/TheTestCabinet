@@ -50,6 +50,7 @@ import {
 import { CAMERA_FOV, cameraPosition } from "./view";
 import { STAGE_BACKGROUND } from "./palette";
 import { refreshViews, spawnReadouts, spawnScene } from "./scene";
+import type { DrawnEntry } from "./render-drawn";
 
 /**
  * The stage background, a CSS color string. `src/main.ts` hands it to the
@@ -521,6 +522,7 @@ export interface GantryDebugApi {
   // Readings
   snapshot(): Snapshot;
   check(): CheckReport;
+  drawn(): DrawnEntry[];
 
   // The run and the screens
   reset(): void;

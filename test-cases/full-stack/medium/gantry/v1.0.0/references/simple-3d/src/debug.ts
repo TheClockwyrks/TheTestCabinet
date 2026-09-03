@@ -65,6 +65,8 @@ import {
   type AxisName,
 } from "./sim";
 import * as st from "./state";
+import { lastDrawnEntries } from "./render";
+import type { DrawnEntry } from "./render-drawn";
 
 // ---- Domains ---------------------------------------------------------------
 
@@ -335,6 +337,13 @@ export function createDebugSurface(): GantryDebugApi {
         muted: state.muted,
         simTime: state.simTime,
       };
+    },
+
+    drawn(): DrawnEntry[] {
+      // What the last frame drew. The frame itself describes what it put on
+      // screen, so the reading and the picture cannot disagree
+      // (`specs/instrumentation.md`).
+      return lastDrawnEntries();
     },
 
     check(state): CheckReport {

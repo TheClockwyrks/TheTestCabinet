@@ -19,9 +19,47 @@ import { applyClick } from "./editor";
 import type { ReadonlyGantryState, Tool, Vec3 } from "./game";
 import { pick, type Pick } from "./pick";
 import { CAMERA_FOV, cameraPosition, TARGET } from "./project";
-import { drawHud, type HudHint } from "./render-hud";
+import {
+  collectedTextRuns,
+  drawHud,
+  type HudHint,
+} from "./render-hud";
+import {
+  describeFrame,
+  measureModelObject,
+  type DrawnEntry,
+  type ModelSizes,
+} from "./render-drawn";
+import { MODEL_NAMES, placeModel } from "./assets";
 import { yardPosture } from "./render-posture";
-import { YardScene } from "./render-scene";
+import { YardScene, GROUND_SIZE } from "./render-scene";
+
+/**
+ * What the last frame drew (`specs/instrumentation.md`).
+ *
+ * The frame is drawn by a free function rather than by something the game holds,
+ * so the description it produced is kept here, beside the drawing, and the debug
+ * surface reads it back through `lastDrawnEntries`.
+ */
+let lastDrawn: DrawnEntry[] = [];
+
+/** What the last frame drew, for the surface's `drawn()` reading. */
+export function lastDrawnEntries(): DrawnEntry[] {
+  return lastDrawn;
+}
+
+/** Every model's drawn extent and colour, measured once and kept. */
+let measured: ModelSizes | null = null;
+
+function modelSizes(): ModelSizes {
+  if (measured !== null) return measured;
+  const sizes: ModelSizes = {};
+  for (const name of MODEL_NAMES) {
+    sizes[name] = measureModelObject(placeModel(name));
+  }
+  measured = sizes;
+  return sizes;
+}
 
 /** One yard per scene, built on the first frame drawn into that scene. */
 const yards = new WeakMap<THREE.Scene, YardScene>();
@@ -143,10 +181,12 @@ export function drawFrame(state: ReadonlyGantryState, api: RenderApi): void {
   poseCamera(api.camera, state);
 
   const yard = yardIn(api.scene);
+  const posture = yardPosture(state);
+  const lattice = build || state.screen === "program";
   yard.sync(
-    yardPosture(state),
+    posture,
     {
-      lattice: build || state.screen === "program",
+      lattice,
       pick: picked.node === null ? null : toTriple(picked.node),
       pending:
         build && state.pendingNode !== null
@@ -157,6 +197,28 @@ export function drawFrame(state: ReadonlyGantryState, api: RenderApi): void {
   );
 
   drawHud(api.screen, state, pointerHint(state, picked));
+
+  // The reading is taken last, from the same posture the yard was just drawn
+  // from and the text the layer just wrote, so it can never describe a different
+  // frame from the one on screen.
+  lastDrawn = describeFrame({
+    posture,
+    sizes: modelSizes(),
+    aids: { lattice, envelope: true },
+    marks: {
+      anchors: true,
+      loadStarts: true,
+      pads: true,
+      pendingNode:
+        build && state.pendingNode !== null ? toTriple(state.pendingNode) : null,
+      pickedNode: picked.node === null ? null : toTriple(picked.node),
+    },
+    texts: collectedTextRuns().map((text, index) => ({
+      name: `run-${index}`,
+      text,
+    })),
+    groundSize: GROUND_SIZE,
+  });
 }
 
 /** A state position as the scene's own triple. */

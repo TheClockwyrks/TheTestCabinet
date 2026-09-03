@@ -26,6 +26,16 @@ import { RunActor } from "./hud/run";
 import { SelectActor } from "./hud/select";
 import { TitleActor } from "./hud/title";
 import type { GantryState } from "./game";
+import { MODEL_NAMES, models } from "./assets";
+import { visibleTextRuns } from "./hud/kit";
+import {
+  describeFrame,
+  measureModelObject,
+  type DrawnEntry,
+  type ModelSizes,
+} from "./render-drawn";
+import { GROUND_REACH } from "./yard/ground";
+import { MODEL_SCALE } from "./yard/parts";
 
 /**
  * Spawn the world-space half of the yard: the ground, the sky, and the light;
@@ -72,4 +82,72 @@ export function spawnReadouts(world: World): void {
 export function refreshViews(world: World): void {
   const frame = viewFrame(world.state as GantryState);
   for (const view of world.ofType(GantryView)) view.refresh(frame);
+
+  // The reading is taken after every view has been brought in line with the
+  // frame, so it describes the picture those views are about to draw rather than
+  // the one before it (`specs/instrumentation.md`).
+  const state = frame.state;
+  const build = state.screen === "build";
+  lastDrawn = describeFrame({
+    posture: frame.posture,
+    sizes: modelSizes(),
+    aids: {
+      lattice: build || state.screen === "program",
+      envelope: true,
+    },
+    marks: {
+      anchors: true,
+      loadStarts: true,
+      pads: true,
+      pendingNode:
+        build && state.pendingNode !== null
+          ? toTriple(state.pendingNode)
+          : null,
+      pickedNode: frame.pick.node === null ? null : toTriple(frame.pick.node),
+    },
+    texts: visibleTextRuns().map((text, index) => ({
+      name: `run-${index}`,
+      text,
+    })),
+    groundSize: GROUND_REACH,
+  });
 }
+
+/** What the last frame drew (`specs/instrumentation.md`). */
+let lastDrawn: DrawnEntry[] = [];
+
+/** What the last frame drew, for the surface's `drawn()` reading. */
+export function lastDrawnEntries(): DrawnEntry[] {
+  return lastDrawn;
+}
+
+/** Every model's drawn extent and colour, measured once and kept. */
+let measured: ModelSizes | null = null;
+
+function modelSizes(): ModelSizes {
+  if (measured !== null) return measured;
+  const all = models();
+  const sizes: ModelSizes = {};
+  for (const name of MODEL_NAMES) {
+    // The engine hands back the decoded tree at the file's own units; the yard
+    // stands one up at `MODEL_SCALE`, so that is the size it is drawn at.
+    const measuredModel = measureModelObject(all[name].scene);
+    sizes[name] = {
+      size: [
+        measuredModel.size[0] * MODEL_SCALE,
+        measuredModel.size[1] * MODEL_SCALE,
+        measuredModel.size[2] * MODEL_SCALE,
+      ],
+      color: measuredModel.color,
+    };
+  }
+  measured = sizes;
+  return sizes;
+}
+
+/** A state position as the reading's own triple. */
+const toTriple = (p: {
+  x: number;
+  y: number;
+  z: number;
+}): [number, number, number] => [p.x, p.y, p.z];
