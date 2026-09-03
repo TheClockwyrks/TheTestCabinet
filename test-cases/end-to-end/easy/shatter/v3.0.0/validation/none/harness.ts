@@ -519,12 +519,13 @@ export interface Harness {
    *
    * A fault here is the build's: the surface is missing, or it is missing an
    * operation `specs/instrumentation.md` requires. It says what was FOUND
-   * (`window.__shatter was still absent 15s after the page loaded`), and
-   * {@link failSurface} pairs it with what the specification REQUIRES. Every
-   * operation fails by assertion with that pair rather than throwing, so a
-   * missing surface lands as the verdict of every item that reaches for it — and,
-   * crucially, a harness built in a `beforeEach` still comes back, so the fault is
-   * reported by the check rather than buried in a hook.
+   * (`window.__shatter was still absent 300 rendered frames after the page
+   * loaded`), and {@link failSurface} pairs it with what the specification
+   * REQUIRES. Every operation fails by assertion with that pair rather than
+   * throwing, so a missing surface lands as the verdict of every item that
+   * reaches for it — and, crucially, a harness built in a `beforeEach` still
+   * comes back, so the fault is reported by the check rather than buried in a
+   * hook.
    */
   readonly surfaceFault: string | null;
   /** Everything the page logged to `console.error`, or threw, oldest first. */
@@ -675,21 +676,61 @@ const INIT_SCRIPTS = ["recorder-init.js", "audio-init.js"] as const;
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /**
- * How long the surface is waited for before the build is called non-conformant.
+ * How many of the PAGE'S OWN rendered frames the surface is waited for before the
+ * build is called non-conformant.
  *
- * Generous against a conformant build and cheap against one: the wait is a poll
- * that returns the instant the global appears, and a build installs it while its
- * entry module runs, so a page that has fired `load` has either installed it
- * already or is not going to. What the ceiling really bounds is the cost of a
- * build with no surface at all, which pays it once per harness.
+ * `specs/instrumentation.md` requires the surface "as soon as the game has
+ * initialized", and the honest reading of that deadline is counted in the frames
+ * the page renders, not in seconds of this machine's time. An engineless Shatter
+ * build seeds no art and declares no assets, so a conformant build installs its
+ * surface while its own entry module evaluates — before
+ * `page.goto(waitUntil: "load")` has even returned — and is found on the first
+ * poll. The grace below is for a build that finishes initializing asynchronously,
+ * and three hundred frames is five seconds of a page rendering at an ordinary
+ * rate.
  *
- * FIFTEEN SECONDS RATHER THAN FIVE, because the ceiling is not really on the
- * build: it is on the host. This project holds four pages of one browser open at
- * once and the machine that runs it is running a model's build under it, so a page
- * can be starved of processor long enough for a perfectly conforming build's entry
- * module to take seconds of wall clock to run.
+ * WHY NOT A NUMBER OF SECONDS, WHICH IS WHAT THIS USED TO BE. A wall-clock
+ * deadline here does not measure the build at all. Playwright polls this
+ * predicate once per animation frame, so on a host with nothing left to give BOTH
+ * the build's script and the poll that looks for its surface are starved
+ * together — and a fifteen-second ceiling then reported "this build installs no
+ * debug surface" against a build whose surface was there all along. That verdict
+ * is not one point: `surfaceFault` makes EVERY operation of the surface fail by
+ * assertion, so the whole checklist is lost to how busy the machine was. Counted
+ * in frames, the deadline stretches with the host exactly as the build does: a
+ * page given a tenth of a core renders a tenth of the frames per second and gets
+ * the same three hundred frames to install its surface in.
+ *
+ * WHAT IT STILL CATCHES, which is the distinction worth keeping. A build that
+ * never installs a surface renders its three hundred frames and is reported —
+ * promptly, on a quiet host in about five seconds — as exactly that. Nothing here
+ * softens the real defect; what changed is that a slow page is no longer mistaken
+ * for one.
  */
-const SURFACE_TIMEOUT_MS = 15_000;
+const SURFACE_GRACE_FRAMES = 300;
+
+/**
+ * The wall-clock ceiling on any one crossing into the page.
+ *
+ * NOT A DEADLINE ANY READING RESTS ON. A ceiling exists because a page that has
+ * wedged must cost a check this much and no more; it is drawn where no loaded
+ * host reaches it, so that what ends a wait is the thing being waited for. Two
+ * minutes: the navigation this harness makes is a static bundle off a loopback
+ * server, the longest crossing any check makes is a sweep of a few thousand ticks
+ * run inside the page, and the frame-counted waits below reach their
+ * {@link SURFACE_GRACE_FRAMES} long inside two minutes however loaded the host
+ * is. It sits well under this project's own `testTimeout` of five minutes, so a
+ * genuinely wedged page still reports as a crossed ceiling rather than as a
+ * killed suite.
+ *
+ * WHAT IT REPLACES. Playwright's own default is thirty seconds on every crossing
+ * — a navigation, a key press, a click, a `page.evaluate` driving ticks — and
+ * thirty seconds is generous on an idle host and crossed by a page load on one
+ * running many times its own number of cores. What a crossed deadline costs is
+ * not a point but a check: the harness throws inside `beforeEach`, and the
+ * verdict that reaches the reviewer names nothing the build did.
+ */
+const PAGE_CEILING_MS = 120_000;
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -812,21 +853,69 @@ export function failSurface(fault: string): never {
 }
 
 /**
+ * What a frame-counted wait is waiting for: the two things a page installs that a
+ * harness cannot begin without.
+ *
+ * `"surface"` is the build's own `window.__shatter`. `"recorder"` is the injected
+ * recorder having a 2D context to record, which a build is free to ask for on the
+ * frame it first draws rather than while it initializes.
+ */
+type PageArrival = "surface" | "recorder";
+
+/**
+ * Wait, in frames of the page's own rendering, for something a page installs.
+ *
+ * Playwright polls a `waitForFunction` predicate once per animation frame, so the
+ * predicate counts its own polls and answers in the PAGE'S frames rather than in
+ * the HOST'S seconds — which is the whole point (see
+ * {@link SURFACE_GRACE_FRAMES}). It resolves `true` on the frame the thing is
+ * first there, and `false` once {@link SURFACE_GRACE_FRAMES} frames have gone by
+ * without it — or if the page renders nothing at all for
+ * {@link PAGE_CEILING_MS}, which is the one case no frame count can end.
+ *
+ * The count is kept on the page under a key of the arrival's own name, so the two
+ * waits a harness makes do not share a deadline.
+ */
+async function waitInPageFrames(
+  page: Page,
+  arrival: PageArrival,
+): Promise<boolean> {
+  try {
+    const found = await page.waitForFunction(
+      ([kind, handle, grace]) => {
+        const scope = window as unknown as Record<string, unknown>;
+        const there =
+          kind === "surface"
+            ? typeof scope[handle] === "object" && scope[handle] !== null
+            : (
+                scope.__shatterRec as { ready(): boolean } | undefined
+              )?.ready() === true;
+        if (there) return "there";
+        const key = `__shatterWaited_${kind}`;
+        const seen = ((scope[key] as number | undefined) ?? 0) + 1;
+        scope[key] = seen;
+        // Neither `null` nor `false` ends a `waitForFunction`, so a frame that
+        // has not answered yet returns one of them and the poll comes round
+        // again on the next frame; only the two strings end the wait.
+        return seen >= grace ? "never" : null;
+      },
+      [arrival, HANDLE, SURFACE_GRACE_FRAMES] as const,
+      { timeout: PAGE_CEILING_MS },
+    );
+    return (await found.jsonValue()) === "there";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * What is wrong with the surface this page installed, or `null` when nothing is:
  * the surface never appeared, or it appeared without an operation the
  * specification requires of every variant.
  */
 async function readSurfaceFault(page: Page): Promise<string | null> {
-  try {
-    await page.waitForFunction(
-      (handle) =>
-        typeof (window as never)[handle] === "object" &&
-        (window as never)[handle] !== null,
-      HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
-    );
-  } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
+  if (!(await waitInPageFrames(page, "surface"))) {
+    return `window.${HANDLE} was still absent ${SURFACE_GRACE_FRAMES} rendered frames after the page loaded`;
   }
   const missing = await page.evaluate(
     ([handle, ops]) => {
@@ -869,6 +958,13 @@ export async function createHarness(
   const context = await contextFor(cssWidth, cssHeight, dpr);
   const page = await context.newPage();
   openPages.add(page);
+  // Off Playwright's own thirty seconds and onto this project's ceiling, for
+  // every crossing the harness makes: the navigation below, a key press, a
+  // click, the ticks a check drives inside the page. See {@link PAGE_CEILING_MS};
+  // the two waits whose deadline belongs in the page's own frames count those
+  // instead, and say so.
+  page.setDefaultTimeout(PAGE_CEILING_MS);
+  page.setDefaultNavigationTimeout(PAGE_CEILING_MS);
 
   // Whatever this page throws or logs as an error while THIS harness drives it.
   // The page belongs to one harness, so the log cannot pick up what some other
@@ -962,16 +1058,7 @@ export async function createHarness(
     // initializes, so the surface can be installed and answering before any
     // context exists to record — and a `captureReplay` armed in that window arms
     // nothing and writes no evidence for a section that drew.
-    await page
-      .waitForFunction(
-        () =>
-          (
-            window as unknown as { __shatterRec: { ready(): boolean } }
-          ).__shatterRec.ready(),
-        undefined,
-        { timeout: SURFACE_TIMEOUT_MS },
-      )
-      .catch(() => undefined);
+    await waitInPageFrames(page, "recorder");
   }
 
   const view = fitViewport(cssWidth, cssHeight, dpr);

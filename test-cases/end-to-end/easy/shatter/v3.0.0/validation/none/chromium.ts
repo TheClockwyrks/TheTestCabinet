@@ -121,6 +121,19 @@ const CHROMIUM_ARGS = [
 ];
 
 /**
+ * The wall-clock ceiling on getting the browser process up.
+ *
+ * A ceiling on a launch that will never finish, not a schedule the launch is
+ * written to. Playwright's own default is thirty seconds, and thirty seconds is
+ * generous on an idle host and crossed by a cold Chromium start on one running
+ * many times its own number of cores — at which point `globalSetup` throws, no
+ * suite runs at all, and a build loses its ENTIRE checklist to how busy the
+ * machine was. Two minutes is far past any real start and still well inside the
+ * runner's own allowance for the suite run.
+ */
+const LAUNCH_CEILING_MS = 120_000;
+
+/**
  * Launch Chromium as a SERVER, so every suite worker can connect to the one
  * browser process this project holds.
  *
@@ -154,6 +167,7 @@ export async function launchChromiumServer(): Promise<BrowserServer> {
     try {
       return await chromium.launchServer({
         args: CHROMIUM_ARGS,
+        timeout: LAUNCH_CEILING_MS,
         ...attempt.options,
       });
     } catch (error) {
