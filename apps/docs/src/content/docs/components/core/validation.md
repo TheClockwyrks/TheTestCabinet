@@ -255,9 +255,11 @@ auto verdict, and a reviewer may override it. The run itself stays reviewable: a
 build that loads is scored down by exactly the points its checks could not
 answer, and on a validator-rated run each such point applies its failure cap.
 
-Two outcomes are held apart, and both leave the point undecided rather than
-synthesizing a verdict: an undecided point lowers no rating, counts toward
-neither side of the score, and is left for a reviewer to decide.
+Three outcomes are held apart from that failure, and each leaves the point
+undecided rather than synthesizing a verdict: an undecided point lowers no rating,
+counts toward neither side of the score, and is left for a reviewer to decide. The
+result records which of the three it was, so a reviewer reads the real reason a
+point went undecided rather than one that sounds like a fact about the build.
 
 The first is an unmet precondition. A setup often searches the model's own world
 for a place to pose its scenario, such as a blind corner in an invented maze or a
@@ -265,11 +267,19 @@ legal build tile, and that search can come up empty against a fully conformant
 build. A validator says this by skipping its checks: a suite whose checks were all
 skipped reports an unmet precondition.
 
-The second is a check that never ran at all. A validator project the run's engine
-has none of, a tree with no vitest to run one, a suite run that exceeded its cap,
-or a report that could not be read are facts about the host or the case, so every
-point they left undecided is reported as not having run, with the reason, and
-costs the build nothing.
+The second is a check that never ran. A validator project the run's engine has
+none of, a tree with no vitest to run one, a suite the project does not contain,
+or a report that could not be read are facts about the case or the produced tree.
+Each is recorded with its reason and costs the build nothing.
+
+The third is a run that exceeded its time budget. A case's validator suites are
+capped as a whole, so a suite left waiting on something costs the run a bounded
+amount of wall clock and no more, and the stopped suite's whole process tree goes
+with it. The cap defaults to forty-five minutes and is set by
+`TCAB_VITEST_TIMEOUT_SECS`. Crossing it is a fact about the host rather than about
+the build, so every point the run left undecided records that the budget expired.
+A score is a property of the build, and a host busy enough to stretch a conforming
+build past a deadline must never turn that build into a failing one.
 
 A point excluded from scoring for the version, through an
 [erratum](/testing/end-to-end/manifests/) that links its verdict id, is still
@@ -309,9 +319,9 @@ The summary therefore covers the install and the build alongside whether the
 implementation loaded. It also carries:
 
 - A validation result per verdict unit: the item and sub-item ids, the validator
-  or script that ran, whether it ran and whether a negative answer was
-  inconclusive, whether it gates, its auto verdicts and their assertions, and any
-  captured outputs.
+  or script that ran, whether it ran and, when a negative answer was inconclusive,
+  which of the three inconclusive outcomes it was, whether it gates, its auto
+  verdicts and their assertions, and any captured outputs.
 - A check result per declared check, carrying its display name as well as its
   view slug so the site can label it without re-deriving one.
 - A proof result per declared proof: its id, display name, media kind, expected
