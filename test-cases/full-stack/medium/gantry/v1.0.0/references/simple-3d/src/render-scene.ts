@@ -47,7 +47,9 @@ import {
 } from "./render-posture";
 
 /** How thick each material is drawn, across and through its own length. */
-const PROFILE: Readonly<Record<string, { across: number; through: number }>> = {
+export const PROFILE: Readonly<
+  Record<string, { across: number; through: number }>
+> = {
   strut: { across: 0.17, through: 0.17 },
   rail: { across: 0.46, through: 0.15 },
   cable: { across: 0.075, through: 0.075 },
@@ -56,7 +58,7 @@ const PROFILE: Readonly<Record<string, { across: number; through: number }>> = {
 /** How far the yard floor reaches, on each axis (`specs/overview.md`). */
 export const GROUND_SIZE = 600;
 
-const BROKEN_PROFILE = { across: 0.09, through: 0.09 };
+export const BROKEN_PROFILE = { across: 0.09, through: 0.09 };
 const HOIST_RADIUS = 0.06;
 
 /** The build aids a frame asks for, which belong to the build screen. */

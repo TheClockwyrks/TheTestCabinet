@@ -20,6 +20,7 @@ import type { ModelName } from "./assets";
 import { classDimensions, type Vec3 } from "./sim";
 import * as palette from "./render-palette";
 import type { YardPosture } from "./render-posture";
+import { BROKEN_PROFILE, PROFILE } from "./render-scene";
 
 /** One thing the frame drew (`specs/instrumentation.md`). */
 export interface DrawnEntry {
@@ -110,6 +111,25 @@ const span = (a: Vec3, b: Vec3): readonly [number, number, number] => [
 const yawOf = (a: Vec3, b: Vec3): number =>
   (Math.atan2(b[2] - a[2], b[0] - a[0]) * 180) / Math.PI;
 
+/** The cross-section a member is drawn with (`specs/overview.md`: by form). */
+function profileOf(member: { material: string; broken: boolean }): number {
+  if (member.broken) {
+    return Math.max(BROKEN_PROFILE.across, BROKEN_PROFILE.through);
+  }
+  const profile = PROFILE[member.material];
+  return profile === undefined ? 0 : Math.max(profile.across, profile.through);
+}
+
+/** An extent grown by a cross-section on every axis. */
+const grownBy = (
+  extent: readonly [number, number, number],
+  profile: number,
+): readonly [number, number, number] => [
+  extent[0] + profile,
+  extent[1] + profile,
+  extent[2] + profile,
+];
+
 /**
  * The colour a member is drawn in: its material's own while nothing has solved
  * it, its place on the utilization ramp once something has, and the broken shade
@@ -198,7 +218,12 @@ export function describeFrame(input: {
         id: member.id,
         at: midpoint(member.a, member.b),
         yaw: yawOf(member.a, member.b),
-        size: span(member.a, member.b),
+        // The span between the two nodes GROWN BY THE PROFILE the bar is drawn
+        // with. `size` is "what was actually drawn rather than what it stands
+        // for" (`specs/instrumentation.md`), and a member is a bar rather than a
+        // line — so a strut and a cable over one span differ here by exactly the
+        // forms the build gave them.
+        size: grownBy(span(member.a, member.b), profileOf(member)),
         color: memberColour(member),
       }),
     );

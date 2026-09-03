@@ -29,13 +29,15 @@ import { GantryView, type ViewFrame } from "../actor-view";
 import { disposeTree, paint, poseBar, Pool } from "./three-kit";
 
 /** How thick each material is drawn, across and through its own length. */
-const PROFILE: Readonly<Record<string, { across: number; through: number }>> = {
+export const PROFILE: Readonly<
+  Record<string, { across: number; through: number }>
+> = {
   strut: { across: 0.17, through: 0.17 },
   rail: { across: 0.46, through: 0.15 },
   cable: { across: 0.075, through: 0.075 },
 };
 
-const BROKEN_PROFILE = { across: 0.09, through: 0.09 };
+export const BROKEN_PROFILE = { across: 0.09, through: 0.09 };
 const HOIST_RADIUS = 0.06;
 
 /** The colour a member reads at a utilization, and how hard it glows. */
