@@ -373,6 +373,12 @@ impl BuildValidator {
                 gates: drive.gates,
                 ran: drive.ran,
                 precondition_unmet: drive.precondition_unmet,
+                // A browser drive's only inconclusive answer is the script saying it
+                // could not pose its scenario. Anything the host could not do at all
+                // degrades the whole stage rather than reaching here.
+                inconclusive: drive
+                    .precondition_unmet
+                    .then_some(crate::validation::Inconclusive::PreconditionUnmet),
                 verdicts: script_verdicts(
                     &drive.verdict_id,
                     drive.ran,

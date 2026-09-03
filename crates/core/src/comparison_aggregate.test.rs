@@ -46,6 +46,7 @@ fn script(item_id: &str, pass: bool) -> DebugScriptResult {
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![AutoVerdict {
             id: item_id.into(),

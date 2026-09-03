@@ -504,9 +504,9 @@ export type StepResult = {
  * is synthesized for it, pre-filled into the review like any auto verdict and
  * overridable by the reviewer — rather than failing the whole run: a build with a
  * broken debug API is still reviewed, and is scored down by exactly the points its
- * checks could not answer. A check the host could not run *at all* decided nothing
- * about the build and is held apart by
- * [`precondition_unmet`](Self::precondition_unmet).
+ * checks could not answer. A check that decided nothing about the build is held apart
+ * by [`precondition_unmet`](Self::precondition_unmet), which
+ * [`inconclusive`](Self::inconclusive) then qualifies.
  */
 export type DebugScriptResult = {
   /**
@@ -559,23 +559,20 @@ export type DebugScriptResult = {
    * Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather
    * than a contract failure the build earned.
    *
-   * Two outcomes set it, and both leave the point unanswered: no failed verdict is
+   * An inconclusive result leaves the point unanswered: no failed verdict is
    * synthesized, [scoring](crate::comparison::automated_only_score) skips the point
-   * entirely, and the reviewer decides it by hand.
-   *
-   * The first is an UNMET PRECONDITION. A check often searches the model's own
-   * world for a spot to pose its scenario — a blind corner in an invented maze, a
-   * legal build tile. That search can come up empty against a fully conformant
-   * build: every call was answered correctly, there was simply no such spot. A
-   * [vitest validator](crate::vitest_validator) says the same thing by skipping
-   * every check in its suite.
-   *
-   * The second is a check the host could not execute at all, such as a validator
-   * project with no vitest to run it or a suite run that exceeded its cap. The
-   * [`detail`](Self::detail) names the reason. Only ever `true` alongside
+   * entirely, and the reviewer decides it by hand. Which inconclusive outcome it
+   * was is carried by [`inconclusive`](Self::inconclusive), and the
+   * [`detail`](Self::detail) names the reason in prose. Only ever `true` alongside
    * `ran == false`.
    */
   preconditionUnmet: boolean;
+  /**
+   * Which inconclusive outcome this is, set exactly when
+   * [`precondition_unmet`](Self::precondition_unmet) is. `None` on a result
+   * recorded before the outcomes were told apart.
+   */
+  inconclusive: Inconclusive | null;
   /**
    * Detail about a failed or degraded script (the handle was missing, a call
    * threw, an output was not produced), or `None` when it ran clean.
@@ -595,6 +592,14 @@ export type DebugScriptResult = {
    */
   outputs: Array<DebugScriptOutput>;
 };
+
+/**
+ * Why a validator's negative answer decided nothing about the build.
+ *
+ * Each of these leaves the point unanswered, and they are held apart so a reviewer
+ * reads the real reason rather than one that sounds like a fact about the build.
+ */
+export type Inconclusive = "preconditionUnmet" | "notRun" | "timedOut";
 
 /**
  * One auto-decided checklist verdict produced by a [`DebugScriptResult`].

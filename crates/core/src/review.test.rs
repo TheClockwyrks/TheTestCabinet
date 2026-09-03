@@ -763,7 +763,7 @@ fn writeup_with_only_graded_verdicts_parses() {
 
 // --- the aesthetic channel and the validator-decided functional rating ---------
 
-use crate::validation::{AutoVerdict, DebugScriptResult};
+use crate::validation::{AutoVerdict, DebugScriptResult, Inconclusive};
 
 /// A scoring domain with the given id.
 fn domain(id: &str) -> Domain {
@@ -823,6 +823,7 @@ fn script(
         gates: true,
         ran,
         precondition_unmet,
+        inconclusive: precondition_unmet.then_some(Inconclusive::PreconditionUnmet),
         detail: None,
         verdicts: verdicts
             .iter()
