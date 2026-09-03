@@ -253,8 +253,6 @@ export interface Harness {
     predicate: (snapshot: RefractSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
@@ -593,14 +591,6 @@ export async function createHarness(
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
       }
       return { hit: false, frames, snapshot };
-    },
-
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
     },
 
     hold: (code) => dispatch("keydown", code),
