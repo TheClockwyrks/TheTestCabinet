@@ -593,6 +593,12 @@ it("names the cue a run start plays, and drains what it reported", async () => {
   await poseTape(h, SHORT_TAPE);
   await h.cues(); // drain whatever the arrangement made
   await startRun(h);
+  // A pose only queues its cue: this engine holds the state by value, so a pose
+  // is pure and cannot reach the audio bus. The frame that follows plays what
+  // the pose queued (see `cues()` in `harness.ts`), so a check advances one
+  // before reading. The frame is a run tick here, which is why the read comes
+  // before anything that asserts the run's starting values.
+  await h.advance(1);
   const played = await h.cues();
   assertContains(
     played,

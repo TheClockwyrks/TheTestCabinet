@@ -150,6 +150,25 @@
     };
   }
 
+  /* ---- Door one and a half: a copy of those bytes ------------------------- */
+
+  // `decodeAudioData` DETACHES the buffer it is handed, so a build that wants to
+  // keep its bytes decodes a copy — `context.decodeAudioData(bytes.slice(0))` is
+  // the ordinary way to write that, and the reference implementation writes it.
+  // A copy is a different object, so without this the URL is lost between the
+  // fetch and the decode and every cue reports UNNAMED. That would fail a
+  // conforming build for the shape of its own code, which is worse than not
+  // reading cue names at all, so a slice inherits the URL its source carried.
+  if (typeof ArrayBuffer.prototype.slice === "function") {
+    const slice = ArrayBuffer.prototype.slice;
+    ArrayBuffer.prototype.slice = function (...args) {
+      const copy = slice.apply(this, args);
+      const url = bufferUrls.get(this);
+      if (url !== undefined) rememberBody(copy, url);
+      return copy;
+    };
+  }
+
   /* ---- Door two: which decoded buffer those bytes became ------------------ */
 
   const audioProto = window.BaseAudioContext

@@ -268,7 +268,17 @@ export interface Harness {
   /** Where a world position is drawn, in logical stage units. */
   project(x: number, y: number, z: number): Promise<Projected>;
 
-  /** The cue names announced since the last read, in order, then cleared. */
+  /**
+   * The cue names announced since the last read, in order, then cleared.
+   *
+   * A CUE A POSE RAISES SOUNDS ON THE FRAME THAT FOLLOWS IT, not at the call.
+   * `specs/instrumentation.md` says a pose "establishes a precondition and never
+   * an outcome; what happens next comes from advancing the real simulation", and
+   * under an engine that holds the state by value a pose is pure and cannot
+   * reach the audio bus at all — it queues the cue and the next update plays it.
+   * So a check that reads a cue advances one frame first, which is correct on
+   * every engine and is what keeps one validator file running in all three.
+   */
   cues(): Promise<string[]>;
   /** The cue names of the sounds that are looping right now. */
   loopingCues(): Promise<string[]>;
