@@ -205,6 +205,17 @@ export interface CaseConfig {
   readonly specPath?: string;
   /** The surface probe's wait. Defaults to {@link DEFAULT_SURFACE_TIMEOUT_MS}. */
   readonly surfaceTimeoutMs?: number;
+  /**
+   * Whether the browser context reports a touchscreen.
+   *
+   * Off by default, because it is a property of the DEVICE a build believes it
+   * is running on: with it on, `navigator.maxTouchPoints` is non-zero and a
+   * pointer event arrives as `pointerType: "touch"`, so a build that offers
+   * touch controls only on a touch device draws a different screen. A case
+   * turns it on when its specification requires touch input, and a case that
+   * does not stays on exactly the context it recorded its baselines against.
+   */
+  readonly hasTouch?: boolean;
   /** Further init scripts to inject, resolved against {@link projectRoot}. */
   readonly extraInitScripts?: readonly string[];
   /** The recorder's page global. Defaults to {@link RECORDER_GLOBAL}. */
@@ -229,6 +240,7 @@ export interface ResolvedConfig {
   readonly replayBackground: string;
   readonly specPath: string;
   readonly surfaceTimeoutMs: number;
+  readonly hasTouch: boolean;
   readonly extraInitScripts: readonly string[];
   readonly recorderGlobal: string;
   readonly audioGlobal: string;
@@ -251,6 +263,7 @@ export function resolveConfig(config: CaseConfig): ResolvedConfig {
     replayBackground: config.replayBackground ?? DEFAULT_REPLAY_BACKGROUND,
     specPath: config.specPath ?? DEFAULT_SPEC_PATH,
     surfaceTimeoutMs: config.surfaceTimeoutMs ?? DEFAULT_SURFACE_TIMEOUT_MS,
+    hasTouch: config.hasTouch ?? false,
     extraInitScripts: config.extraInitScripts ?? [],
     recorderGlobal: config.recorderGlobal ?? RECORDER_GLOBAL,
     audioGlobal: config.audioGlobal ?? AUDIO_GLOBAL,
