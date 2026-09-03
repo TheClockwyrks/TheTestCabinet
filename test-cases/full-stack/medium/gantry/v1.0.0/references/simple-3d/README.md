@@ -1,118 +1,240 @@
-# Gantry — starter project
+# Gantry
 
-This repository is the starting point for building **Gantry**, the game the
-specification under `specs/` describes. Read `specs/overview.md` first; it says
-how the rest of the specification is organized.
+**RIG THE CRANE. RUN THE TAPE.**
 
-This build runs on the **Simple 3D** engine, already a dependency of the project
-and vendored under `.tcab/`. The engine documents itself in `engine/` at the
-root of this repository; read all of it before you start. It owns the frame loop
-and the delta time it hands each frame, the letterboxed canvas fit, the renderer
-over the canvas with the retained scene and the camera it draws through, the 2D
-screen layer composited over that picture for the readouts, the input actions,
-the pointer and the world-space ray it casts through the camera, audio, loading
-the produced files under one root, and the debug overlay. Asset loading includes
-the decoding: the engine's model loader hands a produced `.glb` back as a node
-tree with its meshes and per-vertex colors, ready to be cloned into the scene. A
-produced model declares no material of its own, so those meshes arrive on the
-loader's default one, which is yours to replace. `three` is installed for the
-yard's geometry, and it is a peer dependency of the engine, so the engine and
-your own code share the one copy this project declares.
+Gantry is a crane-building puzzle played in a 3D construction yard, in the
+browser, with no backend and no install beyond a static file server.
 
-## What you own
+Each of the six sites gives you anchor points on the ground, a build envelope,
+a budget, and one or two loads that have to end up on their pads. You build a
+crane out of struts, cables and rails on a two-unit lattice, mount a slew ring
+for the arm to turn on and a run of rail for the trolley, then write an
+**instruction tape** — an ordered program that drives the crane's four axes:
+slewing the arm, driving the trolley out along the rail, paying the hoist cable
+in and out, and turning the grip that holds the load.
 
-**`src/game.ts`, any new modules you add beside it under `src/`, and
-everything under `assets/`.**
+Then you press `G` and watch.
 
-Start by declaring and exporting `GantryState`, the type the whole of the game's
-state is held in, carrying every field `specs/state.md` fixes, and
-`GantryDebugApi`, the debug and automation surface `specs/instrumentation.md`
-specifies. The stub in `src/game.ts` is written against both names, so the
-project does not compile until they exist — a fresh workspace failing
-`npm run typecheck` is the starting point, not a broken seed.
+The tape plays out under a real structural simulation. Every member carries a
+computed axial force, sixty times a second: the truss is solved by direct
+stiffness at the geometry of that tick, cables carry tension only and go slack
+in compression, long struts buckle sooner than short ones, and the arm's
+reactions cross the slew ring corner by corner onto the tower. A member past
+its capacity breaks and is gone for the rest of the run. The load hangs on a
+real pendulum, so slewing hard makes it swing, and a swinging load can miss its
+pad, hit an obstacle, or snap the cable.
 
-`src/game.ts` then exports `game`, a `Game<GantryState, GantryDebugApi>`: three
-functions over that state. `initialize` builds the state and the debug surface
-once and returns them together as `[state, debug]`; `update` takes the current
-state as a read-only view (`DeepReadonly<GantryState>`, which the engine
-re-exports) and returns the next state, advanced against the frame's delta time
-in seconds; and `render` is handed that next state, read-only again, and draws
-it. The engine holds the state by value and replaces it with whatever `update`
-returns, so a frame builds the next state from the current one rather than
-writing into it, and the type is what guarantees that rendering changes nothing.
-All three currently throw `"not implemented"`. Implement them.
+A site is cleared when every load has been set down inside tolerance. Your score
+is the crane's **cost** and the run's **time**, so a cheap crane driven briskly
+beats an overbuilt one driven timidly — but driving briskly loads the structure
+harder and swings the load wider. Speed is bought with steel.
 
-`src/game.ts` also exports `BACKGROUND`, the CSS color the engine clears the
-whole canvas to each frame, letterbox bars included; `src/main.ts` hands it over
-as the engine is created. Replace the placeholder with the color your yard uses.
+The game runs entirely in the browser. Everything it needs is in the bundle:
+nothing is fetched from outside `dist/`, and no API key or credential is needed
+to build, run, or play.
 
-**The picture is drawn through the engine's scene.** `render` is handed the
-retained scene, the camera the frame is drawn through, and the screen layer's 2D
-context already carrying the logical stage transform, so the yard is three
-objects in that scene and the readouts are drawing over the picture. What one
-frame adds to the scene is still there on the next.
+## Install
 
-**The pointer comes from the engine**, already in logical stage units, with the
-frame's ordered samples and its press and release edges, and the camera turns a
-point on the stage into a ray through the yard and a point in the yard back onto
-the stage. `specs/controls.md` states what Gantry does with them.
+Node 20 or newer.
 
-The debug surface is a required deliverable. The engine returns it from
-`engine.debug` exactly as `initialize` handed it over, and that is how the game
-is driven from code, so it is present and exactly as `specs/instrumentation.md`
-specifies. Because nothing holds a writable state, its operations are written in
-the shape of `update`: a pose takes the current state and returns the next, and
-a caller applies it through `engine.apply`; a reading takes the state and
-returns what it read, as `debug.snapshot(engine.state)`. Nothing is published to
-the page.
+```sh
+npm ci
+```
 
-You also produce the game's models and audio with the asset tools on this
-machine's `PATH` and commit the produced files under `assets/`;
-`specs/assets.md` is the contract, and the engine's asset loader resolves every
-path under that root. The tools are absent when the build is installed and
-rebuilt elsewhere, so the build bundles the committed files and invokes no tool.
+## Run it in development
 
-Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
-runs them in process, in Node, with coverage over `src/`. The engine renders
-through WebGL: it takes a `webgl2` context from the canvas the moment it is
-created and Node has none, so the engine itself cannot be stood up there.
-`@napi-rs/canvas` is installed for a test that wants a real 2D context to draw
-through.
+```sh
+npm run dev
+```
 
-## What you must not edit
+Vite serves the game with hot reload and prints the URL (`--host` is on, so it
+is reachable from another machine on the network too).
 
-- **`src/main.ts`** — the fixed entry point. It creates the engine over the
-  page's canvas, binds `game` to it, and runs.
-- **`src/constants.ts`** — every figure the specification fixes, named once.
-  Import from it everywhere.
-- **`index.html`** — the page and the canvas the engine fits the stage into.
-- **`.tcab/`** and **`engine/`** — the vendored engine and its documentation.
-- **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`,
-  `.prettierignore`, and `.gitignore`.
+## Production build
 
-Add dependencies to `package.json` if you genuinely need them, and commit the
-`package-lock.json` — the build is installed with `npm ci`. Leave the existing
-entries and scripts alone.
+```sh
+npm run build
+```
 
-## Commands
+This type-checks and then emits the complete static site into `dist/`, with
+`index.html` at its root. Every asset reference is page-relative, so `dist/`
+runs as-is at the root of any static host **and** from a sub-path. To check the
+built output before shipping it:
 
-- `npm run dev` — serves the game with hot reload.
-- `npm run build` — type-checks, then emits the static site into `dist/`.
-- `npm run preview` — serves `dist/` for a final check.
-- `npm run typecheck` — `tsc --noEmit`.
-- `npm run lint` — ESLint.
-- `npm run format` — Prettier, in check mode.
-- `npm test` — Vitest over `src/**/*.test.ts`, with coverage.
+```sh
+npm run preview      # serves dist/ on http://localhost:4173
+```
 
-## Before you finish
+## Controls
 
-- `npm run build` produces `dist/` with `index.html` at its root, and that
-  directory runs as-is on any static host, from a sub-path included.
-- `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all
-  pass. The same four commands are run over the repository you leave behind.
-- The produced files under `assets/` are committed alongside your source, and
-  the build loads them without running any of the asset tools.
-- **Replace this file** with the `README.md` `specs/overview.md` asks the
-  finished build to ship: what the game is, how to install it, how to run it in
-  development, how to produce the production build, and the controls.
+The pointer operates the yard and the tape editor; the keyboard drives
+everything else. Bindings are `KeyboardEvent.code` values, so they are physical
+keys and do not move with the layout.
+
+### Everywhere
+
+| Key | Does |
+| --- | --- |
+| `↑` `↓` `←` `→` | Move the highlight on a menu; orbit the camera on the yard screens |
+| `Enter` | Take the highlighted menu entry |
+| `Esc` | Back out — see below |
+| `M` | Mute and unmute all sound |
+| `` ` `` | Show and hide the diagnostics overlay |
+
+### The yard camera (build, program and run screens)
+
+| Input | Does |
+| --- | --- |
+| `←` `→` | Turn the camera around the yard |
+| `↑` `↓` | Raise and lower the camera |
+| `=` `-` | Zoom in and out |
+| Drag | Orbit, at a quarter of a degree per pixel |
+
+The camera orbits a fixed point above the anchors, and its pose carries across
+the build, program and run screens. Opening a site returns it to its start pose.
+
+### Building (build screen)
+
+| Key | Tool |
+| --- | --- |
+| `1` | Strut — stiff, cheap, short: the crane's bones |
+| `2` | Cable — very cheap and long, but pulls only; in compression it goes slack |
+| `3` | Rail — a strut that doubles as the trolley's track |
+| `4` | Ring — the slew ring the arm turns on. Every crane needs exactly one |
+| `5` | Weight — a counterweight block hung on a node, to balance the arm |
+| `6` | Delete — removes whatever is under the pointer |
+
+| Key | Does |
+| --- | --- |
+| `Z` | Undo the last structure edit, back to when the site was opened |
+| `C` | Static check: solve the crane where it stands and report every member's load |
+| `P` | Go to the tape editor |
+| `G` | Run the tape |
+| `Esc` | Drop a held node, or leave for the site select |
+
+With a strut, cable or rail selected, the **first click holds a lattice node**
+and the second click on another node places the member between them. Clicking
+the held node again drops it, and so does `Esc`. A click the rules refuse leaves
+the held node where it is — a slip does not cost you the selection — and says
+why along the bottom of the screen. The line under the pointer always names what
+a click would do before you make it.
+
+Ring, weight and delete are single clicks and ignore a held node.
+
+The crane's cost is shown against the site's budget at all times, and an edit
+that would take you past the budget is refused, as is one that leaves the
+envelope, doubles an existing member, reaches inside an obstacle, lays a rail
+off the horizontal, or joins the arm to the tower anywhere but through the ring.
+
+### Programming (program screen)
+
+The tape editor is worked entirely with the pointer. Each step is a row:
+
+- **`+ MOVE SLEW / TROLLEY / HOIST / GRIP`** appends a move driving that axis.
+- **`+ ATTACH`** and **`+ RELEASE`** append the two actions: taking a load onto
+  the hook, and setting it down.
+- On a move row, `+S` `+T` `+H` `+G` add a second, third or fourth axis to that
+  move, so the step drives them together and ends when all of them have arrived.
+- On a command row, `«` `‹` `›` `»` nudge the target coarse and fine both ways,
+  `−` `+` change the rate, and `×` removes that command.
+- `▲` `▼` reorder a step, `×` removes it, and `CLEAR TAPE` empties the whole
+  thing.
+
+`B` returns to the build screen and `G` runs the tape.
+
+### Watching a run (run screen)
+
+| Key | Does |
+| --- | --- |
+| `S` | Cycle the watch speed: ×1, ×2, ×4 |
+| `Esc` | Abort the run and go back to the build screen |
+
+You steer nothing during a run — the tape does. You turn the camera and watch.
+Members are coloured by how hard they are working, on a ramp from slack to their
+limit; one at breaking point goes white and pulses, and a broken member goes
+charred and translucent. The legend is on screen.
+
+If a run fails, the screen stays where it stood with the cause read out, so you
+can see what went wrong before going back to edit.
+
+## The four checks
+
+```sh
+npm run typecheck    # tsc --noEmit
+npm run lint         # eslint .
+npm run format       # prettier --check .
+npm test             # vitest run --coverage
+```
+
+## The engine, and what this build owns
+
+Gantry stands on the **Simple 3D** engine (`@test-cabinet/simple-3d`), which is
+already a dependency and carries its own documentation in the package's `docs/`
+directory. The engine owns the
+frame loop and the delta time each frame is given, fitting the fixed 1280×720
+logical stage into the canvas, the renderer with the retained `THREE.Scene` and
+the camera it draws through, the 2D screen layer composited over that picture,
+the keyboard actions and the pointer, the audio graph, loading and decoding the
+produced files under one asset root, and the diagnostics overlay.
+
+The game is three functions and two types, in `src/game.ts`. `initialize`
+registers the actions, the cues, and the diagnostic sources, awaits the produced
+assets, and returns the opening state beside the debug surface. `update` takes
+the current state as a `DeepReadonly<GantryState>` and **returns the next one**,
+so a frame builds a new state rather than writing into the one it was handed.
+`render` is given that next state, read-only again, poses the scene and the
+camera, and paints the readouts. Nothing but `update` and the debug surface's
+poses ever advances the game.
+
+## How the code is laid out
+
+| Path | What lives there |
+| --- | --- |
+| `src/main.ts` | The entry point `index.html` loads: it stands the engine up over the canvas and runs it |
+| `src/game.ts` | `GantryState`, `GantryDebugApi`, and the three functions the engine calls |
+| `src/state.ts` | The pure transitions over the state, and the facts read off it |
+| `src/sim/` | The simulation core: the truss solve, the axis controller, the pendulum, collisions, breakage, and the tick pipeline. It renders nothing and reads no input |
+| `src/app-tick.ts` | One frame's update: the pointer acts, the actions, the camera, the fixed-tick accumulator, and the cues a tick raises |
+| `src/convert.ts` | The one place the state's records and the simulation's meet, both ways |
+| `src/pick.ts`, `src/project.ts` | What a click at the pointer would take, through the camera the yard is drawn with |
+| `src/edits.ts`, `src/editor.ts` | The structure editor's rules, and the six build tools over a pick |
+| `src/screens.ts`, `src/tape.ts` | The seven screens and their navigation, and the tape editor's widgets |
+| `src/render*.ts` | The yard in the engine's scene, the readouts on its screen layer, and the look both share |
+| `src/assets.ts` | The produced models and sounds, loaded through the engine's own loader |
+| `src/debug.ts`, `src/diagnostics.ts` | The debug surface, and the values the overlay shows |
+| `src/constants.ts` | Every figure the game is specified in terms of |
+| `assets/` | The produced models (`.glb`) and sounds (`.wav`), committed |
+| `scripts/` | What produced them. Nothing here runs at build time |
+
+The simulation is deterministic and has no randomness anywhere: the same crane
+and the same tape produce the same run, tick for tick, at any watch speed and
+any frame rate.
+
+## Driving it from code
+
+The game hands the engine a debug surface beside its opening state, so a caller
+holds it as `engine.debug` once `engine.initialize()` has resolved. Every
+operation takes the current state as its first argument: a **pose** returns the
+next state, which is applied with `engine.apply`, and a **reading** returns what
+it read.
+
+```ts
+const engine = createEngine({ canvas, width: 1280, height: 720, game, ... });
+await engine.initialize();
+const d = engine.debug;
+
+engine.apply((s) => d.openSite(s, 0));
+engine.apply((s) => d.setScreen(s, "build"));
+engine.apply((s) => d.setRing(s, 0, 2, 0));
+engine.apply((s) => d.addMember(s, 2, 4, 0, 4, 4, 0, "rail"));
+engine.apply((s) => d.addMoveStep(s, "trolley", 10, 3.5));
+engine.apply((s) => d.startRun(s));
+
+await engine.advance(600);          // 600 frames off the engine's clock
+d.snapshot(engine.state).run.phase; // "running" | "cleared" | "failed" | "idle"
+```
+
+The clock, the input, and the projection are the engine's, so the surface
+carries no operation for any of them: frames come from `engine.advance`, a
+control is driven by dispatching a real event at the engine's surface, and a
+world point is projected with `engine.view().project`.
