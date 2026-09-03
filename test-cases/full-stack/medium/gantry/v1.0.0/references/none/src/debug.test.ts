@@ -137,6 +137,7 @@ function harness(): Harness {
   const state = { draws: 0 };
   const game = new Game({
     runtime,
+    lastDrawn: () => [],
     draw: () => {
       state.draws += 1;
     },

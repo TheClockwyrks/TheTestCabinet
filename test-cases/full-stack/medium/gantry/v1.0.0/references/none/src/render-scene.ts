@@ -56,6 +56,9 @@ const PROFILE: Readonly<Record<string, { across: number; through: number }>> = {
   cable: { across: 0.075, through: 0.075 },
 };
 
+/** How far the yard floor reaches, on each axis (`specs/overview.md`). */
+export const GROUND_SIZE = 600;
+
 const BROKEN_PROFILE = { across: 0.09, through: 0.09 };
 const HOIST_RADIUS = 0.06;
 
@@ -274,7 +277,7 @@ export class YardScene {
 
   private buildGround(): void {
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(600, 600),
+      new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
       new THREE.MeshLambertMaterial({ color: GROUND }),
     );
     ground.rotation.x = -Math.PI / 2;

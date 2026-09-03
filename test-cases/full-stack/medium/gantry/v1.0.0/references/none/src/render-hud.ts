@@ -133,6 +133,26 @@ interface TextOptions {
   baseline?: CanvasTextBaseline;
 }
 
+/**
+ * Every run of text this layer has written since the last `beginTextRuns`.
+ *
+ * `specs/instrumentation.md` has `drawn()` report the text a frame drew wherever
+ * it drew it, and this layer is where all of it is written — so it is collected
+ * at the one place that writes rather than described a second time somewhere
+ * else, which is what keeps the reading and the picture the same thing.
+ */
+let textRuns: string[] = [];
+
+/** Start a fresh frame's collection of text runs. */
+export function beginTextRuns(): void {
+  textRuns = [];
+}
+
+/** The runs of text written since the last {@link beginTextRuns}. */
+export function collectedTextRuns(): readonly string[] {
+  return textRuns;
+}
+
 function write(
   ctx: Ctx,
   content: string,
@@ -140,6 +160,7 @@ function write(
   y: number,
   options: TextOptions = {},
 ): void {
+  textRuns.push(content);
   ctx.font = options.font ?? mono(14);
   ctx.fillStyle = options.colour ?? INK;
   ctx.textAlign = options.align ?? "left";
@@ -866,6 +887,7 @@ function resultsScreen(ctx: Ctx, state: GantryState): void {
  * the logical stage onto the canvas, so everything here is in stage units.
  */
 export function drawHud(ctx: Ctx, state: GantryState, hint: HudHint): void {
+  beginTextRuns();
   ctx.save();
   ctx.clearRect(0, 0, STAGE_W, STAGE_H);
   ctx.lineJoin = "round";

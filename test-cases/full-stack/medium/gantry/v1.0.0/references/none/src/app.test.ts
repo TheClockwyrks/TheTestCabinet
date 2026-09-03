@@ -60,6 +60,7 @@ function harness(): Harness {
 
   const game = new Game({
     runtime,
+    lastDrawn: () => [],
     draw: () => {
       drawn += 1;
     },

@@ -28,6 +28,7 @@ import { loadAssets } from "./assets";
 import { installDebugSurface } from "./debug";
 import { applyClick as applyEditorClick } from "./editor";
 import { createRenderer } from "./render";
+import type { DrawnEntry } from "./render-drawn";
 import { createRuntime, type Runtime, type StagePointerEvent } from "./runtime";
 import { handleAction, handlePointer, type ScreenIo } from "./screens";
 import { advanceRun, AXIS_NAMES, readiness, type RunContext } from "./sim";
@@ -64,6 +65,12 @@ export interface GameDeps {
   runtime: Runtime;
   /** Draw one frame. Reads the state and writes nothing. */
   draw(state: GantryState): void;
+  /**
+   * What the last frame drew, as `specs/instrumentation.md` has `drawn()` report
+   * it. The layer that drew the frame is the only one that knows, so the loop
+   * carries the question through rather than answering it.
+   */
+  lastDrawn(): DrawnEntry[];
 }
 
 /** Whether any axis is turning, which is what the `motor` loop reads. */
@@ -132,6 +139,11 @@ export class Game implements ScreenIo {
     this.looping = false;
     if (this.handle !== 0) cancelAnimationFrame(this.handle);
     this.handle = 0;
+  }
+
+  /** What the last frame drew (`specs/instrumentation.md`). */
+  lastDrawn(): DrawnEntry[] {
+    return this.deps.lastDrawn();
   }
 
   /** One whole frame: advance the game by `dt` seconds, then draw it. */
@@ -451,6 +463,7 @@ export async function startGame(canvas: HTMLCanvasElement): Promise<Game> {
   const game = new Game({
     runtime,
     draw: (state) => renderer.draw(state),
+    lastDrawn: () => renderer.lastDrawn(),
   });
   installDebugSurface(game);
   game.start();

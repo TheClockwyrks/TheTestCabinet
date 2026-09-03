@@ -216,6 +216,55 @@ clock is already doing, so a scenario that must be reproducible calls
 check runs, and what a structure with an issue reports. The reading is pure: it
 computes the check and returns it, and it displays nothing, so the result the
 build screen is showing is untouched.
+
+| Operation | Returns |
+| --- | --- |
+| `drawn()` | What the last frame drew, as an array of the entries below, in no fixed order. |
+
+Each entry is one thing the frame put on screen:
+
+```js
+{
+  kind: "model",       // what sort of thing it is, from the table below
+  name: "ring",        // which one, within its kind
+  id: null,            // the member's id for a member, null otherwise
+  source: "ring.glb",  // the produced file its geometry came from, or null
+  x: 0, y: 6, z: 0,    // the world position it is drawn at
+  yaw: 0,              // the yaw it is turned to, in degrees
+  size: [2.5, 2, 2.5], // its extent in world units, as [width, height, depth]
+  color: [180, 180, 190], // the color it is drawn in, as [r, g, b] from 0 to 255
+  text: null,          // the string drawn, for `text`; null otherwise
+}
+```
+
+| `kind` | `name` is | One entry per |
+| --- | --- | --- |
+| `model` | the model name `specs/assets.md` gives it | placement of that model |
+| `member` | the member's material: `strut`, `cable`, or `rail` | intact member, carrying its `id` |
+| `aid` | `lattice` or `envelope` | aid shown, whole rather than per cell |
+| `mark` | `anchor`, `load-start`, `pad`, `pad-yaw`, `pending-node`, or `picked-node` | mark drawn |
+| `obstacle` | `obstacle` | obstacle drawn |
+| `cable` | `hoist` | hoist cable drawn |
+| `ground` | `ground` | the yard floor, once |
+| `text` | the build's own label for the readout it belongs to | run of text drawn, wherever it is drawn |
+
+The reading describes the frame the game last drew and changes nothing: it is
+taken after a frame rather than causing one, so a caller that has just advanced
+reads what that advance drew. A thing the frame did not draw has no entry, which
+is how the reading says a mark is absent, an aid is hidden, or a model was never
+placed.
+
+`source` is the produced file the geometry was decoded from, named as
+`specs/assets.md` names it and without any path or bundling suffix a build's
+tooling adds, and it is `null` for anything the build drew in code. `size` is
+what was actually drawn rather than what it stands for, so a model drawn at the
+wrong scale reports the wrong size. `color` is a single representative color for
+the thing; where a thing is drawn in more than one, it is the one that carries
+the most of it. A `text` entry's `name` is the build's own, so what identifies a
+readout is the `text` it drew and not what the build calls it.
+
+Art direction stays the build's throughout: the reading reports what a build
+chose, and nothing here fixes a palette, a form, or a layout.
 {{#if (eq engine.slug "none")}}
 
 | Operation | Returns |

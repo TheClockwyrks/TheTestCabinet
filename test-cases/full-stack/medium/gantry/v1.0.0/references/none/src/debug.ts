@@ -26,6 +26,7 @@ import {
 import type { Game } from "./app";
 import * as editor from "./editor";
 import { project } from "./render";
+import type { DrawnEntry } from "./render-drawn";
 import {
   AXIS_NAMES,
   cost as structureCost,
@@ -204,6 +205,7 @@ export interface GantryDebugApi {
   snapshot(): Snapshot;
   check(): CheckReport;
   project(x: number, y: number, z: number): ProjectionReport;
+  drawn(): DrawnEntry[];
 
   // The run and the screens
   reset(): void;
@@ -602,6 +604,13 @@ export function createDebugSurface(game: Game): GantryDebugApi {
           st.currentProgram(state),
         ),
       );
+    },
+
+    drawn() {
+      // What the last frame drew. It is the frame's own description rather than
+      // one built here, so the reading and the picture can never disagree
+      // (`specs/instrumentation.md`).
+      return game.lastDrawn();
     },
 
     project(x, y, z) {

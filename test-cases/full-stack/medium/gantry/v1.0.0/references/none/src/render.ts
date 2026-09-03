@@ -24,10 +24,20 @@ import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import type { ModelName } from "./assets";
 import { applyClick, pick, type EditOutcome, type Pick } from "./editor";
 import type { Vec3 } from "./sim";
-import { drawHud, type HudHint } from "./render-hud";
+import {
+  collectedTextRuns,
+  drawHud,
+  type HudHint,
+} from "./render-hud";
+import {
+  describeFrame,
+  measureModel,
+  type DrawnEntry,
+  type ModelSizes,
+} from "./render-drawn";
 import { BACKGROUND } from "./render-palette";
-import { yardPosture } from "./render-posture";
-import { YardScene } from "./render-scene";
+import { yardPosture, type YardPosture } from "./render-posture";
+import { GROUND_SIZE, YardScene } from "./render-scene";
 import { measureStageFit, type StageFit } from "./runtime-stage";
 import type { GantryState } from "./state";
 
@@ -43,6 +53,12 @@ export {
 
 /** The scene, held across frames and posed from the state each draw. */
 export interface Renderer {
+  /**
+   * What the last frame drew, as `specs/instrumentation.md` § Readings requires
+   * `drawn()` to report it. Empty before the first frame: the reading describes a
+   * frame, and none has been drawn.
+   */
+  lastDrawn(): DrawnEntry[];
   /** Draw one frame of the state. Reads the state and writes nothing. */
   draw(state: GantryState): void;
   /** Release every resource the scene holds. */
@@ -200,7 +216,23 @@ export function createRenderer(
   const yard = new YardScene(models);
   const hud = new HudLayer(canvas);
 
+  // Measured once: what a model came out as does not change between frames, and
+  // every frame's reading needs it.
+  const measured: ModelSizes = {};
+  for (const [name, mesh] of Object.entries(models)) {
+    measured[name as ModelName] = measureModel(mesh);
+  }
+
+  let drawn: DrawnEntry[] = [];
+  // What the yard was last posed from. A frame whose viewport is too small to
+  // render leaves them as they were, and the reading then describes the last
+  // frame that actually drew — which is what it says it describes.
+  let lastPosture: YardPosture | null = null;
+  let lastLattice = false;
+
   return {
+    lastDrawn: () => drawn,
+
     draw(state: GantryState): void {
       const fit = measureStageFit(canvas);
       const width = Math.max(1, canvas.width);
@@ -219,10 +251,14 @@ export function createRenderer(
         gl.setScissorTest(true);
 
         yard.poseCamera(state.camera);
+        const posture = yardPosture(state);
+        const lattice = build || state.screen === "program";
+        lastPosture = posture;
+        lastLattice = lattice;
         yard.sync(
-          yardPosture(state),
+          posture,
           {
-            lattice: build || state.screen === "program",
+            lattice,
             pick: picked.node,
             pending: build ? state.pendingNode : null,
           },
@@ -233,6 +269,27 @@ export function createRenderer(
       }
 
       hud.draw(state, pointerHint(state, picked), fit);
+
+      // The reading is taken last, from the same posture the yard was just drawn
+      // from and the text the layer just wrote, so it can never describe a
+      // different frame from the one on screen.
+      drawn = describeFrame({
+        posture: lastPosture ?? yardPosture(state),
+        sizes: measured,
+        aids: { lattice: lastLattice, envelope: true },
+        marks: {
+          anchors: true,
+          loadStarts: true,
+          pads: true,
+          pendingNode: build ? state.pendingNode : null,
+          pickedNode: picked.node,
+        },
+        texts: collectedTextRuns().map((text, index) => ({
+          name: `run-${index}`,
+          text,
+        })),
+        groundSize: GROUND_SIZE,
+      });
     },
 
     dispose(): void {
