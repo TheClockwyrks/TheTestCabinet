@@ -89,9 +89,18 @@ export const NEXT_FLARE_MAX = 10;
  *
  * Every beat these checks time is at least `FLARE_CHARGE` (`0.5 s`) long and the
  * tightest band any of them states is a tenth of a second. An edge is seen at the
- * first sample at or after it, so a beat measured between two of them is under one
- * sample out either way — a third of that band, leaving the other two thirds as
- * room for the build's own rounding.
+ * first sample at or after it, so a beat measured between two edges BOTH read at
+ * this grain is under one sample out either way — a third of that band, leaving
+ * the other two thirds as room for the build's own rounding.
+ *
+ * THIS IS NOT THE ONLY GRAIN IN THE THREE CHECKS, so it is not on its own the
+ * budget any of them leaves. `flarefish/flare-cadence` reads its two charge-ups —
+ * a whole `FLARE_INTERVAL` of wandering apart, and so the two most expensive edges
+ * in the three — on a coarser sweep of its own, and states there what the spans
+ * measured against that sweep leave the build. A span with one edge on each grain
+ * is out by the difference between how late each of the two was seen, not by one
+ * sample, and only the check that measures it can say which grains its edges came
+ * from.
  *
  * WHY NOT FINER. `specs/instrumentation.md` has `advance` REDRAW, so every sample
  * costs the build a whole frame of its own rendering — a few milliseconds on an
