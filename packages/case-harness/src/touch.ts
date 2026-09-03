@@ -25,6 +25,8 @@
 // logical point lands on, which is where a contact has to land to hit the thing
 // drawn there.
 
+import type { CDPSession, Page } from "playwright";
+
 import type { Harness } from "./harness";
 
 /** As much of a harness as a real touch gesture needs. */
@@ -42,6 +44,30 @@ export type TouchDriver = Pick<
 const CONTACT_ID = 1;
 
 /**
+ * The CDP session a page's contacts are driven through, opened once and HELD.
+ *
+ * Chromium tracks the live contacts per CDP client, so a session opened for the
+ * landing and detached again takes the contact with it: the travel that follows
+ * is refused outright ("Must send a TouchStart first to start a new touch"), and
+ * a gesture is three events. The session therefore has to outlive the whole
+ * gesture, and the page closing is what closes it — which is what ends a
+ * harness.
+ *
+ * Keyed by the page rather than by the harness, because the contact belongs to
+ * the page: two drivers over one page are one finger.
+ */
+const sessions = new WeakMap<Page, Promise<CDPSession>>();
+
+/** The held session for `page`, opening it on the first contact it drives. */
+function sessionFor(page: Page): Promise<CDPSession> {
+  const open = sessions.get(page);
+  if (open !== undefined) return open;
+  const opening = page.context().newCDPSession(page);
+  sessions.set(page, opening);
+  return opening;
+}
+
+/**
  * Dispatch one raw touch event through CDP.
  *
  * Playwright's own `page.touchscreen` carries `tap` alone, which is a press and
@@ -55,16 +81,12 @@ async function dispatch(
   type: "touchStart" | "touchMove" | "touchEnd",
   point: { x: number; y: number } | null,
 ): Promise<void> {
-  const session = await h.page.context().newCDPSession(h.page);
-  try {
-    await session.send("Input.dispatchTouchEvent", {
-      type,
-      touchPoints:
-        point === null ? [] : [{ x: point.x, y: point.y, id: CONTACT_ID }],
-    });
-  } finally {
-    await session.detach().catch(() => undefined);
-  }
+  const session = await sessionFor(h.page);
+  await session.send("Input.dispatchTouchEvent", {
+    type,
+    touchPoints:
+      point === null ? [] : [{ x: point.x, y: point.y, id: CONTACT_ID }],
+  });
 }
 
 /** Land a real touch contact at a logical stage point, and run the frame that reads it. */
