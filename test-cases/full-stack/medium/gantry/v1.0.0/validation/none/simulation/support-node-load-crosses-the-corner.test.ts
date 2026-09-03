@@ -21,7 +21,7 @@
 // at such a corner the leg's force is exactly minus the whole vertical load
 // applied at that node — the node's own lumped mass and the reaction carried down
 // from its top-flange partner. Nothing else in the crane has to be reasoned about:
-// the leg under the counterweighted corner must move by `800` and the leg under
+// the leg under the counterweight-carrying corner must move by `800` and the leg under
 // the OTHER leg-only corner must not move at all, because the reaction crosses at
 // its own corner and is "negated and turned no further".
 

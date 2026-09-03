@@ -68,7 +68,7 @@ const AT = { x: 7, z: -3, yaw: 0 };
  * sculpt a block a little short of the point it is drawn around. A quarter of a
  * unit is two voxels at `VOXELS_PER_UNIT` (`8`) — the smallest step the sculpting
  * grid has any business being off by — and is far short of `LATTICE_PITCH` (`2`),
- * so a model drawn at the neighbouring node does not answer.
+ * so a model drawn at the neighboring node does not answer.
  */
 const SLACK = 0.25;
 

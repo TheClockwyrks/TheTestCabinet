@@ -29,7 +29,7 @@
 // edge of some stroke width, may mark it as an obstacle rather than a plain
 // block, and is free to bed it a hair proud of its own faces. A quarter of a unit
 // is room for all of that and an eighth of `LATTICE_PITCH` (`2`), so a box drawn
-// at the neighbouring cell does not answer.
+// at the neighboring cell does not answer.
 //
 // AND NOTHING ELSE MAY HAVE ARRIVED WHERE THE OBSTACLE IS NOT: the yard away from
 // the box has to draw what it drew, which is what tells a box drawn where the

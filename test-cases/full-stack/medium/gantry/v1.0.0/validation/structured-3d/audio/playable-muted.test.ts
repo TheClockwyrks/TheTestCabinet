@@ -98,7 +98,7 @@ it("clears a site muted exactly as it clears it sounding", async () => {
   );
   assertTrue(
     JSON.parse(muted).phase === "cleared",
-    "the muted playthrough cleared the site, so there is a verdict to compare",
+    "the muted run cleared the site, so there is a verdict to compare",
   );
 
   const other = await createHarness();
@@ -113,5 +113,5 @@ it("clears a site muted exactly as it clears it sounding", async () => {
     await other.dispose();
   }
 
-  await h.capture("muted", "The results the muted playthrough reached");
+  await h.capture("muted", "The results the muted run reached");
 });

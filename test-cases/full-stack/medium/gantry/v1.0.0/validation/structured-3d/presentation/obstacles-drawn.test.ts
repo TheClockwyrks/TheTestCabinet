@@ -32,7 +32,7 @@
 //
 // AND ITS EXTENT HAS TO BE THE BOX'S. A quarter of a unit either way is room for
 // an outline drawn a hair proud of the faces, and far short of the two units that
-// would make it the neighbouring cell.
+// would make it the neighboring cell.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";

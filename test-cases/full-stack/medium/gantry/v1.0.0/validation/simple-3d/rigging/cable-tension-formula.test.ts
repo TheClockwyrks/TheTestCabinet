@@ -170,7 +170,7 @@ it("puts the bob's weight on the structure, as a static mass would", async () =>
     assertEqual(
       staticForce === undefined,
       false,
-      `member ${id} among the counterweighted run's forces`,
+      `member ${id} among the counterweight-carrying run's forces`,
     );
     assertNear(
       force,

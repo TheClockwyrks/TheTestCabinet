@@ -415,5 +415,5 @@ it("tells cleared, open and locked apart with the hue removed", async () => {
     }
   }
 
-  await h.capture("select-greyscale", "The select rows in greyscale");
+  await h.capture("select-grayscale", "The select rows in grayscale");
 });

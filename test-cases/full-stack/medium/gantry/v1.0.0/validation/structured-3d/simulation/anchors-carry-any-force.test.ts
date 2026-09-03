@@ -10,7 +10,7 @@
 // `RING_CAP` (`6000`) at the four ring connections (specs/structure.md), and that
 // check is on the arm's reactions at the top flange, not on the ground.
 //
-// The crane is the jib rig with a counterweighted cluster hung off the -x/-z side
+// The crane is the jib rig with a counterweight cluster hung off the -x/-z side
 // of the tower and one counterweight on the anchor `(0, 0, 0)` itself, so that
 // anchor's reaction runs well past `RING_CAP` while every member stays under its
 // own capacity. The reaction is not reported, so the check computes it from the
@@ -122,7 +122,7 @@ const JIB_RIG: CraneDesign = {
   tape: [],
 };
 
-/** The counterweighted cluster the tower carries out to -x and -z. */
+/** The counterweight cluster the tower carries out to -x and -z. */
 const CLUSTER: readonly DesignMember[] = [
   [[-2, 2, 0], [0, 0, 0], "strut"],
   [[-2, 2, 0], [0, 0, 2], "strut"],
@@ -246,6 +246,6 @@ it("takes a reaction past RING_CAP at one anchor without ending the run", async 
 
   await h.capture(
     "loaded-anchor",
-    "The crane whose counterweighted cluster funnels its load into one anchor",
+    "The crane whose counterweight cluster funnels its load into one anchor",
   );
 });

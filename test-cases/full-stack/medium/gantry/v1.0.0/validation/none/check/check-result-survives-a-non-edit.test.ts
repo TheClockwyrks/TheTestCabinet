@@ -80,8 +80,8 @@ it("leaves the same result showing across a tool, the camera and a screen", asyn
 
   const after = await h.snapshot();
   await h.capture(
-    "checkresult-before-and-after",
-    "checkResult before and after.",
+    "check-result-before-and-after",
+    "The check result before and after",
   );
 
   assertEqual(

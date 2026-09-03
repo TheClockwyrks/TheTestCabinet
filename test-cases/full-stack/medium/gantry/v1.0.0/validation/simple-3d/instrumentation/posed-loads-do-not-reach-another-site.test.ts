@@ -78,5 +78,5 @@ it("leaves the next site's authored yard exactly as specs/sites.md writes it", a
   );
 
   await h.advance(1);
-  await h.capture("sites-intact", "The neighbouring site's authored yard");
+  await h.capture("sites-intact", "The neighboring site's authored yard");
 });

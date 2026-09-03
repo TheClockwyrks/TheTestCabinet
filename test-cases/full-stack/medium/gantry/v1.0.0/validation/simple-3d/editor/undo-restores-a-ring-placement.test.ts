@@ -73,7 +73,7 @@ it("takes a placed ring back off and leaves the structure that stood", async () 
 
   const s = await h.snapshot();
   await h.advance(1);
-  await h.capture("undone", "The ringless structure the undo restored");
+  await h.capture("undone", "The structure the undo restored, with no ring");
 
   assertNull(
     s.structure.ring,

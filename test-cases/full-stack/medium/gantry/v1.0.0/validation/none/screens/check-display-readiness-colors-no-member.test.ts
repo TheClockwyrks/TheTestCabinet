@@ -150,7 +150,7 @@ it("leaves every member the colour it was when the check finds a readiness issue
   const found = await h.check();
   await h.press("KeyC");
   const [after, afterTurned] = await withAndWithoutATurn(h);
-  await h.capture("check-no-color", "The uncoloured members");
+  await h.capture("check-no-color", "The members left uncolored");
 
   assertContains(
     found.issues,

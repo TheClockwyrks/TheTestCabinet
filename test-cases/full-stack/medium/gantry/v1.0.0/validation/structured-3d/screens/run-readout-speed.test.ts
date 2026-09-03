@@ -117,7 +117,7 @@ it("draws the RUN_SPEEDS entry the run's speed index names", async () => {
     if (!shown) {
       fail(
         `the watch speed ${speed}, the RUN_SPEEDS entry index ${index} names, ` +
-          "drawn on the run screen and nowhere in the frame the neighbouring " +
+          "drawn on the run screen and nowhere in the frame the neighboring " +
           "index draws (specs/ui.md)",
         `the frame at index ${index} draws [${mine
           .map((one) => one.trim())

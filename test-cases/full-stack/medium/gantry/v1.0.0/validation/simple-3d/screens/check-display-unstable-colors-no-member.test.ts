@@ -180,7 +180,7 @@ it("leaves every member the colour it was when the check finds a mechanism", asy
   const after = memberColors(h, UNBRACED.members);
   await h.capture(
     "check-unstable-color",
-    "The uncoloured members of a mechanism",
+    "The members left uncolored of a mechanism",
   );
 
   assertLength(

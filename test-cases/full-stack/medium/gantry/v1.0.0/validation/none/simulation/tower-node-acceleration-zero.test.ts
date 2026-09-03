@@ -276,6 +276,6 @@ it("puts no slew term on a tower node, however fast the arm turns", async () => 
 
   await h.capture(
     "tower-node-still",
-    "The counterweighted outrigger with the arm turning above it",
+    "The counterweight-carrying outrigger with the arm turning above it",
   );
 });

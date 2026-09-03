@@ -14,7 +14,7 @@
 // the flag the operation is specified to write.
 //
 // SITE `2` IS THE ONE POSED because it is neither the first site nor the last, so
-// a build that wrote a neighbouring index, or every index, is caught by the five
+// a build that wrote a neighboring index, or every index, is caught by the five
 // flags that must not have moved. The pose is taken on the game as a reset leaves
 // it, where every flag stands at `false`, so a flag that reads `true` afterwards
 // was written by this call and nothing else.

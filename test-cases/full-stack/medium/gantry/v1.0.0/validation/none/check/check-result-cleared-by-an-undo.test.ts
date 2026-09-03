@@ -63,8 +63,8 @@ it("clears the shown result when an undo reverses the last edit", async () => {
   const after = await h.snapshot();
   await h.advance(1);
   await h.capture(
-    "checkresult-before-and-after-historydepth-aroun",
-    "checkResult before and after, historyDepth around the undo.",
+    "check-result-around-the-undo",
+    "The check result and the history depth, around the undo",
   );
   console.log(
     `gantry: historyDepth ${before.historyDepth} before the undo, ` +

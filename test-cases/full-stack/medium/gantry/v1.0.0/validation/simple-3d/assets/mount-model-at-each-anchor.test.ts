@@ -218,7 +218,7 @@ it("draws a mount at each of the site's anchors and at no other node", async () 
 
   await bareSite(served);
   const before = bodies(served);
-  await served.capture("mounts", "A mount at each of the site's anchors");
+  await served.capture("anchors", "A mount at each of the site's anchors");
 
   substituted = await createHarness({
     substituteAssets: [{ from: subject, to: standIn }],

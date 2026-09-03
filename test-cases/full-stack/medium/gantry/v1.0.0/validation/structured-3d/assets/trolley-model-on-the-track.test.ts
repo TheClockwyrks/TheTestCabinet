@@ -75,7 +75,7 @@ const POSITIONS = [1, 4] as const;
  * figures that they "are the intent, not a tolerance", so a build is free to
  * sculpt a block a little short of the point it is drawn around. A quarter of a
  * unit is two voxels at `VOXELS_PER_UNIT` (`8`), and far short of
- * `LATTICE_PITCH` (`2`), so a model drawn at the neighbouring node does not
+ * `LATTICE_PITCH` (`2`), so a model drawn at the neighboring node does not
  * answer.
  */
 const SLACK = 0.25;

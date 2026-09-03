@@ -189,7 +189,7 @@ it("leaves every member the colour it was when the check finds a mechanism", asy
   const [after, afterTurned] = await withAndWithoutATurn(h);
   await h.capture(
     "check-unstable-color",
-    "The uncoloured members of a mechanism",
+    "The members left uncolored of a mechanism",
   );
 
   assertLength(

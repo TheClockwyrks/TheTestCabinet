@@ -145,7 +145,7 @@ it("leaves every member the colour it was when the check finds a readiness issue
   await h.press("KeyC");
   await h.advance(1);
   const after = colours(MINIMAL_CRANE.members);
-  await h.capture("check-no-color", "The uncoloured members");
+  await h.capture("check-no-color", "The members left uncolored");
 
   assertContains(
     found.issues,

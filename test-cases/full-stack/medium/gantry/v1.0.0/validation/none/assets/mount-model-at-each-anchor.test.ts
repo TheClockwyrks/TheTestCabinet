@@ -25,7 +25,7 @@
 // THE NON-ANCHOR NODES ARE SIX UNITS OUT, three lattice pitches clear of the
 // nearest anchor and inside Heavy Haul's envelope (`x -10..18`, `z -8..8`), so
 // the stage each of them occupies is its own and cannot catch the edge of a
-// neighbouring anchor's fixture.
+// neighboring anchor's fixture.
 //
 // THE WORLD IS THE SITE'S ANCHORS ALONE: no structure, no loads, no obstacles.
 
