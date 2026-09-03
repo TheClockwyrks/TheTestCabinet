@@ -13,7 +13,7 @@
 // not moved and is still holding.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_HOMES } from "../../src/constants";
+import { BALL_HOMES } from "../constants";
 import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

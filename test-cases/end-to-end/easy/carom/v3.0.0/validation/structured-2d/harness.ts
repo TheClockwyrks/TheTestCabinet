@@ -82,7 +82,7 @@ import {
   LAYOUT,
   P1_X1,
   P2_X0,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { assertEqual, assertNotEqual, assertTruthy, fail } from "./assert";
 import type {
@@ -125,7 +125,7 @@ const game = build as unknown as GameDefinition<CaromSurface>;
 /**
  * The frame the suite steps in, in milliseconds.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
+ * This is the SUITE's choice, not the game's: the case's own `validation/constants.ts` deliberately
  * fixes no timestep, because the engine hands the game whatever elapsed time a
  * frame really took. Fixing it here makes a duration a whole number of frames, so
  * a tolerance can be stated in ticks and mean the same thing on every machine.
@@ -422,7 +422,7 @@ class KeyEvent extends Event {
 /**
  * A logical point's device pixel, through the world's camera and the engine's
  * fit. The camera opens at the defaults — world and logical coordinates
- * coincide, which is the space every figure in `src/constants.ts` is stated
+ * coincide, which is the space every figure the specification fixes is stated
  * in — so the projection is the identity unless the build moved it, and
  * mapping through it keeps the reading honest either way.
  */
@@ -1687,7 +1687,7 @@ export async function arrangeLiveBall(
 // what was painted against what else was painted. They are gathered here rather
 // than folded in above so the two halves of this file stay separable.
 
-import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
+import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "./constants";
 
 /* ---- Controls tolerances -------------------------------------------------- */
 

@@ -10,7 +10,7 @@
 // reflected destination, or that moves faster than it should, blocks it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CX, FIELD_CY } from "../../src/constants";
+import { FIELD_CX, FIELD_CY } from "../constants";
 import { assertEqual } from "../assert";
 import {
   arrangeAiScenario,

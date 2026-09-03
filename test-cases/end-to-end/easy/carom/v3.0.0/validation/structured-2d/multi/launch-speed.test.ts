@@ -12,7 +12,7 @@
 // is `multi/launch-angle`'s point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SERVE_SPEED } from "../../src/constants";
+import { SERVE_SPEED } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { readBalls } from "./harness";

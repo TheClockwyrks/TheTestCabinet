@@ -6,14 +6,15 @@
 // rule that resolves on it (first to WIN_SCORE, by at least WIN_LEAD) — runs
 // through the build's own scoring code. Nothing assigns the end state.
 //
-// The two entries are the case's copy, MATCHOVER_ITEMS from `src/constants.ts`,
+// The two entries are the case's own, MATCHOVER_ITEMS from
+// `validation/constants.ts`,
 // and the screen "displays the winning side and the final score" (specs/ui.md):
 // the final score here is 11-0, so the frame's text must carry both figures.
 // Matching is by substring, because a selected entry is commonly drawn with a
 // marker beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MATCHOVER_ITEMS, WIN_SCORE } from "../../src/constants";
+import { MATCHOVER_ITEMS, WIN_SCORE } from "../constants";
 import { assertDeepEqual, assertEqual, assertMatches } from "../assert";
 import {
   arrangeGoal,

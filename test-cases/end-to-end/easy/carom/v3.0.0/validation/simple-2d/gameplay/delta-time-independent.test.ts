@@ -31,7 +31,7 @@ import {
   SequenceClock,
   type Clock,
 } from "@test-cabinet/simple-2d";
-import { FIELD_CY, FIELD_H } from "../../src/constants";
+import { FIELD_CY, FIELD_H } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertNotNull } from "../assert";
 import {
   ball0,

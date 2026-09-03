@@ -19,7 +19,7 @@ import {
   P1_X0,
   P1_X1,
   PADDLE_HALF,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertCloseTo,
   assertEqual,

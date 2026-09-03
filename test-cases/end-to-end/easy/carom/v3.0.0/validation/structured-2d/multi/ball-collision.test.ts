@@ -13,7 +13,7 @@
 // real approach across an empty lane.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_COLLIDE_DIST, FIELD_CY } from "../../src/constants";
+import { BALL_COLLIDE_DIST, FIELD_CY } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

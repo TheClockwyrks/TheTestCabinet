@@ -29,7 +29,7 @@
 // failing to run. This one names the fault plainly.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CY, HOLD_TIME } from "../../src/constants";
+import { FIELD_CY, HOLD_TIME } from "../constants";
 import {
   assertCloseTo,
   assertContains,

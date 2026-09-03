@@ -10,7 +10,7 @@
 // the game's own state. The still is the frame the press left.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, TITLE_ITEMS } from "../../src/constants";
+import { BINDINGS, TITLE_ITEMS } from "../constants";
 import { assertContains, assertEqual } from "../assert";
 import {
   captureStill,
@@ -32,7 +32,7 @@ afterEach(() => {
 it("opens the how-to screen when Space confirms the third title item", async () => {
   h.debug.reset();
   await h.advance(1);
-  assertContains(BINDINGS.confirm.keys, "Space");
+  assertContains(BINDINGS.confirm, "Space");
   assertEqual(TITLE_ITEMS[2], "HOW TO PLAY");
   await h.tap("ArrowDown");
   await h.tap("ArrowDown");

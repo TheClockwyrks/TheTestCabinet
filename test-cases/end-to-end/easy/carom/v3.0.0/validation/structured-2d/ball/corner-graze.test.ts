@@ -22,7 +22,7 @@ import {
   OBSTACLE_CENTERS,
   OBSTACLE_HH,
   SERVE_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   ball0,

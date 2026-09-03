@@ -10,7 +10,7 @@
 // same 0.01 radians `obstacles-spin` allows.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OBSTACLE_SPIN_RATE } from "../../src/constants";
+import { OBSTACLE_SPIN_RATE } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

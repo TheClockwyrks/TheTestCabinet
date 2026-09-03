@@ -206,3 +206,26 @@ export const BINDINGS = {
  * build writes), and a key with no binding is a gesture that changes nothing.
  */
 export const UNBOUND_KEY = "KeyZ";
+
+// ---- Audio cues (specs/ui.md) --------------------------------------------
+
+/**
+ * The cue names the game defines and plays, one per event.
+ *
+ * `ballBounce` belongs to the multi variant alone, whose three balls can meet;
+ * the suites under `multi/` are the only ones that name it.
+ */
+export const CUES = {
+  paddleHit: "paddle-hit",
+  wallBounce: "wall-bounce",
+  obstacleBounce: "obstacle-bounce",
+  ballBounce: "ball-bounce",
+  score: "score",
+} as const;
+
+export type CueName = (typeof CUES)[keyof typeof CUES];
+
+// ---- Input layout (specs/modes/*.md) -------------------------------------
+
+/** Carom is two paddles facing each other: one vertical slider per side. */
+export const LAYOUT = "dual-vertical";

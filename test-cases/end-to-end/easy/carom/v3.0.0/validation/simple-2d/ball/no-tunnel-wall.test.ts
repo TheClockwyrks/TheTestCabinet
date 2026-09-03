@@ -25,7 +25,7 @@ import {
   FIELD_H,
   MAX_SUBSTEP,
   SPEED_CAP,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

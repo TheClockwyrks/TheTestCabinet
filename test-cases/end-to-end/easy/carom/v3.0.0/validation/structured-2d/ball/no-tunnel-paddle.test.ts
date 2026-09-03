@@ -25,7 +25,7 @@ import {
   MAX_SUBSTEP,
   P1_X1,
   SPEED_CAP,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

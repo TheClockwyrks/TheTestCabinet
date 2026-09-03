@@ -15,7 +15,7 @@ import {
   OBSTACLE_CENTERS,
   OBSTACLE_SWAY_AMP,
   OBSTACLE_SWAY_PERIOD,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

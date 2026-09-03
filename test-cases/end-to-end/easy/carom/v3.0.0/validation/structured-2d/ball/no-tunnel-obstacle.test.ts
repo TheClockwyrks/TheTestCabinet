@@ -25,7 +25,7 @@ import {
   OBSTACLES,
   OBSTACLE_CENTERS,
   SPEED_CAP,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

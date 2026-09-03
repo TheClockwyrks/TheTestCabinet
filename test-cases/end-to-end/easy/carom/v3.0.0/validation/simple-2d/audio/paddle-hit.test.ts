@@ -13,7 +13,7 @@
 // the name and the frame are both read, and the frame is the collision's own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FIELD_CY } from "../../src/constants";
+import { CUES, FIELD_CY } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   LEAD_TICKS,

@@ -6,13 +6,13 @@
 // canvas, so a build that reports a title it never draws, or draws one it does
 // not report, fails here rather than passing on either half alone.
 //
-// The copy is the case's: TITLE_TEXT and every entry of TITLE_ITEMS from
-// `src/constants.ts` (specs/ui.md). Matching is by substring, because a menu
+// The copy is the case's own: TITLE_TEXT and every entry of TITLE_ITEMS from
+// `validation/constants.ts`, which states what specs/ui.md fixes. Matching is by substring, because a menu
 // entry is commonly drawn with a selection marker beside it. Everything else
 // about the screen is the build's, rated through the domains.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
+import { TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

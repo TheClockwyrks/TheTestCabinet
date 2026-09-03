@@ -8,7 +8,7 @@
 // the sibling `rally-caps` check.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SPEED_CAP, SPEED_MULT } from "../../src/constants";
+import { SPEED_CAP, SPEED_MULT } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeRally,

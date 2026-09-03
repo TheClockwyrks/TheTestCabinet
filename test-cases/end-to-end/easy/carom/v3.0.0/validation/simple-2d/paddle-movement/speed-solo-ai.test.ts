@@ -11,7 +11,7 @@
 // window and the paddle covers exactly AI_SPEED units per second.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { AI_SPEED } from "../../src/constants";
+import { AI_SPEED } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   arrangeAiChase,

@@ -10,7 +10,7 @@
 // put them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_COUNT, BALL_HOMES } from "../../src/constants";
+import { BALL_COUNT, BALL_HOMES } from "../constants";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { readBalls, waitingAtHomes } from "./harness";

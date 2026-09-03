@@ -9,12 +9,12 @@
 // `Escape` drives both `pause` and `back`, so the build has to resolve it as
 // the pause here.
 //
-// The three entries are the case's copy, PAUSE_ITEMS from `src/constants.ts`
-// (specs/ui.md). Matching is by substring, because a selected entry is commonly
+// The three entries are the case's own, PAUSE_ITEMS from
+// `validation/constants.ts`, which states what specs/ui.md fixes. Matching is by substring, because a selected entry is commonly
 // drawn with a marker beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

@@ -11,7 +11,7 @@
 // motion, not merely that it never adds spin at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PADDLE_MAX_CY, PADDLE_SPEED } from "../../src/constants";
+import { PADDLE_MAX_CY, PADDLE_SPEED } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

@@ -8,7 +8,7 @@
 // back off the game's own state. The still is the frame the press left.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_SCORE } from "../../src/constants";
+import { WIN_SCORE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   arrangeGoal,

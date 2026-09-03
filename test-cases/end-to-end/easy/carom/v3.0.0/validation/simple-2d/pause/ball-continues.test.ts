@@ -13,7 +13,7 @@
 // frame of flight. The margin is one sub-step of travel, MAX_SUBSTEP units.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_SUBSTEP } from "../../src/constants";
+import { MAX_SUBSTEP } from "../constants";
 import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeLiveBall,
