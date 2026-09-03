@@ -104,6 +104,15 @@ function actionText(
  * `src/project.ts` owns. The engine holds the aspect at the stage's own and
  * updates the projection matrix before it renders, so writing `fov` here takes
  * effect on this frame's picture.
+ *
+ * THE PERSPECTIVE CAMERA IS RECOGNIZED BY ITS OWN MARKER RATHER THAN BY
+ * `instanceof`. The camera is the ENGINE's object, built by the engine's copy of
+ * three, and this module is compiled against the copy the build resolves; an
+ * `instanceof` across two copies of a library is false however perspective the
+ * camera is, and the lens would then silently stay at the engine's default while
+ * `src/project.ts` picked through `CAMERA_FOV`. `isPerspectiveCamera` is the
+ * marker three itself carries for exactly this reason, so what is drawn and what
+ * is picked cannot come apart.
  */
 export function poseCamera(
   camera: RenderApi["camera"],
@@ -113,7 +122,7 @@ export function poseCamera(
   camera.position.set(eye.x, eye.y, eye.z);
   camera.up.set(0, 1, 0);
   camera.lookAt(TARGET.x, TARGET.y, TARGET.z);
-  if (camera instanceof THREE.PerspectiveCamera) {
+  if ("isPerspectiveCamera" in camera) {
     camera.fov = CAMERA_FOV;
     camera.near = 0.5;
     camera.far = 600;

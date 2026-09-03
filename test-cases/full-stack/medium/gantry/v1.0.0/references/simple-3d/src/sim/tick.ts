@@ -243,7 +243,15 @@ export function advanceRun(previous: RunState, ctx: RunContext): RunState {
           target,
           length(run.bob.vel),
         );
-        if (!judgement.placed) return fail("release-misplaced");
+        if (!judgement.placed) {
+          // "If any test fails, the load is dropped and `lost`, and the run ends
+          // as `release-misplaced`" (specs/rigging.md). The verdict is decided
+          // here, but the load still comes off the hook: it leaves the run
+          // attached to nothing, at the pose it held when it came off.
+          run.loads[run.attached].phase = "lost";
+          run.attached = null;
+          return fail("release-misplaced");
+        }
         run.loads[run.attached].phase = "placed";
         run.loads[run.attached].pos = target.pos;
         run.loads[run.attached].yaw = target.yaw;
