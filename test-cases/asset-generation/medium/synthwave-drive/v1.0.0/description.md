@@ -10,8 +10,8 @@ saw/square lead melody, and glassy FM-bell accents. The mood and role are
 prescribed; the key, tempo, structure, and instrument choices are the model's, so
 the case rewards compositional creativity.
 
-It is voiced as notes on instrument tracks the model chooses freely from the baked
+It is voiced as notes on instrument tracks the model chooses freely from the
 `synthwave` instrument bank. The recorded operations are regenerated into the
-clip: a stereo `clip.wav` and a portable `clip.mid`. A reviewer plays it against
-the brief, weighing its neon 80s textures, its driving groove, and its wistful
-cool.
+clip: a stereo `clip.wav` and a portable `clip.mid`. A reviewer plays it
+against the brief, weighing its neon 80s textures, its driving groove, and its
+wistful cool.

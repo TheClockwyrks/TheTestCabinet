@@ -156,6 +156,21 @@ variants = ["variants/base.toml"]
 #   "simple-3d" = "workspaces/simple-3d"
 workspace = "workspaces/none"
 
+# The audio packs the run container is staged with, and everything `sfx-sample`
+# and `music` may reach. A tool config that names no pack plays the first pack of
+# that kind.
+#
+# The yard is steel under load, so `combat-core` is the sample pack behind the
+# `attach` clunk, the `creak`, the `break`, the `collapse`, and the `motor` loop,
+# in its metal impacts, clangs, rubble, servo, and diesel idle. The bed plays
+# under the title and select screens alone and is specified as steady and
+# unhurried (`specs/assets.md`), which `gm-lite`'s piano, marimba, and nylon
+# guitar carry as a working yard's own music. `cinematic` would make a lift
+# heroic and `synthwave` would make it neon, and Gantry is neither, so neither is
+# staged.
+[audio]
+packs = ["combat-core@0.1.0", "gm-lite@0.1.0"]
+
 # How validation (and the per-run static deploy) turns a produced implementation
 # into a served site. `npm ci` is deliberate: it requires a committed lockfile.
 [build]

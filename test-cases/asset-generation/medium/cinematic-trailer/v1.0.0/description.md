@@ -8,10 +8,10 @@ choir; layers in rising staccato and pizzicato ostinatos and soaring french horn
 over thunderous taiko and bass-drum hits; and crests on a full choir-and-brass
 climax before a short resolving tail. It builds to an ending and need not loop.
 
-The mood and dynamic arc are prescribed. The key, tempo, structure, and instrument
-choices are the model's, so the case rewards compositional creativity. The cue is
-voiced as notes on instrument tracks the model chooses freely from the baked
-`cinematic` instrument bank.
+The mood and dynamic arc are prescribed. The key, tempo, structure, and
+instrument choices are the model's, so the case rewards compositional
+creativity. The cue is voiced as notes on instrument tracks the model chooses
+freely from the `cinematic` instrument bank.
 
 The recorded operations are regenerated into the clip: a stereo `clip.wav` beside
 a portable `clip.mid`. A reviewer plays it against the brief. Its heroic sweep, its

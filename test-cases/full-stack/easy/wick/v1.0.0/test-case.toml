@@ -181,6 +181,20 @@ none = "workspaces/none"
 "simple-2d" = "workspaces/simple-2d"
 "structured-2d" = "workspaces/structured-2d"
 
+# The audio packs the run container is staged with. `sfx-sample` and `music` see
+# these and nothing else, and a tool config that names no pack plays the first
+# pack of that kind.
+#
+# `combat-core` is the sample pack the night's hits, kills, and hurts are layered
+# over, carrying the snaps, short impacts, and fire crackle a lamp under siege
+# needs at the rate the late night plays them. The bed has to hold a ten-minute
+# run without wearing out (`specs/assets.md`) and the city it plays under is a
+# gothic one, so `cinematic` is the bank: sustained strings, choir, harp, and
+# taiko sit under a run the way a score does. A general-MIDI band and a synth
+# rack would each put the city in a different century, so neither is staged.
+[audio]
+packs = ["combat-core@0.1.0", "cinematic@0.1.0"]
+
 # How validation (and the per-run static deploy) turns a produced implementation
 # into a served site. `npm ci` is deliberate: it requires a committed lockfile.
 # The build must be self-contained: it bundles the committed produced assets

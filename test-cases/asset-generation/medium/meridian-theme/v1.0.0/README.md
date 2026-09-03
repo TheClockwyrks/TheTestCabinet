@@ -19,7 +19,7 @@ so the case rewards compositional creativity over instruction-following.
 
 | File | Seeded? | Purpose |
 | --- | --- | --- |
-| `test-case.toml` | manifest | Metadata, `[audio]` (format + `instrument_bank = "gm-lite@0.1.0"`), `[tool]` (`music`), `[output]`, domain. |
+| `test-case.toml` | manifest | Metadata, `[audio]` (format + `packs = ["gm-lite@0.1.0"]`), `[tool]` (`music`), `[output]`, domain. |
 | `specs/brief.md` | seeded | The self-contained brief: who the Meridian are, the mood to capture, length and loop, the instrumentation (model's choice), and the stereo image. |
 | `variants/base.toml` | — | The single default variant. |
 | `prompt.hbs` | rendered | The instruction handed to the harness, pointing at the brief and the tool. |
@@ -28,14 +28,13 @@ so the case rewards compositional creativity over instruction-following.
 
 ## The instrument bank
 
-The case names `instrument_bank = "gm-lite@0.1.0"`, a `name@version` palette
-baked into the `music` run-container image. It is not a path in this repo, and
-the audio is not committed here. The run is scheduled onto the image carrying
-that bank, so the general-MIDI-flavoured palette of orchestral strings, brass,
-and woodwinds, keys, mallets and bells, synths, and a drum kit is already
-present. Which instruments to use is the model's choice. Core emits the rendered
-`clip.wav` and a portable `clip.mid` automatically; neither is
-manifest-declared.
+The case declares `packs = ["gm-lite@0.1.0"]`, a `name@version` ref. It is not
+a path in this repo, and the audio is not committed here. The run container is
+staged with that bank and nothing else, so the general-MIDI-flavoured palette
+of orchestral strings, brass, and woodwinds, keys, mallets and bells, synths,
+and a drum kit is already present. Which instruments to use is the model's
+choice. Core emits the rendered `clip.wav` and a portable `clip.mid`
+automatically; neither is manifest-declared.
 
 ## Validate
 

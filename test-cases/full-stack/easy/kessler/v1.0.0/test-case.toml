@@ -222,6 +222,22 @@ none = "workspaces/none"
 "simple-2d" = "workspaces/simple-2d"
 "structured-2d" = "workspaces/structured-2d"
 
+# The audio packs the run container is staged with. `sfx-sample` and `music`
+# reach these and nothing else, and a tool config that names no pack plays the
+# first pack of that kind.
+#
+# `combat-core` is the sample pack the demolition cues are layered from: the
+# metal impacts, clangs, and debris a ball chipping a derelict, a derelict
+# breaking, and a pod burning up are made of. `specs/assets.md` holds the
+# thirteen cues and the two beds to one cold, glassy, spacey palette, and two
+# banks answer that description from different sides. `synthwave` leads for the
+# analog pads, sub bass, and FM bell a spacey bed is built on, and `gm-lite`
+# follows it for the glockenspiel, vibraphone, and music box that carry the
+# glassy half. `cinematic` is an orchestra, which is not a sound this game makes
+# anywhere, so it is not staged.
+[audio]
+packs = ["combat-core@0.1.0", "synthwave@0.1.0", "gm-lite@0.1.0"]
+
 # How the validator (and the per-run static deploy) turns a produced implementation
 # into a served static site. These run verbatim from the build's repository root:
 # dependencies are installed, then the static build is produced into `dist/`,

@@ -24,7 +24,7 @@ variants = ["variants/base.toml"]
 sample_rate = 44100                  # output sample rate in Hz (required)
 channels = "stereo"                  # "mono" | "stereo" (required)
 max_duration_ms = 30000              # cap on the rendered clip's length in ms (required, positive) — about 30 seconds
-packs = ["synthwave@0.1.0"]         # music: exactly one instrument bank (name@version)
+packs = ["synthwave@0.1.0"]          # music: exactly one instrument bank (name@version)
 
 # The sequencer. `music` is the only way to shape sound; it records every
 # operation to the action log and renders the waveform + spectrogram + piano-roll
