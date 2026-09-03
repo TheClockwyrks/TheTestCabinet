@@ -168,12 +168,12 @@ RUN_IMAGE_TAG    := local
 #     builds on but is NOT itself a run image, so it is built as needed (build.sh
 #     handles it) and never imported on its own;
 #   - full-stack runs execute in the `full-stack-2d` image (base-wasm plus the six 2D
-#     asset-generation binaries and the two audio packs they need — so building it
-#     needs the R2 PRESIGN credentials in .env, like the sfx-sample/music images);
+#     asset-generation binaries). It bakes no audio: a run is staged with the packs
+#     its test case declares when its container starts, so this build reads the audio
+#     object store not at all and needs no credential;
 #   - game-jam runs execute in the `game-jam` image, built `FROM` the full-stack-2d
-#     image (it inherits those six binaries + baked audio packs + the Rust/wasm
-#     toolchain and adds nothing but its own identity, so it needs no R2 credentials
-#     of its own — but its full-stack-2d parent must already be built, which does);
+#     image (it inherits those six binaries + the Rust/wasm toolchain and adds nothing
+#     but its own identity — but its full-stack-2d parent must already be built);
 #   - asset-generation runs each execute in their own per-kind image;
 #   - adversarial and performance runs each execute in their own image;
 #   - a `gg` run executes in the `-gg` VARIANT of the image its test type resolves —
@@ -533,17 +533,14 @@ run-images-e2e:
 	$(call build_import_run_images,$(E2E_IMAGE_NAMES),$(call run_image_refs,$(E2E_IMAGE_NAMES)))
 
 # `-full-stack` rebuilds the full-stack-2d image (the base plus the six 2D asset
-# binaries + the two audio packs). Building it presigns the packs from R2, so it needs
-# the PRESIGN credentials in .env (as the sfx-sample/music asset images do).
+# binaries). It bakes no audio, so it needs no credential.
 run-images-full-stack: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-full-stack:
 	$(call build_import_run_images,$(FULL_STACK_IMAGE_NAMES),$(call run_image_refs,$(FULL_STACK_IMAGE_NAMES)))
 
 # `-game-jam` rebuilds the game-jam image, which is built `FROM` the full-stack-2d image.
-# build.sh (re)builds full-stack-2d first when it is missing — and that parent build
-# presigns the two audio packs from R2, so it needs the PRESIGN credentials in .env the
-# first time (a rebuild against an already-present full-stack-2d does not). Only the
-# game-jam ref is imported; its full-stack-2d parent's layers are baked into it.
+# build.sh (re)builds full-stack-2d first when it is missing. Only the game-jam ref is
+# imported; its full-stack-2d parent's layers are baked into it.
 run-images-game-jam: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-game-jam:
 	$(call build_import_run_images,$(GAME_JAM_IMAGE_NAMES),$(call run_image_refs,$(GAME_JAM_IMAGE_NAMES)))
@@ -563,10 +560,9 @@ run-images-performance:
 # `-gg` rebuilds the gg variants: every run image, plus the language toolchains a
 # responses-as-code program is compiled with. build.sh builds the shared toolchain
 # builder first (always — it carries the compilers, so a stale one would bake yesterday's
-# toolchain in) and each variant's parent when that is missing, which for the
-# full-stack-2d, game-jam, sfx-sample and music variants means the R2 PRESIGN credentials
-# in .env the first time. Only the variant refs are imported; their parents' layers are
-# in them. This is the whole set — `make run-image-sprite-gg` rebuilds one.
+# toolchain in) and each variant's parent when that is missing. Only the variant refs are
+# imported; their parents' layers are in them. This is the whole set —
+# `make run-image-sprite-gg` rebuilds one.
 run-images-gg: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-gg:
 	$(call build_import_run_images,$(GG_IMAGE_NAMES),$(call run_image_refs,$(GG_IMAGE_NAMES)))
