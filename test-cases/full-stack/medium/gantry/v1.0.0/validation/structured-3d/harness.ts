@@ -122,6 +122,7 @@ import {
   type EngineSurface,
 } from "./host";
 import type {
+  DrawnEntry,
   AxisName,
   CheckResult,
   GantryDebugApi,
@@ -175,6 +176,7 @@ export const UNNAMED_CUE = "?";
 export const REQUIRED_OPS = [
   "snapshot",
   "check",
+  "drawn",
   "reset",
   "setScreen",
   "setMenuIndex",
@@ -366,6 +368,9 @@ export interface AssetLoad {
 }
 
 /** What a harness may be built differently from the default. */
+
+export type { DrawnEntry };
+
 export interface HarnessOptions {
   /** The clock each frame takes its delta from. Defaults to one tick a frame. */
   clock?: Clock;
@@ -445,6 +450,9 @@ export interface Harness {
   cues(): Promise<string[]>;
   /** The cue names of the sounds that are looping right now. */
   loopingCues(): Promise<string[]>;
+
+  /** What the last frame drew (`specs/instrumentation.md`). */
+  drawn(): Promise<DrawnEntry[]>;
 
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
@@ -1044,6 +1052,11 @@ export async function createHarness(
       if (surface === null) refuse();
       return surface.snapshot();
     },
+    async drawn() {
+      if (surface === null) refuse();
+      return surface.drawn() as DrawnEntry[];
+    },
+
     async check() {
       if (surface === null) refuse();
       return surface.check();

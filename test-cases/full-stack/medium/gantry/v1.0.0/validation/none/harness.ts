@@ -55,6 +55,7 @@ import {
 import { fail } from "./assert";
 import { STAGE_H, STAGE_W, TICK_HZ, UNBOUND_KEY } from "./constants";
 import type {
+  DrawnEntry,
   AxisName,
   CheckResult,
   GantryDebugApi,
@@ -97,6 +98,7 @@ export const REQUIRED_OPS = [
   "advance",
   "snapshot",
   "check",
+  "drawn",
   "project",
   "reset",
   "setScreen",
@@ -243,6 +245,9 @@ export { TICK_HZ };
  * The three members below the fold are this engine's alone, and only the handful
  * of engine-specific suites `test-case.toml` points here touch them.
  */
+
+export type { DrawnEntry };
+
 export interface Harness {
   /** Release the page this harness held. */
   dispose(): Promise<void>;
@@ -300,6 +305,9 @@ export interface Harness {
   cues(): Promise<string[]>;
   /** The cue names of the sounds that are looping right now. */
   loopingCues(): Promise<string[]>;
+
+  /** What the last frame drew (`specs/instrumentation.md`). */
+  drawn(): Promise<DrawnEntry[]>;
 
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
@@ -406,6 +414,7 @@ export async function createHarness(
 
     snapshot: () => base.snapshot(),
     check: () => base.debug.check(),
+    drawn: () => base.debug.drawn() as Promise<DrawnEntry[]>,
 
     advance: (count = 1) => base.advance(count),
 

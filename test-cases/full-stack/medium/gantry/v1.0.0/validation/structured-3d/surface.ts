@@ -316,12 +316,46 @@ export interface GantrySnapshot {
  * harness reads it off the raw surface instead, and the one item that is about it
  * asserts on that reading.
  */
+/**
+ * One thing a frame drew, as `specs/instrumentation.md` § Readings has `drawn()`
+ * report it.
+ *
+ * A check that asks what the build DREW asks this and never the picture. The
+ * reading is the frame's own description of what it put on screen, so it says
+ * what a build chose — which model stands where, which marks are up, what colour
+ * a member came out — without a validator ever reading a pixel, and without the
+ * specification fixing a palette, a form or a layout.
+ */
+export interface DrawnEntry {
+  readonly kind:
+    | "model"
+    | "member"
+    | "aid"
+    | "mark"
+    | "obstacle"
+    | "cable"
+    | "ground"
+    | "text";
+  readonly name: string;
+  readonly id: number | null;
+  readonly source: string | null;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly size: readonly [number, number, number];
+  readonly color: readonly [number, number, number];
+  readonly text: string | null;
+}
+
 export interface GantryDebugApi {
   /* ---- Readings ----------------------------------------------------------- */
 
   snapshot(): GantrySnapshot;
   /** The static check of `specs/structure.md`, computed on the spot. */
   check(): CheckResult;
+  /** What the last frame drew (`specs/instrumentation.md`). */
+  drawn(): DrawnEntry[];
 
   /* ---- The run and the screens ------------------------------------------- */
 

@@ -99,6 +99,7 @@ import {
   UNBOUND_KEY,
 } from "./constants";
 import type {
+  DrawnEntry,
   AxisName,
   CheckResult,
   GantryDebugApi,
@@ -138,6 +139,7 @@ export const GANTRY_DEBUG_VERSION = 1;
 export const REQUIRED_OPS = [
   "snapshot",
   "check",
+  "drawn",
   "reset",
   "setScreen",
   "setMenuIndex",
@@ -186,7 +188,7 @@ export const REQUIRED_OPS = [
  * separates them: "Readings" is a section of `specs/instrumentation.md` and it
  * holds exactly these two under this engine, `project` having gone to the engine.
  */
-export const READINGS: readonly string[] = ["snapshot", "check"];
+export const READINGS: readonly string[] = ["snapshot", "check", "drawn"];
 
 /**
  * What `cues()` reports a sound it could not name as.
@@ -456,6 +458,9 @@ export interface AssetSubstitution {
 }
 
 /** How a harness's engine is built, where a check wants something other than the default. */
+
+export type { DrawnEntry };
+
 export interface HarnessOptions {
   /** The clock each frame takes its delta from. Defaults to one tick a frame. */
   clock?: Clock;
@@ -569,6 +574,9 @@ export interface Harness {
   cues(): Promise<string[]>;
   /** The cue names of the sounds that are looping right now. */
   loopingCues(): Promise<string[]>;
+
+  /** What the last frame drew (`specs/instrumentation.md`). */
+  drawn(): Promise<DrawnEntry[]>;
 
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
@@ -1066,6 +1074,7 @@ export async function createHarness(
 
     snapshot: () => debug.snapshot(),
     check: () => debug.check(),
+    drawn: () => debug.drawn() as Promise<DrawnEntry[]>,
 
     advance: (count = 1) => step(count),
 

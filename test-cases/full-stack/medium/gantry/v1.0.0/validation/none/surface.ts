@@ -308,6 +308,38 @@ export interface GantrySnapshot {
  * because "a caller reads the outcome of any pose back from `snapshot` rather
  * than from a return value".
  */
+/**
+ * One thing a frame drew, as `specs/instrumentation.md` § Readings has `drawn()`
+ * report it.
+ *
+ * A check that asks what the build DREW asks this and never the picture. The
+ * reading is the frame's own description of what it put on screen, so it says
+ * what a build chose — which model stands where, which marks are up, what colour
+ * a member came out — without a validator ever reading a pixel, and without the
+ * specification fixing a palette, a form or a layout.
+ */
+export interface DrawnEntry {
+  readonly kind:
+    | "model"
+    | "member"
+    | "aid"
+    | "mark"
+    | "obstacle"
+    | "cable"
+    | "ground"
+    | "text";
+  readonly name: string;
+  readonly id: number | null;
+  readonly source: string | null;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly size: readonly [number, number, number];
+  readonly color: readonly [number, number, number];
+  readonly text: string | null;
+}
+
 export interface GantryDebugApi {
   /* ---- The clock (this engine only) -------------------------------------- */
 
@@ -321,6 +353,8 @@ export interface GantryDebugApi {
   snapshot(): Promise<GantrySnapshot>;
   /** The static check of `specs/structure.md`, computed on the spot. */
   check(): Promise<CheckResult>;
+  /** What the last frame drew (`specs/instrumentation.md`). */
+  drawn(): Promise<DrawnEntry[]>;
   /** Where `(x, y, z)` is drawn, through the camera as it stands. */
   project(x: number, y: number, z: number): Promise<Projected>;
 
