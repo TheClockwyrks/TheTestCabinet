@@ -39,7 +39,7 @@
 // and the driven frames alone would never see it: the timer fires against the
 // wall clock, not against a tick. So the suite runs the whole check on FAKE
 // timers, installed before the build's first line, and winds them
-// {@link TIMER_HORIZON_MS} forward once the frames are driven — which fires every
+// `TIMER_HORIZON_MS` forward once the frames are driven — which fires every
 // timer and every interval the build armed inside that horizon, immediately, and
 // records what each of them played. A whole simulated minute costs no wall clock
 // at all and the same thing happens on an idle host and a loaded one, so this

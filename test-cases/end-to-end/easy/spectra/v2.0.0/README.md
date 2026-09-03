@@ -236,25 +236,29 @@ either variant's build, on any engine:
 npx tsc --noEmit -p validation/tsconfig.json    # from a build's root
 ```
 
-### Four captures move between runs
+### Three captures move between runs
 
 `tcab capture-baselines` writes `1710` files across the six engine/variant
-targets: `1599` stills and `111` recorded replays. Nineteen of the stills are
+targets: `1599` stills and `111` recorded replays. Seventeen of the stills are
 taken off a clock rather than off a posed frame, so two runs of the command over
 unchanged code write different bytes for them, and the committed baseline for
-each is one sample rather than a fixed picture. They are four outputs:
+each is one sample rather than a fixed picture. They are three outputs:
 
 | Output                                         | Targets | Why it moves                                                                                                                                      |
 | ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `controls.overlay-backquote__overlay`          | 6       | The panel carries a frame-time reading measured on the host that ran it: the engine's own line under an engine, the build's `dt` under `none`.    |
 | `instrumentation.advances-in-real-time__after` | 6       | The point's whole subject is a second of real time under the engine's own loop, so what has moved by the still is whatever that second delivered. |
 | `instrumentation.overlay__overlay`             | 5       | The same panel as the first, over a posed field.                                                                                                  |
-| `audio.no-autoplay__loaded`                    | 2       | The still follows 400 ms of the engine's own loop on the opening screen, so the field has drifted by however many frames that bought.             |
 
-None of the four is worth posing away. Two of the points measure what a build
+None of the three is worth posing away. One of the points measures what a build
 does with real time, and the other two open a panel whose own heading reports
 the frame it was drawn on; a still taken off a posed frame would show something
 none of them asserts.
+
+`audio.no-autoplay__loaded` used to be a fourth. It is not any more: that point
+reads a fixed number of driven frames and winds the build's own timers on rather
+than sitting through a stretch of the wall clock, so its still is the same
+picture on every host and any movement in it is the build's.
 
 The churn is bounded and it is all there is. Three captures of the same code —
 the committed one and two run back to back — differ pairwise in 14, 17 and 18 of
