@@ -12,7 +12,8 @@
 # N of a chain sounds chain-min(N, 8) over shatter, so a long chain climbs the
 # ladder and holds on the top rung while the glass keeps its weight.
 #
-# The palettes are baked into the environment, not synthesized here:
+# The palettes come from the packs this case declares in `[audio] packs`, not from
+# anything synthesized here:
 #   sfx-sample  reads the `combat-core` pack, whose glass and impact material
 #               (debris_glass, clang_metal, impact_metal_dry, snap_transient) is
 #               what the shatter body is built from. It carries no tuned
@@ -25,10 +26,18 @@
 #               error, so these names are checked against the bank.
 #
 # Usage:  bash scripts/gen-audio.sh   (sfx-synth, sfx-sample and music must be on
-#         PATH, or built under $CARGO_TARGET_DIR/{debug,release}; the pack and
-#         bank are found via TCAB_SAMPLE_PACK_DIR / TCAB_INSTRUMENT_BANK_DIR or
-#         the run image's defaults).
+#         PATH, or built under $CARGO_TARGET_DIR/{debug,release}). In a run
+#         container the declared packs are staged where the tools read them. On a
+#         host, fetch an audio store with scripts/fetch-audio-store.sh and point
+#         TCAB_AUDIO_DIR at it.
 set -euo pipefail
+
+# The store's default location, used only when TCAB_AUDIO_DIR names none — a run
+# container is staged with its packs and never takes this branch.
+STORE="${TCAB_AUDIO_STORE:-${HOME:-}/.cache/tcab/audio-store}"
+if [ -z "${TCAB_AUDIO_DIR:-}" ] && [ -d "$STORE/packs" ]; then
+  export TCAB_AUDIO_DIR="$STORE"
+fi
 
 # Resolve the tools: prefer PATH, else the devcontainer's cargo target volume.
 for tool in sfx-synth sfx-sample music; do
@@ -250,7 +259,7 @@ done
 
 # ================================== SHATTER ===================================
 # The broad glass-and-debris body layered UNDER the chain ladder's tone, so the
-# `clear` cue lands with weight. Everything here is sampled from the baked pack:
+# `clear` cue lands with weight. Everything here is sampled from the declared pack:
 # a snap for the break itself, a dry metal hit for the strike, the glass pane
 # going as the body, and one deep detuned clang holding the bottom.
 newsmp mono 950 "$AUD/shatter.wav"

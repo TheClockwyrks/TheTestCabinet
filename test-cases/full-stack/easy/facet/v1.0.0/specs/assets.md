@@ -28,8 +28,8 @@ Exactly these six binaries are on your `PATH`, and no others (there is no `ui`,
 | `draw-sheet` | a sprite sheet, one PNG per frame | each kind's break animation, and the prism's idle turn |
 | `particle-2d` | a particle system to a `system.json` | the clear burst, the flawed detonation, the cut-gem flash, the cut aura |
 | `sfx-synth` | a procedural sound to a `.wav` | select, swap, refuse, land, flaw, cut, level-up, game-over, and the chain ladder |
-| `sfx-sample` | a sampled sound over a baked pack to a `.wav` | the shatter body layered under the clear cue |
-| `music` | sequenced music over a baked bank to a `.wav` (+ `.mid`) | the title theme and the play bed |
+| `sfx-sample` | a sampled sound over the sample pack to a `.wav` | the shatter body layered under the clear cue |
+| `music` | sequenced music over the instrument bank to a `.wav` (+ `.mid`) | the title theme and the play bed |
 
 Each is a command-line tool. Run `<tool> --help` to learn its operations (and
 `<tool> <operation> --help` for one operation's flags); the operation vocabulary
@@ -48,10 +48,10 @@ output, writing the finished file into your project under `public/assets/`.
   asset. Individual particles are not placed and frames are not baked.
 - `sfx-synth`, `sfx-sample`, and `music` record synth voices, sampled layers, or
   sequenced notes and render a PCM `.wav`; `music` also emits a portable `.mid`
-  score alongside its `.wav`. `sfx-sample` and `music` draw on a baked sample
-  pack and instrument bank already available in the current environment (browse
-  them via `list-samples` and the tool's help); a synth from `sfx-synth` needs
-  no pack.
+  score alongside its `.wav`. `sfx-sample` draws on the `combat-core` sample
+  pack and `music` on the `gm-lite` instrument bank, both present in the
+  container and browsed with `list-samples` and `list-instruments`; a synth from
+  `sfx-synth` needs no pack.
 
 ## Where produced files land, and how they load
 
@@ -160,7 +160,7 @@ variation is correct.
 Produce every sound the game plays with the audio tools and play the resulting
 `.wav`s through the Web Audio API. Land them under `public/assets/audio/`.
 
-The baked `sfx-sample` pack is `combat-core`, which carries impact and debris
+The `sfx-sample` pack is `combat-core`, which carries impact and debris
 material (`debris_glass`, `clang_metal`, `impact_metal_dry`, `snap_transient`,
 and more) and no tuned material. So the pitched cues are synthesized with
 `sfx-synth`, and `sfx-sample` layers a shatter body underneath the clear cue,
@@ -178,7 +178,7 @@ where its glass and impact material belongs.
   holds on the highest tone once the multiplier has capped.
 - `sfx-sample` produces the shatter body, a broad glass-and-debris hit layered
   under the chain ladder's tone so the `clear` cue lands with weight.
-- `music` sequences over the baked `gm-lite` bank, whose `music_box`,
+- `music` sequences over the `gm-lite` bank, whose `music_box`,
   `glockenspiel`, `vibraphone`, and `marimba` carry a bright, struck, glassy
   bed. Produce two pieces: a title theme with a hook, and a slower play bed that
   sits under a round without pulling attention off the board. `music` emits both

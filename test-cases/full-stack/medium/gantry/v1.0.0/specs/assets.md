@@ -18,8 +18,8 @@ layout of your choosing.
 | --- | --- | --- |
 | `voxel` | a voxel model, meshed to a `.glb` | the crane's parts and the loads |
 | `sfx-synth` | a procedural sound → `.wav` | the cues |
-| `sfx-sample` | a sampled sound over a baked pack → `.wav` | the cues |
-| `music` | sequenced music over a baked bank → `.wav` + `.mid` | the music bed |
+| `sfx-sample` | a sampled sound over the sample pack → `.wav` | the cues |
+| `music` | sequenced music over the instrument bank → `.wav` + `.mid` | the music bed |
 
 Each is a command-line tool, and `<tool> --help` states its operations
 (`<tool> <operation> --help` for one operation's flags). In outline, each
@@ -27,9 +27,9 @@ records the operations you run and then renders the finished file: `voxel`
 sculpts an opaque-color voxel volume and its `render` meshes it to the `.glb`
 the game loads, drawing a preview PNG beside it to check your work; the audio
 tools record voices, layers, or notes and render a PCM `.wav`. `sfx-sample`
-draws on a baked sample pack and `music` on a baked instrument bank, both
-both browsed through their help; `music` emits a portable `.mid` beside the
-`.wav` you play.
+draws on the `combat-core` sample pack and `music` on the `gm-lite` instrument
+bank, both present in the container and browsed with `list-samples` and
+`list-instruments`; `music` emits a portable `.mid` beside the `.wav` you play.
 
 ## The models
 

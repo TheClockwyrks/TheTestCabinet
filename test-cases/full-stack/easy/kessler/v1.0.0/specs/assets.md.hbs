@@ -22,8 +22,8 @@ complete.
 | `draw-sheet` | a sprite sheet, one PNG per frame | the ball's spin |
 | `particle-2d` | a particle system, a `system.json` | the destruction burst, the impact spark, the burn-up |
 | `sfx-synth` | a procedural sound, a `.wav` | the cues |
-| `sfx-sample` | a sampled sound over a baked pack, a `.wav` | the cues, where a sampled layer suits one better |
-| `music` | sequenced music over a baked instrument bank, a `.wav` and a `.mid` | the two music beds |
+| `sfx-sample` | a sampled sound over the sample pack, a `.wav` | the cues, where a sampled layer suits one better |
+| `music` | sequenced music over an instrument bank, a `.wav` and a `.mid` | the two music beds |
 
 Each is a command-line tool, and `<tool> --help` states its operations
 (`<tool> <operation> --help` for one operation's flags). Each records the
@@ -169,13 +169,14 @@ the event.
 | `menu-select` | `assets/audio/menu-select.wav` | `sfx-synth` or `sfx-sample` |
 
 `sfx-synth` builds a sound from synth voices alone, and `sfx-sample` layers
-over a baked sample pack, which its own operations browse. Use whichever suits
-each cue.
+over the `combat-core` sample pack, which `list-samples` browses. Use whichever
+suits each cue.
 
 ### The music beds
 
-Produce two beds with `music`, which may sequence the baked instrument bank,
-synth waveforms, or both. `music` writes a `.wav` and a `.mid` beside it; the
+Produce two beds with `music`, which may sequence the `synthwave` and
+`gm-lite` instrument banks (`list-instruments` browses them), synth waveforms,
+or both. `music` writes a `.wav` and a `.mid` beside it; the
 `.wav` is what the game plays, and keeping the `.mid` is optional.
 
 | Bed | File | Loops on |

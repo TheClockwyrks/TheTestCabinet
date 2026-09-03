@@ -115,8 +115,7 @@ evolved weapon's symbol is its base's burning hotter.
 44.1 kHz PCM-16 throughout, decoded by the engine's loader through
 `api.audio.load` in `src/audio.ts` before the first frame, and bound to its
 cue by file name: `audio/<cue>.wav` for each name in `CUES`. Every cue is pure `sfx-synth`
-(the baked sample pack on the producing machine is empty, and the warm
-palette wants the oscillator control anyway); the bed is `music` over
+(the warm palette wants the oscillator control); the bed is `music` over
 synth-waveform tracks, its `.mid` committed beside the `.wav`. The palette is
 warm and candlelit, soft sines and triangles, FM bells, wooden knocks, and
 breathy noise, so the set sounds like one night. `src/assets.test.ts` reads

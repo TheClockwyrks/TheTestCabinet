@@ -20,8 +20,8 @@ complete.
 | `draw` | one sprite, a PNG | the still sprites: the idle lamplighter, the icons, the gems, the pickups, the ground tile, and the effects that hold one shape |
 | `draw-sheet` | a sprite sheet, one PNG per frame | everything that moves on its own: the walk cycles, the death puff, and the animated effects |
 | `sfx-synth` | a procedural sound, a `.wav` | the cues |
-| `sfx-sample` | a sampled sound over a baked pack, a `.wav` | the cues, where a sampled layer suits one better |
-| `music` | sequenced music over a baked instrument bank, a `.wav` and a `.mid` | the music bed |
+| `sfx-sample` | a sampled sound over the sample pack, a `.wav` | the cues, where a sampled layer suits one better |
+| `music` | sequenced music over the instrument bank, a `.wav` and a `.mid` | the music bed |
 
 Each is a command-line tool, and `<tool> --help` states its operations
 (`<tool> <operation> --help` for one operation's flags). Each records the
@@ -29,9 +29,10 @@ operations run against it and then renders the finished file, which you commit
 at the path this file names. `draw` and `draw-sheet` rasterize a fixed-size
 RGBA canvas from drawing operations; `draw-sheet` takes a `--frame` on each
 operation, so a sheet lands as separate files, one per frame, and it offers
-layers with keyframes. `sfx-sample` draws on a baked sample pack and `music` on
-a baked instrument bank, both browsed through their help; `music` emits a
-portable `.mid` beside the `.wav`, and both are committed. Produce these files
+layers with keyframes. `sfx-sample` draws on the `combat-core` sample pack and
+`music` on the `cinematic` instrument bank, both present in the container and
+browsed with `list-samples` and `list-instruments`; `music` emits a portable
+`.mid` beside the `.wav`, and both are committed. Produce these files
 with these tools; pre-made art, a downloaded sound, or a bundled font standing
 in for a produced file does not meet this contract.
 
@@ -239,8 +240,8 @@ each cue plays on is fixed in `specs/ui.md`.
 
 ### The music bed
 
-Produce the `music` cue with `music`, which may sequence the baked instrument
-bank, synth waveforms, or both: `assets/audio/music.wav`, with its
+Produce the `music` cue with `music`, which may sequence the `cinematic`
+instrument bank, synth waveforms, or both: `assets/audio/music.wav`, with its
 `assets/audio/music.mid` committed beside it. The `.wav` is what the game
 plays, for the length of a run as `specs/ui.md` states, and it runs at least
 `MUSIC_MIN_SECONDS` (`30`) seconds.

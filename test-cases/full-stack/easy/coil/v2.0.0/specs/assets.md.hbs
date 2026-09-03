@@ -21,8 +21,8 @@ Six asset-generation binaries are on the `PATH`, and Coil uses four of them.
 | `draw` | one sprite, as a PNG | The straight body, corner, and tail cells |
 | `draw-sheet` | a sprite sheet, one PNG per frame | The snake's head and its bite |
 | `sfx-synth` | a synthesized sound, as a `.wav` | The eat, combo, and death cues |
-| `sfx-sample` | a sound layered over a baked sample pack, as a `.wav` | The same three cues, where a sampled layer suits one better |
-| `music` | sequenced music over a baked instrument bank, as a `.wav` and a `.mid` | The music bed |
+| `sfx-sample` | a sound layered over the sample pack, as a `.wav` | The same three cues, where a sampled layer suits one better |
+| `music` | sequenced music over the instrument bank, as a `.wav` and a `.mid` | The music bed |
 | `particle-2d` | a particle system, as a `system.json` | Nothing Coil requires. It is available for a flourish of your own. |
 
 Each is a command-line tool, and its own `--help` is its contract; run
@@ -135,8 +135,9 @@ Coil plays four produced sounds, and `specs/ui.md` fixes the events they play on
 | `music` | `assets/audio/music.wav` | `music` |
 
 `sfx-synth` builds a sound from synth voices alone, and `sfx-sample` layers over
-a baked sample pack, which its own operations browse. Use whichever suits each
-cue. `music` writes a `.wav` and a `.mid` beside it; the `.wav` is what the game
+the `combat-core` sample pack, which `list-samples` browses. Use whichever suits
+each cue. `music` sequences the `synthwave` instrument bank, browsed with
+`list-instruments`, synth waveforms, or both. `music` writes a `.wav` and a `.mid` beside it; the `.wav` is what the game
 plays, and keeping the `.mid` is optional.
 
 ### The sound bar

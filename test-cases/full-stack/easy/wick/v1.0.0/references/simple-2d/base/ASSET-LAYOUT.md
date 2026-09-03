@@ -113,8 +113,7 @@ hotter.
 44.1 kHz PCM-16 throughout, each bound to its cue by `src/audio.ts` through
 the engine's cue bus before the first frame, at `CUE_PATHS[cue]`, which is
 `audio/<cue>.wav` for each name in `CUES`. Every cue is pure `sfx-synth`
-(the baked sample pack on the producing machine is empty, and the warm
-palette wants the oscillator control anyway); the bed is `music` over
+(the warm palette wants the oscillator control); the bed is `music` over
 synth-waveform tracks, its `.mid` committed beside the `.wav`. The palette is
 warm and candlelit, soft sines and triangles, FM bells, wooden knocks, and
 breathy noise, so the set sounds like one night. `src/assets.test.ts` reads

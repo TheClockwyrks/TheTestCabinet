@@ -29,8 +29,8 @@ code** (below):
 | `draw-sheet` | a sprite sheet, **one PNG per frame** | the delvers' animations |
 | `particle-2d` | a particle system → a `system.json` | the gas overlays, dig dust, machine exhaust |
 | `sfx-synth` | a procedural sound → a `.wav` | dig / build / alarm cues from raw synthesis |
-| `sfx-sample` | a sampled sound over a baked pack → a `.wav` | richer dig / build / machine / alarm cues |
-| `music` | sequenced music over a baked bank → a `.wav` (+ `.mid`) | the ambient underground bed |
+| `sfx-sample` | a sampled sound over the sample pack → a `.wav` | richer dig / build / machine / alarm cues |
+| `music` | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the ambient underground bed |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is
@@ -49,9 +49,10 @@ the exact initialize / operate / render commands and how to name the output path
   the asset. You do **not** place individual particles or bake frames.
 - `sfx-synth` / `sfx-sample` / `music` record synth voices, sampled layers, or
   sequenced notes and render a PCM `.wav`; `music` also emits a portable `.mid` score
-  alongside its `.wav`. `sfx-sample` and `music` draw on a **baked sample pack /
-  instrument bank** already in the image (browse it via the tool's help); a synth
-  from `sfx-synth` needs no pack.
+  alongside its `.wav`. `sfx-sample` draws on the `combat-core` sample pack and
+  `music` on the `cinematic` instrument bank, both present in the container
+  (browse them with `list-samples` and `list-instruments`); a synth from
+  `sfx-synth` needs no pack.
 
 ## Loading rule — page-relative, so it works under any base path
 
@@ -167,8 +168,8 @@ Web Audio API. Land them under, for example, `assets/audio/`.
 - **Sound effects** — produce at least a **dig** cue (a pick/impact), a **build/place**
   cue, and a **low-oxygen alarm** with `sfx-synth` and/or `sfx-sample`, and
   a soft **machine hum** loop for a running machine. `sfx-synth` builds a sound from
-  synth voices alone; `sfx-sample` layers over the baked sample pack (browse it via its
-  `--help`) for a richer result — use whichever suits each cue.
+  synth voices alone; `sfx-sample` layers over the `combat-core` sample pack (browse it
+  with `list-samples`) for a richer result — use whichever suits each cue.
 - **Music** — produce an **ambient underground music bed** with `music`: a slow, low,
   atmospheric loop under the colony. `music` emits both a `.wav` (the ready asset you
   play) and a `.mid` score alongside it; **play the `.wav`** (the `.mid` is a portable

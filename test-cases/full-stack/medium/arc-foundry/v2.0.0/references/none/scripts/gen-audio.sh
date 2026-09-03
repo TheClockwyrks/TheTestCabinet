@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Arc Foundry — produce the yard's AUDIO with the on-PATH audio tools (specs/assets.md §Audio).
 #
-# Everything here is PURE SYNTH: in this run image the baked `sfx-sample` pack is EMPTY
-# (`sfx-sample list-samples` → "no samples") and the `music` instrument bank has no bank
-# instruments, so every SFX is authored with `sfx-synth` (oscillator/noise voices) and the
+# Everything here is PURE SYNTH: the cold, electric palette wants the tight oscillator
+# control, so every SFX is authored with `sfx-synth` (oscillator/noise voices) and the
 # reactor bed uses `music` synth-waveform tracks only (`define-track --instrument
 # sine|square|saw|triangle` — never a bank instrument name). The palette of the sound is
 # ELECTRO-INDUSTRIAL: cold, electric, metallic, tense — arcs, presses, and a driving reactor
