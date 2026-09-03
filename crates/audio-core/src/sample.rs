@@ -1,8 +1,8 @@
-//! The baked sample-library / instrument-bank loader.
+//! The sample-library / instrument-bank loader.
 //!
-//! `sfx-sample`'s sample pack and `music`'s instrument bank are baked into their
-//! run-container image as a directory holding a `pack.toml` manifest plus the
-//! normalized audio the manifest's entries name. Each entry carries the stable
+//! `sfx-sample`'s sample pack and `music`'s instrument bank are
+//! [staged into their run container](crate::staged) as a directory holding a
+//! `pack.toml` manifest plus the normalized audio the manifest's entries name. Each entry carries the stable
 //! `name`, `tags`, `duration`, and `description` the model browses, and a `file`
 //! path resolved relative to the pack directory, so several packs can share one
 //! clip directory (`file = "../../clips/<clip-id>.<profile-id>.wav"`).
@@ -10,7 +10,7 @@
 //! Loading is strict. [`load_pack`] reports the exact failure and the path it
 //! involves as a [`PackError`], and it verifies every declared entry's audio file
 //! exists, decodes, and matches the sample rate and duration the manifest declares
-//! for it, so a broken bake fails at load with a diagnosis rather than rendering
+//! for it, so a broken pack fails at load with a diagnosis rather than rendering
 //! silence or the wrong length. The manifest's own `name` and `version` travel with
 //! the loaded library, so a run can check the palette it got against the
 //! `name@version` its config pins.
@@ -34,7 +34,7 @@ pub struct SampleEntry {
     /// A human description of the sound.
     #[serde(default)]
     pub description: String,
-    /// The audio file, relative to the pack directory. A baked pack points this at
+    /// The audio file, relative to the pack directory. A staged pack points this at
     /// the shared clip directory (`../../clips/<clip-id>.<profile-id>.wav`) so packs
     /// sharing a clip share its bytes; when the manifest omits it the loader reads
     /// `<name>.wav` from the pack directory itself.
@@ -95,8 +95,8 @@ struct PackManifest {
     sample: Vec<SampleEntry>,
 }
 
-/// Why a baked pack failed to load. Each variant names the path it involves so the
-/// message points at the bake that has to be fixed.
+/// Why a pack failed to load. Each variant names the path it involves so the message
+/// points at the pack that has to be fixed.
 #[cfg(feature = "cli")]
 #[derive(Debug, Clone, PartialEq)]
 pub enum PackError {
@@ -286,6 +286,26 @@ impl SampleLibrary {
         self.version.as_deref()
     }
 
+    /// The `name@version` ref this library answers to. Absent when the loaded manifest
+    /// declares no `name`.
+    pub fn reference(&self) -> Option<String> {
+        let name = self.name.as_deref()?;
+        Some(match self.version.as_deref() {
+            Some(version) => format!("{name}@{version}"),
+            None => name.to_string(),
+        })
+    }
+
+    /// How a diagnostic names the pack a model is browsing, as
+    /// ``this run's sample pack `combat-core@0.1.0` ``. The ref is dropped when the
+    /// loaded manifest declares no identity of its own.
+    pub fn describe(&self, kind: crate::staged::PackKind) -> String {
+        match self.reference() {
+            Some(reference) => format!("this run's {} `{reference}`", kind.label()),
+            None => format!("this run's {}", kind.label()),
+        }
+    }
+
     /// The pack's normalized sample rate.
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
@@ -356,11 +376,11 @@ fn decoded_duration_ms(decoded: &crate::wav::DecodedWav) -> f64 {
     (decoded.samples.len() / channels) as f64 / rate * 1000.0
 }
 
-/// Load the pack baked at `pack_dir`: its manifest (`pack.toml`, or the
-/// lexicographically first `*.toml` when the bake names it otherwise) and the audio
+/// Load the pack staged at `pack_dir`: its manifest (`pack.toml`, or the
+/// lexicographically first `*.toml` when a pack names it otherwise) and the audio
 /// every declared entry points at.
 ///
-/// Each entry's `file` resolves against `pack_dir`, so a shared-clip bake
+/// Each entry's `file` resolves against `pack_dir`, so a shared-clip layout
 /// (`file = "../../clips/<clip-id>.<profile-id>.wav"`) reads from the clip directory
 /// the packs sit beside. Every declared file must exist, decode, and agree with what
 /// the manifest says about it: the decoded rate must equal the manifest's

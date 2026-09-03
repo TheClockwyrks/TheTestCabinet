@@ -218,6 +218,12 @@ config that names no pack plays the first declared pack of its kind.
 [Staged audio](/components/core/execution/#staged-audio) covers how a run
 receives them.
 
+Running a binary on a host instead of in a run container, as a reference
+implementation's asset build does, points it at an audio store with
+`TCAB_AUDIO_DIR`. A store and a staged tree share one layout, so a store fetched
+with `scripts/fetch-audio-store.sh` reads as a palette of every pack it carries,
+with the first pack of each kind that kind's default.
+
 The loaded pack is checked against the ref the config pins: the pack's own `name`
 and `version` must equal it, and naming a pack the run was not staged with is an
 error listing the packs it was. Every entry's audio is checked with it, and must

@@ -127,8 +127,8 @@ description = "A cannon."
 
     #[test]
     fn resolves_a_relative_file_into_a_shared_clip_directory() {
-        // The baked image layout: `audio/clips/<clip>.<profile>.wav` beside
-        // `audio/packs/<pack>/pack.toml`, with entries pointing up and across.
+        // The staged layout: `clips/<clip>.<profile>.wav` beside
+        // `packs/<pack>/pack.toml`, with entries pointing up and across.
         let root = tempfile::tempdir().unwrap();
         let clips = root.path().join("clips");
         std::fs::create_dir_all(&clips).unwrap();

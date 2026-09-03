@@ -1,9 +1,9 @@
-//! The `sfx-sample` CLI: layered multitrack mixing over a baked sample library, plus
+//! The `sfx-sample` CLI: layered multitrack mixing over this run's sample pack, plus
 //! the full `sfx-synth` voice vocabulary for glue — the game-audio-DAW tier.
 //!
 //! `sfx-sample` is a **capability superset of `sfx-synth`**: it carries every synth
 //! voice/envelope/pitch/modulation/effect operation and adds `list-samples` /
-//! `sample-info` (browse the baked library by name/tags/duration/description) and
+//! `sample-info` (browse the library by name/tags/duration/description) and
 //! `add-sample` (place a library clip as a layer). Like `sfx-synth`, an authoring
 //! operation **only records**; `render` mixes the log down to the `.wav` and draws the
 //! preview. The `list-samples` / `sample-info` browse commands query the library and
@@ -15,11 +15,12 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use test_cabinet_audio_core::clap_ext;
-use test_cabinet_audio_core::config::{self, AudioConfig, PackKind};
+use test_cabinet_audio_core::config::{self, AudioConfig};
 use test_cabinet_audio_core::effect::FilterType;
 use test_cabinet_audio_core::record;
 use test_cabinet_audio_core::runner;
 use test_cabinet_audio_core::sfx::{AudioOp, Target};
+use test_cabinet_audio_core::staged::PackKind;
 use test_cabinet_audio_core::synth::{EnvCurve, Wave};
 
 /// The sample-library sound-effect tool for audio asset-generation cases.
@@ -43,7 +44,7 @@ struct Cli {
 enum Command {
     /// Write an empty op log; renders nothing. A run starts pre-seeded.
     Init,
-    /// List the baked library samples (optionally filtered by `--tag`), reading each
+    /// List this run's sample pack (optionally filtered by `--tag`), reading each
     /// sample's stable name, tags, duration, and description. Records nothing.
     ListSamples {
         /// Only samples carrying this tag.
@@ -362,8 +363,10 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::ListSamples { tag } => {
             let library = runner::load_library(&config, PackKind::SamplePack)?;
             let entries = library.list(tag.as_deref());
-            if entries.is_empty() {
-                println!("(no samples in the baked library)");
+            if library.is_empty() {
+                println!("{}", PackKind::SamplePack.none_staged());
+            } else if entries.is_empty() {
+                println!("(no samples in {})", library.describe(PackKind::SamplePack));
             } else {
                 for e in entries {
                     println!(
@@ -387,7 +390,15 @@ fn run(cli: Cli) -> Result<(), String> {
                     e.duration_ms,
                     e.description
                 ),
-                None => return Err(format!("no sample named `{name}` in the baked library")),
+                None if library.is_empty() => {
+                    return Err(PackKind::SamplePack.none_staged());
+                }
+                None => {
+                    return Err(format!(
+                        "no sample named `{name}` in {}",
+                        library.describe(PackKind::SamplePack)
+                    ));
+                }
             }
             return Ok(());
         }

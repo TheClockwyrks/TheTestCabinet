@@ -8,15 +8,16 @@
 
 use std::fs;
 
-use crate::config::{AudioConfig, PackKind, pack_name, pack_version};
+use crate::config::AudioConfig;
 use crate::music::{self, MusicOp, MusicProject};
 use crate::sample::SampleLibrary;
 use crate::sfx::{self, AudioOp, SfxProject};
+use crate::staged::{PackKind, StagedPacks, pack_name, pack_version};
 use crate::{preview, record, wav};
 
 /// Render a sound-effect clip (`sfx-synth` / `sfx-sample`): mix the op log down, write
 /// the `.wav`, draw the waveform + spectrogram preview, and stream the live update.
-/// `library` supplies the baked samples (`None` for a pure-synth run or no baked pack).
+/// `library` supplies the pack's samples (`None` for a pure-synth run).
 pub fn render_sfx(config: &AudioConfig, library: Option<&SampleLibrary>) -> Result<usize, String> {
     let ops: Vec<AudioOp> = record::read_actions(&config.actions)?;
     let params = config.render_params();
@@ -80,29 +81,40 @@ pub fn render_music(
     Ok(ops.len())
 }
 
-/// Load the baked palette of `kind` this run reads.
+/// Load the palette of `kind` this run reads out of its staged audio.
 ///
-/// The palette is the `sample_pack` / `instrument_bank` the config names, the image's
-/// default when the config names none, or the directory
-/// [`AudioConfig::pack_dir`] points at. A run that resolves none of those (a pure
-/// `sfx-synth` run) yields an empty library; every other outcome is checked, so a
-/// directory that does not resolve, a pack that does not load, a pack that declares
-/// no samples, and a pack whose identity differs from the ref the run pins are all
-/// errors naming what the run asked for.
+/// A run container is staged with the packs its test case declares and nothing else,
+/// so the palette is the pack the config's ref names among them, or that kind's staged
+/// default when the config names none. A run staged with no pack of that kind, asking
+/// for none, gets an empty library: that is the pure `sfx-synth` case. Every other
+/// outcome is checked, so a ref that selects nothing, a pack that does not load, a
+/// pack that declares no samples, and a pack whose identity differs from the ref the
+/// run pins are all errors naming what the run asked for and what it holds.
 pub fn load_library(config: &AudioConfig, kind: PackKind) -> Result<SampleLibrary, String> {
+    let root = StagedPacks::root();
     let requested = config.pack_ref(kind);
-    let configured = match (&requested, &config.pack_dir) {
-        (Some(name), _) => format!("{} `{name}`", kind.label()),
-        (None, Some(dir)) => format!("pack directory {}", dir.display()),
-        (None, None) => return Ok(SampleLibrary::empty()),
+    let Some(staged) = StagedPacks::load(&root)? else {
+        // No manifest at all: the run was staged with no audio. A run that asked for
+        // nothing renders pure synthesis; one that named a pack says why it cannot
+        // have it, since rendering it silently without its palette is the failure this
+        // prevents.
+        return match requested {
+            None => Ok(SampleLibrary::empty()),
+            Some(reference) => Err(format!(
+                "{} `{reference}`: this run was staged with no audio packs ({} is \
+                 missing). A run container is given the packs its test case declares \
+                 in `[audio] packs`.",
+                kind.label(),
+                root.join(crate::staged::PACKS_MANIFEST).display()
+            )),
+        };
     };
-    let dir = match config.resolve_pack_dir(kind) {
-        Ok(Some(dir)) => dir,
-        // `configured` above proves a ref or a `pack_dir` is present, so the resolver
-        // returns a directory or an error.
-        Ok(None) => return Ok(SampleLibrary::empty()),
-        Err(err) => return Err(format!("{configured}: {err}")),
+    let Some(pack) = staged.select(kind, requested.as_deref())? else {
+        return Ok(SampleLibrary::empty());
     };
+
+    let dir = root.join(&pack.dir);
+    let configured = format!("{} `{}`", kind.label(), pack.reference());
     let library = crate::sample::load_pack(&dir).map_err(|err| format!("{configured}: {err}"))?;
     if library.is_empty() {
         return Err(format!(
@@ -110,18 +122,19 @@ pub fn load_library(config: &AudioConfig, kind: PackKind) -> Result<SampleLibrar
             dir.display()
         ));
     }
-    if let Some(reference) = &requested {
-        check_identity(reference, &library, &dir).map_err(|err| format!("{configured}: {err}"))?;
-    }
+    // A config naming no pack still pins one: the staged pack's own ref. So the
+    // identity of every loaded pack is checked, including a full-stack run's default.
+    let pin = requested.unwrap_or_else(|| pack.reference());
+    check_identity(&pin, &library, &dir).map_err(|err| format!("{configured}: {err}"))?;
     Ok(library)
 }
 
 /// Check the palette that loaded against the `name@version` the run pins.
 ///
-/// A run addresses its palette by ref, never by path, so a ref naming a pack the
-/// image does not carry — or pinning a version the baked pack is not — must fail the
-/// run rather than render it against a different palette than the case was written
-/// and reviewed against.
+/// A run addresses its palette by ref, never by path, so a staged pack whose manifest
+/// declares another name, or pins another version, must fail the run rather than
+/// render it against a different palette than the case was written and reviewed
+/// against.
 fn check_identity(
     reference: &str,
     library: &SampleLibrary,
@@ -129,16 +142,16 @@ fn check_identity(
 ) -> Result<(), String> {
     let wanted_name = pack_name(reference);
     match library.name() {
-        Some(baked) if baked == wanted_name => {}
-        Some(baked) => {
+        Some(staged) if staged == wanted_name => {}
+        Some(staged) => {
             return Err(format!(
-                "the pack baked at {} is `{baked}`, not `{wanted_name}`",
+                "the pack staged at {} is `{staged}`, not `{wanted_name}`",
                 dir.display()
             ));
         }
         None => {
             return Err(format!(
-                "the pack baked at {} declares no `name`, so it cannot be checked \
+                "the pack staged at {} declares no `name`, so it cannot be checked \
                  against this run's pin",
                 dir.display()
             ));
@@ -149,12 +162,12 @@ fn check_identity(
         return Ok(());
     };
     match library.version() {
-        Some(baked) if baked == wanted_version => Ok(()),
-        Some(baked) => Err(format!(
-            "the baked `{wanted_name}` is version {baked}, not the pinned {wanted_version}"
+        Some(staged) if staged == wanted_version => Ok(()),
+        Some(staged) => Err(format!(
+            "the staged `{wanted_name}` is version {staged}, not the pinned {wanted_version}"
         )),
         None => Err(format!(
-            "the pack baked at {} declares no `version`, so the pinned \
+            "the pack staged at {} declares no `version`, so the pinned \
              {wanted_version} cannot be checked",
             dir.display()
         )),

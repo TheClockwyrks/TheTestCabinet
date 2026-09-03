@@ -5,8 +5,8 @@
 //! shaping raw DSP. Each authoring subcommand is one operation and **only records**;
 //! `render` mixes the sequenced tracks down to the `.wav`, draws the piano-roll (plus
 //! waveform + spectrogram) preview, and emits the portable `.mid`. The
-//! `list-instruments` / `instrument-info` browse commands query the baked instrument
-//! bank and record nothing. See
+//! `list-instruments` / `instrument-info` browse commands query the instrument bank
+//! and record nothing. See
 //! `apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md`.
 
 use std::path::PathBuf;
@@ -14,10 +14,11 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use test_cabinet_audio_core::clap_ext;
-use test_cabinet_audio_core::config::{self, AudioConfig, PackKind};
+use test_cabinet_audio_core::config::{self, AudioConfig};
 use test_cabinet_audio_core::music::{self, MusicOp};
 use test_cabinet_audio_core::record;
 use test_cabinet_audio_core::runner;
+use test_cabinet_audio_core::staged::PackKind;
 use test_cabinet_audio_core::synth::EnvCurve;
 
 /// The sequencer music tool for audio asset-generation cases.
@@ -56,7 +57,7 @@ enum Command {
         #[arg(long)]
         den: u8,
     },
-    /// List the baked bank instruments (optionally filtered by `--tag`), reading each
+    /// List this run's bank instruments (optionally filtered by `--tag`), reading each
     /// instrument's stable name, tags, whether it is pitched or percussion, and its
     /// description. Records nothing.
     ListInstruments {
@@ -156,8 +157,13 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::ListInstruments { tag } => {
             let library = runner::load_library(&config, PackKind::InstrumentBank)?;
             let entries = library.list(tag.as_deref());
-            if entries.is_empty() {
-                println!("(no instruments in the baked bank)");
+            if library.is_empty() {
+                println!("{}", PackKind::InstrumentBank.none_staged());
+            } else if entries.is_empty() {
+                println!(
+                    "(no instruments in {})",
+                    library.describe(PackKind::InstrumentBank)
+                );
             } else {
                 for e in entries {
                     println!(
@@ -174,7 +180,13 @@ fn run(cli: Cli) -> Result<(), String> {
         Command::InstrumentInfo { name } => {
             let library = runner::load_library(&config, PackKind::InstrumentBank)?;
             let Some(e) = library.info(&name) else {
-                return Err(format!("no instrument named `{name}` in the baked bank"));
+                if library.is_empty() {
+                    return Err(PackKind::InstrumentBank.none_staged());
+                }
+                return Err(format!(
+                    "no instrument named `{name}` in {}",
+                    library.describe(PackKind::InstrumentBank)
+                ));
             };
             println!("name: {}", e.name);
             println!("tags: {}", e.tags.join(", "));

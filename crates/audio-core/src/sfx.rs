@@ -13,6 +13,7 @@ use crate::effect::{Effect, FilterType};
 use crate::format::RenderParams;
 use crate::rng::derive_seed;
 use crate::sample::SampleLibrary;
+use crate::staged::PackKind;
 use crate::synth::{Arpeggio, EnvCurve, Envelope, Fm, PitchSweep, Vibrato, Voice, Wave};
 
 /// The target of a processing effect: a named synth voice, or a bus (`master`).
@@ -274,26 +275,29 @@ impl SamplePlacement {
     }
 
     /// The named sample's mono source audio, paired with the library's own sample
-    /// rate. A placement naming a sample the baked library does not carry is an error
+    /// rate. A placement naming a sample the run's pack does not carry is an error
     /// rather than silence, so a mis-named layer is reported instead of quietly
     /// dropped.
     fn source(&self, library: Option<&SampleLibrary>) -> Result<(Vec<f32>, f64), String> {
-        let lib = library.ok_or_else(|| {
+        let lib = library.filter(|lib| !lib.is_empty()).ok_or_else(|| {
             format!(
-                "add_sample names `{}` but this run has no baked sample library",
-                self.name
+                "add-sample names `{}` but {}",
+                self.name,
+                PackKind::SamplePack.none_staged()
             )
         })?;
         if lib.info(&self.name).is_none() {
             return Err(format!(
-                "no sample named `{}` in the baked library (browse it with `list-samples`)",
-                self.name
+                "no sample named `{}` in {} (browse it with `list-samples`)",
+                self.name,
+                lib.describe(PackKind::SamplePack)
             ));
         }
         let src = lib.samples(&self.name).ok_or_else(|| {
             format!(
-                "sample `{}`: its audio could not be read from the baked library",
-                self.name
+                "sample `{}`: its audio could not be read from {}",
+                self.name,
+                lib.describe(PackKind::SamplePack)
             )
         })?;
         if src.is_empty() {
@@ -303,7 +307,7 @@ impl SamplePlacement {
     }
 
     /// Render this layer into a fresh mono buffer of `clip_samples` samples, erroring
-    /// when the baked library does not carry the placed sample.
+    /// when the run's pack does not carry the placed sample.
     fn render(
         &self,
         params: &RenderParams,
@@ -582,7 +586,7 @@ impl SfxProject {
 }
 
 /// Mix a folded project down to interleaved PCM at `params`. `library` supplies the
-/// baked samples for any placed layers, so a pure-synth render passes `None`. A placed
+/// pack's samples for any placed layers, so a pure-synth render passes `None`. A placed
 /// layer naming a sample the library does not carry is an error naming that sample.
 /// Interleaved by channel; for stereo, `[l0, r0, l1, r1, …]`.
 pub fn render_sfx(

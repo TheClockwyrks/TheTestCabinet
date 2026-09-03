@@ -12,6 +12,7 @@ use crate::effect::Effect;
 use crate::format::{Channels, RenderParams};
 use crate::midi::{MidiNote, MidiScore, MidiTrack, TICKS_PER_QUARTER};
 use crate::sample::SampleLibrary;
+use crate::staged::PackKind;
 use crate::synth::{EnvCurve, Envelope, Voice, Wave};
 
 /// The default tempo when a piece sets none.
@@ -442,9 +443,9 @@ struct SampledInstrument {
 }
 
 /// Resolve an instrument name to a playable voice. A synth waveform name maps to that
-/// oscillator; otherwise the name addresses a baked bank instrument and plays its
-/// sample. A name that is neither is an error naming the track it was declared on, so
-/// a typo or a bank the run does not carry is reported rather than played as some
+/// oscillator; otherwise the name addresses an instrument in the run's bank and plays
+/// its sample. A name that is neither is an error naming the track it was declared on,
+/// so a typo or a bank the run does not carry is reported rather than played as some
 /// other instrument.
 fn resolve_instrument(
     track: &str,
@@ -462,16 +463,22 @@ fn resolve_instrument(
     load_bank_instrument(instrument, library)
         .map(Instrument::Sample)
         .ok_or_else(|| {
+            let bank = match library.filter(|lib| !lib.is_empty()) {
+                Some(lib) => format!(
+                    "an instrument in {} (browse it with `list-instruments`)",
+                    lib.describe(PackKind::InstrumentBank)
+                ),
+                None => PackKind::InstrumentBank.none_staged(),
+            };
             format!(
                 "track `{track}`: instrument `{instrument}` is neither a synth waveform \
-                 (sine, square, saw, triangle, noise) nor an instrument in the baked \
-                 bank (browse it with `list-instruments`)"
+                 (sine, square, saw, triangle, noise) nor {bank}"
             )
         })
 }
 
-/// Load a bank instrument's baked sample, or `None` if there is no library, no entry
-/// named `instrument` (matched case-sensitively, as authored), or no baked audio.
+/// Load a bank instrument's sample, or `None` if there is no library, no entry named
+/// `instrument` (matched case-sensitively, as authored), or no audio behind it.
 fn load_bank_instrument(
     instrument: &str,
     library: Option<&SampleLibrary>,
