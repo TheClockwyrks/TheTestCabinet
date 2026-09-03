@@ -83,8 +83,15 @@ export default defineConfig({
     // on a host where the whole run was already lost; below that, no correct
     // build loses a point to the clock. A hung build is still bounded, twice over.
     testTimeout: 300_000,
-    // A hook opens a page on the shared browser and loads the built site in it.
-    // The same reasoning applies, against a much smaller cost.
-    hookTimeout: 120_000,
+    // A hook reaches the shared browser, takes a page off it, loads the built
+    // site in that page, and waits for the surface and the recorder. The same
+    // reasoning applies, and one thing more: this allowance has to be wider than
+    // every ceiling the project itself sets, or the last of them is decided here
+    // instead. A hook that runs out reports that a hook ran out; the ceilings
+    // report which wait was crossed and whether it was the host or the build that
+    // crossed it, which is the account a reviewer needs. Connecting, loading, the
+    // surface and the recorder are capped at 30, 60, 30 and 30 seconds, so 150
+    // seconds is the most a hook can honestly spend, and this sits at twice that.
+    hookTimeout: 300_000,
   },
 });

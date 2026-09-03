@@ -120,6 +120,42 @@ const CHROMIUM_ARGS = [
 ];
 
 /**
+ * How long Chromium is given to come up, in milliseconds.
+ *
+ * Playwright's own default here is thirty seconds, and that is a deadline on the
+ * HOST: starting a browser is process creation, a sandbox and a first paint, all
+ * of which the machine's other work slows down, and none of which is a claim
+ * about the build being validated. This launch happens once in `globalSetup`, so
+ * crossing that default does not cost a point — it fails the whole project before
+ * a single check runs, and every point it decides reads `ran=false`, which is the
+ * least informative outcome a validator has.
+ *
+ * Five minutes, which is the ceiling `vitest.config.ts` gives a check, and which a
+ * browser that starts pays none of because `launchServer` returns the moment it is
+ * up. The one thing it must stay is FINITE, so a host with no usable Chromium at
+ * all still falls through to the next strategy and then to the error below rather
+ * than hanging.
+ */
+const LAUNCH_TIMEOUT_MS = 300_000;
+
+/**
+ * How long a suite worker is given to reach the browser `globalSetup` started.
+ *
+ * Playwright leaves this one with NO deadline at all, which is the same defect
+ * from the other side: a worker that can never reach the browser waits until
+ * vitest's hook budget runs out, and what a reviewer is then shown is a hook that
+ * expired rather than a browser that was unreachable.
+ *
+ * Thirty seconds. The endpoint is a loopback WebSocket handshake to a process
+ * this project has already watched come up, which costs milliseconds, so this is
+ * three orders of magnitude of headroom; and it sits well inside the hook budget
+ * `vitest.config.ts` states, so the account a reviewer reads is this project's
+ * rather than vitest's. A worker that crosses it has learned nothing about the
+ * build, and {@link connectChromium}'s caller reports it as the host fault it is.
+ */
+const CONNECT_TIMEOUT_MS = 30_000;
+
+/**
  * Launch Chromium as a SERVER, so every suite worker can connect to the one
  * browser process this project holds.
  *
@@ -153,6 +189,7 @@ export async function launchChromiumServer(): Promise<BrowserServer> {
     try {
       return await chromium.launchServer({
         args: CHROMIUM_ARGS,
+        timeout: LAUNCH_TIMEOUT_MS,
         ...attempt.options,
       });
     } catch (error) {
@@ -161,13 +198,20 @@ export async function launchChromiumServer(): Promise<BrowserServer> {
       );
     }
   }
+  // A fact about the machine, not about the build. Nothing has run yet, so no
+  // point can be failed for it: `globalSetup` raising leaves the whole suite run
+  // with no reports, which the runner records as inconclusive rather than as a
+  // build that lost every point.
   throw new Error(
-    `refract: could not launch Chromium; tried:\n${failures.join("\n")}`,
+    `refract: could not start a browser to validate the build in, on any strategy. ` +
+      `That is a fact about this host rather than about the build. Tried:\n${failures.join(
+        "\n",
+      )}`,
   );
 }
 
 /** Connect to the browser `globalSetup` launched, from inside a suite worker. */
 export async function connectChromium(wsEndpoint: string) {
   const chromium = await importChromium();
-  return chromium.connect(wsEndpoint);
+  return chromium.connect(wsEndpoint, { timeout: CONNECT_TIMEOUT_MS });
 }

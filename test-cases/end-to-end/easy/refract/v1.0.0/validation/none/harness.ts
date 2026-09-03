@@ -54,6 +54,7 @@ import { expect, inject } from "vitest";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { connectChromium } from "./chromium";
 import { fail } from "./assert";
+import { hostFault } from "./host";
 import { ACTION_KEYS, OVERLAY_KEY, type ActionName } from "./constants";
 import {
   CHANNELS,
@@ -325,8 +326,6 @@ export interface Harness {
     predicate: (snapshot: RefractSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Hand the game back to its own frame loop for `ms` of real time, then take it back. */
-  runFor(ms: number): Promise<void>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): Promise<void>;
@@ -442,10 +441,43 @@ const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
  */
 const SURFACE_TIMEOUT_MS = 30_000;
 
+/**
+ * The ceiling on every operation PLAYWRIGHT itself times against the page.
+ *
+ * WHY THIS CONSTANT EXISTS. Playwright leaves a deadline on anything it has to
+ * wait for — a navigation, a screenshot, a keyboard event delivered to a busy
+ * renderer — and that deadline defaults to thirty seconds. Nothing here asked for
+ * it, so nothing here reasoned about it, and it is exactly the mistake
+ * {@link SURFACE_TIMEOUT_MS} was raised to correct, arriving by the back door:
+ * every one of those waits is a wait on the HOST, and none of them is a claim
+ * about the build. A build whose canvas the compositor was slow to hand back is a
+ * build failed for the load average.
+ *
+ * A MINUTE, on the reasoning that set the surface ceiling at thirty seconds and
+ * against the same measurements. Each of these waits ends the instant the page
+ * answers, so a healthy build pays none of it however high it is set; what the
+ * number has to be is large enough that a loaded host cannot cross it and small
+ * enough that every ceiling this project sets still fits inside the hook budget
+ * `vitest.config.ts` states, so a page that genuinely never answers fails here,
+ * where this project can say what happened, rather than on the runner. This
+ * project holds eight pages of one browser open at once on a machine that is also
+ * running a model's build, and a crossing into one measured 6 ms idle and 90 ms
+ * at load average 650.
+ */
+const PAGE_DEADLINE_MS = 60_000;
+
 let browserPromise: Promise<Browser> | null = null;
 
 async function sharedBrowser(): Promise<Browser> {
-  browserPromise ??= connectChromium(inject("refractBrowserWs"));
+  // A failure is not cached as a rejected promise: the next harness asks the
+  // browser again rather than inheriting one moment's failure for the rest of
+  // this worker's life.
+  browserPromise ??= connectChromium(inject("refractBrowserWs")).catch(
+    (error: unknown) => {
+      browserPromise = null;
+      throw error;
+    },
+  );
   return browserPromise;
 }
 
@@ -565,7 +597,10 @@ export function failSurface(fault: string): never {
  * is: the surface never appeared, or it appeared without an operation the
  * specification requires.
  */
-async function readSurfaceFault(page: Page): Promise<string | null> {
+async function readSurfaceFault(
+  page: Page,
+  loaded: boolean,
+): Promise<string | null> {
   try {
     await page.waitForFunction(
       (handle) =>
@@ -575,7 +610,13 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
       { timeout: SURFACE_TIMEOUT_MS },
     );
   } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
+    // Said as it happened. A page that never fired `load` is not a page that
+    // loaded, and a reading that claimed otherwise would send a reviewer looking
+    // for the wrong fault.
+    const since = loaded
+      ? "after the page loaded"
+      : `after the page was requested, which had still not fired \`load\` ${PAGE_DEADLINE_MS / 1000}s in`;
+    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s ${since}`;
   }
   const missing = await page.evaluate(
     ([handle, ops]) => {
@@ -597,6 +638,37 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
 /* ---- Building one --------------------------------------------------------- */
 
 /**
+ * Put the built site in `page`, and say whether `load` had fired by the time the
+ * page was handed back.
+ *
+ * The `load` EVENT is not something this case requires of a build, so it is not
+ * something this project fails a build for missing. What it is, is the moment
+ * after which a conformant build has certainly installed its surface — which is
+ * what the case does require, and what {@link readSurfaceFault} reads. So a
+ * navigation that runs out of {@link PAGE_DEADLINE_MS} hands over to that reading
+ * rather than throwing: a build that wedged its own main thread installs nothing
+ * and is failed there on its own account, and a host that was merely slow gets
+ * the surface ceiling on top of the one it already had.
+ *
+ * A navigation that fails any OTHER way never reached the build at all. The
+ * server being asked is this project's own, on loopback, reading files off the
+ * same disk the build was produced on; nothing a build does decides whether it
+ * answers, so a check that meets one decides nothing and says so.
+ */
+async function loadBuild(page: Page): Promise<boolean> {
+  try {
+    await page.goto(inject("refractUrl"), { waitUntil: "load" });
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") return false;
+    const detail = error instanceof Error ? error.message : String(error);
+    hostFault(
+      `the built site could not be fetched from this project's own server (${detail.split("\n")[0]})`,
+    );
+  }
+}
+
+/**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
  *
@@ -611,8 +683,19 @@ export async function createHarness(
   const cssHeight = options.cssHeight ?? STAGE_H;
   const dpr = options.dpr ?? 1;
   const clock = options.clock ?? new ConstantClock(TICK_MS);
-  const context = await contextFor(cssWidth, cssHeight, dpr);
-  const page = await context.newPage();
+  // Reaching the browser and taking a page off it is the project's scaffolding
+  // rather than anything the build participates in, so a failure here leaves the
+  // check undecided instead of failing a build that was never asked anything.
+  let page: Page;
+  try {
+    const context = await contextFor(cssWidth, cssHeight, dpr);
+    page = await context.newPage();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    hostFault(
+      `no page could be opened on the browser this project started (${detail.split("\n")[0]})`,
+    );
+  }
   openPages.add(page);
 
   // Whatever this page throws or logs as an error while THIS harness drives it.
@@ -626,9 +709,14 @@ export async function createHarness(
     if (message.type() === "error") pageErrors.push(message.text());
   });
 
-  await page.goto(inject("refractUrl"), { waitUntil: "load" });
+  // Off Playwright's own thirty-second defaults before anything is asked of the
+  // page: those are deadlines on the host, and this project sets its own.
+  page.setDefaultTimeout(PAGE_DEADLINE_MS);
+  page.setDefaultNavigationTimeout(PAGE_DEADLINE_MS);
 
-  const surfaceFault = await readSurfaceFault(page);
+  const loaded = await loadBuild(page);
+
+  const surfaceFault = await readSurfaceFault(page, loaded);
   const refuse = (): never => failSurface(surfaceFault ?? "");
 
   const call = async (operation: string, args: unknown[]): Promise<unknown> => {
@@ -882,44 +970,6 @@ export async function createHarness(
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
       }
       return { hit: false, frames, snapshot };
-    },
-
-    async runFor(ms) {
-      if (surfaceFault !== null) refuse();
-      // The one thing here that depends on real elapsed time, so the one thing a
-      // browser's own idea of which page matters can distort. The launch already
-      // turns the throttling off; bringing the page forward as well means this
-      // does not rest on a flag alone.
-      await page.bringToFront().catch(() => undefined);
-      await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as { __refractRec: { setMode(m: string): void } }
-          ).__refractRec.setMode("raf");
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[handle].setAutoStep(true);
-        },
-        [HANDLE] as const,
-      );
-      await page.waitForTimeout(ms);
-      await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[handle].setAutoStep(false);
-          (
-            window as unknown as { __refractRec: { setMode(m: string): void } }
-          ).__refractRec.setMode("manual");
-        },
-        [HANDLE] as const,
-      );
     },
 
     hold: (code) => page.keyboard.down(code),
