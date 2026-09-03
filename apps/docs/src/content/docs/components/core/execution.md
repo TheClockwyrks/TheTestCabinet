@@ -160,9 +160,9 @@ from `/opt/audio`, which staging writes once the container has started.
   default is the first pack of that kind in declaration order, resolved on the
   host, so a run's palette is readable in the container as data rather than
   recomputed from a rule.
-- The staged tree lands outside the seeded repository, so the raw clips stay out
-  of the model's workspace, its git history, and its collected tree. Only audio
-  the model produced ships in a run's results.
+- The staged tree lands outside the seeded repository, so nothing staging writes
+  is collected as the run's result: the raw clips stay out of the model's
+  workspace and its git history.
 - A run image declares that it accepts staged audio, and a run that stages audio
   reads that declaration back out of the started container. A mismatch fails the
   run at container start, before a harness session is spent, and names the image
