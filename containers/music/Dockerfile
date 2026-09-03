@@ -1,11 +1,14 @@
 # The music run-container image for The Test Cabinet.
 #
 # Every music run (a case with `asset_kind = "music"`) executes in this one image. It is
-# the base run-container image plus the baked-in `music` binary AND the baked-in
-# instrument banks — the fixed palettes of sample-based instruments the sequencer plays,
-# one per bank a case may name (see the asset-generation docs under
+# the base run-container image plus the baked-in `music` binary and nothing else: the
+# instrument bank the sequencer plays is NOT in this image. A run is staged with the
+# one bank its case names in `[audio] packs`, written into the started container at
+# `/opt/audio` (the empty, run-user-owned root the base image creates), so this image
+# is the same whatever a case declares and publishing a bank version needs no rebuild
+# of it. See the asset-generation docs under
 # `apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md` and the
-# sample-library section of `containers/README.md`). The audio tools render on the CPU,
+# sample-library section of `containers/README.md`. The audio tools render on the CPU,
 # so — like the sprite image and unlike the voxel family — this image needs no
 # Mesa/Vulkan runtime.
 #
@@ -36,7 +39,7 @@ ARG TOOLS_IMAGE=test-cabinet-tools:latest
 # this stage.
 FROM ${TOOLS_IMAGE} AS tools
 
-# --- The run image: the base, plus `music` + the instrument banks -----------
+# --- The run image: the base, plus the `music` binary -----------------------
 # `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
@@ -46,35 +49,3 @@ FROM ${BASE_IMAGE}
 # node`, `WORKDIR /work`, and the keep-alive CMD.
 COPY --from=tools /out/music /usr/local/bin/music
 
-# --- Bake in the instrument banks the `music` sequencer plays ---------------
-#
-# The audio is not committed to this repository: the clip bytes live in the private
-# audio object store, and `containers/build.sh` stages the tree this image bakes with
-# `scripts/stage-audio-image.mjs` before the build, verifying every object against
-# `containers/sample-packs/objects.lock.json` as it lands. `AUDIO_STAGE_DIR` is that
-# staged tree's path within the build context (the repository root):
-#   --build-arg AUDIO_STAGE_DIR=dist/audio-image/<hash>/audio
-# Its default points nowhere, so a build that does not go through `build.sh` fails at
-# the COPY below rather than shipping an image with a missing palette.
-ARG AUDIO_STAGE_DIR=dist/audio-image/unstaged/audio
-
-# Copy the staged tree to the path the `audio-core` loader reads. It holds
-# `clips/<clip-id>.<profile-id>.wav` plus one `packs/<name>/pack.toml` per bank
-# (`gm-lite`, `cinematic`, `synthwave`), whose entries reference the shared clip files
-# relatively, so a clip several banks name is carried once (`load_pack` in
-# `crates/audio-core/src/sample.rs` resolves each entry's `file` against its pack
-# directory). The subdirectory name is the bank name a case selects by. Make it
-# world-readable for the unprivileged run user; COPY writes as root, so bracket it with
-# the root/node USER switch the base image's `USER node` otherwise leaves in force.
-USER root
-COPY ${AUDIO_STAGE_DIR} /opt/audio
-RUN chmod -R a+rX /opt/audio
-USER node
-
-# Point the `music` binary at the banks ROOT; the run's `instrument_bank` name selects
-# the subdirectory under it (see `select_pack_dir` in `crates/audio-core/src/config.rs`),
-# and a bank with no subdirectory there is a load error rather than some other palette.
-# `TCAB_INSTRUMENT_BANK` names the bank a run gets when its config names none. Kept here
-# so the image, not a run's seeded config, owns where the palettes live.
-ENV TCAB_INSTRUMENT_BANK_DIR=/opt/audio/packs
-ENV TCAB_INSTRUMENT_BANK=gm-lite

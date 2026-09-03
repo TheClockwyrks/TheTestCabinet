@@ -2,10 +2,13 @@
 #
 # Every sample-library sound-effect run (a case with `asset_kind = "sfx-sample"`)
 # executes in this one image. It is the base run-container image plus the baked-in
-# `sfx-sample` binary AND a baked-in sample pack — the fixed palette of library clips
-# the tool mixes over (see the asset-generation docs under
+# `sfx-sample` binary and nothing else: the sample pack the tool mixes over is NOT in
+# this image. A run is staged with the one pack its case names in `[audio] packs`,
+# written into the started container at `/opt/audio` (the empty, run-user-owned root
+# the base image creates), so this image is the same whatever a case declares and
+# publishing a pack version needs no rebuild of it. See the asset-generation docs under
 # `apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md` and the
-# sample-library section of `containers/README.md`). The audio tools render on the CPU,
+# sample-library section of `containers/README.md`. The audio tools render on the CPU,
 # so — like the sprite image and unlike the voxel family — this image needs no
 # Mesa/Vulkan runtime.
 #
@@ -36,7 +39,7 @@ ARG TOOLS_IMAGE=test-cabinet-tools:latest
 # this stage.
 FROM ${TOOLS_IMAGE} AS tools
 
-# --- The run image: the base, plus `sfx-sample` + the sample pack -----------
+# --- The run image: the base, plus the `sfx-sample` binary ------------------
 # `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
@@ -46,34 +49,3 @@ FROM ${BASE_IMAGE}
 # sets `USER node`, `WORKDIR /work`, and the keep-alive CMD.
 COPY --from=tools /out/sfx-sample /usr/local/bin/sfx-sample
 
-# --- Bake in the sample pack the `sfx-sample` tool mixes over ---------------
-#
-# The audio is not committed to this repository: the clip bytes live in the private
-# audio object store, and `containers/build.sh` stages the tree this image bakes with
-# `scripts/stage-audio-image.mjs` before the build, verifying every object against
-# `containers/sample-packs/objects.lock.json` as it lands. `AUDIO_STAGE_DIR` is that
-# staged tree's path within the build context (the repository root):
-#   --build-arg AUDIO_STAGE_DIR=dist/audio-image/<hash>/audio
-# Its default points nowhere, so a build that does not go through `build.sh` fails at
-# the COPY below rather than shipping an image with an empty palette.
-ARG AUDIO_STAGE_DIR=dist/audio-image/unstaged/audio
-
-# Copy the staged tree to the path the `audio-core` loader reads. The tree holds
-# `clips/<clip-id>.<profile-id>.wav` plus one `packs/<name>/pack.toml` per pack, whose
-# entries reference the shared clip files relatively, so a clip several packs name is
-# carried once (`load_pack` in `crates/audio-core/src/sample.rs` resolves each entry's
-# `file` against its pack directory). Make it world-readable for the unprivileged run
-# user; COPY writes as root, so bracket it with the root/node USER switch the base
-# image's `USER node` otherwise leaves in force.
-USER root
-COPY ${AUDIO_STAGE_DIR} /opt/audio
-RUN chmod -R a+rX /opt/audio
-USER node
-
-# Point the `sfx-sample` binary at the packs ROOT; the run's `sample_pack` name selects
-# the subdirectory under it (see `select_pack_dir` in `crates/audio-core/src/config.rs`),
-# and a pack with no subdirectory there is a load error rather than some other palette.
-# `TCAB_SAMPLE_PACK` names the palette a run gets when its config names none. Kept here
-# so the image, not a run's seeded config, owns where the palette physically lives.
-ENV TCAB_SAMPLE_PACK_DIR=/opt/audio/packs
-ENV TCAB_SAMPLE_PACK=combat-core

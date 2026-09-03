@@ -11,10 +11,10 @@
 //                        write-scoped PUBLISH credentials.
 //   - `headObject`     — the PUBLISH side again: cheaply answer "is this object
 //                        already there, and how big is it" before re-uploading.
-//   - `getObject`      — the BUILD side: `scripts/stage-audio-image.mjs` downloads
-//                        each object it bakes and verifies it against
-//                        `objects.lock.json`; needs only the read-scoped PRESIGN
-//                        credentials.
+//   - `getObject`      — the STAGING side: `scripts/stage-audio-store.mjs` downloads
+//                        every published object into the audio store and verifies
+//                        each against `objects.lock.json`; needs only the
+//                        read-scoped PRESIGN credentials.
 //   - `presignGetUrl`  — a short-lived anonymous GET URL, for the cases where the
 //                        bytes must be fetched by something that cannot sign (a
 //                        Docker `ADD`, a browser); no credential enters an image

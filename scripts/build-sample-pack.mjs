@@ -494,7 +494,7 @@ async function main() {
       `Commit ${OBJECTS_LOCK_PATH} together with the manifest change, so CI and other`,
     );
     log(
-      "machines can stage the image's audio tree with scripts/stage-audio-image.mjs.",
+      "machines can stage the audio store with scripts/stage-audio-store.mjs.",
     );
   } else {
     log("Rehearsal complete — nothing was uploaded. Re-run with --publish.");

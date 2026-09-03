@@ -61,6 +61,12 @@
 #                             #   image is named but no base image is present locally yet. This is
 #                             #   how deployments/local/Makefile rebuilds one test type — or one
 #                             #   asset-generation kind — without paying for the whole set.
+#   ./build.sh audio-store    # build the data-only AUDIO STORE image: every published audio
+#                             #   pack, which a run's declared packs are staged out of. Not a run
+#                             #   image, so it is absent from image-names.sh and a plain
+#                             #   `./build.sh` skips it — staging it downloads the clips from the
+#                             #   audio object store and needs the presign credentials. Under
+#                             #   PUSH=1 a full build includes it.
 #   ./build.sh --gg-selfcheck <PATH-TO-GG> [<name>...]
 #                             #   additionally drive `gg selfcheck` inside each environment
 #                             #   representative it builds, BEFORE that image is pushed. See
@@ -298,8 +304,8 @@ readonly BASE_IMAGE="${IMAGE_NAME_PREFIX}base:${IMAGE_TAG}"
 # a Rust toolchain of their own), so it stays in lockstep with the base within a build.
 readonly BASE_WASM_IMAGE="${IMAGE_NAME_PREFIX}base-wasm:${IMAGE_TAG}"
 # The full-stack-2d image tag. Referenced by name because the game-jam image is built
-# `FROM` it (it inherits the six asset binaries, the audio packs, and the Rust/wasm
-# toolchain), so the jam image stays in lockstep with full-stack-2d within a build.
+# `FROM` it (it inherits the six asset binaries and the Rust/wasm toolchain), so the
+# jam image stays in lockstep with full-stack-2d within a build.
 readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
 # The shared asset-tooling BUILDER image. Not a run image and never pushed: it exists
 # only as a `COPY --from` source, holding every asset-generation binary compiled in a
@@ -339,6 +345,21 @@ readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 # Because it is not in image-names.sh, the `manifest` job in build-containers.yml — which
 # is driven by that list — fuses this one by name, immediately after its loop. See there.
 readonly GG_TOOLCHAINS_IMAGE="${IMAGE_NAME_PREFIX}gg-toolchains:${IMAGE_TAG}"
+# The AUDIO STORE image: every published audio pack, as data. Like GG_TOOLCHAINS_IMAGE it
+# is not a RUN image — nothing executes in it and nothing resolves it for a run; it is a
+# `FROM scratch` tree that the DRIVER image copies in at `/opt/tcab-audio` and that
+# `scripts/fetch-audio-store.sh` pulls onto a local checkout. And like it, it IS pushed,
+# and it is deliberately absent from image-names.sh for the same mechanical reason:
+# `build_one` dispatches on that list by name, so an entry there would route it through
+# `build_asset_image`. The manifest job in build-containers.yml fuses this one by name too.
+#
+# A run container is given the packs its test case declares in `[audio] packs`, staged out
+# of this store when the container starts (`crates/core/src/audio_stage.rs`). Publishing
+# the store as its own image is what keeps the R2 presign credentials to ONE build: the
+# driver image, `make -C deployments/local images` and a contributor's `./build.sh` all
+# obtain the store by pulling a public image, so none of them needs a credential and a
+# clean clone can build every run image. See containers/audio-store/Dockerfile.
+readonly AUDIO_STORE_IMAGE="${IMAGE_NAME_PREFIX}audio-store:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 
@@ -441,6 +462,56 @@ build_gg_toolchains() {
 		local reference
 		reference="$(push_and_pin "${GG_TOOLCHAINS_IMAGE}" gg-toolchains)"
 		echo "==> gg-toolchains reference: ${reference}"
+	fi
+}
+
+# The path, within the build context, that the audio store is staged to. The stager owns
+# the tree under it (`tree/` beside a content-addressed download cache in `.cache/`), and
+# the root `.dockerignore` re-includes exactly this directory so the cache never enters a
+# build context. Written out here rather than read from the stager's stdout: the tree is
+# the same one every time, so a fixed path is one fewer contract between the two.
+readonly AUDIO_STORE_OUT="dist/audio-store"
+readonly AUDIO_STORE_STAGE_DIR="${AUDIO_STORE_OUT}/tree"
+
+# Build the audio store: every published audio pack, as a data-only image.
+#
+# This is NOT a run image (see where AUDIO_STORE_IMAGE is defined, and
+# containers/audio-store/Dockerfile). It is the one build in this repository that reads
+# the private audio object store: `scripts/stage-audio-store.mjs` presigns a SHORT-LIVED
+# read-only GET for every published object and verifies each against
+# `containers/sample-packs/objects.lock.json` before it lands, so no credential ever
+# enters an image layer and the build has no path to the original source.
+#
+# EVERY published pack must be complete: a clip missing from the registry, an object with
+# no record in the lock, a failed download, or a digest mismatch aborts the stager, and
+# that is a hard error here rather than a skip — a partial store would stage a run with a
+# palette its case declared and did not get. Publish with
+# `node scripts/build-sample-pack.mjs <pack> --publish` and commit the updated
+# `objects.lock.json` before building this image.
+build_audio_store() {
+	echo "==> staging the audio store into ${AUDIO_STORE_STAGE_DIR}"
+	if ! node "${SCRIPT_DIR}/../scripts/stage-audio-store.mjs" \
+		--out "${SCRIPT_DIR}/../${AUDIO_STORE_OUT}"; then
+		echo "ERROR: cannot build ${AUDIO_STORE_IMAGE}: staging the audio store failed." >&2
+		echo "       Every published pack must be complete (node scripts/build-sample-pack.mjs <pack> --publish)," >&2
+		echo "       and this build needs node plus the CLOUDFLARE_AUDIO_R2_PRESIGN credentials." >&2
+		echo "       No other image build needs them: the store travels as this image." >&2
+		# `return 1` under `set -e` ends the build here, which is the point: an image
+		# published from a partial store would stage a run with a palette its case
+		# declared and did not get.
+		return 1
+	fi
+
+	echo "==> building ${AUDIO_STORE_IMAGE} (FROM scratch; the published audio packs)"
+	"$DOCKER" build \
+		--build-arg "AUDIO_STAGE_DIR=${AUDIO_STORE_STAGE_DIR}" \
+		-t "${AUDIO_STORE_IMAGE}" \
+		-f "${SCRIPT_DIR}/audio-store/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${AUDIO_STORE_IMAGE}" audio-store)"
+		echo "==> audio-store reference: ${reference}"
 	fi
 }
 
@@ -833,129 +904,28 @@ build_asset_image() {
 	fi
 }
 
-# The audio packs each image bakes, by `<name>@<version>` ref into
-# `containers/sample-packs/`. One list per image so a pack's version is stated once:
-# `sfx-sample` mixes over the combat sample pack, `music` plays every instrument bank
-# (a case's `instrument_bank` selects which), and full-stack-2d carries BOTH tools, so
-# it bakes the sample pack AND every bank — a full-stack case may name any of them, and
-# a bank that is not baked is a hard load error at run time, not a fallback.
-AUDIO_PACKS_SFX_SAMPLE=("combat-core@0.1.0")
-AUDIO_PACKS_MUSIC=("gm-lite@0.1.0" "cinematic@0.1.0" "synthwave@0.1.0")
-AUDIO_PACKS_FULL_STACK_2D=(
-	"combat-core@0.1.0"
-	"gm-lite@0.1.0"
-	"cinematic@0.1.0"
-	"synthwave@0.1.0"
-)
-
-# Stage the audio tree an image bakes and echo its path RELATIVE TO THE BUILD CONTEXT.
+# Build the 2D full-stack image: base-wasm plus the six 2D asset-generation binaries
+# (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music). Identical to a plain
+# asset image except for its parent — it is `FROM` base-wasm rather than the base, so a
+# full-stack build may author its simulation core in Rust — which is why it has a builder
+# of its own rather than going through `build_asset_image`.
 #
-# The clip bytes are not committed to this repository: they live in the private audio
-# object store as already-normalized objects, and `scripts/stage-audio-image.mjs`
-# materializes the tree an image bakes under `dist/audio-image/<hash>/audio` — one
-# `clips/<clip-id>.<profile-id>.wav` per clip, shared across the packs that name it,
-# plus one `packs/<name>/pack.toml` per pack. The stager presigns a SHORT-LIVED
-# read-only GET for each object (needs the PRESIGN credentials in the environment —
-# see `scripts/lib/r2.mjs`) and verifies every download against
-# `containers/sample-packs/objects.lock.json` before it lands, so no credential ever
-# enters an image layer and the build has no path to the original source.
-#
-# EVERY named pack MUST be published: a clip missing from the registry, an object with
-# no record in `objects.lock.json`, a failed download, or a digest mismatch aborts the
-# stager, and that is a HARD error here rather than a skip — an audio image is never
-# shipped with a missing or partial palette. Publish with
-# `node scripts/build-sample-pack.mjs <pack> --publish` and commit the updated
-# `objects.lock.json` before building the image.
-#
-# The staged tree must be reachable by the Dockerfile's `COPY`, which resolves against
-# the build context (the repository root, as for every image here), so this echoes a
-# context-relative path and rejects a stage root outside the repository instead of
-# letting the COPY fail obscurely. The root `.dockerignore` re-includes
-# `/dist/audio-image/*/audio` for exactly this, which is the staged tree and nothing
-# else beside it.
-#
-# This runs inside a command substitution (its stdout IS the path), where an `exit`
-# would end only the subshell, so it reports to stderr and RETURNS non-zero; the caller
-# turns that into the build's failure.
-#
-# Arguments: <image> <pack-ref>...
-stage_audio_tree() {
-	local image="$1"
-	shift
-
-	local root
-	if ! root="$(node "${SCRIPT_DIR}/../scripts/stage-audio-image.mjs" "$@")"; then
-		echo "ERROR: cannot build ${image}: staging the audio tree for $* failed." >&2
-		echo "       Every pack it names must be published (node scripts/build-sample-pack.mjs <pack> --publish)," >&2
-		echo "       and this build needs node plus the CLOUDFLARE_AUDIO_R2_PRESIGN credentials." >&2
-		return 1
-	fi
-
-	local repo_root
-	repo_root="$(cd "${SCRIPT_DIR}/.." && pwd)"
-	if [[ "${root}" != "${repo_root}/"* ]]; then
-		echo "ERROR: cannot build ${image}: the staged audio tree" >&2
-		echo "       ${root}" >&2
-		echo "       is outside the build context ${repo_root}, so the image's COPY cannot reach it." >&2
-		echo "       Leave the stager's output directory at its dist/audio-image default." >&2
-		return 1
-	fi
-
-	echo "${root#"${repo_root}/"}/audio"
-}
-
-# Build an image that bakes an audio palette (sfx-sample / music / full-stack-2d).
-#
-# Unlike a plain asset image, the audio these tools read is not in the build context
-# until it is staged: `stage_audio_tree` above downloads and verifies it, and the
-# resulting context-relative directory is passed as `AUDIO_STAGE_DIR` for the
-# Dockerfile to `COPY` to `/opt/audio`. A failure staging ANY named pack fails the
-# build, so an image either carries its complete palette or is not built.
-#
-# Arguments: <image-name> <base-image> <pack-ref>...
-build_audio_image() {
-	local name="$1" base="$2"
-	shift 2
-	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
-
-	# `|| exit 1` rather than leaning on `set -e`: the helper has already said what went
-	# wrong, and the build must stop here rather than build an image with no palette.
-	local stage_dir
-	stage_dir="$(stage_audio_tree "${image}" "$@")" || exit 1
-
-	echo "==> building ${image} (FROM ${base}) with audio packs: $*"
+# It bakes NO audio. `sfx-sample` and `music` read the packs the run's test case declares
+# in `[audio] packs`, staged into `/opt/audio` when the container starts, so this build
+# needs no audio object-store credentials and a new pack version needs no rebuild of it.
+build_full_stack_2d() {
+	echo "==> building ${FULL_STACK_2D_IMAGE} (FROM ${BASE_WASM_IMAGE})"
 	"$DOCKER" build \
-		--build-arg "BASE_IMAGE=${base}" \
+		--build-arg "BASE_IMAGE=${BASE_WASM_IMAGE}" \
 		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
-		--build-arg "AUDIO_STAGE_DIR=${stage_dir}" \
-		-t "${image}" \
-		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
+		-t "${FULL_STACK_2D_IMAGE}" \
+		-f "${SCRIPT_DIR}/full-stack-2d/Dockerfile" "${SCRIPT_DIR}/.."
 
 	if [[ -n "${PUSH}" ]]; then
 		local reference
-		reference="$(push_and_pin "${image}" "${name}")"
-		echo "==> ${name} reference: ${reference}"
+		reference="$(push_and_pin "${FULL_STACK_2D_IMAGE}" full-stack-2d)"
+		echo "==> full-stack-2d reference: ${reference}"
 	fi
-}
-
-# Build the music image, which bakes EVERY instrument bank as a per-name subdirectory
-# under `/opt/audio/packs`, so a `music` case's `instrument_bank` selects which palette
-# it plays (see `select_pack_dir` in crates/audio-core/src/config.rs and
-# containers/music/Dockerfile). A bank with no subdirectory of its own is a load error,
-# not a fallback to some other palette, so every bank a case may name is staged here.
-build_music_image() {
-	build_audio_image music "${BASE_IMAGE}" "${AUDIO_PACKS_MUSIC[@]}"
-}
-
-# Build the 2D full-stack image: base-wasm plus the six 2D asset-generation binaries
-# (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the audio palette
-# those tools read. It is the union of a plain asset image and BOTH audio images, so it
-# stages the combat sample pack `sfx-sample` mixes over together with every instrument
-# bank `music` can play, and the one Dockerfile copies that shared tree to `/opt/audio`.
-# As for the audio images, a pack that cannot be staged is a HARD error: a full-stack
-# image is never shipped with a missing audio palette.
-build_full_stack_2d() {
-	build_audio_image full-stack-2d "${BASE_WASM_IMAGE}" "${AUDIO_PACKS_FULL_STACK_2D[@]}"
 }
 
 # Build the game-jam image: the full-stack-2d image plus nothing but its own
@@ -963,10 +933,8 @@ build_full_stack_2d() {
 # build but not a full-stack test case, so it resolves its own image; giving it a
 # dedicated tag lets a deployment pin it independently. It is built `FROM` the
 # full-stack-2d image built alongside it (passed as the BASE_IMAGE build arg, the
-# local tag), so it inherits the six asset binaries, the baked audio packs, and the
-# Rust/wasm toolchain — and needs NO R2 credentials of its own (those packs are
-# already baked into the parent). The build context is the repository root like the
-# others.
+# local tag), so it inherits the six asset binaries and the Rust/wasm toolchain. The
+# build context is the repository root like the others.
 build_game_jam() {
 	local image="${IMAGE_NAME_PREFIX}game-jam:${IMAGE_TAG}"
 	echo "==> building ${image} (FROM ${FULL_STACK_2D_IMAGE})"
@@ -1049,31 +1017,23 @@ build_performance() {
 	fi
 }
 
-# Build one image by its short name, dispatching to the right builder: the sfx-sample
-# image carries the sample pack it mixes over; music bakes every instrument bank
-# (build_music_image); base, adversarial, and performance have dedicated builders;
-# everything else is a plain asset-generation image built `FROM` the base.
+# Build one image by its short name, dispatching to the right builder: base,
+# adversarial, performance, full-stack-2d, game-jam and blender have dedicated builders;
+# everything else — sfx-sample and music included, since neither carries a palette of its
+# own any more — is a plain asset-generation image built `FROM` the base.
 build_one() {
 	case "$1" in
 		base)         build_base ;;
 		base-wasm)    build_base_wasm ;;
 		adversarial)  build_adversarial ;;
 		performance)  build_performance ;;
-		# The full-stack-2d image bakes six binaries AND the audio palette they read,
-		# staged from the private audio object store at build time (see
-		# build_full_stack_2d). Every pack it names must be published first.
+		# The full-stack-2d image bakes six binaries and is `FROM` base-wasm rather
+		# than the base, so it has a builder of its own (see build_full_stack_2d).
 		full-stack-2d) build_full_stack_2d ;;
 		# The game-jam image is built `FROM` the full-stack-2d image (see
 		# build_game_jam); the layered build below ensures full-stack-2d is present
 		# first when only game-jam is selected.
 		game-jam)     build_game_jam ;;
-		# The sfx-sample and music images bake an audio palette staged from the private
-		# audio object store at build time (see build_audio_image). Every clip a named
-		# pack lists must be published and recorded in objects.lock.json first.
-		sfx-sample)   build_audio_image sfx-sample "${BASE_IMAGE}" "${AUDIO_PACKS_SFX_SAMPLE[@]}" ;;
-		# The music image bakes ALL instrument banks (one per-name subdir) so a case's
-		# `instrument_bank` selects its palette — see build_music_image.
-		music)        build_music_image ;;
 		# The Blender character image is self-contained (FROM ubuntu:26.04, NOT the base),
 		# so it has its own builder and takes no BASE_IMAGE arg — see build_blender.
 		blender)      build_blender ;;
@@ -1123,25 +1083,33 @@ readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-j
 image_present() { "$DOCKER" image inspect "$1" >/dev/null 2>&1; }
 
 # Resolve the selection: no args → everything; otherwise exactly the named images.
+# `BUILD_EVERYTHING` records which of the two it was, for the one rule below that turns on
+# the absence of a selection rather than on a name in it (the audio store).
 if [[ $# -eq 0 ]]; then
 	selected=("${ALL_NAMES[@]}")
+	readonly BUILD_EVERYTHING=1
 else
 	selected=("$@")
+	readonly BUILD_EVERYTHING=""
 fi
 
 # Reject an unknown name up front with a clear message, so a mistyped selection
 # (e.g. `voxel-anim` for `voxel-animation`) fails fast instead of building nothing.
 for name in "${selected[@]}"; do
 	found=""
-	# `tools` is accepted although it is not in ALL_NAMES: it is the shared tooling
-	# BUILDER, not a published run image, so `./build.sh tools` is a way to rebuild
-	# just it. The layer-0 rule below is what actually builds it (which is also why
-	# the main build loop skips it).
-	for known in "${ALL_NAMES[@]}" tools; do
+	# `tools` and `audio-store` are accepted although they are not in ALL_NAMES:
+	# neither is a published RUN image (that list is the set a run resolves), and both
+	# are built by a rule of their own, so `./build.sh tools` and
+	# `./build.sh audio-store` are the ways to rebuild just one of them. The layer
+	# rules below are what actually build them, which is also why the main build loop
+	# skips both.
+	for known in "${ALL_NAMES[@]}" tools audio-store; do
 		[[ "$name" == "$known" ]] && { found=1; break; }
 	done
 	if [[ -z "${found}" ]]; then
 		echo "unknown image '${name}'. Known images: ${ALL_NAMES[*]}" >&2
+		echo "       plus the two that are not run images: tools (the shared tooling builder)" >&2
+		echo "       and audio-store (the published audio packs)." >&2
 		exit 1
 	fi
 done
@@ -1152,7 +1120,7 @@ done
 # bake the variant on top of yesterday's sprite. `tools` sorts first — it is the builder
 # everything else copies out of.
 ordered=()
-for known in tools "${ALL_NAMES[@]}"; do
+for known in tools audio-store "${ALL_NAMES[@]}"; do
 	for name in "${selected[@]}"; do
 		if [[ "$name" == "$known" ]]; then
 			ordered+=("$known")
@@ -1199,7 +1167,12 @@ select_has() { local x; for x in "${selected[@]}"; do [[ "$x" == "$1" ]] && retu
 gg_parents=()
 targets=()
 for name in "${selected[@]}"; do
-	if [[ "$name" == *-gg ]]; then
+	if [[ "$name" == audio-store ]]; then
+		# Data only, `FROM scratch`: it is layered onto nothing, bakes no binary out of
+		# the tooling builder, and no image is built `FROM` it — so it contributes
+		# nothing to any rule below and must not drag a base build in behind it.
+		continue
+	elif [[ "$name" == *-gg ]]; then
 		parent="${name%-gg}"
 		if ! select_has "${parent}" && ! image_present "${IMAGE_NAME_PREFIX}${parent}:${IMAGE_TAG}"; then
 			gg_parents+=("${parent}")
@@ -1294,6 +1267,22 @@ if select_needs_gg_toolchains; then
 	build_gg_toolchains
 fi
 
+# Layer 0c — the audio store, which depends on nothing and which nothing depends on.
+# Built when it is NAMED, and on a full build only under PUSH: staging it needs node and
+# the audio object store's presign credentials, which a contributor does not have and now
+# does not need, so a plain local `./build.sh` skips it with a note and still builds every
+# run image. Nothing is lost by skipping it — no run image reads it, and a local `tcab
+# run` gets the store from the published image with scripts/fetch-audio-store.sh.
+if select_has audio-store; then
+	build_audio_store
+elif [[ -n "${BUILD_EVERYTHING}" ]]; then
+	if [[ -n "${PUSH}" ]]; then
+		build_audio_store
+	else
+		echo "==> skipping ${AUDIO_STORE_IMAGE} (staging it needs the CLOUDFLARE_AUDIO_R2_PRESIGN credentials; build it with ./build.sh audio-store)"
+	fi
+fi
+
 # Layer 1 — the base. `select_needs_base` is true whenever base-wasm or any of its
 # dependents is selected (none of them is `base`/`blender`), so this also covers the
 # base that base-wasm is `FROM`.
@@ -1316,8 +1305,7 @@ fi
 # selected it is built in the main loop below; but when only game-jam is selected we
 # must build its parent first so the `FROM ${FULL_STACK_2D_IMAGE}` resolves. An
 # existing full-stack-2d is reused untouched — select `full-stack-2d` explicitly to
-# rebuild it. (Building it needs the audio object store's presign credentials; a bare
-# game-jam rebuild against an already-present full-stack-2d does not.)
+# rebuild it.
 if ! select_has full-stack-2d \
 	&& select_needs_full_stack_2d \
 	&& ! image_present "${FULL_STACK_2D_IMAGE}"; then
@@ -1343,7 +1331,7 @@ done
 # handled above. The canonical order in image-names.sh places full-stack-2d before
 # game-jam, so a full build builds the parent before the jam image.
 for name in "${selected[@]}"; do
-	[[ "$name" == base || "$name" == base-wasm || "$name" == tools ]] && continue
+	[[ "$name" == base || "$name" == base-wasm || "$name" == tools || "$name" == audio-store ]] && continue
 	build_one "$name"
 done
 echo "==> done"

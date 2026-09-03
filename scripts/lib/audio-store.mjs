@@ -2,8 +2,8 @@
 // normalization profile identity, the object keys, and the pack manifests that name
 // clips by id.
 //
-// Three committed files describe every piece of audio the run-container images bake,
-// and this module is the only place that reads or writes them:
+// Three committed files describe every piece of audio a run can be staged with, and
+// this module is the only place that reads or writes them:
 //
 //   - `containers/sample-packs/clips.toml` — the CLIP REGISTRY. One entry per audio
 //     source, keyed by `id`, the sha256 of the original source bytes. It records only
@@ -437,6 +437,86 @@ export function resolveEntry(pack, entry, clips = readClips()) {
     profile_id: pack.profile_id,
     source_key: sourceKey(clip.id),
     normalized_key: normalizedKey(clip.id, pack.profile_id),
+  };
+}
+
+/**
+ * Duration in milliseconds of a PCM-16 WAV, from its header: the data chunk's byte
+ * length divided by the byte rate. `where` names the object in the error text.
+ *
+ * The loader decodes every file a pack manifest names at startup, so a stored object
+ * that is not a decodable PCM-16 WAV must fail where it is staged rather than inside a
+ * run. The duration is a manifest field (`duration_ms`), which is why it is read here
+ * and not left to the loader: `list-samples` shows it before a clip is ever decoded.
+ */
+export function wavDurationMs(bytes, where) {
+  const bad = (why) => {
+    throw new Error(`${where} is not a PCM-16 WAV (${why})`);
+  };
+  if (
+    bytes.length < 44 ||
+    bytes.toString("ascii", 0, 4) !== "RIFF" ||
+    bytes.toString("ascii", 8, 12) !== "WAVE"
+  ) {
+    bad("missing RIFF/WAVE header");
+  }
+  let byteRate = 0;
+  let dataLen = 0;
+  let off = 12;
+  while (off + 8 <= bytes.length) {
+    const id = bytes.toString("ascii", off, off + 4);
+    const size = bytes.readUInt32LE(off + 4);
+    if (id === "fmt " && off + 8 + 16 <= bytes.length) {
+      const format = bytes.readUInt16LE(off + 8);
+      const bits = bytes.readUInt16LE(off + 8 + 14);
+      if (format !== 1) bad(`audio format ${format}, expected 1 (PCM)`);
+      if (bits !== 16) bad(`${bits}-bit samples, expected 16`);
+      byteRate = bytes.readUInt32LE(off + 8 + 8);
+    } else if (id === "data") {
+      dataLen = size;
+    }
+    off += 8 + size + (size % 2);
+  }
+  if (byteRate === 0) bad("no fmt chunk");
+  if (dataLen === 0) bad("no data chunk");
+  return Math.round((dataLen / byteRate) * 1000);
+}
+
+/**
+ * The LOADER-facing manifest for one pack — the `pack.toml` written into the audio
+ * store, byte-copied from there into a run container, and read by `load_pack` in
+ * `crates/audio-core/src/sample.rs`.
+ *
+ * It carries the pack's identity (`name`, `version`, `kind`, which `check_identity`
+ * verifies against the ref a case pinned), its rendition format, and one `[[sample]]`
+ * per entry with the `name`, `tags`, `duration_ms`, `description` and `file` the loader
+ * reads plus the `root_note` and `pitched` the `music` sequencer needs. Entries keep
+ * manifest order.
+ *
+ * `file` reaches out of the pack directory into the SHARED clip directory
+ * (`../../clips/<clip-id>.<profile-id>.wav`), which is what lets a clip several packs
+ * name be stored once. The store and a run container use the same layout, so the
+ * relative path resolves identically in both and the file is copied rather than
+ * rewritten.
+ *
+ * `durations` maps a clip's file name to its `wavDurationMs`; the caller has the bytes.
+ */
+export function packManifest(pack, entries, durations) {
+  return {
+    name: pack.name,
+    version: pack.version,
+    kind: pack.kind,
+    sample_rate: pack.normalize.sample_rate,
+    channels: pack.normalize.channels,
+    sample: entries.map((entry) => ({
+      name: entry.name,
+      tags: entry.tags,
+      duration_ms: durations.get(entry.file),
+      description: entry.description,
+      file: `../../clips/${entry.file}`,
+      root_note: entry.root_note ?? 60,
+      pitched: entry.pitched,
+    })),
   };
 }
 

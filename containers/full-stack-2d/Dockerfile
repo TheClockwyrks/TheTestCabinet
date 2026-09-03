@@ -24,9 +24,13 @@
 #
 # This image inherits everything from base-wasm — the Node build toolchain, the Rust +
 # `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack` toolchain, the unprivileged
-# `node` run user, the `/work` working directory, and the keep-alive CMD — so it only
-# adds the six binaries and the baked audio palette. The image a run resolves is
-# selected by its test type (see crate `harness::resolve_run_image`).
+# `node` run user, the `/work` working directory, the empty `/opt/audio` staging root,
+# and the keep-alive CMD — so it only adds the six binaries. The audio palette
+# `sfx-sample` and `music` read is NOT baked here: a run is staged with the packs its
+# case names in `[audio] packs`, written into the started container at `/opt/audio`, so
+# a full-stack container holds exactly the packs its manifest declares and nothing
+# else. The image a run resolves is selected by its test type (see crate
+# `harness::resolve_run_image`).
 
 # `BASE_IMAGE` is the base image to extend — the Rust/wasm base (`base-wasm`), so a
 # full-stack build may author its simulation core in Rust and ship it as committed
@@ -52,7 +56,7 @@ ARG TOOLS_IMAGE=test-cabinet-tools:latest
 # this stage.
 FROM ${TOOLS_IMAGE} AS tools
 
-# --- The run image: the base-wasm, plus the binaries + the audio palette ----
+# --- The run image: the base-wasm, plus the six 2D asset binaries -----------
 # `FROM` the base-wasm built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
@@ -68,45 +72,3 @@ COPY --from=tools /out/sfx-synth /usr/local/bin/sfx-synth
 COPY --from=tools /out/sfx-sample /usr/local/bin/sfx-sample
 COPY --from=tools /out/music /usr/local/bin/music
 
-# --- Bake in the audio palette `sfx-sample` and `music` read ----------------
-#
-# Identical mechanism to the dedicated `sfx-sample` and `music` images (see
-# `containers/sfx-sample/Dockerfile` and `containers/music/Dockerfile`), with one tree
-# serving both tools. The audio is not committed to this repository: the clip bytes
-# live in the private audio object store, and `containers/build.sh`
-# (`build_full_stack_2d`) stages the tree this image bakes with
-# `scripts/stage-audio-image.mjs` before the build, verifying every object against
-# `containers/sample-packs/objects.lock.json` as it lands. `AUDIO_STAGE_DIR` is that
-# staged tree's path within the build context (the repository root):
-#   --build-arg AUDIO_STAGE_DIR=dist/audio-image/<hash>/audio
-# Its default points nowhere, so a build that does not go through `build.sh` fails at
-# the COPY below rather than shipping an image with a missing palette.
-ARG AUDIO_STAGE_DIR=dist/audio-image/unstaged/audio
-
-# Copy the staged tree to the path the `audio-core` loader reads. It holds
-# `clips/<clip-id>.<profile-id>.wav` plus one `packs/<name>/pack.toml` per pack — the
-# `combat-core` sample pack `sfx-sample` mixes over AND every instrument bank `music`
-# can play (`gm-lite`, `cinematic`, `synthwave`), because a full-stack case may name
-# any of them and a bank that is not baked is a load error rather than a fallback.
-# Entries
-# reference the shared clip files relatively, so a clip several packs name is carried
-# once (`load_pack` in `crates/audio-core/src/sample.rs` resolves each entry's `file`
-# against its pack directory). Make it world-readable for the unprivileged run user;
-# COPY writes as root, so bracket it with the root/node USER switch the base image's
-# `USER node` otherwise leaves in force.
-USER root
-COPY ${AUDIO_STAGE_DIR} /opt/audio
-RUN chmod -R a+rX /opt/audio
-USER node
-
-# Point both tools at the packs ROOT, under which a config's `sample_pack` /
-# `instrument_bank` name selects a subdirectory (see `select_pack_dir` in
-# `crates/audio-core/src/config.rs`); a name with no subdirectory there is a load error
-# rather than some other palette. A full-stack model authors its own
-# `sfx-sample.config.json` / `music.config.json` and typically names no palette, so
-# `TCAB_SAMPLE_PACK` and `TCAB_INSTRUMENT_BANK` state which of the baked palettes such a
-# run reads. The image, not a run's config, owns where the audio physically lives.
-ENV TCAB_SAMPLE_PACK_DIR=/opt/audio/packs
-ENV TCAB_SAMPLE_PACK=combat-core
-ENV TCAB_INSTRUMENT_BANK_DIR=/opt/audio/packs
-ENV TCAB_INSTRUMENT_BANK=gm-lite

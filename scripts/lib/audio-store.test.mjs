@@ -12,12 +12,14 @@ import { after, describe, it } from "node:test";
 
 import {
   normalizedKey,
+  packManifest,
   profileId,
   readClips,
   readObjectsLock,
   readPack,
   resolveEntry,
   sourceKey,
+  wavDurationMs,
   writeClips,
   writeObjectsLock,
 } from "./audio-store.mjs";
@@ -501,5 +503,157 @@ pitched = false
       resolveEntry(other, other.entries[0], clips).root_note,
       undefined,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The staged store's output contract
+// ---------------------------------------------------------------------------
+
+/**
+ * A minimal PCM-16 WAV: a 44-byte canonical header plus `frames` frames of silence.
+ * Built here rather than committed so a case states the duration it expects in the one
+ * place it asserts it.
+ */
+function wav({
+  frames,
+  sampleRate = 44100,
+  channels = 1,
+  bits = 16,
+  format = 1,
+}) {
+  const blockAlign = (channels * bits) / 8;
+  const dataLen = frames * blockAlign;
+  const buf = Buffer.alloc(44 + dataLen);
+  buf.write("RIFF", 0, "ascii");
+  buf.writeUInt32LE(36 + dataLen, 4);
+  buf.write("WAVE", 8, "ascii");
+  buf.write("fmt ", 12, "ascii");
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(format, 20);
+  buf.writeUInt16LE(channels, 22);
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(sampleRate * blockAlign, 28); // byte rate
+  buf.writeUInt16LE(blockAlign, 32);
+  buf.writeUInt16LE(bits, 34);
+  buf.write("data", 36, "ascii");
+  buf.writeUInt32LE(dataLen, 40);
+  return buf;
+}
+
+describe("wavDurationMs", () => {
+  it("reads the duration out of a PCM-16 header", () => {
+    assert.equal(wavDurationMs(wav({ frames: 44100 }), "k"), 1000);
+    assert.equal(wavDurationMs(wav({ frames: 22050 }), "k"), 500);
+    // Stereo doubles the byte rate along with the data, so the duration is unchanged.
+    assert.equal(wavDurationMs(wav({ frames: 44100, channels: 2 }), "k"), 1000);
+  });
+
+  it("skips a chunk it does not know to find the ones it does", () => {
+    const base = wav({ frames: 4410 });
+    // A 4-byte LIST chunk wedged between `fmt ` and `data`.
+    const extra = Buffer.alloc(12);
+    extra.write("LIST", 0, "ascii");
+    extra.writeUInt32LE(4, 4);
+    const bytes = Buffer.concat([
+      base.subarray(0, 36),
+      extra,
+      base.subarray(36),
+    ]);
+    assert.equal(wavDurationMs(bytes, "k"), 100);
+  });
+
+  it("rejects anything the loader could not decode, naming the object", () => {
+    assert.throws(
+      () => wavDurationMs(Buffer.alloc(64), "normalized/abc/def.wav"),
+      /normalized\/abc\/def\.wav is not a PCM-16 WAV \(missing RIFF\/WAVE header\)/,
+    );
+    assert.throws(
+      () => wavDurationMs(wav({ frames: 10, bits: 24 }), "k"),
+      /24-bit samples, expected 16/,
+    );
+    assert.throws(
+      () => wavDurationMs(wav({ frames: 10, format: 3 }), "k"),
+      /audio format 3, expected 1 \(PCM\)/,
+    );
+    assert.throws(
+      () => wavDurationMs(wav({ frames: 0 }), "k"),
+      /no data chunk/,
+    );
+  });
+});
+
+describe("packManifest", () => {
+  const clips = readClips(tmpFile(REGISTRY));
+  const pack = readPack(
+    tmpFile(`
+name = "gm-lite"
+version = "0.1.0"
+kind = "instrument-bank"
+
+[normalize]
+sample_rate = 44100
+channels = 2
+loudness_lufs = -20.0
+true_peak_dbfs = -1.0
+trim_silence = true
+max_duration_ms = 5000
+
+[[entry]]
+clip = "${ID_A}"
+name = "grand_piano"
+tags = ["keys"]
+description = "A piano."
+
+[[entry]]
+clip = "${ID_B}"
+name = "kick"
+tags = ["drums"]
+description = "A kick."
+pitched = false
+`),
+    clips,
+  );
+  const entries = pack.entries.map((entry) => {
+    const resolved = resolveEntry(pack, entry, clips);
+    return { ...resolved, file: `${resolved.clip}.${resolved.profile_id}.wav` };
+  });
+  const durations = new Map(entries.map((e, i) => [e.file, 100 * (i + 1)]));
+  const manifest = packManifest(pack, entries, durations);
+
+  it("states the identity check_identity verifies against the pinned ref", () => {
+    assert.equal(manifest.name, "gm-lite");
+    assert.equal(manifest.version, "0.1.0");
+    assert.equal(manifest.kind, "instrument-bank");
+  });
+
+  it("carries the pack's rendition format, not the entry's", () => {
+    assert.equal(manifest.sample_rate, 44100);
+    assert.equal(manifest.channels, 2);
+  });
+
+  it("points each entry at the shared clip directory, one level up", () => {
+    assert.deepEqual(
+      manifest.sample.map((s) => s.file),
+      entries.map((e) => `../../clips/${e.file}`),
+    );
+  });
+
+  it("keeps manifest order and carries what the loader and sequencer read", () => {
+    assert.deepEqual(
+      manifest.sample.map((s) => [s.name, s.duration_ms, s.pitched]),
+      [
+        ["grand_piano", 100, true],
+        ["kick", 200, false],
+      ],
+    );
+    assert.deepEqual(manifest.sample[0].tags, ["keys"]);
+    assert.equal(manifest.sample[0].description, "A piano.");
+  });
+
+  it("defaults root_note to middle C for a clip with no recorded pitch", () => {
+    // ID_A records root_note 68 in the registry; ID_B records none.
+    assert.equal(manifest.sample[0].root_note, 68);
+    assert.equal(manifest.sample[1].root_note, 60);
   });
 });
