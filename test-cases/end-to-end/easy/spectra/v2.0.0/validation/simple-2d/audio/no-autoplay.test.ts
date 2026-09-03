@@ -75,10 +75,10 @@ import { watchSounds } from "./cues";
 /**
  * Frames of the loaded game driven under the suite's clock.
  *
- * Two seconds of the screen the game opens on, which is long enough for any
- * per-frame or timed sound a build might start to have started, and more game
- * time than the engine's own loop covers over the same stretch of a busy host's
- * wall clock.
+ * Two seconds of the screen the game opens on, which is longer than any hold that
+ * screen runs and long enough for a cue a build plays from a tick to have been
+ * played. What a build defers to a timer instead is reached by the horizon below
+ * rather than by these.
  */
 const IDLE_FRAMES = ticksFor(2);
 

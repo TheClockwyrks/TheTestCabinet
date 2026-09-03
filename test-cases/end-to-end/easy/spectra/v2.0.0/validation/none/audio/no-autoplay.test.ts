@@ -76,10 +76,10 @@ import {
 /**
  * Frames of the loaded game driven under the suite's clock.
  *
- * Two seconds of the screen the game opens on, which is long enough for any
- * per-frame or timed sound a build might start to have started, and more game
- * time than a browser hands its own loop over the same stretch of a busy host's
- * wall clock.
+ * Two seconds of the screen the game opens on, which is longer than any hold that
+ * screen runs and long enough for a sound a build makes from a frame to have been
+ * made — and more game time than a browser hands its own loop over the same
+ * stretch of a busy host's wall clock.
  */
 const IDLE_FRAMES = framesFor(2);
 
