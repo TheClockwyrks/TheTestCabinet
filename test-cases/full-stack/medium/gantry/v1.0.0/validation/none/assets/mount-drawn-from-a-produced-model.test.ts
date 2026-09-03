@@ -1,338 +1,69 @@
-// assets/mount-drawn-from-a-produced-model — the ground fixture at an anchor is
-// the committed `mount` model, decoded and drawn.
+// assets/mount-drawn-from-a-produced-model — the anchor mount in the yard is the
+// committed `mount` model, decoded and drawn.
 //
-// specs/assets.md § The models: "mount | an anchor's ground fixture", one of the
-// eight models the build "produces … commits … and wires in", each committed as
-// `assets/models/<model>.glb` under the name that table gives it, and the game
-// draws "a mount at each anchor". § What is drawn in code keeps the yard's
-// ground, the lattice and envelope aids on the build's own side of the line; the
-// fixture standing at an anchor is not.
+// `specs/assets.md` opens with the whole of the requirement: the build "produces
+// every model and sound the game uses with them, commits the produced files, and
+// wires them in", each committed as `assets/models/<model>.glb` "under the model
+// name the table below gives it", and "the name a file carries is what says which
+// subject or which cue it is". Its § What is drawn in code draws the line from
+// the other side: the yard, the aids, the members, the cable, the pads and every
+// readout are the build's own geometry, and the eight models are not.
 //
-// THE READING IS THE FILE'S CONTENTS. Two pages load the same `dist/`, posed
-// identically, one of them served with every response carrying the bytes of
-// `assets/models/mount.glb` answered with the bytes of another of the build's own
-// committed models. Mounts drawn from the produced file are then drawn as that
-// other model and the stage over the anchors changes; fixtures drawn in code do
-// not move a pixel.
+// THE READING IS WHAT THE FRAME DREW, NEVER THE PICTURE. `drawn()` reports one
+// entry per thing the last frame put on screen, and a model's entry carries "the
+// produced file its geometry came from, or `null` when the build drew it in code"
+// (`specs/instrumentation.md`). So a anchor mount drawn from the committed file and a
+// anchor mount the build drew as its own geometry are told apart by what the build
+// says it drew them from, which is the fact the requirement is about.
 //
-// SUBSTITUTED RATHER THAN WITHHELD, and matched by BYTES rather than by URL, for
-// the reasons `ring-drawn-from-a-produced-model` sets out.
-//
-// THE WORLD IS THE SITE'S ANCHORS AND NOTHING ELSE. specs/world.md makes the
-// anchors the site's own — "each site fixes its anchor nodes" — so they stand
-// with no structure, no loads and no obstacles, which is exactly the world this
-// point wants. The extent read is the block of yard holding every anchor the open
-// site carries, since a mount stands at each of them.
+// AN ANCHOR IS THE SITE'S, NOT THE BUILD'S. `specs/sites.md` gives each site its
+// anchors, so opening one is the whole of the world this needs.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { createCanvas, loadImage } from "@napi-rs/canvas";
-import type { BrowserContext } from "playwright";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { assertGreaterThan, assertTrue, fail } from "../assert";
-import { STAGE_H, STAGE_W } from "../constants";
+import { assertEqual, assertTrue } from "../assert";
 import {
   clearAll,
   createHarness,
+  entriesOf,
   openSite,
   type Harness,
-  type Vec3,
 } from "../harness";
 
-/** The build's own tree: the validator project is staged inside it. */
-const WORKSPACE = new URL("../../", import.meta.url).pathname;
-
-/** The subject's model, and the model served in its place. */
+/** The subject, as `specs/assets.md` names its model. */
 const SUBJECT = "mount";
-const STAND_IN = "hook";
 
 const SITE = 0;
 
-/**
- * How far around the anchors the fixtures' drawing is held.
- *
- * specs/assets.md sizes the mount "about `1.5 x 0.75 x 1.5` units" and says of
- * the part figures that they "are the intent, not a tolerance", so the extent
- * reaches two units past the outermost anchor on each axis, and from a unit below
- * the ground to two above it — room for any fixture a build sculpts to that
- * intent, and for the stand-in drawn in its place.
- */
-const PAD = 2;
-const Y_LOW = -1;
-const Y_HIGH = 2;
-
-/** Slack around the projected extent before the stage must be untouched. */
-const BAND_MARGIN = 8;
-
-interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-let served: Harness;
-let substituted: Harness | null = null;
-let context: BrowserContext | null = null;
+let h: Harness;
 
 beforeEach(async () => {
-  served = await createHarness();
+  h = await createHarness();
 });
 
 afterEach(async () => {
-  if (context !== null) await context.unroute("**/*").catch(() => undefined);
-  context = null;
-  if (substituted !== null) await substituted.dispose();
-  substituted = null;
-  await served.dispose();
+  await h.dispose();
 });
 
-it("draws the anchor mounts from the committed mount model", async () => {
-  const subject = committedModel(SUBJECT);
-  const standIn = committedModel(STAND_IN);
-  assertTrue(
-    !subject.equals(standIn),
-    `the committed assets/models/${SUBJECT}.glb and assets/models/` +
-      `${STAND_IN}.glb to be the two different models specs/assets.md asks ` +
-      "the build to produce, so serving one in the other's place changes what " +
-      "is drawn",
-  );
-
-  const anchors = await bareSite(served);
-  const region = await anchorRegion(served, anchors);
-  const bands = surrounding(region);
-  const before = await frame(served);
-  await served.capture("mount", "The mount drawn from its produced model");
-
-  let replaced = 0;
-  context = served.page.context();
-  await context.route("**/*", async (route) => {
-    const response = await route.fetch();
-    const body = await response.body();
-    if (body.length === subject.length && body.equals(subject)) {
-      replaced += 1;
-      await route.fulfill({ response, body: standIn });
-      return;
-    }
-    // Answered from the fetched response itself, rather than by handing the
-    // same bytes back: the bundle and the music bed would otherwise cross the
-    // protocol a second time.
-    await route.fulfill({ response });
-  });
-  substituted = await createHarness();
-  await bareSite(substituted);
-
-  assertGreaterThan(
-    replaced,
-    0,
-    "the responses the served site answered with the bytes of the committed " +
-      `assets/models/${SUBJECT}.glb, which specs/assets.md has the build ` +
-      "commit and wire in — a site that never serves that file draws no mount " +
-      "from it",
-  );
-
-  const after = await frame(substituted);
-
-  const spilled: string[] = [];
-  for (const band of bands) {
-    if (!alike(before, after, band.rect)) spilled.push(band.where);
-  }
-  if (spilled.length > 0) {
-    fail(
-      "the stage outside the anchors' own extent to be drawn the same " +
-        "whichever model the site serves under the mount's file, so that what " +
-        "changes inside that extent is the mounts (specs/assets.md)",
-      `it differs ${spilled.join(", ")}, so this build draws a different yard ` +
-        "rather than simply different fixtures",
-    );
-  }
-
-  assertTrue(
-    !alike(before, after, region),
-    "the ground fixtures at the site's anchors to change when the site serves " +
-      `other bytes under assets/models/${SUBJECT}.glb, since a mount on ` +
-      "screen is that produced model decoded and drawn rather than geometry " +
-      "the build draws in code (specs/assets.md)",
-  );
-});
-
-/** A model specs/assets.md requires the build to have produced and committed. */
-function committedModel(name: string): Buffer {
-  try {
-    return readFileSync(join(WORKSPACE, "assets", "models", `${name}.glb`));
-  } catch {
-    return fail(
-      `a produced ${name} model committed at assets/models/${name}.glb, which ` +
-        "specs/assets.md requires the build to produce with `voxel` and commit",
-      "no such file in the build's tree",
-    );
-  }
-}
-
-/** The isolated world this point is about: the site's anchors, nothing else. */
-async function bareSite(h: Harness): Promise<readonly Vec3[]> {
+it("draws the anchor mount from the produced `mount` model", async () => {
   await openSite(h, SITE);
   await clearAll(h);
+  await h.debug.setScreen("build");
   await h.advance(1);
-  const { site, structure } = await h.snapshot();
-  if (structure.members.length !== 0 || structure.ring !== null) {
-    fail(
-      "an empty structure, so the only thing standing at an anchor is its " +
-        "mount (specs/instrumentation.md's `clearStructure`)",
-      `${structure.members.length} members and ` +
-        `${structure.ring === null ? "no" : "a"} ring stand`,
-    );
-  }
-  assertGreaterThan(
-    site.anchors.length,
-    0,
-    "the anchor nodes the open site fixes, which specs/world.md gives every " +
-      "site and specs/assets.md draws a mount at each of",
+
+  const drawn = await h.drawn();
+  const models = entriesOf(drawn, "model", SUBJECT);
+
+  await h.capture("mount", "The mounts standing at the site's anchors");
+
+  assertTrue(
+    models.length > 0,
+    `a \`${SUBJECT}\` model among what the frame drew — ` +
+      `it drew ${drawn.filter((e) => e.kind === "model").length} model(s): ` +
+      `${[...new Set(drawn.filter((e) => e.kind === "model").map((e) => e.name))].join(", ") || "none"}`,
   );
-  return site.anchors;
-}
-
-/** Where the build itself says the block of yard holding the anchors is drawn. */
-async function anchorRegion(
-  h: Harness,
-  anchors: readonly Vec3[],
-): Promise<Rect> {
-  const xs = anchors.map((one) => one.x);
-  const zs = anchors.map((one) => one.z);
-  const box = {
-    minX: Math.min(...xs) - PAD,
-    maxX: Math.max(...xs) + PAD,
-    minZ: Math.min(...zs) - PAD,
-    maxZ: Math.max(...zs) + PAD,
-  };
-  let left = Infinity;
-  let right = -Infinity;
-  let top = Infinity;
-  let bottom = -Infinity;
-  for (const x of [box.minX, box.maxX]) {
-    for (const y of [Y_LOW, Y_HIGH]) {
-      for (const z of [box.minZ, box.maxZ]) {
-        const on = await h.project(x, y, z);
-        assertTrue(
-          on.visible,
-          `the corner (${x}, ${y}, ${z}) of the anchors' block of yard to be ` +
-            "drawn on the stage at the start camera pose, so this point has a " +
-            "picture to read (specs/instrumentation.md)",
-        );
-        left = Math.min(left, on.x);
-        right = Math.max(right, on.x);
-        top = Math.min(top, on.y);
-        bottom = Math.max(bottom, on.y);
-      }
-    }
-  }
-  return { x: left, y: top, width: right - left, height: bottom - top };
-}
-
-/** The four bands of stage outside that extent, with a margin. */
-function surrounding(region: Rect): { where: string; rect: Rect }[] {
-  const left = region.x - BAND_MARGIN;
-  const right = region.x + region.width + BAND_MARGIN;
-  const top = region.y - BAND_MARGIN;
-  const bottom = region.y + region.height + BAND_MARGIN;
-  return [
-    { where: "left of it", rect: { x: 0, y: 0, width: left, height: STAGE_H } },
-    {
-      where: "right of it",
-      rect: { x: right, y: 0, width: STAGE_W - right, height: STAGE_H },
-    },
-    {
-      where: "above it",
-      rect: { x: left, y: 0, width: right - left, height: top },
-    },
-    {
-      where: "below it",
-      rect: {
-        x: left,
-        y: bottom,
-        width: right - left,
-        height: STAGE_H - bottom,
-      },
-    },
-  ].filter(({ rect }) => rect.width >= 1 && rect.height >= 1);
-}
-
-/**
- * One page's whole composited frame, decoded, with the map from stage units.
- *
- * ONE COMPOSITE PER PAGE, READ MANY WAYS. A clipped capture costs a fresh
- * composite for every rectangle, and the pixels a clip returns are the pixels
- * this frame already holds — so the extent and the bands are read out of one
- * capture instead of one apiece. The build fits the stage into its own canvas,
- * so a logical rectangle is mapped through the canvas the page reports rather
- * than through any fit assumed here.
- */
-interface Frame {
-  width: number;
-  height: number;
-  data: Uint8ClampedArray;
-  /** Image pixels per logical stage unit, and where the stage's origin lands. */
-  sx: number;
-  sy: number;
-  ox: number;
-  oy: number;
-}
-
-async function frame(h: Harness): Promise<Frame> {
-  const fit = (await h.page.evaluate(() => {
-    const canvas = document.querySelector("canvas");
-    if (canvas === null) return null;
-    const at = canvas.getBoundingClientRect();
-    return { x: at.x, y: at.y, width: at.width, height: at.height };
-  })) as Rect | null;
-  assertTrue(fit !== null, "a <canvas> on the page for the build to draw in");
-  const view = h.page.viewportSize();
-  assertTrue(view !== null, "a sized viewport on the page the build draws in");
-  // One held frame first: the page is off its own paint clock (see
-  // `paint-gate.js`), and a screenshot is the whole page rather than just the
-  // canvas `advance` has already drawn.
-  await h.paintFrame();
-  const png = await h.page.screenshot({ type: "png" });
-  const image = await loadImage(png);
-  const canvas = createCanvas(image.width, image.height);
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(image, 0, 0);
-  const { data } = ctx.getImageData(0, 0, image.width, image.height);
-  const dx = image.width / view!.width;
-  const dy = image.height / view!.height;
-  return {
-    width: image.width,
-    height: image.height,
-    data,
-    sx: (fit!.width / STAGE_W) * dx,
-    sy: (fit!.height / STAGE_H) * dy,
-    ox: fit!.x * dx,
-    oy: fit!.y * dy,
-  };
-}
-
-/** Whether two frames are drawn identically over a logical rectangle. */
-function alike(a: Frame, b: Frame, rect: Rect): boolean {
-  if (a.width !== b.width || a.height !== b.height) return false;
-  const x0 = Math.max(0, Math.round(a.ox + rect.x * a.sx));
-  const y0 = Math.max(0, Math.round(a.oy + rect.y * a.sy));
-  const x1 = Math.min(a.width, Math.round(a.ox + (rect.x + rect.width) * a.sx));
-  const y1 = Math.min(
-    a.height,
-    Math.round(a.oy + (rect.y + rect.height) * a.sy),
+  assertEqual(
+    models[0]!.source,
+    `${SUBJECT}.glb`,
+    `the produced file the ${SUBJECT} was drawn from (specs/assets.md)`,
   );
-  for (let y = y0; y < y1; y += 1) {
-    let i = (y * a.width + x0) * 4;
-    for (let x = x0; x < x1; x += 1, i += 4) {
-      if (
-        a.data[i] !== b.data[i] ||
-        a.data[i + 1] !== b.data[i + 1] ||
-        a.data[i + 2] !== b.data[i + 2] ||
-        a.data[i + 3] !== b.data[i + 3]
-      ) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
+});

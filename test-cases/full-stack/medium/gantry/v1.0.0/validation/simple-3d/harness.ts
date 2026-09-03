@@ -1836,6 +1836,87 @@ export function distance3(a: Vec3, b: Vec3): number {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
+/* -------------------------------------------------------------------------- */
+/* Reading what a frame drew                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The entries of one kind, optionally of one name.
+ *
+ * `specs/instrumentation.md` has `drawn()` report one entry per thing the last
+ * frame put on screen, in no fixed order, and a thing the frame did not draw has
+ * no entry at all — so an empty answer here is the reading saying it was not
+ * drawn, and every check below reads it that way.
+ */
+export function entriesOf(
+  entries: readonly DrawnEntry[],
+  kind: DrawnEntry["kind"],
+  name?: string,
+): DrawnEntry[] {
+  return entries.filter(
+    (entry) => entry.kind === kind && (name === undefined || entry.name === name),
+  );
+}
+
+/** Where an entry was drawn, as a world position. */
+export const entryAt = (entry: DrawnEntry): Vec3 => ({
+  x: entry.x,
+  y: entry.y,
+  z: entry.z,
+});
+
+/**
+ * The entries of a kind drawn within `reach` of a world position.
+ *
+ * A thing is drawn AT a point rather than exactly on it — a mark sits a little
+ * above the surface it marks, a model stands centred on its own footprint — so
+ * every check that asks "is this drawn here" asks it with a tolerance, and states
+ * the one it used.
+ */
+export function entriesNear(
+  entries: readonly DrawnEntry[],
+  at: Vec3,
+  reach: number,
+  kind?: DrawnEntry["kind"],
+  name?: string,
+): DrawnEntry[] {
+  return entries.filter(
+    (entry) =>
+      (kind === undefined || entry.kind === kind) &&
+      (name === undefined || entry.name === name) &&
+      distance3(entryAt(entry), at) <= reach,
+  );
+}
+
+/**
+ * How far apart two colours are, summed across the channels, out of 765.
+ *
+ * What a check may ask about colour is whether two things are told apart, never
+ * what either one is: "Palettes, fonts, layouts, and styling are the build's
+ * choices", and `specs/overview.md` asks only that a strut, a cable and a rail
+ * are "told apart at a glance" and that a broken member is "unmistakable".
+ */
+export function colourDistance(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+): number {
+  return (
+    Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
+  );
+}
+
+/**
+ * The ramp's heat: how far a colour leans red of its own blue and green.
+ *
+ * `specs/overview.md` has each member's colour read "its utilization on a
+ * monotone ramp from slack to its limit". Monotone is a fact about the ORDER two
+ * colours stand in and not about either one, so this is the quantity a check
+ * compares — it rises along any ramp that climbs toward heat, whatever palette a
+ * build picks for it.
+ */
+export const colourHeat = (c: readonly [number, number, number]): number =>
+  c[0] - (c[1] + c[2]) / 2;
+
 /**
  * Where a lattice node is drawn, as a point a click can pick it by.
  *
