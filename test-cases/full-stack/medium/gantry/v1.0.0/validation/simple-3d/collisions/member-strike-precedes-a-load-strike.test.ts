@@ -31,7 +31,6 @@ import { GRIP_MAX_RATE, LOAD_CLASS_DIMENSIONS } from "../constants";
 import {
   addOneLoad,
   addOneObstacle,
-  clearAll,
   createHarness,
   openSite,
   poseTape,
@@ -76,7 +75,12 @@ afterEach(async () => {
 
 it("names the member when a member and the carried load are inside one obstacle", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // NOTHING IS CLEARED AHEAD OF THE POSES BELOW, because each of them clears what
+  // it replaces: `addOneLoad` is "the yard holding exactly one load" and
+  // `addOneObstacle` the yard holding exactly one obstacle, `standMinimalCrane`
+  // empties the structure before it builds, and a site opens with an empty tape
+  // (`specs/state.md`). The world this runs on is the one member, the one crate
+  // and the one block named here and nothing else.
   await standMinimalCrane(h);
   await addOneLoad(
     h,

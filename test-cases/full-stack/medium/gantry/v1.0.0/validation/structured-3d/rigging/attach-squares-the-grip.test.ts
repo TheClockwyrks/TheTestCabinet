@@ -27,8 +27,8 @@ import { assertEqual, assertNear } from "../assert";
 import { GRIP_MAX_RATE, HOIST_START, SLEW_MAX_RATE } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -80,7 +80,7 @@ afterEach(async () => {
 
 it("sets the grip to the load's yaw on the tick the attach executes", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, LOAD_AT, LOAD_AT);
   await poseTape(h, [NOOP, ATTACH, HOLD]);

@@ -22,8 +22,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { BINDINGS, HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   type Harness,
@@ -65,7 +65,7 @@ afterEach(async () => {
 
 it("opens the site with the structure and tape stored on it", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   for (const { a, b } of MEMBERS) {
     await h.debug.addMember(a.x, a.y, a.z, b.x, b.y, b.z, "strut");
   }

@@ -25,8 +25,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { RUN_SPEEDS } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runUntil,
@@ -44,8 +44,8 @@ const RELEASE_TAPE: readonly TapeStepSpec[] = [
 /** The last of RUN_SPEEDS, and not the index a run starts at. */
 const INDEX = RUN_SPEEDS.length - 1;
 
-/** How long the one-step tape is given to reach its verdict. */
-const CAP = 30;
+/** How long the one-step tape is given to reach its verdict: one tick takes it. */
+const CAP = 4;
 
 let h: Harness;
 
@@ -59,7 +59,10 @@ afterEach(async () => {
 
 it("poses the watch speed on the run screen after the run has ended", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, RELEASE_TAPE);
   await startRun(h);

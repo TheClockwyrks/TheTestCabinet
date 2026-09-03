@@ -65,8 +65,16 @@ const HOLD: TapeStepSpec = {
   commands: [{ axis: "grip", target: 100_000, rate: GRIP_MAX_RATE }],
 };
 
-/** How long the site is played once it is up, in ticks. */
-const PLAY_TICKS = 60;
+/**
+ * How long the site is played once it is up, in ticks.
+ *
+ * Long enough to be a run that is genuinely running rather than a run that has
+ * just started, and no longer: the build fetches what it needs before it installs
+ * its surface, so the requests this point reads are already made by the time the
+ * first tick is driven, and every tick past a few tenths of a second of run clock
+ * adds nothing to what it decides.
+ */
+const PLAY_TICKS = 20;
 
 /** What a static host answers each kind of file with. */
 const TYPES: Readonly<Record<string, string>> = {

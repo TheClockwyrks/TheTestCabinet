@@ -30,8 +30,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -64,7 +64,7 @@ afterEach(async () => {
 
 it("leaves the pivot and the solve of the tick before on the tick a run ends", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);

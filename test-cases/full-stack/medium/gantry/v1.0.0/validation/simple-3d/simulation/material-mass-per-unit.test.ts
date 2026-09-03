@@ -20,6 +20,14 @@
 // rail there — and each material's half-mass is exactly what the cable picks up.
 // The rail pose extends the trolley's track, which is the only way a rail member
 // can stand at all (specs/structure.md, "The trolley and the rail").
+//
+// ONE RIG CARRIES ALL FOUR READINGS. The rig is posed once with nothing on the
+// span, and each material is then placed on the span and taken off again: an edit
+// that lands "pushes the undo history exactly as a click would" and a removal "is
+// always allowed" (specs/instrumentation.md), so the geometry the three readings
+// are compared over is demonstrably ONE geometry rather than four this file
+// asserts are the same. Nothing here advances a tick: `check` "computes the check
+// and returns it" on the spot, which is the whole of what this point reads.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNear, assertTrue } from "../assert";
@@ -45,12 +53,22 @@ import {
 const TOLERANCE = 1e-6;
 
 /** The member the four poses differ in: present, and of which material. */
-const TEST_SPAN: readonly [readonly [number, number, number], readonly [number, number, number]] =
-  [[4, 6, 0], [6, 6, 0]];
+const TEST_SPAN: readonly [
+  readonly [number, number, number],
+  readonly [number, number, number],
+] = [
+  [4, 6, 0],
+  [6, 6, 0],
+];
 
 /** The mast cable whose force the reading is taken from. */
-const READ_SPAN: readonly [readonly [number, number, number], readonly [number, number, number]] =
-  [[2, 10, 0], [6, 6, 0]];
+const READ_SPAN: readonly [
+  readonly [number, number, number],
+  readonly [number, number, number],
+] = [
+  [2, 10, 0],
+  [6, 6, 0],
+];
 
 /**
  * The jib rig, and why it is shaped this way.
@@ -125,21 +143,19 @@ const EXTRA: readonly DesignMember[] = [
 ];
 
 const spans = (m: DesignMember) =>
-  m[0][0] === TEST_SPAN[0][0] && m[0][1] === TEST_SPAN[0][1] &&
-  m[0][2] === TEST_SPAN[0][2] && m[1][0] === TEST_SPAN[1][0] &&
-  m[1][1] === TEST_SPAN[1][1] && m[1][2] === TEST_SPAN[1][2];
+  m[0][0] === TEST_SPAN[0][0] &&
+  m[0][1] === TEST_SPAN[0][1] &&
+  m[0][2] === TEST_SPAN[0][2] &&
+  m[1][0] === TEST_SPAN[1][0] &&
+  m[1][1] === TEST_SPAN[1][1] &&
+  m[1][2] === TEST_SPAN[1][2];
 
-/** The rig with the span under test absent, or made of `material`. */
-function rigWith(material: MaterialName | null): CraneDesign {
-  const base = JIB_RIG_MEMBERS.filter((m) => !spans(m));
-  const span: readonly DesignMember[] =
-    material === null ? [] : [[TEST_SPAN[0], TEST_SPAN[1], material]];
-  return {
-    ...JIB_RIG,
-    name: `Jib rig, ${material ?? "no"} span`,
-    members: [...base, ...span, ...EXTRA],
-  };
-}
+/** The rig with nothing on the span under test: what all four readings share. */
+const BARE_RIG: CraneDesign = {
+  ...JIB_RIG,
+  name: "Jib rig, no span",
+  members: [...JIB_RIG_MEMBERS.filter((m) => !spans(m)), ...EXTRA],
+};
 
 let h: Harness;
 
@@ -153,31 +169,64 @@ afterEach(async () => {
 
 it("weighs a member at its length times its material's mass per unit", async () => {
   await openSite(h, 0);
+  await clearAll(h);
+  await poseCrane(h, BARE_RIG);
 
+  const { structure } = await h.snapshot();
+  const cable = structure.members.find(
+    (m) =>
+      (m.a.x === READ_SPAN[0][0] &&
+        m.a.y === READ_SPAN[0][1] &&
+        m.a.z === READ_SPAN[0][2] &&
+        m.b.x === READ_SPAN[1][0] &&
+        m.b.y === READ_SPAN[1][1] &&
+        m.b.z === READ_SPAN[1][2]) ||
+      (m.b.x === READ_SPAN[0][0] &&
+        m.b.y === READ_SPAN[0][1] &&
+        m.b.z === READ_SPAN[0][2] &&
+        m.a.x === READ_SPAN[1][0] &&
+        m.a.y === READ_SPAN[1][1] &&
+        m.a.z === READ_SPAN[1][2]),
+  );
+  if (cable === undefined) {
+    throw new Error("gantry: the posed rig carries no mast cable to (6, 6, 0)");
+  }
+
+  /** What the mast cable is carrying, as the rig stands right now. */
   const readMastCable = async (material: MaterialName | null) => {
-    await clearAll(h);
-    await poseCrane(h, rigWith(material));
-    const { structure } = await h.snapshot();
     const result = await h.check();
     assertTrue(
       result.stable,
       `the rig stands with ${material ?? "no"} span at (4, 6, 0)-(6, 6, 0)`,
     );
-    const cable = structure.members.find(
-      (m) =>
-        (m.a.x === READ_SPAN[0][0] && m.a.y === READ_SPAN[0][1] && m.a.z === READ_SPAN[0][2] &&
-          m.b.x === READ_SPAN[1][0] && m.b.y === READ_SPAN[1][1] && m.b.z === READ_SPAN[1][2]) ||
-        (m.b.x === READ_SPAN[0][0] && m.b.y === READ_SPAN[0][1] && m.b.z === READ_SPAN[0][2] &&
-          m.a.x === READ_SPAN[1][0] && m.a.y === READ_SPAN[1][1] && m.a.z === READ_SPAN[1][2]),
-    );
-    if (cable === undefined) {
-      throw new Error("gantry: the posed rig carries no mast cable to (6, 6, 0)");
-    }
     const reading = result.members.find((m) => m.id === cable.id);
     if (reading === undefined) {
-      throw new Error(`gantry: the check reported no force for member ${cable.id}`);
+      throw new Error(
+        `gantry: the check reported no force for member ${cable.id}`,
+      );
     }
     return reading.force;
+  };
+
+  /** Put `material` on the span under test, and answer the id it took. */
+  const placeSpan = async (material: MaterialName) => {
+    await h.debug.addMember(
+      TEST_SPAN[0][0],
+      TEST_SPAN[0][1],
+      TEST_SPAN[0][2],
+      TEST_SPAN[1][0],
+      TEST_SPAN[1][1],
+      TEST_SPAN[1][2],
+      material,
+    );
+    const placed = (await h.snapshot()).structure;
+    const id = placed.nextMemberId - 1;
+    assertTrue(
+      placed.members.some((m) => m.id === id),
+      `the ${material} span at (4, 6, 0)-(6, 6, 0) to be accepted, taking the ` +
+        "structure's nextMemberId (specs/instrumentation.md)",
+    );
+    return id;
   };
 
   // How much of a vertical load at (6, 6, 0) the mast cable takes: all of it,
@@ -199,10 +248,12 @@ it("weighs a member at its length times its material's mass per unit", async () 
     ["rail", RAIL_MASS_PER_UNIT],
   ];
   for (const [material, perUnit] of table) {
+    const id = await placeSpan(material);
     const withSpan = await readMastCable(material);
+    await h.debug.removeMember(id);
     assertNear(
       withSpan - bare,
-      ((spanLength * perUnit) / 2) * GRAVITY / cosine,
+      (((spanLength * perUnit) / 2) * GRAVITY) / cosine,
       TOLERANCE,
       `the mast cable picking up half of a length-${spanLength} ${material}'s ` +
         `mass — ${spanLength} * ${perUnit} / 2 mass units under GRAVITY — at ` +

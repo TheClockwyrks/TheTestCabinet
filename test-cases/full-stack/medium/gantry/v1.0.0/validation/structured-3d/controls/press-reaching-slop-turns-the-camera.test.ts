@@ -30,7 +30,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertAngleNear, assertEqual } from "../assert";
 import { CAMERA_START_YAW, CLICK_SLOP, ORBIT_PER_PX } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** Where the press goes down, in whole logical stage units. */
 const DOWN = { x: 400, y: 300 } as const;
@@ -56,7 +56,7 @@ afterEach(async () => {
 
 it("turns the camera by the movement made after the press becomes a drag", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   const posed = await h.snapshot();
   assertEqual(posed.screen, "build", "the screen the drag is made on");
   assertEqual(

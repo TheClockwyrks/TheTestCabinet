@@ -21,7 +21,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertTrue } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
   emptyYard,
   openSite,
@@ -107,11 +106,26 @@ const AT_CORNER = [0, 4, 6, 8];
 
 /** A rigid frame across all four top-flange nodes, added above the ring. */
 const TOP_FLANGE_FRAME = [
-  [[0, 6, 0], [2, 6, 0]],
-  [[0, 6, 2], [2, 6, 2]],
-  [[0, 6, 0], [0, 6, 2]],
-  [[2, 6, 0], [2, 6, 2]],
-  [[0, 6, 0], [2, 6, 2]],
+  [
+    [0, 6, 0],
+    [2, 6, 0],
+  ],
+  [
+    [0, 6, 2],
+    [2, 6, 2],
+  ],
+  [
+    [0, 6, 0],
+    [0, 6, 2],
+  ],
+  [
+    [2, 6, 0],
+    [2, 6, 2],
+  ],
+  [
+    [0, 6, 0],
+    [2, 6, 2],
+  ],
 ] as const;
 
 let h: Harness;
@@ -126,7 +140,8 @@ afterEach(async () => {
 
 it("does not brace an unreached bottom-flange node through a stiffened arm", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone: `poseCrane` empties the structure itself and a site opens
+  // with an empty tape (`specs/state.md`), so there is nothing else to clear.
   await emptyYard(h);
   await poseCrane(h, RIG);
   await poseTape(h, [

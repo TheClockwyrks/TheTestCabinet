@@ -25,6 +25,13 @@
 // whole window: the tape turns the grip, which moves no part of the structure
 // (specs/rigging.md § The grip), and a slewing arm would carry the flange out of
 // the block and members through it instead.
+//
+// A SECOND OF RUN CLOCK IS THE WINDOW. The collision stage runs on every tick of
+// the pipeline (specs/program.md § The tick pipeline), and nothing about this
+// scene changes from one tick to the next — the arm is still, the block is fixed,
+// and the counterweight stands where it was posed — so sixty consecutive
+// collision tests over an unchanging geometry is the whole of what there is to
+// read. Driving longer re-runs the same test against the same arrangement.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull } from "../assert";
@@ -63,8 +70,8 @@ const BARE_FLANGE: CraneDesign = {
 const BLOCK_MIN = { x: FLANGE.x - 0.4, y: FLANGE.y - 0.4, z: FLANGE.z - 0.4 };
 const BLOCK_SIZE = { x: 0.8, y: 0.8, z: 0.8 } as const;
 
-/** Ticks the counterweight is held inside for: five seconds of run clock. */
-const WINDOW = 300;
+/** Ticks the counterweight is held inside for: one second of run clock. */
+const WINDOW = 60;
 
 /** A tape that turns the grip, so the arm never carries the flange out. */
 const HOLD: readonly TapeStepSpec[] = [

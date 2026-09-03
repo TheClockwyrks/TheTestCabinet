@@ -20,13 +20,14 @@
 //
 // The node is `(0, 0, 0)`: a lattice node on the pitch, an anchor of the open
 // site, and inside site 1's envelope (`specs/sites.md`), so nothing about the
-// node itself can refuse the pose. The structure and the yard are emptied first,
-// so nothing else stands that `back` could be resolving against.
+// node itself can refuse the pose. The site is opened fresh, so nothing is built,
+// and the yard is emptied, so nothing else stands that `back` could be resolving
+// against.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertNull } from "../assert";
 import { BINDINGS } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** `back`'s binding, as `specs/controls.md` fixes it. */
 const BACK = BINDINGS.back[0]!;
@@ -46,7 +47,7 @@ afterEach(async () => {
 
 it("clears the pending node and stays on the build screen", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setPendingNode(NODE.x, NODE.y, NODE.z);
   const posed = await h.snapshot();
   assertEqual(posed.screen, "build", "the screen `back` is pressed on");

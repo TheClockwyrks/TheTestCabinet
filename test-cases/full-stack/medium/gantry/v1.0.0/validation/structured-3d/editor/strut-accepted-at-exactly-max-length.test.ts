@@ -17,8 +17,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { STRUT_MAX_LEN } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type MemberView,
@@ -40,7 +40,8 @@ afterEach(async () => {
 
 it("accepts a strut whose length is exactly STRUT_MAX_LEN", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   await h.debug.addMember(A.x, A.y, A.z, B.x, B.y, B.z, "strut");
 

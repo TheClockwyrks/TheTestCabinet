@@ -49,8 +49,8 @@ import {
 } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -81,8 +81,15 @@ const LOAD_MASS = 180;
 /** The gate, in whole ticks: `CREAK_COOLDOWN * TICK_HZ`. */
 const COOLDOWN_TICKS = CREAK_COOLDOWN * TICK_HZ;
 
-/** Long enough to hold a creak, the whole cooldown, and the creak after it. */
-const TICKS = COOLDOWN_TICKS + 10;
+/**
+ * Long enough to hold a creak, the whole cooldown, and the creak after it.
+ *
+ * The first crossing is the run's first tick and `COOLDOWN_TICKS` is even, so the
+ * tick the rule names as eligible again is `COOLDOWN_TICKS + 1` — and every tick
+ * this drives is a tick read one at a time, so the sweep stops a few ticks past
+ * it rather than running on.
+ */
+const TICKS = COOLDOWN_TICKS + 4;
 
 /** A move that keeps the run alive and applies no force to the structure. */
 const TAPE: readonly TapeStepSpec[] = [
@@ -112,7 +119,7 @@ afterEach(async () => {
 
 it("sounds the next creak exactly the cooldown's ticks after the last", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", LOAD_MASS, HOOK, HOOK);
   await poseTape(h, TAPE);
@@ -152,7 +159,7 @@ it("sounds the next creak exactly the cooldown's ticks after the last", async ()
     }
     if (played.includes("creak")) creaked.push(tick);
   }
-  await h.capture("state", "the crane after forty ticks of crossing 0.8");
+  await h.capture("state", `the crane after ${TICKS} ticks of crossing 0.8`);
 
   assertGreaterThanOrEqual(
     creaked.length,

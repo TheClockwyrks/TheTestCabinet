@@ -37,16 +37,6 @@ export default defineValidationConfig({
   // thousand ticks of two linear solves per tick, each of them a crossing into
   // the page, and a crane is posed one edit at a time before any of it starts.
   // Generous against a healthy build, and still bounds a hung one.
-  // Eight pages of the one shared browser rather than the shared default's four.
-  // Gantry's engineless project is 797 suites, each of which loads the built site
-  // into its own page and drives it a tick at a time across a crossing per tick —
-  // by far the largest such suite in the repository, and the whole run has to fit
-  // inside the platform's twenty-minute cap on a validator suite
-  // (`VITEST_TIMEOUT`). At four workers it measured 39 minutes and the runner
-  // stopped it, which decides no point at all and hands all 797 to a person.
-  // A page here costs memory in one shared browser process rather than a core, so
-  // eight is affordable beside the model's own build.
-  maxWorkers: 8,
   testTimeout: 600_000,
   hookTimeout: 60_000,
 });

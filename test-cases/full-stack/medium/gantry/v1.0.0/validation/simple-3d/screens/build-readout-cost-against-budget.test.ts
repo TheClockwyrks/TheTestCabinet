@@ -25,15 +25,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { drawnText, toDrawCall } from "../case-harness/index";
 import { assertTrue, fail } from "../assert";
 import { RING_COST, SITES, STRUT_COST_PER_UNIT } from "../constants";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  type Harness,
-} from "../harness";
-
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
+import { clearAll, createHarness, openSite, type Harness } from "../harness";
 
 /** The site this check opens: `Long Reach`, budget `5600` (specs/sites.md). */
 const SITE = 3;

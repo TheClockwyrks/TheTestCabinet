@@ -19,14 +19,20 @@
 // and a yard holding no load has every load placed vacuously.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertClose, assertEqual, assertLessThan, assertNotNull } from "../assert";
+import {
+  assertClose,
+  assertEqual,
+  assertLessThan,
+  assertNotNull,
+} from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   TICK_DT,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
+  runTicks,
   runUntil,
   standMinimalCrane,
   startRun,
@@ -40,12 +46,36 @@ const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE },
+      { axis: "hoist", target: HOIST_START + 0.5, rate: HOIST_MAX_RATE },
     ],
   },
 ];
 
-const MAX_TICKS = 600;
+/**
+ * The whole run's cap, in ticks: two seconds of run clock for a move that takes
+ * under one. Past it the item fails rather than falling through to a reading of
+ * a run still in progress.
+ */
+const MAX_TICKS = 120;
+
+/**
+ * Ticks driven in one call before the ending is swept for.
+ *
+ * The tape's one hoist move of half a unit takes about `35` ticks at
+ * HOIST_ACCEL, and the tick after it arrives finds no step left and ends the run.
+ * Half a unit rather than a whole one because nothing here reads the distance:
+ * what the record is compared against is the run clock the build itself reports,
+ * and a clock of `0.58` seconds decides a build that records `0` by seventy
+ * times the tolerance.
+ * `runTicks` drives the span in ONE crossing into the page; `runUntil` reads the
+ * state back after every tick, which is what the ending needs and what the
+ * approach to it does not. So the approach is driven and the ending is swept.
+ *
+ * Nothing is asserted off the driven span: the phase, the clock and the record
+ * below are all read from the sweep's own snapshot, so the clear is still earned
+ * by real ticks and still fails the item loudly if it never comes.
+ */
+const DRIVEN = 45;
 
 /** The standing record's time: far above anything this one-step tape can take. */
 const BEATEN_TIME = 60;
@@ -65,7 +95,11 @@ afterEach(async () => {
 
 it("replaces a record of equal cost when the clear's time is lower", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The yard is emptied and nothing else is. A site opened after a reset
+  // carries an empty structure and an empty tape (specs/state.md), and the
+  // crane and the tape below are posed onto them; clearing either again would
+  // drive surface this requirement does not concern.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
 
@@ -74,10 +108,11 @@ it("replaces a record of equal cost when the clear's time is lower", async () =>
   await h.debug.setBest(SITE, cost, BEATEN_TIME);
 
   await startRun(h);
+  await runTicks(h, DRIVEN);
   const ended = await runUntil(
     h,
     (s) => s.run.phase !== "running",
-    MAX_TICKS,
+    MAX_TICKS - DRIVEN,
     "the run to end",
   );
   assertEqual(

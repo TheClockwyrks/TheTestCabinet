@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** The member the box is then posed over: a leg from an anchor node. */
 const A = { x: 0, y: 0, z: 0 } as const;
@@ -47,7 +47,13 @@ afterEach(async () => {
 
 it("takes an obstacle posed over a standing member, and leaves the member where it is", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The world this point concerns is one member and one obstacle, so exactly those
+  // two collections are emptied and exactly one of each is posed back. The site's
+  // loads and its tape take no part in an obstacle posed over a member, and a
+  // route that cleared them too would fail this point on a build whose load or
+  // tape clearing was broken.
+  await h.debug.clearStructure();
+  await h.debug.clearObstacles();
   await h.debug.addMember(A.x, A.y, A.z, B.x, B.y, B.z, "strut");
   const before = await h.snapshot();
 

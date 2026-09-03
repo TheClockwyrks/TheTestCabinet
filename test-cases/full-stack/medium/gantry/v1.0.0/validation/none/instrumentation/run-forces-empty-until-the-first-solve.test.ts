@@ -20,11 +20,16 @@
 // solve.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLength, assertTrue } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLength,
+  assertTrue,
+} from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -44,7 +49,10 @@ afterEach(async () => {
 
 it("reports no forces on the idle placeholder or at the instant a run starts", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, [
     {
@@ -74,7 +82,11 @@ it("reports no forces on the idle placeholder or at the instant a run starts", a
   );
 
   const started = await startRun(h);
-  assertEqual(started.run.tick, 0, "the tick a run reads immediately after it starts");
+  assertEqual(
+    started.run.tick,
+    0,
+    "the tick a run reads immediately after it starts",
+  );
   assertLength(
     started.run.forces,
     0,

@@ -14,10 +14,11 @@
 // THE SITE IS CLEARED THE CHEAPEST WAY THERE IS, because par belongs to the site
 // rather than to the run: the yard is emptied, so "cleared if every load is
 // `placed`" (specs/program.md § The tick pipeline) holds with no load to lift, and
-// the minimal crane runs a one-move tape. That leaves the run's own figures — a
-// cost of about `981` and a clock under a second — nowhere near either par
-// figure, so a screen showing only the run's numbers cannot pass this check by
-// accident.
+// the minimal crane runs a tape of one hoist move a twentieth of a unit long —
+// the shortest move that still ramps up, brakes, runs out and ends the run. That
+// leaves the run's own figures — a cost of about `981` and a clock of a fifth of
+// a second — nowhere near either par figure, so a screen showing only the run's
+// numbers cannot pass this check by accident.
 //
 // HOW A FIGURE IS READ. The words around a number and the way it is grouped are
 // the build's ("`2 400`", "`2,400`", "`PAR 2400`"), so the screen's text is read
@@ -55,7 +56,9 @@ const TOLERANCE = 0.5;
 /** One short move: enough for a run to have something to do and to end. */
 const A_SHORT_HOIST: TapeStepSpec = {
   kind: "move",
-  commands: [{ axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE }],
+  commands: [
+    { axis: "hoist", target: HOIST_START + 0.05, rate: HOIST_MAX_RATE },
+  ],
 };
 
 /**
@@ -104,7 +107,7 @@ it("shows the site's par cost and par time", async () => {
   const ended = await runUntil(
     h,
     (s) => s.run.phase !== "running",
-    200,
+    60,
     "the run to end",
   );
   // The frame that follows the tick that ended it, so what the screen shows is

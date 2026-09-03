@@ -23,8 +23,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
 import { SLEW_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -57,7 +57,7 @@ afterEach(async () => {
 
 it("sounds the complete cue on the tick a run clears the site", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
 

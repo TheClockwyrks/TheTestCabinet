@@ -41,7 +41,6 @@ import {
 import {
   clearAll,
   createHarness,
-  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -207,9 +206,7 @@ async function readDrive(
         }
       : {
           kind: "move",
-          commands: [
-            { axis: "trolley", target, rate: TROLLEY_MAX_RATE },
-          ],
+          commands: [{ axis: "trolley", target, rate: TROLLEY_MAX_RATE }],
         };
   await freshRun([step]);
   await h.debug.setAxis("trolley", from);
@@ -234,7 +231,6 @@ async function readDrive(
 it("pushes back along the track at the trolley's node while it is driven", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await emptyYard(h);
   await poseCrane(h, RIG);
 
   const stopped = await readDrive(null, AT);

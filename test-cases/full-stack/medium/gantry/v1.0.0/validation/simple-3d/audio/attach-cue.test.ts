@@ -30,8 +30,8 @@ import { assertContains, assertEqual } from "../assert";
 import { ATTACH_RADIUS, GRIP_MAX_RATE, HOIST_START } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -79,7 +79,7 @@ afterEach(async () => {
 
 it("sounds the attach cue on the tick a load goes onto the hook", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", LOAD_MASS, HOOK, HOOK);
   await poseTape(h, TAPE);

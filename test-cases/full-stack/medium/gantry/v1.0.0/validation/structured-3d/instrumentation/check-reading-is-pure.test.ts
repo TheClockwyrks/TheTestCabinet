@@ -22,13 +22,21 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertNotNull, assertNull } from "../assert";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  standMinimalCrane,
-  type Harness,
-} from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
+
+/**
+ * The structure the reading is taken against: a slew ring and the one rail that
+ * hangs off its top flange, which together form a sound track
+ * (`specs/structure.md` § The trolley and the rail).
+ *
+ * ENOUGH FOR THE READING TO BE ABOUT SOMETHING, and no more. Nothing below turns on the crane standing, on its cost, or on which issues come back: what this decides is that `check` ANSWERS and leaves the shown result alone. A whole crane
+ * would put twenty further editor calls between the harness and the reading,
+ * each of them a refusal belonging to an editor validator, which makes this
+ * grade less precise rather than more.
+ */
+const RING = { x: 0, y: 2, z: 0 };
+const RAIL_A = { x: 0, y: 4, z: 0 };
+const RAIL_B = { x: 4, y: 4, z: 0 };
 
 let h: Harness;
 
@@ -42,8 +50,19 @@ afterEach(async () => {
 
 it("returns a check result and leaves the shown result untouched", async () => {
   await openSite(h, 0);
-  await clearAll(h);
-  await standMinimalCrane(h);
+  // Nothing is cleared: a site opened after a reset has nothing built, and a
+  // readiness reading is taken off the structure and the site alone
+  // (specs/structure.md), so the yard and the tape are not this requirement's.
+  await h.debug.setRing(RING.x, RING.y, RING.z);
+  await h.debug.addMember(
+    RAIL_A.x,
+    RAIL_A.y,
+    RAIL_A.z,
+    RAIL_B.x,
+    RAIL_B.y,
+    RAIL_B.z,
+    "rail",
+  );
   const showing = (await h.snapshot()).checkResult;
 
   const answered = await h.check();

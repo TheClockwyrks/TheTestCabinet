@@ -30,9 +30,6 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
 /** Two runs are the same readout when their anchors sit this close. */
 const ANCHOR_TOL = 2;
 

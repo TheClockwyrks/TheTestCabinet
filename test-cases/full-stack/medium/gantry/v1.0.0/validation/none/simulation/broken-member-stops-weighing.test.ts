@@ -31,6 +31,15 @@
 // hook hangs at rest, and the tape's one move turns the grip, which
 // specs/rigging.md says "applies no force to anything". So the comparison is
 // between two static solves and carries no pendulum state at all.
+//
+// ONE CRANE CARRIES BOTH RUNS. The second is not rebuilt: the first run is
+// aborted, which "ends a running run with no verdict" and returns the build
+// screen (specs/instrumentation.md), and the leg that broke is REMOVED there —
+// "removal is always allowed", and a run leaves the structure it ran over
+// untouched, "every run begins from the same authored state" (specs/program.md),
+// so the leg is back before it comes off. Every other member therefore keeps the
+// id it had, and the crane the second run solves is demonstrably the first crane
+// minus that one leg rather than a second crane this file asserts is the same.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNear, assertTrue } from "../assert";
@@ -41,6 +50,7 @@ import {
   openSite,
   poseCrane,
   poseTape,
+  runTicks,
   runUntil,
   startRun,
   type CraneDesign,
@@ -122,20 +132,27 @@ const COUNTERWEIGHTS = [
   [6, 8, 0],
 ] as const;
 
-function crane(withBreaker: boolean): CraneDesign {
-  return {
-    site: 1,
-    name: withBreaker ? "Overloaded-leg tower" : "Tower without that leg",
-    ring: [0, 6, 0],
-    counterweights: COUNTERWEIGHTS,
-    members: withBreaker ? [BREAKER, ...REST] : REST,
-    tape: [],
-  };
-}
+const CRANE: CraneDesign = {
+  site: 1,
+  name: "Overloaded-leg tower",
+  ring: [0, 6, 0],
+  counterweights: COUNTERWEIGHTS,
+  members: [BREAKER, ...REST],
+  tape: [],
+};
+
+/** Ticks the overloaded leg is given to go: it is over capacity from the first. */
+const BREAK_CAP = 60;
+
+/** Ticks the crane without that leg is settled for, matching the first run's. */
+const SETTLE = 12;
 
 /** One move that turns the hook and applies no force (specs/rigging.md). */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }],
+  },
 ];
 
 /** A member's two nodes, in an order that reads the same either way round. */
@@ -157,65 +174,85 @@ afterEach(async () => {
 
 it("drops a broken member's mass from the nodes it hung on", async () => {
   await openSite(h, 0);
+  await clearAll(h);
+  await poseCrane(h, CRANE);
+  await poseTape(h, TAPE);
 
-  /** Run one of the two cranes and answer its forces, keyed by node pair. */
-  const forcesOf = async (withBreaker: boolean) => {
-    // Nothing is posed while a run is in progress (specs/instrumentation.md), so
-    // the run the previous crane left is ended before the next one is built.
-    await h.debug.abortRun();
-    await clearAll(h);
-    await poseCrane(h, crane(withBreaker));
-    await poseTape(h, TAPE);
-    const started = await startRun(h);
-    const nodes = new Map(
-      started.structure.members.map((m) => [m.id, key(m.a, m.b)]),
-    );
-    const state = withBreaker
-      ? await runUntil(
-          h,
-          (s) => s.run.broken.length > 0,
-          120,
-          "the overloaded leg to break",
-        )
-      : await runUntil(h, (s) => s.run.tick >= 10, 120, "ten ticks of the run");
-    // A tick beyond the break, so what is read is the solve that follows it.
+  const started = await startRun(h);
+  const nodes = new Map(
+    started.structure.members.map((m) => [m.id, key(m.a, m.b)]),
+  );
+
+  /** What the run is carrying right now, keyed by node pair. */
+  const forcesNow = async (what: string) => {
+    // A tick beyond the reading point, so what is read is a settled solve.
     await h.advance(2);
     const after = await h.snapshot();
     assertTrue(
       after.run.phase === "running",
-      "the run carrying on after the break rather than ending " +
-        "(broken: [" + after.run.broken.join(", ") + "], cause: " +
-        String(after.run.cause) + ")",
+      "the run " +
+        what +
+        " carrying on rather than ending " +
+        "(broken: [" +
+        after.run.broken.join(", ") +
+        "], cause: " +
+        String(after.run.cause) +
+        ")",
     );
-    if (withBreaker) {
-      assertLength(
-        after.run.broken,
-        1,
-        "the members that broke: the overloaded leg alone",
-      );
-      assertEqual(
-        nodes.get(after.run.broken[0] as number),
-        key(
-          { x: BREAKER[0][0], y: BREAKER[0][1], z: BREAKER[0][2] },
-          { x: BREAKER[1][0], y: BREAKER[1][1], z: BREAKER[1][2] },
-        ),
-        "the member that broke",
-      );
-    } else {
-      assertLength(
-        after.run.broken,
-        0,
-        "the members that broke in the crane built without that leg",
-      );
-    }
-    void state;
-    return new Map(
-      after.run.forces.map((f) => [nodes.get(f.id) ?? String(f.id), f.force]),
-    );
+    return {
+      after,
+      forces: new Map(
+        after.run.forces.map((f) => [nodes.get(f.id) ?? String(f.id), f.force]),
+      ),
+    };
   };
 
-  const broken = await forcesOf(true);
-  const reference = await forcesOf(false);
+  // The crane with the leg: it is over capacity from the first solve, so it goes,
+  // and the paths beside it take up its load.
+  await runUntil(
+    h,
+    (s) => s.run.broken.length > 0,
+    BREAK_CAP,
+    "the overloaded leg to break",
+  );
+  const withLeg = await forcesNow("after the break");
+  assertLength(
+    withLeg.after.run.broken,
+    1,
+    "the members that broke: the overloaded leg alone",
+  );
+  const breakerId = withLeg.after.run.broken[0] as number;
+  assertEqual(
+    nodes.get(breakerId),
+    key(
+      { x: BREAKER[0][0], y: BREAKER[0][1], z: BREAKER[0][2] },
+      { x: BREAKER[1][0], y: BREAKER[1][1], z: BREAKER[1][2] },
+    ),
+    "the member that broke",
+  );
+  const broken = withLeg.forces;
+
+  // The same crane with that leg taken off it, standing from the start. The run
+  // is aborted first: nothing is posed while a run is in progress
+  // (specs/instrumentation.md), and the abort returns the build screen.
+  await h.debug.abortRun();
+  await h.debug.removeMember(breakerId);
+  const stripped = await h.snapshot();
+  assertLength(
+    stripped.structure.members,
+    CRANE.members.length - 1,
+    "the members left once the leg that broke is removed from the crane " +
+      "(specs/structure.md)",
+  );
+  await startRun(h);
+  await runTicks(h, SETTLE);
+  const withoutLeg = await forcesNow("of the crane built without that leg");
+  assertLength(
+    withoutLeg.after.run.broken,
+    0,
+    "the members that broke in the crane built without that leg",
+  );
+  const reference = withoutLeg.forces;
 
   for (const [where, force] of reference) {
     const survived = broken.get(where);
@@ -226,7 +263,9 @@ it("drops a broken member's mass from the nodes it hung on", async () => {
       survived,
       force,
       Math.max(Math.abs(force), 1) * TOLERANCE,
-      "the member at " + where + " carrying, once the overloaded leg has " +
+      "the member at " +
+        where +
+        " carrying, once the overloaded leg has " +
         "broken, exactly what it carries in the crane that never had that leg " +
         "— the broken member's half-masses are gone from its two end nodes " +
         "(specs/statics.md)",

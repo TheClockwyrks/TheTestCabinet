@@ -35,8 +35,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull } from "../assert";
 import { CLICK_SLOP, MEMBER_PICK_PX } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Projected,
@@ -81,7 +81,7 @@ function offMidpoint(
 
 it("removes the member the release was over, not the nothing under the press", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.addMember(...MEMBER.a, ...MEMBER.b, "strut");
   await h.debug.setTool("delete");
 

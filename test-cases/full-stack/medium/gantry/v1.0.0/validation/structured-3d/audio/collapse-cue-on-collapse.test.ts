@@ -25,8 +25,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual, assertLength } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -100,7 +100,7 @@ afterEach(async () => {
 
 it("sounds the collapse cue when a run fails as collapse", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, UNBRACED_TOWER);
   await poseTape(h, TAPE);
 

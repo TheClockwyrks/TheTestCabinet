@@ -26,25 +26,29 @@
 // end to end (validation/none/cues-init.js).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertTrue } from "../assert";
+import { assertEqual, assertLength, assertTrue } from "../assert";
 import { HOIST_MAX_RATE } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   openSite,
-  poseTape,
   runTicks,
   standMinimalCrane,
   startRun,
   type Harness,
-  type TapeStepSpec,
 } from "../harness";
 
-/** A hoist move long enough that the axis is still driving when the cable snaps. */
-const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "hoist", target: 20, rate: HOIST_MAX_RATE }] },
-];
+/**
+ * A hoist move long enough that the axis is still driving when the cable snaps.
+ *
+ * Appended through the tape editor's own screen, which is where the tape poses
+ * apply (specs/instrumentation.md), and left there: `startRun` poses the `run`
+ * action, which the program screen carries as well as the build screen.
+ */
+async function poseTape(harness: Harness): Promise<void> {
+  await harness.debug.setScreen("program");
+  await harness.debug.addMoveStep("hoist", 20, HOIST_MAX_RATE);
+}
 
 /** Hung on the hook, this pulls the cable past HOIST_CABLE_CAP hanging at rest. */
 const LOAD_MASS = 300;
@@ -63,8 +67,11 @@ afterEach(async () => {
 });
 
 it("stops the motor loop on the tick a run fails, with an axis still driving", async () => {
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared — and `addOneLoad` clears the loads itself.
   await openSite(h, 0);
-  await clearAll(h);
+  await h.debug.clearObstacles();
   await standMinimalCrane(h);
   await addOneLoad(
     h,
@@ -73,8 +80,13 @@ it("stops the motor loop on the tick a run fails, with an axis still driving", a
     { x: 9, y: 2, z: 6, yaw: 0 },
     { x: 9, y: 2, z: 6, yaw: 0 },
   );
-  await poseTape(h, TAPE);
-  await startRun(h);
+  await poseTape(h);
+  const opened = await startRun(h);
+  assertLength(
+    opened.program,
+    1,
+    "the steps the tape took, so the hoist is driving under the reading",
+  );
 
   await h.cues();
   const driving = await runTicks(h, 5);
@@ -92,7 +104,11 @@ it("stops the motor loop on the tick a run fails, with an axis still driving", a
   await h.debug.setLoadPhase(0, "attached");
   const failed = await runTicks(h, 1);
   assertEqual(failed.run.phase, "failed", "the run the cable snap ended");
-  assertEqual(failed.run.cause, "cable-snap", "the cause the failing tick took");
+  assertEqual(
+    failed.run.cause,
+    "cable-snap",
+    "the cause the failing tick took",
+  );
   assertTrue(
     failed.run.axes.hoist.rate !== 0,
     "the hoist's rate the failed run was left holding, which is the rate the " +

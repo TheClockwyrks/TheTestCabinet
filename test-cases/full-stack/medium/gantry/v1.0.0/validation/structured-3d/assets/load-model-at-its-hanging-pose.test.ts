@@ -54,7 +54,7 @@ import {
   drawnModelBox,
   openSite,
   poseTape,
-  runUntil,
+  runTicks,
   standMinimalCrane,
   startRun,
   type Harness,
@@ -93,8 +93,19 @@ const TAPE: readonly TapeStepSpec[] = [
 ];
 
 /** How long the first step is given, and the settling after the bob is parked. */
-const MAX_TICKS = 900;
+const MAX_TICKS = 400;
 const SETTLE = 4;
+
+/**
+ * Ticks taken between readings while the first step runs.
+ *
+ * The step is the ROUTE to the scenario and not the scenario: what this point
+ * reads is the state the step leaves, and the only thing the ticks along the way
+ * are asked is whether the step is done yet. So they are driven in blocks — the
+ * same frames, the same run — and the state is read once a block rather than
+ * once a tick.
+ */
+const CHUNK = 8;
 
 /**
  * How far outside the box a model fills the load's own middle may stand.
@@ -148,13 +159,24 @@ it("draws an attached load at the pose the run reports and not at its starting p
 
   // The hook out in clear air, and the bob parked there so the pendulum is
   // still while the frame is read.
-  await runUntil(
-    h,
-    (state) => state.run.stepIndex > 0 || state.run.phase !== "running",
-    MAX_TICKS,
-    "the tape's first step to complete, which puts the hook in clear air",
+  let driven = await runTicks(h, CHUNK);
+  for (
+    let ran = CHUNK;
+    ran < MAX_TICKS &&
+    driven.run.stepIndex < 1 &&
+    driven.run.phase === "running";
+    ran += CHUNK
+  ) {
+    driven = await runTicks(h, CHUNK);
+  }
+  assertEqual(
+    driven.run.stepIndex,
+    1,
+    `the tape's first step to complete within ${MAX_TICKS} ticks, which puts ` +
+      "the hook in clear air before this point reads the yard",
   );
-  const pivot = (await h.snapshot()).run.pivot;
+  assertEqual(driven.run.phase, "running", "the run while the yard is read");
+  const pivot = driven.run.pivot;
   await h.debug.setBob(pivot.x, pivot.y - HOIST_AT, pivot.z);
   await h.debug.setBobVelocity(0, 0, 0);
   await h.debug.setAxis("hoist", HOIST_AT);

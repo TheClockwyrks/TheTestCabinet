@@ -59,8 +59,8 @@ const BARE_FLANGE: CraneDesign = {
 const BLOCK_MIN = { x: FLANGE.x - 0.4, y: FLANGE.y - 0.4, z: FLANGE.z - 0.4 };
 const BLOCK_SIZE = { x: 0.8, y: 0.8, z: 0.8 } as const;
 
-/** Ticks the ring is held inside the block for: five seconds of run clock. */
-const WINDOW = 300;
+/** Ticks the ring is held inside the block for: half a second of run clock. */
+const WINDOW = 30;
 
 /** A tape that turns the grip, so the arm never carries the flange out. */
 const HOLD: readonly TapeStepSpec[] = [

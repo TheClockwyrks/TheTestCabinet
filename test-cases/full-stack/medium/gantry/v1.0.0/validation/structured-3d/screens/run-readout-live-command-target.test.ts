@@ -14,6 +14,11 @@
 // near at the tick this reads. So the only way `253` reaches the screen is as
 // the slew's live command target.
 //
+// THE SETTLED VALUES ARE THE NEAREST ONES THAT WILL DO. All the settling step
+// has to leave behind is three figures that are not `253`; how far its axes
+// travel to reach them decides nothing, and travel this reading does not use is
+// only more of the axis controller standing between the point and its verdict.
+//
 // THE FIGURE IS LOOKED FOR ON THE SLEW'S OWN LINE. `specs/ui.md` puts the target
 // beside its axis's value, so a readout that names the axis fixes the line, and
 // the target has to be on it — which is also what stops another axis's readout
@@ -34,6 +39,7 @@ import {
   createHarness,
   openSite,
   poseTape,
+  runTicks,
   runUntil,
   standMinimalCrane,
   startRun,
@@ -49,9 +55,9 @@ const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "trolley", target: 2, rate: TROLLEY_MAX_RATE },
+      { axis: "trolley", target: 1, rate: TROLLEY_MAX_RATE },
       { axis: "hoist", target: 3, rate: HOIST_MAX_RATE },
-      { axis: "grip", target: 137, rate: GRIP_MAX_RATE },
+      { axis: "grip", target: 4, rate: GRIP_MAX_RATE },
     ],
   },
   {
@@ -61,7 +67,17 @@ const TAPE: readonly TapeStepSpec[] = [
 ];
 
 /** Ticks the settling step is given before the check calls it a fault. */
-const SETTLE_CAP = 900;
+const SETTLE_CAP = 120;
+
+/**
+ * Ticks carried in one crossing before the sweep starts looking.
+ *
+ * The settling step takes about sixty ticks, and `runUntil` costs a crossing
+ * into the page for every tick it polls. Nothing is read until the slew's
+ * command is live, so the ticks before that can be driven blind; the sweep
+ * still finds the tick it goes live on, and still fails on the cap.
+ */
+const CARRY = 40;
 
 /** How far a drawn figure may sit from the target it reads: whole units. */
 const FIGURE_TOL = 0.5;
@@ -115,6 +131,7 @@ it("draws the live command's target on that axis's readout", async () => {
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);
+  await runTicks(h, CARRY);
   const state = await runUntil(
     h,
     (snapshot) => snapshot.run.axes.slew.command !== null,

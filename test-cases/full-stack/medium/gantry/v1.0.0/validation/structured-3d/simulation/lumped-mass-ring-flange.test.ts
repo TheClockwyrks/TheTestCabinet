@@ -31,9 +31,9 @@ import {
   STRUT_MASS_PER_UNIT,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -97,7 +97,7 @@ const JIB_RIG_MEMBERS: readonly DesignMember[] = [
   [[2, 6, 0], [2, 10, 0], "strut"],
   [[2, 10, 0], [2, 6, 2], "strut"],
   [[2, 10, 0], [0, 6, 2], "strut"],
-  
+
   // The arm: the track, its mast cables, and its sideways braces.
   [[2, 6, 0], [4, 6, 0], "rail"],
   [[4, 6, 0], [6, 6, 0], "rail"],
@@ -128,7 +128,7 @@ afterEach(async () => {
 
 it("carries RING_MASS / 8 at a flange node and crosses the top flange's share down", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, JIB_RIG);
 
   const { structure } = await h.snapshot();
@@ -144,7 +144,9 @@ it("carries RING_MASS / 8 at a flange node and crosses the top flange's share do
   );
 
   const leg = touching.find(
-    (m) => (at(m.a) ? m.b : m.a).y === 0 && (at(m.a) ? m.b : m.a).x === CORNER.x &&
+    (m) =>
+      (at(m.a) ? m.b : m.a).y === 0 &&
+      (at(m.a) ? m.b : m.a).x === CORNER.x &&
       (at(m.a) ? m.b : m.a).z === CORNER.z,
   );
   if (leg === undefined) {

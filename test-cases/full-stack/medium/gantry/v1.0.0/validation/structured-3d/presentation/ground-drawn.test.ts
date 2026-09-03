@@ -40,8 +40,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   drawnObjects,
   openSite,
   type Harness,
@@ -64,7 +64,8 @@ afterEach(async () => {
 
 it("draws the plane y = 0 as a floor under the yard", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.advance(1);
 
   const posed = await h.snapshot();

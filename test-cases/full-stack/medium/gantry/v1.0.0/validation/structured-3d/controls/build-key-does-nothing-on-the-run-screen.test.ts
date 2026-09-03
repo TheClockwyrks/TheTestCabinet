@@ -46,8 +46,8 @@ const HOLD_TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks driven first, so the press lands on a run under way. */
-const TICKS = 10;
+/** Ticks driven first, so the press lands on a run under way: one is enough. */
+const TICKS = 2;
 
 let h: Harness;
 

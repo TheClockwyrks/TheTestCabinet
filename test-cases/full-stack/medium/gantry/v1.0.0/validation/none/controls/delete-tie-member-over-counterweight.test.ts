@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertTrue } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The one member standing: a leg from an anchor of site 1. */
 const MEMBER = {
@@ -41,7 +41,7 @@ afterEach(async () => {
 
 it("removes the member when a member and a counterweight tie", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.addMember(
     MEMBER.a.x,
     MEMBER.a.y,

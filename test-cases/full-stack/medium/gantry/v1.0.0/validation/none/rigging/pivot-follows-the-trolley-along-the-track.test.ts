@@ -19,9 +19,18 @@
 // the track stands where it was built (`specs/statics.md`).
 //
 // THE TROLLEY IS DRIVEN BY THE TAPE RATHER THAN POSED, and the reading is taken
-// at every tick of the drive, so the pivot is checked against dozens of distinct
-// trolley values from `0` upward rather than at one posed point. The sampling
-// stops well inside the move, so no tick of it is the one that ends the run.
+// at ten points spread along the drive, so the pivot is checked against ten
+// distinct trolley values from `0` upward rather than at one posed point. The
+// sampling stops well inside the move, so no tick of it is the one that ends the
+// run.
+//
+// TEN READINGS RATHER THAN ONE PER TICK. The requirement is a relation between
+// two numbers the snapshot reports at the same moment — the pivot and the trolley
+// value — so a build either holds it at every tick or holds it at none, and every
+// extra sample buys coverage of the same relation at the price of a whole crossing
+// into the page. The ticks BETWEEN the readings still run: `runTicks` advances
+// them as one batch, so the trolley reaches the same values it would have reached
+// tick by tick and the readings are taken at ten of them.
 //
 // The world holds the crane and nothing else: a load or an obstacle could only
 // end the run for a reason this requirement is not about.
@@ -56,8 +65,11 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks sampled: inside the move, which takes about 79 of them. */
-const TICKS = 60;
+/** Readings taken, spread along the move, which takes about 79 ticks. */
+const SAMPLES = 10;
+
+/** Ticks driven between one reading and the next. */
+const STRIDE = 5;
 
 /** Arithmetic slack on a position the specification fixes exactly. */
 const TOLERANCE = 1e-6;
@@ -80,8 +92,8 @@ it("stands the pivot at the trolley's own distance along the track", async () =>
   await startRun(h);
 
   let reached = 0;
-  for (let tick = 1; tick <= TICKS; tick += 1) {
-    const { run } = await runTicks(h, 1);
+  for (let sample = 1; sample <= SAMPLES; sample += 1) {
+    const { run } = await runTicks(h, STRIDE);
     const along = run.axes.trolley.value;
     reached = Math.max(reached, along);
     assertVec3Near(
@@ -92,8 +104,9 @@ it("stands the pivot at the trolley's own distance along the track", async () =>
         z: ORIGIN.z + DIRECTION.z * along,
       },
       TOLERANCE,
-      `tick ${tick}: the pivot, which stands on the track at the trolley's ` +
-        `own value ${along.toFixed(4)} from the origin (specs/rigging.md)`,
+      `tick ${sample * STRIDE}: the pivot, which stands on the track at the ` +
+        `trolley's own value ${along.toFixed(4)} from the origin ` +
+        "(specs/rigging.md)",
     );
   }
 

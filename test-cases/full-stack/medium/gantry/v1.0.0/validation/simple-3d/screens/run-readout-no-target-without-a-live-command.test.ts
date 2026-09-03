@@ -7,12 +7,19 @@
 // commanded axis showing its target — is its own check.
 //
 // THE THREE UNCOMMANDED AXES ARE PUT AT FIGURES OF THEIR OWN FIRST. The tape's
-// first step drives the trolley, the hoist and the grip to `2`, `3` and `137`,
+// first step drives the trolley, the hoist and the grip to `1`, `3` and `4`,
 // and its second step commands the slew alone. Left at the run-start posture
 // those three would read `0`, `2` and `0` (`specs/program.md`), and a screen
 // drawing a spurious target of `0` beside a value of `0` would be
 // indistinguishable from one drawing no target at all. Driven somewhere first,
 // every figure on those three lines has to be the axis's own value.
+//
+// EACH OF THE THREE IS AT LEAST TWICE `FIGURE_TOL` FROM THE FIGURE IT WOULD
+// HAVE READ AT THE RUN-START POSTURE, which is the whole of what the settling
+// step has to buy: that margin is what makes a spurious `0` a stray figure
+// rather than a rounding of the value. Travelling further than that buys the
+// reading nothing, and every extra tick of it is more of the axis controller
+// standing between this point and its verdict.
 //
 // THEY ARE DRIVEN RATHER THAN POSED because posing the trolley or the hoist
 // mid-run moves the pivot or the cable a whole unit between two ticks, and the
@@ -38,6 +45,7 @@ import {
   createHarness,
   openSite,
   poseTape,
+  runTicks,
   runUntil,
   standMinimalCrane,
   startRun,
@@ -54,16 +62,29 @@ const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "trolley", target: 2, rate: TROLLEY_MAX_RATE },
+      { axis: "trolley", target: 1, rate: TROLLEY_MAX_RATE },
       { axis: "hoist", target: 3, rate: HOIST_MAX_RATE },
-      { axis: "grip", target: 137, rate: GRIP_MAX_RATE },
+      { axis: "grip", target: 4, rate: GRIP_MAX_RATE },
     ],
   },
-  { kind: "move", commands: [{ axis: "slew", target: 253, rate: SLEW_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "slew", target: 253, rate: SLEW_MAX_RATE }],
+  },
 ];
 
 /** Ticks the settling step is given before the check calls it a fault. */
-const SETTLE_CAP = 900;
+const SETTLE_CAP = 120;
+
+/**
+ * Ticks carried in one crossing before the sweep starts looking.
+ *
+ * The settling step takes about sixty ticks, and `runUntil` costs a crossing
+ * into the page for every tick it polls. Nothing is read until the slew's
+ * command is live, so the ticks before that can be driven blind; the sweep
+ * still finds the tick it goes live on, and still fails on the cap.
+ */
+const CARRY = 40;
 
 /** How far a drawn figure may sit from the value it reads: whole units. */
 const FIGURE_TOL = 0.5;
@@ -117,6 +138,7 @@ it("draws no target beside an axis carrying no live command", async () => {
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);
+  await runTicks(h, CARRY);
   const state = await runUntil(
     h,
     (snapshot) => snapshot.run.axes.slew.command !== null,

@@ -25,8 +25,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { textDraws, toDrawCall, type RecordedOp } from "../case-harness/index";
 import { fail } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   type Harness,
@@ -85,7 +85,7 @@ afterEach(async () => {
 
 it("lists each action step where that step stands in the tape", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseTape(h, [
     MOVE,
     { kind: "action", action: "attach" },

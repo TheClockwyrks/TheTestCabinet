@@ -21,11 +21,26 @@
 // what the check then decides is that the run carries on regardless.
 //
 // The tape is a single grip move. specs/rigging.md: "Turning the grip applies no
-// force to anything", so the run is a few hundred ticks of the structure standing
-// under its own load and nothing else.
+// force to anything", so the run is the structure standing under its own load and
+// nothing else, tick after tick, until the tape ends and the run clears.
+//
+// THE MOVE IS AS SHORT AS THE POINT ALLOWS. `GRIP_TURN` (`45` degrees) at
+// `GRIP_MAX_RATE` and `GRIP_ACCEL` (`90` deg/s²) is a half-second ramp, a
+// half-second cruise and a half-second brake under the controller
+// specs/program.md fixes: ninety ticks of the whole pipeline — ninety arm solves,
+// ninety ring checks and ninety tower solves under a reaction past `RING_CAP` —
+// and then the tape ends and the run is cleared. There is nothing a longer turn
+// would add: the ring check is the only capacity the game has and it is read on
+// every one of those ticks, so a build that capped its anchors would end the run
+// on the first of them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLength, assertTrue } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLength,
+  assertTrue,
+} from "../assert";
 import {
   CABLE_MASS_PER_UNIT,
   COUNTERWEIGHT_MASS,
@@ -42,6 +57,7 @@ import {
   openSite,
   poseCrane,
   poseTape,
+  runTicks,
   runUntil,
   startRun,
   type CraneDesign,
@@ -161,9 +177,21 @@ const LOADED_ANCHOR_CRANE: CraneDesign = {
   ],
 };
 
+/** The turn the tape makes: a second of run clock, and no force anywhere. */
+const GRIP_TURN = 45;
+
+/** Ticks driven in one batch, comfortably short of the turn's ninety. */
+const BATCHED = 80;
+
+/** Ticks the sweep will spend finding the tick the tape ends on. */
+const SWEEP_CAP = 150;
+
 /** One move that turns the hook and applies no force to the structure. */
 const GRIP_TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 180, rate: GRIP_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: GRIP_TURN, rate: GRIP_MAX_RATE }],
+  },
 ];
 
 let h: Harness;
@@ -224,10 +252,16 @@ it("takes a reaction past RING_CAP at one anchor without ending the run", async 
 
   await poseTape(h, GRIP_TAPE);
   await startRun(h);
+  // The turn is ninety ticks of motion under the controller `specs/program.md`
+  // fixes, so `BATCHED` of them are driven in one go and the sweep only has to
+  // find the tick that ends the tape. A build whose grip arrives sooner is not
+  // mis-graded by that: the sweep reads the state before it drives anything, so
+  // it answers a run that has already ended at zero further ticks.
+  await runTicks(h, BATCHED);
   const ended = await runUntil(
     h,
     (s) => s.run.phase !== "running",
-    2000,
+    SWEEP_CAP,
     "the run to end as the tape does",
   );
 
@@ -237,7 +271,11 @@ it("takes a reaction past RING_CAP at one anchor without ending the run", async 
     "the run ending as its tape does rather than on the anchor's account " +
       "(specs/world.md: anchors support any force without limit)",
   );
-  assertEqual(ended.run.cause, null, "the cause a run under a loaded anchor carries");
+  assertEqual(
+    ended.run.cause,
+    null,
+    "the cause a run under a loaded anchor carries",
+  );
   assertLength(
     ended.run.broken,
     0,

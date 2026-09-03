@@ -21,18 +21,45 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { PLACE_POS_TOL } from "../constants";
 import {
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
+  poseCrane,
   poseTape,
   runTicks,
-  standMinimalCrane,
   startRun,
+  type CraneDesign,
   type Harness,
   type LoadPose,
   type TapeStepSpec,
 } from "../harness";
+
+/**
+ * The crane under the hook: a slew ring and the one rail the trolley runs on.
+ *
+ * WHAT THE SCENARIO NEEDS OF IT AND NOTHING MORE. A run starts on a structure
+ * with no readiness issue (specs/program.md § Starting and ending a run), and
+ * this raises none — specs/structure.md § Readiness lists the four, and a ring
+ * with one horizontal rail in the arm, joined to a top-flange node, breaks none
+ * of them. Whether it would STAND is never asked: the tape's one action step is
+ * stage 1 of the tick, "the first failure a tick reaches ends the run with that
+ * cause and the later stages of that tick do not run", and the solve is stage 6.
+ * So the verdict this point reads is reached before anything is solved for, and
+ * a tower under the ring would only put another crane's failure modes on the
+ * route to it.
+ *
+ * The ring and the rail are the minimal crane's own, so the trolley starts at
+ * the same track origin and the hook hangs from the same run-start pivot.
+ */
+const CRANE: CraneDesign = {
+  site: 0,
+  name: "Ring and track",
+  ring: [0, 2, 0],
+  counterweights: [],
+  members: [[[0, 4, 0], [4, 4, 0], "rail"]],
+  tape: [],
+};
 
 /** Site 1, First Lift. */
 const SITE = 0;
@@ -85,8 +112,8 @@ async function hangOnHook(
 
 it("misplaces a load set down exactly on another load's pad", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
-  await standMinimalCrane(h);
+  await emptyYard(h);
+  await poseCrane(h, CRANE);
 
   // The two loads, in the order the site lists them: the one that goes on the
   // hook first, then the one whose pad it is about to land on.

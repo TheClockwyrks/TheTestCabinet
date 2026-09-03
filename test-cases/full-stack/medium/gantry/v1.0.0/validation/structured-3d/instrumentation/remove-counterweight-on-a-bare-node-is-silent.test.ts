@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -34,7 +34,11 @@ afterEach(async () => {
 
 it("leaves the structure and the history alone when the node carries no counterweight", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The world this point concerns is the structure alone, so the structure is the
+  // only thing emptied: `clearStructure` "empties the open site's structure" and
+  // is refused by nothing, and the site's own loads and obstacles cannot carry a
+  // counterweight or reach the undo history.
+  await h.debug.clearStructure();
   await h.debug.addMember(0, 0, 0, 0, 2, 0, "strut");
   // A node the structure uses, so the placement is accepted (specs/structure.md).
   await h.debug.addCounterweight(0, 2, 0);

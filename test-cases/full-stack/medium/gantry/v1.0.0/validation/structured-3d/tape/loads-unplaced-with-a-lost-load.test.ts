@@ -18,16 +18,24 @@
 // The load is left where it waits, out beyond the crane, because a load that
 // comes off the hook "leaves the load at the pose it holds when it comes off"
 // and nothing about this requirement concerns where a lost load lies. The yard
-// holds nothing else, and the tape is one short move with no action step, so the
-// only way the run can end is by running out.
+// holds nothing else, and the tape is one move with no action step, so the only
+// way the run can end is by running out.
+//
+// AND THE MOVE IS THE SHORTEST ONE THERE IS: its target is the value the hoist
+// already stands at when the run starts, and `specs/program.md` § Axis motion
+// says such a move "is done on the tick it is issued". So tick 1 takes the step
+// and finishes it, and tick 2 is the tick that "finds no live step and no step
+// left to take" — the tick this point is about. Driving the axis somewhere first
+// would decide the same thing forty ticks later, through an axis controller this
+// requirement has nothing to do with.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { HOIST_MAX_RATE } from "../constants";
+import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runUntil,
@@ -41,16 +49,16 @@ import {
 const FROM = { x: 8, y: 2, z: 0, yaw: 0 };
 const TO = { x: 0, y: 2, z: 8, yaw: 0 };
 
-/** A short hoist move: the whole tape. */
+/** One move to where the hoist already stands: the whole tape, done as issued. */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "hoist", target: 1.5, rate: HOIST_MAX_RATE }],
+    commands: [{ axis: "hoist", target: HOIST_START, rate: HOIST_MAX_RATE }],
   },
 ];
 
-/** Ticks the tape is given to run out: the move takes about forty. */
-const CAP = 400;
+/** Ticks the tape is given to run out: the step is done on the tick it issues. */
+const CAP = 8;
 
 let h: Harness;
 
@@ -64,7 +72,10 @@ afterEach(async () => {
 
 it("fails as loads-unplaced when the tape runs out over a lost load", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, FROM, TO);
   await poseTape(h, TAPE);

@@ -39,6 +39,12 @@
 // THE OBSTACLE IS PLACED AFTER THE CRANE IS BUILT: whether the editor accepts such
 // a member is a different point, and this one is about what the run's own
 // collision stage makes of it.
+//
+// A SECOND OF RUN CLOCK IS THE WINDOW. The collision stage runs on every tick
+// (specs/program.md § The tick pipeline) and the geometry it reads never changes
+// here: the grip turns, which moves no part of the structure, so the strut sits on
+// the vertex tick after tick. Sixty consecutive tests of the same arrangement is
+// the whole of what there is to read, and driving longer only repeats it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
@@ -74,8 +80,8 @@ const HOLD_TAPE: readonly TapeStepSpec[] = [
   { kind: "move", commands: [{ axis: "grip", target: 360, rate: HOLD_RATE }] },
 ];
 
-/** Five seconds of run clock with the member touching the corner. */
-const TICKS = 300;
+/** One second of run clock with the member touching the corner. */
+const TICKS = 60;
 
 let h: Harness;
 

@@ -21,7 +21,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { COUNTERWEIGHT_COST } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The node the strut ends at, and the block hangs on. */
 const NODE = { x: 0, y: 4, z: 0 };
@@ -38,7 +38,7 @@ afterEach(async () => {
 
 it("takes a counterweight off its node and returns COUNTERWEIGHT_COST", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.addMember(0, 0, 0, NODE.x, NODE.y, NODE.z, "strut");
   await h.debug.addCounterweight(NODE.x, NODE.y, NODE.z);
 

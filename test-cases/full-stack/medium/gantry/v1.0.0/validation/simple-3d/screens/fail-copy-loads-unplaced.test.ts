@@ -46,10 +46,19 @@ const LOAD_MASS = 40;
 const WAITING = { x: 10, y: 2, z: 0, yaw: 0 };
 const PAD = { x: 0, y: 2, z: 10, yaw: 0 };
 
-/** A move that ends: the run then finds no step left, with the crate waiting. */
+/**
+ * A move that ends: the run then finds no step left, with the crate waiting.
+ *
+ * The shortest move that is still a move — a fiftieth of a unit of hoist — because
+ * what this check is about is the tape RUNNING OUT with a load unplaced, not how
+ * far it moved on the way. The crate is untouched either way, and the run reaches
+ * the end of the tape in a handful of ticks instead of forty-five.
+ */
 const A_SHORT_HOIST: TapeStepSpec = {
   kind: "move",
-  commands: [{ axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE }],
+  commands: [
+    { axis: "hoist", target: HOIST_START + 0.02, rate: HOIST_MAX_RATE },
+  ],
 };
 
 /**
@@ -95,7 +104,7 @@ it("reads a tape that ran out with a load waiting out as THE TAPE ENDED WITH LOA
   const ended = await runUntil(
     h,
     (s) => s.run.phase !== "running",
-    200,
+    40,
     "the run to end",
   );
   // The frame that FOLLOWS the tick that ended it: a failed run "stays here, the

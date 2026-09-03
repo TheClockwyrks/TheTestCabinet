@@ -34,6 +34,15 @@
 // cable can hold sets the hoist axis to the distance it left between the pivot and
 // the bob" — the posed point is exactly `HOIST_START` from the pivot, so the cable
 // holds it.
+//
+// THE CRANE AND THE YARD ARE STOOD UP ONCE and both runs are taken on them. The
+// two runs differ only in the tape's second step, and the run between them is
+// ended with `abortRun`, which "poses the abort, ending a running run with no
+// verdict" and puts the run back to its idle placeholder — so the second run
+// starts from the same authored state the first did (`specs/program.md`: "every
+// run begins from the same authored state"). Building the crane a second time
+// would put sixty more edits on the route to a scenario that is about the order
+// of two stages within one tick.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -120,8 +129,8 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Pose the swinging bob just out of reach and take the tape's second step. */
-async function swingIntoReach(second: TapeStepSpec): Promise<Vec3> {
+/** The crane, the yard and the one load this point runs both of its runs on. */
+async function stage(): Promise<void> {
   await openSite(h, SITE);
   await clearAll(h);
   await standMinimalCrane(h);
@@ -132,6 +141,16 @@ async function swingIntoReach(second: TapeStepSpec): Promise<Vec3> {
     { ...LOAD_AT, yaw: 0 },
     { x: 6, y: 2, z: 0, yaw: 0 },
   );
+}
+
+/** Pose the swinging bob just out of reach and take the tape's second step. */
+async function swingIntoReach(second: TapeStepSpec): Promise<Vec3> {
+  // Whatever the last run left, back to the idle placeholder and the authored
+  // yard; `abortRun` does nothing when no run is in progress.
+  await h.debug.abortRun();
+  await h.debug.setScreen("program");
+  await h.debug.clearProgram();
+  await h.debug.setScreen("build");
   await poseTape(h, [NOOP, second, HOLD]);
 
   await startRun(h);
@@ -154,6 +173,8 @@ async function swingIntoReach(second: TapeStepSpec): Promise<Vec3> {
 }
 
 it("finds no candidate for a hook that only swings into reach mid-tick", async () => {
+  await stage();
+
   // The control: the same poses with a step that lets the pendulum run, so the
   // swing that the failing run never gets to take can be measured.
   const swept = await swingIntoReach(NOOP);

@@ -11,9 +11,20 @@
 // build that turned the load only when the grip stopped, or eased it toward the
 // grip over a few ticks, matches at the end and never matches in the middle. The
 // grip is driven from the run's starting `0` (specs/program.md § The axes) to
-// `GRIP_TARGET` (`90`), which under `GRIP_MAX_RATE` and `GRIP_ACCEL` accelerates
-// for half a second, cruises, and brakes for half a second — a hundred and fifty
-// ticks of turning, each one compared.
+// `GRIP_TARGET`, and the turn has to cover all three of the controller's phases,
+// because a build that assigns the load's yaw only while the axis is at a steady
+// rate matches through the cruise and not through the ramps.
+//
+// THE COMMAND NAMES ITS OWN RATE, WHICH IS WHAT MAKES THE TURN SHORT. A command
+// is `{ axis, target, rate }` and drives "at up to `rate`" (specs/program.md), so
+// a rate of `GRIP_RATE` (`10`) deg/s well under `GRIP_MAX_RATE` reaches its
+// cruise in `GRIP_RATE / GRIP_ACCEL` seconds — a ninth of a second, over half a
+// degree — and `GRIP_TARGET` (`3`) degrees is comfortably more than the two ramps
+// need. So the whole move is a ramp up, a cruise and a ramp down inside
+// twenty-five ticks, where the same three phases at `GRIP_MAX_RATE` over ninety
+// degrees take a hundred and fifty. Every one of those ticks is compared, and the
+// reading below asserts the cruise was actually reached, so the shorter turn
+// covers the phases rather than skipping them.
 //
 // THE LOAD IS HUNG THROUGH THE SURFACE, so nothing in the candidate rules stands
 // between the scenario and the grip. specs/instrumentation.md: `setLoadPhase` to
@@ -30,11 +41,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNear } from "../assert";
-import { GRIP_MAX_RATE, HOIST_START, SLEW_MAX_RATE } from "../constants";
+import { HOIST_START, SLEW_MAX_RATE } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -53,11 +64,17 @@ const PIVOT = { x: 0, y: 4, z: 0 };
 /** Where the bob hangs at the run's start: the pivot minus `(0, L, 0)`. */
 const HOOK = { x: PIVOT.x, y: PIVOT.y - HOIST_START, z: PIVOT.z };
 
-/** The quarter turn the grip is driven through. */
-const GRIP_TARGET = 90;
+/** How far the grip is driven, in degrees. */
+const GRIP_TARGET = 3;
 
-/** Ticks the turn is allowed; at GRIP_MAX_RATE it takes some 150. */
-const CAP = 300;
+/** The rate the command names: well under `GRIP_MAX_RATE`, so the ramps are short. */
+const GRIP_RATE = 10;
+
+/** Ticks the turn is allowed; at `GRIP_RATE` it takes some twenty-five. */
+const CAP = 90;
+
+/** Ticks of turning the reading has to cover to have seen all three phases. */
+const LEAST_SAMPLED = 15;
 
 /** A yaw the grip carries by assignment; the tolerance is arithmetic noise. */
 const TOLERANCE = 1e-9;
@@ -71,7 +88,7 @@ const NOOP: TapeStepSpec = {
 /** The turn under test. */
 const TURN: TapeStepSpec = {
   kind: "move",
-  commands: [{ axis: "grip", target: GRIP_TARGET, rate: GRIP_MAX_RATE }],
+  commands: [{ axis: "grip", target: GRIP_TARGET, rate: GRIP_RATE }],
 };
 
 let h: Harness;
@@ -86,7 +103,10 @@ afterEach(async () => {
 
 it("holds the carried load's yaw at the grip's value on every tick", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(
     h,
@@ -109,11 +129,13 @@ it("holds the carried load's yaw at the grip's value on every tick", async () =>
   );
 
   let sampled = 0;
+  let fastest = 0;
   const turned = await runUntil(
     h,
     (s) => {
       if (s.run.tick >= 2) {
         sampled += 1;
+        fastest = Math.max(fastest, Math.abs(s.run.axes.grip.rate));
         assertEqual(
           s.run.loads[0]?.phase,
           "attached",
@@ -141,9 +163,18 @@ it("holds the carried load's yaw at the grip's value on every tick", async () =>
 
   assertGreaterThan(
     sampled,
-    60,
+    LEAST_SAMPLED,
     `the ticks the grip took to reach ${GRIP_TARGET}, so the load's yaw was ` +
       "read while the grip was accelerating, cruising and braking",
+  );
+  assertNear(
+    fastest,
+    GRIP_RATE,
+    1e-6,
+    "the fastest the grip turned over those ticks, which is the command's " +
+      `own rate of ${GRIP_RATE} deg/s: the turn reached its cruise, so the ` +
+      "readings above span the ramp up, the cruise and the ramp down " +
+      "(specs/program.md § Axis motion)",
   );
   assertEqual(
     turned.run.axes.grip.value,

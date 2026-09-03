@@ -26,14 +26,26 @@
 // members. Nothing fabricates a utilization: the pose sets the mass on the cable
 // and the build's own solve decides the rest, so every crossing is READ BACK from
 // `run.forces` before it is used.
+//
+// AND ONLY THE FOUR CROSSING TICKS ARE SAMPLED. The ticks between them carry the
+// bare hook and cross nothing, so they are driven in one batch each: what the
+// point reads on a crossing tick is the forces the tick before it left — which is
+// the state the batch answers with — and the cues that tick alone played, which is
+// the queue drained immediately before it. Sampling the forty-three ticks one at a
+// time reads thirty-nine states no assertion looks at.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { CREAK_COOLDOWN, CREAK_THRESHOLD, GRIP_MAX_RATE, TICK_HZ } from "../constants";
+import {
+  CREAK_COOLDOWN,
+  CREAK_THRESHOLD,
+  GRIP_MAX_RATE,
+  TICK_HZ,
+} from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -124,7 +136,12 @@ const COOLDOWN_TICKS = CREAK_COOLDOWN * TICK_HZ;
 const FIRST = 3;
 
 /** The four crossings: the creak, one inside, the first eligible again, one inside that. */
-const CROSSINGS = [FIRST, FIRST + 10, FIRST + COOLDOWN_TICKS, FIRST + COOLDOWN_TICKS + 10];
+const CROSSINGS = [
+  FIRST,
+  FIRST + 10,
+  FIRST + COOLDOWN_TICKS,
+  FIRST + COOLDOWN_TICKS + 10,
+];
 
 /** The members the build reports at or above the threshold, from below it. */
 function crossings(
@@ -151,7 +168,10 @@ afterEach(async () => {
 
 it("counts the next creak from the creak that played, not from a suppressed crossing", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await poseCrane(h, CRANE);
   await poseTape(h, IDLE_TAPE);
   await addOneLoad(
@@ -164,17 +184,38 @@ it("counts the next creak from the creak that played, not from a suppressed cros
   await startRun(h);
   await h.cues();
 
-  const wanted = new Set(CROSSINGS);
-  const last = CROSSINGS[CROSSINGS.length - 1]!;
+  let at = 0;
   let previous: readonly MemberForce[] = [];
   const crossed = new Map<number, number>();
   const creaks = new Map<number, number>();
 
-  for (let tick = 1; tick <= last; tick += 1) {
-    await h.debug.setLoadPhase(0, wanted.has(tick) ? "attached" : "waiting");
+  for (const tick of CROSSINGS) {
+    // The run up to the tick before the crossing, with the hook bare: one batch,
+    // answering the forces the crossing is read against.
+    await h.debug.setLoadPhase(0, "waiting");
+    if (tick - 1 > at) {
+      const carried = await runTicks(h, tick - 1 - at);
+      at = tick - 1;
+      assertEqual(
+        carried.run.phase,
+        "running",
+        `the run still running at tick ${at}`,
+      );
+      previous = carried.run.forces;
+    }
+    // Whatever those ticks sounded is not this crossing's, so the queue is
+    // drained before the crossing tick is driven.
+    await h.cues();
+
+    await h.debug.setLoadPhase(0, "attached");
     const s = await runTicks(h, 1);
+    at = tick;
     const played = await h.cues();
-    assertEqual(s.run.phase, "running", `the run still running at tick ${tick}`);
+    assertEqual(
+      s.run.phase,
+      "running",
+      `the run still running at tick ${tick}`,
+    );
     crossed.set(tick, crossings(previous, s.run.forces).length);
     creaks.set(tick, played.filter((c) => c === "creak").length);
     previous = s.run.forces;

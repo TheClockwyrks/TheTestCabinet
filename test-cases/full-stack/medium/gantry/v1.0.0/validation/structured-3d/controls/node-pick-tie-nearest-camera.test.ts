@@ -28,7 +28,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
 import { CAMERA_TARGET, SITES } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The site this check is read on. */
 const SITE = 0;
@@ -83,7 +83,7 @@ afterEach(async () => {
 
 it("answers a node tie with the node nearest the camera", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   const pitch = (Math.atan2(RISE, RUN) * 180) / Math.PI;
   await h.debug.setCamera(0, pitch, DIST);
   // THE FRAME AFTER THE POSE IS THIS ENGINE'S. `specs/instrumentation.md` puts

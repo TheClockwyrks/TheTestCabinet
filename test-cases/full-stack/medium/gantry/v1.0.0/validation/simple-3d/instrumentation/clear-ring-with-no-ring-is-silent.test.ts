@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** A member placement, as the two lattice nodes `addMember` takes in order. */
 type Edge = { a: [number, number, number]; b: [number, number, number] };
@@ -42,7 +42,8 @@ afterEach(async () => {
 
 it("raises nothing, removes nothing and pushes no history on a ringless crane", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   for (const member of MEMBERS) {
     await h.debug.addMember(...member.a, ...member.b, "strut");
   }

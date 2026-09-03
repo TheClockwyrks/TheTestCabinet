@@ -24,7 +24,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertTrue } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
   openSite,
   poseCrane,
@@ -53,7 +52,9 @@ afterEach(async () => {
 
 it("reports no member for a ready crane whose arm solve is singular", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // Nothing is cleared here: the crane pose below empties the structure it stands,
+  // and a readiness reading is taken off the structure and the site alone
+  // (specs/structure.md), so the yard and the tape are not this requirement's.
   await poseCrane(h, FLAT_TIP);
 
   const result = await h.check();

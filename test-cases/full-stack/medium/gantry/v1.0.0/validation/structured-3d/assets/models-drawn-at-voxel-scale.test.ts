@@ -43,7 +43,6 @@ import { assertEqual, assertNear, assertTrue, fail } from "../assert";
 import { LOAD_CLASS_DIMENSIONS, VOXELS_PER_UNIT } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   committedModel,
   createHarness,
   drawnFromModel,
@@ -84,7 +83,11 @@ afterEach(async () => {
 
 it("draws a model at 1 / VOXELS_PER_UNIT of its sculpted extent", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await addOneLoad(h, CLASS, MASS, AT, AT);
   await h.advance(1);
 

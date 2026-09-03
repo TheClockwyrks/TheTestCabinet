@@ -18,12 +18,12 @@
 // The press goes down somewhere on the stage and a frame runs inside it, so a
 // build that reads its input at the top of a frame has seen the press and `down`
 // is known to be `true` before the reset. The check stands on the build screen
-// with a cleared world, where the pointer is what the player works the yard with,
+// with an emptied yard, where the pointer is what the player works the yard with,
 // and there is nothing under it to pick.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** Somewhere on the stage; nothing about this position is special. */
 const AT = { x: 200, y: 140 };
@@ -40,7 +40,7 @@ afterEach(async () => {
 
 it("clears the live press and leaves it clear while the button is still held", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.pointerDown(AT.x, AT.y);
   await h.advance(1);
   assertTrue(

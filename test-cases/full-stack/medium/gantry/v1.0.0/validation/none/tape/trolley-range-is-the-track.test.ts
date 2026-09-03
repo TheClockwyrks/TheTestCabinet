@@ -23,6 +23,16 @@
 // bound reachable rather than merely accepted; the second is read on its first
 // tick, the tick that takes the step and judges it.
 //
+// THE ARRIVAL IS DRIVEN IN BATCHES. Four units under `TROLLEY_ACCEL` is two
+// seconds of ramping either side of the cruise, and nothing here is about the tick
+// the trolley lands on — only about it landing, at the value it was told to reach.
+// So the ticks are driven in batches and the state is read once per batch, rather
+// than once per tick. A second step turns the grip after it, so the tape has not
+// run out by the time the batch that carried the trolley home is read: the grip
+// "applies no force to anything" and with nothing on the hook it "turns the bare
+// hook, visibly and to no other effect" (`specs/rigging.md`), so what the reading
+// finds is the trolley step's own arrival.
+//
 // The yard is empty and the hook hangs at `HOIST_START` over a horizontal track,
 // so nothing else can end either run while the scenario is waiting.
 
@@ -30,14 +40,14 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual, assertNull } from "../assert";
 import { TICK_HZ, TROLLEY_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
-  runUntil,
   standMinimalCrane,
   startRun,
+  type GantrySnapshot,
   type Harness,
 } from "../harness";
 
@@ -49,6 +59,9 @@ const BEYOND = TRACK_LENGTH + 0.5;
 
 /** Four units at up to 4 u/s with a ramp at each end: two seconds. */
 const CAP = 6 * TICK_HZ;
+
+/** Ticks driven between two readings of the trolley. */
+const BATCH = 20;
 
 /** The controller sets the value to the target exactly on arrival. */
 const TOL = 1e-9;
@@ -65,7 +78,7 @@ afterEach(async () => {
 
 it("reaches a trolley target at the track's length and refuses one past it", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
 
   await poseTape(h, [
@@ -75,16 +88,18 @@ it("reaches a trolley target at the track's length and refuses one past it", asy
         { axis: "trolley", target: TRACK_LENGTH, rate: TROLLEY_MAX_RATE },
       ],
     },
+    { kind: "move", commands: [{ axis: "grip", target: 3600, rate: 45 }] },
   ]);
-  await startRun(h);
-  const arrived = await runUntil(
-    h,
-    (s) =>
-      s.run.phase !== "running" ||
-      Math.abs(s.run.axes.trolley.value - TRACK_LENGTH) <= TOL,
-    CAP,
-    `the trolley to reach ${TRACK_LENGTH}, or the run to end trying`,
-  );
+  let arrived: GantrySnapshot = await startRun(h);
+  for (
+    let driven = 0;
+    driven < CAP &&
+    arrived.run.phase === "running" &&
+    Math.abs(arrived.run.axes.trolley.value - TRACK_LENGTH) > TOL;
+    driven += BATCH
+  ) {
+    arrived = await runTicks(h, BATCH);
+  }
   assertNull(
     arrived.run.cause,
     `the failure cause of a run whose trolley was told to reach ` +

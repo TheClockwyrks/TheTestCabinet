@@ -11,11 +11,18 @@
 // changed. `project` answers "the point on the stage the world position is drawn
 // at, through the camera as it stands", and § Readings says what that buys: "a
 // press and release at a visible node's projected point picks that node". The
-// node is `(0, 4, 0)`, a top-flange node of the crane this scenario stands up, so
-// the point under the pointer is one the build screen genuinely picks — which is
-// read back on the build screen first, because a validator whose pointer was
-// nowhere near a candidate would report `null` off the build screen for the wrong
-// reason and pass any build at all.
+// node is `(0, 4, 0)`, and one strut runs out of it, so BOTH halves of `pick` are
+// answered there on the build screen — which is read back first, because a
+// validator whose pointer was nowhere near a candidate would report `null` off
+// the build screen for the wrong reason and pass any build at all, and one whose
+// world held no member would be reading `pick.member` against an empty structure.
+//
+// ONE STRUT RATHER THAN A WHOLE CRANE. This point is about which SCREEN answers
+// `pick`, so the world holds exactly what the two readings need: the lattice node
+// the pointer stands on and one member through it. Standing a crane up on the way
+// here would put every placement rule in `specs/structure.md` between a build and
+// this point, and those are other validators' — the route would make the grade
+// less precise rather than more.
 //
 // THE PROGRAM SCREEN IS WHERE THE READING IS TAKEN because it is the other screen
 // drawing the same yard through the same camera: `specs/ui.md` § Program, "shows
@@ -30,16 +37,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertNull, assertTrue } from "../assert";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  standMinimalCrane,
-  type Harness,
-} from "../harness";
+import { clearAll, createHarness, openSite, type Harness } from "../harness";
 
-/** A top-flange node of the minimal crane: what the pointer is put over. */
+/** The lattice node the pointer is put over. */
 const NODE = { x: 0, y: 4, z: 0 } as const;
+
+/** The one member the world holds: a strut running out of that node. */
+const MEMBER_END = { x: 2, y: 4, z: 0 } as const;
 
 let h: Harness;
 
@@ -54,7 +58,15 @@ afterEach(async () => {
 it("reads no node and no member on the program screen", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await standMinimalCrane(h);
+  await h.debug.addMember(
+    NODE.x,
+    NODE.y,
+    NODE.z,
+    MEMBER_END.x,
+    MEMBER_END.y,
+    MEMBER_END.z,
+    "strut",
+  );
 
   const at = await h.project(NODE.x, NODE.y, NODE.z);
   assertTrue(
@@ -70,6 +82,12 @@ it("reads no node and no member on the program screen", async () => {
     aimed.pick.node,
     "the node a click at that point would take on the build screen, so the " +
       "pointer stands somewhere a pick is genuinely in range " +
+      "(specs/controls.md § Clicks and drags)",
+  );
+  assertNotNull(
+    aimed.pick.member,
+    "the member a click at that point would take on the build screen, so the " +
+      "reading taken off it below is one that had something to report " +
       "(specs/controls.md § Clicks and drags)",
   );
 

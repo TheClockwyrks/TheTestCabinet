@@ -30,8 +30,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { BINDINGS, GRIP_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -70,7 +70,7 @@ afterEach(async () => {
 
 it("carries the run it was watching on when the run action is pressed", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   await startRun(h);

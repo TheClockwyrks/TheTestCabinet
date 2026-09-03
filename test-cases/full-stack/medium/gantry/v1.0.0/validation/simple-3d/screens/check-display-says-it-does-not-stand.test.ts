@@ -28,17 +28,14 @@ import { drawnText, toDrawCall } from "../case-harness/index";
 import { assertLength, assertTrue, fail } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
   type DesignMember,
   type Harness,
 } from "../harness";
-
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
 
 /**
  * The minimal crane's tower with no out-of-plane bracing: the four legs, the
@@ -109,7 +106,7 @@ afterEach(async () => {
 
 it("says the structure does not stand when the check finds a mechanism", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, UNBRACED);
 
   const found = await h.check();

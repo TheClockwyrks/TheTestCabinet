@@ -21,8 +21,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertTrue } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   standMinimalCrane,
   type Harness,
@@ -46,7 +46,7 @@ afterEach(async () => {
 
 it("reports stable false once one member belongs to neither tower nor arm", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
 
   const sound = await h.check();

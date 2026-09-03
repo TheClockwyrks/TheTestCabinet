@@ -21,15 +21,15 @@
 // run screen". The tape is one long grip turn — `grip` is the hook's yaw, so it
 // asks nothing of the structure, and `360` degrees at `GRIP_MAX_RATE` (`45`) is
 // eight seconds of run clock against the handful of ticks this press rides on.
-// The world is emptied first, so no load and no obstacle can end the run instead,
+// The yard is emptied first, so no load and no obstacle can end the run instead,
 // and no member can break: the minimal crane stands under its own weight alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { BINDINGS, GRIP_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -65,7 +65,7 @@ afterEach(async () => {
 
 it("leaves the structure standing when the undo action is pressed on the run screen", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   await startRun(h);

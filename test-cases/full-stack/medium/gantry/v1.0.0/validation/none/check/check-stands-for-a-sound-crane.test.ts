@@ -21,8 +21,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   standMinimalCrane,
   type Harness,
@@ -43,7 +43,7 @@ afterEach(async () => {
 
 it("reports stable for a fully braced ready crane", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
 
   const result = await h.check();

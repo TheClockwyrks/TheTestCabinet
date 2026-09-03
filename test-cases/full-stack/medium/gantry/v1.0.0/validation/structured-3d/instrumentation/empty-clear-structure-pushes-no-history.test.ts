@@ -26,7 +26,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { BINDINGS } from "../constants";
-import { createHarness, emptyYard, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** The key `specs/controls.md` binds `undo` to, on the build screen. */
 const UNDO_KEY = BINDINGS.undo[0] as string;
@@ -42,8 +42,11 @@ afterEach(async () => {
 });
 
 it("pushes no history when there was nothing to remove", async () => {
+  // A site opens with an empty structure and an empty history (specs/state.md),
+  // which is the whole precondition this point needs: the yard's loads and
+  // obstacles are not structure edits and push no undo entry, so nothing is
+  // emptied here that a broken clearing pose could take down with it.
   await openSite(h, 0);
-  await emptyYard(h);
   const before = await h.snapshot();
 
   await h.debug.clearStructure();

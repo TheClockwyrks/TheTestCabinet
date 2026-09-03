@@ -17,6 +17,16 @@
 // the ids the first run's do, and the two force readouts can be compared one for
 // one.
 //
+// AND IT IS LITERALLY THE SAME CRANE. The first run is aborted rather than the
+// site reopened: `abortRun` "poses the abort, ending a running run with no
+// verdict: `run` goes back to its idle placeholder and the build screen returns"
+// (`specs/instrumentation.md`), which leaves the structure, the tape and the
+// site's loads exactly as they were and puts the screen back where a structure
+// pose applies. So the stay is taken out of the crane that stood, the second run
+// starts from the same load at the same pose, and the two runs differ in the one
+// member this check is about — rather than in fifty-three separately posed edits
+// that happen to describe the same thing.
+//
 // The recomputation is not a formality here: the stay that breaks was carrying
 // most of the lifted load, so the cable stay beside it and the mast members behind
 // it all move by hundreds of force units between the two passes.
@@ -172,12 +182,8 @@ it("reports the surviving members with the forces of the pass that kept them", a
   // The same crane, the same load, the same tape — with that member taken out
   // before the run rather than during it. Its ids are unchanged, so what this
   // run solves at tick one IS the pass the first run finished on.
-  await openSite(h, 5);
-  await clearAll(h);
-  await poseCrane(h, CRANE);
+  await h.debug.abortRun();
   await h.debug.removeMember(STAY);
-  await addOneLoad(h, "crate", LOAD_MASS, HOOK, HOOK);
-  await poseTape(h, TAPE);
   await startRun(h);
   const reference = await runTicks(h, 1);
   assertLength(

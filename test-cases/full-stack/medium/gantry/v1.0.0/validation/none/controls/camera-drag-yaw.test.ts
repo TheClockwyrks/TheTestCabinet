@@ -77,6 +77,5 @@ it("raises the yaw by ORBIT_PER_PX per pixel dragged rightward", async () => {
       "(specs/controls.md)",
   );
 
-  await h.advance(1);
   await h.capture("state", "the yard after a rightward orbit drag");
 });

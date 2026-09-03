@@ -20,7 +20,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength } from "../assert";
 import { STRUT_MAX_LEN } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** A strut two units past the material's maximum. */
 const A = { x: 0, y: 0, z: 0 };
@@ -38,7 +38,11 @@ afterEach(async () => {
 
 it("refuses a strut longer than STRUT_MAX_LEN", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The precondition is an empty structure and nothing else. A site opened
+  // after a reset already carries one (specs/state.md), and `clearStructure`
+  // states it rather than leaving it implied; emptying the yard and the tape
+  // too would drive surface this requirement does not concern.
+  await h.debug.clearStructure();
 
   await h.debug.addMember(A.x, A.y, A.z, B.x, B.y, B.z, "strut");
 

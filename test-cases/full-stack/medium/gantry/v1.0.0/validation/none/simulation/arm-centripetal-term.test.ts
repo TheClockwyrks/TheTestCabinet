@@ -40,13 +40,11 @@ import {
   createHarness,
   openSite,
   poseCrane,
-  poseTape,
   runTicks,
   startRun,
   type CraneDesign,
   type DesignMember,
   type Harness,
-  type TapeStepSpec,
 } from "../harness";
 
 /** The relative span the quadratic law is read to. */
@@ -59,8 +57,13 @@ const ANGLE = 0;
 const HALF = SLEW_MAX_RATE / 2;
 
 /** The sideways brace whose tension says which way the term pulls. */
-const BRACE: readonly [readonly [number, number, number], readonly [number, number, number]] =
-  [[6, 6, 0], [2, 6, 2]];
+const BRACE: readonly [
+  readonly [number, number, number],
+  readonly [number, number, number],
+] = [
+  [6, 6, 0],
+  [2, 6, 2],
+];
 
 /**
  * The jib rig, and why it is shaped this way.
@@ -129,10 +132,8 @@ const JIB_RIG: CraneDesign = {
 };
 
 /** A move on an axis that applies no force, for the readings that are at rest. */
-const IDLE_STEP: TapeStepSpec = {
-  kind: "move",
-  commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }],
-};
+const IDLE_AXIS = "grip" as const;
+const IDLE_TARGET = 100000;
 
 let h: Harness;
 
@@ -159,16 +160,28 @@ it("hands an arm node a force that grows with the square of the slew rate", asyn
   /** Arm members: the ones standing at or above the ring's top flange. */
   const arm = new Set(
     structure.members
-      .filter((m) => m.a.y >= ring.corner.y + LATTICE_PITCH && m.b.y >= ring.corner.y + LATTICE_PITCH)
+      .filter(
+        (m) =>
+          m.a.y >= ring.corner.y + LATTICE_PITCH &&
+          m.b.y >= ring.corner.y + LATTICE_PITCH,
+      )
       .map((m) => m.id),
   );
   assertGreaterThan(arm.size, 0, "arm members to read the slew's loads off");
   const brace = structure.members.find(
     (m) =>
-      (m.a.x === BRACE[0][0] && m.a.y === BRACE[0][1] && m.a.z === BRACE[0][2] &&
-        m.b.x === BRACE[1][0] && m.b.y === BRACE[1][1] && m.b.z === BRACE[1][2]) ||
-      (m.b.x === BRACE[0][0] && m.b.y === BRACE[0][1] && m.b.z === BRACE[0][2] &&
-        m.a.x === BRACE[1][0] && m.a.y === BRACE[1][1] && m.a.z === BRACE[1][2]),
+      (m.a.x === BRACE[0][0] &&
+        m.a.y === BRACE[0][1] &&
+        m.a.z === BRACE[0][2] &&
+        m.b.x === BRACE[1][0] &&
+        m.b.y === BRACE[1][1] &&
+        m.b.z === BRACE[1][2]) ||
+      (m.b.x === BRACE[0][0] &&
+        m.b.y === BRACE[0][1] &&
+        m.b.z === BRACE[0][2] &&
+        m.a.x === BRACE[1][0] &&
+        m.a.y === BRACE[1][1] &&
+        m.a.z === BRACE[1][2]),
   );
   if (brace === undefined) {
     throw new Error("gantry: the rig has no sideways brace at (6, 6, 0)");
@@ -181,18 +194,22 @@ it("hands an arm node a force that grows with the square of the slew rate", asyn
   const readAt = async (rate: number) => {
     await h.debug.abortRun();
     // The tape poses apply on the program screen alone (specs/instrumentation.md).
+    // The one step is appended through `addMoveStep` directly rather than
+    // through the shared `poseTape`: this is one command on one axis, four
+    // times over, `startRun` below refuses an empty tape, and the rate
+    // assertions read the command back — so `poseTape`'s own readback is four
+    // crossings into the page buying nothing this check does not already say.
     await h.debug.setScreen("program");
     await h.debug.clearProgram();
-    const step: TapeStepSpec =
-      rate === 0
-        ? IDLE_STEP
-        : {
-            kind: "move",
-            commands: [
-              { axis: "slew", target: rate > 0 ? 100000 : -100000, rate: Math.abs(rate) },
-            ],
-          };
-    await poseTape(h, [step]);
+    if (rate === 0) {
+      await h.debug.addMoveStep(IDLE_AXIS, IDLE_TARGET, GRIP_MAX_RATE);
+    } else {
+      await h.debug.addMoveStep(
+        "slew",
+        rate > 0 ? 100000 : -100000,
+        Math.abs(rate),
+      );
+    }
     await startRun(h);
 
     // One tick's travel short of the angle, so the tick lands exactly on it.
@@ -205,9 +222,13 @@ it("hands an arm node a force that grows with the square of the slew rate", asyn
     const theta = (from * Math.PI) / 180;
     const node = { x: 2, y: 6, z: 0 };
     await h.debug.setBob(
-      axis.x + (node.x - axis.x) * Math.cos(theta) - (node.z - axis.z) * Math.sin(theta),
+      axis.x +
+        (node.x - axis.x) * Math.cos(theta) -
+        (node.z - axis.z) * Math.sin(theta),
       node.y - HOIST_START,
-      axis.z + (node.x - axis.x) * Math.sin(theta) + (node.z - axis.z) * Math.cos(theta),
+      axis.z +
+        (node.x - axis.x) * Math.sin(theta) +
+        (node.z - axis.z) * Math.cos(theta),
     );
     await h.debug.setBobVelocity(0, 0, 0);
 
@@ -242,7 +263,8 @@ it("hands an arm node a force that grows with the square of the slew rate", asyn
     (reading.get(id) ?? NaN) - (still.get(id) ?? NaN);
 
   let largest = 0;
-  for (const id of arm) largest = Math.max(largest, Math.abs(changeAt(full, id)));
+  for (const id of arm)
+    largest = Math.max(largest, Math.abs(changeAt(full, id)));
   assertGreaterThan(
     largest,
     1,
@@ -255,16 +277,28 @@ it("hands an arm node a force that grows with the square of the slew rate", asyn
       changeAt(full, id),
       4 * changeAt(half, id),
       Math.max(Math.abs(changeAt(full, id)), 1) * TOLERANCE,
-      "member " + id + "'s load at " + SLEW_MAX_RATE + " deg/s standing at " +
-        "four times its load at " + HALF + " deg/s, since the centripetal term " +
+      "member " +
+        id +
+        "'s load at " +
+        SLEW_MAX_RATE +
+        " deg/s standing at " +
+        "four times its load at " +
+        HALF +
+        " deg/s, since the centripetal term " +
         "goes as omega squared (specs/statics.md)",
     );
     assertNear(
       changeAt(reversed, id),
       changeAt(full, id),
       Math.max(Math.abs(changeAt(full, id)), 1) * TOLERANCE,
-      "member " + id + "'s load being the same at -" + SLEW_MAX_RATE + " deg/s " +
-        "as at +" + SLEW_MAX_RATE + " deg/s, since omega squared does not " +
+      "member " +
+        id +
+        "'s load being the same at -" +
+        SLEW_MAX_RATE +
+        " deg/s " +
+        "as at +" +
+        SLEW_MAX_RATE +
+        " deg/s, since omega squared does not " +
         "reverse with its sign (specs/statics.md)",
     );
   }

@@ -6,8 +6,9 @@
 // the row above it names. Each part removed is a requirement of its own; this is
 // the counterweight's.
 //
-// THE WORLD HOLDS THE LEAST THE EDIT NEEDS. Everything is cleared, the ring is
-// put back so a flange node exists for the counterweight to sit on
+// THE WORLD HOLDS THE LEAST THE EDIT NEEDS. The yard is emptied and the
+// structure is the empty one the harness's opening reset left, the ring is put
+// back so a flange node exists for the counterweight to sit on
 // (specs/structure.md: "placed on any node the structure uses … or a flange node
 // of the ring"), and the counterweight is placed on one. Both of those edits
 // sound `place` themselves, so the queue is drained after them and the removal's
@@ -26,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The site this runs on; the editor's cues are the same on every one. */
 const SITE = 0;
@@ -49,7 +50,7 @@ afterEach(async () => {
 
 it("sounds the delete cue when an edit removes a counterweight", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setRing(RING.x, RING.y, RING.z);
   await h.debug.addCounterweight(NODE.x, NODE.y, NODE.z);
   await h.advance(1);

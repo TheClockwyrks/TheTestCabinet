@@ -33,9 +33,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
 /** Every run of text the last closed frame drew, in draw order. */
 async function frameText(harness: Harness): Promise<string[]> {
   const ops = await harness.screenOps();

@@ -21,6 +21,13 @@
 // that took the first rail placed, or the first end node it stored, for the origin
 // passes one order and fails the other.
 //
+// ONLY THE TWO RAILS ARE POSED TWICE. The rest of the crane is what lets a run
+// start at all and is the same in both orders, so it is stood up once and the two
+// rails are taken down and put back the other way round between the runs. That is
+// the whole of what the second order is: the two rails placed in the opposite
+// order, over an identical structure. Rebuilding the other nineteen members would
+// drive nineteen more edits through the editor's rules, which decide nothing here.
+//
 // THE CRANE IS THE HARNESS'S MINIMAL ONE WITH ITS SINGLE RAIL SPLIT IN TWO at the
 // top-flange node between its ends, so the track runs `(0, 4, 0)` to `(4, 4, 0)`
 // over two rails meeting at `(2, 4, 0)`. With the ring's base corner at
@@ -35,6 +42,7 @@ import {
   MINIMAL_CRANE,
   clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -88,15 +96,64 @@ afterEach(async () => {
   await h.dispose();
 });
 
+/**
+ * Take the track's two rails down and put them back in the order given.
+ *
+ * The structure is left carrying the same twenty-one members over the same
+ * nodes, with the two rails placed in the order asked for and nothing else
+ * touched — which is the one thing the second half of this check varies.
+ * `removeMember` and `addMember` are the editor's own operations, so the track
+ * that stands afterwards is one a player could have built in that order.
+ */
+async function reorderRails(
+  harness: Harness,
+  rails: readonly DesignMember[],
+): Promise<void> {
+  const before = (await harness.snapshot()).structure.members;
+  for (const member of before) {
+    if (member.material === "rail") await harness.debug.removeMember(member.id);
+  }
+  for (const [a, b, material] of rails) {
+    await harness.debug.addMember(a[0], a[1], a[2], b[0], b[1], b[2], material);
+  }
+  const after = (await harness.snapshot()).structure.members;
+  const placed = after
+    .filter((member) => member.material === "rail")
+    .map((member) => `(${member.a.x}, ${member.a.y}, ${member.a.z})`);
+  const wanted = rails.map(([a]) => `(${a[0]}, ${a[1]}, ${a[2]})`);
+  assertEqual(
+    placed.join(" then "),
+    wanted.join(" then "),
+    "the two rails standing after the reorder, by the near end of each, in " +
+      "the order they were placed (specs/structure.md)",
+  );
+  assertEqual(
+    after.length,
+    before.length,
+    "the members the crane carries after the two rails were replaced",
+  );
+}
+
 it("measures the trolley from the end nearer the slew axis, either rail order", async () => {
+  await openSite(h, 0);
+  await clearAll(h);
+  await poseCrane(h, splitRail([OUTER, INNER]));
+  await poseTape(h, TAPE);
+
   for (const [order, rails] of [
     ["outer rail first", [OUTER, INNER]],
     ["inner rail first", [INNER, OUTER]],
   ] as const) {
-    await openSite(h, 0);
-    await clearAll(h);
-    await poseCrane(h, splitRail(rails));
-    await poseTape(h, TAPE);
+    if (order === "inner rail first") {
+      // The first order's run is put back the way a site opening puts one back:
+      // "returns `run` to its idle placeholder" and keeps "that site's stored
+      // structure and tape" (specs/state.md), so the second order starts from
+      // the run-start posture over the same crane. The loads it copies back in
+      // are swept out again, since this check's world holds the crane alone.
+      await openSite(h, 0);
+      await emptyYard(h);
+      await reorderRails(h, rails);
+    }
 
     const started = await startRun(h);
     assertEqual(
@@ -126,7 +183,5 @@ it("measures the trolley from the end nearer the slew axis, either rail order", 
       `${order}: the pivot at trolley ${TRACK_LENGTH}, the track's length, ` +
         "which stands at its far end (specs/structure.md)",
     );
-
-    await h.debug.abortRun();
   }
 });

@@ -30,8 +30,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertTrue } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -83,7 +83,7 @@ afterEach(async () => {
 
 it("reports that a ready crane with an unbraced tower does not stand", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, UNBRACED);
 
   const result = await h.check();

@@ -21,6 +21,18 @@
 // same `s` against the advanced `x`; set `x = T`" — so the sweep stops on the
 // tick the step's only axis arrived on. The second is a grip move, long enough
 // that it is still live on the tick that takes it. The world holds nothing else.
+//
+// THE HOIST STARTS `NEAR` SHORT OF ITS TARGET, posed with the bob under the
+// pivot at that same length — the pairing specs/instrumentation.md names, "a
+// caller that wants a bob the cable can hold sets the hoist axis to the
+// distance it left between the pivot and the bob". Both are called before the
+// run's first tick, when no step has been taken and no axis carries a command,
+// so the tick that takes the first step issues exactly the command it would
+// have, and the build's own controller drives the axis to its target and
+// reaches the arrival this check reads. Only the distance is short. What this
+// point decides is the pair of readings around that arrival, and driving fifty
+// ticks of cable to reach it would put the hoist controller's whole ramp in
+// front of a check that is not about it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
@@ -39,8 +51,16 @@ import {
 } from "../harness";
 
 /** Where the first step sends the hoist, and where the second sends the grip. */
-const HOIST_TARGET = HOIST_START + 2;
+const HOIST_TARGET = HOIST_START + 1;
 const GRIP_TARGET = 90;
+
+/**
+ * How far short of that target the hoist starts.
+ *
+ * `HOIST_ACCEL` is `6`, so a fiftieth of a unit is about five ticks of real
+ * driving before the arrival the sweep stops on.
+ */
+const NEAR = 0.02;
 
 const TAPE: readonly TapeStepSpec[] = [
   {
@@ -53,8 +73,8 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks the first step is given to arrive: it takes about fifty. */
-const CAP = 400;
+/** Ticks the first step is given to arrive: the posed move takes about five. */
+const CAP = 60;
 
 let h: Harness;
 
@@ -71,7 +91,11 @@ it("holds step 0 live to its arrival tick and takes step 1 on the next", async (
   await clearAll(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
-  await startRun(h);
+  const { pivot } = (await startRun(h)).run;
+
+  await h.debug.setAxis("hoist", HOIST_TARGET - NEAR);
+  await h.debug.setBob(pivot.x, pivot.y - (HOIST_TARGET - NEAR), pivot.z);
+  await h.debug.setBobVelocity(0, 0, 0);
 
   const arrived = await runUntil(
     h,

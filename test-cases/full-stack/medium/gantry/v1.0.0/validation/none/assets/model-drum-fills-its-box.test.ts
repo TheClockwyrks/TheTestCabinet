@@ -40,8 +40,8 @@ import { assertGreaterThanOrEqual, fail } from "../assert";
 import { LOAD_CLASS_DIMENSIONS, VOXELS_PER_UNIT } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type LoadPose,
@@ -84,7 +84,8 @@ afterEach(async () => {
 
 it("draws the drum class from a model that fills its class box", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await addOneLoad(h, CLASS, MASS, AT, AT);
   await h.advance(1);
   await h.capture("drum", "The drum model against its class box");

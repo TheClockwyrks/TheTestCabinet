@@ -37,28 +37,26 @@
 // stands once it has. Every figure in it comes from `specs/structure.md` and
 // `specs/statics.md`, and every one of them is decided by the build's own solver.
 //
-// THE TAPE IS TWO STEPS. The first hoists the empty hook a couple of units, which
-// takes some thirty ticks and is there only to be the "earlier step" the rule
+// THE TAPE IS TWO STEPS. The first turns the empty hook half a degree, which
+// takes some nine ticks and is there only to be the "earlier step" the rule
 // speaks of — the rail gives way on the run's first tick, while that step is
-// running. The second targets the trolley at `14`, which is inside the intact
-// track's length of `16` (`4 + 4 + 2 + 6`) and outside the `10` the three
-// surviving rails leave. Nothing about the first step touches the trolley, so the
-// only thing that has changed by the time the second step starts is the track.
+// running. "Turning the grip applies no force to anything" (specs/rigging.md),
+// so the step is a step and nothing else: the break is the solver's answer to
+// the crane, not to what the tape was doing. The second step targets the trolley
+// at `14`, which is inside the intact track's length of `16` (`4 + 4 + 2 + 6`)
+// and outside the `10` the three surviving rails leave. Nothing about the first
+// step touches the trolley, so the only thing that has changed by the time the
+// second step starts is the track.
 //
 // The yard is emptied: nothing here concerns a load.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNull } from "../assert";
-import {
-  HOIST_MAX_RATE,
-  HOIST_START,
-  TICK_HZ,
-  TROLLEY_MAX_RATE,
-} from "../constants";
+import { GRIP_MAX_RATE, TROLLEY_MAX_RATE } from "../constants";
 import {
   DESIGNS,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -145,9 +143,7 @@ const DESIGN: CraneDesign = {
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [
-      { axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE },
-    ],
+    commands: [{ axis: "grip", target: 0.5, rate: GRIP_MAX_RATE }],
   },
   {
     kind: "move",
@@ -157,8 +153,8 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** The hoist step is a fraction of a second; this bounds a run that never ends. */
-const CAP = 10 * TICK_HZ;
+/** The grip step is some nine ticks; this bounds a run that never ends. */
+const CAP = 40;
 
 let h: Harness;
 
@@ -172,7 +168,10 @@ afterEach(async () => {
 
 it("ends the run when the trolley step starts on a track that has fallen short", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await poseCrane(h, DESIGN);
   await poseTape(h, TAPE);
   await startRun(h);

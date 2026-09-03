@@ -29,9 +29,9 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertTrue, fail } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
   drawnObjects,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -166,7 +166,7 @@ function colours(members: readonly DesignMember[]): (Rgb | null)[] {
 
 it("leaves every member the colour it was when the check finds a mechanism", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, UNBRACED);
   await h.advance(1);
 

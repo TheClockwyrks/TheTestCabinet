@@ -25,8 +25,8 @@ import { assertEqual } from "../assert";
 import { GRIP_MAX_RATE } from "../constants";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -74,7 +74,7 @@ afterEach(async () => {
 
 it("ends the run as collapse on the tick a singular tower solve is reached", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, SHEARING_TOWER);
   await poseTape(h, TURN_THE_GRIP);
   await startRun(h);

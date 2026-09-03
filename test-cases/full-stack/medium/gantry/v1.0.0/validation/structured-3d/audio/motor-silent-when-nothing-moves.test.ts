@@ -8,7 +8,7 @@
 // axis stopped must be silent.
 //
 // THE STILL WINDOW IS MADE BY THE TAPE, not by ending the run. The tape opens
-// with one short `hoist` move — so the loop has genuinely been running and the
+// with one brief `hoist` move — so the loop has genuinely been running and the
 // silence is a stop rather than a start that never happened — and follows it
 // with four moves whose target is the value the `slew` already stands at.
 // specs/program.md makes each of those a tick that moves nothing: "A command
@@ -69,7 +69,7 @@ const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "hoist", target: HOIST_START + 0.2, rate: HOIST_MAX_RATE },
+      { axis: "hoist", target: HOIST_START + 0.05, rate: HOIST_MAX_RATE },
     ],
   },
   STILL,
@@ -82,8 +82,15 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Well past the ticks the opening hoist takes, so the cap is a verdict. */
-const MAX_TICKS = 300;
+/**
+ * Well past the ticks the opening hoist takes, so the cap is a verdict.
+ *
+ * The opening move is `0.05` of a unit at `HOIST_ACCEL`, which is a dozen ticks
+ * of the axis genuinely moving — enough for the loop to have been running, and
+ * all the still window that follows it needs. The length of the move is not what
+ * this decides, so it is the shortest one that makes the reading mean something.
+ */
+const MAX_TICKS = 60;
 
 /** Whether every axis reports a rate of exactly `0` on that tick. */
 function allStopped(snapshot: GantrySnapshot): boolean {

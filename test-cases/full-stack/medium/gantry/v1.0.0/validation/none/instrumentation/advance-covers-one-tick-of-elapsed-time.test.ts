@@ -25,7 +25,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual } from "../assert";
 import { TICK_HZ } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** One second of elapsed time, in frames. */
 const FRAMES = TICK_HZ;
@@ -45,7 +45,7 @@ afterEach(async () => {
 
 it("raises simTime by one second across TICK_HZ frames", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   const before = await h.snapshot();
   assertEqual(

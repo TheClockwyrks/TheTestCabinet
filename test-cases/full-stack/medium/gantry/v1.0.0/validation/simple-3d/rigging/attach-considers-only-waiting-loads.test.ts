@@ -28,8 +28,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
 import { GRIP_MAX_RATE, HOIST_START, SLEW_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -81,9 +81,11 @@ afterEach(async () => {
 
 it("passes over a placed load sitting on the hook point", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
-  await h.debug.clearLoads();
   await h.debug.addLoad(
     "crate",
     40,

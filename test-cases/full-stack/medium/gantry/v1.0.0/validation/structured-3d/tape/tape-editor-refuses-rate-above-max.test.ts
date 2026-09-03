@@ -22,7 +22,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { SLEW_MAX_RATE } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** Over the slew's max rate by one degree a second. */
 const OVER = SLEW_MAX_RATE + 1;
@@ -42,8 +42,10 @@ afterEach(async () => {
 
 it("refuses a command above the axis's max rate and accepts one at it", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The precondition is an empty tape on the screen a tape edit applies on, and
+  // nothing else: the structure and the yard decide no refusal here.
   await h.debug.setScreen("program");
+  await h.debug.clearProgram();
 
   await h.debug.addMoveStep("slew", TARGET, OVER);
   const refused = (await h.snapshot()).program;

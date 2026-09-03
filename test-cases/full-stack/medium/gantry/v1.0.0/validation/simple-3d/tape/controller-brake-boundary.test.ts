@@ -32,8 +32,8 @@ import {
   TICK_HZ,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -75,7 +75,7 @@ afterEach(async () => {
 
 it("brakes on the tick the distance left equals the stopping distance", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);

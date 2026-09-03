@@ -51,14 +51,10 @@
 import { afterEach, beforeEach, it } from "vitest";
 import * as THREE from "three";
 import { assertTrue, fail } from "../assert";
+import { GRIP_MAX_RATE, HOIST_START, LATTICE_PITCH } from "../constants";
 import {
-  GRIP_MAX_RATE,
-  HOIST_START,
-  LATTICE_PITCH,
-} from "../constants";
-import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -127,7 +123,7 @@ afterEach(async () => {
 
 it("draws the ring turned by the slew angle", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, [HOLD]);
   await startRun(h);
@@ -197,13 +193,20 @@ function bodies(harness: Harness): Body[] {
     object.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(object);
     if (box.isEmpty()) return;
-    const material = (object as THREE.Mesh)
-      .material as Partial<THREE.MeshStandardMaterial> | undefined;
+    const material = (object as THREE.Mesh).material as
+      | Partial<THREE.MeshStandardMaterial>
+      | undefined;
     found.push({
       signature: [
         object.type,
-        box.min.toArray().map((one) => one.toFixed(3)).join(),
-        box.max.toArray().map((one) => one.toFixed(3)).join(),
+        box.min
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
+        box.max
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
         material?.color?.getHexString() ?? "",
       ].join("|"),
       box,
@@ -231,7 +234,8 @@ function outside(read: readonly Body[]): string {
       // A body whose whole extent stands further from the slew axis than the
       // arm reaches, and which is not a yard-spanning body the ground and the
       // sky are.
-      if (Math.max(size.x, size.y, size.z) > 2 * OUTSIDE_THE_SWEEP) return false;
+      if (Math.max(size.x, size.y, size.z) > 2 * OUTSIDE_THE_SWEEP)
+        return false;
       const away = new THREE.Vector2(centre.x, centre.z).distanceTo(axis);
       return away - Math.max(size.x, size.z) / 2 > OUTSIDE_THE_SWEEP;
     })
@@ -286,100 +290,4 @@ function turned(node: Vec3, angle: number): Vec3 {
     y: node.y,
     z: AXIS.z + dx * sin + dz * cos,
   };
-}
-
-/** Where the build draws the drum's face: on the slew axis, between the flanges. */
-async function columnRegion(): Promise<Rect> {
-  const onAxis = async (share: number, what: string) =>
-    on({ x: AXIS.x, y: CORNER.y + share * LATTICE_PITCH, z: AXIS.z }, what);
-  const bottom = await onAxis(0, "the slew axis at the ring's bottom flange");
-  const top = await onAxis(1, "the slew axis at the ring's top flange");
-  const low = await onAxis(
-    PATCH_LOW,
-    "the slew axis just above the bottom flange",
-  );
-  const high = await onAxis(PATCH_HIGH, "the slew axis halfway up the ring");
-  const gap = Math.abs(bottom.y - top.y);
-  if (gap < 8) {
-    fail(
-      "the ring's two flange levels to be drawn far enough apart on the stage " +
-        "for the barrel between them to be read, which the posed camera puts " +
-        "them at (specs/instrumentation.md)",
-      `they are ${gap.toFixed(1)} logical pixels apart`,
-    );
-  }
-  return {
-    x: (low.x + high.x) / 2 - PATCH_HALF_WIDTH * gap,
-    y: Math.min(low.y, high.y),
-    width: 2 * PATCH_HALF_WIDTH * gap,
-    height: Math.abs(low.y - high.y),
-  };
-}
-
-/** Where the build draws one world point, insisting that it draws it at all. */
-async function on(at: Vec3, what: string): Promise<{ x: number; y: number }> {
-  const point = await h.project(at.x, at.y, at.z);
-  assertTrue(
-    point.visible,
-    `${what}, (${at.x}, ${at.y}, ${at.z}), to be drawn on the stage at the ` +
-      "start camera pose, so this point has a picture to read " +
-      "(specs/instrumentation.md)",
-  );
-  return point;
-}
-
-/** Where the build says a two-unit box around `at` is drawn. */
-async function boxRegion(at: Vec3): Promise<Rect> {
-  const corners: Vec3[] = [];
-  for (const dx of [-1, 1]) {
-    for (const dy of [-1, 1]) {
-      for (const dz of [-1, 1]) {
-        corners.push({ x: at.x + dx, y: at.y + dy, z: at.z + dz });
-      }
-    }
-  }
-  return hull(corners, "the patch of yard");
-}
-
-/** The stage those world points occupy, through the build's own projection. */
-async function hull(corners: readonly Vec3[], what: string): Promise<Rect> {
-  let left = Infinity;
-  let right = -Infinity;
-  let top = Infinity;
-  let bottom = -Infinity;
-  for (const at of corners) {
-    const on = await h.project(at.x, at.y, at.z);
-    assertTrue(
-      on.visible,
-      `the corner (${at.x}, ${at.y}, ${at.z}) of ${what} to be drawn on the ` +
-        "stage at the start camera pose, so this point has a picture to read " +
-        "(specs/instrumentation.md)",
-    );
-    left = Math.min(left, on.x);
-    right = Math.max(right, on.x);
-    top = Math.min(top, on.y);
-    bottom = Math.max(bottom, on.y);
-  }
-  return { x: left, y: top, width: right - left, height: bottom - top };
-}
-
-/** A logical rectangle of the page's composited frame, as PNG bytes. */
-async function shot(rect: Rect): Promise<Buffer> {
-  const fit = (await h.page.evaluate(() => {
-    const canvas = document.querySelector("canvas");
-    if (canvas === null) return null;
-    const at = canvas.getBoundingClientRect();
-    return { x: at.x, y: at.y, width: at.width, height: at.height };
-  })) as Rect | null;
-  assertTrue(fit !== null, "a <canvas> on the page for the build to draw in");
-  const sx = fit!.width / STAGE_W;
-  const sy = fit!.height / STAGE_H;
-  return h.page.screenshot({
-    clip: {
-      x: fit!.x + rect.x * sx,
-      y: fit!.y + rect.y * sy,
-      width: Math.max(1, rect.width * sx),
-      height: Math.max(1, rect.height * sy),
-    },
-  });
 }

@@ -22,12 +22,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertLength, fail } from "../assert";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  type Harness,
-} from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** Three legs off site 1's anchors: short struts, refused by no rule. */
 const LEGS = [
@@ -51,7 +46,7 @@ afterEach(async () => {
 
 it("fails loudly on an id no member carries, and removes nothing", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   for (const [ax, ay, az, bx, by, bz] of LEGS) {
     await h.debug.addMember(ax, ay, az, bx, by, bz, "strut");
   }

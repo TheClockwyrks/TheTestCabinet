@@ -9,10 +9,10 @@
 // broken list stay readable". Frames keep coming — the loop runs whatever the
 // screen — and none of them may move the scene.
 //
-// THE SCENE IS MADE WORTH READING BEFORE IT IS FROZEN. The run drives the trolley
-// to the far end of the track and pays the cable in, so the axes stand away from
-// the run-start posture `specs/program.md` fixes; a heavy crate is hung on the
-// hook, so the bob's mass and the load's phase are not the start's either; and
+// THE SCENE IS MADE WORTH READING BEFORE IT IS FROZEN. The trolley is POSED at
+// the far end of the track and the cable POSED paid in, so the axes stand away
+// from the run-start posture `specs/program.md` fixes; a heavy crate is hung on
+// the hook, so the bob's mass and the load's phase are not the start's either; and
 // the crate's weight then takes the tie that holds the rail's tip past its
 // capacity, so the failing tick breaks a member and the broken list is not empty.
 // `specs/statics.md` gives what follows: the tie carries the cable force at the
@@ -21,10 +21,18 @@
 // with only members lying in one plane is a mechanism, which ends the run as
 // `collapse`.
 //
-// THE HOOK IS STILLED FIRST. Driving the trolley out sets the hook swinging, and
-// a swinging cable pulls with less than the weight it carries, so `setBob` and
-// `setBobVelocity` hang it at rest under the pivot the drive left — "the
-// pendulum's own constraint runs on the next tick either way"
+// THE POSTURE IS POSED RATHER THAN DRIVEN. `setAxis` "takes any value the axis can
+// hold" and is a precondition like every other pose (`specs/instrumentation.md`);
+// what this check is about is what a run does AFTER it has failed, so the two
+// seconds of ramping that a trolley move would spend reaching the same posture
+// decide nothing here. The tape commands neither of the two axes posed — it turns
+// the grip, which "applies no force to anything" (`specs/rigging.md`) — so nothing
+// posed is fighting a live command.
+//
+// THE HOOK IS STILLED FIRST. Moving the pivot leaves the hook hanging off the
+// vertical, and a swinging cable pulls with less than the weight it carries, so
+// `setBob` and `setBobVelocity` hang it at rest under the pivot the pose left —
+// "the pendulum's own constraint runs on the next tick either way"
 // (`specs/instrumentation.md`) — and a couple of ticks pass before the crate goes
 // on, so the tick that overloads the crane is one the cable hangs straight on.
 //
@@ -39,22 +47,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
-import {
-  GRIP_MAX_RATE,
-  HOIST_MAX_RATE,
-  HOIST_MIN,
-  HOIST_START,
-  TICK_HZ,
-  TROLLEY_MAX_RATE,
-} from "../constants";
+import { GRIP_MAX_RATE, HOIST_MIN, HOIST_START, TICK_HZ } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
-  runUntil,
   standMinimalCrane,
   startRun,
   type GantrySnapshot,
@@ -65,6 +65,9 @@ import {
 /** The far end of the minimal crane's four-unit track. */
 const TROLLEY_TARGET = 4;
 
+/** The minimal crane's track, and so its pivot, stands at `y = 4`. */
+const PIVOT_Y = 4;
+
 /** Heavy enough to take the tip's tie past its capacity, light enough to hang. */
 const LOAD_MASS = 200;
 
@@ -72,23 +75,13 @@ const LOAD_MASS = 200;
 const FROM = { x: 8, y: 2, z: 0, yaw: 0 };
 const TO = { x: -6, y: 2, z: 0, yaw: 0 };
 
-/** Drive out and pay in, then turn the grip: a step that outlives the reading. */
+/** Turn the grip: a step that outlives the reading and pulls on nothing. */
 const TAPE: readonly TapeStepSpec[] = [
-  {
-    kind: "move",
-    commands: [
-      { axis: "trolley", target: TROLLEY_TARGET, rate: TROLLEY_MAX_RATE },
-      { axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE },
-    ],
-  },
   {
     kind: "move",
     commands: [{ axis: "grip", target: 720, rate: GRIP_MAX_RATE }],
   },
 ];
-
-/** Ticks the sweep is given: four units of track take about a hundred and twenty. */
-const CAP = 400;
 
 /** Ticks the hook is left hanging still before the crate is hung on it. */
 const SETTLE = 2;
@@ -122,25 +115,30 @@ afterEach(async () => {
 
 it("holds the axes, the bob, the loads and the broken list a failure left", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", LOAD_MASS, FROM, TO);
   await poseTape(h, TAPE);
   await startRun(h);
 
-  const driven = await runUntil(
-    h,
-    (s) => s.run.stepIndex === 1,
-    CAP,
-    "the run to drive the trolley out and pay the cable in",
-  );
+  await h.debug.setAxis("trolley", TROLLEY_TARGET);
+  await h.debug.setAxis("hoist", HOIST_MIN);
+  // The hook goes with the trolley, dead still. A pose moves the pivot at the
+  // call, and a bob left where the old pivot had it would be a cable's length out
+  // of place — which the pendulum's constraint would answer on the next tick with
+  // a lurch the cable is not meant to carry. So the bob is hung under the pivot
+  // the posed posture puts it under, at rest, before any tick runs.
+  await h.debug.setBob(TROLLEY_TARGET, PIVOT_Y - HOIST_MIN, 0);
+  await h.debug.setBobVelocity(0, 0, 0);
 
-  // Hang the hook dead still under the pivot the drive left, so what the cable
-  // pulls with is the crate's weight rather than the swing the drive started.
-  // `setBob` "puts the bob where it is asked for", and the pendulum's own
-  // constraint runs on the next tick either way (`specs/instrumentation.md`).
-  const pivot = driven.run.pivot;
-  await h.debug.setBob(pivot.x, pivot.y - driven.run.axes.hoist.value, pivot.z);
+  // One tick, so `run.pivot` — "the point the cable hangs from at the most recent
+  // tick's geometry" (`specs/instrumentation.md`) — is the posed posture's, and
+  // the hook is re-hung under the pivot the BUILD reports rather than the one this
+  // check computed. `setBob` "puts the bob where it is asked for", and the
+  // pendulum's own constraint runs on the next tick either way.
+  const posed = await runTicks(h, 1);
+  const pivot = posed.run.pivot;
+  await h.debug.setBob(pivot.x, pivot.y - posed.run.axes.hoist.value, pivot.z);
   await h.debug.setBobVelocity(0, 0, 0);
   await runTicks(h, SETTLE);
 

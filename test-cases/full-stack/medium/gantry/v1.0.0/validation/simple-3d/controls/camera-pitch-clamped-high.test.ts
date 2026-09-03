@@ -34,8 +34,13 @@ import { createHarness, openSite, ticks, type Harness } from "../harness";
 /** The `up` action's binding, as `specs/controls.md` fixes it. */
 const UP = BINDINGS.up[0]!;
 
-/** Two seconds: over three times the hold the limit needs from the start pose. */
-const HOLD_FRAMES = ticks(2);
+/**
+ * One second: getting from `CAMERA_START_PITCH` (`30`) to `CAMERA_PITCH_MAX`
+ * (`80`) at `ORBIT_KEY_RATE` (`90` deg/s) takes five ninths of a second, so the
+ * hold runs well past the limit and the reading is of a camera held against it
+ * rather than of one still on its way (`specs/controls.md`).
+ */
+const HOLD_FRAMES = ticks(1);
 
 /** Float noise, and nothing more: a clamp lands on the figure itself. */
 const TOLERANCE = 1e-6;
@@ -76,8 +81,8 @@ it("stops the camera pitch at CAMERA_PITCH_MAX under a held up", async () => {
     held,
     CAMERA_PITCH_MAX,
     TOLERANCE,
-    `the camera pitch after ${UP} was held for ${HOLD_FRAMES} frames, over ` +
-      "three times as long as reaching CAMERA_PITCH_MAX takes at " +
+    `the camera pitch after ${UP} was held for ${HOLD_FRAMES} frames, close ` +
+      "to twice as long as reaching CAMERA_PITCH_MAX takes at " +
       "ORBIT_KEY_RATE (specs/controls.md)",
   );
 });

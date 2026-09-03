@@ -28,6 +28,20 @@
 // `specs/rigging.md`'s tests — the bob hangs dead still under a pivot nothing
 // moves, so its speed is zero, and `attach` "set[s] the grip's axis value to the
 // load's current yaw", which is the yaw the pad asks for.
+//
+// AND THE PAYING OUT IS POSED TO ITS LAST FRACTION rather than driven the whole
+// way. The run starts with the hoist `NEAR` above the target its first step
+// names and the bob hung under the pivot at that same length, which is the
+// pairing specs/instrumentation.md names: "a caller that wants a bob the cable
+// can hold sets the hoist axis to the distance it left between the pivot and
+// the bob". Both are called before the run's first tick, when no step has been
+// taken and no axis carries a command, so the tick that takes the move step
+// issues exactly the command it would have and the build's own controller
+// drives the hoist the rest of the way. Only the distance is short: the
+// arrival, the attach, the release, and the tick that ends the run are all
+// still the run's own. What this point decides is where the run ends, and
+// driving twenty-six ticks of cable to get there would put the hoist controller
+// — another point's requirement — in front of it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -63,8 +77,17 @@ const TAPE: readonly TapeStepSpec[] = [
   { kind: "action", action: "release" },
 ];
 
-/** Ticks the sweep is given: paying in one unit takes about twenty-six. */
-const CAP = 300;
+/**
+ * How much cable the run starts with over the target its first step names.
+ *
+ * `HOIST_ACCEL` is `6`, so a twentieth of a unit is about seven ticks of real
+ * driving — enough that the controller genuinely takes the axis to its target,
+ * and a fraction of the twenty-six a whole unit takes.
+ */
+const NEAR = 0.05;
+
+/** Ticks the sweep is given, against the eight or so the posed move takes. */
+const CAP = 60;
 
 /**
  * How much the summed member force must move between the two ticks. Letting a
@@ -94,7 +117,11 @@ it("runs the last step's own tick in full and ends the run on the tick after", a
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", LOAD_MASS, HOOK, HOOK);
   await poseTape(h, TAPE);
-  await startRun(h);
+  const { pivot } = (await startRun(h)).run;
+
+  await h.debug.setAxis("hoist", HOIST_MIN + NEAR);
+  await h.debug.setBob(pivot.x, pivot.y - (HOIST_MIN + NEAR), pivot.z);
+  await h.debug.setBobVelocity(0, 0, 0);
 
   const attached = await runUntil(
     h,

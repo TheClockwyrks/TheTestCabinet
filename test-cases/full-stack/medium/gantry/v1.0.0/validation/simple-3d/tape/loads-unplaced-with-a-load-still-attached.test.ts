@@ -15,12 +15,15 @@
 // point is about. The tape then holds one short move and no `release`, so the
 // only way it can end is by running out with the load still hanging.
 //
-// THE ONE STEP HOISTS UP, from `HOIST_START` (`2`) to `1.5`, so the load rises
+// THE ONE STEP HOISTS UP, from `HOIST_START` (`2`) to `1.9`, so the load rises
 // off the ground it starts level with rather than settling into it: the hook
 // hangs at the pivot's height less the cable length, and a load's box hangs from
-// its lift point (`specs/world.md`). The yard is emptied of obstacles and of
-// every other load first, so the verdict rests on the one load the requirement
-// concerns.
+// its lift point (`specs/world.md`). The rise is a tenth of a unit because the
+// requirement is about the tape RUNNING OUT rather than about how far it moved
+// first — the shortest move that still lifts is the whole of what this point
+// needs, and it runs out in about a dozen ticks rather than thirty. The yard is
+// emptied of obstacles and of every other load first, so the verdict rests on the
+// one load the requirement concerns.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -46,12 +49,12 @@ const TO = { x: 0, y: 2, z: 8, yaw: 0 };
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "hoist", target: 1.5, rate: HOIST_MAX_RATE }],
+    commands: [{ axis: "hoist", target: 1.9, rate: HOIST_MAX_RATE }],
   },
 ];
 
-/** Ticks the tape is given to run out: the move takes about forty. */
-const CAP = 400;
+/** Ticks the tape is given to run out: the move takes about a dozen. */
+const CAP = 120;
 
 let h: Harness;
 

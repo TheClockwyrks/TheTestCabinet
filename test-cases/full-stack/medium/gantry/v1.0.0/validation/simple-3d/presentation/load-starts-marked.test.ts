@@ -58,7 +58,7 @@ const TARGET: LoadPose = { x: -6, y: 2, z: 6, yaw: 0 };
 const ELSEWHERE: LoadPose = { x: 8, y: 2, z: 4, yaw: 0 };
 
 /** The grid of points read through the middle of a box's own extent. */
-const GRID = 3;
+const GRID: number = 3;
 
 /** How much of the box the grid spans, either way from its middle. */
 const INSET = 0.3;
@@ -128,14 +128,21 @@ function bodies(harness: Harness): Body[] {
     object.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(object);
     if (box.isEmpty()) return;
-    const material = (object as THREE.Mesh)
-      .material as Partial<THREE.MeshStandardMaterial> | undefined;
+    const material = (object as THREE.Mesh).material as
+      | Partial<THREE.MeshStandardMaterial>
+      | undefined;
     found.push({
       signature: [
         object.type,
         object.visible ? "1" : "0",
-        box.min.toArray().map((one) => one.toFixed(3)).join(),
-        box.max.toArray().map((one) => one.toFixed(3)).join(),
+        box.min
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
+        box.max
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
         material?.color?.getHexString() ?? "",
         material?.emissive?.getHexString() ?? "",
         material?.opacity ?? "",

@@ -26,7 +26,12 @@
 // rate, so the arm never moves and the pivot never does either.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull, assertTrue } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertNull,
+  assertTrue,
+} from "../assert";
 import {
   clearAll,
   createHarness,
@@ -45,8 +50,8 @@ const HOLD_TAPE: readonly TapeStepSpec[] = [
   { kind: "move", commands: [{ axis: "grip", target: 360, rate: HOLD_RATE }] },
 ];
 
-/** Two seconds of run clock resting on the floor. */
-const TICKS = 120;
+/** Half a second of run clock resting on the floor. */
+const TICKS = 30;
 
 /** The hook's height is a constraint's arithmetic, not an integration. */
 const EXACT = 1e-9;

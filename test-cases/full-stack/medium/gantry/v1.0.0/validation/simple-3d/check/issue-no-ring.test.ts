@@ -17,8 +17,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -54,7 +54,7 @@ afterEach(async () => {
 
 it("raises no-ring for a structure that carries members and no slew ring", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, NO_RING);
 
   const { issues } = await h.check();

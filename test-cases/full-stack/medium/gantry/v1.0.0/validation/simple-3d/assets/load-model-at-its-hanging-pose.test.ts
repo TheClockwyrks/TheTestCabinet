@@ -104,8 +104,19 @@ const TAPE: readonly TapeStepSpec[] = [
 ];
 
 /** How long the first step is given, and the settling after the bob is parked. */
-const MAX_TICKS = 900;
+const MAX_TICKS = 400;
 const SETTLE = 4;
+
+/**
+ * Ticks taken between readings while the first step runs.
+ *
+ * The step is the ROUTE to the scenario and not the scenario: what this point
+ * reads is the state the step leaves, and the only thing the ticks along the way
+ * are asked is whether the step is done yet. So they are driven in blocks — the
+ * same frames, the same run — and the state is read once a block rather than
+ * once a tick.
+ */
+const CHUNK = 8;
 
 /**
  * How far past its own class box a load's drawing is held.
@@ -154,13 +165,20 @@ function bodies(harness: Harness): Body[] {
     object.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(object);
     if (box.isEmpty()) return;
-    const material = (object as THREE.Mesh)
-      .material as Partial<THREE.MeshStandardMaterial> | undefined;
+    const material = (object as THREE.Mesh).material as
+      | Partial<THREE.MeshStandardMaterial>
+      | undefined;
     found.push({
       signature: [
         object.type,
-        box.min.toArray().map((one) => one.toFixed(3)).join(),
-        box.max.toArray().map((one) => one.toFixed(3)).join(),
+        box.min
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
+        box.max
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
         material?.color?.getHexString() ?? "",
       ].join("|"),
       box,
@@ -223,14 +241,25 @@ function around(pose: {
 async function poseRun(harness: Harness): Promise<void> {
   await openSite(harness, SITE);
   await clearAll(harness);
-  await harness.debug.addLoad(CLASS, MASS, START.x, START.y, START.z, START.yaw);
+  await harness.debug.addLoad(
+    CLASS,
+    MASS,
+    START.x,
+    START.y,
+    START.z,
+    START.yaw,
+  );
   await standMinimalCrane(harness);
   await poseTape(harness, TAPE);
   await startRun(harness);
 
-  let state = await runTicks(harness, 1);
-  for (let ran = 1; ran < MAX_TICKS && state.run.stepIndex < 1; ran += 1) {
-    state = await runTicks(harness, 1);
+  let state = await runTicks(harness, CHUNK);
+  for (
+    let ran = CHUNK;
+    ran < MAX_TICKS && state.run.stepIndex < 1 && state.run.phase === "running";
+    ran += CHUNK
+  ) {
+    state = await runTicks(harness, CHUNK);
   }
   assertEqual(
     state.run.stepIndex,

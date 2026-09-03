@@ -37,8 +37,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNear } from "../assert";
 import { STRUT_COST_PER_UNIT } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -69,7 +69,7 @@ afterEach(async () => {
 
 it("takes a member on the site whose envelope reaches it and refuses it on the site whose envelope does not", async () => {
   await openSite(h, WIDE_SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.addMember(A.x, A.y, A.z, B.x, B.y, B.z, "strut");
   const wide = (await h.snapshot()).structure;
 
@@ -83,7 +83,7 @@ it("takes a member on the site whose envelope reaches it and refuses it on the s
   );
 
   await openSite(h, NARROW_SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.addMember(A.x, A.y, A.z, B.x, B.y, B.z, "strut");
   const narrow = (await h.snapshot()).structure;
 

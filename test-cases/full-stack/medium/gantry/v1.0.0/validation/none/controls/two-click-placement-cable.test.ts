@@ -29,8 +29,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull, assertTrue } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type MemberView,
@@ -60,7 +60,7 @@ afterEach(async () => {
 
 it("places a cable between the two clicked nodes and clears the pending node", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setTool("cable");
 
   const first = await h.project(A.x, A.y, A.z);

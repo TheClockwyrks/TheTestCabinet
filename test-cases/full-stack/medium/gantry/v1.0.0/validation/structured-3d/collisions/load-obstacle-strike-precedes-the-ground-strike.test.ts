@@ -31,7 +31,6 @@ import { GRIP_MAX_RATE, LOAD_CLASS_DIMENSIONS } from "../constants";
 import {
   addOneLoad,
   addOneObstacle,
-  clearAll,
   createHarness,
   openSite,
   poseTape,
@@ -79,8 +78,11 @@ afterEach(async () => {
 
 it("names the obstacle when the carried load is inside one and below the ground at once", async () => {
   await openSite(h, 0);
-  await clearAll(h);
   await standMinimalCrane(h);
+  // The yard is emptied by the two poses below rather than before them:
+  // `addOneLoad` clears the loads and `addOneObstacle` the obstacles, so what
+  // stands when the run starts is the one crate and the one block this point is
+  // about and nothing the site authored.
   await addOneLoad(
     h,
     "crate",

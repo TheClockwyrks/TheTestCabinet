@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertNotNull, assertNull } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** The site this runs on; the editor's cues are the same on every one. */
 const SITE = 0;
@@ -44,7 +44,10 @@ afterEach(async () => {
 
 it("sounds the delete cue when an edit removes the ring", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The ring is a structure edit, so the structure is what is emptied: the site's
+  // loads, its obstacles and its tape sound no editor cue and cannot refuse a ring
+  // placement.
+  await h.debug.clearStructure();
   await h.debug.setRing(RING.x, RING.y, RING.z);
   await h.advance(1);
   assertNotNull(

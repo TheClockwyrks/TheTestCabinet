@@ -21,7 +21,10 @@
 //
 // `setScreen` is what moves between them, because it "shows a named screen and
 // sets nothing else": a check that pressed its way around would be grading the
-// screen actions as well.
+// screen actions as well. Nothing is built, for the same reason: the tape poses
+// and the screen they apply on are all this decides, `setScreen` shows the run
+// and results screens whether or not a crane stands, and a build whose member
+// placement is broken must fail the editor's points rather than this one.
 //
 // This decides that direction alone. That the five poses DO take on the program
 // screen is what the checks for each of them decide, next door.
@@ -34,7 +37,6 @@ import {
   createHarness,
   openSite,
   poseTape,
-  standMinimalCrane,
   type Harness,
   type Screen,
   type TapeStepSpec,
@@ -72,7 +74,6 @@ afterEach(async () => {
 it("leaves the tape alone on every screen but the program screen", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await standMinimalCrane(h);
   await poseTape(h, TAPE);
 
   const posed = JSON.stringify((await h.snapshot()).program);

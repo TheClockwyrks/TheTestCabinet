@@ -38,8 +38,8 @@ import {
 } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -81,7 +81,7 @@ afterEach(async () => {
 
 it("ends the run as cable-snap on the tick the tension passes the cap", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", LOAD_MASS, HOOK_AT, HOOK_AT);
   await poseTape(h, [HOLD]);

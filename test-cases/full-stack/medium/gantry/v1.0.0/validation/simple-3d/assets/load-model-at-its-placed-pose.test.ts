@@ -55,8 +55,8 @@ import {
   LOAD_CLASS_DIMENSIONS,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -85,8 +85,15 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** The tick both runs are read at, past the run's first. */
-const READ_AT = 20;
+/**
+ * The tick both runs are read at, past the run's first.
+ *
+ * Far enough in that the run is plainly under way — the tape's step is live, the
+ * hoist is paying out and the clock has moved — and no further, because what this
+ * point compares is two runs at the SAME tick, and every tick beyond the first is
+ * as good as the next for that.
+ */
+const READ_AT = 6;
 
 /** Slack around a projected hull, as a share of the box's own drawn size. */
 const MARGIN_SHARE = 0.25;
@@ -94,9 +101,22 @@ const MARGIN_SHARE = 0.25;
 /** Stand one page up on the same run, and leave it one tick short of the read. */
 async function poseRun(harness: Harness): Promise<void> {
   await openSite(harness, SITE);
-  await clearAll(harness);
-  await harness.debug.addLoad(CLASS, MASS, START.x, START.y, START.z, START.yaw);
-  await harness.debug.setLoadTarget(0, TARGET.x, TARGET.y, TARGET.z, TARGET.yaw);
+  await emptyYard(harness);
+  await harness.debug.addLoad(
+    CLASS,
+    MASS,
+    START.x,
+    START.y,
+    START.z,
+    START.yaw,
+  );
+  await harness.debug.setLoadTarget(
+    0,
+    TARGET.x,
+    TARGET.y,
+    TARGET.z,
+    TARGET.yaw,
+  );
   await standMinimalCrane(harness);
   await poseTape(harness, TAPE);
   await startRun(harness);
@@ -151,13 +171,20 @@ function bodies(harness: Harness): Body[] {
     object.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(object);
     if (box.isEmpty()) return;
-    const material = (object as THREE.Mesh)
-      .material as Partial<THREE.MeshStandardMaterial> | undefined;
+    const material = (object as THREE.Mesh).material as
+      | Partial<THREE.MeshStandardMaterial>
+      | undefined;
     found.push({
       signature: [
         object.type,
-        box.min.toArray().map((one) => one.toFixed(3)).join(),
-        box.max.toArray().map((one) => one.toFixed(3)).join(),
+        box.min
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
+        box.max
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
         material?.color?.getHexString() ?? "",
       ].join("|"),
       box,
@@ -299,8 +326,14 @@ it("draws a placed load inside its class box at its target pose", async () => {
         "exactly its target pose and is drawn there rather than beside it " +
         "(specs/assets.md, specs/world.md)",
       `${moved.length} of the ${parted.length} bodies that differ stand ` +
-        `elsewhere: one spans (${one.box.min.toArray().map((v) => v.toFixed(2)).join(", ")}) ` +
-        `to (${one.box.max.toArray().map((v) => v.toFixed(2)).join(", ")})`,
+        `elsewhere: one spans (${one.box.min
+          .toArray()
+          .map((v) => v.toFixed(2))
+          .join(", ")}) ` +
+        `to (${one.box.max
+          .toArray()
+          .map((v) => v.toFixed(2))
+          .join(", ")})`,
     );
   }
 });

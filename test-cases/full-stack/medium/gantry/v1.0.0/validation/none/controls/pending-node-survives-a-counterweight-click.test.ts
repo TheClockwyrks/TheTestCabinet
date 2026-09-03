@@ -32,8 +32,8 @@ import {
   assertTrue,
 } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -58,7 +58,7 @@ afterEach(async () => {
 
 it("places the counterweight and leaves the pending node held", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setRing(RING.x, RING.y, RING.z);
   await h.debug.setPendingNode(PENDING.x, PENDING.y, PENDING.z);
   assertNotNull(

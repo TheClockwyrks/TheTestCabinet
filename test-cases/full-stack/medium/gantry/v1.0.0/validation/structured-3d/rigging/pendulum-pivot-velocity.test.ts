@@ -8,9 +8,9 @@
 // reading both terms of that fraction, straight from the build.
 //
 // THE TROLLEY IS CRUISING AND NOTHING IS POSED. The tape drives the trolley at a
-// steady `2` units a second, and by the fortieth tick the axis is past its
+// steady `1` unit a second, and by the twentieth tick the axis is past its
 // acceleration and cruising (`specs/program.md`), so the tick the reading covers
-// moves the pivot by `0.0333` and step 5 reads `vP` as `2` a second. Everything
+// moves the pivot by `0.0167` and step 5 reads `vP` as `1` a second. Everything
 // the tick began with — the bob's position, its velocity, the pivot it hung from —
 // is the pendulum's own doing over the ticks before it, so what is decided here is
 // step 5 on an ordinary tick rather than the arithmetic of a pose.
@@ -18,7 +18,7 @@
 // THE ALTERNATIVE IS COMPUTED BESIDE IT: the same seven steps with `vP` left at
 // zero, which is what a build that never took the pivot's motion into account
 // would leave. The failure message reports how far apart the two stand, which on
-// this tick is more than a unit a second against a tolerance of `1e-9`.
+// this tick is a unit a second against a tolerance of `1e-9`.
 //
 // The world holds the crane and nothing else, and the sampling stops well inside
 // the trolley's move so no tick of it is the one that ends the run.
@@ -27,8 +27,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertVec3Near } from "../assert";
 import { GRAVITY, SWING_DAMPING, TICK_HZ } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -39,8 +39,17 @@ import {
   type Vec3,
 } from "../harness";
 
-/** The rate the trolley cruises at: half its maximum, reached in 30 ticks. */
-const RATE = 2;
+/**
+ * The rate the trolley cruises at.
+ *
+ * `TROLLEY_ACCEL` is `4`, so a commanded rate of `1` is reached fifteen ticks
+ * into the move and held from there — the cruise this reading wants, a quarter
+ * of the way into the run the old figure needed. What the rate has to be is
+ * nonzero: it is the pivot MOVING that separates step 5 from a build that never
+ * read the pivot's motion, and at `1` a second the two answers stand a unit a
+ * second apart against a tolerance of `1e-9`.
+ */
+const RATE = 1;
 
 /** One trolley move, well inside the track's length of 4. */
 const TAPE: readonly TapeStepSpec[] = [
@@ -51,7 +60,7 @@ const TAPE: readonly TapeStepSpec[] = [
 ];
 
 /** Ticks driven before the reading: past the acceleration, inside the cruise. */
-const SETTLE = 40;
+const SETTLE = 20;
 
 /** Arithmetic slack on a velocity the seven steps fix exactly. */
 const TOLERANCE = 1e-9;
@@ -112,7 +121,7 @@ afterEach(async () => {
 
 it("carries the pivot's own displacement over the tick into the swing", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);

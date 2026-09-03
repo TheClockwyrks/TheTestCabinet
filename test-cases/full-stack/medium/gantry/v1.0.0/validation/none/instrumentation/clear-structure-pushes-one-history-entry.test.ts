@@ -28,7 +28,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { BINDINGS } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** A member placement, as the two lattice nodes `addMember` takes in order. */
 type Edge = { a: [number, number, number]; b: [number, number, number] };
@@ -55,7 +55,7 @@ afterEach(async () => {
 
 it("pushes one history entry, so one undo restores everything it removed", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   for (const member of MEMBERS) {
     await h.debug.addMember(...member.a, ...member.b, "strut");
   }

@@ -23,6 +23,14 @@
 // the crane, with a tape carrying no `attach` — so nothing about it can be
 // picked up, struck, or dropped along the way.
 //
+// EACH STEP ASKS FOR THE SMALLEST GENUINE MOVE OF ITS AXIS. What makes `3 / 3`
+// a count rather than a coincidence is that there are three steps on three
+// axes, each of which has to be taken, driven and completed; how far any of
+// them travels decides nothing here. So each target sits a few hundredths off
+// where its axis stands, which `specs/program.md`'s controller still
+// accelerates into and arrives at. Travel this reading does not use is only
+// more of the axis controller standing between the point and its verdict.
+//
 // THE FIGURE IS `m / n`, as `specs/ui.md` writes it, so what is looked for is the
 // pair rather than a `3` somewhere on the screen.
 
@@ -30,13 +38,19 @@ import { afterEach, beforeEach, it } from "vitest";
 import { RECORDER_GLOBAL } from "../case-harness/config";
 import { textDraws, toDrawCall, type RecordedOp } from "../case-harness/index";
 import { assertEqual, assertLength, fail } from "../assert";
-import { GRIP_MAX_RATE, HOIST_MAX_RATE, TROLLEY_MAX_RATE } from "../constants";
+import {
+  GRIP_MAX_RATE,
+  HOIST_MAX_RATE,
+  HOIST_START,
+  TROLLEY_MAX_RATE,
+} from "../constants";
 import {
   addOneLoad,
   clearAll,
   createHarness,
   openSite,
   poseTape,
+  runTicks,
   runUntil,
   standMinimalCrane,
   startRun,
@@ -44,21 +58,38 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** Three steps, none of them an `attach`. */
+/** Three steps, none of them an `attach`, each as short as a move can be. */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 30, rate: GRIP_MAX_RATE }] },
   {
     kind: "move",
-    commands: [{ axis: "trolley", target: 2, rate: TROLLEY_MAX_RATE }],
+    commands: [{ axis: "grip", target: 0.05, rate: GRIP_MAX_RATE }],
   },
-  { kind: "move", commands: [{ axis: "hoist", target: 3, rate: HOIST_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "trolley", target: 0.02, rate: TROLLEY_MAX_RATE }],
+  },
+  {
+    kind: "move",
+    commands: [
+      { axis: "hoist", target: HOIST_START + 0.02, rate: HOIST_MAX_RATE },
+    ],
+  },
 ];
 
 /** The one load: far from the crane, and never touched. */
 const LOAD = { x: 10, y: 2, z: 0, yaw: 0 };
 
 /** Ticks the tape is given to run out before the check calls it a fault. */
-const END_CAP = 1200;
+const END_CAP = 120;
+
+/**
+ * Ticks carried in one crossing before the sweep starts looking.
+ *
+ * The three minimal moves take about twenty ticks between them, and `runUntil`
+ * costs a crossing into the page for every tick it polls. Nothing is read
+ * before the tape runs out, so the ticks before it can be driven blind.
+ */
+const CARRY = 12;
 
 /** Runs of text this far apart in `y` are on one line of the readout. */
 const LINE_SLOP = 10;
@@ -110,6 +141,7 @@ it("reads step n / n once the tape's last step is complete", async () => {
   const started = await startRun(h);
   assertLength(started.program, TAPE.length, "the steps the tape carries");
 
+  await runTicks(h, CARRY);
   const ended = await runUntil(
     h,
     (snapshot) => snapshot.run.phase !== "running",

@@ -38,7 +38,7 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
-  assertTrue,
+  fail,
 } from "../assert";
 import {
   DESIGNS,
@@ -47,9 +47,10 @@ import {
   openSite,
   poseCrane,
   poseTape,
+  TICK_HZ,
   runTicks,
-  runUntil,
   startRun,
+  type GantrySnapshot,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
@@ -73,8 +74,9 @@ const ALONG = [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85];
 /** How far past the lower bob the controls stand, in world units. */
 const BEYOND = [2, 4];
 
-/** Ticks driven in one span before the sweep that waits for the trolley. */
-const RUN_OUT = 120;
+/** Ticks driven per span while the carriage runs out, and the cap on the run. */
+const RUN_OUT_SPAN = 60;
+const RUN_OUT_CAP = 420;
 
 /**
  * Slack on a point of the drawn cable, in world units.
@@ -138,14 +140,21 @@ function bodies(harness: Harness): Body[] {
     object.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(object);
     if (box.isEmpty()) return;
-    const material = (object as THREE.Mesh)
-      .material as Partial<THREE.MeshStandardMaterial> | undefined;
+    const material = (object as THREE.Mesh).material as
+      | Partial<THREE.MeshStandardMaterial>
+      | undefined;
     found.push({
       signature: [
         object.type,
         object.visible ? "1" : "0",
-        box.min.toArray().map((one) => one.toFixed(3)).join(),
-        box.max.toArray().map((one) => one.toFixed(3)).join(),
+        box.min
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
+        box.max
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
         material?.color?.getHexString() ?? "",
         material?.emissive?.getHexString() ?? "",
         material?.opacity ?? "",
@@ -190,7 +199,6 @@ function changedNear(
   return changed.filter((body) => body.box.intersectsSphere(ball)).length;
 }
 
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -208,17 +216,14 @@ it("draws the cable down to the bob the hoist length puts there", async () => {
   await poseTape(h, TAPE);
   await startRun(h);
 
-  // Driven in one span and then a tick at a time: the move is `TROLLEY` units
-  // at rate 4 with an acceleration of 4 (specs/program.md), which cannot be
-  // over inside two seconds however a build ramps it, and the sweep that
-  // follows fails the item if it never arrives.
-  await runTicks(h, RUN_OUT);
-  const out = await runUntil(
-    h,
-    (s) => s.run.axes.trolley.value >= TROLLEY - 1e-9,
-    300,
-    `the trolley to run out to ${TROLLEY}`,
-  );
+  // Driven in spans rather than a tick at a time: the move is `TROLLEY` units
+  // at rate 4 with an acceleration of 4 (specs/program.md), so it is over well
+  // inside the cap however a build ramps it, and all this reading needs is that
+  // the carriage HAS arrived before the pictures are taken. A tick-by-tick sweep
+  // reads the state across the surface once per tick and pays for the reading
+  // many times over; a span-by-span one reads it once per span and still fails
+  // the item, on the same cap, if the carriage never arrives.
+  const out = await runOut(h);
   const pivot = out.run.pivot;
   await h.debug.setAxis("hoist", SHORT);
   await h.debug.setBob(pivot.x, pivot.y - SHORT, pivot.z);
@@ -308,3 +313,28 @@ it("draws the cable down to the bob the hoist length puts there", async () => {
     );
   }
 });
+
+/**
+ * Run until the carriage has reached the end of its move, in spans.
+ *
+ * The cap is not a quiet ceiling: a reading whose carriage never arrived would
+ * fall through to assertions about a cable hanging somewhere else, so a run that
+ * has not arrived by `RUN_OUT_CAP` fails the item and says so.
+ */
+async function runOut(h: Harness): Promise<GantrySnapshot> {
+  let state: GantrySnapshot | null = null;
+  for (let driven = 0; driven < RUN_OUT_CAP; driven += RUN_OUT_SPAN) {
+    state = await runTicks(h, Math.min(RUN_OUT_SPAN, RUN_OUT_CAP - driven));
+    if (state.run.axes.trolley.value >= TROLLEY - 1e-9) return state;
+  }
+  return fail(
+    `the trolley to run out to ${TROLLEY} within ${RUN_OUT_CAP} ticks ` +
+      `(${(RUN_OUT_CAP / TICK_HZ).toFixed(2)}s of run clock): the step moves ` +
+      `it there at rate 4 with an acceleration of 4 (specs/program.md)`,
+    state === null
+      ? "the run was never driven"
+      : `it stands at ${state.run.axes.trolley.value.toFixed(3)} and the run ` +
+          `is "${state.run.phase}"` +
+          (state.run.cause === null ? "" : ` (${state.run.cause})`),
+  );
+}

@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -33,7 +33,8 @@ afterEach(async () => {
 
 it("gives the member placed after a removal a fresh id, not the removed one", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   await h.debug.addMember(0, 0, 0, 0, 2, 0, "strut"); // id 0
   await h.debug.addMember(2, 0, 0, 2, 2, 0, "strut"); // id 1

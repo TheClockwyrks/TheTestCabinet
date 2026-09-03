@@ -37,9 +37,6 @@ import { createHarness, type Harness } from "../harness";
 // open. `last()` answers every operation the last CLOSED frame issued, so a frame
 // is advanced before it is read.
 
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
 /** One operation the recorder wrote, in the order the render made it. */
 type RecordedOp =
   | { op: "call"; method: string; args: unknown[] }

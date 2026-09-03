@@ -23,20 +23,39 @@
 // And the snapshot is read either side of every call, because "rather than
 // guessing what was meant" is the other half of the rule: a call that threw and
 // still wrote something would have guessed.
+//
+// THE CRANE THE RUN NEEDS IS THE SMALLEST READY ONE, a slew ring and a single
+// rail — nothing this point is about is decided by what holds them up.
+// specs/structure.md § Readiness lists the four issues that refuse a run, this
+// crane raises none of them, and "whether it stands is the solve's verdict, not
+// the editor's: a ready structure may still be a mechanism". No tick is driven
+// after the run starts, so the solve never gets a verdict to reach and the run
+// this reads stands at tick `0`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { fail } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
+  poseCrane,
   poseTape,
-  standMinimalCrane,
   startRun,
+  type CraneDesign,
   type Harness,
 } from "../harness";
+
+/** A slew ring and one rail: the smallest crane specs/structure.md calls ready. */
+const READY_CRANE: CraneDesign = {
+  site: 0,
+  name: "Ring and track",
+  ring: [0, 2, 0],
+  counterweights: [],
+  members: [[[0, 4, 0], [4, 4, 0], "rail"]],
+  tape: [],
+};
 
 let h: Harness;
 
@@ -85,10 +104,12 @@ async function assertInvalid(
 
 it("refuses a tool, screen, material, axis, load class or phase it was never given", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   // The build screen: where the tool and the structure poses apply.
-  await assertInvalid('setTool("hammer")', () => h.debug.setTool("hammer" as never));
+  await assertInvalid('setTool("hammer")', () =>
+    h.debug.setTool("hammer" as never),
+  );
   await assertInvalid('setScreen("pause")', () =>
     h.debug.setScreen("pause" as never),
   );
@@ -108,7 +129,7 @@ it("refuses a tool, screen, material, axis, load class or phase it was never giv
 
   // And a run in progress, which is where `setLoadPhase` applies and where its
   // index names a load the run carries.
-  await standMinimalCrane(h);
+  await poseCrane(h, READY_CRANE);
   await addOneLoad(
     h,
     "crate",

@@ -24,7 +24,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertTrue } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
   openSite,
   poseCrane,
@@ -57,7 +56,11 @@ afterEach(async () => {
 
 it("does not stand a crane whose tower solve holds no member at all", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await poseCrane(h, ARM_ONLY);
 
   const result = await h.check();

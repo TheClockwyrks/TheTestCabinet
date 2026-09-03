@@ -23,7 +23,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import { CLICK_SLOP } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The lattice node the press is released on: an anchor's column, in site 1. */
 const NODE = { x: 0, y: 4, z: 0 } as const;
@@ -43,7 +43,8 @@ afterEach(async () => {
 
 it("places the pending node when the press stays inside CLICK_SLOP", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.debug.setTool("strut");
   const posed = await h.snapshot();
   assertEqual(posed.tool, "strut", "the tool the press is made under");

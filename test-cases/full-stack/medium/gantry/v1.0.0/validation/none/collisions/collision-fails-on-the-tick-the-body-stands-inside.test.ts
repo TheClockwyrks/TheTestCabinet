@@ -25,12 +25,23 @@
 // Every tick before that one was clear and the run was still going, because the
 // sweep only continues while both hold; the tick it stops on has to be both.
 //
-// THE BOX IS SET WHERE THE ARM SWEEPS BRISKLY THROUGH IT — `x 3..3.4`, `y
-// 3.5..4.5`, `z 1.6..2.4`, a block the rail crosses side on about a third of the
-// way through a quarter turn, roughly a hundred ticks in. A crossing that grazed
-// the box would put the entry inside a hair's breadth of a tick boundary; this one
-// carries the arm a good fraction of a unit per tick through it, so the tick the
-// geometry first stands inside is not in doubt.
+// THE BOX IS SET A FEW DEGREES INTO THE TURN — `x 3..3.4`, `y 3.5..4.5`, `z
+// 1.1..1.9`, which the arm reaches on its twenty-seventh tick, the slew still
+// accelerating at `SLEW_ACCEL` and barely three degrees round. The tick this
+// point is about is the FIRST one whose geometry stands inside, and every tick
+// before it says only that the run was still going, so the sweep is placed where
+// that tick arrives rather than a whole second further round: a longer approach
+// adds nothing to the reading, and every one of its ticks is another chance for
+// the run to end on something that belongs to another validator.
+//
+// AND THE ENTRY IS SET BETWEEN TWO TICKS RATHER THAN ON ONE. At tick twenty-six
+// the nearest member stands about `0.0021` clear of the box; at tick twenty-seven
+// it stands about `0.0018` inside it. The two margins are nearly equal, so the
+// crossing falls midway between two ticks rather than a hair from one, and the
+// tick the geometry first stands inside is not in doubt. Both the run and this
+// check turn the arm by the closed form `specs/statics.md` gives, so what
+// separates their answers is floating point, twelve orders of magnitude below
+// that margin.
 //
 // The yard holds that one obstacle and no load, so the bare hook is tested against
 // the ground alone and hangs clear of it, and the tower — everything at `y <= 2` —
@@ -54,17 +65,20 @@ import {
   type Vec3,
 } from "../harness";
 
-/** The block `x 3..3.4`, `y 3.5..4.5`, `z 1.6..2.4`. */
-const MIN: readonly [number, number, number] = [3, 3.5, 1.6];
-const MAX: readonly [number, number, number] = [3.4, 4.5, 2.4];
+/** The block `x 3..3.4`, `y 3.5..4.5`, `z 1.1..1.9`. */
+const MIN: readonly [number, number, number] = [3, 3.5, 1.1];
+const MAX: readonly [number, number, number] = [3.4, 4.5, 1.9];
 
 /** A quarter turn of the arm at its maximum rate. */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "slew", target: 90, rate: SLEW_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "slew", target: 90, rate: SLEW_MAX_RATE }],
+  },
 ];
 
-/** A quarter turn at `SLEW_MAX_RATE` is four seconds of run clock. */
-const CAP = 300;
+/** Ticks the sweep is given: the arm reaches the box on its twenty-seventh. */
+const CAP = 60;
 
 /** Below this a segment is parallel to a pair of faces and tested as a point. */
 const PARALLEL = 1e-12;
@@ -121,7 +135,10 @@ it("ends the run on the first tick whose geometry stands a member inside the obs
 
   const started = await startRun(h);
   const ring = started.structure.ring;
-  assertTrue(ring !== null, "the slew ring the arm turns on (specs/structure.md)");
+  assertTrue(
+    ring !== null,
+    "the slew ring the arm turns on (specs/structure.md)",
+  );
 
   // The slew axis is "the vertical line through the flange square's center", and
   // the top flange stands one lattice pitch above the ring's base corner

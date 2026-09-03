@@ -13,6 +13,19 @@
 // that clamped it at a full turn reports `360`; one that judged it out of range
 // fails the run. Each of the three is a different value in the same reading.
 //
+// THE AXIS IS POSED AT `START` AND EARNS THE LAST TWENTY DEGREES. The run's own
+// posture puts the grip at `0` (`specs/program.md`), and turning it the whole way
+// round from there is seven hundred and twenty ticks of driving that decide
+// nothing this reading does not already get from the last twenty: `setAxis`
+// "takes any value the axis can hold" and leaves it "stopped with no live
+// command" (`specs/instrumentation.md`), so the pose is a precondition and the
+// step is still issued, still judged against the axis's range, and still driven
+// to its target by the controller `specs/program.md` fixes. The three builds this
+// point separates are separated exactly as before: one that folds the grip into
+// `[0, 360)` arrives at `180` whether it folded the pose or the target, one that
+// clamps at a full turn arrives at `360`, and one that judges `540` out of range
+// ends the run on the tick that takes the step.
+//
 // THE HOOK TURNS ALONE. The yard is emptied, so no load is attached and the grip
 // "turns the bare hook, visibly and to no other effect" (`specs/rigging.md`):
 // nothing about the swing, the tension or the solve can end the run while the
@@ -20,21 +33,26 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual, assertNull } from "../assert";
-import { GRIP_MAX_RATE, TICK_HZ } from "../constants";
+import { GRIP_ACCEL, GRIP_MAX_RATE, TICK_HZ } from "../constants";
 import {
   clearAll,
   createHarness,
   openSite,
   poseTape,
+  runTicks,
   runUntil,
   standMinimalCrane,
   startRun,
+  type GantrySnapshot,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
 
 /** A turn and a half: past a full turn, and not a wrap of anything smaller. */
 const TARGET = 540;
+
+/** Where the grip is posed before the step is taken: twenty degrees short. */
+const START = 520;
 
 /** The move the tape carries. */
 const TAPE: readonly TapeStepSpec[] = [
@@ -45,11 +63,29 @@ const TAPE: readonly TapeStepSpec[] = [
 ];
 
 /**
- * The cap: `540` degrees at `GRIP_MAX_RATE` is twelve seconds of run clock
- * before the ramps at either end, so twenty seconds is comfortable slack and
- * still bounds a build that never arrives.
+ * The ticks the posed move takes, driven in one crossing before anything is
+ * read.
+ *
+ * `TARGET - START` is twenty degrees. `GRIP_ACCEL` (`90` deg/s²) needs
+ * `GRIP_MAX_RATE² / (2 * GRIP_ACCEL)` — `11.25` degrees — to reach the commanded
+ * rate and as much again to stop, so twenty degrees is the triangular case: the
+ * axis accelerates over half of it and brakes over the other half, which is
+ * `2 * sqrt((TARGET - START) / (2 * GRIP_ACCEL))` seconds of run clock. Rounded
+ * up and given a couple of ticks of slack, and the run is still running when it
+ * ends, because the step completes at the top of the tick after the axis arrives.
  */
-const CAP = 20 * TICK_HZ;
+const DRIVE =
+  Math.ceil(2 * Math.sqrt((TARGET - START) / (2 * GRIP_ACCEL)) * TICK_HZ) + 5;
+
+/**
+ * How much longer a build is given to arrive, sampled a tick at a time.
+ *
+ * A conformant build has arrived before this is reached, so the sweep costs
+ * nothing; a build that drives the grip more slowly than the controller says
+ * still reaches its target and is graded on where it stopped rather than on how
+ * long it took, and one that never arrives fails here by name.
+ */
+const SLACK = 20;
 
 /** The controller sets the value to the target exactly on arrival. */
 const TOL = 1e-9;
@@ -71,14 +107,25 @@ it("drives the grip to a target past a full turn", async () => {
   await poseTape(h, TAPE);
   await startRun(h);
 
-  const arrived = await runUntil(
-    h,
-    (s) =>
-      s.run.phase !== "running" ||
-      Math.abs(s.run.axes.grip.value - TARGET) <= TOL,
-    CAP,
-    `the grip to reach ${TARGET}, or the run to end trying`,
-  );
+  // The precondition: the grip stands past a full turn already, and stands there
+  // stopped, with the step still to be taken. Nothing has ticked at `startRun`
+  // (`specs/state.md`), so no command is live for this to clear and the tick that
+  // follows is the one that takes the move and judges its target.
+  await h.debug.setAxis("grip", START);
+
+  const done = (s: GantrySnapshot): boolean =>
+    s.run.phase !== "running" ||
+    Math.abs(s.run.axes.grip.value - TARGET) <= TOL;
+
+  const driven = await runTicks(h, DRIVE);
+  const arrived = done(driven)
+    ? driven
+    : await runUntil(
+        h,
+        done,
+        SLACK,
+        `the grip to reach ${TARGET}, or the run to end trying`,
+      );
   await h.capture("state", "The driven state this point decides");
 
   assertNull(

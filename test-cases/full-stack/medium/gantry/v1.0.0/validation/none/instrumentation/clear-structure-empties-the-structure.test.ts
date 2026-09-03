@@ -29,8 +29,8 @@ import {
   assertNull,
 } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -67,7 +67,7 @@ afterEach(async () => {
 
 it("removes every member, the ring and every counterweight", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, CRANE);
   const before = await h.snapshot();
 

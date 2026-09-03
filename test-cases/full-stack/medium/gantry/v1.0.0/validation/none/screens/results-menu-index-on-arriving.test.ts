@@ -33,16 +33,29 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** One short move: enough for a tape to run out and clear an empty yard. */
+/**
+ * One short move: enough for a tape to run out and clear an empty yard.
+ *
+ * A degree of grip and no more. Which move it is decides nothing here — the yard
+ * is empty, so the run clears at the top of the first tick that finds the tape
+ * complete with no step left (`specs/program.md`) — and a degree at
+ * `GRIP_MAX_RATE` is a whole ordinary move, issued, accelerated, braked and
+ * arrived, in a sixth of a second of run clock. The grip is the axis
+ * `specs/rigging.md` says "applies no force to anything", so nothing on the way
+ * to results is anything but the tape running out.
+ */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 30, rate: GRIP_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: 1, rate: GRIP_MAX_RATE }],
+  },
 ];
 
 /** Where the highlight is put before the run: not the results menu's first. */
 const POSED_INDEX = 2;
 
-/** Ticks the run is given to reach its verdict. */
-const END_CAP = 600;
+/** Ticks the run is given to reach its verdict: many times the move's own. */
+const END_CAP = 60;
 
 let h: Harness;
 

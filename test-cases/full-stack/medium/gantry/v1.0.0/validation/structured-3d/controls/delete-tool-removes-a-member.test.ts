@@ -28,8 +28,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertTrue } from "../assert";
 import { MEMBER_PICK_PX } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -54,7 +54,8 @@ afterEach(async () => {
 
 it("removes the member the click picks by screen distance", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.debug.addMember(A.x, A.y, A.z, B.x, B.y, B.z, "strut");
   assertLength(
     (await h.snapshot()).structure.members,

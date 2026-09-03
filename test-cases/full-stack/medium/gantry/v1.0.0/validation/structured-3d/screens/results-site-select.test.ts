@@ -50,11 +50,25 @@ const ENTRY = RESULTS_ITEMS.indexOf("SITE SELECT");
 /** A camera pose that is not the start pose, inside the orbit's own limits. */
 const ORBITED = { yaw: 123, pitch: 40, dist: 25 };
 
-/** One short move: enough for a run to have something to do and to end. */
-const A_SHORT_HOIST: TapeStepSpec = {
+/**
+ * One step the run's first tick takes and finds already arrived.
+ *
+ * WHAT THIS POINT NEEDS OF THE RUN IS THAT IT ENDED, not that it went anywhere:
+ * the finished run is a precondition — the state a site opening would sweep away
+ * — and the entry is the requirement. A hoist command to `HOIST_START` is the
+ * cheapest tape that gets there, since the axis already stands at that value when
+ * a run starts (`specs/state.md`), so the first tick takes the step, finds it
+ * arrived, and the tape runs out. A longer move would spend fifty ticks reaching
+ * exactly the same precondition through the axis controller, which belongs to the
+ * tape items rather than to this one.
+ */
+const A_STEP_ALREADY_ARRIVED: TapeStepSpec = {
   kind: "move",
-  commands: [{ axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE }],
+  commands: [{ axis: "hoist", target: HOIST_START, rate: HOIST_MAX_RATE }],
 };
+
+/** Ticks the run is given to end, against the one or two it takes. */
+const CAP = 10;
 
 let h: Harness;
 
@@ -70,14 +84,14 @@ it("returns to select without opening a site", async () => {
   await openSite(h, SITE);
   await clearAll(h);
   await standMinimalCrane(h);
-  await poseTape(h, [A_SHORT_HOIST]);
+  await poseTape(h, [A_STEP_ALREADY_ARRIVED]);
   await h.debug.setCamera(ORBITED.yaw, ORBITED.pitch, ORBITED.dist);
 
   await startRun(h);
   const ended = await runUntil(
     h,
     (s) => s.run.phase !== "running",
-    200,
+    CAP,
     "the run to end",
   );
   assertEqual(ended.run.phase, "cleared", "the run this check reads after");

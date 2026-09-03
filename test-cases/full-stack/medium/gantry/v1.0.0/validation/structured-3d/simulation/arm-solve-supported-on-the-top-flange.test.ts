@@ -23,7 +23,6 @@ import { assertClose, assertTrue, fail } from "../assert";
 import {
   clearAll,
   createHarness,
-  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -127,7 +126,6 @@ afterEach(async () => {
 it("leaves every arm member's force alone when the tower below changes", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await emptyYard(h);
   await poseCrane(h, RIG);
 
   const light = await h.check();

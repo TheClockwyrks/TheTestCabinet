@@ -3,41 +3,42 @@
 //
 // specs/structure.md § Readiness: "`no-rail` — The crane has no rail members."
 //
-// The scenario is the minimal crane with its track taken away: the braced tower,
-// the ring on top of it, and the mast tied to all four top-flange nodes, but not
-// the one `rail` member nor the three struts that held that rail's far end up.
-// What is left is a crane that breaks no other readiness rule — it has a ring,
-// and every member reaches an anchor or a flange node — so the reading is about
-// the missing rails and nothing else.
+// THE SCENARIO IS THE SMALLEST CRANE THAT CAN RAISE IT: a slew ring, and one
+// strut leaving its top flange for a free node. That is a crane with a ring and
+// with members — so a build is genuinely reading a structure rather than an empty
+// one — and not a rail among them. It breaks no other readiness rule: it has a
+// ring, and its one member reaches a flange node, so neither `no-ring` nor
+// `disconnected-members` can speak and the reading is about the missing rails and
+// nothing else.
 //
-// It is posed as the sequence of edits that builds it (`poseCrane`), so it
-// passes the same placement rules a player builds under, and the yard is emptied
-// first so nothing standing in it can refuse one of them.
+// NOTHING ELSE IS BUILT, and the tower this crane does not have is the point. A
+// tower would put nine or thirteen more placements between the site opening and
+// the reading, every one of them a way for this item to fail for a reason that
+// belongs to `editor/`, and not one of them is anything `no-rail` is decided on.
+//
+// It is posed as the sequence of edits that builds it (`poseCrane`), so it passes
+// the same placement rules a player builds under, and the yard is emptied first so
+// nothing standing in it can refuse one of them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains } from "../assert";
 import {
-  MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
   type Harness,
 } from "../harness";
 
-/** The far end of the minimal crane's track: the node its rail runs out to. */
-const TRACK_TIP = [4, 4, 0] as const;
-
-/** The minimal crane, less the rail and the three ties to the rail's far end. */
+/** A ring on site 1's lattice, and one arm strut leaving its top flange. */
 const NO_RAIL: CraneDesign = {
-  ...MINIMAL_CRANE,
-  name: "Minimal, with no track",
-  members: MINIMAL_CRANE.members.filter(
-    ([a, b]) =>
-      !(a[0] === TRACK_TIP[0] && a[1] === TRACK_TIP[1] && a[2] === TRACK_TIP[2]) &&
-      !(b[0] === TRACK_TIP[0] && b[1] === TRACK_TIP[1] && b[2] === TRACK_TIP[2]),
-  ),
+  site: 0,
+  name: "A ring and one arm member",
+  ring: [0, 2, 0],
+  counterweights: [],
+  members: [[[0, 4, 0], [0, 8, 0], "strut"]],
+  tape: [],
 };
 
 let h: Harness;
@@ -52,7 +53,7 @@ afterEach(async () => {
 
 it("raises no-rail for a ringed crane carrying no rail member", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, NO_RAIL);
 
   const { issues } = await h.check();

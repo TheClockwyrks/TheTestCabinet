@@ -25,7 +25,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual, assertTrue, fail } from "../assert";
 import { HOIST_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
   emptyYard,
   openSite,
@@ -166,7 +165,10 @@ const SITE = 5;
 
 /** A tape long enough that the run is still going when the reading is taken. */
 const LIFT: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "hoist", target: 6, rate: HOIST_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "hoist", target: 6, rate: HOIST_MAX_RATE }],
+  },
 ];
 
 /** The tick each reading is taken on, comfortably past the fall. */
@@ -187,7 +189,6 @@ afterEach(async () => {
 
 it("lists a member joined to neither solve at zero force and zero utilization", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
   await emptyYard(h);
   await poseCrane(h, RIGGED);
   await poseTape(h, LIFT);

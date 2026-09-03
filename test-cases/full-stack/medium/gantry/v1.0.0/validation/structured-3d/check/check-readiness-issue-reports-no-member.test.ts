@@ -16,8 +16,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual, assertGreaterThan } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   standMinimalCrane,
   type Harness,
@@ -37,7 +37,7 @@ afterEach(async () => {
 
 it("reports an empty member list while the crane still holds every member", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
 
   const solved = await h.check();

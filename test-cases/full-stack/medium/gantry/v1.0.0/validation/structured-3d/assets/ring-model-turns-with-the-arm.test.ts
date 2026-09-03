@@ -40,10 +40,10 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear } from "../assert";
 import { GRIP_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
   drawnFromModel,
   drawnYaw,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -101,7 +101,7 @@ async function ringYaw(harness: Harness): Promise<number> {
 
 it("draws the ring turned by the slew angle", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, [HOLD]);
   await startRun(h);

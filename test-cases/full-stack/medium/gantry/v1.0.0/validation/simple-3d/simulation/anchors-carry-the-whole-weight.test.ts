@@ -27,6 +27,12 @@
 // `N` pulls the node it ends at toward its far end, so the pull at the anchor is
 // `N` times the unit vector from the anchor toward that far end, and the applied
 // force there is that node's own lumped mass times `-GRAVITY` on `y`.
+//
+// THE YARD IS EMPTIED AND NOTHING ELSE IS. The sum below runs over the crane the
+// check poses, so the loads and obstacles the site opens with are the one thing
+// that has to go; `standMinimalCrane` empties the structure itself before it
+// poses a member (`specs/instrumentation.md`: `clearStructure` "empties the open
+// site's structure"), and this check reads no tape.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNear, assertTrue } from "../assert";
@@ -41,9 +47,9 @@ import {
   type Vec3,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   standMinimalCrane,
   type Harness,
@@ -82,7 +88,7 @@ afterEach(async () => {
 
 it("adds the anchor reactions up to the whole weight the load model lumps on the crane", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
 
   const result = await h.check();

@@ -24,7 +24,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
   emptyYard,
   openSite,
@@ -135,7 +134,6 @@ afterEach(async () => {
 
 it("ends the run as ring-overload when a corner exceeds RING_CAP", async () => {
   await openSite(h, 0);
-  await clearAll(h);
   await emptyYard(h);
   await poseCrane(h, RIG);
   for (const node of WEIGHTED) {

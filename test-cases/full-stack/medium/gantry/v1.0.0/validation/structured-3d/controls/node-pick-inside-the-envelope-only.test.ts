@@ -28,7 +28,7 @@ import {
   NODE_PICK_PX,
   SITES,
 } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** The site this check is read on, and the envelope its lattice fills. */
 const SITE = 0;
@@ -255,7 +255,9 @@ afterEach(async () => {
 
 it("takes no node when the click is on a lattice point outside the envelope", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // Nothing is cleared: a node pick considers the lattice nodes in the envelope
+  // (specs/controls.md), and a site opened after a reset has nothing built, so the
+  // yard's own loads are not candidates and not this requirement's.
   const camera = (await h.snapshot()).camera;
   const model = await stageModel(h, camera);
 

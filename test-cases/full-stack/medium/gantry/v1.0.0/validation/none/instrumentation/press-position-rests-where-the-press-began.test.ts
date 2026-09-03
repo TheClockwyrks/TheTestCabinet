@@ -28,7 +28,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** Where the press goes down, where it is dragged to, and where it ends up. */
 const DOWN = { x: 120, y: 80 };
@@ -53,7 +53,7 @@ afterEach(async () => {
 
 it("leaves pressX and pressY where the press went down after it is released", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   await h.pointerDown(DOWN.x, DOWN.y);
   await h.advance(1);
@@ -83,8 +83,18 @@ it("leaves pressX and pressY where the press went down after it is released", as
 
   // Read beside them, so a build that simply froze the whole pointer cannot
   // pass: the position is the last move's, and no press is live.
-  assertClose(pointer.x, AFTER.x, TOL, "the pointer position after the release");
-  assertClose(pointer.y, AFTER.y, TOL, "the pointer position after the release");
+  assertClose(
+    pointer.x,
+    AFTER.x,
+    TOL,
+    "the pointer position after the release",
+  );
+  assertClose(
+    pointer.y,
+    AFTER.y,
+    TOL,
+    "the pointer position after the release",
+  );
   assertEqual(pointer.down, false, "the press the release ended");
 
   await h.capture(

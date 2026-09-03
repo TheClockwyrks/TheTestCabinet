@@ -7,38 +7,52 @@
 // grip is the only thing moving is, to the solve and to the pendulum, a run in
 // which nothing is moving at all.
 //
-// THE CONTROL IS A RUN WITH NOTHING MOVING, AND THEN THE GRIP MOVE IS COMPARED TO
-// IT AND TO ITSELF. Two runs are driven over the same posed crane on the same
-// emptied yard:
+// THE CONTROL AND THE READING ARE ONE RUN. The tape carries two steps, so a
+// single run over a single posed crane gives both:
 //
-//   - the control's tape is one move whose target is its axis's current value,
-//     which specs/program.md § Axis motion says "is done on the tick it is
-//     issued": one tick under a live command, with nothing accelerating anywhere;
-//   - the reading's tape is one `grip` move to `GRIP_TARGET` (`180`) at
-//     `GRIP_MAX_RATE`, which under `GRIP_ACCEL` accelerates for half a second,
-//     cruises for three and a half, and brakes for half.
+//   - step one is a move whose target is its axis's current value, which
+//     specs/program.md § Axis motion says "is done on the tick it is issued": the
+//     run's FIRST tick passes with nothing accelerating anywhere, and the member
+//     forces it solves are the control;
+//   - step two is a `grip` move to `GRIP_TARGET` (`30`) at `GRIP_MAX_RATE`, taken
+//     on the tick after (specs/program.md § The tick pipeline), which under
+//     `GRIP_ACCEL` accelerates for half a second, cruises, and brakes for half a
+//     second.
 //
-// The reading's FIRST tick, on which the grip is accelerating hardest, must report
-// the control's member forces exactly; and every later tick of it — cruising, then
-// braking, then stopped at the target — must report the same forces again. A force
-// the grip applied would have to be some function of its rate or its acceleration,
-// and no such function is constant across a profile that accelerates one way,
-// holds, and brakes the other while the run's own first tick is compared against a
-// run where the grip never moved at all.
+// ONE RUN RATHER THAN TWO, DELIBERATELY. A control driven as a second run would
+// only be comparable if the same tape over the same structure repeated itself
+// tick for tick — which is a requirement of its own
+// (specs/instrumentation.md § A deterministic core) with a validator of its own.
+// Borrowing it here would fail this point for a build whose runs do not repeat,
+// against a specification sentence about the grip. The control tick and the
+// turning ticks belong to the same run, so nothing but the grip stands between
+// them.
+//
+// Every turning tick — accelerating, cruising, braking, and stopped at the target
+// — must report the control tick's member forces exactly. A force the grip
+// applied would have to be some function of its rate or its acceleration, and no
+// such function is constant across a profile that accelerates one way, holds, and
+// brakes the other while the first turning tick is compared against a tick of the
+// same run on which the grip had not moved at all.
 //
 // AND THE BOB IS WATCHED THROUGHOUT, because "moves the bob not at all" is the
 // other half of the same sentence: the hook hangs at the pivot minus
 // `(0, HOIST_START, 0)` with zero velocity at the run's start (specs/rigging.md §
 // The pivot and the bob), and there it must stay for every tick of the turn.
+//
+// THE YARD IS EMPTIED and the smallest crane that stands carries the run: this
+// point is about a swivel in the hook, so nothing about the site, its loads or
+// its obstacles is on the way to it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNear } from "../assert";
 import { GRIP_MAX_RATE, HOIST_START, SLEW_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
+  runTicks,
   runUntil,
   standMinimalCrane,
   startRun,
@@ -56,16 +70,27 @@ const PIVOT = { x: 0, y: 4, z: 0 };
 /** Where the bob hangs at the run's start: the pivot minus `(0, L, 0)`. */
 const HOOK = { x: PIVOT.x, y: PIVOT.y - HOIST_START, z: PIVOT.z };
 
-/** The angle the grip is driven to: far enough to accelerate, cruise, brake. */
-const GRIP_TARGET = 180;
+/**
+ * The angle the grip is driven to: the shortest turn that has all three phases.
+ *
+ * Under `GRIP_ACCEL` (`90`) the grip reaches `GRIP_MAX_RATE` (`45`) in half a
+ * second, covering `11.25` degrees, and needs the same to stop. A target of `30`
+ * therefore accelerates for thirty ticks, CRUISES for ten, and brakes for thirty
+ * — the whole profile the comparison needs, in seventy ticks rather than the two
+ * hundred and seventy a half revolution would spend saying the same thing.
+ */
+const GRIP_TARGET = 30;
 
-/** Ticks the turn is allowed; at GRIP_MAX_RATE it takes some 270. */
-const CAP = 400;
+/** Ticks the turn is allowed; at this profile it takes some 70. */
+const CAP = 150;
+
+/** Ticks the profile cannot come in under, so all three phases are covered. */
+const PHASES = 60;
 
 /**
  * How close two solves of a crane nothing moved have to come.
  *
- * Both runs assemble the same stiffness over the same geometry against the same
+ * Both ticks assemble the same stiffness over the same geometry against the same
  * applied forces, so a conforming build's readings do not differ at all; the
  * least force the grip could plausibly apply is orders above this.
  */
@@ -77,7 +102,7 @@ const STILL: TapeStepSpec = {
   commands: [{ axis: "slew", target: 0, rate: SLEW_MAX_RATE }],
 };
 
-/** The turn under test: half a revolution of the grip and nothing else. */
+/** The turn under test: the grip driven to its target and nothing else. */
 const TURN: TapeStepSpec = {
   kind: "move",
   commands: [{ axis: "grip", target: GRIP_TARGET, rate: GRIP_MAX_RATE }],
@@ -88,7 +113,7 @@ function byId(forces: readonly MemberForce[]): Map<number, number> {
   return new Map(forces.map((one) => [one.id, one.force]));
 }
 
-/** Everything a tick of either run is compared on. */
+/** Everything a tick of the run is compared on. */
 function readingOf(snapshot: GantrySnapshot): {
   forces: Map<number, number>;
   snapshot: GantrySnapshot;
@@ -106,25 +131,21 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Stand the crane on an emptied yard and start a run on `tape`. */
-async function standAndRun(tape: readonly TapeStepSpec[]): Promise<void> {
-  await openSite(h, SITE);
-  await clearAll(h);
-  await standMinimalCrane(h);
-  await poseTape(h, tape);
-  await startRun(h);
-}
-
 it("changes no member force and moves the bob while the grip turns", async () => {
-  // The control: one tick of a run under a command that moves nothing.
-  await standAndRun([STILL]);
-  const still = readingOf(
-    await runUntil(
-      h,
-      (s) => s.run.tick >= 1,
-      2,
-      "the control run's first tick",
-    ),
+  await openSite(h, SITE);
+  await emptyYard(h);
+  await standMinimalCrane(h);
+  await poseTape(h, [STILL, TURN]);
+  await startRun(h);
+
+  // The control: the run's first tick, which takes the still step and completes
+  // it without moving anything (specs/program.md § Axis motion).
+  const still = readingOf(await runTicks(h, 1));
+  assertEqual(
+    still.snapshot.run.axes.grip.value,
+    0,
+    "the grip on the control tick, which the still step leaves where a run " +
+      "starts it (specs/program.md § The axes)",
   );
   assertGreaterThan(
     still.forces.size,
@@ -132,13 +153,12 @@ it("changes no member force and moves the bob while the grip turns", async () =>
     "the members the standing crane reports a force for",
   );
 
-  // The reading: the same crane with the grip turning through its whole profile.
-  await standAndRun([TURN]);
+  // The reading: the same run, with the grip turning through its whole profile.
   const turning: ReturnType<typeof readingOf>[] = [];
   await runUntil(
     h,
     (s) => {
-      if (s.run.tick >= 1) turning.push(readingOf(s));
+      if (s.run.tick >= 2) turning.push(readingOf(s));
       return s.run.axes.grip.value >= GRIP_TARGET - 1e-9;
     },
     CAP,
@@ -148,9 +168,18 @@ it("changes no member force and moves the bob while the grip turns", async () =>
 
   assertGreaterThan(
     turning.length,
-    120,
+    PHASES - 1,
     `the ticks the grip took to reach ${GRIP_TARGET}, so the reading spans ` +
       "its acceleration, its cruise and its braking",
+  );
+  assertEqual(
+    Math.max(
+      ...turning.map((tick) => Math.abs(tick.snapshot.run.axes.grip.rate)),
+    ),
+    GRIP_MAX_RATE,
+    "the fastest the grip turned over the reading, so the profile compared " +
+      "reached its commanded rate and cruised there (specs/program.md § Axis " +
+      "motion)",
   );
 
   for (const [index, tick] of turning.entries()) {
@@ -163,8 +192,8 @@ it("changes no member force and moves the bob while the grip turns", async () =>
         `member ${id}'s force on tick ${run.tick}, with the grip at ` +
           `${run.axes.grip.value.toFixed(3)} and turning at ` +
           `${run.axes.grip.rate.toFixed(3)} deg/s, against the same member on ` +
-          "a run where nothing turned at all: turning the grip applies no " +
-          "force to anything (specs/rigging.md § The grip)",
+          "the tick of this run where nothing turned at all: turning the grip " +
+          "applies no force to anything (specs/rigging.md § The grip)",
       );
     }
     for (const axis of ["x", "y", "z"] as const) {
@@ -187,8 +216,8 @@ it("changes no member force and moves the bob while the grip turns", async () =>
       assertGreaterThan(
         Math.abs(run.axes.grip.rate),
         0,
-        "the grip's rate on the first tick compared against the still run, so " +
-          "the comparison is of a turning grip against a stopped one",
+        "the grip's rate on the first turning tick compared against the still " +
+          "tick, so the comparison is of a turning grip against a stopped one",
       );
     }
   }

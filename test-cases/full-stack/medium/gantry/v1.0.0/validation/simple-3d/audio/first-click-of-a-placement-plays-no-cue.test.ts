@@ -39,8 +39,8 @@ import {
   assertTrue,
 } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -65,7 +65,7 @@ afterEach(async () => {
 
 it("plays no cue on the first click of a two-click member placement", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setTool("strut");
 
   /** Aim at a node and read back the pick the build reports there. */

@@ -14,21 +14,31 @@
 // pad asks for. A build that ran both actions on one tick would report the load
 // `placed` on the tick it was taken up.
 //
-// THE HOIST IS PAID IN FIRST so the crate hangs a unit clear of the ground rather
-// than flush against it, which keeps `specs/statics.md`'s ground test out of a
-// reading that is about the tape.
+// THE HOIST IS PAID IN so the crate hangs a unit clear of the ground rather than
+// flush against it, which keeps `specs/statics.md`'s ground test out of a reading
+// that is about the tape.
+//
+// AND IT IS POSED RATHER THAN DRIVEN. `setAxis` "sets an axis's value, leaving it
+// stopped with no live command" and `setBob` "puts the bob where it is asked for"
+// (`specs/instrumentation.md`), so the cable stands paid in at the top of the
+// run's first tick, and the tape's opening move — to the value the hoist now
+// holds — "is done on the tick it is issued" (`specs/program.md` § Axis motion).
+// Driving that move instead costs twenty-six ticks of a hoist controller this
+// point does not decide, and a build whose controller was slow or wrong would
+// fail here as well as in the items that are about it. The pose is a precondition
+// and nothing more: the attach and the release are still executed by the tape, on
+// the ticks the run gives them, and the ticks they land on are the whole reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { HOIST_MAX_RATE, HOIST_MIN } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
-  runUntil,
   standMinimalCrane,
   startRun,
   type Harness,
@@ -48,9 +58,6 @@ const TAPE: readonly TapeStepSpec[] = [
   { kind: "action", action: "release" },
 ];
 
-/** Ticks the sweep is given: paying in one unit takes about twenty-six. */
-const CAP = 300;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -63,18 +70,29 @@ afterEach(async () => {
 
 it("executes an attach and the release after it on two consecutive ticks", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, HOOK, HOOK);
   await poseTape(h, TAPE);
   await startRun(h);
 
-  const attached = await runUntil(
-    h,
-    (s) => s.run.loads[0]?.phase === "attached",
-    CAP,
-    "the tape's attach step to take the load up",
+  // The cable paid in, and the bob where a cable of that length holds it: the
+  // precondition the tape's opening move would otherwise spend twenty-six ticks
+  // reaching. The run has not ticked yet, so the move is issued against a hoist
+  // already at its target and is complete on the tick that issues it.
+  await h.debug.setAxis("hoist", HOIST_MIN);
+  await h.debug.setBob(HOOK.x, HOOK.y, HOOK.z);
+  await h.debug.setBobVelocity(0, 0, 0);
+
+  const paidIn = await runTicks(h, 1);
+  assertEqual(
+    paidIn.run.axes.hoist.value,
+    HOIST_MIN,
+    "the hoist on the tick that issued the opening move: the pose put it at " +
+      "the move's own target, so the command has `s` of `0` and is done on " +
+      "the tick it is issued (specs/program.md § Axis motion)",
   );
+  const attached = await runTicks(h, 1);
   const released = await runTicks(h, 1);
 
   await h.capture("state", "The tick after the attach, which ran the release");

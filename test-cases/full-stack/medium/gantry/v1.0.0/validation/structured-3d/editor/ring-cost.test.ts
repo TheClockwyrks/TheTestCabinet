@@ -18,7 +18,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
 import { RING_COST } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** The base corner the ring is placed by. */
 const CORNER = { x: 0, y: 2, z: 0 };
@@ -35,7 +35,11 @@ afterEach(async () => {
 
 it("adds RING_COST to the cost when the ring is placed", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The precondition is an empty structure and nothing else. A site opened
+  // after a reset already carries one (specs/state.md), and `clearStructure`
+  // states it rather than leaving it implied; emptying the yard and the tape
+  // too would drive surface this requirement does not concern.
+  await h.debug.clearStructure();
 
   const before = (await h.snapshot()).structure.cost;
 

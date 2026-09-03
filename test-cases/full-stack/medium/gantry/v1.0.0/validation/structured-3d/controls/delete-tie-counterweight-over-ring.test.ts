@@ -27,7 +27,7 @@ import {
   assertNotNull,
   assertTrue,
 } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The ring's base corner: a lattice node off the ground, as the rules ask. */
 const RING = { x: 2, y: 6, z: 2 } as const;
@@ -44,7 +44,7 @@ afterEach(async () => {
 
 it("removes the counterweight when a counterweight and the ring tie", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setRing(RING.x, RING.y, RING.z);
   await h.debug.addCounterweight(RING.x, RING.y, RING.z);
   await h.debug.setTool("delete");

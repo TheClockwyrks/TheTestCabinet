@@ -38,7 +38,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import * as THREE from "three";
 import { assertEqual, fail } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 const SITE = 0;
 
@@ -127,7 +127,8 @@ function floors(harness: Harness): THREE.Box3[] {
 
 it("draws the plane y = 0 as a floor under the yard", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.advance(1);
   await h.capture("floor", "The empty yard and its floor");
 
@@ -156,7 +157,7 @@ it("draws the plane y = 0 as a floor under the yard", async () => {
       surfaces.length === 0
         ? "the yard holds no such surface at all"
         : `${surfaces.length} such surface(s) stand, and none reaches ` +
-          `${missed.map((p) => `(${p.x}, 0, ${p.z})`).join(", ")}`,
+            `${missed.map((p) => `(${p.x}, 0, ${p.z})`).join(", ")}`,
     );
   }
 });

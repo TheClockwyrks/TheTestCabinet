@@ -8,13 +8,15 @@
 // pivot a tick reports is the one its OWN trolley value puts under the cable,
 // never the one the tick began with.
 //
-// THE READING IS TAKEN MID-MOVE, where the two answers are far apart. The
-// trolley crosses about a twentieth of a unit per tick at the rate it holds here,
-// and the pivot is asserted against the same tick's value to within a millionth
-// of a unit — four orders of magnitude inside the gap a stale reading would
-// leave. The tick before is read as well, and its value is asserted to be that
-// far away, so the scenario is one that can tell the two apart rather than one
-// caught while the trolley was standing still.
+// THE READING IS TAKEN AS SOON AS THE TROLLEY IS MOVING FAST ENOUGH TO TELL THE
+// TWO ANSWERS APART, and no later. The trolley accelerates at `TROLLEY_ACCEL`
+// (`4` u/s²) from a standing start, so it is crossing about a fiftieth of a unit
+// per tick a fifth of a unit along its track — and the pivot is asserted against
+// the same tick's value to within a millionth of a unit, four orders of magnitude
+// inside the gap a stale reading would leave. Waiting any longer would drive the
+// whole move to say the same thing. The tick before is read as well, and its
+// value is asserted to be that far away, so the scenario is one that can tell the
+// two apart rather than one caught while the trolley was standing still.
 //
 // WHERE THE PIVOT STANDS is `specs/rigging.md`'s definition — "the trolley
 // point, on the rail track at the trolley's position, rotated with the arm" —
@@ -49,11 +51,11 @@ const DIRECTION = { x: 1, y: 0, z: 0 };
 /** Inside the four-unit track, and far enough to be cruising at the reading. */
 const TARGET = 3;
 
-/** Where the sweep stops: a unit along, with the trolley well under way. */
-const SAMPLE_AT = 1;
+/** Where the sweep stops: a fifth of a unit along, the trolley well under way. */
+const SAMPLE_AT = 0.2;
 
-/** Ticks the sweep is given to get there: it takes about forty-three. */
-const CAP = 300;
+/** Ticks the sweep is given to get there: it takes about twenty. */
+const CAP = 60;
 
 /** The tape: one trolley move, the only axis anything commands. */
 const TAPE: readonly TapeStepSpec[] = [
@@ -64,7 +66,7 @@ const TAPE: readonly TapeStepSpec[] = [
 ];
 
 /**
- * How far apart the two answers stand. The trolley crosses about `0.047` units
+ * How far apart the two answers stand. The trolley crosses about `0.021` units
  * on the tick under test, so a pivot taken from the previous tick's value misses
  * by that much; the assertion below is a millionth of a unit, which is float
  * noise on a rotation by zero rather than a share of the gap.

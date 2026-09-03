@@ -35,12 +35,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { fail } from "../assert";
 import { textDraws, toDrawCall } from "../case-harness/index";
 import { STAGE_H, STAGE_W } from "../constants";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  type Harness,
-} from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The six tools in binding order, each with the words it may be named by. */
 const TOOLS: readonly { of: string; names: readonly string[] }[] = [
@@ -123,7 +118,7 @@ afterEach(async () => {
 
 it("moves the palette's mark to the tool that is selected", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setTool("strut");
   await h.advance(1);
 

@@ -30,8 +30,8 @@ import {
 } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -44,7 +44,9 @@ import {
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE }],
+    commands: [
+      { axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE },
+    ],
   },
   {
     kind: "move",
@@ -68,7 +70,7 @@ afterEach(async () => {
 
 it("fails loudly on a step or load index nothing carries, and edits nothing", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(
     h,

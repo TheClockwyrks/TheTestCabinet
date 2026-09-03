@@ -6,14 +6,29 @@
 // heavy moment must not come back when the moment eases, and it must not come
 // back when the load is somewhere else entirely.
 //
-// The load is moved by SLEWING, which is the one motion that takes the whole arm
-// somewhere new without changing what the members are: the crane's stay `45`
-// breaks on the first tick under the lift, and the tape then turns the arm a
-// quarter of the way round at `10` degrees a second, nine seconds of run clock,
-// while the load swings on the end of the cable. Every axis reading, every node
-// position, every applied force in the arm solve changes over that turn.
+// THE RUN IS PUT THROUGH BOTH WAYS THE MEMBER COULD COME BACK, and the second is
+// the one the sentence is really about.
 //
-// The run is sampled all the way through: at no point may `run.forces` — "the
+//   1. The arm goes somewhere new. Slewing is the one motion that takes the whole
+//      arm somewhere else without changing what the members are: the crane's stay
+//      `45` breaks on the first tick under the lift, and the tape then turns the
+//      arm at `10` degrees a second while the load swings on the end of the
+//      cable. Every axis reading, every node position and every applied force in
+//      the arm solve changes over that turn.
+//   2. The moment eases. `specs/instrumentation.md` gives `setLoadPhase`, and
+//      `"placed"` "sets the load down exactly as a successful `release` leaves
+//      it", so "the bob's mass drops back to the hook's from this tick's pendulum
+//      step on" (`specs/rigging.md`). That takes the whole lifted moment off the
+//      arm in one tick — a far larger easing than any amount of turning — and the
+//      ticks that follow re-solve a crane the stay would comfortably have carried.
+//      The stay must still be gone.
+//
+// BOTH ARE PRECONDITIONS AND NEITHER IS THE OUTCOME. The turn is driven by the
+// tape's own command and the set-down is a pose; what is read after each is the
+// simulation's own solve on the ticks that follow. Nothing here poses a force, a
+// utilization or the broken list.
+//
+// The run is sampled across both stretches: at no point may `run.forces` — "the
 // latest solve's, in member-id order, over the members still intact"
 // (`specs/state.md`) — carry the broken member again, and it stays on the run's
 // broken list throughout.
@@ -31,6 +46,7 @@ import {
   runTicks,
   startRun,
   type CraneDesign,
+  type GantrySnapshot,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
@@ -139,16 +155,36 @@ const LOAD_MASS = 106;
 /** The stay that breaks on the first tick. */
 const STAY = 45;
 
-/** Attach, then turn a quarter circle, gently enough that the swing stays small. */
+/**
+ * Attach, then turn, gently enough that the swing stays small.
+ *
+ * The turn's target is past where the sweep below stops, so the axis is still
+ * under way at every sample rather than braking to a halt, and the grip step after
+ * it is what keeps the tape from running out: a tick that finds no live step and
+ * no step left ends the run (`specs/program.md`), and this point wants ticks after
+ * the load is set down.
+ */
 const TAPE: readonly TapeStepSpec[] = [
   { kind: "action", action: "attach" },
   { kind: "move", commands: [{ axis: "slew", target: 90, rate: 10 }] },
   { kind: "move", commands: [{ axis: "grip", target: 3600, rate: 45 }] },
 ];
 
-/** How the turn is sampled: this many ticks at a time, this many times. */
-const STRIDE = 30;
-const SAMPLES = 20;
+/**
+ * How each stretch is sampled: this many ticks at a time, this many times.
+ *
+ * `run.forces` is the LATEST solve's, so a stride is not a gap in the reading:
+ * every tick of it solved, and the sample at its end is that solve. What a stride
+ * saves is the crossing back out of the page, not a tick — and a crane of fifty-
+ * three members is solved twice on every one of them.
+ */
+const STRIDE = 15;
+const TURNING = 6;
+const EASED = 2;
+const AFTER_STRIDE = 5;
+
+/** The turn the sweep reads, in degrees, before the load is set down. */
+const TURNED = 10;
 
 let h: Harness;
 
@@ -175,36 +211,66 @@ it("never solves over the broken member again, however the arm turns", async () 
     `the members the first tick removed: the strut stay ${STAY}`,
   );
 
-  for (let sample = 1; sample <= SAMPLES; sample += 1) {
-    const now = await runTicks(h, STRIDE);
-    assertEqual(
-      now.run.phase,
-      "running",
-      `the phase after ${sample * STRIDE} more ticks of the turn`,
-    );
-    assertEqual(
-      now.run.forces.find((one) => one.id === STAY),
-      undefined,
-      `a force for member ${STAY} at tick ${now.run.tick}, with the arm at ` +
-        `${now.run.axes.slew.value.toFixed(1)} degrees: a broken member is ` +
-        "removed permanently for the rest of the run (specs/statics.md)",
-    );
-    assertDeepEqual(
-      now.run.broken,
-      [STAY],
-      `the run's broken members at tick ${now.run.tick}`,
+  // The arm turns, with the load still swinging on the cable.
+  let turning = broke;
+  for (let sample = 1; sample <= TURNING; sample += 1) {
+    turning = await runTicks(h, STRIDE);
+    readStillBroken(turning, `${sample * STRIDE} more ticks of the turn`);
+  }
+  assertGreaterThan(
+    turning.run.axes.slew.value,
+    TURNED,
+    "how far the arm turned while the broken member stayed broken, in degrees " +
+      `(the tape drives it toward 90 at ${10} of the ${SLEW_MAX_RATE} it may ` +
+      "use)",
+  );
+
+  // And the moment eases: the load is set down, so the arm carries the hook
+  // alone from the next pendulum step on.
+  await h.debug.setLoadPhase(0, "placed");
+  const eased = await h.snapshot();
+  assertEqual(
+    eased.run.loads[0]?.phase,
+    "placed",
+    "the load set down by the pose, so the lifted moment comes off the arm " +
+      "(specs/instrumentation.md, specs/rigging.md)",
+  );
+  assertEqual(
+    eased.run.attached,
+    null,
+    "the hook carrying nothing once the load it held is placed " +
+      "(specs/rigging.md)",
+  );
+
+  let after = eased;
+  for (let sample = 1; sample <= EASED; sample += 1) {
+    after = await runTicks(h, AFTER_STRIDE);
+    readStillBroken(
+      after,
+      `${sample * AFTER_STRIDE} ticks after the load was set down`,
     );
   }
 
-  const end = await h.snapshot();
   await h.capture(
     "breakage-permanent-for-the-run",
-    "the crane a quarter turn on, still without the member that broke",
-  );
-  assertGreaterThan(
-    end.run.axes.slew.value,
-    45,
-    "how far the arm turned while the broken member stayed broken, in degrees " +
-      `(the tape drives it to 90 at ${10} of the ${SLEW_MAX_RATE} it may use)`,
+    "the crane turned and unloaded, still without the member that broke",
   );
 });
+
+/** The whole reading, at one sample: the stay is gone and the run is running. */
+function readStillBroken(now: GantrySnapshot, when: string): void {
+  assertEqual(now.run.phase, "running", `the phase after ${when}`);
+  assertEqual(
+    now.run.forces.find((one) => one.id === STAY),
+    undefined,
+    `a force for member ${STAY} at tick ${now.run.tick}, with the arm at ` +
+      `${now.run.axes.slew.value.toFixed(1)} degrees and the load ` +
+      `${now.run.loads[0]?.phase ?? "gone"}: a broken member is removed ` +
+      "permanently for the rest of the run (specs/statics.md)",
+  );
+  assertDeepEqual(
+    now.run.broken,
+    [STAY],
+    `the run's broken members at tick ${now.run.tick}`,
+  );
+}

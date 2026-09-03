@@ -38,8 +38,8 @@ import {
   assertNull,
 } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type MaterialName,
@@ -76,7 +76,8 @@ afterEach(async () => {
 
 it("keeps a site's structure to itself and hands it back on the next visit", async () => {
   await openSite(h, HOME);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   for (const [a, b, material] of MEMBERS) {
     await h.debug.addMember(a.x, a.y, a.z, b.x, b.y, b.z, material);
   }

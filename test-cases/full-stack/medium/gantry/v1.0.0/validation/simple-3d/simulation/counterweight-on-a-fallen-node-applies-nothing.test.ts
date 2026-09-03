@@ -35,7 +35,6 @@ import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   clearAll,
   createHarness,
-  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -133,7 +132,6 @@ afterEach(async () => {
 it("applies nothing from a counterweight on a node in neither solve", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await emptyYard(h);
   await poseCrane(h, RIG);
   await poseTape(h, [
     {

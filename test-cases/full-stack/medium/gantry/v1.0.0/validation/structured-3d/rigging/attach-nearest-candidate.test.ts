@@ -85,7 +85,6 @@ it("takes the nearest waiting load, not the first one listed", async () => {
   await openSite(h, SITE);
   await clearAll(h);
   await standMinimalCrane(h);
-  await h.debug.clearLoads();
   await h.debug.addLoad("crate", 40, FAR.x, FAR.y, FAR.z, FAR.yaw);
   await h.debug.addLoad("crate", 40, NEAR.x, NEAR.y, NEAR.z, NEAR.yaw);
   await poseTape(h, [NOOP, ATTACH, HOLD]);

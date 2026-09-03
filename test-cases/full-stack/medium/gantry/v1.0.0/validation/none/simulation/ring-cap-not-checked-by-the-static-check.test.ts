@@ -23,7 +23,6 @@ import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   clearAll,
   createHarness,
-  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -133,7 +132,6 @@ afterEach(async () => {
 it("reports that a crane whose corner is over RING_CAP stands", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await emptyYard(h);
   await poseCrane(h, RIG);
   for (const node of WEIGHTED) {
     await h.debug.addCounterweight(node[0], node[1], node[2]);

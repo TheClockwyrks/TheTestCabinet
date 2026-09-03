@@ -12,28 +12,43 @@
 // the trolley point, and the pivot the cable hangs from all follow this rotation".
 //
 // The pivot is the arm node this check reads, because it is the one the snapshot
-// reports (specs/state.md). The tape drives the trolley out to the track's far end
-// first, so the pivot sits at the outboard rail node `(6, 6, 0)` — five units out
-// along `+x` from the axis, where a sign error in the formula is a six-unit miss
-// rather than a rounding one — and then slews to 90 degrees, where the whole of a
-// node's `+x` offset has become a `+z` offset. Driving the angle with the tape
-// rather than posing it keeps the pendulum on its own rules the whole way.
+// reports (specs/state.md). The trolley stands at the track's far end, so the
+// pivot sits at the outboard rail node `(6, 6, 0)` — five units out along `+x`
+// from the axis, where a sign error in the formula is a six-unit miss rather than
+// a rounding one — and the slew stands at 90 degrees, where the whole of a node's
+// `+x` offset has become a `+z` offset.
+//
+// THE TWO AXES ARE POSED, AND THE GEOMETRY IS EARNED. `setAxis` "sets an axis's
+// value, leaving it stopped with no live command" (specs/instrumentation.md), and
+// an axis value is a precondition: what this point decides is where the build
+// STANDS an arm node for a given slew, and that is computed by the real tick that
+// follows. Driving the two axes there with a tape instead spends three hundred
+// and sixty ticks, and makes this point turn on the trolley controller, the slew
+// controller's ramp and the tape's step sequencing — three requirements that have
+// validators of their own, and whose failures would land here as a geometry miss.
+//
+// THE BOB IS POSED UNDER THE ARM'S NEW STANDING PLACE so the yard holds only what
+// this point is about. A pivot that jumps seven units with the bob left behind is
+// a yanked cable, and the forces that follow belong to the rigging points; the bob
+// is put where a cable of the run's starting length hangs it, off the same formula
+// the assertion states, which decides nothing — the reading is `run.pivot`, which
+// the build computes for itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertNear, assertVec3Near } from "../assert";
 import {
-  GRIP_MAX_RATE,
-  LATTICE_PITCH,
-  SLEW_MAX_RATE,
-  TROLLEY_MAX_RATE,
-} from "../constants";
+  assertEqual,
+  assertGreaterThan,
+  assertNear,
+  assertVec3Near,
+} from "../assert";
+import { GRIP_MAX_RATE, HOIST_START, LATTICE_PITCH } from "../constants";
 import {
   clearAll,
   createHarness,
   openSite,
   poseCrane,
   poseTape,
-  runUntil,
+  runTicks,
   startRun,
   type CraneDesign,
   type DesignMember,
@@ -114,10 +129,20 @@ const JIB_RIG: CraneDesign = {
   tape: [],
 };
 
+/**
+ * A tape long enough to keep the run alive, on the one axis the arm cannot feel.
+ *
+ * A run needs a tape — "an empty tape refuses the start" — and it ends on the tick
+ * that finds no step left (specs/program.md), so the run this point reads has to
+ * still be under a command when it is read. The grip is the axis to spend on it:
+ * it turns the hook and moves no arm node, so the geometry under test is the
+ * geometry of a crane standing still.
+ */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "trolley", target: TROLLEY, rate: TROLLEY_MAX_RATE }] },
-  { kind: "move", commands: [{ axis: "slew", target: ANGLE, rate: SLEW_MAX_RATE }] },
-  { kind: "move", commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }],
+  },
 ];
 
 let h: Harness;
@@ -146,22 +171,41 @@ it("stands an arm node at its lattice position turned about the slew axis", asyn
     z: ring.corner.z + LATTICE_PITCH / 2,
   };
 
-  const turned = await runUntil(
-    h,
-    (s) =>
-      s.run.axes.slew.rate === 0 &&
-      Math.abs(s.run.axes.slew.value - ANGLE) <= 1e-9 &&
-      Math.abs(s.run.axes.trolley.value - TROLLEY) <= 1e-9,
-    1200,
-    `the tape to run the trolley out and slew to ${ANGLE} degrees`,
-  );
-
   const theta = (ANGLE * Math.PI) / 180;
   const expected = {
-    x: axis.x + (NODE.x - axis.x) * Math.cos(theta) - (NODE.z - axis.z) * Math.sin(theta),
+    x:
+      axis.x +
+      (NODE.x - axis.x) * Math.cos(theta) -
+      (NODE.z - axis.z) * Math.sin(theta),
     y: NODE.y,
-    z: axis.z + (NODE.x - axis.x) * Math.sin(theta) + (NODE.z - axis.z) * Math.cos(theta),
+    z:
+      axis.z +
+      (NODE.x - axis.x) * Math.sin(theta) +
+      (NODE.z - axis.z) * Math.cos(theta),
   };
+
+  await h.debug.setAxis("trolley", TROLLEY);
+  await h.debug.setAxis("slew", ANGLE);
+  await h.debug.setBob(expected.x, expected.y - HOIST_START, expected.z);
+  await h.debug.setBobVelocity(0, 0, 0);
+
+  // One real tick, which is what stands the arm: the pivot the snapshot reports
+  // is "the point the cable hangs from at the most recent tick's geometry"
+  // (specs/instrumentation.md), and before a run's first tick it is the run-start
+  // pivot rather than a reading of the axes.
+  const turned = await runTicks(h, 1);
+
+  assertEqual(
+    turned.run.axes.slew.value,
+    ANGLE,
+    "the slew the arm was stood at, which `setAxis` sets and no live command " +
+      "moves off (specs/instrumentation.md)",
+  );
+  assertEqual(
+    turned.run.axes.trolley.value,
+    TROLLEY,
+    "the trolley distance the arm was stood at (specs/instrumentation.md)",
+  );
 
   assertVec3Near(
     turned.run.pivot,
@@ -171,7 +215,12 @@ it("stands an arm node at its lattice position turned about the slew axis", asyn
       `by ${ANGLE} degrees about the slew axis at (${axis.x}, ·, ${axis.z}) ` +
       "(specs/statics.md)",
   );
-  assertNear(turned.run.pivot.y, NODE.y, TOLERANCE, "the height a slew leaves alone");
+  assertNear(
+    turned.run.pivot.y,
+    NODE.y,
+    TOLERANCE,
+    "the height a slew leaves alone",
+  );
   assertGreaterThan(
     turned.run.pivot.z,
     axis.z,

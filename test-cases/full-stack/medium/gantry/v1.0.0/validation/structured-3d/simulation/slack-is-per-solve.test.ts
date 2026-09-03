@@ -11,14 +11,32 @@
 // ring it is pulled, in the middle of the track the crane leans the other way and
 // it can only push, and out at the tip it is pulled again.
 //
-// So the tape drives the trolley the whole length of the track with a load on the
-// hook and the check watches that one cable, tick by tick. It must read a positive
-// force early, exactly `0` through the middle, and a positive force again
-// afterwards. A build that took a slack cable out and left it out reads `0` for
-// the rest of the run.
+// So the tape drives the trolley along the track with a load on the hook and the
+// check watches that one cable. It must read a positive force early, exactly `0`
+// through the middle, and a positive force again afterwards. A build that took a
+// slack cable out and left it out reads `0` for the rest of the run.
+//
+// THE TRAVERSE IS DRIVEN AND NOT POSED, because the traverse is the scenario
+// rather than the route to it: `setAxis` puts the trolley where it is asked for
+// and leaves the bob where it was, and the cable between them is then longer than
+// the hoist says, which the run ends as `cable-snap` on the next tick. What the
+// pendulum is hanging from has to arrive under the run's own rules.
+//
+// WHAT IS TRIMMED IS THE SAMPLING AND THE DISTANCE. The stay is read every
+// `SAMPLE` ticks rather than on every one of them: the slack stretch is some
+// fifty ticks wide, so a sample every eighth tick lands inside it half a dozen
+// times, and a sample that missed it would fail this check loudly rather than
+// pass it quietly. And the traverse stops as soon as the stay is carrying again
+// — the reading is "positive, then `0`, then positive", and the ticks past the
+// one that answers it decide nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThan,
+  fail,
+} from "../assert";
 import { TROLLEY_MAX_RATE } from "../constants";
 import {
   addOneLoad,
@@ -27,7 +45,7 @@ import {
   openSite,
   poseCrane,
   poseTape,
-  runUntil,
+  runTicks,
   startRun,
   type CraneDesign,
   type Harness,
@@ -133,8 +151,26 @@ const LOAD_MASS = 55;
 /** The track's length, from `(0, 4, 0)` to `(8, 4, 0)`. */
 const TRACK = 8;
 
-/** How far along the trolley is driven before the reading is judged. */
-const WATCHED_TO = 7.5;
+/**
+ * How far along the trolley is driven before the reading is judged.
+ *
+ * Past the stretch the stay cannot pull in, with the stay carrying again for
+ * several samples before the traverse stops. The far end of the track is `8`, and
+ * driving to it adds ticks to a reading that is already answered.
+ */
+const WATCHED_TO = 7;
+
+/**
+ * Ticks between readings of the stay.
+ *
+ * The traverse is one continuous move, so every sample is a solve the build ran
+ * under a trolley position of its own; what the spacing changes is how many of
+ * them are read, not how many happen.
+ */
+const SAMPLE = 8;
+
+/** Samples the traverse is given to reach {@link WATCHED_TO}: 320 ticks. */
+const MAX_SAMPLES = 40;
 
 const TAPE: readonly TapeStepSpec[] = [
   { kind: "action", action: "attach" },
@@ -163,20 +199,33 @@ it("lets a cable that went slack carry tension again later in the run", async ()
   await poseTape(h, TAPE);
   await startRun(h);
 
-  /** The cable's force at every tick of the traverse, in order. */
+  /** The cable's force at every sampled tick of the traverse, in order. */
   const seen: { tick: number; force: number }[] = [];
-  await runUntil(
-    h,
-    (snapshot) => {
-      const force = snapshot.run.forces.find((one) => one.id === CABLE);
-      if (force !== undefined) {
-        seen.push({ tick: snapshot.run.tick, force: force.force });
-      }
-      return snapshot.run.axes.trolley.value >= WATCHED_TO;
-    },
-    600,
-    "the trolley to reach the far end of the track",
-  );
+  let arrived = false;
+  for (let taken = 0; taken < MAX_SAMPLES && !arrived; taken += 1) {
+    const snapshot = await runTicks(h, SAMPLE);
+    const force = snapshot.run.forces.find((one) => one.id === CABLE);
+    if (force !== undefined) {
+      seen.push({ tick: snapshot.run.tick, force: force.force });
+    }
+    if (snapshot.run.phase !== "running") {
+      fail(
+        "the run to still be running while the trolley traverses the track, " +
+          "so every reading below is a solve of the crane this point is about",
+        `it is "${snapshot.run.phase}"` +
+          (snapshot.run.cause === null ? "" : ` (${snapshot.run.cause})`) +
+          ` at tick ${snapshot.run.tick}`,
+      );
+    }
+    arrived = snapshot.run.axes.trolley.value >= WATCHED_TO;
+  }
+  if (!arrived) {
+    fail(
+      `the trolley to reach ${WATCHED_TO} along the track within ` +
+        `${MAX_SAMPLES * SAMPLE} ticks`,
+      `it never did: the traverse is the scenario this point reads`,
+    );
+  }
   await h.capture(
     "slack-is-per-solve",
     "the crane with the trolley out at the tip, its cross stay taut again",
@@ -186,13 +235,13 @@ it("lets a cable that went slack carry tension again later in the run", async ()
   assertGreaterThan(
     firstSlack,
     0,
-    `the tick index at which cable ${CABLE} first reports 0: it goes slack ` +
+    `the sample index at which cable ${CABLE} first reports 0: it goes slack ` +
       "somewhere in the traverse (specs/statics.md)",
   );
   assertGreaterThan(
     seen[0]?.force ?? 0,
     0,
-    `cable ${CABLE}'s force on the first tick, before it goes slack`,
+    `cable ${CABLE}'s force on the first sample, before it goes slack`,
   );
 
   const lastSlack =
@@ -201,7 +250,7 @@ it("lets a cable that went slack carry tension again later in the run", async ()
   assertGreaterThan(
     after.length,
     0,
-    `the ticks after cable ${CABLE} was last slack`,
+    `the samples taken after cable ${CABLE} was last read slack`,
   );
   assertGreaterThan(
     after[after.length - 1]?.force ?? 0,
@@ -213,7 +262,7 @@ it("lets a cable that went slack carry tension again later in the run", async ()
   assertEqual(
     after.filter((one) => one.force < 0).length,
     0,
-    "ticks on which the cable reported a compression, which a cable never does",
+    "samples on which the cable reported a compression, which a cable never does",
   );
   assertLessThan(
     seen[firstSlack]?.tick ?? 0,

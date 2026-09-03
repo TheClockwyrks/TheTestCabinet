@@ -17,12 +17,17 @@
 // arrives on is left out: arrival sets the rate to `0` whatever the tick did on
 // the way in (step 3), and that is another item's requirement.
 //
-// The trolley is the axis, and the minimal crane's track is `4` units long, so a
-// target of `3.5` at the trolley's max rate accelerates for a while, brakes for
-// about a second, and arrives — with the target inside the track's range at the
-// step's start, so nothing is refused. The yard is emptied: the controller reads
-// the axis alone, and a load on the hook would only change what the axis drives
-// against.
+// The trolley is the axis, and the move is the SHORTEST one that still brakes.
+// `TROLLEY_ACCEL` is `4` and the rule brakes once `|d| <= v * v / (2 * a)`, so a
+// target of `0.5` inside the minimal crane's four-unit track accelerates for
+// about a third of a second, brakes for about the same, and arrives — a couple
+// of dozen braking ticks, every one of them held to the rule, in a move whose
+// whole length is sampled. A longer target would add cruising ticks, and the
+// cruise is another item's requirement: what this one reads is the braking term,
+// and the ticks that carry it are the same ticks either way. The target is
+// inside the track's range at the step's start, so nothing is refused. The yard
+// is emptied: the controller reads the axis alone, and a load on the hook would
+// only change what the axis drives against.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertNear } from "../assert";
@@ -38,14 +43,14 @@ import {
   type Harness,
 } from "../harness";
 
-/** Inside the minimal crane's four-unit track, and far enough to cruise. */
-const TARGET = 3.5;
+/** Inside the minimal crane's four-unit track, and far enough to brake. */
+const TARGET = 0.5;
 
 /** What a braking tick takes off the rate. */
 const STEP = TROLLEY_ACCEL / TICK_HZ;
 
-/** Longer than the move: it accelerates, cruises, brakes and arrives well inside. */
-const TICKS = 4 * TICK_HZ;
+/** Longer than the move: it accelerates, brakes and arrives well inside. */
+const TICKS = Math.round(1.5 * TICK_HZ);
 
 let h: Harness;
 

@@ -8,74 +8,70 @@
 // finds a member inside an obstacle reports `structure-struck-obstacle` even when
 // the crane it belongs to would not have stood.
 //
-// THE CRANE IS ONE THAT COLLAPSES, AND THE CHECK PROVES IT TWICE OVER. It is the
-// minimal crane with the tie between the mast and the rail's far end taken away,
-// which leaves every member at that tip lying in the `y = 4` plane: nothing there
-// resists a vertical displacement, so the arm's supported system is singular and
-// `specs/statics.md` ends such a run as `collapse` — "A singular solve, in either
-// the arm or the tower … ends the run as `collapse`. An under-braced 3D truss is
-// the ordinary way to get here: a flat frame with nothing resisting out-of-plane
-// motion is a mechanism even though every member is sound." The structure is
-// nonetheless READY — it has its ring, its rails form one straight track, and
-// every member is connected — so the run starts, and `specs/structure.md` agrees
-// that "a ready structure may still be a mechanism".
+// THE CRANE IS THE SMALLEST STRUCTURE A RUN STARTS ON, AND IT COLLAPSES. The ring
+// and one rail off its top flange clear every readiness issue
+// (`specs/structure.md` § Readiness) and nothing else, so the run starts —
+// "a ready structure may still be a mechanism" — and the arm the rail hangs off
+// has nothing resisting a vertical displacement at its far end, so the arm solve
+// is singular and `specs/statics.md` ends such a run as `collapse`: "A singular
+// solve, in either the arm or the tower … ends the run as `collapse`."
 //
 // The check runs that crane once with an empty yard and reads `collapse` back,
 // which is what makes the second run's verdict a statement about the ORDER of two
 // stages rather than about one of them alone.
 //
-// THEN THE SAME TICK IS GIVEN A STRIKE AS WELL. A small box is placed over the
-// middle of the rail after the crane is built, so the rail reaches inside it from
-// the run's first tick — `specs/statics.md`: "A member whose segment reaches
-// inside an obstacle ends the run as `structure-struck-obstacle`." The box is
-// narrow enough in `z` that the two diagonal ties to the tip pass outside it, so
-// the strike is the rail's. Stage 5 now has a verdict and stage 6 would have had
-// one, and only one of them may be reported.
+// THEN THE SAME CRANE AND THE SAME TAPE ARE GIVEN A STRIKE AS WELL. The structure
+// and the tape are the ones the first run left standing — a failed run is no
+// longer in progress, so the build screen takes the box and the second run starts
+// on exactly the crane the first one collapsed — and a small box is placed over
+// the middle of the rail, so the rail reaches inside it from the run's first tick.
+// `specs/statics.md`: "A member whose segment reaches inside an obstacle ends the
+// run as `structure-struck-obstacle`." Stage 5 now has a verdict and stage 6 would
+// have had one, and only one of them may be reported.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  MINIMAL_CRANE,
   addOneObstacle,
-  clearAll,
   createHarness,
   openSite,
-  poseCrane,
-  poseTape,
   runTicks,
   startRun,
-  type CraneDesign,
   type Harness,
-  type TapeStepSpec,
 } from "../harness";
 
 /**
- * The minimal crane less the tie from the mast to the rail's far end.
+ * The smallest structure a run starts on: the ring, and one rail off its top
+ * flange.
  *
- * That member is the only one at `(4, 4, 0)` with a vertical component; without
- * it the tip is free to fall and the arm solve is singular.
+ * `specs/structure.md` § Readiness names the four issues that refuse a run, and
+ * this clears all four: the crane has a ring; it has a rail; that rail is a valid
+ * track — horizontal, one unbroken stretch, in the arm, and with its two ends at
+ * different horizontal distances from the slew axis; and the rail ends on a
+ * top-flange node, so no member is disconnected. Nothing else is built, which is
+ * what makes this the cheapest way to reach a tick of the real pipeline, and the
+ * arm it forms is a mechanism, which is what gives stage 6 a verdict to be beaten
+ * to.
  */
-const UNBRACED_TIP: CraneDesign = {
-  ...MINIMAL_CRANE,
-  name: "Unbraced tip",
-  members: MINIMAL_CRANE.members.slice(0, -1),
-};
+async function poseReadyCrane(h: Harness): Promise<void> {
+  await h.debug.clearStructure();
+  await h.debug.setRing(0, 2, 0);
+  await h.debug.addMember(0, 4, 0, 4, 4, 0, "rail");
+}
 
 /** One step, done on the tick it is issued: the run's first tick is the reading. */
-const TAPE: readonly TapeStepSpec[] = [
-  {
-    kind: "move",
-    commands: [{ axis: "hoist", target: HOIST_START, rate: HOIST_MAX_RATE }],
-  },
-];
+async function poseTape(h: Harness): Promise<void> {
+  await h.debug.setScreen("program");
+  await h.debug.clearProgram();
+  await h.debug.addMoveStep("hoist", HOIST_START, HOIST_MAX_RATE);
+}
 
 /**
  * A box over the middle of the rail, which runs from `(0, 4, 0)` to `(4, 4, 0)`.
  *
  * It spans `x` `2.6` to `3.4` and `z` `-0.2` to `0.2`, so the rail passes through
- * its inside while the ties from `(0, 4, 2)` and `(2, 4, 2)` to the tip, which
- * have crossed to `z = 0.4` and `z = 0.6` by then, pass outside it.
+ * its inside, and it stands clear of the ring's own eight nodes.
  */
 const BOX_MIN = { x: 2.6, y: 3.6, z: -0.2 };
 const BOX_SIZE = { x: 0.8, y: 0.8, z: 0.4 };
@@ -93,9 +89,10 @@ afterEach(async () => {
 it("reports the obstacle strike on a tick whose crane would also collapse", async () => {
   // The crane alone: ready, and a mechanism.
   await openSite(h, 0);
-  await clearAll(h);
-  await poseCrane(h, UNBRACED_TIP);
-  await poseTape(h, TAPE);
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
+  await poseReadyCrane(h);
+  await poseTape(h);
 
   const check = await h.check();
   assertLength(
@@ -105,21 +102,25 @@ it("reports the obstacle strike on a tick whose crane would also collapse", asyn
       "reaches the tick under test (specs/structure.md)",
   );
 
-  await startRun(h);
+  const started = await startRun(h);
+  assertLength(
+    started.program,
+    1,
+    "the steps the tape took, which is what the run under test runs",
+  );
   const alone = await runTicks(h, 1);
   assertEqual(
     alone.run.cause,
     "collapse",
     "the cause this crane's first tick raises with nothing in its way: the " +
-      "arm's tip has nothing resisting a vertical displacement, so the solve " +
-      "is singular (specs/statics.md)",
+      "arm has nothing resisting a vertical displacement, so the solve is " +
+      "singular (specs/statics.md)",
   );
 
   // The same crane and the same tape, with a box over the middle of the rail.
-  await openSite(h, 0);
-  await clearAll(h);
-  await poseCrane(h, UNBRACED_TIP);
-  await poseTape(h, TAPE);
+  // The run that just failed is no longer in progress, so the site poses apply
+  // again (specs/instrumentation.md) and nothing is rebuilt.
+  await h.debug.setScreen("build");
   await addOneObstacle(h, BOX_MIN, BOX_SIZE);
 
   await startRun(h);

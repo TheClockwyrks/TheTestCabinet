@@ -164,22 +164,14 @@ it("solves the tower on its anchors under a reaction past every stated cap", asy
   await poseCrane(h, CRANE);
   await poseTape(h, GRIP_TAPE);
 
-  // How big the reaction crossing the ring is, in the build's own words.
-  await startRun(h);
-  const first = await runTicks(h, 1);
-  assertEqual(
-    first.run.cause,
-    "ring-overload",
-    `the cause after one tick: a ring connection past RING_CAP (${RING_CAP}), ` +
-      "which is the whole of what that cause means (specs/statics.md)",
-  );
-
-  // The same crane read statically, where the ring cap is not a failure. Both
-  // solves run, and the structure stands: the tower solve, supported on the
-  // anchor nodes, is regular carrying that reaction to the ground.
-  await openSite(h, 5);
-  await clearAll(h);
-  await poseCrane(h, CRANE);
+  // ONE CRANE, READ TWICE, statically first. `check` is a pure reading —
+  // `specs/structure.md`: "Nothing breaks and nothing fails during a check" — and
+  // `specs/instrumentation.md` says the same of the operation: "The reading is
+  // pure: it computes the check and returns it". So it leaves the structure
+  // exactly as it was posed, and the run below is the same crane rather than a
+  // second one posed to look like it. Taking it before the run also means the
+  // static reading is of a crane no run has touched, which is what makes it the
+  // control for the run.
   const check = await h.check();
   await h.capture(
     "tower-solve-supported-on-the-anchors",
@@ -215,5 +207,16 @@ it("solves the tower on its anchors under a reaction past every stated cap", asy
     RING_CAP,
     "the force the four legs carry down to the anchors between them, against " +
       `RING_CAP (${RING_CAP}), the only support limit the specification states`,
+  );
+
+  // And now the same crane run, where the ring cap IS a failure: how big the
+  // reaction crossing the ring is, in the build's own words.
+  await startRun(h);
+  const first = await runTicks(h, 1);
+  assertEqual(
+    first.run.cause,
+    "ring-overload",
+    `the cause after one tick: a ring connection past RING_CAP (${RING_CAP}), ` +
+      "which is the whole of what that cause means (specs/statics.md)",
   );
 });

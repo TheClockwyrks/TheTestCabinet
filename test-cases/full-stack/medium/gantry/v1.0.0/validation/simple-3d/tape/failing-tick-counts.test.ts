@@ -14,8 +14,11 @@
 // the first tick the frame loop takes after the start, numbered `1`".
 //
 // THE RUN ENDS AT STAGE 1 OF A TICK WELL INSIDE ITS TAPE, which is the case that
-// tells the two answers apart. The first step is an ordinary hoist move that
-// takes tens of ticks; the second commands the hoist below `HOIST_MIN` (`1`),
+// tells the two answers apart. The first step is an ordinary hoist move, short
+// but several ticks long — long enough that the failing tick is one of many and a
+// tally that dropped it is visible, and no longer than that, since every tick
+// beyond the first few says the same thing again; the second commands the hoist
+// below `HOIST_MIN` (`1`),
 // which `specs/program.md` judges when the step starts — "A step whose command
 // targets a value outside its axis's range at that moment ends the run as
 // `command-out-of-range`" — so the failing tick is the tick after the first step
@@ -46,7 +49,7 @@ const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE },
+      { axis: "hoist", target: HOIST_START + 0.02, rate: HOIST_MAX_RATE },
     ],
   },
   {
@@ -55,8 +58,8 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks the drive is given: the first step takes about twenty-six. */
-const CAP = 300;
+/** Ticks the drive is given: the first step arrives in under ten. */
+const CAP = 60;
 
 let h: Harness;
 

@@ -24,6 +24,13 @@
 // tick inside the cap fails the item, because the scenario it describes did not
 // happen.
 //
+// THE MOVES ARE THE SHORTEST ORDINARY MOVES THERE ARE. A twentieth of a unit of
+// hoist is a whole move — issued, accelerated, braked and arrived — inside a fifth
+// of a second of run clock, and how far the first step travels decides nothing
+// here: what this point reads is the tick it arrives on and the tick after it.
+// Driving a longer move first would only be ticks of motion this reading passes
+// over on its way to the lull.
+//
 // BOTH READINGS OF "SOUNDING" ARE TAKEN. specs/ui.md fixes that `motor` is a loop
 // and fixes nothing about how a build makes one seamless, so a source started
 // with its loop flag set and a source re-scheduled end to end both count: the
@@ -56,24 +63,27 @@ const SITE = 0;
 /** The four axes, as specs/program.md lists them. */
 const AXES: readonly AxisName[] = ["slew", "trolley", "hoist", "grip"];
 
-/** Two hoist moves a unit apart: one arrives, then the next takes over. */
+/** How far each hoist move travels: enough to be a move, and no further. */
+const STEP = 0.05;
+
+/** Two short hoist moves: one arrives, then the next takes over. */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE },
+      { axis: "hoist", target: HOIST_START + STEP, rate: HOIST_MAX_RATE },
     ],
   },
   {
     kind: "move",
     commands: [
-      { axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE },
+      { axis: "hoist", target: HOIST_START + 2 * STEP, rate: HOIST_MAX_RATE },
     ],
   },
 ];
 
 /** Well past the ticks the first step's ramp needs at this rate and distance. */
-const CAP = 600;
+const CAP = 90;
 
 /** Whether any axis is turning on the tick this snapshot reports. */
 function anyAxisMoving(snapshot: GantrySnapshot): boolean {

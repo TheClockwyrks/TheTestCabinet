@@ -15,16 +15,30 @@
 // stopped at step 6 and left `v = vr` leaves that difference at zero instead,
 // which on this tick is `2` units a second away.
 //
-// THE TROLLEY IS CRUISING AND NOTHING IS POSED. The tape drives the trolley at a
-// steady `2` units a second and the reading is taken on the fiftieth tick, past
-// the acceleration and inside the cruise (`specs/program.md`), with the bob
-// swinging where the ticks before it left it. The world holds the crane and
-// nothing else, and the sampling stops well inside the move so no tick of it is
-// the one that ends the run.
+// THE TROLLEY IS CRUISING, AND THE CRUISE IS POSED RATHER THAN DRIVEN TO. The
+// tape commands the trolley out to `3.5` at `2` units a second; the first tick
+// takes that step, which is what makes the command live, and the trolley's rate
+// is then posed to the `2` the cruise runs at. `specs/instrumentation.md` gives
+// that pose exactly this meaning — "Posing a rate onto an axis that is under a
+// command sets what that axis is doing as the controller next reads it" — and the
+// controller, reading a rate already at the commanded one with the target still
+// three units away, holds it there. So the reading is taken inside the cruise
+// (`specs/program.md`) a few ticks later instead of thirty ticks of ramp later.
+//
+// THE RAMP IS NOT WHAT THIS DECIDES. Driving the axis up to speed first would put
+// the acceleration clamp between a build and step 7 of the pendulum tick, and a
+// build that ramps wrongly has its own point to fail; the route would make this
+// grade less precise. The rate is a PRECONDITION and the recomposition is still
+// earned: `vP` is read from the two pivots the build's own ticks reported, and
+// `vr` from the state the build says the tick began at.
+//
+// The world holds the crane and nothing else, and the sampling stops well inside
+// the move so no tick of it is the one that ends the run, with the bob swinging
+// where the ticks before it left it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertVec3Near } from "../assert";
-import { GRAVITY, SWING_DAMPING, TICK_HZ } from "../constants";
+import { assertNear, assertVec3Near } from "../assert";
+import { GRAVITY, SWING_DAMPING, TICK_HZ, TROLLEY_ACCEL } from "../constants";
 import {
   clearAll,
   createHarness,
@@ -49,8 +63,8 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks driven before the reading: past the acceleration, inside the cruise. */
-const SETTLE = 50;
+/** Ticks driven after the cruise is posed, before the reading is taken. */
+const SETTLE = 3;
 
 /** Arithmetic slack on a velocity the seven steps fix exactly. */
 const TOLERANCE = 1e-9;
@@ -116,10 +130,29 @@ it("leaves the bob carrying the pivot's velocity as well as its swing", async ()
   await poseTape(h, TAPE);
   await startRun(h);
 
+  // The first tick takes the tape's step, which is what puts the trolley under a
+  // live command; the rate posed onto it then stands (specs/instrumentation.md).
+  await runTicks(h, 1);
+  await h.debug.setAxisRate("trolley", RATE);
+
   const before = (await runTicks(h, SETTLE)).run;
   const after = (await runTicks(h, 1)).run;
 
   await h.capture("carry", "The bob carried by the cruising trolley");
+
+  // The precondition, read back off the build: the trolley really is cruising at
+  // RATE on the tick the reading is taken, so the pivot this compares against is
+  // moving and the scenario is the one described. One acceleration step of slack,
+  // because a build is free to clamp the posed rate once before it holds it
+  // (specs/program.md § Axis motion).
+  assertNear(
+    after.axes.trolley.rate,
+    RATE,
+    TROLLEY_ACCEL / TICK_HZ,
+    "the trolley's rate on the tick the reading is taken: the cruise this " +
+      "check poses, which the controller holds while the target is still " +
+      "units away (specs/instrumentation.md, specs/program.md)",
+  );
 
   const vr = relativeVelocity(
     before.bob.pos,

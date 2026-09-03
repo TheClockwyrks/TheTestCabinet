@@ -32,10 +32,15 @@
 // that strut on the way past and report it in `run.broken`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLength, assertTrue, fail } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLength,
+  assertTrue,
+  fail,
+} from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
   emptyYard,
   openSite,
@@ -95,15 +100,42 @@ const OVERLOADED_MEMBER = 13;
 
 /** The bracing that makes the tower's solve regular, for the first reading. */
 const TOWER_BRACING = [
-  [[0, 4, 0], [2, 4, 0]],
-  [[0, 4, 2], [2, 4, 2]],
-  [[0, 4, 0], [0, 4, 2]],
-  [[2, 4, 0], [2, 4, 2]],
-  [[0, 4, 0], [2, 4, 2]],
-  [[0, 0, 0], [2, 4, 0]],
-  [[0, 0, 0], [0, 4, 2]],
-  [[2, 0, 0], [2, 4, 2]],
-  [[0, 0, 2], [2, 4, 2]],
+  [
+    [0, 4, 0],
+    [2, 4, 0],
+  ],
+  [
+    [0, 4, 2],
+    [2, 4, 2],
+  ],
+  [
+    [0, 4, 0],
+    [0, 4, 2],
+  ],
+  [
+    [2, 4, 0],
+    [2, 4, 2],
+  ],
+  [
+    [0, 4, 0],
+    [2, 4, 2],
+  ],
+  [
+    [0, 0, 0],
+    [2, 4, 0],
+  ],
+  [
+    [0, 0, 0],
+    [0, 4, 2],
+  ],
+  [
+    [2, 0, 0],
+    [2, 4, 2],
+  ],
+  [
+    [0, 0, 2],
+    [2, 4, 2],
+  ],
 ] as const;
 
 let h: Harness;
@@ -127,7 +159,6 @@ function utilizationOf(members: readonly MemberForce[], id: number): number {
 
 it("adds nothing to the broken list on the tick a solve fails", async () => {
   await openSite(h, 0);
-  await clearAll(h);
   await emptyYard(h);
   await poseCrane(h, OVERLOADED);
   await poseTape(h, [

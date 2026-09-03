@@ -21,10 +21,17 @@
 //     below" at all.
 //
 // EACH IS POSED FROM ITS OWN ISOLATED WORLD: the site is opened afresh — which
-// puts the run back to its idle placeholder and restores the yard — the world is
-// cleared, and the minimal crane and exactly one load are posed back. The
-// `run-start` cue is drained before the failing tick in each, so what is read is
-// that tick's own sounds.
+// puts the run back to its idle placeholder and restores the yard — the yard and
+// the tape are cleared, and exactly one load and the tape this cause needs are
+// posed back. The `run-start` cue is drained before the failing tick in each, so
+// what is read is that tick's own sounds.
+//
+// THE CRANE IS POSED ONCE AND STANDS FOR ALL THREE. `specs/state.md`: opening a
+// site "keeps that site's stored structure and tape", so re-opening site one
+// between the three scenarios returns the run to idle and the yard to the site's
+// own without touching what is built. The crane is the same in all three — the
+// minimal one, which none of these three causes is about — and building it three
+// times would only be the same twenty-one edits made twice more.
 //
 // THE CAUSE IS READ BACK EACH TIME, because the silence of the crash only means
 // anything against a run that failed for the cause this check named: a run that
@@ -93,6 +100,23 @@ const AWAY = { x: 10, y: 2, z: 0, yaw: 0 };
  */
 const SUNK_HOIST = 3;
 
+/**
+ * Empty the yard and the tape of a site that has just been re-opened, leaving
+ * what is built alone.
+ *
+ * `clearAll` would take the crane with them, and the crane is what every one of
+ * these three scenarios shares. Opening a site restores its own loads and
+ * obstacles and keeps its stored tape (`specs/state.md`), so both go, and the
+ * tape poses apply on the program screen alone (`specs/instrumentation.md`).
+ */
+async function clearYardAndTape(harness: Harness): Promise<void> {
+  await harness.debug.clearLoads();
+  await harness.debug.clearObstacles();
+  await harness.debug.setScreen("program");
+  await harness.debug.clearProgram();
+  await harness.debug.setScreen("build");
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -130,11 +154,12 @@ it("plays no collapse cue on a failure that is not a collapse", async () => {
 
   /* ---- load-struck-ground: the collision stage --------------------------- */
 
+  // The crane and the tape are the ones the scenario above left standing —
+  // opening the site keeps both (`specs/state.md`) — so only the yard is cleared
+  // and only the load this scenario is about is put back.
   await openSite(h, SITE);
-  await clearAll(h);
-  await standMinimalCrane(h);
+  await h.debug.clearObstacles();
   await addOneLoad(h, "crate", 40, HOOK, HOOK);
-  await poseTape(h, [HOLD]);
   await startRun(h);
   await runTicks(h, 2);
   await h.cues();
@@ -154,8 +179,7 @@ it("plays no collapse cue on a failure that is not a collapse", async () => {
   /* ---- loads-unplaced: the tape running out ----------------------------- */
 
   await openSite(h, SITE);
-  await clearAll(h);
-  await standMinimalCrane(h);
+  await clearYardAndTape(h);
   await addOneLoad(h, "crate", 40, AWAY, AWAY);
   await poseTape(h, [NOOP]);
   await startRun(h);

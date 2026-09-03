@@ -12,7 +12,7 @@
 // to the field: phase `idle`, a zero tick, the four axes at the run-start posture
 // with no command, a zero pivot, a bob at the origin with zero velocity. That is
 // a complete description of what the run carries with no run in progress, so
-// reading the whole of it back after three hundred frames says exactly the one
+// reading the whole of it back after a second of frames says exactly the one
 // thing this point is about — nothing ticked — and nothing else.
 //
 // THE WORLD IS EVERYTHING A RUN WOULD NEED AND NO RUN IS STARTED. A ready crane
@@ -20,6 +20,14 @@
 // ticks outside a run has something to tick: axes to drive, a bob to drop, a
 // solve to run. The check never calls `startRun`, and the frames it drives are
 // the editor's own.
+//
+// AND THE FRAMES ARE COUNTED, NOT PILED UP. A frame loop that drives the tick
+// pipeline unconditionally takes its first tick on its first frame, and a loop
+// feeding an accumulator crosses one tick's worth of elapsed time on its first
+// frame too, since a frame here covers exactly `1 / TICK_HZ` seconds
+// (`specs/instrumentation.md`). So the reading is decided within a handful of
+// frames whatever the shape of the defect, and a whole second of them is margin
+// rather than the distance the scenario has to travel.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -45,8 +53,8 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Five seconds of frames at TICK_HZ: three hundred chances to tick. */
-const FRAMES = 300;
+/** One second of frames at TICK_HZ: sixty chances to tick. */
+const FRAMES = 60;
 
 let h: Harness;
 
@@ -58,7 +66,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("takes no simulation tick across three hundred frames of the editor", async () => {
+it("takes no simulation tick across a second of frames of the editor", async () => {
   await openSite(h, 0);
   await clearAll(h);
   await standMinimalCrane(h);

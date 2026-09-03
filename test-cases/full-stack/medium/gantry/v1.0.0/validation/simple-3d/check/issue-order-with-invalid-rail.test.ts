@@ -19,43 +19,55 @@
 // A strut standing on `(6, 0, 0)`, a ground node site 1 does not anchor, raises
 // `disconnected-members`; the tape is left empty for `empty-program`. So the
 // reading is exactly the three, in that order.
+//
+// NOTHING STANDS HERE BUT WHAT RAISES THOSE THREE. Readiness is decided from the
+// structure alone and a structure with any readiness issue "is not solved"
+// (specs/structure.md § The static check), so this crane needs no tower, no
+// bracing and no member that holds anything up — and posing one would only add
+// placement rules that belong to the editor's own points. What is posed is the
+// ring, the spine that puts the far rail in the arm, the two gapped rails, and
+// the adrift strut: five edits, each of them one of the three issues' reasons
+// for being raised.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
 import {
-  MINIMAL_CRANE,
   clearAll,
   createHarness,
   openSite,
   poseCrane,
   type CraneDesign,
-  type DesignMember,
   type Harness,
   type StartIssue,
 } from "../harness";
 
 /**
- * The minimal crane, its one rail demoted to a strut so the track is the two
- * gapped rails below and nothing else, plus a member standing on nothing.
+ * A ringed crane whose whole arm is the gapped track, plus one member standing
+ * on nothing.
  *
- * Demoting rather than removing keeps the crane the braced, ready one the
- * minimal design is: what this reading is about is the track and the adrift
- * member, so nothing else about the structure is allowed to raise an issue.
+ * The ring silences `no-ring` and the rails silence `no-rail`, which is what
+ * leaves `invalid-rail` the first issue the order can show. The spine runs from
+ * the top-flange node `(0, 4, 2)` to `(4, 4, 0)` so that the far rail has a
+ * member path to the top flange and is "in the arm" like the near one: with both
+ * rails in the arm, the gap between them is the one track rule they break. The
+ * track's two end nodes, `(0, 4, 0)` and `(6, 4, 0)`, stand at distinct
+ * horizontal distances from the slew axis, so that rule is not broken too.
  */
 const GAPPED: CraneDesign = {
-  ...MINIMAL_CRANE,
+  site: 0,
   name: "Gapped track",
+  ring: [0, 2, 0],
+  counterweights: [],
   members: [
-    ...MINIMAL_CRANE.members.map(
-      (member): DesignMember =>
-        member[2] === "rail" ? [member[0], member[1], "strut"] : member,
-    ),
+    // The spine, from a top-flange node, that puts the far rail in the arm.
+    [[0, 4, 2], [4, 4, 0], "strut"],
     // Two collinear horizontal rails in the arm, with a gap between them.
     [[0, 4, 0], [2, 4, 0], "rail"],
     [[4, 4, 0], [6, 4, 0], "rail"],
     // A strut on a ground node site 1 does not anchor, joined to nothing.
     [[6, 0, 0], [6, 2, 0], "strut"],
   ],
+  tape: [],
 };
 
 /** The three the crane above raises, in the order the specification fixes. */

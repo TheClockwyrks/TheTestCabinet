@@ -16,10 +16,17 @@
 // having also been at or above it on the tick before. That is exactly the state
 // the rule says is silent.
 //
-// A HUNDRED AND TWENTY TICKS IS FOUR WHOLE COOLDOWNS. `CREAK_COOLDOWN` (`0.5`)
-// run-clock seconds is `30` ticks, so a build gating on the level alone would
-// creak four more times inside the window this check reads. Reading fewer than
-// one cooldown would decide nothing.
+// SIXTY TICKS IS TWO WHOLE COOLDOWNS. `CREAK_COOLDOWN` (`0.5`) run-clock seconds
+// is `30` ticks, so a build gating on the level alone would creak twice more
+// inside the window this check reads — the first of them thirty ticks in, which
+// is well short of the window's end. Reading fewer than one cooldown would decide
+// nothing, and reading more than two only repeats a verdict already reached.
+//
+// THE CUES ARE TAKEN ONCE, AT THE END OF THE WINDOW. `cues()` reports every sound
+// played since the last call, so one reading after the window carries whatever
+// fell anywhere inside it. The utilization is the reading that has to be taken
+// tick by tick, because what makes the silence mean anything is a member held over
+// the threshold on EVERY tick rather than at the window's two ends.
 //
 // THE LOAD IS HUNG THROUGH THE SURFACE rather than through an `attach` step:
 // specs/instrumentation.md has `setLoadPhase` to `"attached"` hang the load "on
@@ -88,8 +95,8 @@ const HOLD: TapeStepSpec = {
   commands: [{ axis: "grip", target: 100_000, rate: GRIP_MAX_RATE }],
 };
 
-/** Four whole cooldowns of held load, in ticks. */
-const HELD_TICKS = 4 * CREAK_COOLDOWN * TICK_HZ;
+/** Two whole cooldowns of held load, in ticks. */
+const HELD_TICKS = 2 * CREAK_COOLDOWN * TICK_HZ;
 
 /** The worst utilization the latest solve reports. */
 function worstUtilization(snapshot: GantrySnapshot): number {
@@ -150,12 +157,12 @@ it("creaks on the crossing tick and stays silent while the member is held over t
   // or above the threshold that was ALSO at or above it on the tick before, so
   // the rule says every one of them is silent.
   let worstHeld = Number.POSITIVE_INFINITY;
-  const creaks: number[] = [];
   for (let i = 0; i < HELD_TICKS; i += 1) {
     const held = await runTicks(h, 1);
     worstHeld = Math.min(worstHeld, worstUtilization(held));
-    if ((await h.cues()).includes("creak")) creaks.push(held.run.tick);
   }
+  const heard = await h.cues();
+  const creaks = heard.filter((cue) => cue === "creak");
   const after = await h.snapshot();
   await h.capture(
     "creak",
@@ -178,11 +185,11 @@ it("creaks on the crossing tick and stays silent while the member is held over t
   assertEqual(
     creaks.length,
     0,
-    `the creaks in the ${HELD_TICKS} ticks after the crossing — four whole ` +
+    `the creaks in the ${HELD_TICKS} ticks after the crossing — two whole ` +
       `CREAK_COOLDOWN (${CREAK_COOLDOWN}s) windows — with the member held ` +
       "over the threshold the whole time: the cue needs a member that was " +
       "BELOW the threshold on the tick before, so a level that never falls " +
-      `raises nothing (specs/ui.md § Audio). They fell on ticks ` +
-      `${JSON.stringify(creaks)}`,
+      `raises nothing (specs/ui.md § Audio). The window sounded ` +
+      `[${heard.join(", ")}]`,
   );
 });

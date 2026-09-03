@@ -26,9 +26,9 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertNear } from "../assert";
 import { GRIP_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -64,7 +64,7 @@ afterEach(async () => {
 
 it("brings the bob back to the hoist length from the pivot", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   await startRun(h);

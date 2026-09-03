@@ -22,16 +22,14 @@
 // checked when it is there.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, fail } from "../assert";
+import { assertEqual, assertGreaterThan, assertLength, fail } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START, SITE_COUNT } from "../constants";
 import {
   MINIMAL_CRANE,
   addOneLoad,
-  clearAll,
   createHarness,
   openSite,
   poseCrane,
-  poseTape,
   runTicks,
   startRun,
   type CraneDesign,
@@ -82,8 +80,11 @@ afterEach(async () => {
 });
 
 it("reports every field specs/instrumentation.md lists, with its documented type", async () => {
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared — and `addOneLoad` clears the loads itself.
   await openSite(h, 0);
-  await clearAll(h);
+  await h.debug.clearObstacles();
   await poseCrane(h, CRANE);
   await addOneLoad(
     h,
@@ -92,16 +93,19 @@ it("reports every field specs/instrumentation.md lists, with its documented type
     { x: 6, y: 2, z: 0, yaw: 0 },
     { x: -6, y: 2, z: 0, yaw: 90 },
   );
-  await poseTape(h, [
-    {
-      kind: "move",
-      commands: [
-        { axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE },
-      ],
-    },
-    { kind: "action", action: "attach" },
-  ]);
-  await startRun(h);
+  // The tape poses apply on the tape editor's own screen
+  // (specs/instrumentation.md), and `startRun` poses the `run` action, which the
+  // program screen carries as well as the build screen.
+  await h.debug.setScreen("program");
+  await h.debug.addMoveStep("hoist", HOIST_START + 2, HOIST_MAX_RATE);
+  await h.debug.addActionStep("attach");
+  const started = await startRun(h);
+  assertLength(
+    started.program,
+    2,
+    "the steps the tape took: the move step and the action step, so the " +
+      "reading covers both kinds",
+  );
   await runTicks(h, 5);
   await h.debug.setLoadPhase(0, "attached");
 
@@ -204,8 +208,10 @@ it("reports every field specs/instrumentation.md lists, with its documented type
       const held = check.object(ring, at);
       if (held !== null) check.vec3(held.corner, `${at}.corner`);
     });
-    check.list(structure.counterweights, "structure.counterweights", (one, at) =>
-      check.vec3(one, at),
+    check.list(
+      structure.counterweights,
+      "structure.counterweights",
+      (one, at) => check.vec3(one, at),
     );
     check.number(structure.cost, "structure.cost");
     check.list(structure.issues, "structure.issues", (one, at) =>

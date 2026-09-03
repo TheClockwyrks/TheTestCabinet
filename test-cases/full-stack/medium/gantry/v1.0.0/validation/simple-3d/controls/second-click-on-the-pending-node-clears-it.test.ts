@@ -24,8 +24,8 @@ import {
   assertTrue,
 } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -46,7 +46,7 @@ afterEach(async () => {
 
 it("clears the pending node without placing a member", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setTool("strut");
 
   const at = await h.project(NODE.x, NODE.y, NODE.z);

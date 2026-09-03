@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The site this runs on; the editor's cues are the same on every one. */
 const SITE = 0;
@@ -47,7 +47,8 @@ afterEach(async () => {
 
 it("sounds the place cue when an edit places a counterweight", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.debug.setRing(RING.x, RING.y, RING.z);
   await h.advance(1);
   await h.cues(); // the ring placement's own `place`, drained

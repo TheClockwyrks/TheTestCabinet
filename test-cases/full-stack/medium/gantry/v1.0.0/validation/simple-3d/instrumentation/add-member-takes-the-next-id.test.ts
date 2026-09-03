@@ -22,7 +22,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** A member placement, as the two lattice nodes `addMember` takes in order. */
 type Edge = { a: [number, number, number]; b: [number, number, number] };
@@ -46,7 +46,11 @@ afterEach(async () => {
 
 it("gives each member the next id and advances the counter by one", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The precondition is an empty structure and nothing else. A site opened
+  // after a reset already carries one (specs/state.md), and `clearStructure`
+  // states it rather than leaving it implied; emptying the yard and the tape
+  // too would drive surface this requirement does not concern.
+  await h.debug.clearStructure();
   const start = (await h.snapshot()).structure.nextMemberId;
 
   const placed: { ids: number[]; next: number }[] = [];

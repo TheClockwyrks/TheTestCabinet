@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertLength } from "../assert";
-import { createHarness, emptyYard, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -34,7 +34,10 @@ afterEach(async () => {
 
 it("appends each obstacle with the minimum corner and size it was given", async () => {
   await openSite(h, 0);
-  await emptyYard(h);
+  // The obstacles are the collection this point reads, so they are the collection
+  // it empties; the site's loads sit in a list of their own and cannot appear in
+  // `site.obstacles`.
+  await h.debug.clearObstacles();
 
   await h.debug.addObstacle(5, 0, -6, 1, 8, 12);
   await h.debug.addObstacle(-9, 0, -2, 4, 6, 4);

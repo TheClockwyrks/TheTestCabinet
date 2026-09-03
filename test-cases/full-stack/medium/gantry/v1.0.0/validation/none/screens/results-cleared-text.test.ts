@@ -18,6 +18,13 @@
 // step completes. Nothing about the copy under test depends on there being a
 // load to deliver.
 //
+// AND THE ONE STEP IS THE SHORTEST A TAPE CAN CARRY. It commands the `grip` to
+// `0`, the value `specs/state.md` starts it at, and `specs/program.md` finds such
+// a command "done on the tick it is issued" — so the tape runs out on the second
+// tick and the run clears there. Driving a real grip turn first would put the
+// axis controller between this check and the copy it decides, which is another
+// point's requirement, not this one's.
+//
 // THE MATCH IS BY SUBSTRING, IGNORING CASE. `specs/ui.md` fixes the words and
 // leaves their presentation to the build, so a build is free to letter-space or
 // decorate the line around them.
@@ -39,13 +46,16 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** One short move: enough for a tape to run out and clear an empty yard. */
+/** One step that moves nothing: the tape runs out on the tick after it. */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 30, rate: GRIP_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: 0, rate: GRIP_MAX_RATE }],
+  },
 ];
 
-/** Ticks the run is given to reach its verdict. */
-const END_CAP = 600;
+/** Ticks the run is given to reach its verdict; it reaches it on the second. */
+const END_CAP = 20;
 
 let h: Harness;
 

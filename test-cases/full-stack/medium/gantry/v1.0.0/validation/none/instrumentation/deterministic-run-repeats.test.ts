@@ -26,18 +26,31 @@
 //
 // The tape is one move step that drives two axes gently and outlives the drive,
 // so every compared tick is a tick of live motion: the slew reaches `45` degrees
-// at `10` deg/s in `4.5` seconds of run clock, well past the `2.5` seconds
-// compared. The hoist pays out one unit, which keeps the bare hook a unit clear
-// of the ground — the minimal crane's pivot stands at `y = 4`, and a hook point
-// below `0` would end the run as `load-struck-ground` (`specs/statics.md`)
-// against a requirement that has nothing to do with the ground.
+// at `10` deg/s in `4.5` seconds of run clock, far past the span compared.
+// The hoist pays out one unit, which keeps the bare hook a unit clear of the
+// ground — the minimal crane's pivot stands at `y = 4`, and a hook point below
+// `0` would end the run as `load-struck-ground` (`specs/statics.md`) against a
+// requirement that has nothing to do with the ground.
+//
+// THE READING IS SHORT AND IT IS TICK FOR TICK.
+// The comparison is exact — two JSON strings, no tolerance — so a build that
+// carried a wall-clock delta, a frame counter or the first run's ticks into the
+// second parts from itself on the FIRST tick that term is non-zero, and two runs
+// of a chaotic pendulum that have parted never come back together. What the
+// reading has to cover is therefore the ticks over which the axes ramp, an axis
+// arrives, and the bob starts swinging, not the whole tape.
+//
+// ONLY THE LOADS AND THE OBSTACLES ARE CLEARED between the two: a page opens a
+// site with no structure and no tape stored against it, and posing the crane
+// empties the structure itself, so the world each run is built into is the same
+// empty yard.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { HOIST_START, TICK_HZ } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -48,8 +61,8 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** Two and a half seconds of run clock, every tick of it compared. */
-const TICKS = 150;
+/** Two thirds of a second of run clock, every tick of it compared. */
+const TICKS = 40;
 
 /**
  * One move step, gentle and long: the slew takes `4.5s` to reach `45` degrees at
@@ -95,7 +108,7 @@ it("produces the same axes, bob and forces at every tick of a repeated run", asy
   /** Pose the world from scratch, run `TICKS` ticks, and answer each one. */
   const drive = async (): Promise<{ seen: string[]; last: GantrySnapshot }> => {
     await openSite(h, 0);
-    await clearAll(h);
+    await emptyYard(h);
     await standMinimalCrane(h);
     await poseTape(h, TAPE);
     let last = await startRun(h);

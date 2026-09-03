@@ -15,6 +15,12 @@
 // two ends at `sqrt(2)` and `sqrt(26)` from the slew axis through `(1, ·, 1)`.
 // The one thing wrong with them is which side of the ring they are on.
 //
+// THE RING AND THE TWO RAILS ARE THE WHOLE CRANE. What puts the track in the
+// tower is that it reaches a bottom-flange node, and it reaches one whether or
+// not anything stands under the ring — so the legs and bracing a fuller crane
+// would carry decide nothing here, and every one of them would be another
+// placement this item could fail on for a reason belonging to `editor/`.
+//
 // The reading is taken in both directions on the one issue that could be
 // confused with this one: `no-rail` is the row for "The crane has no rail
 // members" (§ Readiness), and this crane has two, so a build that answered a
@@ -24,20 +30,13 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertTrue } from "../assert";
 import {
-  MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
-  type DesignMember,
   type Harness,
 } from "../harness";
-
-/** The minimal crane's braced tower: every member of it ends at or below `y = 2`. */
-const TOWER: readonly DesignMember[] = MINIMAL_CRANE.members.filter(
-  ([a, b]) => a[1] <= 2 && b[1] <= 2,
-);
 
 /** A ring at `(0, 2, 0)` with a sound two-rail track hung off its BOTTOM flange. */
 const TRACK_IN_THE_TOWER: CraneDesign = {
@@ -46,7 +45,6 @@ const TRACK_IN_THE_TOWER: CraneDesign = {
   ring: [0, 2, 0],
   counterweights: [],
   members: [
-    ...TOWER,
     [[2, 2, 0], [4, 2, 0], "rail"],
     [[4, 2, 0], [6, 2, 0], "rail"],
   ],
@@ -65,7 +63,7 @@ afterEach(async () => {
 
 it("raises invalid-rail for a sound track that hangs off the tower", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, TRACK_IN_THE_TOWER);
 
   const { issues } = await h.check();

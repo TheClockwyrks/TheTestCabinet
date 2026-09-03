@@ -11,10 +11,9 @@
 //
 // TWO READINGS, ONE RULE. "Sits at exactly its target pose" is read at the call
 // and "stays there for the rest of the run" is read after the run has ticked on,
-// so the check reads the same load twice with sixty ticks of real simulation
-// between them. Sixty ticks is a run second at `TICK_HZ`, and the tape still has
-// its move step live throughout, so the run is genuinely advancing between the
-// two readings rather than sitting ended.
+// so the check reads the same load twice with twenty ticks of real simulation
+// between them. The tape still has its move step live throughout, so the run is
+// genuinely advancing between the two readings rather than sitting ended.
 //
 // THE LOAD IS PUT SOMEWHERE ITS PAD IS NOT FIRST, so a build that simply left
 // the load where it stood could not pass. The world holds exactly the one load,
@@ -22,28 +21,34 @@
 // carried to.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertClose, assertEqual, assertVec3Near } from "../assert";
-import { GRIP_MAX_RATE, TICK_HZ } from "../constants";
+import {
+  assertClose,
+  assertEqual,
+  assertLength,
+  assertVec3Near,
+} from "../assert";
+import { GRIP_MAX_RATE } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   openSite,
-  poseTape,
   runTicks,
   standMinimalCrane,
   startRun,
   type Harness,
-  type TapeStepSpec,
 } from "../harness";
 
-/** A tape that keeps a run in progress and asks nothing of the structure. */
-const HOLD_TAPE: readonly TapeStepSpec[] = [
-  {
-    kind: "move",
-    commands: [{ axis: "grip", target: 360, rate: GRIP_MAX_RATE }],
-  },
-];
+/**
+ * A tape that keeps a run in progress and asks nothing of the structure.
+ *
+ * Appended through the tape editor's own screen, which is where the tape poses
+ * apply (`specs/instrumentation.md`), and left there: `startRun` poses the `run`
+ * action, which the program screen carries as well as the build screen.
+ */
+async function poseHoldTape(harness: Harness): Promise<void> {
+  await harness.debug.setScreen("program");
+  await harness.debug.addMoveStep("grip", 360, GRIP_MAX_RATE);
+}
 
 const FROM = { x: 10, y: 3, z: 0, yaw: 0 };
 const TO = { x: -6, y: 3, z: 8, yaw: 90 };
@@ -51,8 +56,8 @@ const TO = { x: -6, y: 3, z: 8, yaw: 90 };
 /** Where the load is carried to before it is set down: neither of those. */
 const CARRIED = { x: 3, y: 7, z: -4, yaw: 20 };
 
-/** A run second of real simulation between the two readings. */
-const TICKS = TICK_HZ;
+/** Real simulation between the two readings. */
+const TICKS = 20;
 
 /** "Exactly its target pose". */
 const TOLERANCE = 1e-9;
@@ -68,12 +73,20 @@ afterEach(async () => {
 });
 
 it("sets a load down at exactly its target pose, and leaves it there", async () => {
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared — and `addOneLoad` clears the loads itself.
   await openSite(h, 0);
-  await clearAll(h);
+  await h.debug.clearObstacles();
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, FROM, TO);
-  await poseTape(h, HOLD_TAPE);
-  await startRun(h);
+  await poseHoldTape(h);
+  const started = await startRun(h);
+  assertLength(
+    started.program,
+    1,
+    "the steps the tape took, so the run keeps ticking under both readings",
+  );
   await h.advance(1);
 
   await h.debug.setLoadPose(0, CARRIED.x, CARRIED.y, CARRIED.z, CARRIED.yaw);

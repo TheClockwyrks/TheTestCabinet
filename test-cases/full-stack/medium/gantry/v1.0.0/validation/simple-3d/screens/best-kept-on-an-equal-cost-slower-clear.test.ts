@@ -16,13 +16,20 @@
 // figure the specification never fixed.
 //
 // THE POSED TIME IS WELL UNDER THE RUN'S. `specs/program.md` has a cleared run
-// record "the crane's cost and the run clock at the tick it ended on", and the
-// tape below takes the best part of a second, so the clear this check makes is
+// record "the crane's cost and the run clock at the tick it ended on", and a run
+// that ends at all has ticked at least once, so `BEST_TIME` is set under a single
+// tick of run clock (`1 / TICK_HZ`, `0.0167`) and the clear this check makes is
 // slower than the score standing — the case the rule refuses.
+//
+// THE TAPE IS THE SHORTEST MOVE THAT IS STILL A MOVE. What the rule turns on is
+// the pair of scores, not the length of the run that reports the second one, so
+// the tape pays the hoist out by a fiftieth of a unit: the run clears in a handful
+// of ticks, and the gap between the two times is still hundreds of times the
+// tolerance on either.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
-import { GRIP_MAX_RATE } from "../constants";
+import { HOIST_MAX_RATE, HOIST_START, TICK_HZ } from "../constants";
 import {
   clearAll,
   createHarness,
@@ -38,16 +45,27 @@ import {
 /** The site this check plays, and the entry of `best` it reads. */
 const SITE = 0;
 
-/** A move long enough that the clear it ends takes longer than `BEST_TIME`. */
+/**
+ * The shortest move that is still a move: a fiftieth of a unit of hoist.
+ *
+ * `specs/program.md` accepts any target inside the axis's range, and the run ends
+ * on the tick that finds no step left — so this clears in a handful of ticks and
+ * still takes longer than `BEST_TIME`.
+ */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 30, rate: GRIP_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [
+      { axis: "hoist", target: HOIST_START + 0.02, rate: HOIST_MAX_RATE },
+    ],
+  },
 ];
 
-/** The time on the standing score: lower than any run this tape can make. */
-const BEST_TIME = 0.1;
+/** The time on the standing score: under one tick, so under any run's clock. */
+const BEST_TIME = 1 / (2 * TICK_HZ);
 
-/** Ticks the run is given to reach its verdict. */
-const END_CAP = 600;
+/** Ticks the run is given to reach its verdict, from a move that takes ten. */
+const END_CAP = 60;
 
 let h: Harness;
 

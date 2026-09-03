@@ -27,9 +27,9 @@ import { assertClose, assertGreaterThan, assertVec3Near } from "../assert";
 import { GRIP_MAX_RATE } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -70,7 +70,10 @@ afterEach(async () => {
 
 it("leaves a load coming off the hook at the pose it was holding", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, FROM, TO);
   await poseTape(h, HOLD_TAPE);

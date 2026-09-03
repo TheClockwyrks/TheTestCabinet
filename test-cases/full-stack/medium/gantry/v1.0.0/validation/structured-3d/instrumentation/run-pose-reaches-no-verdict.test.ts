@@ -19,12 +19,18 @@
 // ended the run is the pose. Then the run is driven, and the verdict that arrives is
 // the one the rules owed: `cleared`, once the tape runs out.
 //
-// One load, one short hoist step, and the harness's minimal crane: the crane and the
-// tape are not what this decides, and are only here because a run has to start.
+// One load, a three-step tape, and the harness's minimal crane: the crane and the
+// tape are not what this decides, and are only here because a run has to start. Each
+// of the three steps commands the `hoist` to the value it already stands at, which
+// `specs/program.md` makes a step that is "done on the tick it is issued", so the
+// tape is exhausted three ticks in and the verdict this check waits for is a handful
+// of ticks away rather than a hoist move away. Reaching the same scenario by driving
+// a whole axis move would grade the axis controller here as well, which is another
+// point's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
-import { HOIST_MAX_RATE, HOIST_MIN } from "../constants";
+import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   addOneLoad,
   createHarness,
@@ -36,13 +42,26 @@ import {
   standMinimalCrane,
   startRun,
   type Harness,
+  type TapeStepSpec,
 } from "../harness";
 
 /** Where the one load stands, and the pad it is wanted on. */
 const POSE = { x: 8, y: 2, z: 0, yaw: 0 } as const;
 
-/** Well past the hoist step: a move of one unit takes under a second. */
-const CAP = 600;
+/**
+ * The tape is exhausted on tick three, so this is a verdict rather than a wait.
+ */
+const CAP = 30;
+
+/**
+ * One step that moves nothing: the `hoist` stands at `HOIST_START` when a run
+ * starts (`specs/state.md`), so `specs/program.md` finds this command arrived on
+ * the tick it is issued.
+ */
+const STILL: TapeStepSpec = {
+  kind: "move",
+  commands: [{ axis: "hoist", target: HOIST_START, rate: HOIST_MAX_RATE }],
+};
 
 let h: Harness;
 
@@ -59,25 +78,16 @@ it("leaves the run running at the call and lets the rules reach the verdict", as
   await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, POSE, POSE);
-  await poseTape(h, [
-    {
-      kind: "move",
-      commands: [{ axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE }],
-    },
-  ]);
+  await poseTape(h, [STILL, STILL, STILL]);
   await startRun(h);
-  await runTicks(h, 5);
+  await runTicks(h, 2);
 
   // The precondition a clear needs, established without a tick being taken.
   await h.debug.setLoadPhase(0, "placed");
   const posed = await h.snapshot();
   await h.capture("state", "the run at the call, with every load placed");
 
-  assertEqual(
-    posed.run.loads[0]?.phase,
-    "placed",
-    "the phase the pose set",
-  );
+  assertEqual(posed.run.loads[0]?.phase, "placed", "the phase the pose set");
   assertEqual(
     posed.run.phase,
     "running",

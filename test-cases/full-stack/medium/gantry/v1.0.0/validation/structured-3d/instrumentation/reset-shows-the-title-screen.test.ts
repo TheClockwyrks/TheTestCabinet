@@ -4,43 +4,34 @@
 // `specs/instrumentation.md` § The run and the screens: "`reset` restores every
 // field the snapshot reports to its title-screen value, bar one: the `title`
 // screen with `menuIndex` `0`, site `0` open, …". The screen is the first field
-// that sentence names, and this check decides that one.
+// that sentence names, and this check decides that field and no other.
 //
-// THE SCENARIO STANDS WHERE A RESET HAS THE MOST TO UNDO: the run screen, with a
-// run in progress. A reset that simply did nothing, or that only tidied the yard
-// screens, is caught there and nowhere else. The run screen is reached the way
-// the game reaches it — `startRun` "poses the `run` action: the same refusals,
-// the same `run-start`, and the same move to the run screen" — rather than by
-// pressing a key on a menu, so a build with a broken menu still fails only its
-// menu items.
+// THE SCREEN IS POSED, NOT PLAYED TO. The precondition the requirement carries is
+// exactly "a screen other than `title` is showing", and `setScreen` "shows a named
+// screen and sets nothing else" (`specs/instrumentation.md`), so one call
+// establishes it. The screen posed is `run`: one of the seven identifiers
+// `specs/ui.md` fixes, the furthest from the title, and the one screen no arrival
+// and no reset ever leaves showing — so the reading afterwards is the reset's own
+// work and cannot be a screen that was already there.
 //
-// The world is emptied first and stood up with the minimal crane and a one-step
-// tape, because nothing about this requirement concerns the crane, the yard, or
-// what the tape does: they are here only so that a run can legally begin.
+// THE RESET IS STILL EARNED. Nothing here poses the outcome: `reset` is called on
+// the real game and the screen is read back off the build's own snapshot on the
+// frame that follows.
+//
+// WHAT THIS POINT DELIBERATELY NO LONGER DRIVES. Reaching the run screen by
+// emptying the world, standing a crane, posing a tape and starting a run puts the
+// editor, the structure solve and the `run` action between this item and the field
+// it decides: a build with a sound `reset` and a broken crane would have failed
+// here for a defect belonging to another item. The run a reset has to undo is a
+// requirement of its own, and `instrumentation/reset-returns-the-run-to-idle`
+// starts a real one to decide it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { HOIST_MAX_RATE, HOIST_START } from "../constants";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  poseTape,
-  standMinimalCrane,
-  startRun,
-  type Harness,
-  type TapeStepSpec,
-} from "../harness";
+import { createHarness, type Harness } from "../harness";
 
-/** One short hoist move: enough for a run to legally start. */
-const TAPE: readonly TapeStepSpec[] = [
-  {
-    kind: "move",
-    commands: [
-      { axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE },
-    ],
-  },
-];
+/** The screen the reset is taken from: no arrival and no reset leaves it showing. */
+const POSED = "run";
 
 let h: Harness;
 
@@ -52,17 +43,14 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("shows the title screen after a reset taken from a run in progress", async () => {
-  await openSite(h, 0);
-  await clearAll(h);
-  await standMinimalCrane(h);
-  await poseTape(h, TAPE);
-  await startRun(h);
+it("shows the title screen after a reset taken from another screen", async () => {
+  await h.debug.setScreen(POSED);
 
   assertEqual(
     (await h.snapshot()).screen,
-    "run",
-    "the screen a started run moves to, the screen the reset is taken from",
+    POSED,
+    "the screen the reset is taken from, which `setScreen` shows and sets " +
+      "nothing else for (specs/instrumentation.md)",
   );
 
   await h.debug.reset();

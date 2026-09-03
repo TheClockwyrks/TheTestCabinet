@@ -27,9 +27,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
 /** The readiness issue a crane with no slew ring raises. */
 const ISSUE = "no-ring";
 

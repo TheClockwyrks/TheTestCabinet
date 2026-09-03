@@ -21,8 +21,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertVec3Near } from "../assert";
 import { GRIP_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -57,7 +57,7 @@ afterEach(async () => {
 
 it("sets the bob's velocity to the vector it is handed", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   await startRun(h);

@@ -32,9 +32,9 @@ import {
 } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -82,7 +82,10 @@ afterEach(async () => {
 
 it("ends the run as attach-missed when no waiting load is in reach", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, LOAD_AT, LOAD_AT);
   await poseTape(h, [NOOP, ATTACH, HOLD]);

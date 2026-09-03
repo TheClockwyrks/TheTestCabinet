@@ -30,7 +30,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertTrue, fail } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
   drawnObjects,
   openSite,
@@ -151,7 +150,11 @@ afterEach(async () => {
 
 it("draws two members of different utilization in different colours", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await standMinimalCrane(h);
   await h.debug.addCounterweight(WEIGHT.x, WEIGHT.y, WEIGHT.z);
 

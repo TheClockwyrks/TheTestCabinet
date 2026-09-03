@@ -29,8 +29,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual, assertLength, assertTrue } from "../assert";
 import { COUNTERWEIGHT_MASS, GRAVITY } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -89,8 +89,8 @@ const CRANE: CraneDesign = {
   tape: [],
 };
 
-/** The same crane with a counterweight on the top-flange node `(2, 4, 2)`. */
-const LOADED: CraneDesign = { ...CRANE, counterweights: [[2, 4, 2]] };
+/** The top-flange node the counterweight is hung on. */
+const HUNG_ON = { x: 2, y: 4, z: 2 } as const;
 
 /** The leg under `(2, 2, 2)`, the corner `(2, 4, 2)` is paired with. */
 const PAIRED_LEG = 3;
@@ -116,7 +116,7 @@ afterEach(async () => {
 
 it("carries a top-flange counterweight across its own ring corner alone", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, CRANE);
 
   const before = await h.check();
@@ -128,7 +128,19 @@ it("carries a top-flange counterweight across its own ring corner alone", async 
   assertEqual(before.issues[0], "empty-program", "the only issue");
   assertTrue(before.stable, "the crane stands before the counterweight");
 
-  await poseCrane(h, LOADED);
+  // THE ONE EDIT, ON THE CRANE THAT WAS ALREADY READ. The second reading has to
+  // differ from the first in the counterweight and in nothing else, so the
+  // counterweight is hung on the crane that stands rather than posed as part of a
+  // second crane: re-posing would run every member back through the editor and
+  // hand the comparison a fresh set of member ids to be right about.
+  await h.debug.addCounterweight(HUNG_ON.x, HUNG_ON.y, HUNG_ON.z);
+  assertLength(
+    (await h.snapshot()).structure.counterweights,
+    1,
+    `the counterweight on the top-flange node (${HUNG_ON.x}, ${HUNG_ON.y}, ` +
+      `${HUNG_ON.z}), which specs/structure.md accepts on a flange node of ` +
+      "the ring",
+  );
   const after = await h.check();
   assertTrue(after.stable, "the crane still stands with the counterweight");
   await h.capture(

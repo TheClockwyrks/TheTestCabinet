@@ -10,9 +10,13 @@
 //
 // THREE STEPS, so the reading is a count rather than a coincidence: an index that
 // stopped at the last step's own number reads `2` here, and an index counted from
-// `1` reads `4`. Each step commands a different axis and each is short, so the
-// tape runs out well inside the sweep, and the index is read against the tape the
-// snapshot itself reports rather than against the number this file wrote.
+// `1` reads `4`. Each step commands a different axis, and each asks for the
+// smallest genuine move of it — a target a few hundredths off where the axis
+// stands, which `specs/program.md`'s controller accelerates into and arrives at
+// within a handful of ticks. The tape therefore runs out well inside the sweep
+// while every step is still a real move that has to be taken, driven and
+// completed, and the index is read against the tape the snapshot itself reports
+// rather than against the number this file wrote.
 //
 // The world holds nothing but the smallest crane that stands: a run that ended
 // for any other reason than running out of tape is a different reading, and with
@@ -38,26 +42,26 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** Three short moves, one axis each. */
+/** Three moves, one axis each, every one of them as short as a move can be. */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE },
+      { axis: "hoist", target: HOIST_START + 0.02, rate: HOIST_MAX_RATE },
     ],
   },
   {
     kind: "move",
-    commands: [{ axis: "grip", target: 45, rate: GRIP_MAX_RATE }],
+    commands: [{ axis: "grip", target: 0.05, rate: GRIP_MAX_RATE }],
   },
   {
     kind: "move",
-    commands: [{ axis: "slew", target: 10, rate: SLEW_MAX_RATE }],
+    commands: [{ axis: "slew", target: 0.05, rate: SLEW_MAX_RATE }],
   },
 ];
 
-/** Ticks the whole tape is given: the three moves take about three seconds. */
-const CAP = 900;
+/** Ticks the whole tape is given: the three moves take a handful between them. */
+const CAP = 120;
 
 let h: Harness;
 

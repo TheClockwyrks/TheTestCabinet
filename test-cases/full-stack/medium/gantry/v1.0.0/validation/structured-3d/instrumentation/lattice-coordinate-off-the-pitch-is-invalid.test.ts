@@ -19,14 +19,17 @@
 // remove is the silent refusal the same file gives, and an off-pitch node is not
 // that.
 //
-// The structure is emptied first, so `historyDepth` rests at `0` — "on a
-// structure that is already empty it removes nothing and pushes no history" — and
-// a call that landed as an edit would push it.
+// The site is opened on a freshly loaded page, so the structure it carries is the
+// empty one `specs/state.md` says a game initializes with and `historyDepth` rests
+// at `0`; a call that landed as an edit would push it. Only the YARD is posed —
+// the loads and obstacles this point is not about — because a route that emptied
+// the structure through `clearStructure` on the way in would fold that operation's
+// own requirement into this one's verdict.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull, fail } from "../assert";
 import { LATTICE_PITCH } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -40,10 +43,14 @@ afterEach(async () => {
 
 it("fails loudly on a coordinate that is not a multiple of LATTICE_PITCH", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   const before = await h.snapshot();
-  assertLength(before.structure.members, 0, "the members the scenario starts on");
+  assertLength(
+    before.structure.members,
+    0,
+    "the members the scenario starts on",
+  );
   assertNull(before.structure.ring, "the ring the scenario starts on");
   assertEqual(before.historyDepth, 0, "the history an emptied site rests at");
 

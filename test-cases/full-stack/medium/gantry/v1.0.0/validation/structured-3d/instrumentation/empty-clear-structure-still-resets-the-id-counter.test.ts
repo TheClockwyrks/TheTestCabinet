@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 let h: Harness;
 
@@ -35,7 +35,11 @@ afterEach(async () => {
 
 it("returns nextMemberId to 0 on a clearStructure that removes nothing", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD AND THE STRUCTURE, rather than the whole world: a site opens with an
+  // empty tape (`specs/state.md`) and nothing here poses one, so the tape needs no
+  // clearing and the program screen is never visited.
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   // Two members, taking ids 0 and 1, then both removed: the structure is empty
   // and the counter stands at 2.

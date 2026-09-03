@@ -23,9 +23,16 @@
 // The two runs are posed on the same crane one after the other; the tape is
 // emptied between them so each run carries the one step it is about. The yard is
 // empty: nothing here concerns a load.
+//
+// THE ARRIVAL IS SWEPT IN STRIDES RATHER THAN A TICK AT A TIME. What is read is
+// where the axis stopped, not which tick it stopped on, so the run is advanced in
+// blocks of `STRIDE` ticks until the axis is there or the run has ended — and the
+// axis holds the target once it arrives (`specs/program.md`: an axis with no live
+// command holds its value with zero rate), so a stride that lands past arrival
+// reads exactly what a stride that lands on it would.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertClose, assertEqual, assertNull } from "../assert";
+import { assertClose, assertEqual, assertNull, fail } from "../assert";
 import { HOIST_MAX_RATE, HOIST_MIN, TICK_HZ } from "../constants";
 import {
   clearAll,
@@ -33,20 +40,37 @@ import {
   openSite,
   poseTape,
   runTicks,
-  runUntil,
   standMinimalCrane,
   startRun,
+  type GantrySnapshot,
   type Harness,
 } from "../harness";
 
 /** A hair below the bound: outside the range, and nowhere near a rounding. */
 const BELOW = 0.9;
 
-/** From HOIST_START (2) to HOIST_MIN (1) is a unit at up to 4 u/s. */
-const CAP = 5 * TICK_HZ;
+/** Ticks driven in one block of the arrival sweep. */
+const STRIDE = 12;
+
+/**
+ * Blocks allowed: `STRIDE * STRIDES` is `96` ticks, `1.6s` of run clock.
+ *
+ * From `HOIST_START` (`2`) to `HOIST_MIN` (`1`) is a unit, and `specs/program.md`
+ * gives the hoist `HOIST_ACCEL` (`6`) — so the move is acceleration-bound at
+ * `2 * sqrt(1 / 6)`, about `0.82s`, and this is twice that.
+ */
+const STRIDES = 8;
 
 /** The controller sets the value to the target exactly on arrival. */
 const TOL = 1e-9;
+
+/** The axis is where the step sent it, or the run ended trying. */
+function settled(s: GantrySnapshot): boolean {
+  return (
+    s.run.phase !== "running" ||
+    Math.abs(s.run.axes.hoist.value - HOIST_MIN) <= TOL
+  );
+}
 
 let h: Harness;
 
@@ -70,14 +94,19 @@ it("reaches a hoist target of HOIST_MIN and refuses one below it", async () => {
     },
   ]);
   await startRun(h);
-  const arrived = await runUntil(
-    h,
-    (s) =>
-      s.run.phase !== "running" ||
-      Math.abs(s.run.axes.hoist.value - HOIST_MIN) <= TOL,
-    CAP,
-    `the hoist to reach ${HOIST_MIN}, or the run to end trying`,
-  );
+  let arrived = await runTicks(h, STRIDE);
+  for (let block = 1; block < STRIDES && !settled(arrived); block += 1) {
+    arrived = await runTicks(h, STRIDE);
+  }
+  if (!settled(arrived)) {
+    fail(
+      `the hoist to reach ${HOIST_MIN}, or the run to end trying, within ` +
+        `${STRIDE * STRIDES} ticks (${((STRIDE * STRIDES) / TICK_HZ).toFixed(2)}s ` +
+        "of run clock)",
+      `it stands at ${arrived.run.axes.hoist.value} with the run ` +
+        `"${arrived.run.phase}"`,
+    );
+  }
   assertNull(
     arrived.run.cause,
     `the failure cause of a run whose hoist was told to reach ${HOIST_MIN}, ` +

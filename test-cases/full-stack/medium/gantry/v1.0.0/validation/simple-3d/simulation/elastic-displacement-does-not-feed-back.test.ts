@@ -149,6 +149,9 @@ const TAPE: readonly TapeStepSpec[] = [
 /** Ticks of run clock the crane is asked to hold still for. */
 const HELD = 60;
 
+/** How many of those are read one at a time before the rest are run in one go. */
+const SAMPLED = 10;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -178,7 +181,15 @@ it("holds the pivot and every force where the lattice put them", async () => {
     "members whose force came back finite",
   );
 
-  for (let tick = 3; tick <= HELD; tick += 1) {
+  // TICK BY TICK OVER THE FIRST STRETCH, then the rest of the second in one go.
+  // A creep that fed elastic displacement back into the geometry moves the pivot
+  // on every tick it happens, and a tolerance of `1e-9` against displacements of
+  // order a thousandth of a unit catches it on the first of them — so the reading
+  // that decides this point is the pivot at the end, and the ticks sampled one at
+  // a time are there to say WHERE a build that moved started moving. The crane
+  // still holds still for the whole second either way: what changed is how often
+  // the ticks are looked at, not how many are run.
+  for (let tick = 3; tick <= SAMPLED; tick += 1) {
     const now = await runTicks(h, 1);
     assertEqual(now.run.phase, "running", `the run's phase at tick ${tick}`);
     assertVec3Near(
@@ -190,7 +201,15 @@ it("holds the pivot and every force where the lattice put them", async () => {
     );
   }
 
-  const held = await h.snapshot();
+  const held = await runTicks(h, HELD - SAMPLED);
+  assertEqual(held.run.phase, "running", `the run's phase at tick ${HELD}`);
+  assertVec3Near(
+    held.run.pivot,
+    ORIGIN,
+    1e-9,
+    `the pivot at tick ${HELD}: the prescribed trolley point, which the ` +
+      "lattice and a slew of 0 put at the track's origin (specs/statics.md)",
+  );
   await h.capture(
     "elastic-displacement-does-not-feed-back",
     "the loaded crane after a second of holding still",

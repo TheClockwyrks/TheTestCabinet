@@ -30,9 +30,6 @@ import { fail } from "../assert";
 import { SITE_NAMES } from "../constants";
 import { createHarness, openSite, type Harness } from "../harness";
 
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
 /** The site this check opens: `Long Reach` (specs/sites.md § Site 4). */
 const SITE = 3;
 

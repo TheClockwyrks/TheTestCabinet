@@ -20,6 +20,14 @@
 // in the block for the whole window is the waiting crate. A tape that ran out
 // would end the run as `loads-unplaced` on a load that is still waiting, so the
 // window is well inside the eight seconds this one runs for.
+//
+// THE WINDOW IS AS LONG AS THE RULE NEEDS AND NO LONGER. The collision tests run
+// on every tick of a run (specs/statics.md), and the crate is already strictly
+// inside the block and a unit under the floor on the run's first tick, so a build
+// that tested a waiting load against either raises its verdict at once. Ninety
+// ticks is a second and a half of that same standing arrangement, which is margin
+// for a build that tests on a slower cadence rather than a distance the scenario
+// has to travel.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
@@ -45,8 +53,8 @@ const START = { x: 10, y: 1, z: 0, yaw: 0 } as const;
 const BLOCK_MIN = { x: 9, y: 0, z: -1 } as const;
 const BLOCK_SIZE = { x: 2, y: 4, z: 2 } as const;
 
-/** Ticks the waiting crate is left standing there: five seconds. */
-const WINDOW = 300;
+/** Ticks the waiting crate is left standing there: a second and a half. */
+const WINDOW = 90;
 
 /** A tape that turns the grip and moves nothing near the block. */
 const HOLD: readonly TapeStepSpec[] = [

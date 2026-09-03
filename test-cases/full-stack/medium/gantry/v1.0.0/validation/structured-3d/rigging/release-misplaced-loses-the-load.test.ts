@@ -23,9 +23,9 @@ import { assertEqual, assertNull } from "../assert";
 import { PLACE_POS_TOL } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -87,7 +87,10 @@ async function hangOnHook(
 
 it("drops the load as lost and leaves the hook holding nothing", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, START, PAD);
   await poseTape(h, TAPE);

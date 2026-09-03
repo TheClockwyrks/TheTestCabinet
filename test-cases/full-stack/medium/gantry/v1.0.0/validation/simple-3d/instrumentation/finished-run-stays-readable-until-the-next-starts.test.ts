@@ -34,8 +34,8 @@ import {
 import { GRIP_MAX_RATE, HOIST_CABLE_CAP, HOIST_MIN } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runUntil,
@@ -62,7 +62,7 @@ afterEach(async () => {
 
 it("still reports a failed run's phase, cause, clock and broken list off the run screen", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(
     h,
@@ -89,14 +89,21 @@ it("still reports a failed run's phase, cause, clock and broken list off the run
   await h.debug.setBobVelocity(0, 0, 0);
   await h.debug.setLoadPhase(0, "attached");
 
+  // A cantilever this far past what the arm's ties hold gives way on the first
+  // solve, so the sweep is a handful of ticks on any build that breaks members at
+  // all; the cap is what bounds one that never does.
   const ended = await runUntil(
     h,
     (s) => s.run.phase !== "running",
-    600,
+    120,
     "the overloaded arm to give way",
   );
 
-  assertEqual(ended.run.phase, "failed", "the verdict the overloaded arm reaches");
+  assertEqual(
+    ended.run.phase,
+    "failed",
+    "the verdict the overloaded arm reaches",
+  );
   assertNotNull(ended.run.cause, "the cause a failed run carries");
   assertGreaterThan(ended.run.tick, 0, "the clock the run stopped at");
   assertGreaterThan(

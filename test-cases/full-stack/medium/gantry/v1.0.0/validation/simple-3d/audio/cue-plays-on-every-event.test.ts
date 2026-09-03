@@ -14,8 +14,9 @@
 // once more": a build that played the cue on the first two edits and stopped
 // would still fail here.
 //
-// THE WORLD HOLDS NOTHING ELSE. The yard is emptied and the structure cleared, so
-// the only events in the window are the three `addMember` poses, which "pose
+// THE WORLD HOLDS NOTHING ELSE. A site opened on a fresh game stands nothing
+// built, and the yard is emptied on top of that, so the only events in the
+// window are the three `addMember` poses, which "pose
 // single edits on the build screen, entering the rule pipeline the build tools
 // feed" (specs/instrumentation.md) — the same pipeline a click feeds, so each one
 // is a structure edit that places a member in the sense specs/ui.md's `place` row
@@ -33,7 +34,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** Site 1, First Lift. */
 const SITE = 0;
@@ -57,7 +58,7 @@ afterEach(async () => {
 
 it("plays the place cue on each of three separate placements", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await h.advance(1);
   await h.cues();
 

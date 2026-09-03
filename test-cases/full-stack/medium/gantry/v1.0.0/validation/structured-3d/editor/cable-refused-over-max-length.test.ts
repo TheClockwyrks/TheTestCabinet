@@ -21,7 +21,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength } from "../assert";
 import { CABLE_MAX_LEN } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** Site 4, Long Reach. */
 const SITE = 3;
@@ -42,7 +42,7 @@ afterEach(async () => {
 
 it("refuses a cable longer than CABLE_MAX_LEN", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
 
   await h.debug.addMember(A.x, A.y, A.z, B.x, B.y, B.z, "cable");
 

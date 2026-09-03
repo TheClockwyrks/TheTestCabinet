@@ -24,15 +24,18 @@
 // the ground when it is taken.
 //
 // The two runs are posed on the same crane one after the other; the tape is
-// emptied between them so each run carries the one step it is about. The yard is
-// empty: nothing here concerns a load.
+// emptied between them so each run carries the one step it is about, on the
+// program screen where the tape poses apply and where the second run is then
+// started from — `startRun` "applies on the build and program screens, where the
+// `run` action does" (specs/instrumentation.md). The yard is empty: nothing here
+// concerns a load.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertNull } from "../assert";
 import { HOIST_MAX, HOIST_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -56,7 +59,10 @@ afterEach(async () => {
 
 it("issues a hoist command targeting HOIST_MAX and refuses one above it", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
 
   await poseTape(h, [
@@ -87,7 +93,6 @@ it("issues a hoist command targeting HOIST_MAX and refuses one above it", async 
 
   await h.debug.setScreen("program");
   await h.debug.clearProgram();
-  await h.debug.setScreen("build");
   await poseTape(h, [
     {
       kind: "move",

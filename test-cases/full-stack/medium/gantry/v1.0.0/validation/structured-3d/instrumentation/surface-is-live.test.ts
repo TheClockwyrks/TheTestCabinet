@@ -25,9 +25,14 @@
 // pass over the structure the game holds.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertContains, assertDeepEqual, assertEqual, assertTrue } from "../assert";
+import {
+  assertContains,
+  assertDeepEqual,
+  assertEqual,
+  assertTrue,
+} from "../assert";
 import { RING_COST } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The ring's base corner: `y` is not `0`, since it sits on a tower. */
 const CORNER = { x: 0, y: 2, z: 0 };
@@ -44,7 +49,8 @@ afterEach(async () => {
 
 it("lands a posed ring in the state the game holds, and every reading reports it", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   const before = await h.check();
   assertContains(
@@ -75,5 +81,8 @@ it("lands a posed ring in the state the game holds, and every reading reports it
   );
 
   await h.advance(1);
-  await h.capture("ring-posed", "The ring the pose put in the game's own state");
+  await h.capture(
+    "ring-posed",
+    "The ring the pose put in the game's own state",
+  );
 });

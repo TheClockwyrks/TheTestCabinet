@@ -67,7 +67,16 @@ const BRACKETED: CraneDesign = {
   ],
 };
 
-/** Ticks the member is held inside the box for: one second of run clock. */
+/**
+ * Ticks the member is held inside the box for: one second of run clock.
+ *
+ * A WHOLE SWING, and that is why it is not shortened. The bob is posed at rest
+ * straight below the pivot and the pendulum carries it out and back over about
+ * this many ticks, so the guard below — that the crate really stood where this
+ * check says it stood — reads a lift point the swing has returned to rather than
+ * one part way through its excursion. The ticks are driven as one batch, so the
+ * window costs one crossing into the page whatever its length.
+ */
 const WINDOW = 60;
 
 /** A tape that turns the grip and moves nothing that carries the load. */

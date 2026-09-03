@@ -16,22 +16,28 @@
 // carries on.
 //
 // It is watched for ten more ticks, because a build that ended the run a tick
-// late would still read `running` on the breaking tick itself.
+// late would still read `running` on the breaking tick itself. One reading at the
+// end of those ten covers all of them: a run that ended anywhere inside the window
+// stops ticking and holds the phase and the cause it ended with
+// (`specs/state.md`), so the run clock still reading `11` and the phase still
+// reading `running` is what says nothing ended over the whole span.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertNull } from "../assert";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertLength,
+  assertNull,
+} from "../assert";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   openSite,
   poseCrane,
-  poseTape,
   runTicks,
   startRun,
   type CraneDesign,
   type Harness,
-  type TapeStepSpec,
 } from "../harness";
 
 /**
@@ -141,10 +147,17 @@ const STAY = 45;
 /** Ticks watched past the breaking tick. */
 const WATCHED = 10;
 
-const TAPE: readonly TapeStepSpec[] = [
-  { kind: "action", action: "attach" },
-  { kind: "move", commands: [{ axis: "grip", target: 3600, rate: 45 }] },
-];
+/**
+ * The tape, appended through the tape editor's own screen, which is where the
+ * tape poses apply (`specs/instrumentation.md`). It is left there: `startRun`
+ * poses the `run` action, which the program screen carries as well as the build
+ * screen.
+ */
+async function poseTape(harness: Harness): Promise<void> {
+  await harness.debug.setScreen("program");
+  await harness.debug.addActionStep("attach");
+  await harness.debug.addMoveStep("grip", 3600, 45);
+}
 
 let h: Harness;
 
@@ -157,12 +170,20 @@ afterEach(async () => {
 });
 
 it("carries on running after a breakage the structure survives", async () => {
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared — and `addOneLoad` clears the loads itself.
   await openSite(h, 5);
-  await clearAll(h);
+  await h.debug.clearObstacles();
   await poseCrane(h, CRANE);
   await addOneLoad(h, "crate", LOAD_MASS, HOOK, HOOK);
-  await poseTape(h, TAPE);
-  await startRun(h);
+  await poseTape(h);
+  const started = await startRun(h);
+  assertLength(
+    started.program,
+    2,
+    "the steps the tape took: the attach and the grip move that follows it",
+  );
 
   const broke = await runTicks(h, 1);
   assertDeepEqual(
@@ -178,17 +199,25 @@ it("carries on running after a breakage the structure survives", async () => {
   );
   assertNull(broke.run.cause, "the cause on the breaking tick");
 
-  for (let tick = 2; tick <= 1 + WATCHED; tick += 1) {
-    const now = await runTicks(h, 1);
-    assertEqual(now.run.phase, "running", `the phase at tick ${tick}`);
-    assertNull(now.run.cause, `the cause at tick ${tick}`);
-    assertEqual(now.run.tick, tick, "the run clock, still climbing");
-    assertDeepEqual(
-      now.run.broken,
-      [STAY],
-      `the run's broken members at tick ${tick}`,
-    );
-  }
+  const later = await runTicks(h, WATCHED);
+  assertEqual(
+    later.run.tick,
+    1 + WATCHED,
+    `the run clock after ${WATCHED} further ticks: a run that had ended ` +
+      "anywhere inside them would have stopped counting (specs/state.md)",
+  );
+  assertEqual(
+    later.run.phase,
+    "running",
+    `the phase ${WATCHED} ticks past the breakage`,
+  );
+  assertNull(later.run.cause, `the cause ${WATCHED} ticks past the breakage`);
+  assertDeepEqual(
+    later.run.broken,
+    [STAY],
+    `the run's broken members ${WATCHED} ticks past the breakage: the strut ` +
+      "stay alone, so nothing followed it",
+  );
 
   await h.capture(
     "breakage-leaves-the-run-running",

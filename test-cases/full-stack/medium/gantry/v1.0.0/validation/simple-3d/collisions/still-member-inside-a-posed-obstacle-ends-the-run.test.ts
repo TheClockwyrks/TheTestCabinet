@@ -30,8 +30,8 @@ import { assertEqual } from "../assert";
 import { HOIST_START } from "../constants";
 import {
   addOneObstacle,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -65,7 +65,10 @@ afterEach(async () => {
 
 it("ends the run as structure-struck-obstacle with a member standing inside a posed block", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneObstacle(h, BLOCK_MIN, BLOCK_SIZE);
   await poseTape(h, LOWER);

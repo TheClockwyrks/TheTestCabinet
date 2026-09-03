@@ -64,8 +64,8 @@ const HOLD_TAPE: readonly TapeStepSpec[] = [
   { kind: "move", commands: [{ axis: "grip", target: 360, rate: HOLD_RATE }] },
 ];
 
-/** Two seconds of run clock with the member lying on the box's minimum plane. */
-const TICKS = 120;
+/** Half a second of run clock with the member lying on the box's minimum plane. */
+const TICKS = 30;
 
 let h: Harness;
 

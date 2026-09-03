@@ -32,7 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The two placements the history is built from. */
 const EDITS = [
@@ -61,7 +61,11 @@ afterEach(async () => {
 
 it("undoes to the structure the site opened with and then stops", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD AND THE STRUCTURE, rather than the whole world: a site opens with an
+  // empty tape (`specs/state.md`) and nothing here poses one, so the tape needs no
+  // clearing and the program screen is never visited.
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   for (const [a, b] of EDITS) {
     await h.debug.addMember(a.x, a.y, a.z, b.x, b.y, b.z, "strut");

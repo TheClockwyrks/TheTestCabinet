@@ -14,7 +14,10 @@
 // to the site list.
 //
 // THE TITLE'S OWN BED IS DRAINED FIRST, so a start that fell on the title screen
-// is not read back as the select screen's. What remains is either a source still
+// is not read back as the select screen's. Half a second of frames is what that
+// drain needs — the title bed is either already sounding when the harness resets
+// or it is not the title screen's — and the reading itself is a second, which is
+// a whole second of the site list showing for a bed to be under. What remains is either a source still
 // looping when the site list is showing or a source started while it shows, and
 // the reading is the union of the two: the specification asks for a bed under the
 // screen and fixes nothing about how a build makes one continuous, so a build
@@ -25,8 +28,11 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
 import { createHarness, ticks, type Harness } from "../harness";
 
-/** The stretch the bed is read across: two seconds of the game's own clock. */
-const STRETCH = ticks(2);
+/** The stretch the title's own bed is started and drained across. */
+const DRAIN = ticks(0.5);
+
+/** The stretch the select screen's bed is read across: one second of its clock. */
+const STRETCH = ticks(1);
 
 let h: Harness;
 
@@ -41,7 +47,7 @@ afterEach(async () => {
 it("sounds the produced music bed while the select screen shows", async () => {
   // A stretch on the title screen first, so a bed the build starts there is
   // started and drained rather than arriving inside the select screen's reading.
-  await h.advance(STRETCH);
+  await h.advance(DRAIN);
   await h.cues();
 
   await h.debug.setScreen("select");

@@ -36,8 +36,15 @@ import { createHarness, openSite, type Harness } from "../harness";
 /** The `zoom-in` action's binding, as `specs/controls.md` fixes it. */
 const ZOOM_IN = BINDINGS["zoom-in"][0]!;
 
-/** Frames the action is held for: one second, twenty units of zoom. */
-const FRAMES = TICK_HZ;
+/**
+ * Frames the action is held for: a quarter second, five units of zoom.
+ *
+ * The reading is an exact equality against the distance the site opening left, so
+ * any hold a conformant screen would have zoomed through decides the point. Five
+ * units is a quarter of the range between CAMERA_DIST_MIN and CAMERA_DIST_MAX;
+ * holding for the further three quarters of a second asks nothing further.
+ */
+const FRAMES = TICK_HZ / 4;
 
 let h: Harness;
 

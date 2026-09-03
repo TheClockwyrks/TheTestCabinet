@@ -18,14 +18,15 @@
 // opened: without that reading a build that never held the node at all would show
 // `null` afterwards and pass.
 //
-// The world is emptied first so nothing else is in flight, and `(0, 0, 0)` is a
-// ground anchor of site 0, inside its envelope.
+// The yard is emptied first so nothing else is in flight — the structure and the
+// tape are already the empty ones the harness's opening reset left — and
+// `(0, 0, 0)` is a ground anchor of site 0, inside its envelope.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertNull } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -49,7 +50,7 @@ afterEach(async () => {
 
 it("drops the pending node when a site is opened", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   await h.debug.setPendingNode(NODE.x, NODE.y, NODE.z);
   const posed = await h.snapshot();

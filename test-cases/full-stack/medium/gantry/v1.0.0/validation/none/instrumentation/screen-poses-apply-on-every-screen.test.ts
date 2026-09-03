@@ -26,8 +26,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull, assertTrue } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -67,15 +67,14 @@ afterEach(async () => {
 
 it("answers the screen and score poses from the run screen", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
-  await startRun(h);
-  assertEqual(
-    (await h.snapshot()).screen,
-    "run",
-    "the screen the poses are made from",
-  );
+  const started = await startRun(h);
+  assertEqual(started.screen, "run", "the screen the poses are made from");
 
   await h.debug.setCamera(CAMERA.yaw, CAMERA.pitch, CAMERA.dist);
   const camera = (await h.snapshot()).camera;

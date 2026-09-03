@@ -54,12 +54,13 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, it } from "vitest";
 import * as THREE from "three";
 import { assertNear, assertTrue, fail } from "../assert";
+import { LOAD_CLASS_DIMENSIONS, VOXELS_PER_UNIT } from "../constants";
 import {
-  LOAD_CLASS_DIMENSIONS,
-  STAGE_W,
-  VOXELS_PER_UNIT,
-} from "../constants";
-import { clearAll, createHarness, openSite, type Harness, type LoadPose } from "../harness";
+  createHarness,
+  openSite,
+  type Harness,
+  type LoadPose,
+} from "../harness";
 
 /** The build workspace: this suite is staged at `<workspace>/validation/assets/`. */
 const WORKSPACE = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -104,13 +105,27 @@ function transformOf(node: Record<string, unknown>): Matrix {
   const given = node.matrix as number[] | undefined;
   if (Array.isArray(given) && given.length === 16) return given;
   const [tx, ty, tz] = (node.translation as number[] | undefined) ?? [0, 0, 0];
-  const [qx, qy, qz, qw] = (node.rotation as number[] | undefined) ?? [0, 0, 0, 1];
+  const [qx, qy, qz, qw] = (node.rotation as number[] | undefined) ?? [
+    0, 0, 0, 1,
+  ];
   const [sx, sy, sz] = (node.scale as number[] | undefined) ?? [1, 1, 1];
   const rotation = [
-    1 - 2 * (qy! * qy! + qz! * qz!), 2 * (qx! * qy! + qz! * qw!), 2 * (qx! * qz! - qy! * qw!), 0,
-    2 * (qx! * qy! - qz! * qw!), 1 - 2 * (qx! * qx! + qz! * qz!), 2 * (qy! * qz! + qx! * qw!), 0,
-    2 * (qx! * qz! + qy! * qw!), 2 * (qy! * qz! - qx! * qw!), 1 - 2 * (qx! * qx! + qy! * qy!), 0,
-    0, 0, 0, 1,
+    1 - 2 * (qy! * qy! + qz! * qz!),
+    2 * (qx! * qy! + qz! * qw!),
+    2 * (qx! * qz! - qy! * qw!),
+    0,
+    2 * (qx! * qy! - qz! * qw!),
+    1 - 2 * (qx! * qx! + qz! * qz!),
+    2 * (qy! * qz! + qx! * qw!),
+    0,
+    2 * (qx! * qz! + qy! * qw!),
+    2 * (qy! * qz! - qx! * qw!),
+    1 - 2 * (qx! * qx! + qy! * qy!),
+    0,
+    0,
+    0,
+    0,
+    1,
   ];
   const scale = [sx!, 0, 0, 0, 0, sy!, 0, 0, 0, 0, sz!, 0, 0, 0, 0, 1];
   const translation = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, tx!, ty!, tz!, 1];
@@ -118,7 +133,10 @@ function transformOf(node: Record<string, unknown>): Matrix {
 }
 
 /** A point through a column-major 4x4. */
-function apply(m: Matrix, p: readonly [number, number, number]): [number, number, number] {
+function apply(
+  m: Matrix,
+  p: readonly [number, number, number],
+): [number, number, number] {
   return [
     m[0]! * p[0] + m[4]! * p[1] + m[8]! * p[2] + m[12]!,
     m[1]! * p[0] + m[5]! * p[1] + m[9]! * p[2] + m[13]!,
@@ -147,7 +165,7 @@ function meshExtent(path: string): { x: number; y: number; z: number } {
       bytes.length < 20
         ? `${bytes.length} bytes`
         : `a "${bytes.toString("latin1", 0, 4)}" file of version ` +
-          `${bytes.readUInt32LE(4)}`,
+            `${bytes.readUInt32LE(4)}`,
     );
   }
   const chunkLength = bytes.readUInt32LE(12);
@@ -176,8 +194,13 @@ function meshExtent(path: string): { x: number; y: number; z: number } {
     if (node === undefined) return;
     const world = times(parent, transformOf(node));
     const mesh = meshes[(node.mesh as number | undefined) ?? -1];
-    for (const primitive of ((mesh?.primitives ?? []) as Record<string, unknown>[])) {
-      const attributes = primitive.attributes as Record<string, number> | undefined;
+    for (const primitive of (mesh?.primitives ?? []) as Record<
+      string,
+      unknown
+    >[]) {
+      const attributes = primitive.attributes as
+        | Record<string, number>
+        | undefined;
       const accessor = accessors[attributes?.POSITION ?? -1];
       const min = accessor?.min as number[] | undefined;
       const max = accessor?.max as number[] | undefined;
@@ -201,9 +224,10 @@ function meshExtent(path: string): { x: number; y: number; z: number } {
         }
       }
     }
-    for (const child of ((node.children ?? []) as number[])) walk(child, world);
+    for (const child of (node.children ?? []) as number[]) walk(child, world);
   };
-  for (const root of roots) walk(root, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  for (const root of roots)
+    walk(root, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
   if (!Number.isFinite(lowest[0]) || !Number.isFinite(highest[0])) {
     fail(
@@ -266,8 +290,14 @@ function bodies(harness: Harness): Body[] {
     found.push({
       signature: [
         object.type,
-        box.min.toArray().map((one) => one.toFixed(4)).join(),
-        box.max.toArray().map((one) => one.toFixed(4)).join(),
+        box.min
+          .toArray()
+          .map((one) => one.toFixed(4))
+          .join(),
+        box.max
+          .toArray()
+          .map((one) => one.toFixed(4))
+          .join(),
       ].join("|"),
       box,
     });
@@ -290,7 +320,11 @@ it("draws a model at 1 / VOXELS_PER_UNIT of its sculpted extent", async () => {
   const center = new THREE.Vector3(pose.x, pose.y - size.y / 2, pose.z);
 
   await openSite(h, SITE);
-  await clearAll(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await h.advance(1);
   const bare = bodies(h);
 

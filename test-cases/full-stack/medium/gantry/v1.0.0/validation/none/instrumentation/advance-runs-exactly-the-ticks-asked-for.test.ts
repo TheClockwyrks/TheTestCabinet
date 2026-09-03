@@ -31,8 +31,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { GRIP_MAX_RATE, RUN_SPEEDS } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -52,8 +52,17 @@ const HOLD_TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** The sizes driven, in order: one frame, a handful, and a long block. */
-const BLOCKS = [1, 7, 120] as const;
+/**
+ * The sizes driven, in order: one frame, a handful, and a block.
+ *
+ * Three sizes rather than a long run of them, because what this decides is that
+ * a count is honoured exactly — one frame, a count that is neither one nor
+ * round, and a block of many — and a block of forty says that no more surely
+ * than a block of four hundred would. The tick the run stands at is checked
+ * after each, so a build that ran one frame too many or too few is caught on the
+ * size it got wrong.
+ */
+const BLOCKS = [1, 7, 40] as const;
 
 let h: Harness;
 
@@ -67,7 +76,7 @@ afterEach(async () => {
 
 it("runs exactly the ticks it is asked for, in order", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   const started = await startRun(h);

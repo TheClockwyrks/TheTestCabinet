@@ -45,16 +45,28 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** One short move: enough for a tape to run out and clear an empty yard. */
+/**
+ * The shortest move a tape can run out through: one degree of grip.
+ *
+ * A cleared run is this point's PRECONDITION and not the thing it decides — what
+ * it decides is what the two results entries do once the run is over. So the run
+ * is the cheapest one that reaches a verdict: an empty yard clears the moment the
+ * tape runs out, and a one-degree turn of the grip runs out in a quarter of a
+ * second. A longer move would put more of the axis controller on the route to a
+ * screen this point is about, which is another item's requirement.
+ */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 30, rate: GRIP_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: 1, rate: GRIP_MAX_RATE }],
+  },
 ];
 
 /** A camera pose that is none of the three start figures. */
 const POSED_CAMERA = { yaw: 210, pitch: 65, dist: 22 };
 
-/** Ticks the run is given to reach its verdict. */
-const END_CAP = 600;
+/** Ticks the run is given to reach its verdict: many times the move's own. */
+const END_CAP = 60;
 
 /** The key `confirm` is bound to (`specs/controls.md`). */
 const CONFIRM = BINDINGS.confirm[0] as string;

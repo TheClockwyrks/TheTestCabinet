@@ -24,8 +24,8 @@ import {
   STRUT_CAP_TENSION,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -142,15 +142,21 @@ afterEach(async () => {
 
 it("scores a member in tension against its own material's tension capacity", async () => {
   await openSite(h, 0);
+  // The yard once, rather than once per crane: `poseCrane` empties the structure
+  // itself before it builds, and the loads and obstacles neither crane concerns
+  // do not come back between the two poses.
+  await emptyYard(h);
 
   const seen: Record<MaterialName, number> = { strut: 0, cable: 0, rail: 0 };
 
   const score = async (design: CraneDesign) => {
-    await clearAll(h);
     await poseCrane(h, design);
     const { structure } = await h.snapshot();
     const result = await h.check();
-    assertTrue(result.stable, `the ${design.name} stands, so the check solves it`);
+    assertTrue(
+      result.stable,
+      `the ${design.name} stands, so the check solves it`,
+    );
     const byId = new Map(structure.members.map((m) => [m.id, m]));
     for (const reading of result.members) {
       const member = byId.get(reading.id);

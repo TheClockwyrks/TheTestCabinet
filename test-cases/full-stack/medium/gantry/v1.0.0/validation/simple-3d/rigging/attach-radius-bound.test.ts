@@ -34,8 +34,8 @@ import {
 } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -86,7 +86,7 @@ afterEach(async () => {
 
 it("takes a waiting load standing exactly ATTACH_RADIUS from the hook", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, LOAD_AT, LOAD_AT);
   await poseTape(h, [NOOP, ATTACH, HOLD]);

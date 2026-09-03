@@ -16,8 +16,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertLength } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -39,7 +39,7 @@ afterEach(async () => {
 
 it("places a counterweight on the node a member ends at", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   await h.debug.addMember(
     FOOT.x,

@@ -26,8 +26,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -51,7 +51,7 @@ afterEach(async () => {
 
 it("places the ring and leaves the pending node held", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setPendingNode(PENDING.x, PENDING.y, PENDING.z);
   assertNotNull(
     (await h.snapshot()).pendingNode,

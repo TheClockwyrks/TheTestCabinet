@@ -13,7 +13,14 @@
 // `HOIST_MAX_RATE * dt` (`0.067`) in a tick, so a build that constrained the bob
 // to the length it had at the top of the tick stands tens of thousands of
 // tolerances away, and the sampling below insists on that gap being present on
-// nearly every tick it reads.
+// EVERY tick it reads.
+//
+// THE MOVE'S FIRST TICKS ARE DRIVEN THROUGH RATHER THAN SAMPLED. A move starts
+// from rest and accelerates at `HOIST_ACCEL` (`6`), so its opening ticks cover
+// less than the gap that discriminates. Those ticks decide nothing here, so they
+// are advanced in one block; the sampling starts once the axis is at a rate that
+// separates this tick's cable length from the last's, and every sampled tick then
+// has to show it.
 //
 // THE MOVE PAYS THE CABLE OUT, from `HOIST_START` (`2`) toward `3.5`, and stops
 // short of the move's end so every sampled tick is one the axis is moving on. The
@@ -22,8 +29,8 @@
 // not about (`specs/statics.md`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, assertNear } from "../assert";
-import { HOIST_MAX_RATE, HOIST_START } from "../constants";
+import { assertEqual, assertNear } from "../assert";
+import { HOIST_MAX_RATE } from "../constants";
 import {
   clearAll,
   createHarness,
@@ -45,15 +52,18 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks sampled: inside the move, which takes about 42 of them. */
-const TICKS = 35;
-
 /**
- * How many of them must have moved the axis by that much for the reading to
- * discriminate. The move's first ticks are still accelerating out of rest and
- * cover less, so this is short of the ticks sampled by a small margin.
+ * Ticks driven, unsampled, to get the axis out of its opening ramp.
+ *
+ * `specs/program.md` accelerates an axis at `HOIST_ACCEL` (`6`) per second, so
+ * after fifteen ticks the hoist runs at `1.5` units a second and every tick from
+ * here covers at least `0.025` — two and a half times `STEP`, whichever order a
+ * build updates the rate and the value in.
  */
-const MOVING_TICKS = 25;
+const RAMP = 15;
+
+/** Ticks sampled one at a time, all of them inside the move, which takes 60. */
+const TICKS = 12;
 
 /** A tick of hoist motion worth telling apart from a tick of none. */
 const STEP = 0.01;
@@ -78,7 +88,14 @@ it("holds the bob at the hoist value that tick's own motion left", async () => {
   await poseTape(h, TAPE);
   await startRun(h);
 
-  let previous = HOIST_START;
+  const ramped = await runTicks(h, RAMP);
+  assertEqual(
+    ramped.run.phase,
+    "running",
+    `the run after ${RAMP} ticks of the hoist move the sampling reads`,
+  );
+
+  let previous = ramped.run.axes.hoist.value;
   let moved = 0;
   for (let tick = 1; tick <= TICKS; tick += 1) {
     const { run } = await runTicks(h, 1);
@@ -97,9 +114,9 @@ it("holds the bob at the hoist value that tick's own motion left", async () => {
 
   await h.capture("hoist", "The bob drawn in through a hoist move");
 
-  assertGreaterThanOrEqual(
+  assertEqual(
     moved,
-    MOVING_TICKS,
+    TICKS,
     `the sampled ticks that moved the hoist by at least ${STEP}, on which ` +
       "this tick's cable length and the tick before's differ by far more " +
       "than the tolerance (specs/program.md)",

@@ -22,7 +22,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START, TICK_HZ } from "../constants";
 import {
-  clearAll,
   createHarness,
   emptyYard,
   openSite,
@@ -129,7 +128,9 @@ afterEach(async () => {
 
 it("runs the tape out when every corner is inside RING_CAP", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The yard alone: `poseCrane` empties the structure it stands and a site opened
+  // after a reset carries an empty tape, so clearing either again would drive
+  // surface this requirement does not concern.
   await emptyYard(h);
   await poseCrane(h, RIG);
   await h.debug.addCounterweight(WEIGHTED[0], WEIGHTED[1], WEIGHTED[2]);

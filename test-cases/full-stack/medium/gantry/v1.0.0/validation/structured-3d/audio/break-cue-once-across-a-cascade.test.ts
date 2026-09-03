@@ -26,6 +26,13 @@
 // Both ticks end the run the same way, so the only difference between them is the
 // number of passes their breakage took.
 //
+// BOTH TICKS ARE DRIVEN IN ONE PAGE. `openSite` "carries the effects
+// `specs/state.md` states for opening a site" — the run back to its idle
+// placeholder, the yard refilled — and `clearAll` empties the yard, the structure
+// and the tape after it, so the second crane is posed into the same world the
+// first was and nothing of the first run is standing when it runs. A second
+// browser page would buy nothing but the second page.
+//
 // AND IT COMPARES COUNTS RATHER THAN COUNTING. A build is free to make its snap
 // out of two layers over the same decoded buffer, which the probe sees as two
 // starts of one cue (validation/none/cues-init.js), so "exactly once" is not
@@ -156,7 +163,11 @@ async function breakUnder(
 
   for (let tick = 1; tick < BREAK_AT; tick += 1) {
     const s = await runTicks(harness, 1);
-    assertEqual(s.run.phase, "running", `the run still running at tick ${tick}`);
+    assertEqual(
+      s.run.phase,
+      "running",
+      `the run still running at tick ${tick}`,
+    );
     assertEqual(
       s.run.broken.length,
       0,
@@ -206,13 +217,7 @@ it("sounds break no more on a cascading tick than on a single-pass one", async (
   );
   await h.capture("one-snap", "The tick whose breakage cascaded");
 
-  const single = await createHarness();
-  let once: Breakage;
-  try {
-    once = await breakUnder(single, MINIMAL_CRANE, SINGLE_MASS);
-  } finally {
-    await single.dispose();
-  }
+  const once = await breakUnder(h, MINIMAL_CRANE, SINGLE_MASS);
   assertEqual(
     once.broken.length,
     1,

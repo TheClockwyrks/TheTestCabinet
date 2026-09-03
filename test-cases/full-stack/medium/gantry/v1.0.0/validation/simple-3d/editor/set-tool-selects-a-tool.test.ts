@@ -23,8 +23,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Tool,
@@ -52,7 +52,7 @@ afterEach(async () => {
 
 it("selects each of the six build tools in turn", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   assertEqual(
     (await h.snapshot()).tool,

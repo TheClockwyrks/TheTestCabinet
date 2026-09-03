@@ -12,13 +12,27 @@
 // authored state".
 //
 // The scenario reads the same crane's forces before and after a run that leaves
-// the axes far from the run-start posture. `MINIMAL_CRANE` is the crane, and it
+// the axes away from the run-start posture. `MINIMAL_CRANE` is the crane, and it
 // is asymmetric about the slew axis through `(1, ·, 1)` — the arm's mast stands
 // at `(0, 8, 0)` and its track runs out to `(4, 4, 0)` — so where the arm is
-// pointed genuinely changes what its members carry, and a check solved at a slew
-// of `90` would read visibly different forces from one solved at `0`. The tape
-// slews the arm a quarter turn and runs the trolley two units out along its
+// pointed genuinely changes what its members carry, and a check solved at a
+// slewed, run-out posture reads different forces from one solved at the
+// run-start posture. The tape slews the arm and runs the trolley out along its
 // four-unit track, and the run is driven until it ends.
+//
+// THE SLEW IS FIVE DEGREES RATHER THAN NINETY. What the point turns on is that
+// the check ignores WHERE the finished run left the axes, and any posture that is
+// not the run-start one says that: the two solves are the same computation, so a
+// build that solved at the run's posture instead differs by the whole effect of
+// the arm having moved and of the trolley standing off its origin, which the
+// `1e-9` tolerance below separates from equality by many orders of magnitude.
+// Ninety degrees would spend four seconds of run clock reaching a reading five
+// already gives.
+//
+// THE RUN IS CARRIED IN ONE BATCH AND THEN SWEPT. Nothing between the start and
+// the end of the run is read — the two force lists are read off the CHECK, on
+// the build screen, either side of it — so the ticks in between are driven
+// rather than sampled.
 //
 // The yard is emptied first, so what the run carries out is the tape's motion
 // and nothing else: with no load to attach there is no rigging to reach a
@@ -33,10 +47,11 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual, assertGreaterThan } from "../assert";
 import { SLEW_MAX_RATE, TROLLEY_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
+  runTicks,
   runUntil,
   standMinimalCrane,
   startRun,
@@ -44,25 +59,40 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
+/** Where the arm is left: a posture no symmetry maps back onto `0`. */
+const SLEW_TARGET = 5;
+
 /**
- * A quarter turn of the arm and two units of trolley travel, in one move step.
- *
- * `90` degrees is a posture no symmetry maps back onto `0` for this crane, and
- * `2` is inside the four-unit track the minimal crane's single rail forms
- * (specs/program.md: the trolley's range is "`0` to the track length").
+ * How far out the trolley is left: inside the four-unit track the minimal
+ * crane's single rail forms (specs/program.md: the trolley's range is "`0` to
+ * the track length"), and clear of the `0` the run started it at.
  */
+const TROLLEY_TARGET = 1.2;
+
+/** A slew of the arm and a run of the trolley, together in one move step. */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "slew", target: 90, rate: SLEW_MAX_RATE },
-      { axis: "trolley", target: 2, rate: TROLLEY_MAX_RATE },
+      { axis: "slew", target: SLEW_TARGET, rate: SLEW_MAX_RATE },
+      { axis: "trolley", target: TROLLEY_TARGET, rate: TROLLEY_MAX_RATE },
     ],
   },
 ];
 
-/** Comfortably past the four seconds the slew command takes at `SLEW_MAX_RATE`. */
-const RUN_CAP = 1200;
+/**
+ * Ticks driven in one batch before the sweep begins.
+ *
+ * The trolley is the slower of the two: `TROLLEY_TARGET` units under
+ * `TROLLEY_ACCEL` is a ramp up and straight back down over
+ * `2 * sqrt(TROLLEY_TARGET / TROLLEY_ACCEL)` seconds — some sixty-six ticks —
+ * against the slew's `2 * sqrt(SLEW_TARGET / SLEW_ACCEL)`, some forty-nine. So
+ * fifty-eight is short of the tape running out on any conformant build.
+ */
+const CARRY = 58;
+
+/** Ticks the sweep is given after that, for the run to end. */
+const RUN_CAP = 120;
 
 /** A float round trip through the page, and nothing else: the solve is the same one. */
 const TOLERANCE = 1e-9;
@@ -79,13 +109,17 @@ afterEach(async () => {
 
 it("reads the same forces after a run that ended with the arm slewed and the trolley out", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
 
   const before = (await h.check()).members;
 
   await poseTape(h, TAPE);
   await startRun(h);
+  await runTicks(h, CARRY);
   const ended = await runUntil(
     h,
     (s) => s.run.phase !== "running",

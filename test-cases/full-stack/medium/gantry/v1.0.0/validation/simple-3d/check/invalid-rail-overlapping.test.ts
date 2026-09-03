@@ -22,33 +22,31 @@
 // (specs/structure.md § The editor's rules, "a member already joins the same two
 // nodes") does not refuse the second: overlapping in space is not joining the
 // same nodes, which is why this is a readiness rule at all.
+//
+// THE STRUCTURE IS THE RING AND THE TWO RAILS AND NOTHING ELSE. The issue is
+// raised of a crane that "has a ring and rail members", so those are what the
+// scenario stands; each rail ends at a flange node, so `disconnected-members` has
+// nothing to say either. A tower under it would be surface this point does not
+// decide, and every editor rule a tower can trip on belongs to another validator.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains } from "../assert";
 import {
-  MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
-  type DesignMember,
   type Harness,
 } from "../harness";
 
-/** The minimal crane's braced tower: every member of it ends at or below `y = 2`. */
-const TOWER: readonly DesignMember[] = MINIMAL_CRANE.members.filter(
-  ([a, b]) => a[1] <= 2 && b[1] <= 2,
-);
-
-/** Two collinear rails covering the stretch from `x = 2` to `x = 4` twice. */
+/** A ring, and two collinear rails covering the stretch from `x = 2` to `x = 4` twice. */
 const OVERLAPPING_TRACK: CraneDesign = {
   site: 0,
   name: "Overlapping track",
   ring: [0, 2, 0],
   counterweights: [],
   members: [
-    ...TOWER,
     [[0, 4, 0], [4, 4, 0], "rail"],
     [[2, 4, 0], [6, 4, 0], "rail"],
   ],
@@ -67,7 +65,7 @@ afterEach(async () => {
 
 it("raises invalid-rail for two collinear rails whose spans overlap", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, OVERLAPPING_TRACK);
 
   const { issues } = await h.check();

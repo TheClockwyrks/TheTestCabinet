@@ -29,8 +29,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { BINDINGS } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runUntil,
@@ -63,7 +63,11 @@ afterEach(async () => {
 
 it("returns to the build screen from a run that has already ended", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The yard is emptied and nothing else is. A site opened after a reset
+  // carries an empty structure and an empty tape (specs/state.md), and the
+  // crane and the tape below are posed onto them; clearing either again would
+  // drive surface this requirement does not concern.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, MISS_TAPE);
   await startRun(h);

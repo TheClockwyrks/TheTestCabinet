@@ -20,8 +20,11 @@
 // stands at `(0, 2, 0)`, whose `y` is not `0`, "since the ring sits on a tower, not
 // on the ground"; the member runs from the ground anchor below it to its
 // bottom-flange node, joining tower to tower; and the counterweight sits on `(0, 0,
-// 0)`, "a node a member ends at". The yard is emptied first, so nothing standing in
-// it can refuse a placement. What the tape stores is its own point.
+// 0)`, "a node a member ends at". The YARD is emptied first, so nothing standing
+// in it can refuse a placement — "a member placement is refused when its segment
+// reaches inside an obstacle" (`specs/structure.md`) — and nothing else is
+// cleared, because a site of a game that has just been reset carries nothing
+// built. What the tape stores is its own point.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -30,7 +33,7 @@ import {
   assertNotNull,
   assertNull,
 } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** Two sites, so a build that emptied only the open one is caught. */
 const SITES_BUILT = [0, 2] as const;
@@ -54,7 +57,7 @@ afterEach(async () => {
 it("empties the structure stored on every site", async () => {
   for (const site of SITES_BUILT) {
     await openSite(h, site);
-    await clearAll(h);
+    await emptyYard(h);
     await h.debug.setRing(RING.x, RING.y, RING.z);
     await h.debug.addMember(
       FOOT.x,

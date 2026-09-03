@@ -7,19 +7,28 @@
 // `-omega^2 * r`; what a cruising tick does not carry is the tangential
 // `-alpha * (k x r)`.
 //
-// THE CRUISING TICK IS FOUND FROM THE AXIS ITSELF: the run is driven a tick at a
-// time and the first tick that left the rate exactly where it found it, with the
-// rate at the commanded figure and the command still live, is the reading. That
-// is the clamp's own signature — the drive term computed `v + s * a * dt` and the
-// clamp gave back `v`.
+// THE CRUISING TICK IS FOUND FROM THE AXIS ITSELF: the first tick that left the
+// rate exactly where it found it, with the rate at the commanded figure and the
+// command still live, is the reading. That is the clamp's own signature — the
+// drive term computed `v + s * a * dt` and the clamp gave back `v`.
 //
-// The move is a half turn at the slew's max rate, so the axis climbs to
-// `SLEW_MAX_RATE` in a second and then cruises for several more, with the
-// centripetal term at its largest — which is the term this reading has to see
-// through. The figure is recovered from the tick's own member forces at the rail
-// tip, where the node equilibrium makes the tangential part separable from the
-// centripetal one exactly, and a build that reported the drive term on a cruising
-// tick lands `30` from what this asserts.
+// THE RATE IS POSED RATHER THAN RAMPED UP TO. The move is a half turn at the
+// slew's max rate, and the ramp to that rate is a second of run clock this point
+// is not about: `setAxisRate` "poses a precondition like every other pose rather
+// than an outcome ... Posing a rate onto an axis that is under a command sets
+// what that axis is doing as the controller next reads it"
+// (`specs/instrumentation.md`). So the axis is put AT the commanded rate, which
+// is the precondition a cruising tick needs, and the cruising tick itself is
+// still earned: the controller computes `v + s * a * dt` on the next tick and its
+// own clamp is what gives `v` back. The target stays half a turn away, far
+// outside the braking distance `v * v / (2 * a)` of `15` degrees, so the tick the
+// sweep finds is a clamped drive and not a brake or an arrival.
+//
+// The centripetal term is at its largest at this rate — which is the term this
+// reading has to see through. The figure is recovered from the tick's own member
+// forces at the rail tip, where the node equilibrium makes the tangential part
+// separable from the centripetal one exactly, and a build that reported the drive
+// term on a cruising tick lands `30` from what this asserts.
 //
 // The yard is emptied so nothing hangs on the hook, and the minimal crane is the
 // crane the NODE comment describes.
@@ -31,7 +40,6 @@ import {
   RAIL_MASS_PER_UNIT,
   SLEW_MAX_RATE,
   STRUT_MASS_PER_UNIT,
-  TICK_HZ,
 } from "../constants";
 import {
   clearAll,
@@ -195,8 +203,14 @@ afterEach(async () => {
 /** Far enough that the axis is still cruising when the sweep finds its tick. */
 const TARGET = 180;
 
-/** Well past the ticks the climb to the commanded rate takes. */
-const CAP = 5 * TICK_HZ;
+/**
+ * Ticks the sweep is given to find the cruising tick.
+ *
+ * With the rate posed at the commanded figure the very next tick cruises, so this
+ * is slack rather than a budget: a build whose `setAxisRate` did not take, or
+ * whose clamp never leaves `v` alone, is what runs it out.
+ */
+const CAP = 20;
 
 it("builds a cruising tick's inertial loads from an acceleration of zero", async () => {
   await openSite(h, 0);
@@ -208,9 +222,23 @@ it("builds a cruising tick's inertial loads from an acceleration of zero", async
       commands: [{ axis: "slew", target: TARGET, rate: SLEW_MAX_RATE }],
     },
   ]);
-  const started = await startRun(h);
+  await startRun(h);
 
-  let was = started.run.axes.slew.rate;
+  // The first tick takes the move step and issues its command, so from here the
+  // slew is an axis under a live command — which is the state `setAxisRate` poses
+  // onto.
+  await runTicks(h, 1);
+  await h.debug.setAxisRate("slew", SLEW_MAX_RATE);
+  const posed = await h.snapshot();
+  assertNear(
+    posed.run.axes.slew.rate,
+    SLEW_MAX_RATE,
+    1e-9,
+    "the slew's rate once it is posed at the commanded figure, which is the " +
+      "precondition a cruising tick needs (specs/instrumentation.md)",
+  );
+
+  let was = posed.run.axes.slew.rate;
   let cruising: GantrySnapshot | null = null;
   for (let tick = 1; tick <= CAP && cruising === null; tick += 1) {
     const state = await runTicks(h, 1);
@@ -225,7 +253,8 @@ it("builds a cruising tick's inertial loads from an acceleration of zero", async
   if (cruising === null) {
     fail(
       `a tick of the move to ${TARGET} degrees whose slew rate the clamp left ` +
-        `as it was, within ${CAP} ticks (specs/program.md)`,
+        `as it was, within ${CAP} ticks of the rate being posed at ` +
+        `${SLEW_MAX_RATE} (specs/program.md)`,
       "no tick cruised",
     );
   }

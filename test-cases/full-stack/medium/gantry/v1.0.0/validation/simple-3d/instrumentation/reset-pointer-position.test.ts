@@ -22,7 +22,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** A stage position with neither coordinate at the origin. */
 const AT = { x: 200, y: 140 };
@@ -42,7 +42,8 @@ afterEach(async () => {
 
 it("returns the pointer position to the origin", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.pointerMove(AT.x, AT.y);
   await h.advance(1);
   const moved = (await h.snapshot()).pointer;

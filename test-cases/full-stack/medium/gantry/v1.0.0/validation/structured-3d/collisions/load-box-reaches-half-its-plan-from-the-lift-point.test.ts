@@ -22,6 +22,11 @@
 // unit strictly inside it. Its `y 0.5..2.5` and `z -1..1` overlap the block's on
 // both remaining axes, so the run ends.
 //
+// THE YARD HOLDS THIS SCENARIO AND NOTHING ELSE. `addOneLoad` clears the site's
+// loads before it adds its own, `addOneObstacle` clears its obstacles, and
+// `standMinimalCrane` empties the structure before it poses one, so nothing the
+// site was authored with is standing when the run starts.
+//
 // AND IT IS THE OBSTACLE THAT ENDS IT. The box's bottom face stands at `y 0.5`,
 // clear of the ground. The block stands wholly at `x < 0` and every part of the
 // crane at `x >= 0`, so no member's segment reaches inside it; the tape turns the
@@ -34,7 +39,6 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import {
   addOneLoad,
   addOneObstacle,
-  clearAll,
   createHarness,
   openSite,
   poseTape,
@@ -73,7 +77,6 @@ afterEach(async () => {
 
 it("ends the run for a crate whose lift point clears an obstacle and whose side does not", async () => {
   await openSite(h, 0);
-  await clearAll(h);
   await standMinimalCrane(h);
   await addOneLoad(
     h,

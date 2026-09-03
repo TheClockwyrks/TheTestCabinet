@@ -39,8 +39,8 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { assertTrue, fail } from "../assert";
 import { SLEW_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -58,8 +58,16 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks into the run, so every member has been solved and coloured. */
-const SETTLE = 30;
+/**
+ * Ticks into the run, so every member has been solved and coloured.
+ *
+ * TWO, BECAUSE THE SOLVE IS THE RUN'S FIRST. `run.forces` "is empty until a
+ * run's first solve" (specs/instrumentation.md), which the first tick runs, and
+ * the second tick is there for a build that draws the solve the tick before it
+ * reached. The legend is a fixture of the run screen rather than of any
+ * particular tick, so nothing later in the run is what this reads.
+ */
+const SETTLE = 2;
 
 /** What a run of pixels has to do to read as a ramp. */
 const MIN_LENGTH = 48;
@@ -187,7 +195,7 @@ async function longestRamp(harness: Harness): Promise<Ramp | null> {
 
 it("draws the utilization ramp as a legend on the run screen", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);

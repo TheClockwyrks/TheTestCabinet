@@ -21,8 +21,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -61,7 +61,7 @@ afterEach(async () => {
 
 it("raises invalid-rail for two rails lying on two different lines", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, TWO_LINES);
 
   const { issues } = await h.check();

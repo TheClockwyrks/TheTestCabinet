@@ -18,6 +18,13 @@
 // and a yard holding no load has every load placed vacuously. `500` is well
 // under that crane's cost and `5` seconds well over that tape's run, both of
 // which the check reads back before it decides.
+//
+// THE RUN IS DRIVEN IN BATCHES, not a tick at a time. Nothing here is about the
+// tick the clear lands on — what is read is the record afterwards, and
+// `specs/state.md` leaves a finished run "as it ended until the next one starts",
+// so its clock and its verdict are the same figures however many frames run past
+// the end. `MAX_TICKS` is still the ceiling on a run that never ends, and a run
+// that has not ended by then fails the phase reading below.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -29,11 +36,11 @@ import {
 } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
-  runUntil,
+  runTicks,
   standMinimalCrane,
   startRun,
   type Harness,
@@ -52,6 +59,9 @@ const TAPE: readonly TapeStepSpec[] = [
 ];
 
 const MAX_TICKS = 600;
+
+/** Frames driven per crossing while the run plays out. */
+const BATCH = 60;
 
 /** The standing record: cheaper than the crane below, and slower than its run. */
 const KEPT_COST = 500;
@@ -72,7 +82,7 @@ afterEach(async () => {
 
 it("leaves a cheaper record standing when a costlier clear beats it on time", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await h.debug.setBest(SITE, KEPT_COST, KEPT_TIME);
@@ -85,18 +95,17 @@ it("leaves a cheaper record standing when a costlier clear beats it on time", as
       "standing on the record",
   );
 
-  await startRun(h);
-  const ended = await runUntil(
-    h,
-    (s) => s.run.phase !== "running",
-    MAX_TICKS,
-    "the run to end",
-  );
+  let ended = await startRun(h);
+  let driven = 0;
+  while (ended.run.phase === "running" && driven < MAX_TICKS) {
+    ended = await runTicks(h, BATCH);
+    driven += BATCH;
+  }
   assertEqual(
     ended.run.phase,
     "cleared",
-    "the run to end cleared, its tape spent with no load left unplaced " +
-      "(specs/program.md)",
+    `the run to end cleared within ${MAX_TICKS} ticks, its tape spent with ` +
+      "no load left unplaced (specs/program.md)",
   );
   assertLessThan(
     ended.run.time,

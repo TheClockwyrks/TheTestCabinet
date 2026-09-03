@@ -8,18 +8,31 @@
 // reported acceleration is `-SLEW_ACCEL`: the arm's tangential inertial load
 // reverses while the arm is still turning forward.
 //
-// THE BRAKING TICK IS FOUND FROM THE AXIS ITSELF, not from a tick number. The
-// run is driven a tick at a time and the first tick whose rate fell while the
-// command was still live is the reading: the rate falling is what the brake
-// branch does (`v = v - s * a * dt`), and the arrival tick is excluded because
-// arrival sets the rate to `0` whatever the tick did on the way in.
+// THE BRAKING TICK IS POSED UP TO ITS EDGE AND THEN EARNED. The move is
+// `TARGET` degrees at the slew's max rate; the run's first tick takes the step
+// and issues the command, and the axis is then given a rate through the surface
+// — `setAxisRate` "poses a precondition like every other pose rather than an
+// outcome ... Posing a rate onto an axis that is under a command sets what that
+// axis is doing as the controller next reads it" (specs/instrumentation.md). At
+// `BRAKE_FROM` degrees a second the axis needs `BRAKE_FROM^2 / (2 *
+// SLEW_ACCEL)` degrees to stop, which is more than the `TARGET` still to go, so
+// the very next tick lands in the brake branch. Nothing about the branch is
+// posed: the build decides `v * s > 0`, decides `|d| <= v * v / (2 * a)`, and
+// computes the acceleration the tick's inertial loads carry. The rate the
+// reading is taken at is the rate the axis would have reached anyway — a
+// ten-degree move peaks near it — so the arithmetic below reads the same
+// magnitudes it always did, and the ramp up to it, which belongs to another
+// point, is no longer in front of this one.
 //
-// The move is `10` degrees at the slew's max rate, which is short enough that the
-// controller is braking within about half a second of run clock and long enough
-// that it accelerates first. The figure is read back out of the tick's own member
-// forces at the rail tip, where the node equilibrium specs/statics.md solves
-// makes it recoverable exactly; a build reporting `0` or `+SLEW_ACCEL` lands `30`
-// away from what this asserts.
+// THE BRAKING TICK IS CONFIRMED FROM THE AXIS ITSELF, not assumed: the reading
+// is taken only where the rate fell while the command was still live, which is
+// what the brake branch does (`v = v - s * a * dt`), and arrival is excluded
+// because it sets the rate to `0` whatever the tick did on the way in.
+//
+// The figure is read back out of the tick's own member forces at the rail tip,
+// where the node equilibrium specs/statics.md solves makes it recoverable
+// exactly; a build reporting `0` or `+SLEW_ACCEL` lands `30` away from what
+// this asserts.
 //
 // The yard is emptied so nothing hangs on the hook, and the minimal crane is the
 // crane the NODE comment describes.
@@ -32,7 +45,6 @@ import {
   SLEW_ACCEL,
   SLEW_MAX_RATE,
   STRUT_MASS_PER_UNIT,
-  TICK_HZ,
 } from "../constants";
 import {
   clearAll,
@@ -193,11 +205,18 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Short enough that the controller is braking within half a second. */
-const TARGET = 10;
+/** Short enough that a posed rate leaves the axis with no room to stop in. */
+const TARGET = 2;
 
-/** Well past the ticks the move takes to reach its braking phase. */
-const CAP = 5 * TICK_HZ;
+/**
+ * The rate the axis is posed at, one tick into its move.
+ *
+ * `BRAKE_FROM^2 / (2 * SLEW_ACCEL)` is `2.4` degrees of stopping distance
+ * against the `2` still to go, so the controller has to brake; and it is about
+ * the rate a short move under `SLEW_ACCEL` peaks at anyway, so the centripetal
+ * term the recovery below divides out is the size it always was.
+ */
+const BRAKE_FROM = 12;
 
 it("builds the tick's inertial loads from -SLEW_ACCEL on a braking tick", async () => {
   await openSite(h, 0);
@@ -209,29 +228,36 @@ it("builds the tick's inertial loads from -SLEW_ACCEL on a braking tick", async 
       commands: [{ axis: "slew", target: TARGET, rate: SLEW_MAX_RATE }],
     },
   ]);
-  const started = await startRun(h);
+  await startRun(h);
 
-  let was = started.run.axes.slew.rate;
-  let braking: GantrySnapshot | null = null;
-  for (let tick = 1; tick <= CAP && braking === null; tick += 1) {
-    const state = await runTicks(h, 1);
-    const now = state.run.axes.slew;
-    // A braking tick: the rate fell, and the command is still live, so this is
-    // not the arrival tick that sets the rate to 0.
-    if (now.command !== null && now.rate < was - 1e-12) braking = state;
-    was = now.rate;
-  }
-  if (braking === null) {
+  // The run's first tick takes the step and issues its command to the axis.
+  const commanded = await runTicks(h, 1);
+  if (commanded.run.axes.slew.command === null) {
     fail(
-      `a tick of the move to ${TARGET} degrees whose slew rate fell under a ` +
-        `live command, within ${CAP} ticks (specs/program.md)`,
-      "no tick braked",
+      "the run's first tick to take the tape's move step and issue its slew " +
+        "command (specs/program.md)",
+      "the axis carries no command",
+    );
+  }
+
+  // A braking tick: the rate fell, and the command is still live, so this is
+  // not the arrival tick that sets the rate to 0.
+  await h.debug.setAxisRate("slew", BRAKE_FROM);
+  const braking: GantrySnapshot = await runTicks(h, 1);
+  const now = braking.run.axes.slew;
+  if (now.command === null || !(now.rate < BRAKE_FROM - 1e-12)) {
+    fail(
+      `the tick after the slew was posed at ${BRAKE_FROM} degrees a second, ` +
+        `with ${TARGET} degrees to go, to brake under a live command: ` +
+        "|d| <= v * v / (2 * a) holds (specs/program.md)",
+      `the axis reports rate ${now.rate} and ` +
+        `${now.command === null ? "no command" : "a live command"}`,
     );
   }
 
   await h.capture("state", "The arm on a braking tick of a slew move");
 
-  const tick = braking as GantrySnapshot;
+  const tick = braking;
   assertGreaterThan(
     tick.run.axes.slew.rate,
     0,

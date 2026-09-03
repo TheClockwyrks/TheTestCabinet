@@ -15,7 +15,18 @@
 // Axis motion says "is done on the tick it is issued". That is one tick either
 // way, so the two runs stay in lock step and every tick of one lines up with the
 // same tick of the other. The bob's path is then compared tick for tick across the
-// lift and the two seconds that follow it.
+// lift and the swing that follows it.
+//
+// THE COMPARISON RUNS AS FAR AS THE LIFT REACHES AND NO FURTHER. `WATCHED` (`30`)
+// ticks is a quarter of this pendulum's period — a cable of `HOIST_MIN` under
+// `GRAVITY` swings at `sqrt(g / L)`, so half a second carries the bob from the
+// extreme it is released at down to the bottom of its swing, where it is moving
+// fastest. That is the whole span in which an attach could show: the lift is one
+// tick, the pendulum tick reads no mass, and a swing that shed or gained velocity
+// at the lift diverges by whole units within a few ticks against a tolerance of
+// `1e-9`. Ticks beyond it compare two pendulums to each other rather than
+// comparing anything to the attach, which is a different requirement and another
+// validator's.
 //
 // THE BOB IS POSED SWINGING, because a bob hanging still would carry on unchanged
 // whatever a build did to its velocity. `setBob` "puts the bob where it is asked
@@ -60,8 +71,8 @@ const CABLE = HOIST_MIN;
 /** The bob, one cable length from the pivot and well off the vertical. */
 const BOB: Vec3 = { x: 0.6 * CABLE, y: PIVOT.y - 0.8 * CABLE, z: 0 };
 
-/** Ticks of swing compared, from the lift's own tick onward: two seconds. */
-const WATCHED = 120;
+/** Ticks of swing compared, from the lift's own tick onward: a quarter period. */
+const WATCHED = 30;
 
 /**
  * How close two swings of the same pendulum have to come.

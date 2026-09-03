@@ -11,11 +11,21 @@
 // at".
 //
 // THE RUN GENUINELY CARRIES THE LOAD AWAY before either reading is taken: the
-// tape pays the cable in, attaches the crate, and turns the arm, and the check
+// trolley drives out along the track, the pivot goes with it, and the check
 // sweeps until the load's run position has left where it stands in the yard. A
 // build that moved the yard's own copy as it carried the load would be caught by
 // the first reading; one that started the next run from where the last one left
 // off would be caught by the second.
+//
+// THE HOOK IS POSED ONTO THE CRATE RATHER THAN LOWERED ONTO IT. Reaching the load
+// by paying the cable in and running an `attach` would put the hoist controller
+// and the candidate search on the route to a scenario that is about neither of
+// them — a build that missed the attach would fail this point for a defect two
+// other validators already name. So the cable is set to `HOIST_MIN`, the bob is
+// put at the crate's own lift point at rest, and `setLoadPhase` hangs it there,
+// which `specs/instrumentation.md` says leaves the load "exactly as a successful
+// `attach` leaves it". That is the precondition; the CARRYING is still earned,
+// tick by tick, by the trolley move the tape holds.
 //
 // THE RUN IS ENDED WITH AN ABORT, so no verdict of any kind has been reached when
 // the readings are taken: `abortRun` "poses the abort, ending a running run with
@@ -23,15 +33,13 @@
 // (`specs/instrumentation.md`).
 //
 // The yard holds one load and no obstacle, and the crane is the minimal one. The
-// crate is lifted from a point a unit above where the hook hangs at the run-start
-// posture, so paying the cable in to `HOIST_MIN` brings the hook onto it: the
-// attach is then within `ATTACH_RADIUS` (`0.8`) and the crate hangs a unit clear
-// of the ground, which keeps `specs/statics.md`'s ground test out of a reading
-// that is about the yard.
+// crate stands a unit below the pivot the trolley starts under, so it hangs a
+// unit clear of the ground, which keeps `specs/statics.md`'s ground test out of a
+// reading that is about the yard.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { HOIST_MAX_RATE, HOIST_MIN, SLEW_MAX_RATE } from "../constants";
+import { HOIST_MIN, TROLLEY_MAX_RATE } from "../constants";
 import {
   addOneLoad,
   clearAll,
@@ -46,30 +54,25 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** Where the crate stands in the yard: the hook's point once the cable is in. */
+/** Where the crate stands in the yard: a cable's length below the pivot. */
 const FROM = { x: 0, y: 4 - HOIST_MIN, z: 0, yaw: 0 };
 
 /** The pad it is wanted on, which this run never reaches. */
 const TO = { x: -4, y: 2, z: 0, yaw: 0 };
 
-/** Pay the cable in, take the crate up, and turn the arm with it. */
+/** Drive the trolley out along the track, carrying the pivot and the hook. */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE }],
-  },
-  { kind: "action", action: "attach" },
-  {
-    kind: "move",
-    commands: [{ axis: "slew", target: 45, rate: SLEW_MAX_RATE }],
+    commands: [{ axis: "trolley", target: 2, rate: TROLLEY_MAX_RATE }],
   },
 ];
 
 /** How far the carried load must have travelled before the readings are taken. */
 const CARRIED = 0.1;
 
-/** Ticks the sweeps are given. */
-const CAP = 400;
+/** Ticks the sweep is given: the trolley covers that inside half a second. */
+const CAP = 60;
 
 let h: Harness;
 
@@ -89,13 +92,20 @@ it("starts the next run with the load back at its authored pose", async () => {
   await poseTape(h, TAPE);
   await startRun(h);
 
+  // The precondition: the hook on the crate, the crate on the hook, both at rest
+  // exactly where the yard says the crate stands.
+  await h.debug.setAxis("hoist", HOIST_MIN);
+  await h.debug.setBob(FROM.x, FROM.y, FROM.z);
+  await h.debug.setBobVelocity(0, 0, 0);
+  await h.debug.setLoadPhase(0, "attached");
+
   const carried = await runUntil(
     h,
     (s) =>
       s.run.loads[0]?.phase === "attached" &&
       distance3(s.run.loads[0].pos, FROM) > CARRIED,
     CAP,
-    "the run to take the crate up and carry it away from where it stands",
+    "the run to carry the crate away from where it stands",
   );
   assertGreaterThan(
     distance3(carried.run.loads[0]!.pos, FROM),

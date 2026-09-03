@@ -14,8 +14,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertLength } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -36,7 +36,7 @@ afterEach(async () => {
 
 it("names empty-program among the issues once the tape is emptied", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, [
     {

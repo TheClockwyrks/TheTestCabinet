@@ -38,8 +38,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue, fail } from "../assert";
 import { SLEW_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -51,11 +51,22 @@ import {
 
 /** Something for the run to be doing while the run screen is read. */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "slew", target: 253, rate: SLEW_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "slew", target: 253, rate: SLEW_MAX_RATE }],
+  },
 ];
 
-/** Ticks into the run, so every member has been solved and coloured. */
-const SETTLE = 30;
+/**
+ * Ticks into the run, so every member has been solved and coloured.
+ *
+ * TWO, BECAUSE THE SOLVE IS THE RUN'S FIRST. `run.forces` "is empty until a
+ * run's first solve" (specs/instrumentation.md), which the first tick runs, and
+ * the second tick is there for a build that draws the solve the tick before it
+ * reached. The legend is a fixture of the run screen rather than of any
+ * particular tick, so nothing later in the run is what this reads.
+ */
+const SETTLE = 2;
 
 /** What a run of pixels has to do to read as a ramp. */
 const MIN_LENGTH = 48;
@@ -173,7 +184,12 @@ async function longestRamp(harness: Harness): Promise<Ramp | null> {
           y: number,
         ): readonly [number, number, number, number] => {
           const base = (y * width + x) * 4;
-          return [data[base]!, data[base + 1]!, data[base + 2]!, data[base + 3]!];
+          return [
+            data[base]!,
+            data[base + 1]!,
+            data[base + 2]!,
+            data[base + 3]!,
+          ];
         };
         for (let y = 0; y < height; y += 1) {
           const row = [];
@@ -194,7 +210,7 @@ async function longestRamp(harness: Harness): Promise<Ramp | null> {
 
 it("draws the utilization ramp as a legend on the run screen", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);

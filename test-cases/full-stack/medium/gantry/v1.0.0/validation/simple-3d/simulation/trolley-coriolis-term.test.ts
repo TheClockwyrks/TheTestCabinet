@@ -33,7 +33,7 @@
 // dropped the term reads zero; one that ran it the wrong way reads the negative.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertClose, fail } from "../assert";
+import { assertClose, assertLength, fail } from "../assert";
 import {
   HOIST_MAX_RATE,
   HOIST_START,
@@ -43,20 +43,23 @@ import {
   TROLLEY_MAX_RATE,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
-  emptyYard,
   openSite,
   poseCrane,
-  poseTape,
   runTicks,
   startRun,
   type CraneDesign,
   type GantrySnapshot,
   type Harness,
   type MemberForce,
-  type TapeStepSpec,
 } from "../harness";
+
+/** One command of a move step: an axis, where it is driven, and how fast. */
+interface Command {
+  readonly axis: "slew" | "trolley" | "hoist" | "grip";
+  readonly target: number;
+  readonly rate: number;
+}
 
 /**
  * The rig every reading below is taken on, and why it is shaped this way.
@@ -160,24 +163,36 @@ function direction(
 }
 
 /**
- * Empty the tape, append `steps`, and start a run on them.
+ * Empty the tape, append one move step carrying `commands`, and start a run.
  *
  * The tape poses apply on the program screen alone (`specs/instrumentation.md`),
- * so the screen is taken there to empty it and put back before the start, which
- * `specs/program.md` allows from the build or the program screen.
+ * so the screen is taken there and left there: `specs/program.md` allows a run to
+ * start from the build or the program screen, so nothing has to move back.
  */
-async function freshRun(steps: readonly TapeStepSpec[]): Promise<void> {
+async function freshRun(commands: readonly Command[]): Promise<void> {
   await h.debug.setScreen("program");
   await h.debug.clearProgram();
-  await h.debug.setScreen("build");
-  await poseTape(h, steps);
-  await startRun(h);
+  const [first, ...rest] = commands;
+  await h.debug.addMoveStep(first!.axis, first!.target, first!.rate);
+  for (const command of rest) {
+    await h.debug.addCommand(0, command.axis, command.target, command.rate);
+  }
+  const started = await startRun(h);
+  assertLength(
+    started.program,
+    1,
+    "the one move step this reading's tape carries (specs/program.md)",
+  );
+  assertLength(
+    started.program[0]?.kind === "move" ? started.program[0].commands : [],
+    commands.length,
+    "the commands that step carries, which are what the reading cruises on",
+  );
 }
 
-/** End the reading's run and stand back on the build screen. */
+/** End the reading's run. */
 async function endRun(): Promise<void> {
   await h.debug.abortRun();
-  await h.debug.setScreen("build");
 }
 
 /** The force the reported member list carries for `id`. */
@@ -200,25 +215,22 @@ afterEach(async () => {
 });
 
 /** One tick of a fresh run at slew rate `omega` and trolley rate `v`. */
-async function readRates(
-  omega: number,
-  v: number,
-): Promise<GantrySnapshot> {
-  const commands = [];
+async function readRates(omega: number, v: number): Promise<GantrySnapshot> {
+  const commands: Command[] = [];
   if (omega !== 0) {
-    commands.push({ axis: "slew" as const, target: SLEW_TARGET, rate: omega });
+    commands.push({ axis: "slew", target: SLEW_TARGET, rate: omega });
   }
   if (v !== 0) {
-    commands.push({ axis: "trolley" as const, target: TRACK_LENGTH, rate: v });
+    commands.push({ axis: "trolley", target: TRACK_LENGTH, rate: v });
   }
   if (commands.length === 0) {
     commands.push({
-      axis: "hoist" as const,
+      axis: "hoist",
       target: HOIST_START,
       rate: HOIST_MAX_RATE,
     });
   }
-  await freshRun([{ kind: "move", commands }]);
+  await freshRun(commands);
 
   // Posed a tick's travel short of the geometry every reading shares, and given
   // the rate the controller then cruises at.
@@ -259,8 +271,11 @@ async function readRates(
 
 it("applies a force toward -z at the trolley's node while it drives out under slew", async () => {
   await openSite(h, 0);
-  await clearAll(h);
-  await emptyYard(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await poseCrane(h, RIG);
 
   const W = SLEW_MAX_RATE;

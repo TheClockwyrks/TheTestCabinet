@@ -26,8 +26,9 @@
 // build that lit every node when the pointer entered the yard would answer the
 // first half and fail here.
 //
-// THE YARD IS EMPTIED — nothing built, no loads, no obstacles — so the only thing
-// that can change under the pointer is the aid this point is about.
+// THE YARD IS EMPTIED, on a site opened fresh — nothing built, no loads, no
+// obstacles — so the only thing that can change under the pointer is the aid this
+// point is about.
 
 import { afterEach, beforeEach, it } from "vitest";
 import * as THREE from "three";
@@ -40,8 +41,8 @@ import {
 } from "../assert";
 import { NODE_PICK_PX, STAGE_H, STAGE_W } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -117,14 +118,21 @@ function bodies(harness: Harness): Body[] {
     object.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(object);
     if (box.isEmpty()) return;
-    const material = (object as THREE.Mesh)
-      .material as Partial<THREE.MeshStandardMaterial> | undefined;
+    const material = (object as THREE.Mesh).material as
+      | Partial<THREE.MeshStandardMaterial>
+      | undefined;
     found.push({
       signature: [
         object.type,
         object.visible ? "1" : "0",
-        box.min.toArray().map((one) => one.toFixed(3)).join(),
-        box.max.toArray().map((one) => one.toFixed(3)).join(),
+        box.min
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
+        box.max
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
         material?.color?.getHexString() ?? "",
         material?.emissive?.getHexString() ?? "",
         material?.opacity ?? "",
@@ -181,7 +189,7 @@ afterEach(async () => {
 
 it("highlights the node under the pointer and leaves the rest of the lattice alone", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
 
   const aimed = await h.project(AIMED.x, AIMED.y, AIMED.z);
   const control = await h.project(CONTROL.x, CONTROL.y, CONTROL.z);

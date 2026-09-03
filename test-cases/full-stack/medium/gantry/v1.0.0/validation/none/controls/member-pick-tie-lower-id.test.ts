@@ -29,7 +29,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The lattice node both members end at, and the point the click is made at. */
 const SHARED = { x: 0, y: 4, z: 0 } as const;
@@ -52,7 +52,7 @@ afterEach(async () => {
 
 it("answers a member tie at equal camera distance with the lower id", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.addMember(
     FIRST_END.x,
     FIRST_END.y,

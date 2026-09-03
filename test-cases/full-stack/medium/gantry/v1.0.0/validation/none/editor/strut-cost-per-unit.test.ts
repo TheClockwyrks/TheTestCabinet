@@ -7,9 +7,10 @@
 // otherwise empty structure is worth exactly its length times ten, and nothing
 // else.
 //
-// THE STRUCTURE IS EMPTIED FIRST so the reading is the strut's alone: cost is a
-// sum, and a cost read over a crane that carries anything else measures the sum
-// rather than the term. The strut runs from `(0, 0, 0)` to `(0, 4, 0)`, four units
+// THE STRUCTURE STANDS EMPTY so the reading is the strut's alone: cost is a sum,
+// and a cost read over a crane that carries anything else measures the sum rather
+// than the term. A site opened on a fresh game carries nothing built, which the
+// zero cost read before the placement says out loud. The strut runs from `(0, 0, 0)` to `(0, 4, 0)`, four units
 // of the site's own lattice, which is inside `STRUT_MAX_LEN` (`6`) and inside
 // site 1's envelope, so nothing in the editor's rules refuses it and the cost that
 // appears is the one the table sets.
@@ -17,7 +18,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { STRUT_COST_PER_UNIT } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The strut this check prices: `(0, 0, 0)` to `(0, 4, 0)`, four units long. */
 const LENGTH = 4;
@@ -34,7 +35,7 @@ afterEach(async () => {
 
 it("prices a strut at its length times STRUT_COST_PER_UNIT", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   const before = (await h.snapshot()).structure.cost;
   assertEqual(

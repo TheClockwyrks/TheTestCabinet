@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNull } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** The base corner on the ground plane, which the editor refuses. */
 const CORNER = { x: 0, y: 0, z: 0 };
@@ -33,7 +33,11 @@ afterEach(async () => {
 
 it("refuses a ring whose base corner's y is 0", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The precondition is an empty structure and nothing else. A site opened
+  // after a reset already carries one (specs/state.md), and `clearStructure`
+  // states it rather than leaving it implied; emptying the yard and the tape
+  // too would drive surface this requirement does not concern.
+  await h.debug.clearStructure();
 
   await h.debug.setRing(CORNER.x, CORNER.y, CORNER.z);
 

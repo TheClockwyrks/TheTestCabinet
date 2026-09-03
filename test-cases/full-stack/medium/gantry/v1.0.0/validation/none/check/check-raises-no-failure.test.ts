@@ -28,11 +28,16 @@
 // move it to `run` (specs/program.md § Starting and ending a run).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNull, assertTrue } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertNull,
+  assertTrue,
+} from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -109,7 +114,7 @@ afterEach(async () => {
 
 it("leaves the run idle with no cause after checking a mechanism and an overworked crane", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   await poseCrane(h, MECHANISM);
   const singular = await h.check();

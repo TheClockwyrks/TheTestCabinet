@@ -35,24 +35,36 @@ import { afterEach, beforeEach, it } from "vitest";
 import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
 import { assertEqual, assertLength, fail } from "../assert";
 import { GRIP_MAX_RATE, SITE_NAMES } from "../constants";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  poseTape,
-  standMinimalCrane,
-  type Harness,
-  type TapeStepSpec,
-} from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** The site opened: its budget and name are unlike the rest of the screen. */
 const SITE = 3;
 
 /** Five steps, so the tape's count is a figure of its own. */
-const TAPE: readonly TapeStepSpec[] = Array.from({ length: 5 }, (_, at) => ({
-  kind: "move" as const,
-  commands: [{ axis: "grip" as const, target: 30 + at, rate: GRIP_MAX_RATE }],
-}));
+const TAPE_STEPS = 5;
+
+/**
+ * The crane whose cost the readout carries: the ring and one rail off its top
+ * flange.
+ *
+ * This point is about WHERE the readouts are drawn, not about what a crane costs,
+ * so it builds the smallest structure that carries a cost at all — `RING_COST`
+ * plus four units of rail, `372` against Long Reach's budget of `5600`, which is
+ * a figure no other readout on the screen can be confused with.
+ */
+async function poseCrane(harness: Harness): Promise<void> {
+  await harness.debug.setRing(0, 2, 0);
+  await harness.debug.addMember(0, 4, 0, 4, 4, 0, "rail");
+}
+
+/** Five grip moves, appended through the tape editor's own screen. */
+async function poseTape(harness: Harness): Promise<void> {
+  await harness.debug.setScreen("program");
+  for (let at = 0; at < TAPE_STEPS; at += 1) {
+    await harness.debug.addMoveStep("grip", 30 + at, GRIP_MAX_RATE);
+  }
+  await harness.debug.setScreen("build");
+}
 
 /** A whole force-free unit: the coarsest rounding a build could write. */
 const COST_TOL = 1;
@@ -86,13 +98,17 @@ function carries(text: string, wanted: number, tolerance: number): boolean {
 
 it("draws the build screen's readouts on the program screen too", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
-  await standMinimalCrane(h);
-  await poseTape(h, TAPE);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
+  await poseCrane(h);
+  await poseTape(h);
 
   const built = await h.snapshot();
   assertEqual(built.screen, "build", "the screen a site opening shows");
-  assertLength(built.program, TAPE.length, "the steps the tape carries");
+  assertLength(built.program, TAPE_STEPS, "the steps the tape carries");
   await h.advance(1);
   const before = await readoutText(h);
 
@@ -110,8 +126,8 @@ it("draws the build screen's readouts on the program screen too", async () => {
       ],
       [`the site's budget (${budget})`, (text) => carries(text, budget, 0.5)],
       [
-        `the tape's step count (${TAPE.length})`,
-        (text) => carries(text, TAPE.length, 0.05),
+        `the tape's step count (${TAPE_STEPS})`,
+        (text) => carries(text, TAPE_STEPS, 0.05),
       ],
     ];
 

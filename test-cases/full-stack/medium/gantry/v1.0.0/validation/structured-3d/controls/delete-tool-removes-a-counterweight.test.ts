@@ -34,8 +34,8 @@ import {
   assertTrue,
 } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -59,7 +59,7 @@ afterEach(async () => {
 
 it("removes the counterweight the click picks, leaving the ring standing", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setRing(RING.x, RING.y, RING.z);
   await h.debug.addCounterweight(NODE.x, NODE.y, NODE.z);
 

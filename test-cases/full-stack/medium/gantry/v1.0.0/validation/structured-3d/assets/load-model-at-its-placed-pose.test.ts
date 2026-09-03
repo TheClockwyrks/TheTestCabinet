@@ -46,10 +46,10 @@ import {
 } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   drawnFromModel,
   drawnModelBox,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -123,7 +123,7 @@ afterEach(async () => {
 
 it("draws a placed load inside its class box at its target pose", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, CLASS, MASS, START, TARGET);
   await poseTape(h, TAPE);

@@ -17,12 +17,24 @@
 // sounds, being the eleven cues of `specs/ui.md` and the music bed — with no
 // model, audio, image or font file beside them.
 //
-// EVERY SCREEN AND A WHOLE RUN, because a file behind one screen would only be
+// EVERY SCREEN AND TWO WHOLE RUNS, because a file behind one screen would only be
 // fetched on reaching it and a build is free to fetch late. The title, howto and
 // select screens are shown, a site is opened, a structure is edited and part of
 // it removed, a run is driven into a collapse — which sounds `creak`, `break`,
 // `collapse` and `fail` and shows the failure copy — and a second run clears the
-// site, which sounds `complete` and shows the results screen.
+// site, which sounds `attach`, `placed` and `complete` and shows the results
+// screen.
+//
+// AND BOTH RUNS ARE THE SHORTEST THAT REACH WHAT THEY ARE FOR. What this point
+// needs of a run is the screens it passes and the cues it sounds, never the lift
+// it performs. So both run on the smallest crane that stands: the first hangs a
+// mass no crane carries and comes down within a second, and the second draws the
+// cable in, takes the load waiting at the hook's own resting point and sets it
+// down on the pad it is already standing on — a clear in some fifty ticks.
+// Playing site 1's reference design and reference tape instead sounds the same
+// cues and shows the same screens through a fifty-nine-member solve run a
+// thousand times, and makes this point turn on a lift that has validators of its
+// own: a build whose reference run misses its pad would fail this one for it.
 //
 // THE DEBUG OVERLAY IS NOT DRIVEN. specs/instrumentation.md leaves the overlay's
 // toggle to the runtime layer the build writes and `specs/controls.md` binds no
@@ -37,7 +49,6 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
 import {
-  DESIGNS,
   MINIMAL_CRANE,
   addOneLoad,
   clearAll,
@@ -50,14 +61,14 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
-import { HOIST_MAX_RATE, HOIST_START } from "../constants";
+import { HOIST_MAX_RATE, HOIST_MIN, HOIST_START } from "../constants";
 
-/** The site whose reference design and tape clear it (`designs.json`). */
+/** The site both runs play on; every site plays the same way. */
 const SITE = 0;
 
 /** Ticks per crossing while a run plays out, and the cap on one run. */
-const STRIDE = 30;
-const MAX_TICKS = 7200;
+const STRIDE = 10;
+const MAX_TICKS = 600;
 
 /** Enough tape for a run to start and keep ticking. */
 const SHORT_TAPE: readonly TapeStepSpec[] = [
@@ -67,6 +78,29 @@ const SHORT_TAPE: readonly TapeStepSpec[] = [
       { axis: "hoist", target: HOIST_START + 4, rate: HOIST_MAX_RATE },
     ],
   },
+];
+
+/** The crate the clearing run lifts. */
+const MASS = 40;
+
+/**
+ * Where the bare hook comes to rest once the cable is drawn in to `HOIST_MIN`.
+ *
+ * The minimal crane's pivot is its track origin `(0, 4, 0)`, so a cable of
+ * `HOIST_MIN` hangs the bob at `(0, 3, 0)` — which is where the crate waits and
+ * where its pad is, so the attach is at a distance of zero and the release is
+ * inside every set-down tolerance by the whole of it (specs/rigging.md).
+ */
+const HOOK = { x: 0, y: HOIST_MIN + 2, z: 0, yaw: 0 } as const;
+
+/** Draw the cable in, take the load, set it down — and the site is cleared. */
+const CLEARING_TAPE: readonly TapeStepSpec[] = [
+  {
+    kind: "move",
+    commands: [{ axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE }],
+  },
+  { kind: "action", action: "attach" },
+  { kind: "action", action: "release" },
 ];
 
 /**
@@ -108,8 +142,22 @@ it("fetches the eight models and the twelve sounds and no other asset file", asy
   await openSite(h, SITE);
   await clearAll(h);
   await poseCrane(h, MINIMAL_CRANE);
+
+  // One edit taken back and put again, for the two cues an edit sounds. Putting
+  // the one member back costs a single crossing where posing the whole crane
+  // again costs twenty-three, and the crane standing at the end is the same one.
+  const last = MINIMAL_CRANE.members[MINIMAL_CRANE.members.length - 1]!;
   await h.debug.removeMember(MINIMAL_CRANE.members.length - 1);
-  await poseCrane(h, MINIMAL_CRANE);
+  await h.debug.addMember(
+    last[0][0],
+    last[0][1],
+    last[0][2],
+    last[1][0],
+    last[1][1],
+    last[1][2],
+    last[2],
+  );
+
   await addOneLoad(
     h,
     "crate",
@@ -133,19 +181,24 @@ it("fetches the eight models and the twelve sounds and no other asset file", asy
   );
   await h.advance(1);
 
-  // And a run that clears the site: the `complete` cue and the results screen.
+  // And a run that clears the site: the `attach` and `placed` cues, the
+  // `complete` cue, and the results screen.
+  //
+  // `openSite` puts the run back to its idle placeholder and the site's authored
+  // loads back in the yard, and leaves the structure standing — so the crane the
+  // collapse ran on is the crane this run uses, and only the yard and the tape
+  // are posed again. A site keeps its tape, so the collapse run's is emptied
+  // before the clearing tape is appended.
   await openSite(h, SITE);
-  // A site keeps its tape, so the collapse run's tape is emptied before the
-  // reference tape is appended; `clearAll` also empties the yard, and opening
-  // the site puts that site's authored loads back below.
-  await clearAll(h);
-  await openSite(h, SITE);
-  const design = DESIGNS[SITE]!;
-  await poseCrane(h, design);
-  await poseTape(h, design.tape);
   await h.debug.setScreen("program");
+  await h.debug.clearProgram();
+  // The one frame the program screen is drawn on, taken while the screen is
+  // already showing: whatever a build draws there is fetched by now.
   await h.advance(1);
   await h.debug.setScreen("build");
+  await h.debug.clearObstacles();
+  await addOneLoad(h, "crate", MASS, HOOK, HOOK);
+  await poseTape(h, CLEARING_TAPE);
   await startRun(h);
   let cleared = "running";
   for (let ran = 0; ran < MAX_TICKS; ran += STRIDE) {
@@ -156,8 +209,8 @@ it("fetches the eight models and the twelve sounds and no other asset file", asy
   assertEqual(
     cleared,
     "cleared",
-    `the reference tape for site ${SITE + 1} to clear it, so the results ` +
-      "screen is reached before the request buffer is read",
+    `the three-step tape to clear site ${SITE + 1} within ${MAX_TICKS} ticks, ` +
+      "so the results screen is reached before the request buffer is read",
   );
   await h.advance(1);
 

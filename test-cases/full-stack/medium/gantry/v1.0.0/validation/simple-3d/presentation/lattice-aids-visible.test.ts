@@ -38,9 +38,10 @@ import * as THREE from "three";
 import { assertGreaterThanOrEqual, assertNull, assertTrue } from "../assert";
 import { STAGE_H, STAGE_W } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
+  runTicks,
   type Harness,
   type Vec3,
 } from "../harness";
@@ -69,7 +70,6 @@ const REACH = 0.4;
 
 /** Where the pointer is parked: a stage corner, so no node is picked. */
 const PARKED = { x: STAGE_W - 4, y: STAGE_H - 4 } as const;
-
 
 /* -------------------------------------------------------------------------- */
 /* Reading the yard                                                           */
@@ -160,9 +160,9 @@ function drawnAt(
 
     if (drawn.isPoints === true) {
       for (let index = 0; index < positions.count; index += 1) {
-        first.fromBufferAttribute(positions, index).applyMatrix4(
-          object.matrixWorld,
-        );
+        first
+          .fromBufferAttribute(positions, index)
+          .applyMatrix4(object.matrixWorld);
         if (first.distanceTo(point) <= radius) {
           found = true;
           return;
@@ -174,12 +174,12 @@ function drawnAt(
     // A line: `LineSegments` is disjoint pairs, a plain `Line` a polyline.
     const step = drawn.isLineSegments === true ? 2 : 1;
     for (let index = 0; index + 1 < positions.count; index += step) {
-      first.fromBufferAttribute(positions, index).applyMatrix4(
-        object.matrixWorld,
-      );
-      second.fromBufferAttribute(positions, index + 1).applyMatrix4(
-        object.matrixWorld,
-      );
+      first
+        .fromBufferAttribute(positions, index)
+        .applyMatrix4(object.matrixWorld);
+      second
+        .fromBufferAttribute(positions, index + 1)
+        .applyMatrix4(object.matrixWorld);
       segment.set(first, second);
       segment.closestPointToPoint(point, true, nearest);
       if (nearest.distanceTo(point) <= radius) {
@@ -191,7 +191,6 @@ function drawnAt(
 
   return found;
 }
-
 
 let h: Harness;
 
@@ -205,11 +204,15 @@ afterEach(async () => {
 
 it("marks the buildable lattice nodes on the build screen", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The YARD AND THE STRUCTURE, rather than the whole world: a site opens with an
+  // empty tape (`specs/state.md`) and nothing here poses one, so the tape needs no
+  // clearing and the program screen is never visited.
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.pointerMove(PARKED.x, PARKED.y);
-  await h.advance(1);
-
-  const posed = await h.snapshot();
+  // The frame and the reading in one crossing: `runTicks` answers with the state
+  // the ticks it drove left (`validation/harness.ts`).
+  const posed = await runTicks(h, 1);
   assertTrue(
     posed.screen === "build",
     "the build screen, which is where the lattice is an aid (specs/ui.md)",

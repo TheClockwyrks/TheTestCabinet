@@ -13,20 +13,43 @@
 // axes once a rail has broken, because the track it was taken along is gone" — and
 // this is the reading that tells the two apart.
 //
-// So the scenario stands a crane whose trolley point is nowhere near the origin
-// and never starts a run. The minimal crane's track runs from `(0, 4, 0)` outward,
-// so the trolley begins over `(0, 4, 0)` and a pivot derived from the geometry
-// would read four units up. The placeholder's reads zero.
+// SO THE CRANE IS THE PART OF A CRANE THE PIVOT WOULD BE DERIVED FROM, and no
+// more of one. The trolley stands at the track origin, so a pivot read off the
+// geometry is that node: a ring one pitch off the ground and one rail running out
+// from its top flange put the track origin at `(0, 4, 0)`, four units up and
+// nowhere near the origin. The placeholder's reads zero. No run is ever started
+// here, so nothing asks this structure to stand — a braced tower under it would
+// be surface this point does not decide, and every rule it could trip on belongs
+// to another validator.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
-  standMinimalCrane,
+  poseCrane,
+  type CraneDesign,
   type Harness,
 } from "../harness";
+
+/**
+ * A slew ring on its tower node and the single rail its trolley starts on.
+ *
+ * The ring's base corner is `(0, 2, 0)`, whose `y` is not `0` — "the ring sits on
+ * a tower, not on the ground" — and the rail runs horizontally from the
+ * top-flange node `(0, 4, 0)` out to `(4, 4, 0)`, joining no anchor or
+ * bottom-flange node to a top-flange one. Both edits stand on site 1, inside its
+ * envelope and far inside its budget at `72`.
+ */
+const RING_AND_TRACK: CraneDesign = {
+  site: 0,
+  name: "Ring and track",
+  ring: [0, 2, 0],
+  counterweights: [],
+  members: [[[0, 4, 0], [4, 4, 0], "rail"]],
+  tape: [],
+};
 
 let h: Harness;
 
@@ -40,8 +63,8 @@ afterEach(async () => {
 
 it("reports a zero pivot on an idle run under a standing crane", async () => {
   await openSite(h, 0);
-  await clearAll(h);
-  await standMinimalCrane(h);
+  await emptyYard(h);
+  await poseCrane(h, RING_AND_TRACK);
 
   const s = await h.snapshot();
   assertEqual(

@@ -36,7 +36,6 @@ import {
   TROLLEY_MASS,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
   emptyYard,
   openSite,
@@ -195,7 +194,6 @@ afterEach(async () => {
 
 it("lumps the whole trolley mass at the node two rails share", async () => {
   await openSite(h, 0);
-  await clearAll(h);
   await emptyYard(h);
   await poseCrane(h, RIG);
   await poseTape(h, [

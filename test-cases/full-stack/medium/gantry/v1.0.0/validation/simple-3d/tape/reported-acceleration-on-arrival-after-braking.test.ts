@@ -195,8 +195,8 @@ afterEach(async () => {
 /** Short enough that the move is braking when it arrives. */
 const TARGET = 10;
 
-/** Well past the ticks the whole move takes. */
-const CAP = 10 * TICK_HZ;
+/** Past the ticks the whole move takes, and no further. */
+const CAP = 2 * TICK_HZ;
 
 it("builds an arriving tick's inertial loads from an acceleration of zero after braking", async () => {
   await openSite(h, 0);

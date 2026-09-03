@@ -26,8 +26,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertEqual, assertTrue } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -63,7 +63,7 @@ afterEach(async () => {
 
 it("reports utilization 0 for a cable the solve sent slack", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, CABLE_TIE);
 
   const result = await h.check();

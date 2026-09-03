@@ -34,7 +34,7 @@ import {
   NODE_PICK_PX,
   SITES,
 } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The site this check is read on, and the envelope its lattice fills. */
 const SITE = 0;
@@ -258,7 +258,7 @@ afterEach(async () => {
 
 it("edits nothing when the click has no candidate in range", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setTool("strut");
   const posed = await h.snapshot();
   assertEqual(posed.tool, "strut", "the tool the click is made under");

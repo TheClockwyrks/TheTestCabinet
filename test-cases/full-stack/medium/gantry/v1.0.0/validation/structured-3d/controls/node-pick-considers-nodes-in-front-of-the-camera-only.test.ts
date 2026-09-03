@@ -26,7 +26,13 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
 import { CAMERA_TARGET, SITES } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import {
+  createHarness,
+  emptyYard,
+  openSite,
+  runTicks,
+  type Harness,
+} from "../harness";
 
 /** The site this check is read on. */
 const SITE = 0;
@@ -77,7 +83,11 @@ afterEach(async () => {
 
 it("takes the node in front of the camera, never the one behind it", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The YARD AND THE STRUCTURE, rather than the whole world: a site opens with an
+  // empty tape (`specs/state.md`) and nothing here poses one, so the tape needs no
+  // clearing and the program screen is never visited.
+  await emptyYard(h);
+  await h.debug.clearStructure();
   const pitch = (Math.atan2(RISE, RUN) * 180) / Math.PI;
   await h.debug.setCamera(0, pitch, DIST);
   const camera = (await h.snapshot()).camera;
@@ -124,11 +134,13 @@ it("takes the node in front of the camera, never the one behind it", async () =>
   const at = await h.project(FRONT.x, FRONT.y, FRONT.z);
   assertTrue(at.visible, "the node in front of the camera is on the stage");
   await h.pointerMove(at.x, at.y);
-  await h.advance(1);
+  // The frame and the reading in one crossing: `runTicks` answers with the state
+  // the ticks it drove left (`validation/harness.ts`).
+  const seen = await runTicks(h, 1);
   await h.capture("state", "the pointer on the node at the camera's target");
 
   assertEqual(
-    JSON.stringify((await h.snapshot()).pick.node),
+    JSON.stringify(seen.pick.node),
     JSON.stringify(FRONT),
     "the node a click there would take: a node pick considers the lattice " +
       `nodes standing in front of the camera, so (${BEHIND.x}, ${BEHIND.y}, ` +

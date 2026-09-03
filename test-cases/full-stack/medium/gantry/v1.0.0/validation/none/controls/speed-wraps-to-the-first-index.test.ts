@@ -21,7 +21,7 @@
 // captured as this item's evidence rather than asserted.
 //
 // The run is a real one, started by `startRun`. Its tape is one long grip turn,
-// which asks nothing of the structure, and the world is emptied, so nothing can
+// which asks nothing of the structure, and the yard is emptied, so nothing can
 // end the run under the presses — and speed "changes how many ticks a second of
 // watching covers and nothing else" (`specs/program.md`), so the frames these
 // presses ride on cannot change the verdict either.
@@ -30,8 +30,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { BINDINGS, GRIP_MAX_RATE, RUN_SPEEDS } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -66,7 +66,7 @@ afterEach(async () => {
 
 it("wraps to the first watch speed and carries the cycle on", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   const started = await startRun(h);

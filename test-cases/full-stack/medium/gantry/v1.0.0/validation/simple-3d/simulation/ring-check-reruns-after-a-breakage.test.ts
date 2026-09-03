@@ -25,7 +25,14 @@
 // The load is hung with `setLoadPhase`, which specs/instrumentation.md defines as
 // hanging a load on the hook "exactly as a successful `attach` leaves it, without
 // the candidate search", so nothing here runs the `attach` action or the rules
-// that belong to it.
+// that belong to it. The trolley is posed out rather than driven, for the same
+// reason: what this decides is one tick's two passes, and the seconds of trolley
+// travel that would otherwise reach the same posture decide nothing.
+//
+// THE YARD IS EMPTIED AND ONE LOAD PUT BACK. `emptyYard` takes out the site's own
+// loads and obstacles, `poseCrane` empties the structure before it poses one, and
+// a site opened after this harness's reset carries no tape — so nothing but this
+// scenario is standing when the run starts.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -33,8 +40,8 @@ import { GRIP_MAX_RATE } from "../constants";
 import {
   DESIGNS,
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -76,7 +83,7 @@ afterEach(async () => {
 
 it("ends the run as ring-overload on the pass that follows a breakage", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, DESIGNS[SITE]);
   await addOneLoad(h, "crate", LOAD_MASS, ON_THE_HOOK, ON_THE_HOOK);
   await poseTape(h, TURN_THE_GRIP);

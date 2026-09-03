@@ -23,7 +23,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
 import { LATTICE_PITCH } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The lowest base corner the editor accepts: one lattice pitch off the ground. */
 const CORNER = { x: 0, y: LATTICE_PITCH, z: 0 };
@@ -40,7 +40,8 @@ afterEach(async () => {
 
 it("accepts a ring whose base corner is one LATTICE_PITCH above the ground", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   await h.debug.setRing(CORNER.x, CORNER.y, CORNER.z);
 

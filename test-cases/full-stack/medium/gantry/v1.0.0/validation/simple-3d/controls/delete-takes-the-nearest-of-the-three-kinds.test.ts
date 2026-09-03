@@ -24,12 +24,20 @@
 // in range of a click that is nearer the counterweight is a member drawn ACROSS
 // the flange node's neighbourhood from another depth. How near it passes depends
 // on the lens the build draws through, which `specs/controls.md` leaves to the
-// build, so the camera distance is swept and the one that puts the cable's drawn
-// line a workable `GAP_WANTED` pixels from the flange node is the one used. The
-// click then sits three tenths of the way from the counterweight toward the
-// cable: the counterweight is `0.3` of that gap away and the cable at least `0.7`
-// of it, so the counterweight is strictly the nearer and the cable is comfortably
-// inside `MEMBER_PICK_PX`.
+// build, so a camera distance that puts the cable's drawn line a workable
+// `GAP_WANTED` pixels from the flange node is searched for and used. The click
+// then sits three tenths of the way from the counterweight toward the cable: the
+// counterweight is `0.3` of that gap away and the cable at least `0.7` of it, so
+// the counterweight is strictly the nearer and the cable is comfortably inside
+// `MEMBER_PICK_PX`.
+//
+// THE SEARCH IS A LADDER AND A BISECTION, not a scan of every distance. A gap in
+// stage pixels shrinks as the camera pulls back, so a handful of distances spread
+// across the range the game allows brackets the gap this check wants, and halving
+// that bracket closes on it. Each reading of a distance is four crossings into
+// the page, and the distance that is finally used is held to the same assertions
+// whichever way it was found — the search only has to FIND a workable camera, and
+// the readings below are what decide that it is one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -67,6 +75,12 @@ const GAP_WANTED = 12;
 const GAP_MIN = 6;
 const GAP_MAX = 17;
 
+/** Distances the ladder tries, spread across the range the game allows. */
+const LADDER_STEPS = 6;
+
+/** Halvings of the bracket the ladder leaves, when no rung is workable. */
+const BISECTIONS = 6;
+
 /** A point on the stage. */
 interface Stage {
   x: number;
@@ -99,23 +113,60 @@ it("removes the nearer counterweight rather than the member in range", async () 
   await clearAll(h);
 
   // The camera distance that draws the cable a workable gap from the flange
-  // node, read off the build's own projection at each distance it allows.
-  let chosen: { dist: number; gap: number } | null = null;
-  for (let dist = CAMERA_DIST_MIN; dist <= CAMERA_DIST_MAX; dist += 2) {
+  // node, read off the build's own projection at the distances it is asked about.
+  const readings: { dist: number; gap: number }[] = [];
+
+  /** Where the cable's drawn line passes the flange node at `dist`. */
+  const gapAt = async (dist: number): Promise<number | null> => {
     await h.debug.setCamera(45, 30, dist);
     const flange = await h.project(FLANGE.x, FLANGE.y, FLANGE.z);
     const a = await h.project(CABLE.a.x, CABLE.a.y, CABLE.a.z);
     const b = await h.project(CABLE.b.x, CABLE.b.y, CABLE.b.z);
-    if (!flange.visible) continue;
+    if (!flange.visible) return null;
     const { gap } = toSegment(flange, a, b);
-    if (gap < GAP_MIN || gap > GAP_MAX) continue;
-    if (
-      chosen === null ||
-      Math.abs(gap - GAP_WANTED) < Math.abs(chosen.gap - GAP_WANTED)
-    ) {
-      chosen = { dist, gap };
-    }
+    readings.push({ dist, gap });
+    return gap;
+  };
+
+  /** The workable distance read so far whose gap is nearest the one wanted. */
+  const best = (): { dist: number; gap: number } | null =>
+    readings
+      .filter((one) => one.gap >= GAP_MIN && one.gap <= GAP_MAX)
+      .reduce<{
+        dist: number;
+        gap: number;
+      } | null>(
+        (kept, one) =>
+          kept === null ||
+          Math.abs(one.gap - GAP_WANTED) < Math.abs(kept.gap - GAP_WANTED)
+            ? one
+            : kept,
+        null,
+      );
+
+  // The ladder: distances spread geometrically across the range the camera
+  // allows, because a gap in pixels falls with the distance rather than with the
+  // difference between two distances.
+  const ratio = (CAMERA_DIST_MAX / CAMERA_DIST_MIN) ** (1 / (LADDER_STEPS - 1));
+  for (let step = 0; step < LADDER_STEPS; step += 1) {
+    await gapAt(CAMERA_DIST_MIN * ratio ** step);
   }
+
+  // And the bisection: where no rung was workable, the gap wanted lies between
+  // the nearest rung too wide and the nearest too narrow, so that bracket is
+  // halved until it lands inside.
+  let wide = [...readings].reverse().find((one) => one.gap > GAP_MAX) ?? null;
+  let narrow = readings.find((one) => one.gap < GAP_MIN) ?? null;
+  for (let step = 0; step < BISECTIONS; step += 1) {
+    if (best() !== null || wide === null || narrow === null) break;
+    const dist = (wide.dist + narrow.dist) / 2;
+    const gap = await gapAt(dist);
+    if (gap === null) break;
+    if (gap > GAP_MAX) wide = { dist, gap };
+    else narrow = { dist, gap };
+  }
+
+  const chosen = best();
   if (chosen === null) {
     fail(
       `the cable drawn between ${GAP_MIN} and ${GAP_MAX} stage pixels from ` +

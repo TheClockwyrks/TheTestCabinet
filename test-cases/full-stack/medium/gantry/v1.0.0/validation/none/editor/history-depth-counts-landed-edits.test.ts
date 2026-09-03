@@ -28,8 +28,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -67,13 +67,17 @@ afterEach(async () => {
 
 it("raises historyDepth by one for each edit that lands", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   const baseline = (await h.snapshot()).historyDepth;
 
   for (const [index, [a, b]] of STRUTS.entries()) {
     await h.debug.addMember(a.x, a.y, a.z, b.x, b.y, b.z, "strut");
-    await h.advance(1);
+    // Read straight after the call, with no frame in between: a pose "sets one
+    // thing and leaves the rest of the game as it stands"
+    // (`specs/instrumentation.md`), so the edit has landed by the time it
+    // returns and a frame run here would only be a frame this point is not
+    // about.
     const s = await h.snapshot();
     assertLength(
       s.structure.members,
@@ -89,6 +93,9 @@ it("raises historyDepth by one for each edit that lands", async () => {
     );
   }
 
+  // One frame, so the still below is the build screen carrying the four struts
+  // rather than the frame that stood before the first of them was placed.
+  await h.advance(1);
   await h.capture(
     "history-depth-counts-landed-edits",
     "The four struts the undo history counts",

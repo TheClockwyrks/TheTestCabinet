@@ -28,6 +28,19 @@
 // every load is `placed`" (`specs/program.md`), which every load of an empty yard
 // vacuously is. The requirement is about the clock a clear records, so the world
 // holds only the crane the tape runs.
+//
+// THE CRANE AND THE TAPE ARE STOOD UP ONCE and both runs are made over them.
+// `specs/state.md` § What a site opening does has an opening keep "that site's
+// stored structure and tape" and return "the run to its idle placeholder", so
+// reopening the site between the two watches is the whole of what putting the
+// second run back to the start takes; only the loads it copies back in have to be
+// swept out again. Rebuilding the crane a second time would drive twenty-one more
+// edits through the editor's rules, which decide nothing here.
+//
+// AND THE TAPE IS THE SHORTEST ONE THAT ENDS: a hoist move of a twentieth of a
+// unit, which the axis ramps up and brakes back down inside a fifth of a second.
+// A dozen ticks is enough for `run.tick` to be a figure with room to be wrong in,
+// and driving the axis further would only make the same clock bigger.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
@@ -35,6 +48,7 @@ import { HOIST_MAX_RATE, HOIST_START, RUN_SPEEDS, TICK_HZ } from "../constants";
 import {
   clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runUntil,
@@ -48,12 +62,12 @@ import {
 /** The site the run clears, and the one whose score is read. */
 const SITE = 0;
 
-/** One hoist move: some tens of ticks, then the tape runs out and the run clears. */
+/** One short hoist move: a dozen ticks, then the tape runs out and it clears. */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE },
+      { axis: "hoist", target: HOIST_START + 0.05, rate: HOIST_MAX_RATE },
     ],
   },
 ];
@@ -61,8 +75,8 @@ const TAPE: readonly TapeStepSpec[] = [
 /** The faster watch: `RUN_SPEEDS[2]` is `4`. */
 const FAST = 2;
 
-/** Frames the sweep is given: enough at either speed. */
-const CAP = 400;
+/** Frames the sweep is given: enough at either speed, with room to spare. */
+const CAP = 60;
 
 let h: Harness;
 
@@ -75,12 +89,8 @@ afterEach(async () => {
 });
 
 it("records the ending tick's own clock, whatever speed the run was watched at", async () => {
-  /** Stand the world up, clear the site at `speedIndex`, and answer the end. */
+  /** Run the standing tape at `speedIndex`, and answer the state it ended in. */
   const clear = async (speedIndex: number): Promise<GantrySnapshot> => {
-    await openSite(h, SITE);
-    await clearAll(h);
-    await standMinimalCrane(h);
-    await poseTape(h, TAPE);
     await startRun(h);
     if (speedIndex !== 0) await h.debug.setSpeedIndex(speedIndex);
     return runUntil(
@@ -90,6 +100,11 @@ it("records the ending tick's own clock, whatever speed the run was watched at",
       "the tape to run out and the run to end",
     );
   };
+
+  await openSite(h, SITE);
+  await clearAll(h);
+  await standMinimalCrane(h);
+  await poseTape(h, TAPE);
 
   await h.debug.clearBest(SITE);
   const fast = await clear(FAST);
@@ -122,8 +137,13 @@ it("records the ending tick's own clock, whatever speed the run was watched at",
       "that tick's own number over TICK_HZ (specs/program.md)",
   );
 
-  // The same tape again, watched at the speed a run starts at.
+  // The same crane and the same tape again, watched at the speed a run starts
+  // at. Reopening the site puts the run back to its idle placeholder and keeps
+  // the structure and the tape standing (specs/state.md); what it does bring
+  // back is the site's own loads, which are swept out again.
   await h.debug.clearBest(SITE);
+  await openSite(h, SITE);
+  await emptyYard(h);
   const slow = await clear(0);
 
   assertEqual(

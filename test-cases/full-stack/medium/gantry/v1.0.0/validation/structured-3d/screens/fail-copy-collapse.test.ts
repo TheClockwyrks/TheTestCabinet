@@ -6,40 +6,31 @@
 // gives it", and its table gives `collapse` the copy `THE STRUCTURE COLLAPSED`.
 // This check decides that one row of that table, and no other.
 //
-// THE CRANE IS THE MINIMAL ONE WITH THE TIP'S ONE OUT-OF-PLANE TIE LEFT OFF.
-// specs/statics.md § Singularity: "A singular solve, in either the arm or the
-// tower, at any point in the slack-cable iteration or the breakage sequence, ends
-// the run as `collapse`. An under-braced 3D truss is the ordinary way to get
-// here: a flat frame with nothing resisting out-of-plane motion is a mechanism
-// even though every member is sound." Without the tie from the mast head to the
-// rail tip, every member reaching the tip lies in the `y = 4` plane, so the tip
-// has no stiffness at all in `y`: the arm solve's supported system has a zero
-// pivot there and is singular.
+// THE CRANE IS THE SMALLEST STRUCTURE A RUN STARTS ON, AND IT IS A MECHANISM. The
+// ring and one rail off its top flange clear all four readiness issues
+// (specs/structure.md § Readiness) and nothing else, so the run starts rather than
+// being refused — "a ready structure may still be a mechanism" — while the rail's
+// far node has no member resisting a vertical displacement and no member reaches
+// the bottom flange or an anchor at all. specs/statics.md § Singularity: "A
+// singular solve, in either the arm or the tower, at any point in the slack-cable
+// iteration or the breakage sequence, ends the run as `collapse`."
 //
-// It is the ONE member left off, and the crane is otherwise the harness's minimal
-// crane, so the structure is still ready — it keeps its ring, its rail, and a
-// member path from every node to the flange (specs/structure.md § Readiness) — and
-// the run starts rather than being refused. The tape is a `grip` move, the one
-// axis whose motion "applies no force to anything" (specs/rigging.md § The grip),
-// so nothing the tape does contributes to the verdict: the collapse is the first
-// tick's own solve.
+// Nothing is built beyond those two parts, which is what keeps the run's route to
+// its verdict as short as the specification allows: there is no member to break,
+// no counterweight to fall, and the yard is emptied, so the first tick's solve is
+// the whole of what ends the run. The tape is a `grip` move, the one axis whose
+// motion "applies no force to anything" (specs/rigging.md § The grip), so nothing
+// the tape does contributes to the verdict either.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, fail } from "../assert";
 import { GRIP_MAX_RATE, FAIL_TEXT } from "../constants";
 import {
-  MINIMAL_CRANE,
-  clearAll,
   createHarness,
   openSite,
-  poseCrane,
-  poseTape,
   runUntil,
   startRun,
-  type CraneDesign,
   type Harness,
-  type LatticeNode,
-  type TapeStepSpec,
 } from "../harness";
 import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
 
@@ -49,35 +40,25 @@ const CAUSE = "collapse" as const;
 /** Site 1. Which site it is decides nothing here; its yard is emptied. */
 const SITE = 0;
 
-/** The mast head and the rail tip: the tie that holds the tip up in `y`. */
-const TIE: readonly [LatticeNode, LatticeNode] = [
-  [0, 8, 0],
-  [4, 4, 0],
-];
-
-/** Two lattice nodes are the same node. */
-function sameNode(a: LatticeNode, b: LatticeNode): boolean {
-  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+/**
+ * The ring, and one rail off its top flange: ready, and a mechanism.
+ *
+ * The rail is horizontal, it is one unbroken stretch of track, it lies in the arm
+ * because it ends on a top-flange node, and its two ends stand at different
+ * horizontal distances from the slew axis — the four track rules of
+ * specs/structure.md § The trolley and the rail — so `invalid-rail` is not raised
+ * and neither is any other readiness issue.
+ */
+async function poseReadyCrane(harness: Harness): Promise<void> {
+  await harness.debug.setRing(0, 2, 0);
+  await harness.debug.addMember(0, 4, 0, 4, 4, 0, "rail");
 }
 
-/** The minimal crane, less that one tie: ready, and a mechanism. */
-const UNTIED: CraneDesign = {
-  ...MINIMAL_CRANE,
-  name: "Minimal, with the tip's out-of-plane tie left off",
-  members: MINIMAL_CRANE.members.filter(
-    ([a, b]) =>
-      !(
-        (sameNode(a, TIE[0]) && sameNode(b, TIE[1])) ||
-        (sameNode(a, TIE[1]) && sameNode(b, TIE[0]))
-      ),
-  ),
-};
-
 /** A move that turns the bare hook, which applies no force to anything. */
-const TURN_THE_HOOK: TapeStepSpec = {
-  kind: "move",
-  commands: [{ axis: "grip", target: 90, rate: GRIP_MAX_RATE }],
-};
+async function poseTape(harness: Harness): Promise<void> {
+  await harness.debug.setScreen("program");
+  await harness.debug.addMoveStep("grip", 90, GRIP_MAX_RATE);
+}
 
 /**
  * Every run of text the last frame drew on the screen layer.
@@ -112,23 +93,28 @@ afterEach(async () => {
 });
 
 it("reads a singular solve out as THE STRUCTURE COLLAPSED", async () => {
-  assertLength(
-    UNTIED.members,
-    MINIMAL_CRANE.members.length - 1,
-    "the members left once the tip's one out-of-plane tie is dropped: this " +
-      "check is about the crane WITHOUT that tie and no other change to it",
-  );
-
   await openSite(h, SITE);
-  await clearAll(h);
-  await poseCrane(h, UNTIED);
-  await poseTape(h, [TURN_THE_HOOK]);
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
+  await poseReadyCrane(h);
+  await poseTape(h);
 
-  await startRun(h);
+  const started = await startRun(h);
+  assertLength(
+    started.structure.members,
+    1,
+    "the members the crane this run collapses under carries: the one rail " +
+      "(specs/structure.md)",
+  );
+  assertLength(
+    started.program,
+    1,
+    "the steps the tape took, so the run runs the grip move and nothing else",
+  );
   const ended = await runUntil(
     h,
     (s) => s.run.phase !== "running",
-    20,
+    3,
     "the run to end",
   );
   // The frame that FOLLOWS the tick that ended it: a failed run "stays here, the

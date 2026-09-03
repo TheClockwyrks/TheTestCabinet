@@ -18,18 +18,28 @@
 // again: with it gone the issue list is empty, so the entry the first reading
 // carried came from the crossing member and not from something else the crane was
 // already carrying.
+//
+// `empty-program` is read past rather than written away. It is the tape's issue
+// and this point is the structure's, so the crane is left with no tape at all and
+// the two readings are compared on the readiness issues alone
+// (specs/structure.md § Readiness lists the four; specs/program.md owns the
+// fifth). Writing a step to silence it would put the tape editor on the route to
+// a scenario about how members join.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertLength, fail } from "../assert";
-import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   createHarness,
   emptyYard,
   openSite,
-  poseTape,
   standMinimalCrane,
   type Harness,
 } from "../harness";
+
+/** The readiness issues of a reading: everything the tape's own issue is not. */
+function readiness(issues: readonly string[]): string[] {
+  return issues.filter((one) => one !== "empty-program");
+}
 
 /** The midpoint of the minimal crane's mast-to-tip strut. */
 const CROSSING_POINT = { x: 2, y: 6, z: 0 } as const;
@@ -52,22 +62,12 @@ it("calls a member that reaches the crane only by crossing it disconnected", asy
   await openSite(h, 0);
   await emptyYard(h);
   await standMinimalCrane(h);
-  // A tape, so `empty-program` is not standing in the issue list and what the
-  // two readings differ by is the crossing member alone.
-  await poseTape(h, [
-    {
-      kind: "move",
-      commands: [
-        { axis: "hoist", target: HOIST_START + 2, rate: HOIST_MAX_RATE },
-      ],
-    },
-  ]);
 
   assertLength(
-    (await h.check()).issues,
+    readiness((await h.check()).issues),
     0,
-    "the issues of the minimal crane and its tape, before the crossing " +
-      "member is placed (specs/structure.md)",
+    "the readiness issues of the minimal crane, before the crossing member " +
+      "is placed (specs/structure.md)",
   );
 
   const id = (await h.snapshot()).structure.nextMemberId;
@@ -83,7 +83,7 @@ it("calls a member that reaches the crane only by crossing it disconnected", asy
   }
 
   assertContains(
-    (await h.check()).issues,
+    readiness((await h.check()).issues),
     "disconnected-members",
     `the issues with a strut crossing the crane at (${CROSSING_POINT.x}, ` +
       `${CROSSING_POINT.y}, ${CROSSING_POINT.z}) and sharing an end node ` +
@@ -99,9 +99,9 @@ it("calls a member that reaches the crane only by crossing it disconnected", asy
 
   await h.debug.removeMember(id);
   assertLength(
-    (await h.check()).issues,
+    readiness((await h.check()).issues),
     0,
-    "the issues once the crossing member is removed, which is what makes the " +
-      "entry above that member's",
+    "the readiness issues once the crossing member is removed, which is what " +
+      "makes the entry above that member's",
   );
 });

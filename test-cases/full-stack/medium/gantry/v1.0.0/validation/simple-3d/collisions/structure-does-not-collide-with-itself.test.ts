@@ -16,23 +16,31 @@
 // lattice) — and no end node is shared between them. Both join top-flange nodes
 // only, so neither reaches the tower and the ring rule accepts them.
 //
-// AND THE RUN IS DRIVEN THROUGH A QUARTER TURN rather than held still: the two
-// members are carried through it crossing the whole way, which is what "for the
-// whole run" asks for. The sweep is driven a tick at a time until the run ends,
-// so a build that raises a failure at any tick of it is caught at that tick, and
-// the yard is emptied first, so a member is the only body in the run that can
-// reach anything at all.
+// AND THE RUN IS DRIVEN THROUGH A SLEW rather than held still: the two members
+// are carried through it crossing the whole way, which is what "for the whole
+// run" asks for. The angle is ten degrees rather than a quarter turn because
+// what the point needs of the motion is that the crossing MOVES, and a build
+// that raised a collision between two crossing members would raise it on the
+// first tick of the sweep as readily as the hundredth.
+//
+// THE RUN IS DRIVEN IN ONE BATCH rather than a tick at a time. A raised failure
+// ENDS the run (specs/program.md), so the state the ticks left names the tick it
+// was raised on whether or not the sweep stopped there: the phase and the cause
+// read at the end are the whole reading, and sampling every tick to reach them
+// buys nothing. The yard is emptied first, so a member is the only body in the
+// run that can reach anything at all.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotEqual, assertNull } from "../assert";
 import { SLEW_MAX_RATE } from "../constants";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
+  runTicks,
   runUntil,
   startRun,
   type CraneDesign,
@@ -54,16 +62,28 @@ const CROSSED: CraneDesign = {
   ],
 };
 
-/** A quarter turn, so the crossing is carried through a moving run. */
+/** How far the arm is slewed, so the crossing is carried through a moving run. */
+const SLEW_TARGET = 10;
+
+/** A slew, so the crossing is carried through a moving run. */
 const SWEEP: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "slew", target: 90, rate: SLEW_MAX_RATE }],
+    commands: [{ axis: "slew", target: SLEW_TARGET, rate: SLEW_MAX_RATE }],
   },
 ];
 
-/** Ticks the tape is given: a quarter turn at SLEW_MAX_RATE and its ramps. */
-const CAP = 400;
+/**
+ * Ticks driven in one batch before the sweep begins.
+ *
+ * `SLEW_TARGET` degrees under `SLEW_ACCEL` is a ramp up and straight back down
+ * over `2 * sqrt(SLEW_TARGET / SLEW_ACCEL)` seconds — some seventy ticks — so
+ * sixty is short of the tape running out on any conformant build.
+ */
+const CARRY = 60;
+
+/** Ticks the sweep is given after that, for the tape to run out. */
+const CAP = 120;
 
 let h: Harness;
 
@@ -77,11 +97,15 @@ afterEach(async () => {
 
 it("runs a tape out with two members crossing in space", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await poseCrane(h, CROSSED);
   await poseTape(h, SWEEP);
   await startRun(h);
 
+  await runTicks(h, CARRY);
   const s = await runUntil(
     h,
     (snapshot) => snapshot.run.phase !== "running",

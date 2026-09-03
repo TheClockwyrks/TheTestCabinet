@@ -35,8 +35,8 @@ import {
   TICK_HZ,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -155,7 +155,7 @@ afterEach(async () => {
 
 it("puts no slew term on a tower node, however fast the arm turns", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, JIB_RIG);
 
   const { structure } = await h.snapshot();
@@ -229,9 +229,13 @@ it("puts no slew term on a tower node, however fast the arm turns", async () => 
     const theta = (from * Math.PI) / 180;
     const origin = { x: 2, y: 6, z: 0 };
     await h.debug.setBob(
-      axis.x + (origin.x - axis.x) * Math.cos(theta) - (origin.z - axis.z) * Math.sin(theta),
+      axis.x +
+        (origin.x - axis.x) * Math.cos(theta) -
+        (origin.z - axis.z) * Math.sin(theta),
       origin.y - HOIST_START,
-      axis.z + (origin.x - axis.x) * Math.sin(theta) + (origin.z - axis.z) * Math.cos(theta),
+      axis.z +
+        (origin.x - axis.x) * Math.sin(theta) +
+        (origin.z - axis.z) * Math.cos(theta),
     );
     await h.debug.setBobVelocity(0, 0, 0);
 
@@ -240,7 +244,12 @@ it("puts no slew term on a tower node, however fast the arm turns", async () => 
       after.run.phase === "running",
       "the run still standing while the reading is taken",
     );
-    assertNear(after.run.axes.slew.value, ANGLE, 1e-9, "the slew value read at");
+    assertNear(
+      after.run.axes.slew.value,
+      ANGLE,
+      1e-9,
+      "the slew value read at",
+    );
     assertNear(after.run.axes.slew.rate, rate, 1e-9, "the slew rate read at");
     return new Map(after.run.forces.map((f) => [f.id, f.force]));
   };
@@ -268,7 +277,9 @@ it("puts no slew term on a tower node, however fast the arm turns", async () => 
       turning,
       still,
       Math.max(Math.abs(still), 1) * TOLERANCE,
-      "member " + id + " feeling the outrigger's counterweight the same while " +
+      "member " +
+        id +
+        " feeling the outrigger's counterweight the same while " +
         "the arm cruises at SLEW_MAX_RATE as while it stands still, since a " +
         "tower node's prescribed acceleration is zero (specs/statics.md)",
     );

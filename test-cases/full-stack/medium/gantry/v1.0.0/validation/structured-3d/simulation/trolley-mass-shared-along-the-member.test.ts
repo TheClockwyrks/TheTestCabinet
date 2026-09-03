@@ -33,7 +33,6 @@ import {
   TROLLEY_MASS,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
   emptyYard,
   openSite,
@@ -201,7 +200,6 @@ async function readAt(position: number): Promise<GantrySnapshot> {
 
 it("shifts the trolley's load between a rail's two nodes as it runs along it", async () => {
   await openSite(h, 0);
-  await clearAll(h);
   await emptyYard(h);
   await poseCrane(h, RIG);
 

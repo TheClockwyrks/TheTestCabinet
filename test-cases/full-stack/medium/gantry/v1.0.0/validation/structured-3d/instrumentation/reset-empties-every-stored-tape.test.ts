@@ -20,7 +20,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertLength } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
   openSite,
   poseTape,
@@ -54,7 +53,14 @@ afterEach(async () => {
 it("empties the tape stored on every site", async () => {
   for (const site of SITES_TAPED) {
     await openSite(h, site);
-    await clearAll(h);
+    // THE TAPE ALONE, and emptied rather than assumed empty: this point is about
+    // what a `reset` does to a stored tape, so the tape each site starts from is
+    // cleared by `clearProgram` rather than by the very operation under test.
+    // Nothing else in the world can reach a stored tape, so nothing else is
+    // touched — and the program screen, which is where the tape poses apply
+    // (`specs/instrumentation.md`), is where the posing below is left standing.
+    await h.debug.setScreen("program");
+    await h.debug.clearProgram();
     await poseTape(h, TAPE);
     assertLength(
       (await h.snapshot()).program,

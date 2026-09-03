@@ -22,7 +22,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotNull, assertNull } from "../assert";
 import { BINDINGS } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The key `specs/controls.md` binds the `check` action to. */
 const CHECK_KEY = BINDINGS.check[0]!;
@@ -39,7 +39,7 @@ afterEach(async () => {
 
 it("shows no check result after a reset", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.press(CHECK_KEY);
   const shown = await h.snapshot();
   assertNotNull(

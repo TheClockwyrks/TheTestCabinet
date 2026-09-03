@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertNotNull } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The corner the crane's one ring is seated at. */
 const FIRST = { x: 0, y: 4, z: 0 };
@@ -38,7 +38,8 @@ afterEach(async () => {
 
 it("refuses a ring placement on a crane that already has one", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.debug.setRing(FIRST.x, FIRST.y, FIRST.z);
   assertNotNull(
     (await h.snapshot()).structure.ring,

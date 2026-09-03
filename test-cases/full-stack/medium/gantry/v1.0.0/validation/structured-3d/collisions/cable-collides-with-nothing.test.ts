@@ -32,18 +32,15 @@
 // the grip at the slowest legal rate, so the arm never moves.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNull, assertTrue } from "../assert";
+import { assertEqual, assertLength, assertNull, assertTrue } from "../assert";
 import {
   addOneObstacle,
-  clearAll,
   createHarness,
   openSite,
-  poseTape,
   runTicks,
   standMinimalCrane,
   startRun,
   type Harness,
-  type TapeStepSpec,
 } from "../harness";
 
 /** The cable length that hangs the bob at `(0, 1, 0)` under the pivot. */
@@ -55,12 +52,26 @@ const OBSTACLE_SIZE = { x: 1, y: 1, z: 1 };
 
 /** The slowest legal turn of the grip: it holds the run open and moves nothing. */
 const HOLD_RATE = 0.001;
-const HOLD_TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 360, rate: HOLD_RATE }] },
-];
 
-/** Two seconds of run clock with the cable through the box. */
-const TICKS = 120;
+/**
+ * Appended through the tape editor's own screen, which is where the tape poses
+ * apply (`specs/instrumentation.md`), and left there: `startRun` poses the `run`
+ * action, which the program screen carries as well as the build screen.
+ */
+async function poseHoldTape(harness: Harness): Promise<void> {
+  await harness.debug.setScreen("program");
+  await harness.debug.addMoveStep("grip", 360, HOLD_RATE);
+}
+
+/**
+ * Ticks driven with the cable through the box.
+ *
+ * The collision test runs on every tick (`specs/program.md` § The tick pipeline,
+ * stage 5), so a build that tested the cable would end the run on the first of
+ * these; twenty of them is a margin over the one tick the rule is decided on, not
+ * a search.
+ */
+const TICKS = 20;
 
 let h: Harness;
 
@@ -73,13 +84,21 @@ afterEach(async () => {
 });
 
 it("raises nothing for a hoist cable running through an obstacle", async () => {
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared — and `addOneObstacle` clears the obstacles itself.
   await openSite(h, 0);
-  await clearAll(h);
+  await h.debug.clearLoads();
   await standMinimalCrane(h);
   await addOneObstacle(h, OBSTACLE_MIN, OBSTACLE_SIZE);
-  await poseTape(h, HOLD_TAPE);
+  await poseHoldTape(h);
 
-  await startRun(h);
+  const started = await startRun(h);
+  assertLength(
+    started.program,
+    1,
+    "the steps the tape took, so the run keeps ticking under the reading",
+  );
   await h.debug.setAxis("hoist", HOIST);
   await h.debug.setBob(0, 1, 0);
   await h.debug.setBobVelocity(0, 0, 0);
@@ -94,8 +113,12 @@ it("raises nothing for a hoist cable running through an obstacle", async () => {
   const maxX = OBSTACLE_MIN.x + OBSTACLE_SIZE.x;
   const maxY = OBSTACLE_MIN.y + OBSTACLE_SIZE.y;
   const maxZ = OBSTACLE_MIN.z + OBSTACLE_SIZE.z;
-  const straddles = (a: number, b: number, low: number, high: number): boolean =>
-    a > low && a < high && b > low && b < high;
+  const straddles = (
+    a: number,
+    b: number,
+    low: number,
+    high: number,
+  ): boolean => a > low && a < high && b > low && b < high;
   assertTrue(
     held.run.pivot.y > maxY && held.run.bob.pos.y < OBSTACLE_MIN.y,
     "the pivot standing above the box and the bob below it, so the cable " +

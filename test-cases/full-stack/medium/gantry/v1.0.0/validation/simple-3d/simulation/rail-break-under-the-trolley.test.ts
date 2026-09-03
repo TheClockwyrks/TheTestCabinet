@@ -21,33 +21,34 @@
 // solves, the breakage, and the verdict.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertContains, assertEqual, fail } from "../assert";
+import { assertContains, assertEqual, assertLength, fail } from "../assert";
 import { GRIP_MAX_RATE, STRUT_MAX_LEN } from "../constants";
 import {
-  clearAll,
   createHarness,
   openSite,
   poseCrane,
-  poseTape,
   runTicks,
   startRun,
   type CraneDesign,
   type DesignMember,
   type Harness,
   type MemberView,
-  type TapeStepSpec,
 } from "../harness";
 
 /** Long Reach: the widest envelope and the budget this crane is built inside. */
 const SITE = 3;
 
-/** A tape that keeps the run ticking and touches nothing the solve reads. */
-const TURN_THE_GRIP: readonly TapeStepSpec[] = [
-  {
-    kind: "move",
-    commands: [{ axis: "grip", target: 3600, rate: GRIP_MAX_RATE }],
-  },
-];
+/**
+ * A tape that keeps the run ticking and touches nothing the solve reads.
+ *
+ * Appended through the tape editor's own screen, which is where the tape poses
+ * apply (specs/instrumentation.md), and left there: `startRun` poses the `run`
+ * action, which the program screen carries as well as the build screen.
+ */
+async function turnTheGrip(harness: Harness): Promise<void> {
+  await harness.debug.setScreen("program");
+  await harness.debug.addMoveStep("grip", 3600, GRIP_MAX_RATE);
+}
 
 /* ---- The crane: a three-rail jib whose middle rail is the one that breaks ---- */
 //
@@ -215,14 +216,25 @@ const ON_THE_MIDDLE_RAIL = 5;
 
 it("ends the run as collapse when the rail under the trolley breaks", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await poseCrane(h, jibCrane());
-  await poseTape(h, TURN_THE_GRIP);
+  await turnTheGrip(h);
 
-  const { structure } = await h.snapshot();
-  const middle = memberAt(structure.members, MIDDLE_RAIL);
+  // The run's own opening snapshot carries the structure it started on, so the
+  // rail this point is about is named off that rather than off a reading of its
+  // own (specs/instrumentation.md: nothing has ticked at the call).
+  const started = await startRun(h);
+  assertLength(
+    started.program,
+    1,
+    "the steps the tape took, so the run keeps ticking under the reading",
+  );
+  const middle = memberAt(started.structure.members, MIDDLE_RAIL);
 
-  await startRun(h);
   await h.debug.setAxis("trolley", ON_THE_MIDDLE_RAIL);
   const { run } = await runTicks(h, 1);
   await h.capture("state", "The driven state this point decides");

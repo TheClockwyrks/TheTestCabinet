@@ -93,8 +93,15 @@ const HOLD: TapeStepSpec = {
   commands: [{ axis: "grip", target: 100_000, rate: GRIP_MAX_RATE }],
 };
 
-/** Ticks the run is watched for after the bob reaches the bound. */
-const WATCHED = 60;
+/**
+ * Ticks the run is watched for after the bob reaches the bound.
+ *
+ * The tension is compared with the cap on EVERY tick (specs/rigging.md § Cable
+ * tension and snapping), and the bob is at rest under a still pivot so every one
+ * of them carries exactly the same `3000`. A build that wrote `>=` snaps on the
+ * first of them, so ten ticks decide this as surely as a hundred.
+ */
+const WATCHED = 10;
 
 let h: Harness;
 

@@ -25,8 +25,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertContains, assertLength } from "../assert";
 import { COUNTERWEIGHT_COST } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -51,7 +51,7 @@ afterEach(async () => {
 
 it("leaves the counterweight standing when the member under it is removed", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
 
   await h.debug.addMember(
     FOOT.x,

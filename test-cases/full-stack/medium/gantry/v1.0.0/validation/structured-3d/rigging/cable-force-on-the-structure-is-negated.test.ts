@@ -29,28 +29,26 @@
 // `-750/800`, and fails by twice the signal.
 //
 // THE BOB IS AT REST FOR EVERY READING, so `a` is zero and `T` is the weight
-// alone. The cable is drawn in to `HOIST_MIN` (`1`) first, which moves neither
-// the trolley point the force lands on nor the direction it acts in, and leaves
-// the `2`-unit crate riding a unit clear of the ground once it is on the hook
-// (`specs/world.md`, `specs/statics.md`). The load is hung with
+// alone — and it is at rest from the first tick rather than settled into rest: a
+// run starts with the hoist at `HOIST_START` (`2`) and "the bob hangs at rest
+// directly below the pivot" there (`specs/rigging.md`, `specs/state.md`), which
+// leaves the `2`-unit crate riding a unit clear of the ground once it is on the
+// hook (`specs/world.md`, `specs/statics.md`). Nothing is driven toward the
+// reading that the run does not already stand at, so the readings are taken a few
+// ticks in rather than a second in. The load is hung with
 // `setLoadPhase(0, "attached")`, which "hangs that load on the hook exactly as a
 // successful `attach` leaves it" (`specs/instrumentation.md`), so the tape is the
 // same in all three runs and the loaded run differs from the bare one in the bob's
 // mass and in nothing else.
 //
 // The crane is struts and rails alone, so no cable can go slack and each solve is
-// one linear system; the yard holds that one load and no obstacle; and the tape's
-// second step is a long grip move, the only axis whose motion moves neither the
-// pivot nor the cable ("Turning the grip applies no force to anything").
+// one linear system; the yard holds that one load and no obstacle; and the tape is
+// one long grip move, the only axis whose motion moves neither the pivot nor the
+// cable ("Turning the grip applies no force to anything").
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertNear } from "../assert";
-import {
-  COUNTERWEIGHT_MASS,
-  GRIP_MAX_RATE,
-  HOIST_MAX_RATE,
-  HOIST_MIN,
-} from "../constants";
+import { COUNTERWEIGHT_MASS, GRIP_MAX_RATE, HOIST_START } from "../constants";
 import {
   addOneLoad,
   clearAll,
@@ -68,26 +66,22 @@ import {
 /** The track origin of the harness's minimal crane: the trolley's own node. */
 const TRACK_ORIGIN = { x: 0, y: 4, z: 0 };
 
-/** Where the hook stands once the cable is drawn in to HOIST_MIN. */
-const HOOK = { x: 0, y: 3, z: 0, yaw: 0 };
+/** Where the hook stands at the run-start posture: HOIST_START below the pivot. */
+const HOOK = { x: 0, y: TRACK_ORIGIN.y - HOIST_START, z: 0, yaw: 0 };
 
 /** The mass hung on the hook: near the counterweight's, and not equal to it. */
 const LOAD_MASS = 75;
 
-/** Draw the cable in, then hold: the grip moves nothing the rigging touches. */
+/** Hold: the grip is the one axis whose motion moves nothing the rigging touches. */
 const TAPE: readonly TapeStepSpec[] = [
-  {
-    kind: "move",
-    commands: [{ axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE }],
-  },
   {
     kind: "move",
     commands: [{ axis: "grip", target: 360, rate: GRIP_MAX_RATE }],
   },
 ];
 
-/** Ticks driven before a reading: past the hoist move, which takes about 35. */
-const SETTLE = 45;
+/** Ticks driven before a reading: enough for a solve, on a run already at rest. */
+const SETTLE = 3;
 
 /** Newtons of slack on a force every reading takes at rest. */
 const TOLERANCE = 0.01;

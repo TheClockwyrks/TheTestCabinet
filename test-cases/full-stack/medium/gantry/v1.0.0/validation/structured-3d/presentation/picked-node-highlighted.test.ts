@@ -40,12 +40,12 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
 import { LATTICE_PITCH, STAGE_H, STAGE_W } from "../constants";
 import {
-  clearAll,
   createHarness,
   drawnObjects,
   drawnOver,
   drawnSignature,
   nodePoint,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -80,7 +80,7 @@ function over(at: Vec3): string {
 
 it("highlights the node under the pointer and leaves the rest of the lattice alone", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await h.pointerMove(PARKED.x, PARKED.y);
   await h.advance(1);
 

@@ -35,7 +35,7 @@ import {
   NODE_PICK_PX,
   SITES,
 } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The site this check is read on, and the envelope its lattice fills. */
 const SITE = 0;
@@ -277,7 +277,7 @@ afterEach(async () => {
 
 it("takes the nearer of two nodes that are both in range", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   const camera = (await h.snapshot()).camera;
   const model = await stageModel(h, camera);
 

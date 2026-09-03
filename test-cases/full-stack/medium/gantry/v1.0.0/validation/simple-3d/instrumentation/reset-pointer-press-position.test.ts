@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** A stage position with neither coordinate at the origin. */
 const AT = { x: 200, y: 140 };
@@ -40,7 +40,8 @@ afterEach(async () => {
 
 it("returns the press position to the origin", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // Nothing is cleared: this decides what a `reset` does to the press position,
+  // and the world it is read against is whatever the site opened with.
   await h.pointerDown(AT.x, AT.y);
   await h.advance(1);
   await h.pointerUp();

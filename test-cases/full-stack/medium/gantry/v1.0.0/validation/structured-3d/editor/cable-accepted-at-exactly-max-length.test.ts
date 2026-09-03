@@ -21,7 +21,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { CABLE_MAX_LEN } from "../constants";
 import {
-  clearAll,
   createHarness,
   openSite,
   type Harness,
@@ -47,7 +46,11 @@ afterEach(async () => {
 
 it("accepts a cable whose length is exactly CABLE_MAX_LEN", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The precondition is an empty structure and nothing else. A site opened
+  // after a reset already carries one (specs/state.md), and `clearStructure`
+  // states it rather than leaving it implied; emptying the yard and the tape
+  // too would drive surface this requirement does not concern.
+  await h.debug.clearStructure();
 
   await h.debug.addMember(A.x, A.y, A.z, B.x, B.y, B.z, "cable");
 

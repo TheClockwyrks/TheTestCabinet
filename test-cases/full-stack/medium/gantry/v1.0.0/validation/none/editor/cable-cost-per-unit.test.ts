@@ -14,7 +14,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { CABLE_COST_PER_UNIT } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The cable this check prices: `(0, 0, 0)` to `(0, 4, 0)`, four units long. */
 const LENGTH = 4;
@@ -31,7 +31,8 @@ afterEach(async () => {
 
 it("prices a cable at its length times CABLE_COST_PER_UNIT", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   const before = (await h.snapshot()).structure.cost;
   assertEqual(

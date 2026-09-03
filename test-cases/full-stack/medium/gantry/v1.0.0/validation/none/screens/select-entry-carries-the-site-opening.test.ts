@@ -50,8 +50,8 @@ import {
   SITES,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runUntil,
@@ -90,7 +90,7 @@ it("carries the whole site opening, not just the screen", async () => {
   await h.debug.setCleared(1, true);
 
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, [ATTACH]);
   // The check action, which is the only thing that leaves a result on screen,

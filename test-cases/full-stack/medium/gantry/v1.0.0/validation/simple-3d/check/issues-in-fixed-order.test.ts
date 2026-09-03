@@ -21,8 +21,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertLength } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type StartIssue,
@@ -60,7 +60,7 @@ afterEach(async () => {
 
 it("reports no-ring, no-rail, disconnected-members and then empty-program", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   for (const [a, b] of [ANCHORED, ADRIFT]) {
     await h.debug.addMember(a.x, a.y, a.z, b.x, b.y, b.z, "strut");
   }

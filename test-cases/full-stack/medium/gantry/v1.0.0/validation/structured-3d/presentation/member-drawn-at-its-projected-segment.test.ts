@@ -34,7 +34,6 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
 import {
-  clearAll,
   createHarness,
   drawnObjects,
   openSite,
@@ -112,7 +111,11 @@ afterEach(async () => {
 
 it("draws a placed member along the segment between its two nodes", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await h.advance(1);
 
   const before = new Set(

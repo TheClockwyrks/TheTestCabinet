@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { HOIST_MAX_RATE, RUN_SPEEDS } from "../constants";
+import { HOIST_MAX_RATE, HOIST_START, RUN_SPEEDS } from "../constants";
 import {
   clearAll,
   createHarness,
@@ -40,16 +40,25 @@ import {
 /** The speed the first run is watched at: the last of `RUN_SPEEDS`. */
 const WATCHED_AT = RUN_SPEEDS.length - 1;
 
-/** A short move: the first run has to end, not to go anywhere. */
+/**
+ * One step the first tick takes and finds already arrived.
+ *
+ * The first run has to END, not to go anywhere: what this point reads is the
+ * speed index a run that has ended is left carrying, and a hoist command to
+ * `HOIST_START` — the value the axis already stands at when a run starts
+ * (`specs/state.md`) — reaches that on the first tick. A move with somewhere to
+ * go would reach the same precondition through the axis controller, whose
+ * correctness belongs to the tape items rather than to this one.
+ */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "hoist", target: 2.5, rate: HOIST_MAX_RATE }],
+    commands: [{ axis: "hoist", target: HOIST_START, rate: HOIST_MAX_RATE }],
   },
 ];
 
-/** Frames the first run is given to end. At speed 4 it takes about eight. */
-const CAP = 400;
+/** Frames the first run is given to end, against the one it takes. */
+const CAP = 10;
 
 let h: Harness;
 

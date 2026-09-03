@@ -40,9 +40,9 @@ import {
 } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -88,7 +88,7 @@ afterEach(async () => {
 
 it("plays no attach cue on the tick an attach finds no candidate", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, LOAD_AT, LOAD_AT);
   await poseTape(h, [NOOP, { kind: "action", action: "attach" }, HOLD]);

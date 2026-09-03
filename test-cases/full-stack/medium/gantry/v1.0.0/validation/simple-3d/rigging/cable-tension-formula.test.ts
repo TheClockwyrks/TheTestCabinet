@@ -38,6 +38,15 @@
 // own forces before the load is hung differ from both, which is what says the
 // `800` the comparison is about actually reached the structure.
 //
+// ONE CRANE CARRIES BOTH RUNS. The second is not rebuilt: the first run is
+// aborted, which "ends a running run with no verdict" and returns the build
+// screen (`specs/instrumentation.md`), and the counterweight goes on there.
+// A run leaves the structure, the tape and the loads' starting poses untouched —
+// "every run begins from the same authored state" (`specs/program.md`) — so the
+// load is back in the yard waiting and the crane the second run solves is
+// demonstrably the crane the first one solved, plus that one counterweight,
+// rather than two cranes this file asserts are the same.
+//
 // The crane is struts and rails alone, so no cable can go slack and each solve is
 // one linear system, and the tape is one long `grip` move — the only axis whose
 // motion moves neither the pivot nor the cable ("Turning the grip applies no
@@ -62,7 +71,6 @@ import {
   poseTape,
   runTicks,
   startRun,
-  type CraneDesign,
   type Harness,
   type MemberForce,
   type TapeStepSpec,
@@ -78,13 +86,6 @@ const HOOK_AT = { x: PIVOT.x, y: PIVOT.y - HOIST_START, z: PIVOT.z, yaw: 0 };
 
 /** The load hung on the hook: exactly what a counterweight weighs. */
 const LOAD_MASS = COUNTERWEIGHT_MASS;
-
-/** The same crane, carrying one counterweight on the track origin. */
-const WEIGHTED: CraneDesign = {
-  ...MINIMAL_CRANE,
-  name: "Minimal, with a counterweight on the track origin",
-  counterweights: [[PIVOT.x, PIVOT.y, PIVOT.z]],
-};
 
 /** A move that keeps the run running and moves neither pivot nor cable. */
 const HOLD: TapeStepSpec = {
@@ -138,12 +139,23 @@ it("puts the bob's weight on the structure, as a static mass would", async () =>
   );
 
   // The counterweight: the same crane with COUNTERWEIGHT_MASS on that node, the
-  // load left waiting, so the same 850 stands on the same node.
-  await openSite(h, SITE);
-  await clearAll(h);
-  await poseCrane(h, WEIGHTED);
-  await addOneLoad(h, "crate", LOAD_MASS, HOOK_AT, HOOK_AT);
-  await poseTape(h, [HOLD]);
+  // load left waiting, so the same 850 stands on the same node. The run is
+  // aborted, which returns the build screen the structure poses apply on, and the
+  // counterweight goes on the crane that just ran.
+  await h.debug.abortRun();
+  await h.debug.addCounterweight(PIVOT.x, PIVOT.y, PIVOT.z);
+  const weighted = await h.snapshot();
+  assertEqual(
+    weighted.structure.counterweights.length,
+    1,
+    `the counterweight standing on the track origin (specs/structure.md)`,
+  );
+  assertEqual(
+    weighted.structure.members.length,
+    MINIMAL_CRANE.members.length,
+    "the members of the crane the first run solved, untouched by it " +
+      "(specs/program.md)",
+  );
   await startRun(h);
   const staticRead = await runTicks(h, 4);
 

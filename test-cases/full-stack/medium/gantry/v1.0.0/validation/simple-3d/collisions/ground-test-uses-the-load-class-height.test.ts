@@ -18,8 +18,11 @@
 // why both halves run here and why nothing but the class changes between them:
 // the same crane, the same tape, the same mass, the same pose.
 //
-// THE CRATE GOES FIRST, so the run that must survive is watched for a full second
-// before the run that must fail is posed. The crate's run is then aborted rather
+// THE CRATE GOES FIRST, so the run that must survive is watched for ten times as
+// long as the drum's run lasts before the run that must fail is posed. The ground
+// test runs on every tick (specs/statics.md § Collisions), so the crate's run
+// surviving ten of them is the whole of what the surviving half has to show: a
+// build that ends it ends it on the first. The crate's run is then aborted rather
 // than left to end, which returns the build screen and takes the yard back
 // (specs/instrumentation.md § The run and the screens); the tape and the
 // structure are untouched by a run (specs/program.md).
@@ -48,8 +51,8 @@ const LIFT_Y = 2.5;
 const PIVOT = { x: 0, y: 4, z: 0 } as const;
 const CABLE = PIVOT.y - LIFT_Y;
 
-/** Ticks the surviving run is watched for: one second of run clock. */
-const WINDOW = 60;
+/** Ticks the surviving run is watched for: ten times the drum's one. */
+const WINDOW = 10;
 
 /** A tape that turns the grip and moves nothing that carries the load. */
 const HOLD: readonly TapeStepSpec[] = [

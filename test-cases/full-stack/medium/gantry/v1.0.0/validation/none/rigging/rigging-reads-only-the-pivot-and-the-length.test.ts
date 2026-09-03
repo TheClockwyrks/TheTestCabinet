@@ -27,21 +27,32 @@
 //
 // THE TAPE MOVES THE PIVOT BOTH WAYS IT CAN — a slew of forty degrees and a
 // trolley run of three units, together — because a bob left hanging under a still
-// pivot agrees with itself trivially. It then turns the grip, the one axis the
-// rigging cannot feel, which keeps both runs ticking for the whole sample without
-// touching the pivot or the cable.
+// pivot agrees with itself trivially. Both moves are live for every compared
+// tick, so the whole sample is a sample of a MOVING pivot: the minimal crane's
+// track origin stands on the slew axis, so a slew alone would not move the pivot
+// at all, and it is the trolley running out that carries it into the turn.
+//
+// THE SAMPLE IS SHORT ON PURPOSE, AND IT IS TICK FOR TICK. The comparison is
+// exact — two JSON strings, no tolerance — so a build that let a member's mass,
+// force or reaction reach the swing parts from itself on the FIRST tick that term
+// is non-zero, and a parted pendulum never comes back. What the sample has to
+// cover is therefore the ticks over which the pivot starts moving and the bob
+// starts trailing it, not the whole move: `SAMPLES` ticks of that is the reading,
+// and every one of them is compared.
 //
 // THE YARD IS EMPTY on both. A load is a mass on the bob, and this point is about
 // what the rigging reads off the STRUCTURE; the bare hook swings under exactly
-// the same steps.
+// the same steps. Only the loads and the obstacles are cleared: a fresh page
+// opens a site with no structure and no tape, and posing the crane empties the
+// structure itself.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { SLEW_MAX_RATE, TROLLEY_MAX_RATE } from "../constants";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -82,15 +93,15 @@ const OTHER_CRANE: CraneDesign = {
   ],
 };
 
-/** Ticks of run watched on both cranes. */
-const SAMPLES = 120;
+/** Ticks of run watched on both cranes, every one of them compared. */
+const SAMPLES = 30;
 
 /**
- * The tape both cranes run: the pivot swung and run out, then a long grip turn.
+ * The tape both cranes run: the pivot swung and run out at once.
  *
- * The grip step is what keeps the run going once the pivot has arrived —
- * `specs/rigging.md`: "Turning the grip applies no force to anything", and it
- * moves neither the pivot nor the cable length.
+ * One step, and it outlives the sample — the slew alone takes `40 / 30` seconds
+ * of cruise on top of its ramps — so every compared tick is a tick of live
+ * motion and the run never reaches the end of its tape.
  */
 const TAPE: readonly TapeStepSpec[] = [
   {
@@ -100,7 +111,6 @@ const TAPE: readonly TapeStepSpec[] = [
       { axis: "trolley", target: 3, rate: TROLLEY_MAX_RATE },
     ],
   },
-  { kind: "move", commands: [{ axis: "grip", target: 60, rate: 5 }] },
 ];
 
 let h: Harness;
@@ -116,7 +126,7 @@ afterEach(async () => {
 /** Run the tape over one crane on an emptied yard, sampling the swing. */
 async function swing(harness: Harness, crane: CraneDesign): Promise<string[]> {
   await openSite(harness, SITE);
-  await clearAll(harness);
+  await emptyYard(harness);
   await poseCrane(harness, crane);
   await poseTape(harness, TAPE);
   await startRun(harness);

@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNull } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** On site 1's inclusive x maximum, so the far flange nodes stand at x 14. */
 const CORNER = { x: 12, y: 4, z: 0 };
@@ -40,7 +40,8 @@ afterEach(async () => {
 
 it("refuses a ring whose far flange nodes stand outside the envelope in x", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   await h.debug.setRing(CORNER.x, CORNER.y, CORNER.z);
 

@@ -28,8 +28,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertClose } from "../assert";
 import { TICK_HZ, TROLLEY_ACCEL, TROLLEY_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -70,7 +70,10 @@ afterEach(async () => {
 
 it("raises the trolley's rate by TROLLEY_ACCEL / TICK_HZ on each driving tick", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);

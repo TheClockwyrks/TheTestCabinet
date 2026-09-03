@@ -19,6 +19,20 @@
 // The rate is read back on the clearing tick, so the check is about a run that
 // ended holding one.
 //
+// THE DRAW-IN IS POSED TO ITS LAST FRACTION rather than driven the whole way.
+// The hoist starts the run `NEAR` above the target the tape sends it to, with
+// the bob hung under the pivot at that same length so the pendulum takes no
+// jolt — which is the pairing specs/instrumentation.md names, "a caller that
+// wants a bob the cable can hold sets the hoist axis to the distance it left
+// between the pivot and the bob". Both are poses called before the run's first
+// tick, when no step has been taken and no axis carries a command, so the tick
+// that takes the move step issues exactly the command it would have issued
+// anyway and the build's own controller draws the hoist in. Only the distance
+// is short: the lift, the attach, the release and the clear are all still the
+// run's own. Driving a whole unit of cable would put the hoist controller
+// between this check and the motor loop it is about, and that controller is
+// another point's requirement.
+//
 // The clearing tick is the tick AFTER the release: specs/program.md, "A tick that
 // finds no live step and no step left to take is the tick the run ends on:
 // cleared if every load is `placed`".
@@ -48,13 +62,28 @@ import {
 const HOOK = { x: 0, y: HOIST_MIN + 2, z: 0, yaw: 0 } as const;
 
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE }],
+  },
   { kind: "action", action: "attach" },
   { kind: "action", action: "release" },
 ];
 
 /** Frames watched after the clear, for a loop that re-schedules rather than loops. */
 const AFTER_FRAMES = 10;
+
+/**
+ * How much cable the run starts with over the target the first step names.
+ *
+ * Enough that the hoist is plainly under way — `HOIST_ACCEL` is `6`, so it is
+ * still driving three ticks in, which is where the motor loop is read — and
+ * little enough that the whole move is a dozen ticks rather than fifty.
+ */
+const NEAR = 0.05;
+
+/** Ticks driven while the hoist is under way, before the loop is read. */
+const DRAWING_TICKS = 3;
 
 let h: Harness;
 
@@ -72,10 +101,15 @@ it("stops the motor loop on the tick a run clears, with an axis still holding a 
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, HOOK, HOOK);
   await poseTape(h, TAPE);
-  await startRun(h);
+  const opened = await startRun(h);
+
+  const { pivot } = opened.run;
+  await h.debug.setAxis("hoist", HOIST_MIN + NEAR);
+  await h.debug.setBob(pivot.x, pivot.y - (HOIST_MIN + NEAR), pivot.z);
+  await h.debug.setBobVelocity(0, 0, 0);
 
   await h.cues();
-  const drawing = await runTicks(h, 5);
+  const drawing = await runTicks(h, DRAWING_TICKS);
   assertTrue(
     drawing.run.axes.hoist.rate !== 0,
     "the hoist drawing the cable in, so the motor loop is running",
@@ -90,7 +124,7 @@ it("stops the motor loop on the tick a run clears, with an axis still holding a 
   const held = await runUntil(
     h,
     (s) => s.run.attached !== null || s.run.phase !== "running",
-    400,
+    60,
     "the attach step to take the load",
   );
   assertEqual(held.run.attached, 0, "the load the attach step took");
@@ -103,7 +137,11 @@ it("stops the motor loop on the tick a run clears, with an axis still holding a 
     "placed",
     "the load the release set down (specs/rigging.md)",
   );
-  assertEqual(released.run.phase, "running", "the run, one tick short of its end");
+  assertEqual(
+    released.run.phase,
+    "running",
+    "the run, one tick short of its end",
+  );
 
   await h.debug.setAxisRate("slew", SLEW_MAX_RATE);
   await h.cues();

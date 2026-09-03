@@ -73,8 +73,16 @@ const HOLD: TapeStepSpec = {
   commands: [{ axis: "grip", target: 100_000, rate: GRIP_MAX_RATE }],
 };
 
-/** How long the site is played once it is up, in ticks. */
-const PLAY_TICKS = 60;
+/**
+ * How long the site is played once it is up, in ticks.
+ *
+ * Long enough to be a run that is genuinely running rather than a run that has
+ * just started, and no longer: the build fetches what it needs before it installs
+ * its surface, so the requests this point reads are already made by the time the
+ * first tick is driven, and every tick past a few tenths of a second of run clock
+ * adds nothing to what it decides.
+ */
+const PLAY_TICKS = 20;
 
 /** An address in `index.html` that reaches the host's root rather than the page. */
 const ROOT_ABSOLUTE = /\s(?:src|href)\s*=\s*["']\/(?!\/)/gi;
@@ -124,11 +132,7 @@ it("runs from a sub-path, reaching every asset it needs", async () => {
     `the run's phase after ${PLAY_TICKS} ticks, which runs the simulation ` +
       "exactly as it does at a root",
   );
-  assertEqual(
-    ran.run.tick,
-    PLAY_TICKS,
-    `the ticks the run has taken`,
-  );
+  assertEqual(ran.run.tick, PLAY_TICKS, `the ticks the run has taken`);
 
   const asked = h.assetRequests();
   assertTrue(

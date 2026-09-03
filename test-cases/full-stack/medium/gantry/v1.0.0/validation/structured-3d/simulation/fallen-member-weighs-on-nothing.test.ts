@@ -23,22 +23,18 @@
 // so any difference is the fallen member's weight and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertClose, assertEqual, fail } from "../assert";
+import { assertClose, assertEqual, assertLength, fail } from "../assert";
 import { HOIST_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
-  emptyYard,
   openSite,
   poseCrane,
-  poseTape,
   runTicks,
   startRun,
   type CraneDesign,
   type DesignMember,
   type GantrySnapshot,
   type Harness,
-  type TapeStepSpec,
 } from "../harness";
 
 /**
@@ -167,9 +163,7 @@ const PROPS = [29, 30, 31, 32, 33, 34];
 const SITE = 5;
 
 /** A tape long enough that the run is still going when the reading is taken. */
-const LIFT: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "hoist", target: 6, rate: HOIST_MAX_RATE }] },
-];
+const LIFT_TARGET = 6;
 
 /** The tick each reading is taken on, comfortably past the fall. */
 const READING_TICK = 5;
@@ -184,18 +178,37 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Run `design` on a fresh yard and read the tick the comparison is made on. */
+/**
+ * Run `design` and read the tick the comparison is made on.
+ *
+ * The structure poses apply on the build screen and the tape poses on the program
+ * screen (specs/instrumentation.md), so the screen is taken to each in turn and
+ * left on the program screen — `specs/program.md` allows a run to start from
+ * either. `poseCrane` empties the structure itself, and the tape is emptied here,
+ * so the second run is posed on the same clean slate as the first.
+ */
 async function runCrane(design: CraneDesign): Promise<GantrySnapshot> {
-  await clearAll(h);
-  await emptyYard(h);
+  await h.debug.setScreen("build");
   await poseCrane(h, design);
-  await poseTape(h, LIFT);
-  await startRun(h);
+  await h.debug.setScreen("program");
+  await h.debug.clearProgram();
+  await h.debug.addMoveStep("hoist", LIFT_TARGET, HOIST_MAX_RATE);
+  const started = await startRun(h);
+  assertLength(
+    started.program,
+    1,
+    "the one lift step this reading's tape carries (specs/program.md)",
+  );
   return runTicks(h, READING_TICK);
 }
 
 it("reads the same as the crane with the fallen assembly never built", async () => {
   await openSite(h, SITE);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
 
   const shed = await runCrane(RIGGED);
   await h.capture(
@@ -215,7 +228,6 @@ it("reads the same as the crane with the fallen assembly never built", async () 
   );
 
   await h.debug.abortRun();
-  await h.debug.setScreen("build");
   const never = await runCrane(RIG);
   assertEqual(
     never.run.phase,

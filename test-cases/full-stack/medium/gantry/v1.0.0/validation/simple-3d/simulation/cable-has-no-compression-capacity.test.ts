@@ -15,6 +15,12 @@
 // seat rather than a place where nothing happens, and once with it as a cable,
 // which is the reading the requirement is about. Nothing else differs between the
 // two poses, so the second reading is about the material and about nothing else.
+//
+// AND IT IS LITERALLY THE SAME RIG, not a second one built beside it: the brace is
+// swapped in place, by the two edits a player makes to change a member's material
+// — `removeMember`, then `addMember` at the same two nodes. Every other member
+// keeps the id and the seat it had, so the pair of readings differs in the one
+// thing this requirement is about.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
@@ -31,8 +37,13 @@ import {
 } from "../harness";
 
 /** The member the two poses differ in. */
-const SEAT: readonly [readonly [number, number, number], readonly [number, number, number]] =
-  [[2, 10, 0], [2, 6, 2]];
+const SEAT: readonly [
+  readonly [number, number, number],
+  readonly [number, number, number],
+] = [
+  [2, 10, 0],
+  [2, 6, 2],
+];
 
 /**
  * The jib rig, and why it is shaped this way.
@@ -98,8 +109,12 @@ const JIB_RIG: CraneDesign = {
 /** The jib rig with the mast brace at `SEAT` made of `material`. */
 function rigWith(material: MaterialName): CraneDesign {
   const members: DesignMember[] = JIB_RIG_MEMBERS.map((m) =>
-    m[0][0] === SEAT[0][0] && m[0][1] === SEAT[0][1] && m[0][2] === SEAT[0][2] &&
-    m[1][0] === SEAT[1][0] && m[1][1] === SEAT[1][1] && m[1][2] === SEAT[1][2]
+    m[0][0] === SEAT[0][0] &&
+    m[0][1] === SEAT[0][1] &&
+    m[0][2] === SEAT[0][2] &&
+    m[1][0] === SEAT[1][0] &&
+    m[1][1] === SEAT[1][1] &&
+    m[1][2] === SEAT[1][2]
       ? [m[0], m[1], material]
       : m,
   );
@@ -118,10 +133,10 @@ afterEach(async () => {
 
 it("reports no compression on a cable standing in a compression seat", async () => {
   await openSite(h, 0);
+  await clearAll(h);
+  await poseCrane(h, rigWith("strut"));
 
   const readSeat = async (material: MaterialName) => {
-    await clearAll(h);
-    await poseCrane(h, rigWith(material));
     const { structure } = await h.snapshot();
     const result: CheckResult = await h.check();
     assertTrue(
@@ -130,18 +145,30 @@ it("reports no compression on a cable standing in a compression seat", async () 
     );
     const member = structure.members.find(
       (m) =>
-        (m.a.x === SEAT[0][0] && m.a.y === SEAT[0][1] && m.a.z === SEAT[0][2] &&
-          m.b.x === SEAT[1][0] && m.b.y === SEAT[1][1] && m.b.z === SEAT[1][2]) ||
-        (m.b.x === SEAT[0][0] && m.b.y === SEAT[0][1] && m.b.z === SEAT[0][2] &&
-          m.a.x === SEAT[1][0] && m.a.y === SEAT[1][1] && m.a.z === SEAT[1][2]),
+        (m.a.x === SEAT[0][0] &&
+          m.a.y === SEAT[0][1] &&
+          m.a.z === SEAT[0][2] &&
+          m.b.x === SEAT[1][0] &&
+          m.b.y === SEAT[1][1] &&
+          m.b.z === SEAT[1][2]) ||
+        (m.b.x === SEAT[0][0] &&
+          m.b.y === SEAT[0][1] &&
+          m.b.z === SEAT[0][2] &&
+          m.a.x === SEAT[1][0] &&
+          m.a.y === SEAT[1][1] &&
+          m.a.z === SEAT[1][2]),
     );
     if (member === undefined) {
-      throw new Error("gantry: the posed rig carries no mast brace at the seat");
+      throw new Error(
+        "gantry: the posed rig carries no mast brace at the seat",
+      );
     }
     assertEqual(member.material, material, "the mast brace's material");
     const reading = result.members.find((m) => m.id === member.id);
     if (reading === undefined) {
-      throw new Error(`gantry: the check reported no force for member ${member.id}`);
+      throw new Error(
+        `gantry: the check reported no force for member ${member.id}`,
+      );
     }
     return reading;
   };
@@ -153,6 +180,20 @@ it("reports no compression on a cable standing in a compression seat", async () 
     0,
     "the mast brace at (2, 10, 0)-(2, 6, 2) standing in compression when it is " +
       "a strut, so the same member as a cable is genuinely being pushed",
+  );
+
+  // The two edits a player makes to change a member's material, on the build
+  // screen the pose left showing: the strut comes out and a cable goes in between
+  // the same two lattice nodes, and nothing else in the rig is touched.
+  await h.debug.removeMember(asStrut.id);
+  await h.debug.addMember(
+    SEAT[0][0],
+    SEAT[0][1],
+    SEAT[0][2],
+    SEAT[1][0],
+    SEAT[1][1],
+    SEAT[1][2],
+    "cable",
   );
 
   // The requirement: as a cable it reports no compression at all.

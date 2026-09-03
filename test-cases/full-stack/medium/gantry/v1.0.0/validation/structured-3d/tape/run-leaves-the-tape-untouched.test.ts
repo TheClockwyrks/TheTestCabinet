@@ -19,6 +19,13 @@
 // third is never reached. So the tape is read back after a run that consumed some
 // of it, was running when it stopped, and left a step untaken.
 //
+// THE TURN IS A SHORT ONE, because what this point is about is the document the
+// run leaves behind rather than how far the arm got. A half-degree turn is a move
+// the controller accelerates into and brakes out of exactly as it does a long one,
+// and it completes in a sixth of the ticks a twenty-degree turn takes — so the
+// run still walks into its second step, and the tape read back afterwards is the
+// tape of a run that took a step and failed on the next.
+//
 // The screen is taken back to `build` with `setScreen`, which "shows a named
 // screen and sets nothing else" (`specs/instrumentation.md`), so the reading is
 // what the player would come back to.
@@ -38,11 +45,14 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
+/** The turn the first step makes: short, and a genuine accelerated move. */
+const TURN = 0.5;
+
 /** Three steps: one that runs, one that ends the run, and one never reached. */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "slew", target: 20, rate: SLEW_MAX_RATE }],
+    commands: [{ axis: "slew", target: TURN, rate: SLEW_MAX_RATE }],
   },
   {
     kind: "move",
@@ -51,8 +61,8 @@ const TAPE: readonly TapeStepSpec[] = [
   { kind: "action", action: "attach" },
 ];
 
-/** Ticks the sweep is given: twenty degrees of slew take about fifty-two. */
-const CAP = 400;
+/** Ticks the sweep is given: half a degree of slew takes about sixteen. */
+const CAP = 120;
 
 let h: Harness;
 

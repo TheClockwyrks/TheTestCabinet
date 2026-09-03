@@ -19,7 +19,6 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertTrue } from "../assert";
 import {
-  clearAll,
   createHarness,
   openSite,
   standMinimalCrane,
@@ -40,7 +39,15 @@ afterEach(async () => {
 
 it("reports the forces and the verdict with empty-program standing alone", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // THE EMPTY TAPE IS THE SCENARIO, so it is posed rather than assumed: the tape
+  // poses apply on the program screen alone (`specs/instrumentation.md`), and the
+  // screen goes straight back to `build`, where `standMinimalCrane` builds. The
+  // site's loads and obstacles are left where the site opens them — a readiness
+  // issue is a fact about the structure (`specs/structure.md` § Readiness) and
+  // nothing in the yard can raise one or withhold the solve.
+  await h.debug.setScreen("program");
+  await h.debug.clearProgram();
+  await h.debug.setScreen("build");
   await standMinimalCrane(h);
 
   const result = await h.check();

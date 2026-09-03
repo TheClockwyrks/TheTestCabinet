@@ -18,6 +18,15 @@
 //
 // So the second run must read `ring-overload`. A build that ran the tower solve
 // first, or that checked the ring after it, reads `collapse` instead.
+//
+// THE SECOND POSE IS THE FIRST CRANE WITH THE COUNTERWEIGHTS ADDED TO IT. It is
+// not rebuilt: a failed run "stays on the run screen" (`specs/ui.md`), so the
+// build screen is shown again — the screen the structure poses apply on — and the
+// four counterweights go on there. A run leaves the structure it ran over
+// untouched, "every run begins from the same authored state"
+// (`specs/program.md`), so the tower under the second run is demonstrably the
+// very tower the first run found singular rather than one this file asserts is
+// the same.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -134,16 +143,13 @@ const BARE: CraneDesign = {
   tape: [],
 };
 
-const LOADED: CraneDesign = {
-  ...BARE,
-  name: "Under-braced tower, loaded jib",
-  counterweights: [
-    [8, 4, 0],
-    [8, 4, 2],
-    [4, 4, 0],
-    [4, 4, 2],
-  ],
-};
+/** Four counterweights out on the jib: enough to take a ring corner past its cap. */
+const JIB_LOAD: CraneDesign["counterweights"] = [
+  [8, 4, 0],
+  [8, 4, 2],
+  [4, 4, 0],
+  [4, 4, 2],
+];
 
 /** The grip turns and applies no force, so nothing but the solves decides. */
 const GRIP_TAPE: readonly TapeStepSpec[] = [
@@ -177,12 +183,24 @@ it("ends as ring-overload when the tower is also a mechanism", async () => {
   );
 
   // Now load the jib. The tower is untouched — it is still that same mechanism —
-  // and the arm's reactions now exceed RING_CAP at a corner.
-  // Opening the site again puts the run back to its idle placeholder.
-  await openSite(h, 5);
-  await clearAll(h);
-  await poseCrane(h, LOADED);
-  await poseTape(h, GRIP_TAPE);
+  // and the arm's reactions now exceed RING_CAP at a corner. The failed run left
+  // the run screen showing, so the build screen is shown again and the four
+  // counterweights go on the crane that just ran.
+  await h.debug.setScreen("build");
+  for (const [x, y, z] of JIB_LOAD) await h.debug.addCounterweight(x, y, z);
+  const loadedCrane = await h.snapshot();
+  assertEqual(
+    loadedCrane.structure.counterweights.length,
+    JIB_LOAD.length,
+    "the counterweights standing on the jib once they are placed " +
+      "(specs/structure.md)",
+  );
+  assertEqual(
+    loadedCrane.structure.members.length,
+    UNDER_BRACED.length,
+    "the members of the tower the first run found singular, untouched by it " +
+      "(specs/program.md)",
+  );
   await startRun(h);
   const loaded = await runTicks(h, 1);
   await h.capture(

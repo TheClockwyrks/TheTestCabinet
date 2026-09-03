@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual, assertLength } from "../assert";
 import { COUNTERWEIGHT_COST, STRUT_COST_PER_UNIT } from "../constants";
-import { createHarness, emptyYard, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** The one strut, and the node at its head that carries the block. */
 const FOOT = { x: 0, y: 0, z: 0 };
@@ -39,7 +39,9 @@ afterEach(async () => {
 
 it("leaves one counterweight on a node a second was placed on", async () => {
   await openSite(h, 0);
-  await emptyYard(h);
+  // The cost below is read against an empty structure, so that is what is posed.
+  // Emptying the yard states nothing this requirement rests on.
+  await h.debug.clearStructure();
 
   await h.debug.addMember(
     FOOT.x,

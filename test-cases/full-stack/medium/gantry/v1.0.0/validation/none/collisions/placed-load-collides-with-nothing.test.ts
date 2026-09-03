@@ -51,8 +51,16 @@ const TARGET = {
 const BLOCK_MIN = { x: 9, y: 0, z: -1 } as const;
 const BLOCK_SIZE = { x: 2, y: 4, z: 2 } as const;
 
-/** Ticks the placed crate is left sitting in the block: five seconds. */
-const WINDOW = 300;
+/**
+ * Ticks the placed crate is left sitting in the block.
+ *
+ * The collision test runs on every tick of a run (specs/statics.md), so a build
+ * that tested a placed load against the block would end the run on the FIRST
+ * tick it sat inside one. A second of run clock is sixty chances to do it, which
+ * is what this point needs and no more: driving further only spends the run on
+ * the axes and the pendulum, which belong to other points.
+ */
+const WINDOW = 60;
 
 /** A tape that turns the grip and moves nothing near the block. */
 const HOLD: readonly TapeStepSpec[] = [

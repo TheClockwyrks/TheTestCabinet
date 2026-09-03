@@ -8,12 +8,20 @@
 // that it is that figure.
 //
 // THE READING IS TAKEN AT A WHOLE NUMBER OF SECONDS. `specs/ui.md` fixes the
-// unit and not the number of places, so a build is free to write `7`, `7.0` or
-// `0:07`; at exactly `CLOCK_TICKS` (`7` seconds of run clock) all three carry the
-// same figure, and no rounding a build could choose changes it. The run itself is
-// one long slew, so no other readout on the screen carries a `7`: the cost is the
-// minimal crane's, the step counter is `1 / 1`, the site is `1 / 6`, and the four
-// axes are nowhere near it.
+// unit and not the number of places, so a build is free to write `3`, `3.00` or
+// `0:03`; at exactly `CLOCK_TICKS` (`3` seconds of run clock) all three carry the
+// same figure, and no rounding a build could choose changes it.
+//
+// AND `3` IS THE FIRST WHOLE SECOND NO OTHER READOUT CAN CARRY, which is what
+// fixes the length of the drive: the reading costs `CLOCK_SECONDS * TICK_HZ`
+// ticks and nothing else, so the cheapest honest figure is the smallest safe one.
+// `specs/ui.md` § Run puts each of the smaller ones on the screen already —
+// `0` is the trolley and the grip at the run-start posture (`specs/program.md`),
+// `1` is `step 1 / 1`, the watch speed a run starts at, and the site's number,
+// and `2` is `HOIST_START`, the cable length the same posture starts at. Nothing
+// on the screen reads `3`: the run is one long slew, so the cost is the minimal
+// crane's, the slew is `75` at this tick against a target of `253`, and the other
+// three axes are the run-start values above.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
@@ -31,11 +39,11 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** Seven seconds of run clock, in the ticks `specs/program.md` counts them in. */
-const CLOCK_SECONDS = 7;
+/** Three seconds of run clock, in the ticks `specs/program.md` counts them in. */
+const CLOCK_SECONDS = 3;
 const CLOCK_TICKS = CLOCK_SECONDS * TICK_HZ;
 
-/** A slew long enough to still be running when the clock reads seven. */
+/** A slew long enough to still be running when the clock reads three. */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",

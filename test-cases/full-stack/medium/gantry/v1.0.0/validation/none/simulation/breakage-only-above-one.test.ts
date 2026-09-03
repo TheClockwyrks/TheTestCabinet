@@ -23,8 +23,8 @@ import {
   assertTrue,
 } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -143,7 +143,7 @@ afterEach(async () => {
 
 it("takes exactly the members the solve found above one", async () => {
   await openSite(h, 5);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, CRANE);
 
   const check = await h.check();

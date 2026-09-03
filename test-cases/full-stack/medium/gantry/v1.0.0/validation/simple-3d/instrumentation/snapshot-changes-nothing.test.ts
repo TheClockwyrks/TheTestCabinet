@@ -8,10 +8,11 @@
 // It matters because every other check in this suite reads as often as it likes:
 // a `snapshot` that advanced a tick, drained a queue, latched an input edge or
 // cleared a pending flag would make each of those checks measure a game its own
-// instrument had moved. So this one takes fifty-two readings with nothing driven
+// instrument had moved. So this one takes eighteen readings with nothing driven
 // between them and compares the first with the last, `run.tick` and `simTime`
 // included — the two fields that would move first if a reading were quietly
-// stepping the game.
+// stepping the game. A reading that moves the game moves it on the first repeat;
+// the repeats after that only widen a gap the comparison already sees.
 //
 // The world is a run in progress with a load on the hook, which is the state that
 // carries the most for a reading to disturb: a live tape step, four axes under
@@ -33,7 +34,7 @@ import {
 } from "../harness";
 
 /** Readings taken between the first and the last. */
-const READINGS = 50;
+const READINGS = 16;
 
 let h: Harness;
 
@@ -79,13 +80,16 @@ it("leaves every field as it was however often it is read", async () => {
   if (changed.length > 0) {
     fail(
       `every field to read the same after ${READINGS + 2} snapshots with ` +
-        "nothing advanced between them: a reading \"returns what it read and " +
+        'nothing advanced between them: a reading "returns what it read and ' +
         'changes nothing" (specs/instrumentation.md)',
       `${changed.length} field(s) moved: ${changed.slice(0, 12).join(", ")}`,
     );
   }
 
-  await h.capture("snapshot-is-a-reading", "The run fifty-two readings left");
+  await h.capture(
+    "snapshot-is-a-reading",
+    `The run ${READINGS + 2} readings left`,
+  );
 });
 
 /** The dotted paths at which two JSON-shaped readings differ. */

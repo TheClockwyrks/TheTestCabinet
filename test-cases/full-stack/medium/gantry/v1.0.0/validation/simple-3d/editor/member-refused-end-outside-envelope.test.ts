@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** On the envelope's inclusive `y` maximum, and one lattice pitch above it. */
 const A = { x: 0, y: 16, z: 0 };
@@ -38,7 +38,8 @@ afterEach(async () => {
 
 it("refuses a member whose far end stands outside the envelope", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   await h.debug.addMember(A.x, A.y, A.z, B.x, B.y, B.z, "strut");
 

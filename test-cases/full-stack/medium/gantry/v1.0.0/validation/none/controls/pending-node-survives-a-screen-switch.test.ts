@@ -18,14 +18,16 @@
 // `setPendingNode` "holds that lattice node as the pending first node of a member
 // placement, as a first click does". `(0, 0, 0)` is a ground anchor of site 1, on
 // the lattice pitch and inside its envelope, so nothing about the node can refuse
-// the pose. The world is emptied first — and emptied BEFORE the node is held,
-// because `clearAll` shows the program screen to empty the tape.
+// the pose. The world is emptied first, and emptied with the two operations this
+// point needs rather than with `clearAll`: emptying the tape would show the
+// program screen, and a validator about what a screen switch costs the selection
+// must not make an unrelated one of its own on the way in.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -46,7 +48,8 @@ afterEach(async () => {
 
 it("still holds the pending node after the program screen and back", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.debug.setPendingNode(NODE.x, NODE.y, NODE.z);
   const posed = await h.snapshot();
   assertEqual(posed.screen, "build", "the screen the node is held on");

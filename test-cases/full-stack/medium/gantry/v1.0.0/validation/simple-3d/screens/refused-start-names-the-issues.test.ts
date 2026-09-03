@@ -21,15 +21,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { drawnText, toDrawCall } from "../case-harness/index";
 import { assertContains, fail } from "../assert";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  type Harness,
-} from "../harness";
-
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
+import { clearAll, createHarness, openSite, type Harness } from "../harness";
 
 /** The two issues this structure's start is refused on. */
 const ISSUES = ["no-ring", "no-rail"] as const;

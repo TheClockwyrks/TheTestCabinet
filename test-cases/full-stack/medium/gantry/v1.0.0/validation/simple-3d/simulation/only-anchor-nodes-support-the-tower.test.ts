@@ -26,7 +26,6 @@ import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   clearAll,
   createHarness,
-  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -121,7 +120,6 @@ afterEach(async () => {
 it("does not stand a tower whose foot rests on a ground node that is not an anchor", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await emptyYard(h);
   await poseCrane(h, RIG);
   await poseTape(h, [
     {

@@ -21,8 +21,16 @@
 //
 // THE ARM IS HELD STILL, so the flush contact is the same on every tick of the
 // window rather than a moment the run sweeps through: the tape turns the grip,
-// which moves no member (specs/rigging.md § The grip), and the five seconds
-// driven here sit well inside the eight the tape runs for.
+// which moves no member (specs/rigging.md § The grip), and the second driven
+// here sits well inside the eight the tape runs for.
+//
+// A SECOND IS THE WHOLE WINDOW, because nothing in it changes. Collisions are
+// "tested once per tick, at the prescribed geometry" (specs/statics.md), and the
+// geometry the tick after the first is the geometry of the first: every member
+// stands exactly where it stood, flush in the block's face. Sixty consecutive
+// ticks of that geometry is what this point has to survive, and a longer window
+// re-reads the same tick over and over. Driving one is the whole reading; driving
+// five was five times the reading of nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
@@ -44,8 +52,8 @@ import {
 const BLOCK_MIN = { x: 0, y: 3, z: -3 } as const;
 const BLOCK_SIZE = { x: 4, y: 4, z: 3 } as const;
 
-/** Ticks the contact is held for: five seconds of run clock. */
-const WINDOW = 300;
+/** Ticks the contact is held for: a second of run clock, at the one geometry. */
+const WINDOW = 60;
 
 /** A tape that turns the grip, so no member moves for the whole window. */
 const HOLD: readonly TapeStepSpec[] = [

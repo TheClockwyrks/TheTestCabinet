@@ -10,9 +10,18 @@
 // THE ARRIVAL IS FOUND RATHER THAN COUNTED. The check sweeps until the hoist's
 // live command is gone, which `specs/program.md` § Axis motion says is exactly
 // the tick the axis arrives on — "set `x = T`, `v = 0`, and the command is done"
-// — so the reading needs no arithmetic about how many ticks a one-unit move
-// takes, and a build whose controller is a tick out elsewhere is graded there
-// rather than here.
+// — so the reading needs no arithmetic about how many ticks the move takes, and
+// a build whose controller is a tick out elsewhere is graded there rather than
+// here.
+//
+// AND THE MOVE IS THE SHORTEST ONE THAT STILL RAMPS. What this decides is which
+// tick the TAPE stage reads an arrival on, and every move arrives the same way,
+// so the first step asks for a twentieth of a unit rather than a whole one: the
+// hoist accelerates from rest, brakes, and lands on its target on tick `8`
+// instead of tick `43`. The sweep that finds the arrival costs one crossing into
+// the page per tick, and thirty-five of those decided nothing about this
+// requirement — they only added thirty-five more ticks of controller behaviour
+// that belongs to `tape/controller-*` between the run's start and the reading.
 //
 // TWO STEPS, AND THE SECOND IS SLOW. `run.stepIndex` is what moves, so the tape
 // must have somewhere to move to: the second step is a slew move of forty-five
@@ -38,8 +47,14 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** Where the first step drives the hoist: one unit up from the run-start value. */
-const HOIST_TARGET = HOIST_START + 1;
+/**
+ * Where the first step drives the hoist: a twentieth of a unit up from the
+ * run-start value, which is far enough to ramp and brake through the ordinary
+ * `specs/program.md` § Axis motion path and short enough to arrive on tick `8`.
+ * It is inside the hoist's range (`HOIST_MIN` `1` to `HOIST_MAX` `40`), so the
+ * step is not refused when it starts.
+ */
+const HOIST_TARGET = HOIST_START + 0.05;
 
 /** The tape: a hoist move that arrives, then a slew move that outlives it. */
 const TAPE: readonly TapeStepSpec[] = [
@@ -53,8 +68,8 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks the sweep is given: the hoist arrives in about twenty-six. */
-const CAP = 300;
+/** Ticks the sweep is given: the hoist arrives on the eighth. */
+const CAP = 30;
 
 let h: Harness;
 

@@ -9,15 +9,16 @@
 // half of the split — "The menus are driven by the key actions alone: the pointer
 // operates the 3D scene and the tape editor, never a menu."
 //
-// THE HELD ACTION IS `right`, AND IT IS HELD FOR A WHOLE SECOND. The orbit runs
-// against the frame's delta time at `ORBIT_KEY_RATE` (`90`) degrees a second, so
-// a build that let the direction reach the camera on a menu screen has moved the
-// yaw a quarter turn by the time the key is released — far past any rounding a
-// build's own camera arithmetic could produce. `TICK_HZ` frames is that second:
-// off the run screen "nothing ticks, and the frame is still real: the input
-// delivered since the last frame is read, the camera moves against that elapsed
-// time, and the scene is drawn" (`specs/instrumentation.md`), so these are
-// exactly the frames a camera would move on.
+// THE HELD ACTION IS `right`, AND IT IS HELD LONG ENOUGH TO BE UNMISTAKABLE. The
+// orbit runs against the frame's delta time at `ORBIT_KEY_RATE` (`90`) degrees a
+// second, so a build that let the direction reach the camera on a menu screen has
+// moved the yaw eighteen degrees over the fifth of a second held below — far past
+// any rounding a build's own camera arithmetic could produce, and no more frames
+// than that reading needs. Off the run screen "nothing ticks, and the frame is
+// still real: the input delivered since the last frame is read, the camera moves
+// against that elapsed time, and the scene is drawn"
+// (`specs/instrumentation.md`), so these are exactly the frames a camera would
+// move on.
 //
 // The site is opened first, which "resets to the start pose when a site is
 // opened" (`specs/controls.md`), so the yaw the press is measured against is the
@@ -36,8 +37,8 @@ import { createHarness, openSite, type Harness } from "../harness";
 /** The `right` action's binding, as `specs/controls.md` fixes it. */
 const RIGHT = BINDINGS.right[0]!;
 
-/** Frames the action is held for: one second, a quarter turn of orbit. */
-const FRAMES = TICK_HZ;
+/** Frames the action is held for: a fifth of a second, eighteen degrees. */
+const FRAMES = TICK_HZ / 5;
 
 let h: Harness;
 

@@ -14,11 +14,19 @@
 //   1. The crane as designed, its arm rigid and four counterweights out on the
 //      jib. One tick ends the run as `ring-overload`: this build, solving this
 //      arm under this loading, finds a corner past `RING_CAP`.
-//   2. The same crane with three members gone — `(8, 4, 0)`-`(8, 4, 2)`,
-//      `(4, 4, 2)`-`(8, 4, 0)` and the cross stay to `(8, 4, 0)` — which leaves
-//      the jib tip held by members lying in one plane and free to swing out of
-//      it. That is a mechanism, "a flat frame with nothing resisting
+//   2. THE SAME CRANE, with three members taken back off it — `(8, 4, 0)`-
+//      `(8, 4, 2)`, `(4, 4, 2)`-`(8, 4, 0)` and the cross stay to `(8, 4, 0)` —
+//      which leaves the jib tip held by members lying in one plane and free to
+//      swing out of it. That is a mechanism, "a flat frame with nothing resisting
 //      out-of-plane motion", and the arm solve is singular.
+//
+// THE SECOND POSE IS THE FIRST CRANE, THREE REMOVALS ON. It is not rebuilt: the
+// build screen is shown again — a failed run "stays on the run screen", so the
+// screen is where the structure poses apply is where they are made — and the
+// three members come off there. "Removal is always allowed", and a run leaves the
+// structure it ran over untouched: "every run begins from the same authored
+// state" (`specs/program.md`). So the two runs are demonstrably the same crane
+// bar those three members, rather than two cranes this file asserts are the same.
 //
 // The three members carry a few tens of mass units between them against the four
 // counterweights' `320`, so the loading the ring corners see is the same loading
@@ -142,12 +150,6 @@ const BRACED: CraneDesign = {
   tape: [],
 };
 
-const UNBRACED: CraneDesign = {
-  ...BRACED,
-  name: "Loaded jib, tip unbraced",
-  members: MEMBERS.filter((_, index) => !TIP_BRACING.has(index)),
-};
-
 /**
  * A tape that turns the grip and nothing else.
  *
@@ -184,13 +186,18 @@ it("ends as collapse when the arm is a mechanism a ring overload would also fail
     "the cause of the crane whose arm is rigid: a ring corner past RING_CAP",
   );
 
-  // The same crane, its jib tip left to swing out of plane.
-  // Opening the site again puts the run back to its idle placeholder, so the
-  // second crane starts from the same standing state the first one did.
-  await openSite(h, 5);
-  await clearAll(h);
-  await poseCrane(h, UNBRACED);
-  await poseTape(h, GRIP_TAPE);
+  // The same crane, its jib tip left to swing out of plane. The failed run left
+  // the run screen showing, so the build screen — the one the structure poses
+  // apply on — is shown again, and the three members come off there.
+  await h.debug.setScreen("build");
+  for (const id of TIP_BRACING) await h.debug.removeMember(id);
+  const stripped = await h.snapshot();
+  assertEqual(
+    stripped.structure.members.length,
+    MEMBERS.length - TIP_BRACING.size,
+    "the members left once the jib tip's out-of-plane bracing is removed " +
+      "(specs/structure.md)",
+  );
   await startRun(h);
   const unbraced = await runTicks(h, 1);
   await h.capture(

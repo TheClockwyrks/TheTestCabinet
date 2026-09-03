@@ -24,7 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
-import { HOIST_MAX_RATE, HOIST_START } from "../constants";
+import { GRIP_MAX_RATE, HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   clearAll,
   createHarness,
@@ -41,16 +41,43 @@ import {
 const CLEARED_SITE = 0;
 const OTHER_SITE = 1;
 
-const TAPE: readonly TapeStepSpec[] = [
+/**
+ * The tape site 0 is cleared with: the shortest genuine move there is.
+ *
+ * A run over an emptied yard "ends cleared if every load is `placed`"
+ * (specs/program.md) the moment its tape runs out, and what this point needs of
+ * that run is only that it CLEARED — not that it was long. So the one step asks
+ * the hoist for a target a fiftieth of a unit off where it stands, which
+ * specs/program.md's controller accelerates into and arrives at within a handful
+ * of ticks.
+ */
+const CLEARING_TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
     commands: [
-      { axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE },
+      { axis: "hoist", target: HOIST_START + 0.02, rate: HOIST_MAX_RATE },
     ],
   },
 ];
 
-const MAX_TICKS = 600;
+/**
+ * The tape site 1 is PLAYED with, which must not run out.
+ *
+ * The second run is aborted rather than finished — "a run genuinely in progress"
+ * is what makes the session pass between the clear and the reading — so its step
+ * is a grip target a hundred thousand degrees away, which the grip is still
+ * driving toward when the abort comes. A tape that ran out here would clear site
+ * 1 as well, and the reading would no longer be about a clear surviving what
+ * another site did.
+ */
+const RUNNING_TAPE: readonly TapeStepSpec[] = [
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: 100_000, rate: GRIP_MAX_RATE }],
+  },
+];
+
+const MAX_TICKS = 60;
 
 /** Ticks of the second run before it is aborted: a run genuinely in progress. */
 const PLAYED_TICKS = 10;
@@ -69,7 +96,7 @@ it("keeps a site cleared after another site is played", async () => {
   await openSite(h, CLEARED_SITE);
   await clearAll(h);
   await standMinimalCrane(h);
-  await poseTape(h, TAPE);
+  await poseTape(h, CLEARING_TAPE);
   await startRun(h);
   const ended = await runUntil(
     h,
@@ -93,9 +120,17 @@ it("keeps a site cleared after another site is played", async () => {
   await openSite(h, OTHER_SITE);
   await clearAll(h);
   await standMinimalCrane(h);
-  await poseTape(h, TAPE);
+  await poseTape(h, RUNNING_TAPE);
   await startRun(h);
   await h.advance(PLAYED_TICKS);
+  const playing = await h.snapshot();
+  assertEqual(
+    playing.run.phase,
+    "running",
+    `the second site's run after ${PLAYED_TICKS} ticks, which is aborted ` +
+      "rather than finished, so what site 1 did is a run in progress and not " +
+      "a second clear (specs/program.md)",
+  );
   await h.debug.abortRun();
 
   await h.debug.setScreen("select");

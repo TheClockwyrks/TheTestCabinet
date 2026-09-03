@@ -17,13 +17,26 @@
 // `cable-snap`".
 //
 // WHY THAT MAKES THE LATER STAGES VISIBLE. `specs/statics.md` applies `-T` to the
-// structure at the trolley point, and the trolley has been driven to the far end
-// of the rail, where the crane's members carry it rather than the ring's flange.
-// A tension of that size against member capacities of `2400` would take
-// utilizations far past `1`, and "every member whose utilization exceeds `1`
+// structure at the trolley point, "shared between the same two rail nodes the
+// trolley's mass is" — so with the trolley standing OUT ALONG THE RAIL, past the
+// outermost top-flange node the arm solve is supported on, most of that force
+// goes onto the rail's far node, which the crane's own members carry rather than
+// a support. A tension of that size against member capacities of `2400` would
+// take utilizations far past `1`, and "every member whose utilization exceeds `1`
 // breaks". So a build that ran its solves after the snap would report members
 // broken and a fresh set of forces; a build that stopped at the failure reports
 // the tick before's forces and an untouched broken list.
+//
+// THE TROLLEY IS THE ONE THING HERE THAT IS DRIVEN RATHER THAN POSED. `setAxis`
+// would put it out along the rail in a single call, but that would carry the
+// pivot units of yard in one tick, and a pivot that jumps is exactly what
+// `specs/rigging.md` turns into the tension this point is about: the pose would
+// manufacture the snap it means to observe. So the axis controller drives it, and
+// only as far as the reading needs — the drive stops while the command is still
+// live, the moment the trolley stands clear of the flange, rather than running on
+// to the end of the track. Those ticks are driven in ONE batched call and nothing
+// is read off them but the position they left: they are the route to the
+// scenario, not the scenario.
 //
 // The yard is emptied and the crane is the minimal one: the requirement is about
 // the order of the stages, so nothing else stands in the world.
@@ -37,7 +50,6 @@ import {
   openSite,
   poseTape,
   runTicks,
-  runUntil,
   standMinimalCrane,
   startRun,
   type Harness,
@@ -64,8 +76,21 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks the sweep is given: four units of track take about a hundred and twenty. */
-const CAP = 400;
+/**
+ * Ticks the trolley is driven for, and how far out that has to leave it.
+ *
+ * The track runs from the top-flange node at `(0, 4, 0)` to the rail tip at
+ * `(4, 4, 0)`, and the flange square reaches to `x = 2` — so a trolley past `2`
+ * is past every support the arm solve stands on and the cable force at the
+ * trolley point is shared mostly onto the rail's far node. `specs/program.md`'s
+ * controller, at `TROLLEY_ACCEL` and `TROLLEY_MAX_RATE`, covers the first two
+ * units in sixty ticks and is braking through the third, so this many ticks
+ * leaves it comfortably clear of `CLEAR_OF_THE_FLANGE` with its command still
+ * live — which is all the reading needs, and less than half of what running the
+ * step to its end would have cost.
+ */
+const DRIVEN = 76;
+const CLEAR_OF_THE_FLANGE = 2;
 
 let h: Harness;
 
@@ -84,17 +109,19 @@ it("solves nothing and breaks nothing on the tick a snapping cable ends", async 
   await poseTape(h, TAPE);
   await startRun(h);
 
-  await runUntil(
-    h,
-    (s) => s.run.tick >= 1 && s.run.axes.trolley.command === null,
-    CAP,
-    "the trolley to reach the far end of the track",
-  );
-  const before = await runTicks(h, 1);
+  const before = await runTicks(h, DRIVEN);
   assertEqual(
     before.run.phase,
     "running",
     "the run before the failing tick is posed",
+  );
+  assertGreaterThan(
+    before.run.axes.trolley.value,
+    CLEAR_OF_THE_FLANGE,
+    "the trolley's position along the track before the failing tick: past " +
+      "the outermost top-flange node the arm solve is supported on, so the " +
+      "cable force at the trolley point is shared mostly onto a node the " +
+      "crane's own members carry (specs/statics.md)",
   );
   assertGreaterThan(
     before.run.forces.length,

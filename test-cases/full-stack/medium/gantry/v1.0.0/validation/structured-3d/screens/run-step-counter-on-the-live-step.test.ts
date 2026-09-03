@@ -12,13 +12,24 @@
 // `stepIndex` is the run's own, and the sweep stops on the first tick that
 // reports the second step live.
 //
+// WHAT IS POSED IS THE GRIP'S STARTING VALUE, a tenth of a degree short of
+// where the first step sends it. The first step is the route to the second
+// rather than the point, and `setAxis` "takes any value the axis can hold",
+// leaving the axis stopped with no live command (specs/instrumentation.md) —
+// and nothing has ticked when it is called, so the tick that takes the step
+// issues exactly the command it would have issued anyway and drives the axis to
+// its target itself. Only the distance is short, so the sweep below is a
+// handful of ticks rather than the seventy a full thirty-degree turn takes.
+// Driving that turn would put the grip controller between this check and the
+// counter it reads, which is another point's requirement.
+//
 // THE FIGURE IS `m / n`, as `specs/ui.md` writes it, so what is looked for is the
 // pair rather than a `2` and a `3` somewhere on the screen: with three steps on
 // site `1` of `6`, `2 / 3` is the counter and nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { textDraws, toDrawCall, type RecordedOp } from "../case-harness/index";
-import { assertEqual, assertLength, assertTrue, fail } from "../assert";
+import { assertLength, assertTrue, fail } from "../assert";
 import { GRIP_MAX_RATE, HOIST_MAX_RATE, TROLLEY_MAX_RATE } from "../constants";
 import {
   clearAll,
@@ -32,11 +43,15 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
+/** Where the first step sends the grip, and how far short of it it starts. */
+const FIRST_GRIP = 30;
+const NEAR = 0.1;
+
 /** Three steps, so `n` is a figure the rest of the screen does not carry. */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "grip", target: 30, rate: GRIP_MAX_RATE }],
+    commands: [{ axis: "grip", target: FIRST_GRIP, rate: GRIP_MAX_RATE }],
   },
   {
     kind: "move",
@@ -52,7 +67,7 @@ const TAPE: readonly TapeStepSpec[] = [
 const LIVE_INDEX = 1;
 
 /** Ticks the first step is given before the check calls it a fault. */
-const STEP_CAP = 600;
+const STEP_CAP = 90;
 
 /** Runs of text this far apart in `y` are on one line of the readout. */
 const LINE_SLOP = 10;
@@ -96,6 +111,8 @@ it("reads step m / n on the tape step the run is on", async () => {
   await poseTape(h, TAPE);
   const started = await startRun(h);
   assertLength(started.program, TAPE.length, "the steps the tape carries");
+
+  await h.debug.setAxis("grip", FIRST_GRIP - NEAR);
 
   const state = await runUntil(
     h,

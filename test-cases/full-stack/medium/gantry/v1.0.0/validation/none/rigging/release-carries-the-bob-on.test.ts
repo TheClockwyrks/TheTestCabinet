@@ -23,7 +23,15 @@
 // BOTH TAPES END ON A GRIP TURN, which is what keeps the runs going long enough
 // to watch. The grip is the one axis the rigging cannot feel: "Turning the grip
 // applies no force to anything", and it moves neither the pivot nor the cable
-// length, so ninety ticks of it are ninety ticks of undisturbed pendulum.
+// length, so every tick of it is a tick of undisturbed pendulum.
+//
+// THE TWO PATHS ARE SAMPLED AT CHECKPOINTS RATHER THAN AT EVERY TICK. A mass term
+// that had leaked into the pendulum would move the bob on the release tick itself,
+// which is the first checkpoint; the two after it are the ticks the leak would
+// have to survive to be a rounding artefact rather than a difference; and the last
+// is far enough out that a difference too small to see at the third has been
+// integrated twenty times. Sampling every tick in between reads the same swing
+// through eighty-six more crossings into the page and decides nothing more.
 //
 // THE BOB IS SET SWINGING RATHER THAN LEFT HANGING. A bob at rest below the
 // pivot stays exactly where it is, and two runs agreeing about a bob that never
@@ -70,8 +78,8 @@ const MASS = 40;
 /** The swing the release happens in the middle of, inside `PLACE_VEL_TOL`. */
 const SWING: Vec3 = { x: PLACE_VEL_TOL - 0.1, y: 0, z: 0 };
 
-/** Ticks of pendulum watched on either side of the release. */
-const SAMPLES = 90;
+/** The ticks of the two runs the bob is compared at, counted from the start. */
+const CHECKPOINTS = [1, 2, 3, 20] as const;
 
 /** The step under test: the release, taken on the run's first tick. */
 const RELEASE: TapeStepSpec = { kind: "action", action: "release" };
@@ -134,8 +142,11 @@ async function swing(harness: Harness, first: TapeStepSpec): Promise<string[]> {
   await hangOnHook(harness, 0, PAD, SWING);
 
   const path: string[] = [];
-  for (let tick = 0; tick < SAMPLES; tick += 1) {
-    path.push(JSON.stringify((await runTicks(harness, 1)).run.bob));
+  let at = 0;
+  for (const tick of CHECKPOINTS) {
+    const state = await runTicks(harness, tick - at);
+    at = tick;
+    path.push(JSON.stringify(state.run.bob));
   }
   return path;
 }
@@ -156,7 +167,8 @@ it("leaves the bob's position and velocity exactly as the pendulum left them", a
     assertEqual(
       sample,
       carried[index],
-      `the bob ${index + 1} tick(s) after the release, against the same run ` +
+      `the bob ${CHECKPOINTS[index]} tick(s) after the release, against the ` +
+        "same run " +
         "still carrying the load: a release changes the bob's mass and " +
         "nothing else about it, and the pendulum tick reads no mass " +
         "(specs/rigging.md)",

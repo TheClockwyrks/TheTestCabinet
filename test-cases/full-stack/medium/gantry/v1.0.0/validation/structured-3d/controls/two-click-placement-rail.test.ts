@@ -14,10 +14,10 @@
 // rail must be, so the two are drawn far apart and neither click can be read as
 // the other's.
 //
-// NOTHING CAN REFUSE THE PLACEMENT. The world is emptied first, so the two nodes
-// are distinct with no member already joining them, the yard holds no obstacle
-// the segment could reach, and no ring stands, so the arm-to-tower rule has no
-// flange to trip on. The length is `2`, inside RAIL_MAX_LEN (`6`), both ends are on
+// NOTHING CAN REFUSE THE PLACEMENT. The site is opened fresh, so nothing is
+// built: the two nodes are distinct with no member already joining them, and no
+// ring stands, so the arm-to-tower rule has no flange to trip on. The yard is
+// emptied, so it holds no obstacle the segment could reach. The length is `2`, inside RAIL_MAX_LEN (`6`), both ends are on
 // the lattice pitch and inside site 1's envelope (`x -8..12`, `y 0..16`,
 // `z -8..12`), and the cost is far inside the site's budget of `3000`. So what
 // stands afterwards is the second click's own work.
@@ -30,8 +30,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNull, assertTrue } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type MemberView,
@@ -61,7 +61,7 @@ afterEach(async () => {
 
 it("places a rail between the two clicked nodes and clears the pending node", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setTool("rail");
 
   const first = await h.project(A.x, A.y, A.z);

@@ -19,18 +19,25 @@
 // is read before and after and compared, rather than a member count that a swap
 // could survive.
 //
-// The world is emptied first and a crane stood, so what stands is exactly what
-// this pose is asked to leave standing.
+// THE STRUCTURE IT IS ASKED TO LEAVE ALONE CARRIES ONE OF EACH KIND. A ring, two
+// strut members, one rail member and a counterweight: the four things
+// `specs/structure.md` lets a structure hold, so a build that emptied any one of
+// them alongside the tape is caught. Nothing here starts a run, so the structure
+// has no reason to be a crane that stands — a readiness-clean crane would add
+// twenty edits this point does not decide, and the tape edit under test reaches
+// none of them. The yard is emptied and the site is opened fresh, so what stands
+// is exactly what this pose is asked to leave standing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import { HOIST_MAX_RATE, SLEW_MAX_RATE, TROLLEY_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
+  poseCrane,
   poseTape,
-  standMinimalCrane,
+  type CraneDesign,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
@@ -56,6 +63,30 @@ const TAPE: readonly TapeStepSpec[] = [
   { kind: "action", action: "release" },
 ];
 
+/**
+ * One of each thing a structure holds, and nothing else.
+ *
+ * The ring's base corner is off the ground (`specs/structure.md`: "the ring sits
+ * on a tower, not on the ground"), the two struts stand on site 1's anchors and
+ * reach its bottom flange, the rail is horizontal and stands in the arm on the
+ * top flange, and the counterweight sits on `(0, 2, 0)`, a node the structure
+ * uses. Nothing joins the arm to the tower but the ring, every node is inside
+ * site 1's envelope, and the whole costs a fraction of its budget of `3000`, so
+ * every edit is accepted.
+ */
+const ONE_OF_EACH: CraneDesign = {
+  site: 1,
+  name: "One of each",
+  ring: [0, 2, 0],
+  counterweights: [[0, 2, 0]],
+  members: [
+    [[0, 0, 0], [0, 2, 0], "strut"],
+    [[2, 0, 0], [2, 2, 0], "strut"],
+    [[0, 4, 0], [4, 4, 0], "rail"],
+  ],
+  tape: [],
+};
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -68,8 +99,8 @@ afterEach(async () => {
 
 it("empties the open site's tape and leaves the structure standing", async () => {
   await openSite(h, 0);
-  await clearAll(h);
-  await standMinimalCrane(h);
+  await emptyYard(h);
+  await poseCrane(h, ONE_OF_EACH);
   await h.debug.setScreen("program");
   await poseTape(h, TAPE);
 

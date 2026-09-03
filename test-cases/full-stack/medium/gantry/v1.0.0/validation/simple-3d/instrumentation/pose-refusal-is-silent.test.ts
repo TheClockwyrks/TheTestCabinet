@@ -25,7 +25,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
 import { STRUT_MAX_LEN } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** A strut the rules accept: two lattice nodes `2` apart, inside site 1. */
 const STANDING = { a: [0, 0, 0], b: [0, 2, 0] } as const;
@@ -45,7 +45,7 @@ afterEach(async () => {
 
 it("leaves the structure exactly as it was, and raises nothing, on a refusal", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.addMember(...STANDING.a, ...STANDING.b, "strut");
   const before = await h.snapshot();
 

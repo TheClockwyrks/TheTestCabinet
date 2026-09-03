@@ -31,14 +31,13 @@ import { assertNear, assertTrue } from "../assert";
 import { GRAVITY, GRIP_MAX_RATE, HOIST_START } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
   runTicks,
-  runUntil,
   startRun,
   type CraneDesign,
   type DesignMember,
@@ -139,7 +138,10 @@ const JIB_RIG: CraneDesign = {
  * nothing but the pose under test moves.
  */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }],
+  },
 ];
 
 let h: Harness;
@@ -154,7 +156,7 @@ afterEach(async () => {
 
 it("shares the cable force between the trolley's two rail nodes in its own proportion", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, JIB_RIG);
   await addOneLoad(
     h,
@@ -182,10 +184,9 @@ it("shares the cable force between the trolley's two rail nodes in its own propo
     }
     // How much of a vertical load at that node the cable takes: all of it,
     // divided by its own vertical direction cosine.
-    const cosine = Math.abs(MAST.y - node.y) / distance3(
-      { x: MAST.x, y: MAST.y, z: MAST.z },
-      node,
-    );
+    const cosine =
+      Math.abs(MAST.y - node.y) /
+      distance3({ x: MAST.x, y: MAST.y, z: MAST.z }, node);
     return { id: member.id, cosine };
   };
   const near = mastCable(NEAR);
@@ -239,7 +240,8 @@ it("shares the cable force between the trolley's two rail nodes in its own propo
   await h.debug.setLoadPhase(0, "attached");
   const loaded = await readAtRest();
 
-  const change = (id: number) => (loaded.get(id) ?? NaN) - (bare.get(id) ?? NaN);
+  const change = (id: number) =>
+    (loaded.get(id) ?? NaN) - (bare.get(id) ?? NaN);
 
   assertNear(
     change(near.id),

@@ -25,16 +25,13 @@ import { afterEach, beforeEach, it } from "vitest";
 import { textDraws, toDrawCall } from "../case-harness/index";
 import { fail } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
-
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
 
 /** Two runs are drawn in the same place when their anchors sit this close. */
 const ANCHOR_TOL = 3;
@@ -79,7 +76,7 @@ afterEach(async () => {
 
 it("lists each action step where that step stands in the tape", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseTape(h, [
     MOVE,
     { kind: "action", action: "attach" },

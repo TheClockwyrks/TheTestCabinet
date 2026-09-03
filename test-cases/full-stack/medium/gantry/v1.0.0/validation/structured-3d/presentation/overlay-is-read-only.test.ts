@@ -8,10 +8,14 @@
 // itself: "it reads the game without changing it."
 //
 // A SOURCE THAT WROTE would be read once a frame while the panel is up, so the
-// reading has to be taken over a game that is MOVING and over enough frames for a
-// nudge to compound. The scenario is therefore a real run — the smallest crane
-// that stands, an emptied yard, and a tape driving the trolley and then the slew
-// — watched for two seconds of run clock.
+// reading has to be taken over a game that is MOVING and over many frames of it.
+// The scenario is therefore a real run — the smallest crane that stands, an
+// emptied yard, and a tape driving the trolley and then the slew — watched for a
+// second of run clock. The verdict is the whole state compared EXACTLY, so a
+// source that wrote is caught on the frame it wrote on rather than once its
+// nudge has compounded into something visible; what the span buys is the number
+// of frames the panel is read over, and sixty of them over a run whose axes are
+// ramping and whose bob is swinging is what this reading needs.
 //
 // TWO GAMES, one watching the overlay and one not, are what makes "leaves the
 // game as it is" a comparison rather than a guess. A run is deterministic — "a
@@ -56,8 +60,8 @@ const TAPE: readonly TapeStepSpec[] = [
   { kind: "move", commands: [{ axis: "slew", target: 360, rate: 10 }] },
 ];
 
-/** Ticks watched: two seconds of run clock at TICK_HZ. */
-const WATCHED = 120;
+/** Ticks watched: one second of run clock at TICK_HZ. */
+const WATCHED = 60;
 
 /** How far two colours must stand apart, of the 441 the colour cube spans. */
 const CHANGED = 50;

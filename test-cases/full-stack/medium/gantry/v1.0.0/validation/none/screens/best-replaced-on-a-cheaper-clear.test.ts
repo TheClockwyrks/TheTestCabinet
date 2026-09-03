@@ -16,9 +16,16 @@
 // at the tick it ended on", so the check reads the structure's cost and the run's
 // clock off the very run that produced them.
 //
-// The yard is emptied and the smallest crane that stands runs one short move
-// step: specs/program.md ends a spent tape "cleared if every load is `placed`",
-// and a yard holding no load has every load placed vacuously.
+// The yard is emptied and the smallest crane that stands runs one move step:
+// specs/program.md ends a spent tape "cleared if every load is `placed`", and a
+// yard holding no load has every load placed vacuously.
+//
+// THE MOVE IS THE SHORTEST ONE THERE IS: its target is the value the hoist
+// already stands at when the run starts, which specs/program.md § Axis motion
+// says "is done on the tick it is issued", so tick 1 takes and finishes the step
+// and tick 2 spends the tape and clears. Nothing about a record being replaced
+// concerns how far an axis travelled first, and the record posed below is set
+// under the clock those two ticks reach.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -31,8 +38,8 @@ import {
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   TICK_DT,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runUntil,
@@ -47,17 +54,16 @@ const SITE = 0;
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [
-      { axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE },
-    ],
+    commands: [{ axis: "hoist", target: HOIST_START, rate: HOIST_MAX_RATE }],
   },
 ];
 
-const MAX_TICKS = 600;
+/** Ticks the tape is given to clear: the step is done on the tick it issues. */
+const MAX_TICKS = 8;
 
 /** The standing record: costlier than the crane below, and faster than its run. */
 const BEATEN_COST = 2500;
-const BEATEN_TIME = 0.05;
+const BEATEN_TIME = 0.01;
 
 const COST_TOL = 0.01;
 const TIME_TOL = TICK_DT / 2;
@@ -74,7 +80,10 @@ afterEach(async () => {
 
 it("replaces a costlier record when the clear's cost is lower", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await h.debug.setBest(SITE, BEATEN_COST, BEATEN_TIME);

@@ -35,7 +35,7 @@ import {
   RING_COST,
   STRUT_COST_PER_UNIT,
 } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** Turnabout, whose `3600` budget none of this reaches. */
 const SITE = 1;
@@ -62,7 +62,11 @@ afterEach(async () => {
 
 it("adds up the members, the ring and the counterweight", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The precondition is an empty structure and nothing else. A site opened
+  // after a reset already carries one (specs/state.md), and `clearStructure`
+  // states it rather than leaving it implied; emptying the yard and the tape
+  // too would drive surface this requirement does not concern.
+  await h.debug.clearStructure();
 
   await h.debug.setRing(0, 2, 0);
   await h.debug.addMember(0, 4, 0, 0, 8, 0, "strut");

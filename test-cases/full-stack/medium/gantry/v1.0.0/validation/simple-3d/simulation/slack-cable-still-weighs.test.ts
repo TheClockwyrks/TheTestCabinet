@@ -21,8 +21,11 @@
 // `GRAVITY` (`10`). A build that dropped a slack cable's mass along with its
 // stiffness reads `0` here instead.
 //
-// The sign is read off the build first, from the same crane with that side made a
-// strut: that is what says the cable is one the solve would have pushed.
+// The sign is read off the build too, from the same crane with a strut put back on
+// that side: that is what says the cable is one the solve would have pushed. It is
+// read LAST, on the member the replacement takes rather than on a second whole
+// crane — the geometry either reading solves is the same geometry, and a crane is
+// twenty-three poses.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -54,6 +57,16 @@ const LEG_UNDER_B = 2;
  * material's mass per unit times gravity.
  */
 const CABLE_WEIGHT = LATTICE_PITCH * CABLE_MASS_PER_UNIT * GRAVITY;
+
+/**
+ * The id the strut that replaces the cable takes.
+ *
+ * `specs/instrumentation.md`: "`addMember` gives the member the structure's
+ * `nextMemberId` and advances it by one", and a removal does not give the counter
+ * back, so the twenty-third member placed on this crane is id `22` whether or not
+ * id `6` is still standing.
+ */
+const SIDE_AS_STRUT = 22;
 
 function craneWith(material: MaterialName): CraneDesign {
   const members: CraneDesign["members"] = [
@@ -112,18 +125,7 @@ it("keeps a slack cable's weight on the structure that carries it", async () => 
   await openSite(h, 0);
   await clearAll(h);
 
-  // The sign, read off the build: as a strut, that flange side is in compression,
-  // so as a cable it is one the solve pushes and the iteration drops.
-  await poseCrane(h, craneWith("strut"));
-  const asStrut = await h.check();
-  assertTrue(asStrut.stable, "the crane stands with a strut on that side");
-  assertLessThan(
-    asStrut.members.find((one) => one.id === SIDE)?.force ?? 0,
-    0,
-    `member ${SIDE}, the (0, 2, 0)-(0, 2, 2) flange side, carries compression`,
-  );
-
-  // The same crane with a cable there. It goes slack and carries nothing.
+  // The crane with a cable on that flange side. It goes slack and carries nothing.
   await poseCrane(h, craneWith("cable"));
   const withCable = await h.check();
   assertTrue(withCable.stable, "the crane stands with a cable on that side");
@@ -167,5 +169,17 @@ it("keeps a slack cable's weight on the structure that carries it", async () => 
     "the compression the two legs under the slack cable's ends shed when it " +
       `is removed: its whole weight, ${CABLE_WEIGHT}, which it was still ` +
       "carrying to the ground while slack (specs/statics.md)",
+  );
+
+  // The sign, read off the build: put the same side back as a strut and the solve
+  // pushes on it, so the cable that stood there was one the iteration drops.
+  await h.debug.addMember(0, 2, 0, 0, 2, 2, "strut");
+  const asStrut = await h.check();
+  assertTrue(asStrut.stable, "the crane stands with a strut on that side");
+  assertLessThan(
+    asStrut.members.find((one) => one.id === SIDE_AS_STRUT)?.force ?? 0,
+    0,
+    `member ${SIDE_AS_STRUT}, the (0, 2, 0)-(0, 2, 2) flange side placed as a ` +
+      "strut, carries compression",
   );
 });

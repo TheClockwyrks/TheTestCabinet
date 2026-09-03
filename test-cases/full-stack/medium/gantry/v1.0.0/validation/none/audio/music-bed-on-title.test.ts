@@ -24,14 +24,17 @@
 // `loopingCues()` and `cues()` answer between them.
 //
 // A stretch of frames is driven first, because a build is free to start its bed
-// on the first update after the unlock rather than inside the gesture.
+// on the first update after the unlock rather than inside the gesture. HALF A
+// SECOND OF THEM, because that is what the allowance is worth: the bed is asked
+// for on the screen the game opens on, and the only latitude the specification
+// leaves is which update starts it. Driving further would be waiting on nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
 import { createHarness, ticks, type Harness } from "../harness";
 
-/** The stretch the bed is read across: two seconds of the game's own clock. */
-const STRETCH = ticks(2);
+/** The stretch the bed is read across: half a second of the game's own clock. */
+const STRETCH = ticks(0.5);
 
 let h: Harness;
 

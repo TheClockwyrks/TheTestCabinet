@@ -22,7 +22,6 @@ import { assertEqual } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   openSite,
   poseTape,
@@ -57,7 +56,11 @@ afterEach(async () => {
 
 it("fails as loads-unplaced when the tape ends with a load still waiting", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // Nothing is cleared here. `standMinimalCrane` empties the structure it stands,
+  // `addOneLoad` empties the yard's loads before it places its own, site 1 carries
+  // no obstacle (specs/sites.md), and a site opened after a reset carries an empty
+  // tape. Each pose below states its own precondition, and driving the rest of the
+  // clearing surface would add failure modes belonging to other validators.
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", 40, FROM, TO);
   await poseTape(h, TAPE);

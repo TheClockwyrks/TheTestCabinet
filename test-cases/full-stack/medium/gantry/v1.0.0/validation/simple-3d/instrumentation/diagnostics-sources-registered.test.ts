@@ -31,10 +31,12 @@
 // THE TWO STATES PART ONLY IN THE RUN'S CLOCK AND STEP INDEX. Both stand on the
 // build screen, on site `0`, over the same crane, the same tape and the same
 // emptied yard, with the camera at the pose a site opening leaves, and both have
-// a run in progress. One is a tick into it and the other thirty, so the run's
+// a run in progress. One is a tick into it and the other a dozen, so the run's
 // clock and its step index — two of the figures the paragraph above names — are
-// far apart, and every other figure the paragraph names is identical: the tape is
-// forty move steps that each command the hoist to the value it already holds, and
+// apart in both the tenths of a second a clock reads and the step number beside
+// it, and every other figure the paragraph names is identical: the tape is
+// sixteen move steps that each command the hoist to the value it already holds,
+// and
 // "A command whose target is the axis's current value therefore has `s` of `0`:
 // the axis neither brakes nor accelerates, it does not move, and step 3 finds it
 // arrived, so the command is done on the tick it is issued" (`specs/program.md`),
@@ -64,20 +66,35 @@ import {
   type TapeStepSpec,
 } from "../harness";
 
-/** The two states: a tick into the run, and thirty ticks into it. */
+/**
+ * The yard both readings are taken over: emptied, one crane, one still tape.
+ *
+ * Posed once. Each reading below runs the same run over it, so nothing here has
+ * to be built again between them.
+ */
+async function poseWorld(): Promise<void> {
+  await openSite(h, 0);
+  await clearAll(h);
+  await standMinimalCrane(h);
+  await poseTape(h, STILL_TAPE);
+}
+
+/** The two states: a tick into the run, and a dozen ticks into it. */
 const EARLY = 1;
-const LATE = 30;
+const LATE = 12;
 
 /**
- * Forty move steps that ask the hoist for the value it already holds.
+ * Sixteen move steps that ask the hoist for the value it already holds.
  *
  * One step a tick, none of them moving anything: the run's clock and step index
  * advance and the yard does not, which is what lets the two states below be told
- * apart by the panel alone. Forty is more steps than the ticks driven, so the
- * run is still in progress at both readings rather than ended at one of them.
+ * apart by the panel alone. Sixteen is more steps than the ticks driven, so the
+ * run is still in progress at both readings rather than ended at one of them —
+ * and the tape is posed a step at a time, so a longer one is a cost the reading
+ * does not need.
  */
 const STILL_TAPE: readonly TapeStepSpec[] = Array.from(
-  { length: 40 },
+  { length: 16 },
   (): TapeStepSpec => ({
     kind: "move",
     commands: [{ axis: "hoist", target: HOIST_START, rate: HOIST_MAX_RATE }],
@@ -97,10 +114,16 @@ afterEach(async () => {
 /**
  * Pose one of the two states and read every registered source over it.
  *
- * The pose starts from a `reset`, which "returns the game to its title state"
- * (`specs/instrumentation.md`), so each of the two readings below is taken over a
- * state built from the same starting point rather than over the leavings of the
- * reading before it.
+ * EACH READING STARTS THE RUN AFRESH, and starts it from the same place. The
+ * abort "poses the abort, ending a running run with no verdict: `run` goes back
+ * to its idle placeholder and the build screen returns", and it does nothing at
+ * all before the first run; the start that follows is "the ordinary run", which
+ * "starts as `specs/state.md` says a run starts: nothing has ticked at the call,
+ * so `run.tick` reads `0` immediately after it, and the axes, the pivot, and the
+ * bob stand at the run-start values". So each of the two readings below is taken
+ * over a run built from the same starting point rather than over the leavings of
+ * the reading before it, and the crane, the tape and the emptied yard are
+ * `poseWorld`'s and are not rebuilt between them.
  *
  * `engine.diagnostics()` evaluates each source against the state as it stands and
  * changes nothing else, so the reading is the same whether the panel is drawn or
@@ -108,11 +131,7 @@ afterEach(async () => {
  * overlay at all.
  */
 async function panel(ticks: number): Promise<string> {
-  await h.debug.reset();
-  await openSite(h, 0);
-  await clearAll(h);
-  await standMinimalCrane(h);
-  await poseTape(h, STILL_TAPE);
+  await h.debug.abortRun();
   await startRun(h);
   await h.advance(ticks);
   // The build screen, and the frame that draws it, in both states alike.
@@ -132,9 +151,7 @@ async function panel(ticks: number): Promise<string> {
     fail(
       "every diagnostic source to be a pure read that reports a value " +
         "(specs/instrumentation.md)",
-      raised
-        .map((one) => `${one.name} threw: ${String(one.error)}`)
-        .join(", "),
+      raised.map((one) => `${one.name} threw: ${String(one.error)}`).join(", "),
     );
   }
   return read
@@ -143,6 +160,8 @@ async function panel(ticks: number): Promise<string> {
 }
 
 it("reads a different panel for a different state of the game", async () => {
+  await poseWorld();
+
   const early = await panel(EARLY);
   const late = await panel(LATE);
   await h.capture("panel", "The panel over a run in progress");

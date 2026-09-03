@@ -11,13 +11,16 @@
 // a member placement, as a first click does". The node is `(0, 0, 0)`, a ground
 // anchor of every site (`specs/sites.md`) and a multiple of `LATTICE_PITCH`, so it
 // is inside the domain the operation states. The pose is made on the build screen,
-// which is where "These pose single edits", reached by opening site 1 over an
-// emptied world: nothing is built, because a pending first node is the editor's
-// own state and not the structure's.
+// which is where "These pose single edits", reached by opening site 1.
+//
+// NOTHING ELSE IS POSED. A pending first node is the editor's own state and not
+// the structure's, and no load, obstacle, member or tape step can reach it, so the
+// world the site opens with is left exactly as it stands: a route that emptied it
+// first would fail this point on a build whose clearing poses were broken.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotNull, assertNull } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** A ground anchor of every site, and a lattice node (specs/sites.md). */
 const NODE = { x: 0, y: 0, z: 0 };
@@ -34,7 +37,6 @@ afterEach(async () => {
 
 it("holds no pending first node after a reset", async () => {
   await openSite(h, 0);
-  await clearAll(h);
   await h.debug.setPendingNode(NODE.x, NODE.y, NODE.z);
   const held = await h.snapshot();
   assertNotNull(

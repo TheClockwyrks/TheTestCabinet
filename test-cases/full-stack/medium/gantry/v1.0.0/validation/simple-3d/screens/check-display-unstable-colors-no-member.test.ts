@@ -35,8 +35,8 @@ import * as THREE from "three";
 import { assertGreaterThan, assertLength, assertTrue, fail } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -168,7 +168,7 @@ afterEach(async () => {
 
 it("leaves every member the colour it was when the check finds a mechanism", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, UNBRACED);
   await h.advance(1);
 

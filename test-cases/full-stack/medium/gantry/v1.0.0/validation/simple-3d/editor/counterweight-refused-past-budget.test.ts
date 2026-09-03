@@ -7,22 +7,29 @@
 // rule reaches: "A counterweight placement is refused ... past the budget." And
 // "a refused edit changes nothing".
 //
-// The crane is struts and nothing else, run up to a cost that leaves less than
-// `COUNTERWEIGHT_COST` of site 1's `budget` unspent, and the counterweight is then
-// placed on a node one of those struts ends at. Every other counterweight rule is
-// therefore satisfied — the node is used, it carries nothing — so the budget is
-// the only rule that can refuse it. The margin is deliberate: the crane stands
-// STRICTLY under the budget, so a build that wrongly refused the last strut at
-// exactly the budget would fail its own point rather than pass this one by
-// accident.
+// THE CRANE IS RUN UP TO THE BUDGET IN AS FEW EDITS AS THE BUDGET ALLOWS. The
+// dearest member a site can carry is a rail at its full `RAIL_MAX_LEN`, `108` of
+// site 1's `3000`, so twenty-seven of them and one cable to trim the total stand
+// the cost at `2964` — twenty-eight edits rather than the fifty a cheaper member
+// would need, and every one of them a placement the editor accepts. What is left
+// unspent, `36`, is less than `COUNTERWEIGHT_COST` (`40`), so the counterweight
+// placed next is one the budget cannot pay for.
+//
+// The counterweight then goes on a node one of those rails ends at. Every other
+// counterweight rule is therefore satisfied — the node is used, it carries
+// nothing — so the budget is the only rule that can refuse it. The margin is
+// deliberate: the crane stands STRICTLY under the budget, so a build that wrongly
+// refused the last member at exactly the budget would fail its own point rather
+// than pass this one by accident.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual, assertLength, assertTrue } from "../assert";
 import {
+  CABLE_COST_PER_UNIT,
   COUNTERWEIGHT_COST,
+  RAIL_COST_PER_UNIT,
+  RAIL_MAX_LEN,
   SITES,
-  STRUT_COST_PER_UNIT,
-  STRUT_MAX_LEN,
 } from "../constants";
 import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
@@ -30,45 +37,47 @@ import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 const SITE = 0;
 const BUDGET = SITES[SITE]!.budget;
 
-/** A strut at its full `STRUT_MAX_LEN`, and a shorter one to trim the total. */
-const LONG_COST = STRUT_COST_PER_UNIT * STRUT_MAX_LEN;
-const SHORT_LEN = 4;
-const SHORT_COST = STRUT_COST_PER_UNIT * SHORT_LEN;
+/** A rail at its full `RAIL_MAX_LEN`: `108`, the dearest single edit there is. */
+const RAIL_COST = RAIL_COST_PER_UNIT * RAIL_MAX_LEN;
+const RAIL_COUNT = 27;
 
-/** Forty-nine long struts and one short: `2980` against a budget of `3000`. */
-const LONG_COUNT = 49;
-const SPENT = LONG_COUNT * LONG_COST + SHORT_COST;
+/** One cable to trim the total to just under the budget: `48`. */
+const CABLE_LEN = 12;
+const CABLE_COST = CABLE_COST_PER_UNIT * CABLE_LEN;
+
+/** `2964` against a budget of `3000`, over twenty-eight edits. */
+const SPENT = RAIL_COUNT * RAIL_COST + CABLE_COST;
+const MEMBERS = RAIL_COUNT + 1;
 
 /** Costs are sums of exact figures, so this is float slop and nothing more. */
 const COST_TOL = 1e-6;
 
 /**
- * Horizontal struts of `STRUT_MAX_LEN`, laid in rows across site 1's envelope.
+ * Twenty-seven horizontal rails of `RAIL_MAX_LEN`, laid across site 1's floor.
  *
- * Three to a row across `x`, eleven rows across `z`, and as many `y` levels as
- * the count needs — every node a multiple of `LATTICE_PITCH` and inside the
- * envelope, no two struts joining the same two nodes, and none of them at the
- * `y` the short strut takes.
+ * Three to a row across `x` and nine rows across `z`, every node a multiple of
+ * `LATTICE_PITCH` and inside the envelope (`x -8..12`, `y 0..16`, `z -8..12`),
+ * every one horizontal as `specs/structure.md` requires of a rail, and no two
+ * joining the same two nodes. The crane carries no ring, so the rule about
+ * joining the arm to the tower has no flange node to fire on.
  */
-function longStruts(
+function rails(
   count: number,
 ): readonly (readonly [number, number, number, number, number, number])[] {
   const out: (readonly [number, number, number, number, number, number])[] = [];
-  for (const y of [0, 2, 4, 6, 8, 10, 12, 14]) {
-    for (let z = -8; z <= 12; z += 2) {
-      for (const x of [-8, -2, 4]) {
-        if (out.length === count) return out;
-        out.push([x, y, z, x + STRUT_MAX_LEN, y, z]);
-      }
+  for (let z = -8; z <= 8; z += 2) {
+    for (const x of [-8, -2, 4]) {
+      if (out.length === count) return out;
+      out.push([x, 0, z, x + RAIL_MAX_LEN, 0, z]);
     }
   }
   return out;
 }
 
-/** The one short strut, on a level the long ones never reach. */
-const SHORT = [-8, 16, 12, -8 + SHORT_LEN, 16, 12] as const;
+/** The one cable, on a level the rails never reach. */
+const CABLE = [-8, 16, 12, -8 + CABLE_LEN, 16, 12] as const;
 
-/** A node the first long strut ends at, so the structure genuinely uses it. */
+/** A node the first rail ends at, so the structure genuinely uses it. */
 const USED = { x: -8, y: 0, z: -8 };
 
 let h: Harness;
@@ -85,17 +94,17 @@ it("refuses a counterweight the budget cannot pay for", async () => {
   await openSite(h, SITE);
   await emptyYard(h);
 
-  for (const [ax, ay, az, bx, by, bz] of longStruts(LONG_COUNT)) {
-    await h.debug.addMember(ax, ay, az, bx, by, bz, "strut");
+  for (const [ax, ay, az, bx, by, bz] of rails(RAIL_COUNT)) {
+    await h.debug.addMember(ax, ay, az, bx, by, bz, "rail");
   }
   await h.debug.addMember(
-    SHORT[0],
-    SHORT[1],
-    SHORT[2],
-    SHORT[3],
-    SHORT[4],
-    SHORT[5],
-    "strut",
+    CABLE[0],
+    CABLE[1],
+    CABLE[2],
+    CABLE[3],
+    CABLE[4],
+    CABLE[5],
+    "cable",
   );
 
   const built = await h.snapshot();
@@ -106,14 +115,19 @@ it("refuses a counterweight the budget cannot pay for", async () => {
   );
   assertLength(
     built.structure.members,
-    LONG_COUNT + 1,
-    "the struts the crane was run up on",
+    MEMBERS,
+    "the members the crane was run up on",
   );
   assertClose(
     built.structure.cost,
     SPENT,
     COST_TOL,
     "the cost the crane stands at, under the budget (specs/structure.md)",
+  );
+  assertTrue(
+    SPENT < BUDGET,
+    "the crane standing strictly under the budget, so no edit of it was one " +
+      "the budget itself refused",
   );
   assertTrue(
     SPENT + COUNTERWEIGHT_COST > BUDGET,

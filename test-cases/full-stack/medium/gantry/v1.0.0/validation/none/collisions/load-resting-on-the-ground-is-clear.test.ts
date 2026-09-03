@@ -50,8 +50,8 @@ const RESTING_Y = LOAD_CLASS_DIMENSIONS.crate.y;
 const PIVOT = { x: 0, y: 4, z: 0 } as const;
 const CABLE = PIVOT.y - RESTING_Y;
 
-/** Ticks the load is held on the boundary for: two seconds of run clock. */
-const WINDOW = 120;
+/** Ticks the load is held on the boundary for: half a second of run clock. */
+const WINDOW = 30;
 
 /** A tape that turns the grip and moves nothing that carries the load. */
 const HOLD: readonly TapeStepSpec[] = [

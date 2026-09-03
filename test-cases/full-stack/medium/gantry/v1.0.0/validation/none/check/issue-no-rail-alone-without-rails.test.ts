@@ -8,46 +8,44 @@
 // "`no-rail` — The crane has no rail members" and "`invalid-rail` — The crane
 // has a ring and rail members, and they break one of the track rules above."
 //
-// The scenario is a crane with a ring and an arm that carries no rail at all:
-// the minimal crane's braced tower, the ring on top of it, and the mast tied to
-// all four top-flange nodes. There is an arm, so the crane is not a bare tower
-// and a build that judged the track off the arm's members would have members to
-// judge — and there are no rails, so it has no track. Nothing is disconnected,
-// so the reading is about the two rail rows alone.
+// THE SCENARIO IS A RING AND AN ARM MADE ENTIRELY OF STRUTS: a mast leaving the
+// ring's top flange for `(0, 8, 0)`, and a jib running out from there to
+// `(4, 8, 0)`. There IS an arm, so the crane is not a bare ring and a build that
+// judged the track off the arm's members would have members to judge — and there
+// is no rail anywhere, so it has no track. Nothing is disconnected: both members
+// reach the top flange, one directly and one through the other.
+//
+// AND NOTHING BUT THE ARM IS BUILT. The tower a fuller crane would carry decides
+// nothing here — the two track rules the absent rails would be judged against
+// speak of the arm and the slew axis, and both stand already — so building one
+// would only add placements this item could fail on for reasons belonging to
+// `editor/`.
+//
+// It is posed as the sequence of edits that builds it (`poseCrane`), so it passes
+// the same placement rules a player builds under, and the yard is emptied first so
+// nothing standing in it can refuse one of them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertTrue } from "../assert";
 import {
-  MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
-  type DesignMember,
   type Harness,
 } from "../harness";
 
-/** The minimal crane's braced tower: every member of it ends at or below `y = 2`. */
-const TOWER: readonly DesignMember[] = MINIMAL_CRANE.members.filter(
-  ([a, b]) => a[1] <= 2 && b[1] <= 2,
-);
-
-/** The mast, tied to all four top-flange nodes: an arm made entirely of struts. */
-const MAST: readonly DesignMember[] = [
-  [[0, 4, 0], [0, 8, 0], "strut"],
-  [[2, 4, 0], [0, 8, 0], "strut"],
-  [[0, 4, 2], [0, 8, 0], "strut"],
-  [[2, 4, 2], [0, 8, 0], "strut"],
-];
-
-/** A ring, a tower, and an arm — and not one rail member anywhere. */
+/** A ring, an arm — and not one rail member anywhere. */
 const RAILLESS: CraneDesign = {
   site: 0,
   name: "Railless",
   ring: [0, 2, 0],
   counterweights: [],
-  members: [...TOWER, ...MAST],
+  members: [
+    [[0, 4, 0], [0, 8, 0], "strut"],
+    [[0, 8, 0], [4, 8, 0], "strut"],
+  ],
   tape: [],
 };
 
@@ -63,7 +61,7 @@ afterEach(async () => {
 
 it("raises no-rail without invalid-rail when there is no track to judge", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, RAILLESS);
 
   const { issues } = await h.check();

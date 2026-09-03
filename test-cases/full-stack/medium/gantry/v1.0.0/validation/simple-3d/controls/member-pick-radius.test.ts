@@ -15,11 +15,12 @@
 // radius is `12` rather than some other figure, which needs a reading in range
 // and a reading out of it.
 //
-// THE WORLD HOLDS ONE MEMBER AND NOTHING ELSE. `clearAll` empties the yard, the
-// structure and the tape, and one strut is placed back, so "the nearest" has one
-// answer and a null reading means the radius, not another member standing
-// closer. With no ring placed, the member joins nothing to anything and no
-// editor rule can refuse it (`specs/structure.md`).
+// THE WORLD HOLDS ONE MEMBER AND NOTHING ELSE. The yard and the structure are
+// emptied and one strut is placed back, so "the nearest" has one answer and a
+// null reading means the radius, not another member standing closer. The tape
+// is left alone: a pick is read off the build screen and nothing about it
+// concerns the program screen. With no ring placed, the member joins nothing to
+// anything and no editor rule can refuse it (`specs/structure.md`).
 //
 // THE STAGE POINTS ARE DERIVED FROM THE BUILD'S OWN PROJECTION. Nothing in the
 // specs fixes the field of view, so where a node is drawn is the build's design:
@@ -32,8 +33,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
 import { MEMBER_PICK_PX } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Projected,
@@ -78,7 +79,8 @@ function offMidpoint(
 
 it("takes the member at 11 pixels and nothing at 13", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.debug.addMember(...MEMBER.a, ...MEMBER.b, "strut");
 
   const a = await h.project(...MEMBER.a);

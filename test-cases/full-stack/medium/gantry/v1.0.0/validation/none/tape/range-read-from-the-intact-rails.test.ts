@@ -30,8 +30,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START, TROLLEY_MAX_RATE } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
@@ -203,7 +203,7 @@ afterEach(async () => {
 
 it("judges a step's trolley target against the track the intact rails form when it starts", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, BREAKING_CRANE);
   await poseTape(h, [
     {

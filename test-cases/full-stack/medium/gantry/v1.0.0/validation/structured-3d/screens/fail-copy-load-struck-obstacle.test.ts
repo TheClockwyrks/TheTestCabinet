@@ -9,9 +9,19 @@
 // THE TROLLEY CARRIES THE CRATE INTO A BOX NOTHING ELSE CAN REACH.
 // specs/statics.md § Collisions: "An attached load whose box, at its current
 // position and yaw, reaches inside an obstacle ends the run as
-// `load-struck-obstacle`." The crate is taken at the hook point and the tape then
-// runs the trolley outward along the track, which carries the hanging crate with
-// it into the box.
+// `load-struck-obstacle`." The crate hangs on the hook and the tape runs the
+// trolley outward along the track, which carries it into the box.
+//
+// THE CARRY IS POSED UP TO THE EDGE OF THE BOX AND NO FURTHER. The crate is hung
+// with `setLoadPhase(0, "attached")`, which "hangs that load on the hook exactly
+// as a successful `attach` leaves it, without the candidate search"
+// (`specs/instrumentation.md`) — the candidate search is another point's, and
+// reaching this one through the tape's `attach` would put a second verdict on the
+// way to it. The trolley is then posed `CARRY_AT` along its track with the bob
+// and the crate under it, at rest: the crate's box reaches to `x` of `2.2` there,
+// clear of the box's `2.6` face, so what is posed is a carry in progress and the
+// strike itself is still the simulation's. The ticks that follow are the ones
+// that drive the trolley the rest of the way and put the crate inside.
 //
 // THE BOX IS PLACED WHERE ONLY THE CRATE CAN GO. Every node of the minimal crane
 // below `y = 3` stands at `x` of `2` or less — the tower, the ring, and its two
@@ -33,7 +43,7 @@ import {
   createHarness,
   openSite,
   poseTape,
-  runUntil,
+  runTicks,
   standMinimalCrane,
   startRun,
   type Harness,
@@ -65,9 +75,6 @@ const LOAD_MASS = 40;
 const WALL_MIN = { x: 2.6, y: 0, z: -1 };
 const WALL_SIZE = { x: 2, y: 3, z: 2 };
 
-/** One action step: the lift, taken on the run's first tick. */
-const ATTACH: TapeStepSpec = { kind: "action", action: "attach" };
-
 /**
  * The trolley run out to the track's far end, slowly.
  *
@@ -79,6 +86,18 @@ const TRAVEL: TapeStepSpec = {
   kind: "move",
   commands: [{ axis: "trolley", target: 4, rate: 1 }],
 };
+
+/** How far along the track the carry is posed: a crate's half-width short. */
+const CARRY_AT = 1.2;
+
+/** Where the crate rides at that trolley position: under the pivot, at rest. */
+const CARRY = { x: CARRY_AT, y: HOOK.y, z: HOOK.z, yaw: 0 } as const;
+
+/** Ticks driven between readings while the crate is carried the last stretch. */
+const STRIDE = 10;
+
+/** Readings the run is given: many times the travel the strike needs. */
+const READINGS = 30;
 
 /**
  * Every run of text the last frame drew on the screen layer.
@@ -116,17 +135,30 @@ it("reads a carried load driven into an obstacle out as THE LOAD STRUCK AN OBSTA
   await openSite(h, SITE);
   await clearAll(h);
   await standMinimalCrane(h);
-  await addOneLoad(h, "crate", LOAD_MASS, HOOK, HOOK);
+  await addOneLoad(h, "crate", LOAD_MASS, CARRY, CARRY);
   await addOneObstacle(h, WALL_MIN, WALL_SIZE);
-  await poseTape(h, [ATTACH, TRAVEL]);
+  await poseTape(h, [TRAVEL]);
 
   await startRun(h);
-  const ended = await runUntil(
-    h,
-    (s) => s.run.phase !== "running",
-    400,
-    "the run to end",
-  );
+  // The carry, posed before the first tick: the trolley part way along its track,
+  // the bob at rest under it, and the crate on the hook there.
+  await h.debug.setAxis("trolley", CARRY_AT);
+  await h.debug.setBob(CARRY.x, CARRY.y, CARRY.z);
+  await h.debug.setBobVelocity(0, 0, 0);
+  await h.debug.setLoadPhase(0, "attached");
+  await h.debug.setLoadPose(0, CARRY.x, CARRY.y, CARRY.z, CARRY.yaw);
+
+  let ended = await runTicks(h, STRIDE);
+  for (let i = 1; i < READINGS && ended.run.phase === "running"; i += 1) {
+    ended = await runTicks(h, STRIDE);
+  }
+  if (ended.run.phase === "running") {
+    fail(
+      `the run to end within ${STRIDE * READINGS} ticks, the trolley carrying ` +
+        "the crate into the box (specs/statics.md § Collisions)",
+      `it is still running at tick ${ended.run.tick}`,
+    );
+  }
   // The frame that FOLLOWS the tick that ended it: a failed run "stays here, the
   // scene as it stood, with the failure copy below shown plainly"
   // (specs/ui.md § Run), and nothing ticks under the reading.

@@ -25,8 +25,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertContains } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -75,7 +75,10 @@ afterEach(async () => {
 
 it("raises invalid-rail for two collinear rails that do not meet end to end", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await poseCrane(h, GAPPED_TRACK);
 
   const { issues } = await h.check();

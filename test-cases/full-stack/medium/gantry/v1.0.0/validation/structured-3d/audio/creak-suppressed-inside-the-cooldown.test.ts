@@ -27,10 +27,22 @@
 //
 // The first tick of a run is left alone ("no member creaks on a run's first tick")
 // and the crossings are put at ticks 3 and 13.
+//
+// ONLY THOSE TWO TICKS ARE READ ONE AT A TIME. The ticks between them are
+// driven in one batch with the load off the hook, so no member climbs to the
+// threshold and no creak can start a cooldown of its own; the drive answers the
+// state those ticks left, which is the tick-before reading the crossing at tick
+// 13 is judged against. Every tick is still a real tick of the run — nothing is
+// skipped, and nothing is posed about what a tick sounded.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
-import { CREAK_COOLDOWN, CREAK_THRESHOLD, GRIP_MAX_RATE, TICK_HZ } from "../constants";
+import {
+  CREAK_COOLDOWN,
+  CREAK_THRESHOLD,
+  GRIP_MAX_RATE,
+  TICK_HZ,
+} from "../constants";
 import {
   addOneLoad,
   clearAll,
@@ -41,7 +53,6 @@ import {
   runTicks,
   startRun,
   type CraneDesign,
-  type GantrySnapshot,
   type Harness,
   type MemberForce,
   type TapeStepSpec,
@@ -163,47 +174,61 @@ it("sounds nothing on a crossing that falls inside the creak cooldown", async ()
   await startRun(h);
   await h.cues();
 
-  let previous: readonly MemberForce[] = [];
-  const crossed = new Map<number, MemberForce[]>();
-  const creaks = new Map<number, number>();
-  let last: GantrySnapshot | null = null;
+  /** The creaks in one read of the cue probe. */
+  const creaksIn = (played: readonly string[]): number =>
+    played.filter((one) => one === "creak").length;
 
-  for (let tick = 1; tick <= INSIDE; tick += 1) {
-    await h.debug.setLoadPhase(0, tick === FIRST || tick === INSIDE ? "attached" : "waiting");
-    const s = await runTicks(h, 1);
-    const played = await h.cues();
-    assertEqual(s.run.phase, "running", `the run still running at tick ${tick}`);
-    crossed.set(tick, crossings(previous, s.run.forces));
-    creaks.set(tick, played.filter((c) => c === "creak").length);
-    previous = s.run.forces;
-    last = s;
-  }
+  // Ticks 1 to FIRST - 1: the bare hook, so nothing climbs to the threshold.
+  await h.debug.setLoadPhase(0, "waiting");
+  const beforeFirst = await runTicks(h, FIRST - 1);
+  await h.cues();
 
+  // Tick FIRST: the load goes on the hook, a member crosses, and that creaks.
+  await h.debug.setLoadPhase(0, "attached");
+  const atFirst = await runTicks(h, 1);
+  const firstPlayed = await h.cues();
+
+  // Ticks FIRST + 1 to INSIDE - 1: the load comes off again, so no member
+  // crosses upward and nothing starts a cooldown of its own.
+  await h.debug.setLoadPhase(0, "waiting");
+  const beforeInside = await runTicks(h, INSIDE - FIRST - 1);
+  await h.cues();
+
+  // Tick INSIDE: the same crossing, this time inside the cooldown.
+  await h.debug.setLoadPhase(0, "attached");
+  const atInside = await runTicks(h, 1);
+  const insidePlayed = await h.cues();
+
+  assertEqual(
+    atInside.run.phase,
+    "running",
+    `the run still running at tick ${INSIDE}`,
+  );
   assertGreaterThan(
-    crossed.get(FIRST)?.length ?? 0,
+    crossings(beforeFirst.run.forces, atFirst.run.forces).length,
     0,
     `a member reaching ${CREAK_THRESHOLD} from below on tick ${FIRST}, which is ` +
       "what opens the cooldown",
   );
   assertGreaterThan(
-    creaks.get(FIRST) ?? 0,
+    creaksIn(firstPlayed),
     0,
     `the creak tick ${FIRST} plays, which starts the cooldown (specs/ui.md)`,
   );
   assertGreaterThan(
-    crossed.get(INSIDE)?.length ?? 0,
+    crossings(beforeInside.run.forces, atInside.run.forces).length,
     0,
     `a member reaching ${CREAK_THRESHOLD} from below on tick ${INSIDE}, so that ` +
       "tick has an eligible member",
   );
   assertTrue(
-    (last?.run.tick ?? 0) - FIRST < CREAK_COOLDOWN * TICK_HZ,
+    atInside.run.tick - FIRST < CREAK_COOLDOWN * TICK_HZ,
     `tick ${INSIDE} falling inside the cooldown, ${CREAK_COOLDOWN * TICK_HZ} ` +
       `ticks from the creak on tick ${FIRST}`,
   );
 
   assertEqual(
-    creaks.get(INSIDE),
+    creaksIn(insidePlayed),
     0,
     `the creaks tick ${INSIDE} plays: a tick that has an eligible member but ` +
       `falls inside CREAK_COOLDOWN (${CREAK_COOLDOWN}s, ` +

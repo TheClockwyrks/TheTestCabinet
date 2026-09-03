@@ -9,12 +9,21 @@
 // controller brakes at a fixed acceleration in whole ticks, so the last tick of a
 // move almost never lands on the target: it crosses it, and the specification has
 // the axis SET to the target rather than left where the advance put it. A build
-// that let the advance stand would report a value a fraction past `3`, and one
-// that kept the rate would report a moving axis with no command left to move it.
+// that let the advance stand would report a value a fraction past the target,
+// and one that kept the rate would report a moving axis with no command left to
+// move it.
 //
-// The move is the hoist from `HOIST_START` (`2`) to `3` at the hoist's max rate,
-// which is within the hoist's range (`HOIST_MIN` `1` to `HOIST_MAX` `40`) so the
-// step is not refused, and short enough to finish in about a second of run clock.
+// THE MOVE IS THE SHORTEST ONE THAT STILL ARRIVES BY OVERSHOOTING. The hoist runs
+// from `HOIST_START` (`2`) to `2.1` at the hoist's max rate: inside the hoist's
+// range (`HOIST_MIN` `1` to `HOIST_MAX` `40`) so the step is not refused, and far
+// enough that the controller drives up to `0.8` a second, brakes, and CROSSES the
+// target rather than landing on it — eight driving ticks, five braking, and a
+// thirteenth advance that ends at `2.10166...`, past `2.1`. That overshoot is what
+// step 3 has to take away, so a build that let the advance stand fails here
+// exactly as it would over a longer move. A longer move reads the same three-step
+// rule the same way at three times the cost, and the sweep below drives one tick
+// per crossing, so the length of the move is the whole cost of this point.
+//
 // The sweep runs until the command clears — one tick is driven first, because at
 // the top of a run no step has been taken and the axis carries no command yet —
 // and the reading is taken from the state that sweep answers with, which is the
@@ -38,11 +47,11 @@ import {
   type Harness,
 } from "../harness";
 
-/** One unit up from where every run starts the hoist. */
-const TARGET = HOIST_START + 1;
+/** A tenth of a unit up from where every run starts the hoist. */
+const TARGET = HOIST_START + 0.1;
 
-/** Generous against the move's own length, about a second of run clock. */
-const CAP = 10 * TICK_HZ;
+/** Generous against the move's own length, which is thirteen ticks. */
+const CAP = TICK_HZ;
 
 let h: Harness;
 

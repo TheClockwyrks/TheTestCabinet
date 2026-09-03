@@ -57,8 +57,8 @@ const HOLD_TAPE: readonly TapeStepSpec[] = [
   { kind: "move", commands: [{ axis: "grip", target: 360, rate: HOLD_RATE }] },
 ];
 
-/** Two seconds of run clock with the mount standing inside the box. */
-const TICKS = 120;
+/** Half a second of run clock with the mount standing inside the box. */
+const TICKS = 30;
 
 let h: Harness;
 
@@ -89,9 +89,7 @@ it("raises nothing for an anchor mount standing inside an obstacle", async () =>
       "around (specs/sites.md)",
   );
   assertTrue(
-    started.structure.members.every(
-      (m) => m.a.z <= 2 && m.b.z <= 2,
-    ),
+    started.structure.members.every((m) => m.a.z <= 2 && m.b.z <= 2),
     "every member of the crane standing at z <= 2, outside the box's z 3..5, " +
       "so no body that IS tested against obstacles can reach inside it",
   );

@@ -30,9 +30,9 @@ import {
   STRUT_MASS_PER_UNIT,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -193,7 +193,7 @@ const TARGET = 0.005;
 
 it("builds an arriving tick's inertial loads from an acceleration of zero after driving", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, [
     {

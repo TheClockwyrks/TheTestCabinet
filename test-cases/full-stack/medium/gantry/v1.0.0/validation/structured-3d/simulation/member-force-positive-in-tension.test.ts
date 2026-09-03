@@ -31,7 +31,6 @@ import {
   STRUT_MASS_PER_UNIT,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
   emptyYard,
   openSite,
@@ -180,7 +179,6 @@ afterEach(async () => {
 
 it("reports a positive force in a mast cable hanging a rail node", async () => {
   await openSite(h, 0);
-  await clearAll(h);
   await emptyYard(h);
   await poseCrane(h, RIG);
 

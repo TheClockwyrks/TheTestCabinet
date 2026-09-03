@@ -28,8 +28,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { BINDINGS, GRIP_MAX_RATE, RUN_SPEEDS } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -64,7 +64,11 @@ afterEach(async () => {
 
 it("takes the next RUN_SPEEDS index on each press and wraps", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The yard is emptied and nothing else is. A site opened after a reset
+  // carries an empty structure and an empty tape (specs/state.md), and the
+  // crane and the tape below are posed onto them; clearing either again would
+  // drive surface this requirement does not concern.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   const started = await startRun(h);

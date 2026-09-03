@@ -32,7 +32,7 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { STAGE_H, STAGE_W } from "../constants";
+import { STAGE_W } from "../constants";
 import { clearAll, createHarness, openSite, type Harness } from "../harness";
 
 const SITE = 0;
@@ -112,14 +112,21 @@ function bodies(harness: Harness): Body[] {
     object.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(object);
     if (box.isEmpty()) return;
-    const material = (object as THREE.Mesh)
-      .material as Partial<THREE.MeshStandardMaterial> | undefined;
+    const material = (object as THREE.Mesh).material as
+      | Partial<THREE.MeshStandardMaterial>
+      | undefined;
     found.push({
       signature: [
         object.type,
         object.visible ? "1" : "0",
-        box.min.toArray().map((one) => one.toFixed(3)).join(),
-        box.max.toArray().map((one) => one.toFixed(3)).join(),
+        box.min
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
+        box.max
+          .toArray()
+          .map((one) => one.toFixed(3))
+          .join(),
         material?.color?.getHexString() ?? "",
         material?.emissive?.getHexString() ?? "",
         material?.opacity ?? "",

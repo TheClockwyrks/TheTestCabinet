@@ -33,9 +33,9 @@ import { assertNull } from "../assert";
 import { GRAVITY, HOIST_CABLE_CAP, HOOK_MASS } from "../constants";
 import {
   addOneLoad,
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -102,7 +102,7 @@ async function hangOnHook(
 
 it("carries only the hook's weight in the cable on the release's own tick", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await addOneLoad(h, "crate", MASS, START, PAD);
   await poseTape(h, TAPE);

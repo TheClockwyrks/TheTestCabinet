@@ -21,7 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertNotNull, assertTrue } from "../assert";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The ring's base corner: bottom flange at `y 4`, top flange at `y 6`. */
 const CORNER = { x: 0, y: 4, z: 0 };
@@ -44,7 +44,7 @@ afterEach(async () => {
 
 it("places a member running from a top-flange node to a free node", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setRing(CORNER.x, CORNER.y, CORNER.z);
   assertNotNull(
     (await h.snapshot()).structure.ring,

@@ -23,7 +23,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
-  clearAll,
   createHarness,
   openSite,
   poseCrane,
@@ -66,7 +65,10 @@ afterEach(async () => {
 
 it("stays on the program screen when the start it takes is refused", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // `poseCrane` empties the structure itself before it builds, and a start is
+  // refused only by a readiness issue or an empty tape (`specs/program.md`), so
+  // the site's loads and obstacles take no part in the refusal this point decides
+  // and are left exactly where the site opens them.
   await poseCrane(h, NO_RING_CRANE);
   await poseTape(h, TAPE);
 

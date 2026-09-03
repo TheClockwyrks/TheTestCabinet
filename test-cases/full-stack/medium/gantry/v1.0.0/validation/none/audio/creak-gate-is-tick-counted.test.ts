@@ -31,6 +31,24 @@
 // with the attached load" (specs/rigging.md), so the cable tension at the trolley
 // point steps between the two and the crane below puts that force into its own
 // members. Nothing fabricates a utilization; the build's own solve decides it.
+//
+// THE TWO WATCHES ARE TWO RUNS OF ONE PAGE, one after the other. What the reading
+// rests on is the build's own determinism — "the same structure and the same tape
+// produce the same run, tick for tick, every time" (specs/instrumentation.md) —
+// and the two runs differ in the watch speed alone. `openSite` is what parts
+// them: it puts the run back to its idle placeholder and the camera back at its
+// start pose while leaving the structure and the tape stored on the site, so the
+// second watch is posed by re-adding the load and starting the run rather than by
+// rebuilding the crane. Between them the first run is carried past its own
+// cooldown, so a build holding the gate anywhere other than the run it belongs to
+// cannot carry a live one into the second watch and be read as silent there for a
+// reason that is not this point.
+//
+// EACH WINDOW COSTS THREE CALLS AND NOT FIVE. The ticks a window covered are read
+// off the state the window's own frames answer with, and the window before it
+// says where this one began, so nothing is asked of the surface that the drive
+// already reported. The brackets are still the run's own `run.tick` either side
+// of the frames rather than a count the check kept.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -39,9 +57,11 @@ import {
   addOneLoad,
   clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   poseTape,
+  runTicks,
   startRun,
   type CraneDesign,
   type Harness,
@@ -123,8 +143,27 @@ const LOAD_MASS = 120;
 /** The window the run is driven in: one frame at the fastest watch speed. */
 const WINDOW_TICKS = RUN_SPEEDS[RUN_SPEEDS.length - 1]!;
 
-/** Windows driven: eighty ticks, well over two whole creak cooldowns. */
-const WINDOWS = 20;
+/**
+ * Windows driven: forty-eight ticks, over a whole creak cooldown and a half.
+ *
+ * A window is four ticks, so window `k` covers ticks `4k + 1` to `4k + 4`, and a
+ * member reaches the threshold from below on the first tick of every odd window:
+ * 5, 13, 21, 29, 37, 45. The cooldown is thirty ticks, so the crossing at 5 gets
+ * through and the next one to get through is 37 — two windows apart in the
+ * pattern the two watches are compared on, which is more than one, which is what
+ * the check asserts it got before comparing. Driving further adds windows to both
+ * watches and nothing to the comparison.
+ */
+const WINDOWS = 12;
+
+/**
+ * Ticks the first run is carried on before the second is posed.
+ *
+ * `0.52` run-clock seconds, which is past `CREAK_COOLDOWN` (`0.5`) whether a
+ * build counts the gate in ticks or in the `simTime` that accumulates across
+ * both runs.
+ */
+const DRAIN = 31;
 
 /** One window of a watched run: the ticks its frames covered, and its creaks. */
 interface Window {
@@ -133,23 +172,30 @@ interface Window {
   creaks: number;
 }
 
-/** Drive the same run at `speedIndex`, one window of run clock at a time. */
-async function watch(harness: Harness, speedIndex: number): Promise<Window[]> {
+/** Where the yard's one crate stands, well clear of the crane. */
+const LOAD_AT = { x: 9, y: 2, z: 6, yaw: 0 } as const;
+
+/** The crane and the tape both watches are driven on, stored on the open site. */
+async function poseWorld(harness: Harness): Promise<void> {
   await openSite(harness, 0);
   await clearAll(harness);
   await poseCrane(harness, CRANE);
   await poseTape(harness, IDLE_TAPE);
-  await addOneLoad(
-    harness,
-    "crate",
-    LOAD_MASS,
-    { x: 9, y: 2, z: 6, yaw: 0 },
-    { x: 9, y: 2, z: 6, yaw: 0 },
-  );
+}
+
+/** Drive the same run at `speedIndex`, one window of run clock at a time. */
+async function watch(harness: Harness, speedIndex: number): Promise<Window[]> {
+  // Back to a site with no run on it, the yard emptied of the loads the site
+  // opening put back, and the one load this run is about added. The structure and
+  // the tape are the site's and stay as `poseWorld` left them.
+  await openSite(harness, 0);
+  await emptyYard(harness);
+  await addOneLoad(harness, "crate", LOAD_MASS, LOAD_AT, LOAD_AT);
   await startRun(harness);
   await harness.debug.setSpeedIndex(speedIndex);
+  const posed = await harness.snapshot();
   assertEqual(
-    (await harness.snapshot()).run.speedIndex,
+    posed.run.speedIndex,
     speedIndex,
     "the watch speed the run is being watched at",
   );
@@ -158,11 +204,10 @@ async function watch(harness: Harness, speedIndex: number): Promise<Window[]> {
   const perFrame = RUN_SPEEDS[speedIndex]!;
   const frames = WINDOW_TICKS / perFrame;
   const windows: Window[] = [];
+  let previous = posed.run.tick;
   for (let k = 0; k < WINDOWS; k += 1) {
     await harness.debug.setLoadPhase(0, k % 2 === 1 ? "attached" : "waiting");
-    const before = (await harness.snapshot()).run.tick;
-    await harness.advance(frames);
-    const after = await harness.snapshot();
+    const after = await runTicks(harness, frames);
     const played = await harness.cues();
     assertEqual(
       after.run.phase,
@@ -170,10 +215,11 @@ async function watch(harness: Harness, speedIndex: number): Promise<Window[]> {
       `the run still running through window ${k}`,
     );
     windows.push({
-      from: before + 1,
+      from: previous + 1,
       to: after.run.tick,
       creaks: played.filter((c) => c === "creak").length,
     });
+    previous = after.run.tick;
   }
   return windows;
 }
@@ -196,16 +242,15 @@ afterEach(async () => {
 });
 
 it("creaks on the same ticks watched at 1x and at 4x", async () => {
+  await poseWorld(h);
+
   const slow = await watch(h, 0);
   await h.capture("speeds", "The same run watched at 1x and 4x");
 
-  const fast = await createHarness();
-  let quick: Window[];
-  try {
-    quick = await watch(fast, RUN_SPEEDS.length - 1);
-  } finally {
-    await fast.dispose();
-  }
+  // Past the first run's own cooldown, then the same run again at the fastest
+  // watch speed.
+  await runTicks(h, DRAIN);
+  const quick = await watch(h, RUN_SPEEDS.length - 1);
 
   assertEqual(
     JSON.stringify(quick.map((w) => [w.from, w.to])),

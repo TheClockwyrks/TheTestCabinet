@@ -37,7 +37,7 @@ import {
   assertTrue,
 } from "../assert";
 import { CLICK_SLOP } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The lattice node pressed: on the pitch, inside site 0's envelope. */
 const NODE = { x: 0, y: 4, z: 0 };
@@ -63,7 +63,7 @@ afterEach(async () => {
 
 it("presses at its own position, picking what is drawn there", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setTool("strut");
 
   const at = await h.project(NODE.x, NODE.y, NODE.z);

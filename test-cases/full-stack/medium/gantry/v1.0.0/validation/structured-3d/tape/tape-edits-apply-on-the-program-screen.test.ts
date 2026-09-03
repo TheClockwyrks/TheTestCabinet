@@ -12,8 +12,10 @@
 // on the build screen and then on the program screen, so the two readings differ
 // in the screen and in nothing else: a build that applied tape edits everywhere
 // appends on the first call, and a build that applied them nowhere appends on
-// neither. The tape is emptied first so the count is unambiguous, and the world
-// is otherwise bare — this requirement concerns neither the crane nor the yard.
+// neither. The tape is emptied first so the count is unambiguous, and nothing
+// else is touched: a site opened on a fresh game stands no crane, and this
+// requirement concerns neither the crane nor the yard, so posing either would be
+// another item's surface on the way to this one.
 //
 // A screen pose is what puts the check on each screen: `setScreen` "shows a named
 // screen and sets nothing else", so nothing but the screen differs between the
@@ -24,7 +26,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { SLEW_MAX_RATE } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 /** The one edit, made on each screen: a move step carrying one slew command. */
 const AXIS = "slew";
@@ -42,7 +44,11 @@ afterEach(async () => {
 
 it("appends nothing from the build screen and one step from the program screen", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The one precondition this requirement has: an empty tape to count against.
+  // `clearProgram` is the program screen's pose, so the screen goes there for it
+  // and comes straight back for the first of the two edits.
+  await h.debug.setScreen("program");
+  await h.debug.clearProgram();
 
   await h.debug.setScreen("build");
   await h.debug.addMoveStep(AXIS, TARGET, SLEW_MAX_RATE);

@@ -8,18 +8,19 @@
 // editor, or by an earlier run is carried into it."
 //
 // THE DEFECT THE CHECK IS SHAPED AROUND is one accumulator fed by every frame
-// whatever the screen and drained only while a run is on. Such a build spends
-// five seconds in the editor, starts a run, and the run's first frame consumes
-// every tick that time bought: `run.tick` jumps to three hundred and one instead
-// of one, and a tape written for a crane plays out instantly.
+// whatever the screen and drained only while a run is on. Such a build spends a
+// second in the editor, starts a run, and the run's first frame consumes every
+// tick that time bought: `run.tick` jumps to sixty-one instead of one, and a tape
+// written for a crane plays out instantly.
 //
-// SO THE EDITOR IS DRIVEN FIRST, AND HARD. Three hundred frames pass on the build
-// screen — five seconds of simulated time, which `simTime` is read back to
-// confirm actually elapsed — before a single thing about the run is arranged. Then
-// the run starts and exactly one frame is driven, and the run's clock is read.
-// `specs/state.md` fixes both readings: `0` at the start, since "a start takes no
-// tick of its own, and carries no earlier time into the run", and "the run's first
-// tick is the first tick the frame loop takes after the start, numbered `1`".
+// SO THE EDITOR IS DRIVEN FIRST. Sixty frames pass on the build screen — a whole
+// second of simulated time, which `simTime` is read back to confirm actually
+// elapsed, and sixty times over the one tick a build may not carry into the run —
+// before a single thing about the run is arranged. Then the run starts and
+// exactly one frame is driven, and the run's clock is read. `specs/state.md`
+// fixes both readings: `0` at the start, since "a start takes no tick of its own,
+// and carries no earlier time into the run", and "the run's first tick is the
+// first tick the frame loop takes after the start, numbered `1`".
 //
 // The crane and the tape are the smallest a run legally starts on, and the yard is
 // emptied: nothing here concerns a load.
@@ -48,8 +49,15 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Frames spent in the editor before the run: five seconds' worth. */
-const EDITOR_FRAMES = 300;
+/**
+ * Frames spent in the editor before the run: a second's worth.
+ *
+ * The reading below is `run.tick` equal to exactly `1`, so the accumulation this
+ * time would buy a build that pooled it globally is not a matter of degree: one
+ * leaked tick fails the point. Sixty is a whole second of it, which is sixty
+ * ticks a broken build would consume on the run's first frame.
+ */
+const EDITOR_FRAMES = 60;
 
 let h: Harness;
 

@@ -25,6 +25,15 @@
 // thousandth somewhere in the sweep. Without that second reading the scenario
 // could be one where the pivot barely moved, and would decide nothing.
 //
+// THE SWEEP STARTS WHERE THE TWO ANSWERS ARE ALREADY FAR APART. The trolley
+// accelerates from rest at `TROLLEY_ACCEL`, so the first ticks of the move carry
+// the pivot almost nowhere and separate the two pivots by nothing a reading could
+// tell apart. Those ticks are driven as ONE batch — the same ticks, run by the
+// same controller, read once instead of tick by tick — and the tick-by-tick sweep
+// begins where the trolley is under way and the pendulum is trailing it. The
+// sweep itself is consecutive ticks, because the stale answer it has to rule out
+// is the PREVIOUS TICK's pivot and no other.
+//
 // The yard is emptied and the crane is the minimal one: the requirement is about
 // the order of two stages, so nothing else stands in the world.
 
@@ -55,8 +64,11 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks sampled: a second and a half of run clock, all of it under way. */
-const TICKS = 90;
+/** Ticks driven to bring the trolley up to speed before the sweep starts. */
+const SPIN_UP = 40;
+
+/** Ticks sampled, one reading each, all of them under way. */
+const TICKS = 14;
 
 /** Float noise on a constraint that is arithmetic rather than a search. */
 const TOLERANCE = 1e-6;
@@ -79,7 +91,8 @@ it("keeps the bob one cable length from the pivot its own tick built", async () 
   await clearAll(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
-  let previous = (await startRun(h)).run.pivot;
+  await startRun(h);
+  let previous = (await runTicks(h, SPIN_UP)).run.pivot;
 
   let staleWorst = 0;
   for (let tick = 1; tick <= TICKS; tick += 1) {
@@ -89,8 +102,8 @@ it("keeps the bob one cable length from the pivot its own tick built", async () 
       distance3(s.run.bob.pos, s.run.pivot),
       cable,
       TOLERANCE,
-      `tick ${tick}: the bob's distance from the pivot that tick reports, ` +
-        "which is the cable length the constraint hung it at " +
+      `tick ${SPIN_UP + tick}: the bob's distance from the pivot that tick ` +
+        "reports, which is the cable length the constraint hung it at " +
         "(specs/rigging.md), so the pendulum read the pivot this tick's own " +
         "geometry put there (specs/program.md)",
     );

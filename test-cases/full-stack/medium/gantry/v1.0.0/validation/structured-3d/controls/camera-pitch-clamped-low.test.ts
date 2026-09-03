@@ -34,8 +34,18 @@ import { createHarness, openSite, ticks, type Harness } from "../harness";
 /** The `down` action's binding, as `specs/controls.md` fixes it. */
 const DOWN = BINDINGS.down[0]!;
 
-/** Two seconds: nine times the hold the limit needs from the start pose. */
-const HOLD_FRAMES = ticks(2);
+/**
+ * Half a second of hold.
+ *
+ * From CAMERA_START_PITCH (`30`) the limit at CAMERA_PITCH_MIN (`10`) is twenty
+ * degrees away, which ORBIT_KEY_RATE (`90` a second) covers in `0.22` seconds. A
+ * hold of half a second is more than twice that, so the pitch arrives at the
+ * limit with a quarter of a second of demand still being refused — which is what
+ * separates a build that clamps from one that merely happens to stop near the
+ * figure. Driving the further second and a half the old hold ran asks the same
+ * question again and costs the suite the frames to answer it.
+ */
+const HOLD_FRAMES = ticks(0.5);
 
 /** Float noise, and nothing more: a clamp lands on the figure itself. */
 const TOLERANCE = 1e-6;
@@ -76,8 +86,8 @@ it("stops the camera pitch at CAMERA_PITCH_MIN under a held down", async () => {
     held,
     CAMERA_PITCH_MIN,
     TOLERANCE,
-    `the camera pitch after ${DOWN} was held for ${HOLD_FRAMES} frames, nine ` +
-      "times as long as reaching CAMERA_PITCH_MIN takes at ORBIT_KEY_RATE " +
-      "(specs/controls.md)",
+    `the camera pitch after ${DOWN} was held for ${HOLD_FRAMES} frames, more ` +
+      "than twice as long as reaching CAMERA_PITCH_MIN takes at " +
+      "ORBIT_KEY_RATE (specs/controls.md)",
   );
 });

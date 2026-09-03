@@ -139,7 +139,9 @@ it("changes nothing on the screens that show no menu", async () => {
 
   // And the fourth, which needs a run in progress to stand on.
   await startRun(h);
-  const running = await runTicks(h, 10);
+  // Two ticks: enough that the run screen is showing a run in progress, which is
+  // the whole of what the press has to land on.
+  const running = await runTicks(h, 2);
   assertEqual(running.screen, "run", "the screen the press lands on");
   assertEqual(running.run.phase, "running", "the run the press lands during");
 

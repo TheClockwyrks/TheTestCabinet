@@ -26,10 +26,18 @@
 //
 // Each run is driven ONE TICK AT A TIME with the queue drained on every one of
 // them, so what is read is the cues of the failing tick itself and of no other.
+//
+// SO EACH RUN IS POSED TO END WITHIN A FEW TICKS OF ITS START. The tick a run
+// fails on is the only tick any of these three readings looks at, and the ticks
+// before it are only there to be a run in progress. The collapse and the snap
+// arrive on their own; what is chosen is the tape, which turns the grip half a
+// degree — some nine ticks under `GRIP_ACCEL` — so the third run's tape RUNS OUT
+// in nine ticks instead of the thirty a hoist move takes, and the cable-snap run
+// hangs its load on the first tick rather than the fifth.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual } from "../assert";
-import { HOIST_MAX_RATE, HOIST_START } from "../constants";
+import { GRIP_MAX_RATE, HOIST_MAX_RATE } from "../constants";
 import {
   MINIMAL_CRANE,
   addOneLoad,
@@ -65,17 +73,27 @@ const MECHANISM: CraneDesign = {
   ),
 };
 
-/** A tape that moves one axis a short way, so a run is a run. */
+/**
+ * A tape that moves one axis a short way, so a run is a run — and runs out fast.
+ *
+ * Half a degree of grip under `GRIP_ACCEL` (`90`) is a ramp up and straight back
+ * down in `2 * sqrt(0.5 / 90)` seconds, some nine ticks. "Turning the grip
+ * applies no force to anything" (specs/rigging.md), so the run it makes is one
+ * whose ending is decided by what this point poses and by nothing the tape did.
+ */
 const SHORT_TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "hoist", target: HOIST_START + 1, rate: HOIST_MAX_RATE }],
+    commands: [{ axis: "grip", target: 0.5, rate: GRIP_MAX_RATE }],
   },
 ];
 
 /** A tape long enough to still be running when something else ends the run. */
 const LONG_TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "hoist", target: 20, rate: HOIST_MAX_RATE }] },
+  {
+    kind: "move",
+    commands: [{ axis: "hoist", target: 20, rate: HOIST_MAX_RATE }],
+  },
 ];
 
 /** What a failing tick left, and what it sounded. */
@@ -129,7 +147,7 @@ it("plays the fail cue on the failing tick of a run, whatever the cause", async 
   await poseTape(h, SHORT_TAPE);
   await startRun(h);
   await h.cues();
-  const collapse = await runToTheEnd(h, 60, "the unbraced tower to collapse");
+  const collapse = await runToTheEnd(h, 20, "the unbraced tower to collapse");
   assertEqual(collapse.snapshot.run.cause, "collapse", "the first run's cause");
   failures.push({ cause: "collapse", cues: collapse.cues });
 
@@ -146,10 +164,10 @@ it("plays the fail cue on the failing tick of a run, whatever the cause", async 
   );
   await poseTape(h, LONG_TAPE);
   await startRun(h);
-  await runTicks(h, 5);
+  await runTicks(h, 1);
   await h.cues();
   await h.debug.setLoadPhase(0, "attached");
-  const snap = await runToTheEnd(h, 60, "the hoist cable to snap");
+  const snap = await runToTheEnd(h, 20, "the hoist cable to snap");
   assertEqual(snap.snapshot.run.cause, "cable-snap", "the second run's cause");
   failures.push({ cause: "cable-snap", cues: snap.cues });
 
@@ -167,7 +185,7 @@ it("plays the fail cue on the failing tick of a run, whatever the cause", async 
   await poseTape(h, SHORT_TAPE);
   await startRun(h);
   await h.cues();
-  const unplaced = await runToTheEnd(h, 600, "the tape to run out");
+  const unplaced = await runToTheEnd(h, 40, "the tape to run out");
   assertEqual(
     unplaced.snapshot.run.cause,
     "loads-unplaced",

@@ -26,26 +26,27 @@
 // emptied besides.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual } from "../assert";
+import { assertEqual, assertLength } from "../assert";
 import { GRIP_MAX_RATE, RUN_SPEEDS } from "../constants";
 import {
-  clearAll,
   createHarness,
   openSite,
-  poseTape,
   standMinimalCrane,
   startRun,
   type Harness,
-  type TapeStepSpec,
 } from "../harness";
 
-/** One grip move of a full turn: far longer than the ticks driven below. */
-const HOLD_TAPE: readonly TapeStepSpec[] = [
-  {
-    kind: "move",
-    commands: [{ axis: "grip", target: 360, rate: GRIP_MAX_RATE }],
-  },
-];
+/**
+ * One grip move of a full turn: far longer than the ticks driven below.
+ *
+ * Appended through the tape editor's own screen, which is where the tape poses
+ * apply (`specs/instrumentation.md`), and left there: `startRun` poses the `run`
+ * action, which the program screen carries as well as the build screen.
+ */
+async function poseHoldTape(harness: Harness): Promise<void> {
+  await harness.debug.setScreen("program");
+  await harness.debug.addMoveStep("grip", 360, GRIP_MAX_RATE);
+}
 
 /** Frames driven at each speed in turn. */
 const FRAMES = 10;
@@ -62,10 +63,19 @@ afterEach(async () => {
 
 it("covers as many ticks a frame as the watch speed says", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await standMinimalCrane(h);
-  await poseTape(h, HOLD_TAPE);
+  await poseHoldTape(h);
   const started = await startRun(h);
+  assertLength(
+    started.program,
+    1,
+    "the steps the tape took, so the run keeps ticking under every block",
+  );
   assertEqual(
     started.run.speedIndex,
     0,
@@ -75,15 +85,18 @@ it("covers as many ticks a frame as the watch speed says", async () => {
   let expected = 0;
   for (const [index, speed] of RUN_SPEEDS.entries()) {
     if (index > 0) await h.debug.setSpeedIndex(index);
-    assertEqual(
-      (await h.snapshot()).run.speedIndex,
-      index,
-      `the watch speed posed for this block, RUN_SPEEDS[${index}] (${speed})`,
-    );
 
     await h.advance(FRAMES);
     expected += FRAMES * speed;
+    // One reading covers both halves: the speed does not move under a block, so
+    // the snapshot the block ends on says which speed it ran at as well as what
+    // it counted.
     const { run } = await h.snapshot();
+    assertEqual(
+      run.speedIndex,
+      index,
+      `the watch speed posed for this block, RUN_SPEEDS[${index}] (${speed})`,
+    );
     assertEqual(
       run.tick,
       expected,

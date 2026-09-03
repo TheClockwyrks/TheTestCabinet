@@ -27,6 +27,11 @@
 //
 // The crane costs `1541.43` against site 1's `3000` budget, so no edit is refused
 // (specs/structure.md § Cost and the budget).
+//
+// THE YARD IS EMPTIED AND NOTHING ELSE IS. What the check reads is the structure
+// and the site's loads and obstacles are the only other thing standing, so they
+// go; `poseCrane` empties the structure itself before it poses a member
+// (`specs/instrumentation.md`), and this check reads no tape.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -38,9 +43,9 @@ import {
 import { BUCKLE_REF, STRUT_CAP_COMPRESSION } from "../constants";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -96,7 +101,7 @@ afterEach(async () => {
 
 it("reports an overloaded member's utilization above 1, unclamped", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, LADEN);
 
   const result = await h.check();

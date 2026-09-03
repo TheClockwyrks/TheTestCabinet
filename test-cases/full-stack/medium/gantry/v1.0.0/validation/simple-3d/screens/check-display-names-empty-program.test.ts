@@ -30,9 +30,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
 /** The issue an empty tape raises (specs/program.md). */
 const ISSUE = "empty-program";
 

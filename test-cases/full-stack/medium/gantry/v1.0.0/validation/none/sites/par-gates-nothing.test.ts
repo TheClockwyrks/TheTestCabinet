@@ -12,9 +12,10 @@
 // that spent more than the par cost or took longer than the par time turned
 // away at the last tick, or landed on the run screen with a failure cause, or
 // cleared without recording the clear. Site 1 — First Lift is the site to decide
-// it on: its par is `cost 2400, time 18` against a budget of `3000`, so there is
-// room between the target and the ceiling for a crane that misses par and is
-// still legal.
+// it on: it has the smallest par time of the six (`18` seconds against Site 5's
+// `101`), and its par is `cost 2400, time 18` against a budget of `3000`, so
+// there is room between the target and the ceiling for a crane that misses par
+// and is still legal.
 //
 // THE CRANE MISSES PAR ON COST BY BEING PAID FOR. It is the site's reference
 // crane with six counterweights hung on it, four on the anchor nodes themselves
@@ -25,10 +26,24 @@
 // crane graded is the crane described.
 //
 // THE RUN MISSES PAR ON TIME BY BEING SLOW. The tape is one move step, the hoist
-// let out `1.2` units at `0.05` a second — a rate "greater than `0` and at most
+// let out `0.95` units at `0.05` a second — a rate "greater than `0` and at most
 // the axis's max rate", which specs/program.md accepts — so the step alone takes
-// twenty-four seconds of run clock against a par of eighteen. Nothing else moves,
+// nineteen seconds of run clock against a par of eighteen. Nothing else moves,
 // so the long run is a long run and not a risk of collapse.
+//
+// NINETEEN SECONDS OF RUN CLOCK IS THIS CHECK'S IRREDUCIBLE COST, and the route
+// spends nothing else. The clock is the tick count over `TICK_HZ` and no pose in
+// specs/instrumentation.md writes it, so a clear reached past a par time of
+// eighteen seconds has to be TICKED past eighteen seconds — the one thing here
+// that cannot be posed. What the route refuses to spend is a crossing into the
+// page per tick: the ticks are driven as two batched runs, one to `18.1` seconds
+// where the run is already past par and still spending its step, and one that
+// carries it past the end of the step, rather than swept a tick at a time. The
+// tape is cut to the shortest that outlasts par rather than left at the
+// twenty-four seconds an arbitrary distance gave it, and the watch speed is left
+// where the run starts it: posing `setSpeedIndex` would cover the same run clock
+// in a quarter of the frames, and would make this item fail on a build whose
+// only fault was in the watch speed — a fault that belongs to another item.
 //
 // THE LOAD IS PLACED THROUGH THE SURFACE, because what this point is about is
 // the verdict a spent tape reaches and not the lift that gets there.
@@ -43,7 +58,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
-import { COUNTERWEIGHT_COST, HOIST_START } from "../constants";
+import { HOIST_START } from "../constants";
 import {
   DESIGNS,
   addOneLoad,
@@ -53,7 +68,6 @@ import {
   poseCrane,
   poseTape,
   runTicks,
-  runUntil,
   startRun,
   ticksFor,
   type CraneDesign,
@@ -97,9 +111,15 @@ const LOAD = {
   to: { x: 0, y: 2, z: 10, yaw: 0 },
 };
 
-/** Let the hoist out 1.2 units at 0.05 a second: twenty-four seconds of tape. */
+/**
+ * Let the hoist out `0.95` units at `0.05` a second: nineteen seconds of tape,
+ * a second past Site 1's par time and no longer. The ramp `HOIST_ACCEL` (`6`)
+ * puts on and takes off at this rate is eight milliseconds at each end, so the
+ * step is nineteen seconds to well inside a tick.
+ */
 const SLOW_RATE = 0.05;
-const HOIST_TARGET = HOIST_START + 1.2;
+const HOIST_TARGET = HOIST_START + 0.95;
+const STEP_TIME = 19;
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
@@ -107,11 +127,11 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Well past par, and still short of the step: the run is driven in two parts. */
-const FIRST_LEG = ticksFor(PAR_TIME + 2);
+/** Past par by a tenth of a second, and still a second short of the step. */
+const PAST_PAR = ticksFor(PAR_TIME + 0.1);
 
-/** The rest of the step, and the tick after it that ends the run. */
-const REST = ticksFor(20);
+/** From there to half a second past the end of the step, and so past the end. */
+const TO_THE_END = ticksFor(STEP_TIME + 0.5) - PAST_PAR;
 
 let h: Harness;
 
@@ -146,21 +166,23 @@ it("clears the site on a run whose cost and time both miss par", async () => {
   await startRun(h);
   await h.debug.setLoadPhase(0, "placed");
 
-  // Driven in one crossing to past par, then a tick at a time to the end, so the
-  // sweep that must reach a verdict is short.
-  const running = await runTicks(h, FIRST_LEG);
+  // Two batched crossings: to past par with the step still live, then past the
+  // end of the step, where the run's own last tick has decided the verdict.
+  const running = await runTicks(h, PAST_PAR);
   assertEqual(
     running.run.phase,
     "running",
-    "the run at 20 seconds, still spending the slow step (specs/program.md)",
+    "the run at 18.1 seconds, past par and still spending the slow step " +
+      "(specs/program.md)",
+  );
+  assertGreaterThan(
+    running.run.time,
+    PAR_TIME,
+    "the run clock while the run is still going, already past Site 1's par " +
+      "time of 18 (specs/sites.md § Site 1 — First Lift)",
   );
 
-  const ended = await runUntil(
-    h,
-    (s) => s.run.phase !== "running",
-    REST,
-    "the run to end once the tape is spent",
-  );
+  const ended = await runTicks(h, TO_THE_END);
 
   await h.capture(
     "over-par",
@@ -180,7 +202,7 @@ it("clears the site on a run whose cost and time both miss par", async () => {
       "(specs/sites.md § Site 1 — First Lift)",
   );
   assertTrue(
-    (await h.snapshot()).cleared[SITE] === true,
+    ended.cleared[SITE] === true,
     "Site 1 recorded as cleared by a run that beat neither par figure " +
       "(specs/ui.md)",
   );

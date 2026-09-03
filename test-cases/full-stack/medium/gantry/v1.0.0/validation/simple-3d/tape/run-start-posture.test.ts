@@ -33,8 +33,8 @@ import {
   TROLLEY_MAX_RATE,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runUntil,
@@ -75,7 +75,7 @@ afterEach(async () => {
 
 it("puts every axis back at the run-start posture when a second run begins", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
 

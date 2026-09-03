@@ -23,9 +23,9 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertNear, assertTrue } from "../assert";
 import { BUCKLE_REF, STRUT_CAP_COMPRESSION, STRUT_MAX_LEN } from "../constants";
 import {
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
@@ -104,12 +104,15 @@ afterEach(async () => {
 
 it("scores a compressed strut of length STRUT_MAX_LEN against its reduced capacity", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, LONG_LEG_CRANE);
 
   const { structure } = await h.snapshot();
   const result = await h.check();
-  assertTrue(result.stable, "the long-leg tower stands, so the check solves it");
+  assertTrue(
+    result.stable,
+    "the long-leg tower stands, so the check solves it",
+  );
 
   const reduced = STRUT_CAP_COMPRESSION * (BUCKLE_REF / STRUT_MAX_LEN) ** 2;
   const byId = new Map(structure.members.map((m) => [m.id, m]));

@@ -18,12 +18,31 @@
 // the drawn figures against `structure.cost` and `run.time`.
 //
 // THE RUN IS ONE SLEW MOVE, AND ITS CLOCK IS A WHOLE NUMBER OF SECONDS. The
-// controller of specs/program.md § Axis motion is exact and deterministic, so
-// turning the arm `120` degrees at `SLEW_MAX_RATE` takes a fixed count of ticks —
-// four seconds of travel and a second of ramping, in and out — and the run ends on
-// a five-second clock. That matters because how many decimals a build shows is
-// its own business: at a whole number of seconds, `5`, `5.0` and `5.00` are the
-// same figure.
+// controller of specs/program.md § Axis motion is exact and deterministic, so a
+// turn of the arm takes a fixed count of ticks, and `30` degrees at
+// `SLEW_MAX_RATE` is the turn whose count is exact by construction rather than
+// by arithmetic luck. At `SLEW_ACCEL` (`30`) the arm takes one whole second to
+// reach `SLEW_MAX_RATE` (`30`) and one whole second to brake back to rest, and
+// those two ramps between them cover `30` degrees — so this turn is exactly the
+// ramp up and the ramp down with no cruise between, the critical profile, and the
+// axis settles ONTO the target rather than crossing it somewhere inside a tick.
+// The arm arrives on tick `119`; the step is found complete at the top of tick
+// `120` (specs/program.md § The tick pipeline), and that tick, finding no step
+// left, is the tick the run ends on. The clock reads two seconds. A target either
+// side of the critical one lands the ending a tick or two elsewhere, which is why
+// the check turns exactly this far.
+//
+// That matters because how many decimals a build shows is its own business: at a
+// whole number of seconds, `2`, `2.0` and `2.00` are the same figure. And `2` is
+// a figure nothing else on this screen carries — the crane costs `981.43`, site
+// 1's par is `2400` and `18`, and the standing best below is `500` and `3`.
+//
+// THE RUN IS DRIVEN IN BULK TO THE TICK BEFORE IT ENDS, and swept one tick at a
+// time only over the handful of ticks around the ending. The ending is still
+// EARNED — the run's own rules decide the clear on the tick they reach it, and
+// nothing here poses a phase — and this check simply stops asking after every
+// single tick on the way there. Driving the whole run a tick at a time cost three
+// hundred crossings into the page to learn what the last two of them say.
 //
 // A BETTER SCORE IS RECORDED BEFORE THE RUN, so a screen that shows only the
 // site's best cannot pass for one that shows the run's. specs/ui.md § Results: a
@@ -43,6 +62,7 @@ import {
   createHarness,
   openSite,
   poseTape,
+  runTicks,
   runUntil,
   standMinimalCrane,
   startRun,
@@ -60,8 +80,19 @@ const STANDING_BEST = { cost: 500, time: 3 };
 /** Turn the arm: a move whose run clock lands on a whole second. */
 const A_SLEW: TapeStepSpec = {
   kind: "move",
-  commands: [{ axis: "slew", target: 120, rate: SLEW_MAX_RATE }],
+  commands: [{ axis: "slew", target: 30, rate: SLEW_MAX_RATE }],
 };
+
+/**
+ * Ticks driven in one go before the ending is swept for.
+ *
+ * The turn arrives on tick `119` and the run ends on tick `120`, so this stops
+ * short of both and the sweep below covers the ending itself.
+ */
+const BULK_TICKS = 118;
+
+/** How far past that the run is swept, a tick at a time, for its ending. */
+const SWEEP_TICKS = 40;
 
 /**
  * How far a drawn cost may sit from the cost it presents.
@@ -75,7 +106,7 @@ const COST_TOLERANCE = 1;
 /**
  * How far a drawn clock may sit from the clock it presents.
  *
- * The run ends on a whole second by construction, so `5`, `5.0` and `5.00` all
+ * The run ends on a whole second by construction, so `2`, `2.0` and `2.00` all
  * read back as the figure itself and half a second is room to spare — and it is
  * deliberately less than a whole one, so a stray figure a screen happens to carry
  * beside the clock cannot stand in for it.
@@ -122,10 +153,11 @@ it("shows the cost of the crane the run was made with and the clock it ended on"
   await h.debug.setBest(SITE, STANDING_BEST.cost, STANDING_BEST.time);
 
   await startRun(h);
+  await runTicks(h, BULK_TICKS);
   const ended = await runUntil(
     h,
     (s) => s.run.phase !== "running",
-    600,
+    SWEEP_TICKS,
     "the run to end",
   );
   // The frame that follows the tick that ended it, so what the screen shows is

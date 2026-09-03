@@ -21,8 +21,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -50,7 +50,11 @@ afterEach(async () => {
 
 it("ends the run as release-misplaced when the hook is holding nothing", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The yard is what has to be empty — the hook is bare because nothing is
+  // standing to be lifted — so the loads and the obstacles go and nothing else
+  // does: `standMinimalCrane` empties the structure itself, and the tape is
+  // posed below onto the empty one the site opens with.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   const started = await startRun(h);

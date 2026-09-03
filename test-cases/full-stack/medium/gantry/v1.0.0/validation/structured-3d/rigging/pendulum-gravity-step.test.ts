@@ -27,8 +27,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertVec3Near } from "../assert";
 import { GRAVITY, GRIP_MAX_RATE, SWING_DAMPING, TICK_HZ } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -120,7 +120,7 @@ afterEach(async () => {
 
 it("starts a bob at rest on the horizontal falling, by g * dt", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   await startRun(h);

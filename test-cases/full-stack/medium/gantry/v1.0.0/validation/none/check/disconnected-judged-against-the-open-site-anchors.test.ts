@@ -15,15 +15,17 @@
 // `(0,0,2)` and `(2,0,2)`). Both sites' envelopes hold both its nodes, so the
 // placement itself is identical and only the ground under it differs.
 //
-// The structure is emptied first on each site, so the strut is the whole crane
-// and the issue can come from nothing else.
+// EACH SITE IS OPENED FRESH AND ITS YARD EMPTIED. A site opened on a game that
+// has been `reset` carries nothing built and no tape (specs/instrumentation.md),
+// so the strut is the whole crane on both — the reading below checks that it is
+// the structure's only member — and the issue can come from nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertTrue, fail } from "../assert";
 import { SITES } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type StartIssue,
@@ -56,7 +58,7 @@ it("calls the same lone strut disconnected only on the site that does not anchor
   );
 
   await openSite(h, WITHOUT);
-  await clearAll(h);
+  await emptyYard(h);
   await standTheStrut();
   const unanchored = (await h.check()).issues;
   assertContains(
@@ -73,7 +75,7 @@ it("calls the same lone strut disconnected only on the site that does not anchor
   );
 
   await openSite(h, WITH);
-  await clearAll(h);
+  await emptyYard(h);
   await standTheStrut();
   const anchored = (await h.check()).issues;
   assertLacks(

@@ -18,7 +18,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { RAIL_COST_PER_UNIT } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The rail this check prices: `(0, 4, 0)` to `(4, 4, 0)`, four units long. */
 const LENGTH = 4;
@@ -35,7 +35,8 @@ afterEach(async () => {
 
 it("prices a rail at its length times RAIL_COST_PER_UNIT and no more", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
+  await h.debug.clearStructure();
 
   const before = (await h.snapshot()).structure.cost;
   assertEqual(

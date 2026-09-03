@@ -29,10 +29,11 @@ import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
 import { assertEqual, assertTrue, fail } from "../assert";
 import { HOIST_MAX, HOIST_MAX_RATE, RUN_SPEEDS } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
+  runTicks,
   runUntil,
   standMinimalCrane,
   startRun,
@@ -48,8 +49,8 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** Ticks the run is given to reach its verdict. */
-const END_CAP = 120;
+/** Ticks the run is given to reach its verdict: the first tick takes the step. */
+const END_CAP = 4;
 
 /** How far a drawn figure may sit from the speed it reads. */
 const FIGURE_TOL = 0.05;
@@ -78,7 +79,10 @@ function numbersIn(text: string): number[] {
 
 it("draws the RUN_SPEEDS entry the run's speed index names", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The YARD alone, rather than the whole world: the crane pose below empties
+  // the structure itself, and a site opens with an empty tape
+  // (`specs/state.md`), so there is nothing else here to clear.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);
@@ -98,9 +102,11 @@ it("draws the RUN_SPEEDS entry the run's speed index names", async () => {
   const frames: string[][] = [];
   for (const [index] of RUN_SPEEDS.entries()) {
     await h.debug.setSpeedIndex(index);
-    await h.advance(1);
+    // The frame and the reading in one crossing: `runTicks` answers with the
+    // state the ticks it drove left (`validation/harness.ts`).
+    const drawn = await runTicks(h, 1);
     assertEqual(
-      (await h.snapshot()).run.speedIndex,
+      drawn.run.speedIndex,
       index,
       `the speed index the run is holding (specs/instrumentation.md)`,
     );

@@ -72,8 +72,17 @@ const HOLD_TAPE: readonly TapeStepSpec[] = [
   { kind: "move", commands: [{ axis: "grip", target: 360, rate: HOLD_RATE }] },
 ];
 
-/** Ticks spent settling at the first angle before the jump. */
-const SETTLE = 20;
+/**
+ * Ticks spent settling at the first angle before the jump.
+ *
+ * What the settle is for is that the arm has genuinely STOOD at the first angle
+ * for a tick or two of the real simulation before the jump is posed, so the
+ * comparison is between two tick geometries rather than between a pose and a
+ * tick. A handful does that; the collision stage runs on every one of them
+ * (`specs/statics.md`: "Collisions are tested ONCE PER TICK"), so a longer wait
+ * tests the same rule the same number of times over.
+ */
+const SETTLE = 5;
 
 let h: Harness;
 
@@ -94,7 +103,10 @@ it("raises nothing when a member jumps from one side of an obstacle to the other
 
   const started = await startRun(h);
   const ring = started.structure.ring;
-  assertTrue(ring !== null, "the slew ring the arm turns on (specs/structure.md)");
+  assertTrue(
+    ring !== null,
+    "the slew ring the arm turns on (specs/structure.md)",
+  );
 
   // "the vertical line through the flange square's center" (specs/structure.md).
   const axisX = (ring?.corner.x ?? 0) + LATTICE_PITCH / 2;
@@ -135,7 +147,11 @@ it("raises nothing when a member jumps from one side of an obstacle to the other
   // arm at the build pose, where the node sits inside the box.
   await h.debug.setAxis("slew", BEFORE);
   const before = await runTicks(h, SETTLE);
-  assertEqual(before.run.axes.slew.value, BEFORE, "the angle the arm stands at");
+  assertEqual(
+    before.run.axes.slew.value,
+    BEFORE,
+    "the angle the arm stands at",
+  );
   assertEqual(
     before.run.phase,
     "running",

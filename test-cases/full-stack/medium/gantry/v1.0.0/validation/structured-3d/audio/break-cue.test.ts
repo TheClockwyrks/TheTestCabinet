@@ -6,64 +6,136 @@
 // the `break` cue and the run continues without the broken members."
 //
 // THE SCENARIO IS A BREAK THE CRANE SURVIVES, which is the case both sentences
-// agree on. That takes a redundant crane: on the minimal crane every member is
-// the only thing doing its job, so the first member to go takes the structure
-// with it and the tick is a `collapse` as much as a break. Site 3's reference
-// crane carries eighty-seven members with load paths to spare, so a member that
-// goes over its capacity breaks and the run carries on — which is exactly the
-// tick this point is about.
+// agree on. That takes a crane with a member over its capacity and somewhere else
+// for that member's load to go: on the minimal crane every member is the only
+// thing doing its job, so the first member to go takes the structure with it and
+// the tick is a `collapse` as much as a break.
 //
-// THE OVERLOAD IS THE SPECIFICATION'S OWN ARITHMETIC. A crate of `220` hangs on
-// the hook, so specs/rigging.md makes the cable tension `(HOOK_MASS + 220) *
-// GRAVITY`, `2250`, comfortably under `HOIST_CABLE_CAP` (`3000`) so the cable
-// holds, and specs/statics.md applies it at the trolley point. One member's
-// utilization comes out above `1` under it and specs/statics.md breaks every
-// such member at once.
+// THE OVERLOAD IS THE CRANE'S OWN WEIGHT, AND NOTHING ELSE IS IN THE YARD. The
+// tower carries its corner at `(2, 0, 0)` up to the ring by several parallel
+// paths — a length-6 leg straight to the bottom flange, a length-4 leg to an
+// inner frame, and a stack through `(2, 2, 0)`. specs/structure.md lets the long
+// leg run past the nodes it crosses — "two members whose segments cross in space
+// are not joined there and pass through one another freely" — and it is the
+// weakest of them, because a strut's compression capacity falls as
+// `min(1, (BUCKLE_REF / L)^2)` and at length 6 that is `4 / 9` of
+// `STRUT_CAP_COMPRESSION`. Four counterweights load that corner until the long leg
+// alone goes past its capacity on the run's first solve; it breaks, the paths
+// beside it take up its load, and the run carries on. That is the tick this point
+// listens to.
 //
-// The load is hung with `setLoadPhase`, which specs/instrumentation.md says
-// "hangs that load on the hook exactly as a successful `attach` leaves it,
-// without the candidate search": this point is not about the candidate search,
-// and reaching the breakage through the tape's `attach` would put a second
-// verdict on the way to it. The tape is one long `grip` move, the one axis
-// specs/rigging.md says "applies no force to anything", so the run stays alive
-// and nothing but the load's weight is ever pushing on the crane.
+// NOTHING HANGS ON THE HOOK AND NOTHING ELSE MOVES. The yard is emptied, so no
+// load, no lift and no cable tension is on the way to the breakage — each of
+// those belongs to another point — and the tape is one long `grip` move, the one
+// axis specs/rigging.md says "applies no force to anything", so the crane just
+// stands there under its own weight and its counterweights. The run's own
+// `run-start` cue is drained before the tick, so what is read is what that tick
+// sounded.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertContains, assertEqual, assertGreaterThan } from "../assert";
+import { assertContains, assertEqual, assertLength } from "../assert";
+import { GRIP_MAX_RATE } from "../constants";
 import {
-  GRAVITY,
-  GRIP_MAX_RATE,
-  HOIST_CABLE_CAP,
-  HOOK_MASS,
-} from "../constants";
-import {
-  DESIGNS,
-  addOneLoad,
+  clearAll,
   createHarness,
-  emptyYard,
   openSite,
   poseCrane,
   poseTape,
   runTicks,
   startRun,
+  type CraneDesign,
+  type DesignMember,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
 
-/** The site whose reference crane is redundant enough to lose a member. */
-const SITE = 2;
+/** Site 1, First Lift: which site it is decides nothing here; its yard is emptied. */
+const SITE = 0;
 
-/**
- * Heavy enough for one member to pass its capacity, light enough for the cable
- * to hold: `(HOOK_MASS + 220) * GRAVITY` is `2250`, under `HOIST_CABLE_CAP`.
- */
-const LOAD_MASS = 220;
+/** The leg that breaks: length 6, so its compression capacity is 4/9 of a strut's. */
+const BREAKER: DesignMember = [[2, 0, 0], [2, 6, 0], "strut"];
 
-/** A move that keeps the run alive and applies no force to the structure. */
+/** Everything else, which both cranes carry. */
+const REST: readonly DesignMember[] = [
+  // The other three long legs, anchor to the ring's bottom flange at y = 6.
+  [[0, 0, 0], [0, 6, 0], "strut"],
+  [[0, 0, 2], [0, 6, 2], "strut"],
+  [[2, 0, 2], [2, 6, 2], "strut"],
+  // The length-4 legs, to an inner frame the long legs run past.
+  [[0, 0, 0], [0, 4, 0], "strut"],
+  [[2, 0, 0], [2, 4, 0], "strut"],
+  [[0, 0, 2], [0, 4, 2], "strut"],
+  [[2, 0, 2], [2, 4, 2], "strut"],
+  // The inner frame at y = 4, and its anchor braces.
+  [[0, 4, 0], [2, 4, 0], "strut"],
+  [[0, 4, 2], [2, 4, 2], "strut"],
+  [[0, 4, 0], [0, 4, 2], "strut"],
+  [[2, 4, 0], [2, 4, 2], "strut"],
+  [[0, 4, 0], [2, 4, 2], "strut"],
+  [[0, 0, 0], [2, 4, 0], "strut"],
+  [[0, 0, 2], [2, 4, 2], "strut"],
+  [[2, 0, 2], [2, 4, 0], "strut"],
+  // The frame up to the bottom flange, and the flange square.
+  [[0, 4, 0], [0, 6, 0], "strut"],
+  [[2, 4, 0], [2, 6, 0], "strut"],
+  [[0, 4, 2], [0, 6, 2], "strut"],
+  [[2, 4, 2], [2, 6, 2], "strut"],
+  [[0, 6, 0], [2, 6, 0], "strut"],
+  [[0, 6, 2], [2, 6, 2], "strut"],
+  [[0, 6, 0], [0, 6, 2], "strut"],
+  [[2, 6, 0], [2, 6, 2], "strut"],
+  [[0, 6, 0], [2, 6, 2], "strut"],
+  [[0, 4, 0], [2, 6, 0], "strut"],
+  [[0, 4, 2], [2, 6, 2], "strut"],
+  [[2, 4, 2], [2, 6, 0], "strut"],
+  // The stack beside the long leg, so its load has somewhere else to go.
+  [[2, 0, 0], [2, 2, 0], "strut"],
+  [[2, 2, 0], [2, 4, 0], "strut"],
+  [[2, 2, 0], [2, 6, 0], "strut"],
+  [[2, 2, 0], [0, 0, 0], "strut"],
+  [[2, 2, 0], [0, 0, 2], "strut"],
+  [[2, 2, 0], [2, 0, 2], "strut"],
+  [[2, 0, 0], [0, 4, 0], "strut"],
+  [[2, 0, 0], [2, 4, 2], "strut"],
+  [[2, 2, 0], [0, 4, 0], "strut"],
+  [[2, 2, 0], [2, 4, 2], "strut"],
+  [[2, 2, 0], [0, 4, 2], "strut"],
+  // The jib on the top flange: a mast head, two rails, and their hangers.
+  [[2, 8, 0], [2, 12, 0], "strut"],
+  [[2, 12, 0], [2, 8, 2], "strut"],
+  [[2, 12, 0], [0, 8, 2], "strut"],
+  [[2, 12, 0], [0, 8, 0], "strut"],
+  [[2, 8, 0], [4, 8, 0], "rail"],
+  [[4, 8, 0], [6, 8, 0], "rail"],
+  [[2, 12, 0], [4, 8, 0], "strut"],
+  [[2, 12, 0], [6, 8, 0], "strut"],
+  [[4, 8, 0], [2, 8, 2], "strut"],
+  [[6, 8, 0], [2, 8, 2], "strut"],
+];
+
+/** The load that takes the long leg past its capacity, and nothing else. */
+const COUNTERWEIGHTS = [
+  [2, 6, 0],
+  [2, 4, 0],
+  [2, 2, 0],
+  [6, 8, 0],
+] as const;
+
+/** The crane, and the leg that goes on its first solve. */
+const CRANE: CraneDesign = {
+  site: 1,
+  name: "Overloaded-leg tower",
+  ring: [0, 6, 0],
+  counterweights: COUNTERWEIGHTS,
+  members: [BREAKER, ...REST],
+  tape: [],
+};
+
+/** One move that turns the hook and applies no force (specs/rigging.md). */
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "grip", target: 100_000, rate: GRIP_MAX_RATE }],
+    commands: [{ axis: "grip", target: 100000, rate: GRIP_MAX_RATE }],
   },
 ];
 
@@ -79,33 +151,22 @@ afterEach(async () => {
 
 it("sounds the break cue on the tick a member breaks", async () => {
   await openSite(h, SITE);
-  await emptyYard(h);
-  await poseCrane(h, DESIGNS[SITE]!);
-  await addOneLoad(
-    h,
-    "crate",
-    LOAD_MASS,
-    { x: 0, y: 1, z: 0, yaw: 0 },
-    { x: 0, y: 1, z: 0, yaw: 0 },
-  );
+  await clearAll(h);
+  await poseCrane(h, CRANE);
   await poseTape(h, TAPE);
 
-  const started = await startRun(h);
-  const bob = started.run.bob.pos;
-  await h.debug.setLoadPose(0, bob.x, bob.y, bob.z, 0);
-  await h.debug.setLoadPhase(0, "attached");
+  await startRun(h);
   await h.cues(); // the start's own `run-start`, drained
 
   const broke = await runTicks(h, 1);
   const played = await h.cues();
   await h.capture("state", "the crane on the tick a member broke under it");
 
-  assertGreaterThan(
-    broke.run.broken.length,
-    0,
-    `the members the tick broke under a cable tension of ` +
-      `${(HOOK_MASS + LOAD_MASS) * GRAVITY}, under HOIST_CABLE_CAP ` +
-      `(${HOIST_CABLE_CAP}) so the cable holds (specs/statics.md)`,
+  assertLength(
+    broke.run.broken,
+    1,
+    "the members the run's first solve took: the overloaded leg alone " +
+      "(specs/statics.md)",
   );
   assertEqual(
     broke.run.phase,

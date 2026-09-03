@@ -17,22 +17,22 @@
 // between — the second press is the one that is supposed to show a result, and it
 // comes last.
 //
-// The crane is the minimal one, so the check has a real verdict to report rather
-// than a bare list of readiness issues, and the yard is emptied so nothing else
-// stands. WHAT THE RESULT SAYS IS NOT ASSERTED HERE: the issues, the cost, the
-// verdict and the member list are the `check` items' own, and this one decides
-// the binding and the screen it applies on.
+// NOTHING IS BUILT, BECAUSE THE BINDING DOES NOT DEPEND ON WHAT IS BUILT. The
+// check runs on the structure as it stands whatever that structure is, and
+// specs/structure.md § The static check says what it reports for one that is not
+// ready: the readiness issues, a cost, a verdict of not standing, and an empty
+// member list. That is a result, so the reading this point takes — a result
+// showing or none — is the same on an empty site as on a finished crane. Posing a
+// crane to reach it would put every placement rule between a build and a point
+// about a key, and a build with a broken member editor would lose this point on
+// top of the editor's own. WHAT THE RESULT SAYS IS NOT ASSERTED HERE: the issues,
+// the cost, the verdict and the member list are the `check` items' own, and this
+// one decides the binding and the screen it applies on.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotNull, assertNull } from "../assert";
 import { BINDINGS } from "../constants";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  standMinimalCrane,
-  type Harness,
-} from "../harness";
+import { clearAll, createHarness, openSite, type Harness } from "../harness";
 
 /** The `check` action's binding, as `specs/controls.md` fixes it. */
 const CHECK_KEY = BINDINGS.check[0]!;
@@ -50,7 +50,6 @@ afterEach(async () => {
 it("shows a result on the build screen and none on the program screen", async () => {
   await openSite(h, 0);
   await clearAll(h);
-  await standMinimalCrane(h);
   assertNull(
     (await h.snapshot()).checkResult,
     "the result showing before the check action is taken (specs/state.md)",

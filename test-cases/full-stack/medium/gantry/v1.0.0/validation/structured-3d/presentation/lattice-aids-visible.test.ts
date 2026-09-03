@@ -41,10 +41,11 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertNull, assertTrue } from "../assert";
 import { LATTICE_PITCH, STAGE_H, STAGE_W } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   drawnObjects,
   openSite,
+  runTicks,
   type DrawnObject,
   type Harness,
   type Vec3,
@@ -111,11 +112,15 @@ afterEach(async () => {
 
 it("marks the buildable lattice nodes on the build screen", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The YARD AND THE STRUCTURE, rather than the whole world: a site opens with an
+  // empty tape (`specs/state.md`) and nothing here poses one, so the tape needs no
+  // clearing and the program screen is never visited.
+  await emptyYard(h);
+  await h.debug.clearStructure();
   await h.pointerMove(PARKED.x, PARKED.y);
-  await h.advance(1);
-
-  const posed = await h.snapshot();
+  // The frame and the reading in one crossing: `runTicks` answers with the state
+  // the ticks it drove left (`validation/harness.ts`).
+  const posed = await runTicks(h, 1);
   assertTrue(
     posed.screen === "build",
     "the build screen, which is where the lattice is an aid (specs/ui.md)",

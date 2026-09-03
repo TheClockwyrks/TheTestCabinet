@@ -40,7 +40,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import { STRUT_MAX_LEN } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** Site 1, First Lift. */
 const SITE = 0;
@@ -69,7 +69,7 @@ afterEach(async () => {
 
 it("plays no cue for a structure edit the editor refuses", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setRing(RING.x, RING.y, RING.z);
   await h.advance(1);
   await h.cues();

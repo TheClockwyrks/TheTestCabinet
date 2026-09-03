@@ -24,9 +24,9 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { PLACE_VEL_TOL } from "../constants";
 import {
-  clearAll,
   createHarness,
   distance3,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -96,7 +96,7 @@ async function hangOnHook(
 
 it("places a release at exactly PLACE_VEL_TOL and misplaces one above it", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
 
   await h.debug.addLoad("crate", 40, PAD_A.x, PAD_A.y, PAD_A.z, PAD_A.yaw);

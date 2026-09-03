@@ -21,12 +21,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
-import {
-  createHarness,
-  emptyYard,
-  openSite,
-  type Harness,
-} from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 let h: Harness;
 

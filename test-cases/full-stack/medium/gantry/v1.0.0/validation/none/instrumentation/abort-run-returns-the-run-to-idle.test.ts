@@ -12,9 +12,11 @@
 //
 // The abort has to land on a run that has moved, or an idle reading afterwards
 // would say nothing: the minimal crane runs a tape that drives the hoist, and the
-// abort comes thirty ticks in, with the clock past zero and the hoist off its
-// start. Only what `run` carries is read; the screen the abort returns to is its
-// own point.
+// abort comes a few ticks in, with the clock past zero and the hoist under way. A
+// few is all it takes — a run that has taken one tick is a run in progress, and
+// the placeholder an abort puts back is the same one whenever it lands, so ticks
+// past the first buy the reading nothing. Only what `run` carries is read; the
+// screen the abort returns to is its own point.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -48,7 +50,7 @@ const SHORT_TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-const TICKS = 30;
+const TICKS = 4;
 
 /** The run-start posture `specs/program.md` fixes, per axis. */
 const START_POSTURE: Readonly<Record<AxisName, number>> = {

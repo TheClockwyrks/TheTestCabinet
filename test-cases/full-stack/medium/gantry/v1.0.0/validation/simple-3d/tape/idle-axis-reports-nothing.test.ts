@@ -14,18 +14,21 @@
 // cable, parts from this on the tick it happens rather than at the end.
 //
 // The commanded axis is the slew, at its max rate to a target far enough that it
-// is still turning when the sampling ends: the arm sweeps through a quarter turn,
-// which is the motion most likely to disturb the other three. The run-start
-// values the others are held to are the ones specs/program.md fixes — `trolley`
-// `0`, `hoist` `HOIST_START`, `grip` `0` — rather than a reading taken from the
-// build.
+// is still turning when the sampling ends: the arm sweeps toward a quarter turn,
+// which is the motion most likely to disturb the other three. The window is the
+// slew's own ramp — `SLEW_ACCEL` takes a whole second to reach `SLEW_MAX_RATE`
+// (specs/program.md), so every tick read here is a tick the arm is accelerating
+// through, which is where the pivot moves hardest and a build that let the motion
+// bleed across parts first. The run-start values the others are held to are the
+// ones specs/program.md fixes — `trolley` `0`, `hoist` `HOIST_START`, `grip` `0` —
+// rather than a reading taken from the build.
 //
 // The yard is emptied so no load is on the hook: a lift is not what this is
 // about, and the hoist would then be holding one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
-import { HOIST_START, SLEW_MAX_RATE, TICK_HZ } from "../constants";
+import { HOIST_START, SLEW_MAX_RATE } from "../constants";
 import {
   clearAll,
   createHarness,
@@ -40,8 +43,8 @@ import {
 /** A quarter turn: far more than the sampled ticks cover. */
 const TARGET = 90;
 
-/** A second of run clock, every tick of it read. */
-const TICKS = TICK_HZ;
+/** The ticks read, every one of them: a third of a second of the slew's ramp. */
+const TICKS = 20;
 
 /** What the run starts the three uncommanded axes at (specs/program.md). */
 const IDLE = [
@@ -96,5 +99,5 @@ it("holds every uncommanded axis at its run-start value with no rate", async () 
     }
   }
 
-  await h.capture("state", "The three idle axes after a second of slewing");
+  await h.capture("state", "The three idle axes through the slew's ramp");
 });

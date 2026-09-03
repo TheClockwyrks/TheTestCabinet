@@ -23,15 +23,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { textDraws, toDrawCall } from "../case-harness/index";
 import { fail } from "../assert";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  type Harness,
-} from "../harness";
-
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The six tools in binding order, each with the words it may be named by. */
 const TOOLS: readonly { digit: string; names: readonly string[] }[] = [
@@ -66,7 +58,7 @@ afterEach(async () => {
 
 it("draws all six tools, each beside the digit that selects it", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.advance(1);
 
   const draws = await frameDraws(h);
