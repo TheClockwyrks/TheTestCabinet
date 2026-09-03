@@ -165,13 +165,18 @@ pub struct ContainerSpec {
     /// Files materialized inside the container before the session, at absolute
     /// paths outside the seeded repository. This is how subscription-authentication
     /// credential files are made visible to a harness's CLI (under the run user's
-    /// home), how a harness that configures telemetry from a file rather than the
-    /// environment (Codex, OpenCode) gets that file, and how a run's declared
-    /// [audio packs](crate::audio_stage) are staged under `/opt/audio`. Some of
-    /// these carry credentials, so like [`secrets`](Self::secrets) they must never
-    /// be written into the seeded repository or committed — which is also what
-    /// keeps a staged clip out of the tree collected as the run's result.
+    /// home) and how a harness that configures telemetry from a file rather than the
+    /// environment (Codex, OpenCode) gets that file. Some of these carry credentials,
+    /// so like [`secrets`](Self::secrets) they must never be written into the seeded
+    /// repository or committed.
     pub files: Vec<ContainerFile>,
+    /// Host directories whose contents are materialized inside the container before
+    /// the session, at absolute paths outside the seeded repository. This is how a
+    /// run's declared [audio packs](crate::audio_stage) are staged under `/opt/audio`.
+    /// A tree carried here stays on the host until the container is started, so a
+    /// palette of tens of megabytes never becomes a second copy held in the driver's
+    /// memory for the run's duration.
+    pub dirs: Vec<ContainerDir>,
     /// Whether the container is granted outbound network access. Isolation
     /// protects the host filesystem and other runs, not the network, so this is
     /// expected to be enabled.
@@ -186,11 +191,10 @@ pub struct ContainerSpec {
 /// A file to materialize inside a started run container.
 ///
 /// Subscription authentication needs a harness's credential files present in
-/// the container at the paths its CLI reads (under the run user's `$HOME`), and a
-/// run's [staged audio palette](crate::audio_stage) needs its pack manifests and
-/// clips present under `/opt/audio`. Carrying the bytes here — rather than a host
-/// path — keeps the runtime free of host-path coupling and lets an in-memory
-/// runtime used by tests record exactly what would be written.
+/// the container at the paths its CLI reads (under the run user's `$HOME`).
+/// Carrying the bytes here — rather than a host path — keeps the runtime free of
+/// host-path coupling, lets an in-memory runtime used by tests record exactly what
+/// would be written, and keeps a secret off every argument list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContainerFile {
     /// Absolute destination path inside the container (for example
@@ -201,6 +205,25 @@ pub struct ContainerFile {
     /// The Unix mode the file is given — for example `0o600` so a credential is
     /// never left group- or world-readable.
     pub mode: u32,
+}
+
+/// A host directory whose *contents* are materialized inside a started run
+/// container, at an absolute path outside the seeded repository and owned by the
+/// run user.
+///
+/// The counterpart of [`ContainerFile`] for a tree too large to carry as bytes on
+/// the spec: a run's [staged audio palette](crate::audio_stage) is tens of
+/// megabytes across dozens of files, and holding it inline would keep a second copy
+/// resident in the driver for the whole run and cost a per-file round trip to
+/// materialize. A tree carried here holds nothing sensitive, so it needs no
+/// per-file mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContainerDir {
+    /// The host directory to copy the contents of.
+    pub host_path: PathBuf,
+    /// Absolute destination directory inside the container (for example
+    /// `/opt/audio`).
+    pub container_path: String,
 }
 
 /// A handle to a running container.

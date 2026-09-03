@@ -972,6 +972,20 @@ pub const DEFAULT_AUDIO_PACKS: [&str; 4] = [
     "synthwave@0.1.0",
 ];
 
+/// Whether one half of a `name@version` audio pack ref is usable.
+///
+/// Each half names a directory of the tree a run is staged with
+/// (`packs/<name>@<version>/`), so a half is held to plain name characters and may not
+/// be a dot segment: a ref carrying a separator or a `..` would place a pack's manifest
+/// somewhere other than the staged tree.
+pub fn is_pack_ref_half(half: &str) -> bool {
+    !half.is_empty()
+        && !half.starts_with('.')
+        && half
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
 /// The `[audio]` table: the audio packs a run may reach and, on an audio
 /// asset-generation case, the rendered clip's output format.
 ///
@@ -1646,8 +1660,8 @@ pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 /// [`crate::audio_stage`]). Overridden by `TCAB_AUDIO_STORE` for a local checkout,
 /// which fetches the same store with `scripts/fetch-audio-store.sh`. Unlike
 /// [`TCAB_PACKAGES_DIR`], nothing from it is vendored into the run repository: the
-/// clips are staged outside the workspace so only audio the model produced ships in a
-/// run's results.
+/// clips are staged outside the workspace, and the workspace is the tree collected as
+/// the run's result.
 pub const TCAB_AUDIO_STORE_DIR: &str = "/opt/tcab-audio";
 
 /// The in-repository directory a `packages`-declaring case's runtime libraries are
@@ -8909,9 +8923,11 @@ fn resolve_audio_packs(
     let mut names: Vec<&str> = Vec::with_capacity(audio.packs.len());
     for (index, pack) in audio.packs.iter().enumerate() {
         // Both halves are required: a version-less ref would leave the loaded pack's
-        // identity uncheckable, which is the whole point of pinning one.
+        // identity uncheckable, which is the whole point of pinning one. Both are also
+        // path components of the tree a run is staged with, so each is held to plain
+        // name characters rather than merely being non-empty.
         let (name, version) = pack.split_once('@').unwrap_or((pack.as_str(), ""));
-        if name.is_empty() || version.is_empty() {
+        if !is_pack_ref_half(name) || !is_pack_ref_half(version) {
             return Err(invalid(format!(
                 "audio.packs[{index}] `{pack}`: a pack ref must be `name@version`"
             )));

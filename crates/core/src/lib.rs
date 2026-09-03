@@ -849,19 +849,27 @@ where
         // `/opt/audio` at start. A case declaring no packs stages nothing, which is
         // every end-to-end, adversarial, and performance run and every `sfx-synth`
         // one.
+        //
+        // The tree is assembled on the host and carried on the spec as a directory,
+        // so the clips are copied into the container in one pass and no second copy
+        // of the palette is held in the driver for the run's duration. `staged_audio`
+        // owns that tree and outlives the container start below.
         let staged_audio = audio_stage::stage_audio(
             &seeding::audio_store_dir(),
             &test_case.audio_packs,
             test_case.asset_kind,
         )?;
         let stages_audio = staged_audio.is_some();
-        if let Some(staged) = staged_audio {
+        let mut dirs = Vec::new();
+        if let Some(staged) = &staged_audio {
             tracing::debug!(
                 packs = staged.manifest.packs.len(),
-                files = staged.files.len(),
                 "staged the run's audio palette",
             );
-            files.extend(staged.files);
+            dirs.push(crate::execution::ContainerDir {
+                host_path: staged.path().to_path_buf(),
+                container_path: test_cabinet_audio_core::staged::AUDIO_ROOT.to_string(),
+            });
         }
 
         let spec = ContainerSpec {
@@ -870,6 +878,7 @@ where
             secrets,
             env,
             files,
+            dirs,
             network_enabled: true,
             // Give the container a route to the run host when a viewer is
             // observing the run (the live asset preview), or when harness
@@ -918,6 +927,9 @@ where
             let _ = self.runtime.stop(&handle).await;
             return Err(err);
         }
+        // The staged tree has been copied into the container, so the host copy has
+        // done its work and its disk goes back now rather than at the end of the run.
+        drop(staged_audio);
 
         // Record the exact image bytes the run used. When the image was launched
         // by a mutable tag, resolve it to the registry digest now that it is

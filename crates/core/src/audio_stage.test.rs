@@ -17,8 +17,8 @@ use test_cabinet_audio_core::staged::{PackKind, StagedPacks};
 use super::*;
 
 /// The workspace the seeded repository is copied into. No staged audio path may lie
-/// inside it: everything under it is collected as the run's result, and only audio the
-/// model produced may ship there.
+/// inside it: everything under it is collected as the run's result, so a clip staged
+/// there would ship as though the model had produced it.
 const WORK_DIR: &str = "/work";
 
 /// The fixture clips' sample rate, and the rate each fixture pack declares. `load_pack`
@@ -153,29 +153,9 @@ fn refs(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| value.to_string()).collect()
 }
 
-/// The staged tree's paths, in the order staging wrote them.
+/// The absolute container paths the staged tree materializes to, sorted.
 fn paths(staged: &StagedAudio) -> Vec<String> {
-    staged
-        .files
-        .iter()
-        .map(|file| file.container_path.clone())
-        .collect()
-}
-
-/// Materialize a staged tree onto disk the way a container runtime does, and return
-/// its root — so what the binaries would read can be read here.
-fn materialize(staged: &StagedAudio) -> TempDir {
-    let root = TempDir::new().expect("a temp container root");
-    for file in &staged.files {
-        let relative = file
-            .container_path
-            .strip_prefix(&format!("{}/", staged::AUDIO_ROOT))
-            .expect("every staged path is under the audio root");
-        let path = root.path().join(relative);
-        std::fs::create_dir_all(path.parent().expect("a parent")).expect("the parent directory");
-        std::fs::write(&path, &file.contents).expect("a staged file");
-    }
-    root
+    staged.container_paths().expect("the staged tree reads")
 }
 
 // ── What is staged ──────────────────────────────────────────────────────────
@@ -186,7 +166,7 @@ fn a_case_declaring_no_packs_stages_nothing() {
     // Nothing is read, so a machine with no audio store runs them exactly as before.
     let staged = stage_audio(Path::new("/nonexistent"), &[], AssetKind::Sprite)
         .expect("a case declaring no packs needs no store");
-    assert_eq!(staged, None);
+    assert!(staged.is_none());
 }
 
 #[test]
@@ -251,8 +231,9 @@ fn no_staged_path_lies_inside_the_run_workspace() {
     .expect("staging every pack")
     .expect("a case declaring packs stages them");
 
-    assert!(!staged.files.is_empty());
-    for path in paths(&staged) {
+    let staged_paths = paths(&staged);
+    assert!(!staged_paths.is_empty());
+    for path in staged_paths {
         assert!(
             path.starts_with(&format!("{}/", staged::AUDIO_ROOT)),
             "`{path}` is staged outside the audio root",
@@ -346,9 +327,11 @@ fn the_audio_binaries_load_the_staged_tree() {
     )
     .expect("staging the declared packs")
     .expect("a case declaring packs stages them");
-    let root = materialize(&staged);
+    // The staged tree IS the tree the container is given: its contents are copied to
+    // the audio root verbatim, so reading it here reads what the binaries read.
+    let root = staged.path();
 
-    let manifest = StagedPacks::load(root.path())
+    let manifest = StagedPacks::load(root)
         .expect("the staged manifest reads")
         .expect("a staged run has a manifest");
     assert_eq!(manifest, staged.manifest);
@@ -361,7 +344,7 @@ fn the_audio_binaries_load_the_staged_tree() {
         .expect("a sample pack is staged");
     assert_eq!(pack.reference(), "combat-core@0.1.0");
 
-    let library = sample::load_pack(&root.path().join(&pack.dir)).expect("the pack loads");
+    let library = sample::load_pack(&root.join(&pack.dir)).expect("the pack loads");
     assert_eq!(library.reference().as_deref(), Some("combat-core@0.1.0"));
     assert_eq!(library.sample_rate(), RATE);
     let mut names: Vec<&str> = library.list(None).iter().map(|e| e.name.as_str()).collect();
@@ -377,7 +360,7 @@ fn the_audio_binaries_load_the_staged_tree() {
         .select(PackKind::InstrumentBank, Some("gm-lite@0.1.0"))
         .expect("the named bank resolves")
         .expect("a bank is staged");
-    let bank = sample::load_pack(&root.path().join(&bank.dir)).expect("the bank loads");
+    let bank = sample::load_pack(&root.join(&bank.dir)).expect("the bank loads");
     assert_eq!(bank.reference().as_deref(), Some("gm-lite@0.1.0"));
 
     // And a pack the case did not declare is not reachable, whatever the config says.
@@ -391,6 +374,24 @@ fn the_audio_binaries_load_the_staged_tree() {
 }
 
 // ── What fails the run ──────────────────────────────────────────────────────
+
+#[test]
+fn a_ref_that_would_escape_the_staged_tree_fails_the_run() {
+    // Staging reads refs out of a stored record rather than out of this build's
+    // resolver, so it checks their shape again: each half becomes a directory of the
+    // tree, and one carrying a separator or a dot segment would write a pack's
+    // manifest outside the tree the container is given.
+    let store = three_pack_store();
+    for bad in ["../../work/x@1", "gm-lite@../0.1.0", "gm-lite", "gm-lite@"] {
+        let err = stage_audio(store.path(), &refs(&[bad]), AssetKind::Sprite)
+            .expect_err("a ref that is not `name@version` cannot be staged");
+        let message = err.to_string();
+        assert!(
+            message.contains(&format!("audio pack ref `{bad}` is not `name@version`")),
+            "{message}",
+        );
+    }
+}
 
 #[test]
 fn a_pack_the_store_does_not_hold_fails_the_run() {

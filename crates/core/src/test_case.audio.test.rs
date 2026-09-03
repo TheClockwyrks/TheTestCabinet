@@ -282,6 +282,27 @@ fn a_pack_ref_must_pin_a_version() {
 }
 
 #[test]
+fn a_ref_half_that_is_not_a_plain_name_is_refused() {
+    // Both halves name a directory of the tree a run is staged with, so a ref carrying
+    // a separator or a dot segment would place a pack's manifest outside that tree.
+    for bad in [
+        "../../work/x@1",
+        "gm-lite@../0.1.0",
+        "gm lite@0.1.0",
+        ".hidden@0.1.0",
+        "gm-lite@..",
+    ] {
+        let err = reject_full_stack(&format!("[audio]\npacks = [\"{bad}\"]\n"));
+        assert!(
+            err.contains(&format!(
+                "audio.packs[0] `{bad}`: a pack ref must be `name@version`"
+            )),
+            "got: {err}"
+        );
+    }
+}
+
+#[test]
 fn a_malformed_ref_is_reported_by_its_position() {
     let err = reject_full_stack("[audio]\npacks = [\"combat-core@0.1.0\", \"gm-lite\"]\n");
     assert!(

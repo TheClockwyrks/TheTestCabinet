@@ -44,8 +44,8 @@ use tracing::instrument;
 
 use test_cabinet_core::exec_stream::drain_with_idle_timeout;
 use test_cabinet_core::execution::{
-    ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, ExecOutput, OutputSink,
+    ArtifactCollection, ArtifactCollector, ContainerDir, ContainerFile, ContainerHandle,
+    ContainerRuntime, ContainerSpec, ContainerStart, ExecOutput, OutputSink,
 };
 use test_cabinet_core::{Error, Result, SKIPPED_DIRS};
 
@@ -579,6 +579,21 @@ impl KubernetesContainerRuntime {
         self.extract_tar(pod, WORK_DIR, &archive, false).await
     }
 
+    /// Materialize each host directory's contents at its absolute in-container path.
+    ///
+    /// One archive and one exec per tree, the same shape `seed_workdir` already uses
+    /// to stream the whole seeded `/work` in. Modes are left to the pod's umask: a
+    /// staged tree carries published audio rather than a credential, and the pod runs
+    /// as the image's `node` user, which owns the destination.
+    async fn materialize_dirs(&self, pod: &str, dirs: &[ContainerDir]) -> Result<()> {
+        for dir in dirs {
+            let archive = tar_dir_contents(&dir.host_path)?;
+            self.extract_tar(pod, &dir.container_path, &archive, false)
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Materialize credential files at their absolute in-container paths, extracted
     /// under the run user's home with their modes preserved.
     async fn materialize_files(&self, pod: &str, files: &[ContainerFile]) -> Result<()> {
@@ -622,6 +637,10 @@ impl ContainerRuntime for KubernetesContainerRuntime {
         };
         let handle = ContainerHandle { id: name };
         if let Err(err) = self.seed_workdir(&handle.id, &spec.repo_path).await {
+            let _ = self.stop(&handle).await;
+            return Err(err);
+        }
+        if let Err(err) = self.materialize_dirs(&handle.id, &spec.dirs).await {
             let _ = self.stop(&handle).await;
             return Err(err);
         }
@@ -1260,7 +1279,8 @@ fn collect_tar_command() -> Vec<String> {
 }
 
 /// Build a tar archive of the *contents* of `dir` (entries relative to the
-/// directory root), for extraction into the pod's `/work`.
+/// directory root), for extraction at an absolute path in the pod: the seeded
+/// repository into `/work`, and a staged tree at the path its spec names.
 fn tar_dir_contents(dir: &Path) -> Result<Vec<u8>> {
     let mut builder = tar::Builder::new(Vec::new());
     builder

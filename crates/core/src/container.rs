@@ -19,8 +19,8 @@ use tracing::instrument;
 use crate::error::{Error, Result};
 use crate::exec_stream::drain_with_idle_timeout;
 use crate::execution::{
-    ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, ExecOutput, OutputSink,
+    ArtifactCollection, ArtifactCollector, ContainerDir, ContainerFile, ContainerHandle,
+    ContainerRuntime, ContainerSpec, ContainerStart, ExecOutput, OutputSink,
 };
 
 /// The container working directory the seeded repository is copied into. Matches
@@ -167,6 +167,52 @@ impl CliContainerRuntime {
         Ok(())
     }
 
+    /// Materialize each host directory's contents into the started container at its
+    /// absolute path, owned by the run user.
+    ///
+    /// A run's staged audio palette is dozens of files and tens of megabytes, so it
+    /// travels as a host tree rather than as bytes on the spec and is copied in whole:
+    /// one `cp <host>/. <id>:<dest>` and one recursive `chown`, exactly as the working
+    /// tree is seeded, rather than the three round trips per file that
+    /// [`materialize_files`](Self::materialize_files) spends to keep a credential off
+    /// every argument list and tightly moded.
+    async fn materialize_dirs(
+        &self,
+        container: &ContainerHandle,
+        dirs: &[ContainerDir],
+    ) -> Result<()> {
+        for dir in dirs {
+            let source = dir.host_path.to_str().ok_or_else(|| {
+                Error::ContainerRuntime(format!(
+                    "staged directory path is not valid UTF-8: {}",
+                    dir.host_path.display()
+                ))
+            })?;
+            let output = self
+                .run(&copy_dir_args(&container.id, source, &dir.container_path))
+                .await?;
+            if !output.status.success() {
+                return Err(Error::ContainerRuntime(format!(
+                    "copying `{source}` to `{}` in the container failed: {}",
+                    dir.container_path,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+
+            let output = self
+                .run(&chown_dir_args(&container.id, &dir.container_path))
+                .await?;
+            if !output.status.success() {
+                return Err(Error::ContainerRuntime(format!(
+                    "handing `{}` to `{RUN_USER}` failed: {}",
+                    dir.container_path,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// Materialize files into the started container at their absolute paths,
     /// owned by the run user with the requested mode.
     ///
@@ -264,6 +310,34 @@ impl CliContainerRuntime {
     }
 }
 
+/// The argument vector that copies a host directory's *contents* into `dest` inside
+/// the container. The trailing `/.` is what copies the contents rather than nesting
+/// the directory itself under `dest`, exactly as `seed_workdir` copies the seeded
+/// repository into `/work`.
+fn copy_dir_args(id: &str, source: &str, dest: &str) -> Vec<String> {
+    vec![
+        "cp".to_string(),
+        format!("{source}/."),
+        format!("{id}:{dest}"),
+    ]
+}
+
+/// The argument vector that hands a materialized tree to the run user. Run as uid 0
+/// whatever the run user is, because `cp` does not set ownership consistently across
+/// runtimes and the tree must be readable by the process that reads it.
+fn chown_dir_args(id: &str, dest: &str) -> Vec<String> {
+    vec![
+        "exec".to_string(),
+        "--user".to_string(),
+        "0".to_string(),
+        id.to_string(),
+        "chown".to_string(),
+        "--recursive".to_string(),
+        format!("{RUN_USER}:{RUN_USER}"),
+        dest.to_string(),
+    ]
+}
+
 /// The parent-directory portion of an absolute container path, or `None` when it
 /// has no non-empty parent (a file at the filesystem root).
 fn parent_dir(path: &str) -> Option<&str> {
@@ -355,9 +429,14 @@ impl ContainerRuntime for CliContainerRuntime {
             return Err(err);
         }
 
-        // Materialize any credential files (subscription authentication) at the
-        // paths the harness CLI reads under the run user's home, before the
-        // session. Same torn-down-on-failure contract as seeding.
+        // Materialize the staged trees (the run's audio palette) at their absolute
+        // paths, then any credential files (subscription authentication) at the paths
+        // the harness CLI reads under the run user's home, before the session. Same
+        // torn-down-on-failure contract as seeding.
+        if let Err(err) = self.materialize_dirs(&handle, &spec.dirs).await {
+            let _ = self.stop(&handle).await;
+            return Err(err);
+        }
         if let Err(err) = self.materialize_files(&handle, &spec.files).await {
             let _ = self.stop(&handle).await;
             return Err(err);

@@ -35,11 +35,10 @@
 //!
 //! # Nothing lands in the model's workspace
 //!
-//! Every staged path is under [`AUDIO_ROOT`](test_cabinet_audio_core::staged::AUDIO_ROOT),
-//! which is outside the seeded repository.
-//! The raw clips are therefore absent from the model's working tree, its git history,
-//! and the tree collected as the run's result, so the only audio a published run ships
-//! is audio the model produced.
+//! The tree is assembled on the host and materialized at
+//! [`AUDIO_ROOT`](test_cabinet_audio_core::staged::AUDIO_ROOT), which is outside the
+//! seeded repository, so nothing staging writes is under the model's working tree, in
+//! its git history, or in the tree collected as the run's result.
 //!
 //! See `apps/docs/src/content/docs/components/core/execution.md`.
 
@@ -48,13 +47,13 @@ use std::path::Path;
 
 use serde::Deserialize;
 use sha2::Digest;
+use tempfile::TempDir;
 use test_cabinet_audio_core::staged::{
     self, CLIPS_DIR, CONTRACT_VERSION, PACKS_MANIFEST, PackKind, StagedPack, StagedPacks,
 };
 
 use crate::error::{Error, Result};
-use crate::execution::ContainerFile;
-use crate::test_case::AssetKind;
+use crate::test_case::{AssetKind, is_pack_ref_half};
 
 /// The mode every staged file is given: readable by the run user, writable by nobody
 /// else. The tree carries no secret — it is published audio — so it needs none of the
@@ -66,16 +65,62 @@ const STAGED_MODE: u32 = 0o644;
 /// wherever it was fetched from.
 pub const OBJECTS_LOCK: &str = "objects.lock.json";
 
-/// The audio palette staged for one run: the tree to materialize in its container and
-/// the manifest that tree's `packs.json` records.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The audio palette staged for one run: a host tree whose contents are materialized
+/// at [`staged::AUDIO_ROOT`], and the manifest that tree's `packs.json` records.
+///
+/// The tree lives on the host until the container is started and is deleted with this
+/// value, so a palette of tens of megabytes is never held twice in the driver. Hold it
+/// alongside the [`ContainerSpec`](crate::execution::ContainerSpec) that names it until
+/// the container has started.
+#[derive(Debug)]
 pub struct StagedAudio {
+    /// The staged tree, deleted when this value is dropped.
+    dir: TempDir,
     /// What the run was staged with, as written to `<root>/packs.json`. Held so the
     /// caller can report the palette without re-reading it.
     pub manifest: StagedPacks,
-    /// The files to materialize in the container, each at an absolute path under
-    /// [`staged::AUDIO_ROOT`] and none of them under the run's workspace.
-    pub files: Vec<ContainerFile>,
+}
+
+impl StagedAudio {
+    /// The host directory whose contents are materialized at [`staged::AUDIO_ROOT`].
+    pub fn path(&self) -> &Path {
+        self.dir.path()
+    }
+
+    /// The absolute container paths this tree materializes to, sorted.
+    ///
+    /// Used to report and to assert what a run was given; materializing the tree
+    /// copies its contents rather than walking this list.
+    pub fn container_paths(&self) -> Result<Vec<String>> {
+        let mut paths = Vec::new();
+        collect_paths(self.path(), self.path(), &mut paths)?;
+        paths.sort();
+        Ok(paths)
+    }
+}
+
+/// Collect every file under `dir` as the absolute container path it materializes to.
+fn collect_paths(root: &Path, dir: &Path, into: &mut Vec<String>) -> Result<()> {
+    let read = std::fs::read_dir(dir)
+        .map_err(|err| Error::Seeding(format!("reading `{}`: {err}", dir.display())))?;
+    for entry in read {
+        let entry =
+            entry.map_err(|err| Error::Seeding(format!("reading `{}`: {err}", dir.display())))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_paths(root, &path, into)?;
+            continue;
+        }
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|err| Error::Seeding(format!("reading `{}`: {err}", path.display())))?;
+        into.push(format!(
+            "{}/{}",
+            staged::AUDIO_ROOT,
+            relative.to_string_lossy().replace('\\', "/")
+        ));
+    }
+    Ok(())
 }
 
 /// One pack's manifest as staging reads it: the identity to check against the ref that
@@ -144,10 +189,11 @@ pub fn stage_audio(
         return Ok(None);
     }
     let lock = read_lock(store)?;
+    let tree = TempDir::new()
+        .map_err(|err| Error::Seeding(format!("staging the run's audio palette: {err}")))?;
 
     let mut packs: Vec<StagedPack> = Vec::with_capacity(refs.len());
     let mut defaults: BTreeMap<PackKind, String> = BTreeMap::new();
-    let mut files: Vec<ContainerFile> = Vec::new();
     // Clip file names, deduplicated: two packs naming one clip stage it once, exactly
     // as the store holds it once.
     let mut clips: BTreeSet<String> = BTreeSet::new();
@@ -179,7 +225,8 @@ pub fn stage_audio(
         for entry in &manifest.sample {
             let clip = clip_file(reference, entry)?;
             if clips.insert(clip.clone()) {
-                files.push(stage_clip(store, &lock, reference, &clip)?);
+                let contents = read_clip(store, &lock, reference, &clip)?;
+                write_staged(tree.path().join(CLIPS_DIR).join(&clip).as_path(), &contents)?;
             }
         }
 
@@ -200,11 +247,10 @@ pub fn stage_audio(
         // The manifest is carried through byte for byte: the loader reads keys staging
         // has no business knowing about, and `check_identity` in the container holds
         // the loaded pack against the same bytes the store published.
-        files.push(ContainerFile {
-            container_path: container_path(&format!("{dir}/pack.toml")),
-            contents: raw.into_bytes(),
-            mode: STAGED_MODE,
-        });
+        write_staged(
+            tree.path().join(&dir).join("pack.toml").as_path(),
+            raw.as_bytes(),
+        )?;
     }
 
     let manifest = StagedPacks {
@@ -214,31 +260,64 @@ pub fn stage_audio(
     };
     let recorded = serde_json::to_vec_pretty(&manifest)
         .map_err(|err| Error::Seeding(format!("recording the run's audio palette: {err}")))?;
-    files.push(ContainerFile {
-        container_path: container_path(PACKS_MANIFEST),
-        contents: recorded,
-        mode: STAGED_MODE,
-    });
+    write_staged(tree.path().join(PACKS_MANIFEST).as_path(), &recorded)?;
 
-    Ok(Some(StagedAudio { manifest, files }))
+    Ok(Some(StagedAudio {
+        dir: tree,
+        manifest,
+    }))
 }
 
-/// The absolute in-container path a root-relative staged path lands at.
-fn container_path(relative: &str) -> String {
-    format!("{}/{relative}", staged::AUDIO_ROOT)
+/// Write one file of the staged tree, creating its parent directory.
+///
+/// The mode is fixed rather than left to the staging machine's umask, so a container
+/// is given the same tree wherever the driver runs.
+fn write_staged(path: &Path, contents: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| {
+            Error::Seeding(format!(
+                "staging the run's audio palette into `{}`: {err}",
+                parent.display()
+            ))
+        })?;
+    }
+    std::fs::write(path, contents).map_err(|err| {
+        Error::Seeding(format!(
+            "staging the run's audio palette into `{}`: {err}",
+            path.display()
+        ))
+    })?;
+    #[cfg(unix)]
+    std::fs::set_permissions(
+        path,
+        <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(STAGED_MODE),
+    )
+    .map_err(|err| {
+        Error::Seeding(format!(
+            "staging the run's audio palette into `{}`: {err}",
+            path.display()
+        ))
+    })?;
+    Ok(())
 }
 
 /// Split a `name@version` ref, which manifest resolution has already shaped. Checked
 /// again here because staging reads a ref that reached it through a stored record
-/// rather than through this build's resolver.
+/// rather than through this build's resolver, and because both halves become path
+/// components of the staged tree: a half carrying a separator or a dot segment would
+/// write the pack's manifest outside the tree the container is given.
 fn split_ref(reference: &str) -> Result<(&str, &str)> {
-    match reference.split_once('@') {
-        Some((name, version)) if !name.is_empty() && !version.is_empty() => Ok((name, version)),
-        _ => Err(Error::Seeding(format!(
+    let malformed = || {
+        Error::Seeding(format!(
             "audio pack ref `{reference}` is not `name@version`, so the pack it asks \
              for cannot be resolved in the audio store"
-        ))),
+        ))
+    };
+    let (name, version) = reference.split_once('@').ok_or_else(malformed)?;
+    if !is_pack_ref_half(name) || !is_pack_ref_half(version) {
+        return Err(malformed());
     }
+    Ok((name, version))
 }
 
 /// The store holds no such pack. Worded like the package store's vendoring failure:
@@ -341,12 +420,12 @@ fn clip_file(reference: &str, entry: &PackEntry) -> Result<String> {
 
 /// Read one clip out of the store and verify it against the published-object lock
 /// before it is staged.
-fn stage_clip(
+fn read_clip(
     store: &Path,
     lock: &BTreeMap<String, LockEntry>,
     reference: &str,
     clip: &str,
-) -> Result<ContainerFile> {
+) -> Result<Vec<u8>> {
     let key = object_key(reference, clip)?;
     let Some(record) = lock.get(&key) else {
         return Err(Error::Seeding(format!(
@@ -384,11 +463,7 @@ fn stage_clip(
             record.sha256
         )));
     }
-    Ok(ContainerFile {
-        container_path: container_path(&format!("{CLIPS_DIR}/{clip}")),
-        contents,
-        mode: STAGED_MODE,
-    })
+    Ok(contents)
 }
 
 /// The lock key one clip file answers to.
