@@ -119,11 +119,23 @@ use crate::validator::{DriveUnit, VALIDATION_SCRIPT_DIR, drive_units, relocate_o
 
 /// Wall-clock cap on the whole validator suite run.
 ///
-/// A case's validators are a few dozen in-process suites that step a simulation for
-/// thousands of frames, so minutes is the honest budget. The cap exists for the suite
-/// that never terminates: a validator left waiting on something must cost the run this
-/// much and no more.
-pub const VITEST_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+/// A case's validators step a simulation for thousands of frames, so minutes is the
+/// honest budget. The cap exists for the suite that never terminates: a validator left
+/// waiting on something must cost the run this much and no more. It is a cap on a
+/// hang, not a budget anything spends — a project that finishes in half a minute is
+/// unaffected by its size, and most do.
+///
+/// It was twenty minutes while every validator project was a few dozen IN-PROCESS
+/// suites. An engineless project is not that: it drives the built site in a real
+/// browser, so every frame it advances is a round trip into a page, and the largest
+/// such project in the repository (Gantry's, at 797 suites) measured 39 minutes at the
+/// shared harness's four workers and 28 at eight. The work itself is small — the
+/// simulation costs about a millisecond a tick inside the page — and what it is paying
+/// for is the crossings. Twenty minutes stopped that project outright, and a stopped
+/// suite decides NO point at all: every one of its points falls to a person to settle
+/// by hand, which is the expense this automation exists to remove. Forty-five leaves
+/// room for a host slower than the one that measured it.
+pub const VITEST_TIMEOUT: Duration = Duration::from_secs(45 * 60);
 
 /// Wall-clock cap on the dependency install this runner falls back to when nothing
 /// prepared the tree. Matches the toolchain stage's install budget, because it is the

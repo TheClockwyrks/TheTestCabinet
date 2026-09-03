@@ -129,55 +129,53 @@ is drawn belongs to the build.
 
 ## Where the case stands
 
-The case is `experimental = true` and must not be scheduled. What is authored
-and committed today: all twelve specs, the five that branch three ways
-included, all three starter workspaces, the prompt, `asset_dimension = "3d"` so
-a run schedules onto the 3D full-stack image, the four scoring domains, and a
-reviewer-rated checklist of 72 items across 9 categories. What is missing is
-everything that would let a run be rated.
+The case is complete and ready to schedule. It is **validator-rated** on three
+engines: `engines = ["none"]` with `[[engine]]` tables for `simple-3d` and
+`structured-3d`, a `[workspaces]` directory for each, and
+`variants/base.toml`'s `[reference_implementation]` naming the authored build
+for every one. `experimental` is off.
 
-The manifest is still on the **legacy single `workspace` key**
-(`workspace = "workspaces/none"`), with `engines`, the two `[[engine]]` tables,
-and `[workspaces]` commented in beside it. Both 3D engines are in the engine
-catalogue (`crates/core/src/engine.rs`), so the catalogue is not what blocks the
-declaration: what blocks it is that the engine format makes a case
-**validator-rated**, and a validator-rated case requires every graded review
-point to carry `validation`, `failure_cap`, and `domains`. This version is not
-frozen, so restoring the format edits it in place rather than minting a new
-version.
+What is committed: all twelve specs (the five that branch three ways included),
+all three starter workspaces, the prompt, `asset_dimension = "3d"` so a run
+schedules onto the 3D full-stack image, the four scoring domains, a checklist of
+797 validator-rated points across 13 categories, a validator suite per engine, a
+reference implementation per engine, the produced asset set with the scripts
+that made it, baseline media per engine, and a showcase.
 
-## Still to do before the case leaves experimental
+### The validator suites, and where they differ
 
-- **Decide the multi-model `voxel` workflow.** The binary's config workflow
-  produces one model per working directory; Gantry asks for eight. Either
-  per-model working directories or config overrides, settled before the case is
-  scheduled.
-- **Restore the engine manifest format**: `engines = ["none"]`, the `[[engine]]`
-  tables for `simple-3d` and `structured-3d`, and the `[workspaces]` table
-  mapping all three, in place of `workspace`.
-- **Reference implementations**, one per engine (`references/none/`,
-  `references/simple-3d/`, `references/structured-3d/`), declared from
-  `variants/base.toml`'s `[reference_implementation]` table.
-- **Validator projects**, one per engine (`validation/none/`,
-  `validation/simple-3d/`, `validation/structured-3d/`), each with a suite per
-  review point at `<category>/<id>.test.ts`. Note that **both** 3D engines'
-  suites run in vitest **browser** mode on headless Chromium through the
-  Playwright provider, from a `validation/vitest.config.ts` the case ships and
-  stages in — not in process, the way the 2D engines' suites run. Both engines
-  take a `webgl2` context from the canvas the moment `createEngine` is called,
-  so there is no in-process option. The `none` suites drive the built site in
-  Chromium through `window.__gantry`. The seeded workspace's own
-  `vitest.config.ts` stays Node-only and must, because `npx vitest run
-  --coverage` is a recorded toolchain command that runs wherever the build is
-  rebuilt.
-- **Convert the checklist to validator-rated**: every graded point gains
-  `validation`, `failure_cap`, and `domains`, and the reviewer keeps the
-  aesthetic rating and the override.
-- **Baselines** (`tcab capture-baselines`) into
-  `validation-baseline/<engine>/base/`, once the references and the suites
-  exist.
-- **A showcase** (`showcase/base/` and `specs/showcase.md.hbs`), which this case
-  does not yet have in any form.
+The three harnesses export **one async API**, so 689 of the 797 suite files are
+byte-identical across the three engine directories and the same point is decided
+by the same file whichever runtime a run selected. The 108 forks are where the
+picture is genuinely read differently, plus four that are per-engine by the
+specification itself (where the debug surface is reached, and that nothing is
+installed on the page under an engine).
+
+The two engine projects run **in process**, not in vitest browser mode. The
+engine takes a `webgl2` context from its canvas the moment it is created, and
+`validation/<engine>/harness.ts` supplies a stub for it; the engine stands up,
+and the game's own `update` and `render` run for real against it. What that
+costs is pixels: nothing is rasterized, so a check that would read the drawn yard
+reads the retained scene instead — the bodies the game submitted, their world
+extents and their materials — which is why the `presentation` suites are forked.
+The readouts are still read as drawing operations, through the seam the engine's
+own `rendering.ts` documents for exactly this.
+
+Pixel-level coverage comes from the `none` project, which drives the built site
+in real headless Chromium through `window.__gantry` and reads real pixels. The
+same 797 points are decided there, so every point is checked against a real
+browser on at least one engine.
+
+### What a suite run costs
+
+The `none` project is the largest validator suite in the repository and the only
+one that pays a browser crossing per tick: 797 suites, each loading the built
+site into its own page. It is configured at eight workers rather than the shared
+default's four because the whole run must fit inside the platform's
+twenty-minute cap on a validator suite (`VITEST_TIMEOUT` in
+`crates/core/src/vitest_validator.rs`) — at four it measured 39 minutes, which
+the runner stops, and a stopped suite decides no point at all. The two engine
+projects run the same 797 points in about half a minute each.
 
 The numbers pass this list used to call for is **done**. Every site in
 `specs/sites.md` has a worked crane and a tape that clears it inside its budget,
