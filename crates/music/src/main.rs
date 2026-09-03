@@ -29,9 +29,10 @@ use test_cabinet_audio_core::synth::EnvCurve;
 )]
 struct Cli {
     /// Path to the seeded config JSON (`sample_rate`, `channels`, `max_duration_ms`,
-    /// the fixed `seed`, the instrument-bank name/dir, and the log / preview / `.wav` /
+    /// the fixed `seed`, the `instrument_bank` ref, and the log / preview / `.wav` /
     /// `.mid` paths, plus an optional `live` block). Read by `init`, every operation,
-    /// `render`, and the browse commands.
+    /// `render`, and the browse commands. An `instrument_bank` names one of the
+    /// banks this run was staged with; omitting it plays the run's default bank.
     #[arg(long, default_value = "music.config.json", global = true)]
     config: PathBuf,
     #[command(subcommand)]

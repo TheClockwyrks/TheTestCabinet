@@ -31,9 +31,10 @@ use test_cabinet_audio_core::synth::{EnvCurve, Wave};
 )]
 struct Cli {
     /// Path to the seeded config JSON (`sample_rate`, `channels`, `max_duration_ms`,
-    /// the fixed `seed`, the sample-pack name/dir, and the log / preview / `.wav`
+    /// the fixed `seed`, the `sample_pack` ref, and the log / preview / `.wav`
     /// paths, plus an optional `live` block). Read by `init`, every operation,
-    /// `render`, and the browse commands.
+    /// `render`, and the browse commands. A `sample_pack` names one of the packs
+    /// this run was staged with; omitting it plays the run's default sample pack.
     #[arg(long, default_value = "sfx-sample.config.json", global = true)]
     config: PathBuf,
     #[command(subcommand)]
