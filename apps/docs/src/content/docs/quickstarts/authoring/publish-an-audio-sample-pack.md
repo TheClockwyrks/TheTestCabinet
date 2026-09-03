@@ -4,11 +4,11 @@ title: Publish an Audio Sample Pack
 
 ## Overview
 
-Assemble the fixed palette an `sfx-sample` run mixes over or the instrument bank
-a `music` run plays. A clip is ingested into the Test Cabinet object store once,
-a pack manifest collects clip ids and gives each one this pack's presentation, a
-publish uploads the normalized bytes that pack's profile needs, and the image
-build stages the objects it bakes.
+Assemble the palette an `sfx-sample` run mixes over or the instrument bank a
+`music` run plays. A clip is ingested into the Test Cabinet object store once, a
+pack manifest collects clip ids and gives each one this pack's presentation, a
+publish uploads the normalized bytes that pack's profile needs, and staging the
+audio store puts the pack where a run can be given it.
 [Publishing an Audio Sample Pack](/guides/authoring/publishing-an-audio-sample-pack/)
 is the full walkthrough, including the bucket, token and Freesound setup.
 
@@ -17,7 +17,7 @@ is the full walkthrough, including the bucket, token and Freesound setup.
 - A source checkout with a working Node toolchain, and `ffmpeg` on `PATH` to
   normalize at publish time and to detect pitch when curating a bank.
 - The R2 credentials in the repo-root `.env`. Ingest and publish use the write
-  pair, the image build uses the read-only presign pair, and both need
+  pair, staging the store uses the read-only presign pair, and both need
   `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_AUDIO_R2_BUCKET`. The guide's
   [environment table](/guides/authoring/publishing-an-audio-sample-pack/#one-time-setup)
   lists them.
@@ -59,33 +59,38 @@ git add containers/sample-packs/clips.toml \
 Publishing is per clip and per normalize profile, so editing one entry uploads
 one object and leaves the rest of the pack untouched.
 
-## Bake it into the image
+## Publish the audio store
 
-`./containers/build.sh` and the `Build containers` CI workflow run
-`scripts/stage-audio-image.mjs`, which downloads each object through a presigned
-GET, verifies it against `objects.lock.json`, and lays out a shared clip tree the
-Dockerfile copies to `/opt/audio`. A missing lock entry, a failed presign, or a
-digest mismatch fails the build, and a build never contacts Freesound.
+`scripts/stage-audio-store.mjs` downloads each object through a presigned GET,
+verifies it against `objects.lock.json`, and lays out a shared clip tree under
+`dist/audio-store/tree`. A missing lock entry, a failed presign, or a digest
+mismatch fails staging, and staging never contacts Freesound.
+
+`./containers/build.sh audio-store` runs the stager and builds the data-only
+image over its output.
 
 ```sh
-./containers/build.sh                     # every run image
-./containers/build.sh sfx-sample music    # only the audio images
+PUSH=1 IMAGE_REGISTRY=ghcr.io/theclockwyrks ./containers/build.sh audio-store
 ```
+
+The driver image copies that store in, and `scripts/fetch-audio-store.sh` pulls it
+onto a local checkout. A run container is then given the packs its test case
+declares in `[audio] packs`; no run image is rebuilt for a new pack version.
 
 ## Verify
 
 ```sh
 cat containers/sample-packs/objects.lock.json
-node scripts/stage-audio-image.mjs gm-lite@0.1.0
+node scripts/stage-audio-store.mjs gm-lite@0.1.0
 ```
 
 The lock lists every published key with its bucket, digest and size. The stager
-materializes the tree an image bakes under `dist/audio-image/<hash>/`, and needs
-the presign credentials in `.env`.
+writes `packs/gm-lite@0.1.0/pack.toml` plus the clips it names, and needs the
+presign credentials in `.env`.
 
 ## Next steps
 
 - [Author an Audio Test Case](/quickstarts/authoring/author-an-audio-test-case/)
-  names a published pack through `[audio]`.
+  names a published pack through `[audio] packs`.
 - [Audio binaries](/testing/asset-generation/audio-binaries/) describes how
   `sfx-sample` and `music` use the palette a run draws from.

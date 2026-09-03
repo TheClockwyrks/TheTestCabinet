@@ -16,7 +16,7 @@ per `asset_kind`, each measuring a different tier of audio-authoring skill.
 | `music` | `music` | a symbolic sequencer — notes on instrument tracks, rendered and emitted with a portable score |
 
 `sfx-sample` is a capability superset of `sfx-synth`: it carries the same synth
-voices and adds a baked sample library to mix over. The library is what changes
+voices and adds a sample library to mix over. The library is what changes
 the score. `sfx-synth` measures whether a model can build a sound from
 oscillators and noise alone, while `sfx-sample` measures whether it can select,
 layer, time, and process library clips, with synth voices for glue, the way a
@@ -28,9 +28,7 @@ and FM; the mixer and offline render engine; the WAV encoder; the waveform,
 spectrogram, and piano-roll PNG renderers; and the shared CLI record, preview,
 and config plumbing. Each binary has its own crate (`crates/sfx-synth`,
 `crates/sfx-sample`, `crates/music`) and is baked into its own run-container
-image, the `sfx-sample` and `music` images additionally carrying their [baked
-sample pack and instrument bank](#the-sample-library), so a run carries only the
-tool it uses.
+image, so a run carries only the tool it uses.
 
 The emitted asset is a finished PCM `.wav`, and `music` also emits a portable
 `.mid` score. The clip is a finished waveform, so a game plays the `.wav`
@@ -44,8 +42,8 @@ more. Mixing every voice, sample, and effect down to a waveform costs far more
 than recording a parameter, and a clip takes many operations, so rendering is a
 separate, on-request step. The orchestrator seeds a config next to the workspace
 (`sfx-synth.config.json`, `sfx-sample.config.json`, or `music.config.json`)
-carrying the audio parameters, the synthesis seed, the baked pack or bank, and
-the log, preview, and output paths, so neither an operation nor `render` needs
+carrying the audio parameters, the synthesis seed, the pack it plays, and the
+log, preview, and output paths, so neither an operation nor `render` needs
 those flags. `init` writes an empty log; a run starts pre-seeded.
 
 The `[audio]` table a case declares fixes the clip's format: `sample_rate`,
@@ -124,15 +122,15 @@ primitive and the mix is the composite.
 
 ## `sfx-sample` — layered mixing over a sample library
 
-`sfx-sample` is the game-audio-DAW tier: a layered multitrack mixer over a baked
+`sfx-sample` is the game-audio-DAW tier: a layered multitrack mixer over a
 [sample library](#the-sample-library). It carries every synth voice above, used
 for glue and sweeteners, and adds the ability to place recorded library clips as
 layers. The library is the model's palette, and because the model cannot audition
 audio it browses and reasons over each sample's name, tags, duration, and
 description.
 
-- `list-samples [--tag <t>]` and `sample-info --name <n>` browse the baked
-  library. Both record nothing.
+- `list-samples [--tag <t>]` and `sample-info --name <n>` browse the library.
+  Both record nothing.
 - `add-sample --name <lib-sample> --t <ms>` places a library clip as a layer on
   the timeline, with optional `--gain <db>`, `--pitch <semitones>`,
   `--trim <in,out>`, `--fade-in <ms>`, `--fade-out <ms>`, and `--reverse`.
@@ -166,11 +164,11 @@ recorded clips.
 - `set-tempo --bpm <n>` and `set-time-signature --num --den` fix the clip's tempo
   and meter.
 - `list-instruments [--tag <t>]` and `instrument-info --name <n>` browse the
-  baked bank the way `list-samples` and `sample-info` browse a sample library.
-  Both record nothing.
+  bank the way `list-samples` and `sample-info` browse a sample library. Both
+  record nothing.
 - `define-track --name <n> --instrument <inst>` declares an instrument voice. The
   instrument is either a synth waveform (`sine`, `square`, `saw`, `triangle`,
-  `noise`) or a sample-based instrument named from the baked
+  `noise`) or a sample-based instrument named from the
   [instrument bank](#the-sample-library). A melodic bank instrument is
   pitch-shifted per note from the note it was recorded at, and a percussion
   instrument plays at its native pitch. An `--instrument` matching neither a
@@ -205,23 +203,27 @@ operation, and it is never recorded. The recorded operation log and the emitted
 
 ## The sample library
 
-`sfx-sample`'s sample library and `music`'s instrument bank are baked into their
-run-container image at image-build time, the fixed palette each tool ships with.
-A run container is isolated and offline, so the library the model browses with
-`list-samples` or `list-instruments` is already present in the image. A case
-names the palette it expects in its `[audio]` table, a `sample_pack` or
-`instrument_bank` of the form `name@version`, never a repo path.
+`sfx-sample`'s sample library and `music`'s instrument bank are the palette a run
+mixes and sequences over. A case declares the packs it may reach in its `[audio]`
+table's `packs` list, each a `name@version` ref rather than a repo path. Those
+packs are staged into the run container under `/opt/audio` when the container
+starts, and the container carries their clips and nothing besides, so the library
+the model browses with `list-samples` or `list-instruments` is exactly the one its
+case declared.
 
-The named palette is checked against the image when the tool loads it: the baked
-pack's own `name` and `version` must equal the ref the case pins, and a palette
-the image does not bake is an error naming the palettes it does carry. Every
-entry's baked audio is checked with it, and must decode at the pack's declared
-sample rate and run for the length the entry declares, so a bake disagreeing with
-its own manifest fails at load rather than rendering a sound the model was told
-something else about. Each image also records the palette a run gets when its
-config names none, which is what the audio tools use inside a
-[full-stack](/testing/full-stack/overview/) run, where the model writes its own
-config.
+An audio asset-generation case declares the single pack its binary plays, a
+sample pack for `sfx-sample` and an instrument bank for `music`. A full-stack or
+game-jam run writes its own tool config and may be given several packs, and a
+config that names no pack plays the first declared pack of its kind.
+[Staged audio](/components/core/execution/#staged-audio) covers how a run
+receives them.
+
+The loaded pack is checked against the ref the config pins: the pack's own `name`
+and `version` must equal it, and naming a pack the run was not staged with is an
+error listing the packs it was. Every entry's audio is checked with it, and must
+decode at the pack's declared sample rate and run for the length the entry
+declares, so a pack disagreeing with its own manifest fails at load rather than
+rendering a sound the model was told something else about.
 
 A clip is one audio source, identified by the sha256 of its original source
 bytes. `containers/sample-packs/clips.toml` commits one entry per clip recording
@@ -242,12 +244,14 @@ optional `root_note` override. The source url and the content hash are facts of
 the clip and live in the registry.
 
 Clip bytes live in a Test Cabinet object store holding each clip's original
-source and, per normalize profile, the normalized wav rendered from it. An image
-build bakes one shared clip directory plus a per-pack manifest pointing into it,
-so a clip two packs share is stored and baked once and the baked palette is
-immutable and versioned with the image. Updating a library is a new pack version
-plus an image rebuild. `containers/sample-packs/README.md` covers how a clip is
-ingested and how a pack is published and baked.
+source and, per normalize profile, the normalized wav rendered from it. Every
+published pack is assembled out of that store into a host-side audio store, from
+which staging copies the declared packs' manifests plus the one shared clip
+directory those manifests point into, so a clip two packs share is stored and
+staged once. Publishing a pack version publishes its clips and its manifest to
+that store, and a case reaches the new version by pinning it in `[audio] packs`.
+`containers/sample-packs/README.md` covers how a clip is ingested and how a pack
+is published.
 
 The library must be a palette of elemental ingredients. An entry is a single
 layer, a sub-bass body, a dry metal impact, a debris tail, a mechanical reload
@@ -268,6 +272,6 @@ entry resolves a `root_note` so the sequencer pitch-shifts it correctly across a
 track's notes; percussion entries set `pitched = false` and play native. Three
 instrument banks ship: `gm-lite`, a broad general-MIDI palette; `cinematic`, epic
 orchestral with sectioned strings, brass, mixed choir, and orchestral percussion;
-and `synthwave`, analog synths, pads, FM bells, and an electronic drum machine.
-The `music` image bakes every bank, so a case picks one to match its genre; an
-`sfx-sample` image bakes the one sample pack its case names.
+and `synthwave`, analog synths, pads, FM bells, and an electronic drum machine. A
+`music` case declares the one that matches its genre, and the one sample pack
+that ships, `combat-core`, is declared the same way by an `sfx-sample` case.

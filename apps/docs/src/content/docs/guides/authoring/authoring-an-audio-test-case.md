@@ -20,15 +20,15 @@ A case is exactly one of three kinds, chosen by `asset_kind`. This is a
 version-level choice rather than a variant axis:
 
 - `sfx-synth` synthesizes a sound effect from a modular synth graph alone:
-  oscillators, noise, envelopes, filters, FM. It names neither a sample pack nor
-  an instrument bank. The worked example is `spectra-laser`.
-- `sfx-sample` layers a sound effect over a baked sample library, the
-  game-audio-DAW tier: select, layer, time, pitch, and process recorded library
-  clips, with synth voices for glue. It names a `sample_pack`. The worked
-  example is `thunderhead-broadside`.
-- `music` sequences a short piece as notes on instrument tracks over a baked
-  instrument bank, and emits a portable `.mid` beside the `.wav`. It names an
-  `instrument_bank`. The worked example is `thunderhead-theme`.
+  oscillators, noise, envelopes, filters, FM. It declares no packs. The worked
+  example is `spectra-laser`.
+- `sfx-sample` layers a sound effect over a sample library, the game-audio-DAW
+  tier: select, layer, time, pitch, and process recorded library clips, with
+  synth voices for glue. It declares exactly one sample pack. The worked example
+  is `thunderhead-broadside`.
+- `music` sequences a short piece as notes on instrument tracks over an
+  instrument bank, and emits a portable `.mid` beside the `.wav`. It declares
+  exactly one instrument bank. The worked example is `thunderhead-theme`.
 
 ## Case layout
 
@@ -49,12 +49,13 @@ test-cases/<type>/<difficulty>/<slug>/<version>/
 A run receives the selected variant's specs, the audio binary whose `--help` is
 the operations contract, and a seeded config next to the workspace
 (`sfx-synth.config.json`, `sfx-sample.config.json`, or `music.config.json`)
-carrying the `[audio]` format, the synthesis seed, the baked pack or bank, and
+carrying the `[audio]` format, the synthesis seed, the declared pack or bank, and
 the log, preview, and output paths. No operations schema is seeded.
 
-An `sfx-sample` or `music` run is scheduled onto the image carrying the named
-pack or bank, so the library the model browses with `list-samples`, or the
-instruments it names with `define-track`, is already present.
+The packs a case declares are staged into `/opt/audio` when the run container
+starts, outside the model's workspace, so the library the model browses with
+`list-samples`, or the instruments it names with `define-track`, is present from
+the first command. A container carries the declared packs and no others.
 
 Rendering is a separate, on-request step that mixes the recorded operations down
 to the `.wav` and draws the preview. The render is deterministic, so replaying
@@ -72,18 +73,17 @@ Pick `asset_kind` by what skill you want to measure:
   laser, a UI blip, or a sci-fi pulse.
 - `sfx-sample` measures whether a model can select, layer, time, pitch, and
   process library clips the way a game-audio DAW does. It carries every synth
-  voice as well, for glue, and it must name a `sample_pack`.
+  voice as well, for glue, and it declares one sample pack.
 - `music` measures composition: pitches, beats, and durations on instrument
-  tracks. It must name an `instrument_bank` and emits a portable `.mid` beside
-  the `.wav`.
+  tracks. It declares one instrument bank and emits a portable `.mid` beside the
+  `.wav`.
 
-A named pack or bank is a `name@version` baked into the run-container image
-rather than a path in this repo. A run container is offline, so the palette is
-baked in at image-build time and the manifest names which baked palette it
-expects. The published palettes are listed under
+A declared pack is a `name@version` ref rather than a path in this repo, and the
+published packs are listed under
 [the sample library](/testing/asset-generation/audio-binaries/#the-sample-library).
-A `sample_pack` or `instrument_bank` value that is not pinned is a build error,
-so a case can name only a palette that has been published. To add one, see
+`scripts/ci/audio-packs-check.mjs` resolves every declared ref against
+`containers/sample-packs/`, so a case names only a pack that has been published
+at that version, of the kind its `asset_kind` requires. To publish one, see
 [Publishing an Audio Sample Pack](/guides/authoring/publishing-an-audio-sample-pack/).
 
 Pick a catalog slug for the lineage and a `version` (`vX.Y.Z`).
@@ -107,8 +107,8 @@ operations:
   must reason over the library itself. For `music`, the instruments, the melodic
   and harmonic idea, and the feel;
 - `mono` or `stereo`, and how the image should be placed when stereo matters;
-- for `sfx-sample` and `music`, which pack or bank it draws from, so the brief
-  matches the manifest, and that the model browses the library by metadata with
+- for `sfx-sample` and `music`, which pack it draws from, so the brief matches
+  the manifest, and that the model browses the library by metadata with
   `list-samples` and `sample-info` because it cannot audition audio;
 - how the tool behaves: that the binary is the only way to shape sound, that it
   renders only on the `render` command, that the recorded operations are the
@@ -134,7 +134,7 @@ mode, so use only the documented variables: `{{variant.slug}}`,
 
 Author `test-case.toml` per
 [Audio cases](/testing/asset-generation/manifests/audio-cases/). The `sfx-synth`
-worked example, which names no palette:
+worked example, which declares no packs:
 
 ```toml
 type       = "asset-generation"   # required; omitting it defaults to end-to-end
@@ -147,6 +147,7 @@ variants = ["variants/base.toml"]
 sample_rate     = 44100      # output sample rate in Hz
 channels        = "mono"     # "mono" | "stereo"
 max_duration_ms = 800        # cap on the rendered clip's length
+# No `packs`: an sfx-synth case builds its sound from oscillators and noise alone.
 
 [tool]
 binary  = "sfx-synth"        # the audio binary for this kind
@@ -173,21 +174,22 @@ asset_kind = "sfx-sample"
 sample_rate     = 44100
 channels        = "stereo"
 max_duration_ms = 4000
-sample_pack     = "combat-core@0.1.0"   # sfx-sample only
+# Exactly one sample pack; `sfx-sample` layers and processes over it.
+packs = ["combat-core@0.1.0"]
 
 [tool]
 binary  = "sfx-sample"
 preview = "waveform.png"
 ```
 
-A `music` case names `instrument_bank = "gm-lite@0.1.0"` in place of
-`sample_pack`, and its preview carries a piano-roll as well.
+A `music` case takes the same key with one instrument bank,
+`packs = ["gm-lite@0.1.0"]`, and its preview carries a piano-roll as well.
 
 Points to get right:
 
 - `[audio]` requires `sample_rate`, `channels`, and `max_duration_ms`, all
-  positive. `sample_pack` is required for `sfx-sample` and rejected elsewhere;
-  `instrument_bank` is required for `music` and rejected elsewhere.
+  positive. `packs` holds exactly one sample pack for `sfx-sample`, exactly one
+  instrument bank for `music`, and nothing for `sfx-synth`.
 - Core emits the rendered `clip.wav`, and for `music` a portable `clip.mid`, to
   paths it provides. Neither is manifest-declared.
 - An audio case declares no `[model]`, no `[[reference]]`, no `[build]`, and no
@@ -214,20 +216,27 @@ tcab seed   --test-case spectra-laser --version v1.0.0 --variant base
 ```
 
 `prompt` renders the instruction, catching strict-mode template errors and
-manifest problems including a missing `[audio]` field, a `sample_pack` on a
-non-`sfx-sample` case, and an `instrument_bank` on a non-`music` case. `seed`
-writes the seeded repository to disk so you can read exactly what the model
-would receive and confirm it is self-contained. Confirm any named palette's
-`name@version` against the `name` and `version` in
-`containers/sample-packs/<pack>.toml`, and that every object the pack needs is
-published with `node scripts/build-sample-pack.mjs <pack> --check`, which reads
-the committed manifests and needs no credentials. Lint the specs with
+manifest problems including a missing `[audio]` field, a malformed pack ref, and
+a `packs` arity that the `asset_kind` forbids. `seed` writes the seeded
+repository to disk so you can read exactly what the model would receive and
+confirm it is self-contained.
+
+Resolve the declared refs against the registry with:
+
+```sh
+node scripts/ci/audio-packs-check.mjs
+```
+
+It checks every declared ref names a published pack, at that version, of the kind
+the `asset_kind` requires, with every clip the pack needs recorded in
+`objects.lock.json`. It reads the committed manifests and needs no credentials,
+and it runs on the commit hook and in CI. Lint the specs with
 `npm run lint:specs`, then exercise the case end to end with
 [Run a Test Case](/quickstarts/development/run-a-test-case/).
 
 ## Next steps
 
 - [Publishing an Audio Sample Pack](/guides/authoring/publishing-an-audio-sample-pack/)
-  covers curating, publishing, and pinning a pack or bank your case needs.
+  covers curating and publishing a pack your case needs.
 - [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/)
   assesses a run of your case, playing the clip against the brief.

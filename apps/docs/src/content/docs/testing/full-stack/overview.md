@@ -39,9 +39,11 @@ CLI whose `--help` states its operations. A run seeds no operations schema. The
 linked pages are the authoritative reference for each tool's operations, output,
 and previews.
 
-The image bakes the `combat-core` sample pack and every instrument bank. A config
-that names no palette gets `combat-core` for `sfx-sample` and `gm-lite` for
-`music`, and a config may name any other baked bank instead.
+The audio packs a run may use come from the case rather than the image. A
+full-stack case declares them in its manifest's `[audio] packs`, and the run
+container is staged with those packs alone. A config that names no palette gets
+the first declared pack of its kind, a sample pack for `sfx-sample` and an
+instrument bank for `music`. See [Manifests](/testing/full-stack/manifests/).
 
 The image carries the 2D tooling only. Because it inherits base-wasm, a
 full-stack build may author its simulation core in Rust and compile it to a

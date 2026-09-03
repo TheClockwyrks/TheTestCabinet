@@ -48,6 +48,10 @@ Rust to WebAssembly toolchain, and each
 that kind's baked-in tool binary. The Blender kinds are the exception, running
 in a self-contained image built from Ubuntu that carries headless Blender.
 
+The audio packs an audio binary reads are [staged](#staged-audio) into the
+container per run rather than carried by any image, so a run's palette is fixed
+by its test case rather than by the image it resolves.
+
 The selected harness's CLI is installed into the container at run time (see
 [Harness install](#harness-install)), so no image is per-harness.
 [`gg`](/gg/overview/) is the exception: a gg run resolves the `-gg` variant of
@@ -131,6 +135,36 @@ torn down as part of a run, so its contents are never visible on their own. The
 (`--variant`) and leaves the result on disk so the exact inputs a harness
 receives can be inspected without launching a container. `tcab prompt` renders
 and prints the instruction a run would hand the harness for a given variant.
+
+## Staged audio
+
+A test case declares the audio packs its run may use, and the run container is
+staged with those packs and nothing else. The
+[audio binaries](/testing/asset-generation/audio-binaries/) read their palette
+from `/opt/audio`, which staging writes once the container has started.
+
+- Each declared `name@version` ref is resolved against the host audio store,
+  located by `TCAB_AUDIO_STORE` and defaulting to `/opt/tcab-audio`. The driver
+  image carries the store; a local checkout fetches it with
+  `scripts/fetch-audio-store.sh`. A ref the store does not hold, or one whose
+  stored pack disagrees with the pinned name, version, or kind, fails the run
+  before the container starts.
+- Staging materializes one `packs/<name>@<version>/pack.toml` per declared pack,
+  the union of those packs' clip files under `clips/`, and a `packs.json`
+  recording what the run was given and the default pack for each kind. The
+  default is the first pack of that kind in declaration order, resolved on the
+  host, so a run's palette is readable in the container as data rather than
+  recomputed from a rule.
+- The staged tree lands outside the seeded repository, so the raw clips stay out
+  of the model's workspace, its git history, and its collected tree. Only audio
+  the model produced ships in a run's results.
+- A run image declares that it accepts staged audio, and a run that stages audio
+  verifies that declaration before copying anything in. A mismatch fails the run
+  at container start, before a harness session is spent, and names the image and
+  the pin that selected it.
+- Because staging needs a running container, it is excluded from `tcab seed`,
+  which materializes the seeded workspace alone. A case that declares no packs
+  stages no audio.
 
 ## Harness install
 

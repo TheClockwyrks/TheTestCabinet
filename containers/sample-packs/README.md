@@ -11,12 +11,12 @@ to the object store.
 No audio is committed here. Clip bytes live in a private
 [Cloudflare R2](https://developers.cloudflare.com/r2/) bucket keyed by clip id, both as
 the original source and as the normalized output of each pack's normalization profile.
-Because a run container is
-[isolated and offline](../../apps/docs/src/content/docs/components/core/execution.md), a
-pack is staged from that store at image-build time and baked into the image; nothing is
-fetched at run time.
+`scripts/stage-audio-store.mjs` materializes every published pack into the audio store,
+which ships as the data-only `test-cabinet-audio-store` image. A run container receives
+the packs its test case declares in `[audio] packs`, staged into `/opt/audio` when the
+container starts, and carries no other pack.
 
-See the sample-library section of [`containers/README.md`](../README.md#the-sample-library-and-instrument-bank)
+See the audio-store section of [`containers/README.md`](../README.md#the-audio-store)
 and the [audio-binaries doc](../../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md#the-sample-library).
 
 ## Clips
@@ -89,10 +89,10 @@ encoding `sample_rate|channels|loudness_lufs|true_peak_dbfs|trim_silence|max_dur
 Two packs sharing a clip and a profile therefore share one normalized object, and a
 profile change produces a new one without disturbing the old.
 
-Publishing the normalized bytes once is what makes a pack build reproducible. Every later
-consumer downloads a finished `.wav` rather than re-deriving it, so an image built on any
-machine bakes byte-identical audio and the result no longer depends on the local `ffmpeg`
-build's loudness normalization.
+Publishing the normalized bytes once is what makes a pack reproducible. Every later
+consumer downloads a finished `.wav` rather than re-deriving it, so every machine stages
+byte-identical audio and the result no longer depends on the local `ffmpeg` build's
+loudness normalization.
 
 ## `objects.lock.json`
 
@@ -105,19 +105,19 @@ build's loudness normalization.
 }
 ```
 
-A build resolves every object it needs through this file and verifies each download
-against the recorded digest and size. A missing lock entry fails the build immediately
+Staging resolves every object it needs through this file and verifies each download
+against the recorded digest and size. A missing lock entry fails staging immediately
 with the clip id and the command that publishes it, rather than surfacing as a 404 partway
 through a staging run. Commit the lock alongside the manifest change that needs it; it is
-the pin CI and other machines build from.
+the pin CI and other machines stage from.
 
 ## The Freesound boundary
 
 Freesound is contacted only by the ingest step, only by a developer, and only once per
 clip. Ingest fetches the source, verifies its digest, uploads `sources/<clip-id>`, records
 the lock entry, and writes the `clips.toml` entry. This is a requirement of the design:
-every other path — normalization, publishing, image staging, CI — reads clip bytes from
-The Test Cabinet's own store by clip id, and no build path can reach freesound.org. A pack
+every other path — normalization, publishing, store staging, CI — reads clip bytes from
+The Test Cabinet's own store by clip id, and no staging path can reach freesound.org. A pack
 naming a clip that has not been published is an error instructing the developer to run
 ingest.
 
@@ -165,7 +165,7 @@ repo-root `.env`.
    to `clips.toml` and `objects.lock.json`. `node scripts/curate-instrument-bank.mjs --ingest
    <source-url>` does the same for one clip, printing the id to reference from a pack.
 2. Author or update the pack manifest here, referencing clip ids. Any content change is a
-   new `version`; packs are immutable and versioned with the image.
+   new `version`; packs are immutable.
 3. Publish the normalized objects: `node scripts/build-sample-pack.mjs <pack> --publish`
    downloads each clip's source, normalizes it to the pack's profile, uploads
    `normalized/<clip-id>/<profile-id>.wav`, and updates `objects.lock.json`. This step
@@ -188,18 +188,19 @@ A clip whose source fails to fetch, or whose bytes hash to a different value, is
 error naming the clip id and its `source_url`. The run continues through the remaining
 clips and exits non-zero with a summary, so one dead source is reported alongside every
 clip that succeeded. This is the one-time bootstrap for a store that does not yet hold
-the pinned clips; afterwards pack publishing and image builds read the object store.
+the pinned clips; afterwards pack publishing and store staging read the object store.
 
-Image builds then run `scripts/stage-audio-image.mjs`, which presigns and downloads the
-already-normalized objects and materializes the tree the Dockerfiles copy. No credential
-enters an image layer.
+`scripts/stage-audio-store.mjs` then presigns and downloads the already-normalized
+objects and materializes the audio store the `test-cabinet-audio-store` image publishes.
+No credential enters an image layer. A published pack becomes reachable by a run as soon
+as a test case names it in `[audio] packs`; no run image is rebuilt.
 
 ## R2 environment
 
 Read from repo-root `.env` locally, and from GitHub secrets and variables in CI. The two
 credential pairs separate the roles: a developer's write pair publishes, and a read-only
-pair presigns for local and CI image builds. The container-build workflow needs only the
-presign pair.
+pair presigns the downloads that stage the audio store. The container-build workflow needs
+only the presign pair, and only for the `audio-store` image.
 
 | Variable | Role | Where |
 | --- | --- | --- |
@@ -207,25 +208,26 @@ presign pair.
 | `CLOUDFLARE_ACCOUNT_ID` | derives that endpoint when the URL is unset | publish + presign |
 | `CLOUDFLARE_AUDIO_R2_BUCKET` | the private bucket | publish + presign |
 | `CLOUDFLARE_AUDIO_R2_PUBLISH_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | write | local ingest + publish only |
-| `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | read | local + CI image build |
+| `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | read | local + CI audio-store staging |
 
 ## On-disk layout the loader expects
 
 `crates/audio-core/src/sample.rs` (`load_pack`) reads a pack directory holding a
 `pack.toml` manifest: a `sample_rate` plus one entry per sample, each with `name`, `tags`,
 `duration_ms`, `description`, and a `file` path resolved relative to the pack directory.
-The staged tree keeps the audio in a shared clip directory beside the packs, so an entry's
-`file` points out of its own pack:
+Audio sits in a shared clip directory beside the packs, so an entry's `file` points out of
+its own pack:
 
 ```
-audio/
-  clips/<clip-id>.<profile-id>.wav      shared across packs, written once
-  packs/<pack-name>/pack.toml           file = "../../clips/<clip-id>.<profile-id>.wav"
+clips/<clip-id>.<profile-id>.wav          shared across packs, written once
+packs/<name>@<version>/pack.toml          file = "../../clips/<clip-id>.<profile-id>.wav"
 ```
 
-Every file a manifest names must exist and decode as PCM-16 WAV at load time. Loading a
-named pack whose directory is missing, unparseable, or empty is an error, so an image is
-never shipped serving an empty or partial palette.
+The audio store and a run container share this one layout, so the same relative `file`
+resolves in both and a fetched store is directly loadable on the host. Every file a
+manifest names must exist and decode as PCM-16 WAV at load time. Loading a named pack
+whose directory is missing, unparseable, or empty is an error, so a run is never served an
+empty or partial palette.
 
 ## Packs in this directory
 
@@ -249,10 +251,8 @@ never shipped serving an empty or partial palette.
 - `synthwave.toml` — a synthwave and electronic instrument bank for `music`: analog leads
   and basses, pads, FM bells, synth brass and strings, and an electronic drum machine
   (`kick_808`, electronic snare and clap, hats, tom).
-The `music` image bakes every instrument bank as a per-name subdirectory, and a case's
-`instrument_bank = "<name>@<version>"` selects which one it plays (see `select_pack_dir`
-in [`crates/audio-core/src/config.rs`](../../crates/audio-core/src/config.rs)). To add a
-bank, extend the `BANKS` registry in
+
+A test case names the packs it draws from in `[audio] packs`, and its run container carries
+those and nothing else. To add a bank, extend the `BANKS` registry in
 [`scripts/curate-instrument-bank.mjs`](../../scripts/curate-instrument-bank.mjs), ingest
-and publish it, then add it to the pack list [`build.sh`](../build.sh) stages for the
-image.
+and publish it, then name it from a test case.

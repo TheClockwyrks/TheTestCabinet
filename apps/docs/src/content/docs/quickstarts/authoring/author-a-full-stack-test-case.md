@@ -43,22 +43,27 @@ for everything shared, with these differences.
 2. Leave the case's art to the model. A full-stack case declares no `assets`
    list, and resolution rejects the asset-generation tables (`asset_kind`,
    `[sheet]`, `[canvas]`, `[tool]`, `[output]`, `[voxel]`, `[model]`, `[ui]`,
-   `[material]`, `[particle]`, `[audio]`).
-3. Write `specs/assets.md`, the asset-production contract: every asset the game
+   `[material]`, `[particle]`).
+3. Declare the audio palette in `[audio] packs`, a list of `name@version` refs.
+   It is required, and the run container carries exactly what it names, so
+   declare the full published set unless the brief calls for a narrower one. The
+   first entry of each kind is what a tool config naming no pack plays. See
+   [`[audio]`](/testing/full-stack/manifests/#audio).
+4. Write `specs/assets.md`, the asset-production contract: every asset the game
    needs, which binary produces it, where the file lands in the workspace, and
    how the build wires it in. Seed it for every variant.
-4. Word the `[[domain]]` and `[[review_item]]` entries so the produced art,
+5. Word the `[[domain]]` and `[[review_item]]` entries so the produced art,
    motion, effects, and sound are first-class quality dimensions. `hollowdeep`
    splits its domains into `simulation` for the code and `presentation` for the
    produced assets; mirror that split.
-5. When the game plays a produced particle `system.json`, declare
+6. When the game plays a produced particle `system.json`, declare
    `packages = ["@test-cabinet/particle-runtime"]` and set the case's `init`
    command to `npm install` so the injected `file:` dependency resolves.
-6. Keep the asset-quality wording out of `prompt.hbs`. The harness prepends the
+7. Keep the asset-quality wording out of `prompt.hbs`. The harness prepends the
    standing
    [full-stack quality directive](/testing/full-stack/overview/#the-standing-quality-directive)
    at render time.
-7. Keep the build self-contained. It bundles the committed asset files that the
+8. Keep the build self-contained. It bundles the committed asset files that the
    run produced, because the generation binaries are on `PATH` only while the run
    is live. A build that shells out to `draw` or its siblings fails wherever
    those binaries are absent.

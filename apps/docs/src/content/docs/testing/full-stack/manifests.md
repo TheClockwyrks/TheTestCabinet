@@ -55,6 +55,43 @@ run:
 packages = ["@test-cabinet/particle-runtime"]
 ```
 
+## `[audio]`
+
+A full-stack run produces its own sound with `sfx-synth`, `sfx-sample`, and
+`music`, and `[audio]` declares the audio packs those binaries may reach. The
+run container is staged with the declared packs and no others, so the table is
+the boundary of what `list-samples` and `list-instruments` browse. Every version
+declares it, either the full published set or the subset the case needs:
+
+```toml
+[audio]
+packs = [
+  "combat-core@0.1.0",
+  "gm-lite@0.1.0",
+  "cinematic@0.1.0",
+  "synthwave@0.1.0",
+]
+```
+
+`packs` is the only key the table takes here. Each entry is a `name@version` ref
+naming a [published pack](/testing/asset-generation/audio-binaries/#the-sample-library),
+both halves required, and naming one pack twice is an error. `sample_rate`,
+`channels`, and `max_duration_ms` are rejected: they fix the single clip an
+[audio asset-generation case](/testing/asset-generation/manifests/audio-cases/)
+emits, while a full-stack run emits as many clips as its game needs. A
+[frozen](/development/frozen-versions/) version that carries no `[audio]` table
+receives the four packs it was authored against.
+
+Order decides defaults. The model writes its own tool config during the run and
+usually names no pack, and a config that names none plays the first declared
+pack of its kind. Listing `combat-core` ahead of any other sample pack and
+`gm-lite` ahead of any other instrument bank therefore fixes what an unqualified
+`sfx-sample` or `music` invocation plays.
+
+`scripts/ci/audio-packs-check.mjs` requires the declaration and resolves every
+ref against `containers/sample-packs/` on the commit hook and in CI, and prints
+the defaults each version's order resolves to.
+
 ## Forbidden asset-generation tables
 
 A full-stack case produces its assets at run time with the on-`PATH` binaries,
@@ -63,7 +100,7 @@ asset-generation-only surface, exactly as it does on an end-to-end case:
 
 - the `asset_kind` key and the `[sheet]` table;
 - `[canvas]`, `[tool]`, and `[output]`;
-- `[voxel]`, `[model]`, `[ui]`, `[material]`, `[particle]`, and `[audio]`.
+- `[voxel]`, `[model]`, `[ui]`, `[material]`, and `[particle]`.
 
 What a full-stack case says about its produced assets belongs in its specs:
 what the program needs, and to what bar. The

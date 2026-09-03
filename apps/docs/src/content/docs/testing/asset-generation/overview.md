@@ -229,9 +229,9 @@ library.
 
 A model builds a clip through discrete operations exactly as it draws or
 sculpts. `sfx-synth` layers a modular synth graph of oscillators, noise,
-envelopes, filters, and FM. `sfx-sample` layers that same synthesis over a baked
-sample library. `music` sequences notes on instrument tracks and emits a portable
-`.mid` score beside the `.wav`. The binary renders a waveform and spectrogram,
+envelopes, filters, and FM. `sfx-sample` layers that same synthesis over the
+sample library its case declares. `music` sequences notes on instrument tracks
+and emits a portable `.mid` score beside the `.wav`. The binary renders a waveform and spectrogram,
 and a piano-roll for music, that the model reads to see its progress.
 
 ## Further reading

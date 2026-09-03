@@ -164,10 +164,21 @@ scripts/ci/specs-lint.sh      # markdownlint + cspell over the authored prose
 ```
 
 `scripts/setup-hooks.sh` installs the pre-commit hooks, which run the formatting,
-clippy, and doc gates, the front-end test suite, and the
-[frozen-version](/development/frozen-versions/) check on each commit. The
-front-end suite is a commit gate because it completes in seconds; the Rust test
-suite runs in CI.
+clippy, and doc gates, the front-end test suite, the
+[frozen-version](/development/frozen-versions/) check, and the audio-pack lint on
+each commit. The front-end suite is a commit gate because it completes in
+seconds; the Rust test suite runs in CI.
+
+```sh
+node scripts/ci/audio-packs-check.mjs
+```
+
+The audio-pack lint runs on both the commit hook and CI. It requires an
+[`[audio] packs`](/testing/full-stack/manifests/#audio) declaration on every
+full-stack and game-jam version that is not frozen, resolves every declared ref
+against `containers/sample-packs/` for name, version, kind, and published clips,
+and prints the defaults each version's pack order resolves to. It reads the
+committed manifests only, so it needs no credentials.
 
 ### `gg` and its eleven toolchains
 
