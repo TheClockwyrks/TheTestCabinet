@@ -30,6 +30,7 @@
 // so neither reading is the pad's marking.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
@@ -90,8 +91,10 @@ const UNCHANGED = 25;
 // An engineless build draws the yard through WebGL, so nothing here reads pixels
 // off a 2D context: what a check reads is the page's own composited frame, taken
 // with `page.screenshot` — the same picture `h.capture` writes as the review
-// item's evidence. The PNG goes back INTO the page to be decoded, because the
-// page carries an image decoder and this process carries none.
+// item's evidence. The PNG is decoded HERE, with `@napi-rs/canvas`, rather than
+// handed back to the page: a frame is two million pixels and sending it back out
+// of the browser costs several megabytes of base64 over the debugging channel,
+// which is time this point spends on nothing it reads.
 //
 // A point is addressed in LOGICAL STAGE UNITS, the units `project` answers in
 // and the units `specs/overview.md` lays the stage out in, and the canvas's own
@@ -123,28 +126,16 @@ async function readFrame(h: Harness): Promise<Frame> {
     box !== null,
     "a <canvas> on the page for the build to draw the yard in",
   );
-  const shot = (await h.page.screenshot({ type: "png" })).toString("base64");
-  const decoded = (await h.page.evaluate(async (png: string) => {
-    const image = new Image();
-    image.src = `data:image/png;base64,${png}`;
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const context = canvas.getContext("2d")!;
-    context.drawImage(image, 0, 0);
-    const pixels = context.getImageData(0, 0, image.width, image.height);
-    // Base64 rather than an array of numbers: a whole frame is two million
-    // entries, and it is built in chunks because `String.fromCharCode` is
-    // applied to its arguments and that many of them overflow the stack.
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < pixels.data.length; i += chunk) {
-      binary += String.fromCharCode(...pixels.data.subarray(i, i + chunk));
-    }
-    return { width: image.width, height: image.height, b64: btoa(binary) };
-  }, shot)) as { width: number; height: number; b64: string };
-  const bytes = Buffer.from(decoded.b64, "base64");
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
+  const image = await loadImage(await h.page.screenshot({ type: "png" }));
+  const surface = createCanvas(image.width, image.height);
+  const context = surface.getContext("2d");
+  context.drawImage(image, 0, 0);
+  const decoded = { width: image.width, height: image.height };
+  const bytes = context.getImageData(0, 0, image.width, image.height).data;
   const fit = box as { x: number; y: number; width: number; height: number };
   const scale = Math.min(fit.width / STAGE_W, fit.height / STAGE_H);
   const originX = fit.x + (fit.width - STAGE_W * scale) / 2;

@@ -27,8 +27,9 @@
 // build that lit every node when the pointer entered the yard would answer the
 // first half and fail here.
 //
-// THE YARD IS EMPTIED — nothing built, no loads, no obstacles — so the only thing
-// that can change under the pointer is the aid this point is about.
+// THE YARD IS EMPTIED, on a site opened fresh — nothing built, no loads, no
+// obstacles — so the only thing that can change under the pointer is the aid this
+// point is about.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -40,8 +41,8 @@ import {
 } from "../assert";
 import { NODE_PICK_PX, STAGE_H, STAGE_W } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   type Harness,
   type Vec3,
@@ -107,6 +108,10 @@ async function readFrame(h: Harness): Promise<Frame> {
     box !== null,
     "a <canvas> on the page for the build to draw the yard in",
   );
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
   const shot = (await h.page.screenshot({ type: "png" })).toString("base64");
   const decoded = (await h.page.evaluate(async (png: string) => {
     const image = new Image();
@@ -172,7 +177,7 @@ afterEach(async () => {
 
 it("highlights the node under the pointer and leaves the rest of the lattice alone", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
 
   const aimed = await h.project(AIMED.x, AIMED.y, AIMED.z);
   const control = await h.project(CONTROL.x, CONTROL.y, CONTROL.z);

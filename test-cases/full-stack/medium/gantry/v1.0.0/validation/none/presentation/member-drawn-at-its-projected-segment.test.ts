@@ -39,7 +39,7 @@ import {
   assertTrue,
 } from "../assert";
 import { STAGE_H, STAGE_W } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, openSite, type Harness } from "../harness";
 
 const SITE = 0;
 
@@ -102,6 +102,10 @@ async function readFrame(h: Harness): Promise<Frame> {
     box !== null,
     "a <canvas> on the page for the build to draw the yard in",
   );
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
   const shot = (await h.page.screenshot({ type: "png" })).toString("base64");
   const decoded = (await h.page.evaluate(async (png: string) => {
     const image = new Image();
@@ -152,7 +156,11 @@ afterEach(async () => {
 
 it("paints a placed member along the segment between its two nodes", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await h.advance(1);
 
   const a = await h.project(FROM.x, FROM.y, FROM.z);

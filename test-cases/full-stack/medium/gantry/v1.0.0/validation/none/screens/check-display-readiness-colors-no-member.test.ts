@@ -66,6 +66,10 @@ interface At {
 
 /** The page as it stands, composited: the 3D yard with the readouts over it. */
 async function picture(harness: Harness): Promise<Picture> {
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await harness.paintFrame();
   const png = await harness.page.screenshot({ type: "png" });
   const image = await loadImage(png);
   const canvas = createCanvas(image.width, image.height);
@@ -94,15 +98,31 @@ function apart(a: readonly number[], b: readonly number[]): number {
   return Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
 }
 
-/** Points along every member's projected segment, away from its ends. */
+/**
+ * Points along every member's projected segment, away from its ends.
+ *
+ * A crane's members meet at shared nodes — the twenty-one members here stand on
+ * fourteen — and `project` is a pure reading of one camera pose, so each node is
+ * asked for once and its answer reused by every member ending there. The points
+ * are the same points either way; what is saved is two thirds of the calls.
+ */
 async function alongMembers(
   harness: Harness,
   members: readonly DesignMember[],
 ): Promise<At[]> {
+  const drawn = new Map<string, { x: number; y: number }>();
+  const at = async (node: readonly [number, number, number]) => {
+    const key = node.join(",");
+    const known = drawn.get(key);
+    if (known !== undefined) return known;
+    const found = await harness.project(node[0], node[1], node[2]);
+    drawn.set(key, found);
+    return found;
+  };
   const points: At[] = [];
   for (const [a, b] of members) {
-    const from = await harness.project(a[0], a[1], a[2]);
-    const to = await harness.project(b[0], b[1], b[2]);
+    const from = await at(a);
+    const to = await at(b);
     for (const t of ALONG) {
       points.push({
         x: from.x + (to.x - from.x) * t,

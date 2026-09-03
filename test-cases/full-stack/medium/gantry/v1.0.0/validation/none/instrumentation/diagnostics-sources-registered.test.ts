@@ -21,16 +21,17 @@
 // THE TWO STATES PART ONLY IN THE RUN'S CLOCK AND STEP INDEX. Both stand on the
 // build screen, on site `0`, over the same crane, the same tape and the same
 // emptied yard, with the camera at the pose a site opening leaves, and both have
-// a run in progress. One is a tick into it and the other thirty, so the run's
+// a run in progress. One is a tick into it and the other a dozen, so the run's
 // clock and its step index — two of the figures the paragraph above names — are
-// far apart, and every other figure a build could draw the yard from is
-// identical: the tape is forty move steps that each command the hoist to the
-// value it already holds, and "A command whose target is the axis's current
-// value therefore has `s` of `0`: the axis neither brakes nor accelerates, it
-// does not move, and step 3 finds it arrived, so the command is done on the tick
-// it is issued" (`specs/program.md`), while "A tick takes at most one step from
-// the tape". So the run advances a tick a step with all four axes, the pivot and
-// the bob standing exactly where the run started them (`specs/state.md`).
+// apart in both the tenths of a second a clock reads and the step number beside
+// it, and every other figure a build could draw the yard from is identical: the
+// tape is sixteen move steps that each command the hoist to the value it already
+// holds, and "A command whose target is the axis's current value therefore has
+// `s` of `0`: the axis neither brakes nor accelerates, it does not move, and step
+// 3 finds it arrived, so the command is done on the tick it is issued"
+// (`specs/program.md`), while "A tick takes at most one step from the tape". So
+// the run advances a tick a step with all four axes, the pivot and the bob
+// standing exactly where the run started them (`specs/state.md`).
 //
 // THAT IS WHAT MAKES THE COMPARISON SOUND, AND THE CHECK ASSERTS IT FIRST. The
 // build screen shows "the yard through the camera ... and the structure as
@@ -65,20 +66,22 @@ import {
 /** The key the overlay is shown and hidden by (`specs/instrumentation.md`). */
 const TOGGLE = "Backquote";
 
-/** The two states: a tick into the run, and thirty ticks into it. */
+/** The two states: a tick into the run, and a dozen ticks into it. */
 const EARLY = 1;
-const LATE = 30;
+const LATE = 12;
 
 /**
- * Forty move steps that ask the hoist for the value it already holds.
+ * Sixteen move steps that ask the hoist for the value it already holds.
  *
  * One step a tick, none of them moving anything: the run's clock and step index
  * advance and the yard does not, which is what lets the two states below be told
- * apart by the panel alone. Forty is more steps than the ticks driven, so the
- * run is still in progress at both readings rather than ended at one of them.
+ * apart by the panel alone. Sixteen is more steps than the ticks driven, so the
+ * run is still in progress at both readings rather than ended at one of them —
+ * and the tape is posed a step at a time, so a longer one is a cost the reading
+ * does not need.
  */
 const STILL_TAPE: readonly TapeStepSpec[] = Array.from(
-  { length: 40 },
+  { length: 16 },
   (): TapeStepSpec => ({
     kind: "move",
     commands: [{ axis: "hoist", target: HOIST_START, rate: HOIST_MAX_RATE }],
@@ -98,32 +101,55 @@ afterEach(async () => {
 });
 
 /**
+ * The yard all four pictures are taken over: emptied, one crane, one still tape.
+ *
+ * Posed once. Every picture below runs the same run over it, so nothing here has
+ * to be built again between them.
+ */
+async function poseWorld(): Promise<void> {
+  await openSite(h, 0);
+  await clearAll(h);
+  await standMinimalCrane(h);
+  await poseTape(h, STILL_TAPE);
+}
+
+/**
  * Show or hide the panel, pose one of the two states, and picture the page.
  *
- * The pose starts from a `reset`, which "returns the game to its title state"
- * (`specs/instrumentation.md`), so each of the four pictures below is taken over
- * a state built from the same starting point rather than over the leavings of
- * the picture before it.
+ * EACH PICTURE STARTS THE RUN AFRESH, and starts it from the same place. The
+ * abort "poses the abort, ending a running run with no verdict: `run` goes back
+ * to its idle placeholder and the build screen returns", and it does nothing at
+ * all before the first run; the start that follows is "the ordinary run", which
+ * "starts as `specs/state.md` says a run starts: nothing has ticked at the call,
+ * so `run.tick` reads `0` immediately after it, and the axes, the pivot, and the
+ * bob stand at the run-start values". So each of the four pictures is taken over
+ * a run built from the same starting point rather than over the leavings of the
+ * picture before it. Nothing else in the yard moves between them: the crane, the
+ * tape and the emptied yard are `poseWorld`'s and no picture touches them, and
+ * the camera is left wherever the site opening put it because nothing here
+ * orbits.
  */
 async function picture(shown: boolean, ticks: number): Promise<Buffer> {
   if (shown !== overlayShown) {
     await h.press(TOGGLE);
     overlayShown = shown;
   }
-  await h.debug.reset();
-  await openSite(h, 0);
-  await clearAll(h);
-  await standMinimalCrane(h);
-  await poseTape(h, STILL_TAPE);
+  await h.debug.abortRun();
   await startRun(h);
   await h.advance(ticks);
   // The build screen, and the frame that draws it, in both states alike.
   await h.debug.setScreen("build");
   await h.advance(1);
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
   return h.page.screenshot({ type: "png" });
 }
 
 it("draws a different panel for a different state of the game", async () => {
+  await poseWorld();
+
   // Hidden: the game's own display, in the two states.
   const earlyHidden = await picture(false, EARLY);
   const lateHidden = await picture(false, LATE);

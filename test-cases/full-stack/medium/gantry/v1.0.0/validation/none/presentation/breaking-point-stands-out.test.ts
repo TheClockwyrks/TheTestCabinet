@@ -147,6 +147,13 @@ const AGREES = 25;
 // item's evidence. The PNG goes back INTO the page to be decoded, because the
 // page carries an image decoder and this process carries none.
 //
+// ONLY THE POINTS THIS POINT READS COME BACK. The frame is photographed at a clip
+// around the handful of stage points the members are sampled at, and the decode
+// in the page answers those samples rather than the frame: a whole composited
+// frame is two million pixels and eight megabytes of it crossing back out of the
+// browser, once for every reading along the ramp, buys nothing the twenty samples
+// do not already carry.
+//
 // A point is addressed in LOGICAL STAGE UNITS, the units `project` answers in
 // and the units `specs/overview.md` lays the stage out in, and the canvas's own
 // box on the page is what turns one into the other: the stage is fitted into it
@@ -155,9 +162,17 @@ const AGREES = 25;
 /** A colour read off the frame, each channel 0-255. */
 type Rgb = readonly [number, number, number];
 
-/** One composited frame, read at logical stage points. */
-interface Frame {
-  at(x: number, y: number): Rgb;
+/** A point on the stage, in the logical units `project` answers in. */
+interface StagePoint {
+  x: number;
+  y: number;
+}
+
+/** Where the stage sits inside the canvas, in the page's own pixels. */
+interface StageFit {
+  scale: number;
+  originX: number;
+  originY: number;
 }
 
 /** How far apart two colours are, on the 0-441 (`sqrt(3) * 255`) scale. */
@@ -165,8 +180,8 @@ function apart(a: Rgb, b: Rgb): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 }
 
-/** The picture on screen right now, as a colour lookup in stage units. */
-async function readFrame(h: Harness): Promise<Frame> {
+/** Where the stage is fitted into the build's canvas, read once per page. */
+async function stageFit(h: Harness): Promise<StageFit> {
   const box = (await h.page.evaluate(() => {
     const canvas = document.querySelector("canvas");
     if (canvas === null) return null;
@@ -177,66 +192,103 @@ async function readFrame(h: Harness): Promise<Frame> {
     box !== null,
     "a <canvas> on the page for the build to draw the yard in",
   );
-  const shot = (await h.page.screenshot({ type: "png" })).toString("base64");
-  const decoded = (await h.page.evaluate(async (png: string) => {
-    const image = new Image();
-    image.src = `data:image/png;base64,${png}`;
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const context = canvas.getContext("2d")!;
-    context.drawImage(image, 0, 0);
-    const pixels = context.getImageData(0, 0, image.width, image.height);
-    // Base64 rather than an array of numbers: a whole frame is two million
-    // entries, and it is built in chunks because `String.fromCharCode` is
-    // applied to its arguments and that many of them overflow the stack.
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < pixels.data.length; i += chunk) {
-      binary += String.fromCharCode(...pixels.data.subarray(i, i + chunk));
-    }
-    return { width: image.width, height: image.height, b64: btoa(binary) };
-  }, shot)) as { width: number; height: number; b64: string };
-  const bytes = Buffer.from(decoded.b64, "base64");
-  const fit = box as { x: number; y: number; width: number; height: number };
+  const fit = box!;
   const scale = Math.min(fit.width / STAGE_W, fit.height / STAGE_H);
-  const originX = fit.x + (fit.width - STAGE_W * scale) / 2;
-  const originY = fit.y + (fit.height - STAGE_H * scale) / 2;
   return {
-    at(x, y) {
-      const px = Math.round(originX + x * scale);
-      const py = Math.round(originY + y * scale);
-      if (px < 0 || py < 0 || px >= decoded.width || py >= decoded.height) {
-        return [0, 0, 0];
-      }
-      const at = (py * decoded.width + px) * 4;
-      return [bytes[at]!, bytes[at + 1]!, bytes[at + 2]!];
-    },
+    scale,
+    originX: fit.x + (fit.width - STAGE_W * scale) / 2,
+    originY: fit.y + (fit.height - STAGE_H * scale) / 2,
   };
 }
+
 /**
- * The colour a member is drawn in, read along its projected segment.
+ * The colours the composited frame shows at each of `points`, in that order.
  *
- * `SAMPLES` points over the middle of the segment, and the answer is the mean of
- * the largest group of them that agree within `AGREES`. A member is drawn in one
- * colour along its length, so the samples that landed on it agree; a sample that
- * landed on something crossing in front of it does not join that group.
+ * The clip is the box those points fall in, so what is photographed and decoded
+ * is the corner of the yard the members are drawn in rather than the whole
+ * screen, and what crosses back out of the page is the samples themselves.
  */
-function memberColour(
-  frame: Frame,
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-): Rgb | null {
-  const samples: Rgb[] = [];
+async function readSamples(
+  h: Harness,
+  fit: StageFit,
+  points: readonly StagePoint[],
+): Promise<Rgb[]> {
+  const on = points.map((point) => ({
+    x: fit.originX + point.x * fit.scale,
+    y: fit.originY + point.y * fit.scale,
+  }));
+  const pad = 2;
+  const left = Math.max(0, Math.floor(Math.min(...on.map((p) => p.x)) - pad));
+  const top = Math.max(0, Math.floor(Math.min(...on.map((p) => p.y)) - pad));
+  const clip = {
+    x: left,
+    y: top,
+    width: Math.max(1, Math.ceil(Math.max(...on.map((p) => p.x)) + pad) - left),
+    height: Math.max(1, Math.ceil(Math.max(...on.map((p) => p.y)) + pad) - top),
+  };
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
+  const png = (await h.page.screenshot({ type: "png", clip })).toString(
+    "base64",
+  );
+  const wanted = on.map((p) => [p.x - clip.x, p.y - clip.y] as const);
+  const read = (await h.page.evaluate(
+    async ([b64, width, at]: [string, number, (readonly number[])[]]) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${b64}`;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, image.width, image.height).data;
+      // The clip is asked for in the page's own pixels and answered in the
+      // device's, so a page drawn at any device pixel ratio maps the same way.
+      const ratio = image.width / width;
+      return at.map(([x, y]) => {
+        const px = Math.min(
+          image.width - 1,
+          Math.max(0, Math.round(x * ratio)),
+        );
+        const py = Math.min(
+          image.height - 1,
+          Math.max(0, Math.round(y * ratio)),
+        );
+        const i = (py * image.width + px) * 4;
+        return [pixels[i]!, pixels[i + 1]!, pixels[i + 2]!];
+      });
+    },
+    [png, clip.width, wanted] as [string, number, (readonly number[])[]],
+  )) as number[][];
+  return read.map((one) => [one[0]!, one[1]!, one[2]!] as const);
+}
+
+/** The `SAMPLES` points over the middle of a member's projected segment. */
+function samplePoints(a: StagePoint, b: StagePoint): StagePoint[] {
+  const points: StagePoint[] = [];
   for (let i = 0; i < SAMPLES; i += 1) {
     const t = 0.3 + (0.4 * i) / (SAMPLES - 1);
-    samples.push(frame.at(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
+    points.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
   }
+  return points;
+}
+
+/**
+ * The colour a member is drawn in, from the samples read along its segment.
+ *
+ * The answer is the mean of the largest group of them that agree within
+ * `AGREES`. A member is drawn in one colour along its length, so the samples
+ * that landed on it agree; a sample that landed on something crossing in front
+ * of it does not join that group.
+ */
+function memberColour(samples: readonly Rgb[]): Rgb | null {
   let best: Rgb[] = [];
   for (const sample of samples) {
     const group = samples.filter((other) => apart(sample, other) <= AGREES);
-    if (group.length > best.length) best = group;
+    if (group.length > best.length) best = [...group];
   }
   if (best.length * 2 <= SAMPLES) return null;
   return [
@@ -288,6 +340,12 @@ it("moves a member's colour further over the step into breaking point", async ()
     drawn.push({ from, to, a, b });
   }
 
+  // The stage points every reading is taken at. Nothing turns the arm, so they
+  // are the same at every load and the clip they fall in is photographed once
+  // per reading rather than the whole screen.
+  const fit = await stageFit(h);
+  const wanted = drawn.flatMap(({ a, b }) => samplePoints(a, b));
+
   // The run, photographed every `EVERY` ticks: what each candidate carries, and
   // what it is drawn in.
   const series: { load: number; colour: Rgb }[][] = drawn.map(() => []);
@@ -320,10 +378,12 @@ it("moves a member's colour further over the step into breaking point", async ()
           "(specs/structure.md)",
       );
     }
-    const frame = await readFrame(h);
-    for (const [index, member] of drawn.entries()) {
+    const read = await readSamples(h, fit, wanted);
+    for (const index of drawn.keys()) {
       const force = state.run.forces.find((f) => f.id === ids[index]);
-      const colour = memberColour(frame, member.a, member.b);
+      const colour = memberColour(
+        read.slice(index * SAMPLES, (index + 1) * SAMPLES),
+      );
       if (force === undefined || colour === null) continue;
       series[index]!.push({ load: force.utilization, colour });
     }

@@ -168,6 +168,10 @@ it("draws a posed obstacle inside the box's projected extent", async () => {
   const shot = async (rect: Rect): Promise<Buffer> => {
     const sx = fit!.width / STAGE_W;
     const sy = fit!.height / STAGE_H;
+    // One held frame first: the page is off its own paint clock (see
+    // `paint-gate.js`), and a screenshot is the whole page rather than just the
+    // canvas `advance` has already drawn.
+    await h.paintFrame();
     return h.page.screenshot({
       clip: {
         x: fit!.x + rect.x * sx,

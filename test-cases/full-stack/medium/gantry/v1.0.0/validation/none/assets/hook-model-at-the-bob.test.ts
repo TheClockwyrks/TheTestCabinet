@@ -28,6 +28,16 @@
 //
 // THE WORLD IS THE CRANE ALONE: no loads, no obstacles, and a tape of one grip
 // move, the only axis whose motion "applies no force to anything".
+//
+// ONE PICTURE PER PAGE PER POSE. Both readings a pose takes — that the box around
+// the bob changed and that nothing outside it did — are of the same still frame,
+// so each page is photographed once per pose and the box and the four bands
+// around it are counted over those two frames inside the page. A composited frame
+// off a software renderer is the expensive thing here, and ten of them per pose
+// read exactly what two of them read. The `project` calls that place the box go
+// the same way: eight corners in one crossing, through the build's own
+// `window.__gantry` handle, which is the surface `specs/instrumentation.md`
+// exposes and the surface `Harness.project` itself calls.
 
 import { afterEach, beforeEach, it } from "vitest";
 import type { BrowserContext } from "playwright";
@@ -36,6 +46,7 @@ import { join } from "node:path";
 import { assertTrue, fail } from "../assert";
 import { GRIP_MAX_RATE, STAGE_H, STAGE_W } from "../constants";
 import {
+  HANDLE,
   clearAll,
   createHarness,
   openSite,
@@ -43,6 +54,7 @@ import {
   standMinimalCrane,
   startRun,
   type Harness,
+  type Projected,
   type TapeStepSpec,
   type Vec3,
 } from "../harness";
@@ -149,16 +161,16 @@ it("draws the hook at the bob, wherever the bob stands", async () => {
 
     const region = await boxRegion(served, at);
     const bands = surrounding(region);
-    const before = {
-      inside: await shot(served, region),
-      outside: await Promise.all(bands.map((band) => shot(served, band.rect))),
-    };
+    const before = await frameOf(served);
+    const after = await frameOf(substituted);
+    const changed = await countChanged(served, before, after, [
+      region,
+      ...bands.map((band) => band.rect),
+    ]);
 
-    const spilled: string[] = [];
-    for (const [index, band] of bands.entries()) {
-      const again = await shot(substituted, band.rect);
-      if (!before.outside[index]!.equals(again)) spilled.push(band.where);
-    }
+    const spilled = bands
+      .filter((_, index) => changed[index + 1]! > 0)
+      .map((band) => band.where);
     if (spilled.length > 0) {
       fail(
         `the hook model drawn within ${HALF} units of the bob, ` +
@@ -171,9 +183,8 @@ it("draws the hook at the bob, wherever the bob stands", async () => {
       );
     }
 
-    const insideAgain = await shot(substituted, region);
     assertTrue(
-      !before.inside.equals(insideAgain),
+      changed[0]! > 0,
       `the hook model to be drawn at the bob with the bob ${pose.name}, at ` +
         `(${at.x.toFixed(2)}, ${at.y.toFixed(2)}, ${at.z.toFixed(2)}) ` +
         "(specs/assets.md)",
@@ -233,29 +244,50 @@ async function poseBob(
   return run.bob.pos;
 }
 
-/** Where the build itself says a box around `at` is drawn, in logical units. */
+/**
+ * Where the build itself says a box around `at` is drawn, in logical units.
+ *
+ * The eight corners go in one crossing, through the same `project` operation
+ * `Harness.project` calls: one reading per corner either way.
+ */
 async function boxRegion(h: Harness, at: Vec3): Promise<Rect> {
+  const corners: [number, number, number][] = [];
+  for (const dx of [-HALF, HALF]) {
+    for (const dy of [-HALF, HALF]) {
+      for (const dz of [-HALF, HALF]) {
+        corners.push([at.x + dx, at.y + dy, at.z + dz]);
+      }
+    }
+  }
+  const drawn = (await h.page.evaluate(
+    ([handle, points]: [string, [number, number, number][]]) => {
+      const api = (
+        window as unknown as Record<
+          string,
+          { project(x: number, y: number, z: number): unknown }
+        >
+      )[handle]!;
+      return points.map(([x, y, z]) => api.project(x, y, z));
+    },
+    [HANDLE, corners] as [string, [number, number, number][]],
+  )) as Projected[];
+
   let left = Infinity;
   let right = -Infinity;
   let top = Infinity;
   let bottom = -Infinity;
-  for (const dx of [-HALF, HALF]) {
-    for (const dy of [-HALF, HALF]) {
-      for (const dz of [-HALF, HALF]) {
-        const on = await h.project(at.x + dx, at.y + dy, at.z + dz);
-        assertTrue(
-          on.visible,
-          `the corner (${(at.x + dx).toFixed(2)}, ${(at.y + dy).toFixed(2)}, ` +
-            `${(at.z + dz).toFixed(2)}) of the block's box to be drawn on the ` +
-            "stage at the start camera pose, so this point has a picture to " +
-            "read (specs/instrumentation.md)",
-        );
-        left = Math.min(left, on.x);
-        right = Math.max(right, on.x);
-        top = Math.min(top, on.y);
-        bottom = Math.max(bottom, on.y);
-      }
-    }
+  for (const [index, on] of drawn.entries()) {
+    const [x, y, z] = corners[index]!;
+    assertTrue(
+      on.visible,
+      `the corner (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}) of the ` +
+        "block's box to be drawn on the stage at the start camera pose, so " +
+        "this point has a picture to read (specs/instrumentation.md)",
+    );
+    left = Math.min(left, on.x);
+    right = Math.max(right, on.x);
+    top = Math.min(top, on.y);
+    bottom = Math.max(bottom, on.y);
   }
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
@@ -288,23 +320,130 @@ function surrounding(region: Rect): { where: string; rect: Rect }[] {
   ].filter(({ rect }) => rect.width >= 1 && rect.height >= 1);
 }
 
-/** A logical rectangle of one page's composited frame, as PNG bytes. */
-async function shot(h: Harness, rect: Rect): Promise<Buffer> {
-  const fit = (await h.page.evaluate(() => {
+/** One page's whole composited frame of the yard, and where the stage sits. */
+interface Picture {
+  png: string;
+  width: number;
+  scale: number;
+  originX: number;
+  originY: number;
+}
+
+/**
+ * The canvas the build draws in, photographed whole.
+ *
+ * The clip is the canvas's own box, so the picture is the yard and nothing of the
+ * page around it, and the stage is fitted inside it "at one uniform scale,
+ * centred" (specs/overview.md) — which is what turns a logical stage rectangle
+ * into pixels of this picture.
+ */
+async function frameOf(h: Harness): Promise<Picture> {
+  const box = (await h.page.evaluate(() => {
     const canvas = document.querySelector("canvas");
     if (canvas === null) return null;
     const at = canvas.getBoundingClientRect();
     return { x: at.x, y: at.y, width: at.width, height: at.height };
   })) as Rect | null;
-  assertTrue(fit !== null, "a <canvas> on the page for the build to draw in");
-  const sx = fit!.width / STAGE_W;
-  const sy = fit!.height / STAGE_H;
-  return h.page.screenshot({
-    clip: {
-      x: fit!.x + rect.x * sx,
-      y: fit!.y + rect.y * sy,
-      width: Math.max(1, rect.width * sx),
-      height: Math.max(1, rect.height * sy),
+  assertTrue(box !== null, "a <canvas> on the page for the build to draw in");
+  const fit = box!;
+  const clip = {
+    x: fit.x,
+    y: fit.y,
+    width: Math.max(1, fit.width),
+    height: Math.max(1, fit.height),
+  };
+  const scale = Math.min(fit.width / STAGE_W, fit.height / STAGE_H);
+  // One held frame first; see `paint-gate.js`.
+  await h.paintFrame();
+  return {
+    png: (await h.page.screenshot({ type: "png", clip })).toString("base64"),
+    width: clip.width,
+    scale,
+    originX: (fit.width - STAGE_W * scale) / 2,
+    originY: (fit.height - STAGE_H * scale) / 2,
+  };
+}
+
+/**
+ * How many pixels of each region differ between the two pictures.
+ *
+ * The decode happens in the page because the page carries an image decoder and
+ * this process carries none, and the two pictures go in together so that only the
+ * counts come back out.
+ */
+async function countChanged(
+  h: Harness,
+  before: Picture,
+  after: Picture,
+  regions: readonly Rect[],
+): Promise<number[]> {
+  assertTrue(
+    before.width === after.width,
+    "the two pages to draw the yard at the same size, so a region of the " +
+      "stage is the same pixels in both",
+  );
+  const at = regions.map((rect) => [
+    before.originX + rect.x * before.scale,
+    before.originY + rect.y * before.scale,
+    before.originX + (rect.x + rect.width) * before.scale,
+    before.originY + (rect.y + rect.height) * before.scale,
+  ]);
+  const counts = (await h.page.evaluate(
+    async ([one, two, width, boxes]: [string, string, number, number[][]]) => {
+      const pixelsOf = async (b64: string) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${b64}`;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        return {
+          w: image.width,
+          h: image.height,
+          d: context.getImageData(0, 0, image.width, image.height).data,
+        };
+      };
+      const a = await pixelsOf(one);
+      const b = await pixelsOf(two);
+      if (a.w !== b.w || a.h !== b.h) return null;
+      // The clip is asked for in the page's own pixels and answered in the
+      // device's, so a page drawn at any device pixel ratio maps the same way.
+      const ratio = a.w / width;
+      return boxes.map(([x0, y0, x1, y1]) => {
+        let changed = 0;
+        const left = Math.max(0, Math.floor(x0! * ratio));
+        const right = Math.min(a.w, Math.ceil(x1! * ratio));
+        const top = Math.max(0, Math.floor(y0! * ratio));
+        const bottom = Math.min(a.h, Math.ceil(y1! * ratio));
+        for (let y = top; y < bottom; y += 1) {
+          for (let x = left; x < right; x += 1) {
+            const i = (y * a.w + x) * 4;
+            if (
+              a.d[i] !== b.d[i] ||
+              a.d[i + 1] !== b.d[i + 1] ||
+              a.d[i + 2] !== b.d[i + 2] ||
+              a.d[i + 3] !== b.d[i + 3]
+            ) {
+              changed += 1;
+            }
+          }
+        }
+        return changed;
+      });
     },
-  });
+    [before.png, after.png, before.width, at] as [
+      string,
+      string,
+      number,
+      number[][],
+    ],
+  )) as number[] | null;
+  assertTrue(
+    counts !== null,
+    "the two pages to draw the yard into pictures of the same size, so a " +
+      "region of the stage is the same pixels in both",
+  );
+  return counts!;
 }

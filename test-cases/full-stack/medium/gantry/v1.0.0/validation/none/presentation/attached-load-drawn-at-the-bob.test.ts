@@ -13,21 +13,25 @@
 // halves are read, because a build that drew the load twice — once on the hook
 // and once where it stood — reads as wrongly as one that left it behind.
 //
-// THE SCENARIO. Over the Wall's own crane is stood up on its own site with the
-// yard emptied of everything but one load, so nothing but the crane, the ground
-// and that load is in frame. The trolley is run out along the track BY THE TAPE
-// rather than posed: `setAxis` would move the pivot a whole eight units inside
-// one tick, and the pendulum reads the pivot's velocity as `(P - P_prev) / dt`
-// (specs/rigging.md § The pendulum tick), so a posed jump is a real four-hundred-
-// unit-a-second pivot and snaps the cable. The last step of the tape is a slew so
-// slow that nothing moves measurably while the pictures are taken, which is what
-// keeps the run running rather than ending on an exhausted tape.
+// THE SCENARIO IS POSED, NOT PLAYED TO. The smallest crane that stands is stood
+// up on the shortest site with the yard emptied of everything but one load, so
+// nothing but the crane, the ground and that load is in frame, and the tape is a
+// single slew so slow that nothing moves measurably while the pictures are taken
+// — which is what keeps the run running rather than ending on an exhausted tape.
 //
-// The hook is then settled hanging still at a length that leaves the load clear
-// of the ground when it hangs — `setBob` "puts the bob where it is asked for, so
-// a caller that wants a bob the cable can hold sets the hoist axis to the
-// distance it left between the pivot and the bob" (specs/instrumentation.md) —
-// and `setLoadPhase(0, "attached")` "hangs that load on the hook exactly as a
+// NOTHING IS DRIVEN TO GET THE HOOK CLEAR OF THE TOWER. An earlier form of this
+// point ran the trolley out along the track first, which cost two hundred ticks
+// of simulation and made this reading depend on the trolley controller, an axis
+// this point has nothing to say about. The cable is posed instead: `setAxis` sets
+// the hoist to the length the cable is to hold, and `setBob` "puts the bob where
+// it is asked for", so the hook is hung LEANING — `HOIST` units from the pivot,
+// out over the empty quarter of the yard — and the crate that hangs on it stands
+// clear of the tower, of the ground, and of the pose it starts from. A cable at
+// an angle is a precondition like any other; what happens next still comes from
+// advancing the real simulation, and over the three ticks these pictures span the
+// swing it begins moves the bob by a fraction of a logical pixel.
+//
+// `setLoadPhase(0, "attached")` then "hangs that load on the hook exactly as a
 // successful `attach` leaves it". A frame is advanced before the second picture,
 // because a pose "establishes a precondition and never an outcome".
 //
@@ -44,41 +48,49 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import { LOAD_CLASS_DIMENSIONS, STAGE_H, STAGE_W } from "../constants";
 import {
-  DESIGNS,
   addOneLoad,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
-  poseCrane,
   poseTape,
-  runTicks,
-  runUntil,
+  standMinimalCrane,
   startRun,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
 
-/** Over the Wall, whose crane carries its track at `y = 12`: room to hang. */
-const SITE = 2;
+/** Site 1, First Lift: the shortest site, and the minimal crane stands on it. */
+const SITE = 0;
 
 /** The load: light, so the swing that follows loads the crane gently. */
 const CLASS = "crate";
 const MASS = 10;
-/** Where it stands: clear of the arm, and well away from it on the stage. */
+/** Where it stands: clear of the crane, and well away from it on the stage. */
 const START = { x: -6, y: 2, z: 6, yaw: 0 } as const;
 
-/** Where the trolley is run out to, and the cable length the hook settles at. */
-const TROLLEY = 8;
-const HOIST = 6;
+/** The minimal crane's pivot at the run-start posture: its track origin. */
+const PIVOT = { x: 0, y: 4, z: 0 } as const;
 
-/** The tape: run the trolley out, then a slew too slow to move anything. */
+/**
+ * Where the hook is hung, and the cable length that reaches it.
+ *
+ * `BOB` is a point of the open yard: the crate that hangs there — two units on a
+ * side, its box extending half its width and half its depth horizontally from the
+ * lift point and its full height below it (specs/world.md § Loads) — spans `x`
+ * from `3` to `5`, `z` from `-5` to `-3` and `y` from `0.5` to `2.5`, so it stands
+ * clear of the tower, clear of the track, half a unit clear of the ground, and a
+ * long way from the pose the load starts from. `HOIST` is exactly the distance
+ * from the pivot to it, because "a caller that wants a bob the cable can hold sets
+ * the hoist axis to the distance it left between the pivot and the bob"
+ * (specs/instrumentation.md).
+ */
+const BOB = { x: 4, y: 2.5, z: -4 } as const;
+const HOIST = Math.hypot(BOB.x - PIVOT.x, PIVOT.y - BOB.y, BOB.z - PIVOT.z);
+
+/** The tape: one slew too slow to move anything, so the run keeps running. */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "trolley", target: TROLLEY, rate: 4 }] },
   { kind: "move", commands: [{ axis: "slew", target: 360, rate: 0.01 }] },
 ];
-
-/** Ticks driven in one span before the sweep that waits for the trolley. */
-const RUN_OUT = 120;
 
 /** How far two colours must stand apart, of the 441 the colour cube spans. */
 const CHANGED = 50;
@@ -98,6 +110,10 @@ interface At {
 }
 
 async function picture(harness: Harness): Promise<Picture> {
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await harness.paintFrame();
   const png = await harness.page.screenshot({ type: "png" });
   const image = await loadImage(png);
   const canvas = createCanvas(image.width, image.height);
@@ -173,26 +189,19 @@ afterEach(async () => {
 
 it("draws the attached load at the bob and not where it stood", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
-  await poseCrane(h, DESIGNS[SITE]!);
+  await emptyYard(h);
+  await standMinimalCrane(h);
   await addOneLoad(h, CLASS, MASS, START, START);
   await poseTape(h, TAPE);
   await startRun(h);
 
-  // Driven in one span and then a tick at a time: the move is `TROLLEY` units
-  // at rate 4 with an acceleration of 4 (specs/program.md), which cannot be
-  // over inside two seconds however a build ramps it, and the sweep that
-  // follows fails the item if it never arrives.
-  await runTicks(h, RUN_OUT);
-  const out = await runUntil(
-    h,
-    (s) => s.run.axes.trolley.value >= TROLLEY - 1e-9,
-    300,
-    `the trolley to run out to ${TROLLEY}`,
-  );
-  const pivot = out.run.pivot;
+  // The cable is posed rather than driven to: the hoist is set to the length the
+  // cable holds and the bob is put at that distance from the pivot, leaning out
+  // over the empty quarter of the yard, at rest. Two frames run before anything
+  // is read, because a pose is a precondition and the constraint, the tension and
+  // the solves are the simulation's own answer to it.
   await h.debug.setAxis("hoist", HOIST);
-  await h.debug.setBob(pivot.x, pivot.y - HOIST, pivot.z);
+  await h.debug.setBob(BOB.x, BOB.y, BOB.z);
   await h.debug.setBobVelocity(0, 0, 0);
   await h.advance(2);
 

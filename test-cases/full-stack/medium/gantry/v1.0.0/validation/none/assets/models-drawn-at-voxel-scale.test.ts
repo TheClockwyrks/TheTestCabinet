@@ -53,12 +53,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNear, assertTrue, fail } from "../assert";
+import { LOAD_CLASS_DIMENSIONS, STAGE_W, VOXELS_PER_UNIT } from "../constants";
 import {
-  LOAD_CLASS_DIMENSIONS,
-  STAGE_W,
-  VOXELS_PER_UNIT,
-} from "../constants";
-import { clearAll, createHarness, openSite, type Harness, type LoadPose } from "../harness";
+  createHarness,
+  openSite,
+  type Harness,
+  type LoadPose,
+} from "../harness";
 
 /** The build workspace: this suite is staged at `<workspace>/validation/assets/`. */
 const WORKSPACE = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -120,13 +121,27 @@ function transformOf(node: Record<string, unknown>): Matrix {
   const given = node.matrix as number[] | undefined;
   if (Array.isArray(given) && given.length === 16) return given;
   const [tx, ty, tz] = (node.translation as number[] | undefined) ?? [0, 0, 0];
-  const [qx, qy, qz, qw] = (node.rotation as number[] | undefined) ?? [0, 0, 0, 1];
+  const [qx, qy, qz, qw] = (node.rotation as number[] | undefined) ?? [
+    0, 0, 0, 1,
+  ];
   const [sx, sy, sz] = (node.scale as number[] | undefined) ?? [1, 1, 1];
   const rotation = [
-    1 - 2 * (qy! * qy! + qz! * qz!), 2 * (qx! * qy! + qz! * qw!), 2 * (qx! * qz! - qy! * qw!), 0,
-    2 * (qx! * qy! - qz! * qw!), 1 - 2 * (qx! * qx! + qz! * qz!), 2 * (qy! * qz! + qx! * qw!), 0,
-    2 * (qx! * qz! + qy! * qw!), 2 * (qy! * qz! - qx! * qw!), 1 - 2 * (qx! * qx! + qy! * qy!), 0,
-    0, 0, 0, 1,
+    1 - 2 * (qy! * qy! + qz! * qz!),
+    2 * (qx! * qy! + qz! * qw!),
+    2 * (qx! * qz! - qy! * qw!),
+    0,
+    2 * (qx! * qy! - qz! * qw!),
+    1 - 2 * (qx! * qx! + qz! * qz!),
+    2 * (qy! * qz! + qx! * qw!),
+    0,
+    2 * (qx! * qz! + qy! * qw!),
+    2 * (qy! * qz! - qx! * qw!),
+    1 - 2 * (qx! * qx! + qy! * qy!),
+    0,
+    0,
+    0,
+    0,
+    1,
   ];
   const scale = [sx!, 0, 0, 0, 0, sy!, 0, 0, 0, 0, sz!, 0, 0, 0, 0, 1];
   const translation = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, tx!, ty!, tz!, 1];
@@ -134,7 +149,10 @@ function transformOf(node: Record<string, unknown>): Matrix {
 }
 
 /** A point through a column-major 4x4. */
-function apply(m: Matrix, p: readonly [number, number, number]): [number, number, number] {
+function apply(
+  m: Matrix,
+  p: readonly [number, number, number],
+): [number, number, number] {
   return [
     m[0]! * p[0] + m[4]! * p[1] + m[8]! * p[2] + m[12]!,
     m[1]! * p[0] + m[5]! * p[1] + m[9]! * p[2] + m[13]!,
@@ -163,7 +181,7 @@ function meshExtent(path: string): { x: number; y: number; z: number } {
       bytes.length < 20
         ? `${bytes.length} bytes`
         : `a "${bytes.toString("latin1", 0, 4)}" file of version ` +
-          `${bytes.readUInt32LE(4)}`,
+            `${bytes.readUInt32LE(4)}`,
     );
   }
   const chunkLength = bytes.readUInt32LE(12);
@@ -192,8 +210,13 @@ function meshExtent(path: string): { x: number; y: number; z: number } {
     if (node === undefined) return;
     const world = times(parent, transformOf(node));
     const mesh = meshes[(node.mesh as number | undefined) ?? -1];
-    for (const primitive of ((mesh?.primitives ?? []) as Record<string, unknown>[])) {
-      const attributes = primitive.attributes as Record<string, number> | undefined;
+    for (const primitive of (mesh?.primitives ?? []) as Record<
+      string,
+      unknown
+    >[]) {
+      const attributes = primitive.attributes as
+        | Record<string, number>
+        | undefined;
       const accessor = accessors[attributes?.POSITION ?? -1];
       const min = accessor?.min as number[] | undefined;
       const max = accessor?.max as number[] | undefined;
@@ -217,9 +240,10 @@ function meshExtent(path: string): { x: number; y: number; z: number } {
         }
       }
     }
-    for (const child of ((node.children ?? []) as number[])) walk(child, world);
+    for (const child of (node.children ?? []) as number[]) walk(child, world);
   };
-  for (const root of roots) walk(root, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  for (const root of roots)
+    walk(root, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
   if (!Number.isFinite(lowest[0]) || !Number.isFinite(highest[0])) {
     fail(
@@ -262,15 +286,21 @@ it("draws a model at 1 / VOXELS_PER_UNIT of its sculpted extent", async () => {
   const center = { x: pose.x, y: pose.y - size.y / 2, z: pose.z };
 
   await openSite(h, SITE);
-  await clearAll(h);
+  // The opening `reset` leaves every site's stored structure and tape empty and
+  // `openSite` keeps them (specs/state.md), so only the site's own yard has to be
+  // cleared.
+  await h.debug.clearLoads();
+  await h.debug.clearObstacles();
   await h.debug.addLoad(CLASS, MASS, pose.x, pose.y, pose.z, pose.yaw);
   await h.debug.setLoadTarget(0, PAD.x, PAD.y + size.y, PAD.z, PAD.yaw);
   await h.advance(1);
 
   // Where a box of the sculpted extent, drawn at 1 / VOXELS_PER_UNIT, lands.
-  const project = async (
-    half: { x: number; y: number; z: number },
-  ): Promise<Rect> => {
+  const project = async (half: {
+    x: number;
+    y: number;
+    z: number;
+  }): Promise<Rect> => {
     let left = Infinity;
     let right = -Infinity;
     let top = Infinity;
@@ -278,7 +308,11 @@ it("draws a model at 1 / VOXELS_PER_UNIT of its sculpted extent", async () => {
     for (const dx of [-half.x, half.x]) {
       for (const dy of [-half.y, half.y]) {
         for (const dz of [-half.z, half.z]) {
-          const at = await h.project(center.x + dx, center.y + dy, center.z + dz);
+          const at = await h.project(
+            center.x + dx,
+            center.y + dy,
+            center.z + dz,
+          );
           assertTrue(
             at.visible,
             "every corner of the model's drawn extent to be on the stage at " +
@@ -295,7 +329,11 @@ it("draws a model at 1 / VOXELS_PER_UNIT of its sculpted extent", async () => {
     return { x: left, y: top, width: right - left, height: bottom - top };
   };
 
-  const expected = await project({ x: drawn.x / 2, y: drawn.y / 2, z: drawn.z / 2 });
+  const expected = await project({
+    x: drawn.x / 2,
+    y: drawn.y / 2,
+    z: drawn.z / 2,
+  });
   const window = await project({
     x: (drawn.x / 2) * WINDOW_SHARE,
     y: (drawn.y / 2) * WINDOW_SHARE,
@@ -315,15 +353,25 @@ it("draws a model at 1 / VOXELS_PER_UNIT of its sculpted extent", async () => {
       "model's own extent",
   );
 
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
   const withLoad = (await h.page.screenshot()).toString("base64");
   await h.debug.clearLoads();
   await h.advance(1);
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
   const without = (await h.page.screenshot()).toString("base64");
 
   const measured = (await h.page.evaluate(
     async ([a, b, box, limit, stageWidth]) => {
       const read = async (encoded: string): Promise<ImageData> => {
-        const bytes = Uint8Array.from(atob(encoded), (one) => one.charCodeAt(0));
+        const bytes = Uint8Array.from(atob(encoded), (one) =>
+          one.charCodeAt(0),
+        );
         const bitmap = await createImageBitmap(
           new Blob([bytes], { type: "image/png" }),
         );
@@ -334,12 +382,23 @@ it("draws a model at 1 / VOXELS_PER_UNIT of its sculpted extent", async () => {
       };
       const one = await read(a as string);
       const two = await read(b as string);
-      const rect = box as { x: number; y: number; width: number; height: number };
+      const rect = box as {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      };
       const scale = one.width / (stageWidth as number);
       const x0 = Math.max(0, Math.floor(rect.x * scale));
-      const x1 = Math.min(one.width - 1, Math.ceil((rect.x + rect.width) * scale));
+      const x1 = Math.min(
+        one.width - 1,
+        Math.ceil((rect.x + rect.width) * scale),
+      );
       const y0 = Math.max(0, Math.floor(rect.y * scale));
-      const y1 = Math.min(one.height - 1, Math.ceil((rect.y + rect.height) * scale));
+      const y1 = Math.min(
+        one.height - 1,
+        Math.ceil((rect.y + rect.height) * scale),
+      );
       let left = Infinity;
       let right = -Infinity;
       let top = Infinity;
@@ -404,5 +463,8 @@ it("draws a model at 1 / VOXELS_PER_UNIT of its sculpted extent", async () => {
   await h.debug.addLoad(CLASS, MASS, pose.x, pose.y, pose.z, pose.yaw);
   await h.debug.setLoadTarget(0, PAD.x, PAD.y + size.y, PAD.z, PAD.yaw);
   await h.advance(1);
-  await h.capture("scale", "The drawn silhouette measured against the decoded mesh");
+  await h.capture(
+    "scale",
+    "The drawn silhouette measured against the decoded mesh",
+  );
 });

@@ -96,8 +96,19 @@ const TAPE: readonly TapeStepSpec[] = [
 ];
 
 /** How long the first step is given, and the settling after the bob is parked. */
-const MAX_TICKS = 900;
+const MAX_TICKS = 400;
 const SETTLE = 4;
+
+/**
+ * Ticks taken between readings while the first step runs.
+ *
+ * The step is the ROUTE to the scenario and not the scenario: what this point
+ * reads is the state the step leaves, and the only thing the ticks along the way
+ * are asked is whether the step is done yet. So they are driven in blocks — the
+ * same frames, the same run — and the state is read once a block rather than
+ * once a tick.
+ */
+const CHUNK = 8;
 
 /**
  * How different two pixels must be to count, summed over the three channels.
@@ -164,14 +175,25 @@ async function hull(harness: Harness, pose: LoadPose): Promise<Rect> {
 async function poseRun(harness: Harness): Promise<void> {
   await openSite(harness, SITE);
   await clearAll(harness);
-  await harness.debug.addLoad(CLASS, MASS, START.x, START.y, START.z, START.yaw);
+  await harness.debug.addLoad(
+    CLASS,
+    MASS,
+    START.x,
+    START.y,
+    START.z,
+    START.yaw,
+  );
   await standMinimalCrane(harness);
   await poseTape(harness, TAPE);
   await startRun(harness);
 
-  let state = await runTicks(harness, 1);
-  for (let ran = 1; ran < MAX_TICKS && state.run.stepIndex < 1; ran += 1) {
-    state = await runTicks(harness, 1);
+  let state = await runTicks(harness, CHUNK);
+  for (
+    let ran = CHUNK;
+    ran < MAX_TICKS && state.run.stepIndex < 1 && state.run.phase === "running";
+    ran += CHUNK
+  ) {
+    state = await runTicks(harness, CHUNK);
   }
   assertEqual(
     state.run.stepIndex,
@@ -210,7 +232,9 @@ async function differing(
   return (await harness.page.evaluate(
     async ([left, right, boxes, limit, stageWidth]) => {
       const read = async (encoded: string): Promise<ImageData> => {
-        const bytes = Uint8Array.from(atob(encoded), (one) => one.charCodeAt(0));
+        const bytes = Uint8Array.from(atob(encoded), (one) =>
+          one.charCodeAt(0),
+        );
         const bitmap = await createImageBitmap(
           new Blob([bytes], { type: "image/png" }),
         );
@@ -221,7 +245,12 @@ async function differing(
       };
       const a = await read(left as string);
       const b = await read(right as string);
-      const windows = boxes as { x: number; y: number; width: number; height: number }[];
+      const windows = boxes as {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }[];
       const counts = windows.map(() => 0);
       // The frame is the whole viewport, which the harness fits to the logical
       // stage, so a logical rectangle is scaled by whatever the picture came
@@ -229,9 +258,15 @@ async function differing(
       const scale = a.width / (stageWidth as number);
       for (const [index, box] of windows.entries()) {
         const x0 = Math.max(0, Math.floor(box.x * scale));
-        const x1 = Math.min(a.width - 1, Math.ceil((box.x + box.width) * scale));
+        const x1 = Math.min(
+          a.width - 1,
+          Math.ceil((box.x + box.width) * scale),
+        );
         const y0 = Math.max(0, Math.floor(box.y * scale));
-        const y1 = Math.min(a.height - 1, Math.ceil((box.y + box.height) * scale));
+        const y1 = Math.min(
+          a.height - 1,
+          Math.ceil((box.y + box.height) * scale),
+        );
         let count = 0;
         for (let y = y0; y <= y1; y += 1) {
           for (let x = x0; x <= x1; x += 1) {
@@ -311,6 +346,9 @@ it("draws an attached load at the pose the run reports and not at its starting p
       "two readings this point takes are of two different places",
   );
 
+  // One held frame each first; see `paint-gate.js`.
+  await free.paintFrame();
+  await hanging.paintFrame();
   const frames: [string, string] = [
     (await free.page.screenshot()).toString("base64"),
     (await hanging.page.screenshot()).toString("base64"),

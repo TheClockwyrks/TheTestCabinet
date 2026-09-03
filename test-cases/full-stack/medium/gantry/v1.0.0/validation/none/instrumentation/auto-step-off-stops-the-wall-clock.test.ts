@@ -28,8 +28,8 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { GRIP_MAX_RATE, TICK_HZ } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -65,7 +65,11 @@ afterEach(async () => {
 
 it("leaves a run standing still while wall-clock time passes", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  // The yard is emptied and nothing else is. A site opened after a reset
+  // carries an empty structure and an empty tape (specs/state.md), and the
+  // crane and the tape below are posed onto them; clearing either again would
+  // drive surface this requirement does not concern.
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   await startRun(h);
@@ -78,6 +82,15 @@ it("leaves a run standing still while wall-clock time passes", async () => {
     "the grip's rate when the wait begins, so an axis is genuinely moving " +
       "and a frame taken off the wall clock would show in its value",
   );
+
+  // THE ONE CHECK THAT NEEDS THE PAGE PAINTING ON ITS OWN. Everywhere else the
+  // engineless harness holds the build's free-running frames back, which costs
+  // nothing a check can read because the render each advanced frame runs still
+  // happens. Here it would cost the whole requirement: a build that kept stepping
+  // through the `setAutoStep(false)` would be stepping in frames that were being
+  // held, and this would pass it. So the page gets its own loop back first, and
+  // the wall-clock wait below is a wait a real loop would have run in.
+  await h.releasePaint();
 
   await new Promise((resolve) => {
     setTimeout(resolve, WAIT_MS);

@@ -70,6 +70,10 @@ interface At {
 
 /** The page as it stands, composited: the 3D yard with the screen layer over it. */
 async function picture(harness: Harness): Promise<Picture> {
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await harness.paintFrame();
   const png = await harness.page.screenshot({ type: "png" });
   const image = await loadImage(png);
   const canvas = createCanvas(image.width, image.height);

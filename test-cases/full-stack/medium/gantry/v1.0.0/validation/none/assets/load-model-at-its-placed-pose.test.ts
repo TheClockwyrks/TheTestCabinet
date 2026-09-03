@@ -21,10 +21,17 @@
 // specs/collisions), so the two runs stay tick-for-tick the same.
 //
 // WHAT IS ASSERTED. The picture inside the class box AT THE TARGET POSE differs
-// between the two, and the ring of yard around that box is byte-identical: the
+// between the two, and the ring of yard around that box is pixel-identical: the
 // placed load is drawn at exactly its target pose and not beside it. Where the
 // box is on the stage is the build's own answer, through `project`
 // (specs/instrumentation.md).
+//
+// ONE PICTURE PER PAGE, READ FIVE TIMES. Each page is photographed once and the
+// five regions — the pad and the four bands of yard around it — are compared
+// inside those two pictures rather than re-photographed one region at a time. A
+// clipped screenshot is a round trip into the browser and a fresh composite, and
+// ten of them cost this point more than everything else it does put together,
+// for a reading no different from indexing the frame that was already taken.
 //
 // THE RING IS THE YARD AROUND THE PAD, NOT THE WHOLE FRAME. specs/ui.md fixes
 // what the run screen's readouts show, but a build is free to put more beside
@@ -41,6 +48,7 @@
 // fall outside the mathematical hull.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { assertEqual, assertTrue } from "../assert";
 import {
   HOIST_MAX_RATE,
@@ -50,8 +58,8 @@ import {
   STAGE_W,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   runTicks,
@@ -80,8 +88,15 @@ const TAPE: readonly TapeStepSpec[] = [
   },
 ];
 
-/** The tick both runs are read at, past the run's first. */
-const READ_AT = 20;
+/**
+ * The tick both runs are read at, past the run's first.
+ *
+ * Far enough in that the run is plainly under way — the tape's step is live, the
+ * hoist is paying out and the clock has moved — and no further, because what this
+ * point compares is two pages at the SAME tick, and every tick beyond the first is
+ * as good as the next for that.
+ */
+const READ_AT = 6;
 
 /** Slack around a projected hull, as a share of the box's own drawn size. */
 const MARGIN_SHARE = 0.25;
@@ -134,9 +149,22 @@ async function hull(harness: Harness, pose: LoadPose): Promise<Rect> {
 /** Stand one page up on the same run, and leave it one tick short of the read. */
 async function poseRun(harness: Harness): Promise<void> {
   await openSite(harness, SITE);
-  await clearAll(harness);
-  await harness.debug.addLoad(CLASS, MASS, START.x, START.y, START.z, START.yaw);
-  await harness.debug.setLoadTarget(0, TARGET.x, TARGET.y, TARGET.z, TARGET.yaw);
+  await emptyYard(harness);
+  await harness.debug.addLoad(
+    CLASS,
+    MASS,
+    START.x,
+    START.y,
+    START.z,
+    START.yaw,
+  );
+  await harness.debug.setLoadTarget(
+    0,
+    TARGET.x,
+    TARGET.y,
+    TARGET.z,
+    TARGET.yaw,
+  );
   await standMinimalCrane(harness);
   await poseTape(harness, TAPE);
   await startRun(harness);
@@ -154,16 +182,123 @@ async function poseRun(harness: Harness): Promise<void> {
   );
 }
 
-/** The canvas's place on the page, so a logical rectangle names a real one. */
-async function canvasFit(harness: Harness): Promise<Rect> {
-  const fit = (await harness.page.evaluate(() => {
+/** One page's frame, and the mapping from a logical stage point into it. */
+interface Picture {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+  /** The canvas's place on the page, in CSS pixels. */
+  fit: Rect;
+  /** Image pixels per CSS pixel. */
+  scale: number;
+}
+
+/**
+ * Photograph a page once, with the canvas's place on it.
+ *
+ * The stage is logical (`STAGE_W` by `STAGE_H`) and the canvas is wherever the
+ * build's own fit put it, so a logical rectangle names a real one only through
+ * that rectangle and the ratio between CSS pixels and the image's own.
+ */
+async function picture(harness: Harness): Promise<Picture> {
+  const seen = (await harness.page.evaluate(() => {
     const canvas = document.querySelector("canvas");
     if (canvas === null) return null;
     const at = canvas.getBoundingClientRect();
-    return { x: at.x, y: at.y, width: at.width, height: at.height };
-  })) as Rect | null;
-  assertTrue(fit !== null, "a <canvas> on the page for the build to draw in");
-  return fit!;
+    return {
+      fit: { x: at.x, y: at.y, width: at.width, height: at.height },
+      cssWidth: window.innerWidth,
+    };
+  })) as { fit: Rect; cssWidth: number } | null;
+  assertTrue(seen !== null, "a <canvas> on the page for the build to draw in");
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await harness.paintFrame();
+  const png = await harness.page.screenshot({ type: "png" });
+  const image = await loadImage(png);
+  const canvas = createCanvas(image.width, image.height);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0);
+  const { data } = ctx.getImageData(0, 0, image.width, image.height);
+  return {
+    width: image.width,
+    height: image.height,
+    data,
+    fit: seen!.fit,
+    scale: image.width / seen!.cssWidth,
+  };
+}
+
+/**
+ * Where a logical stage rectangle lands in one picture, in image pixels.
+ *
+ * It FAILS the item if the rectangle does not land inside the picture at all. A
+ * region read off the edge of a frame is a comparison of nothing with nothing,
+ * which would answer "identical" to every question this point asks.
+ */
+function region(shot: Picture, rect: Rect, where: string): Rect {
+  const sx = (shot.fit.width / STAGE_W) * shot.scale;
+  const sy = (shot.fit.height / STAGE_H) * shot.scale;
+  const at = {
+    x: Math.round(
+      (shot.fit.x + Math.max(0, rect.x) * (shot.fit.width / STAGE_W)) *
+        shot.scale,
+    ),
+    y: Math.round(
+      (shot.fit.y + Math.max(0, rect.y) * (shot.fit.height / STAGE_H)) *
+        shot.scale,
+    ),
+    width: Math.max(1, Math.round(rect.width * sx)),
+    height: Math.max(1, Math.round(rect.height * sy)),
+  };
+  assertTrue(
+    at.x >= 0 &&
+      at.y >= 0 &&
+      at.x + at.width <= shot.width &&
+      at.y + at.height <= shot.height,
+    `the ${where} to lie inside the frame the page was photographed as, ` +
+      `which is ${shot.width} by ${shot.height} pixels: it maps to ` +
+      `(${at.x}, ${at.y}) ${at.width} by ${at.height}`,
+  );
+  return at;
+}
+
+/**
+ * Whether two pictures are identical over one logical rectangle of the stage.
+ *
+ * Pixel for pixel, with no tolerance: what the two pages draw outside the pad is
+ * the same run at the same tick, so anything at all that differs there is the
+ * load having been drawn somewhere it does not belong.
+ */
+function samePixels(
+  a: Picture,
+  b: Picture,
+  rect: Rect,
+  where: string,
+): boolean {
+  const one = region(a, rect, where);
+  const two = region(b, rect, where);
+  if (one.width !== two.width || one.height !== two.height) return false;
+  for (let row = 0; row < one.height; row += 1) {
+    const ay = one.y + row;
+    const by = two.y + row;
+    for (let column = 0; column < one.width; column += 1) {
+      const ax = one.x + column;
+      const bx = two.x + column;
+      const i = (ay * a.width + ax) * 4;
+      const j = (by * b.width + bx) * 4;
+      if (
+        a.data[i] !== b.data[j] ||
+        a.data[i + 1] !== b.data[j + 1] ||
+        a.data[i + 2] !== b.data[j + 2] ||
+        a.data[i + 3] !== b.data[j + 3]
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 let waiting: Harness;
@@ -214,19 +349,39 @@ it("draws a placed load inside its class box at its target pose", async () => {
   const outside: { where: string; rect: Rect }[] = [
     {
       where: "left of the pad",
-      rect: { x: far.left, y: far.top, width: near.left - far.left, height: far.bottom - far.top },
+      rect: {
+        x: far.left,
+        y: far.top,
+        width: near.left - far.left,
+        height: far.bottom - far.top,
+      },
     },
     {
       where: "right of the pad",
-      rect: { x: near.right, y: far.top, width: far.right - near.right, height: far.bottom - far.top },
+      rect: {
+        x: near.right,
+        y: far.top,
+        width: far.right - near.right,
+        height: far.bottom - far.top,
+      },
     },
     {
       where: "above the pad",
-      rect: { x: near.left, y: far.top, width: near.right - near.left, height: near.top - far.top },
+      rect: {
+        x: near.left,
+        y: far.top,
+        width: near.right - near.left,
+        height: near.top - far.top,
+      },
     },
     {
       where: "below the pad",
-      rect: { x: near.left, y: near.bottom, width: near.right - near.left, height: far.bottom - near.bottom },
+      rect: {
+        x: near.left,
+        y: near.bottom,
+        width: near.right - near.left,
+        height: far.bottom - near.bottom,
+      },
     },
   ];
   assertEqual(
@@ -235,20 +390,6 @@ it("draws a placed load inside its class box at its target pose", async () => {
     "the four bands of yard around the pad, which this point needs the pad's " +
       "box to stand clear of the stage's edges for",
   );
-
-  const fits = { waiting: await canvasFit(waiting), placed: await canvasFit(placed) };
-  const shot = async (harness: Harness, fit: Rect, rect: Rect): Promise<Buffer> => {
-    const sx = fit.width / STAGE_W;
-    const sy = fit.height / STAGE_H;
-    return harness.page.screenshot({
-      clip: {
-        x: fit.x + Math.max(0, rect.x) * sx,
-        y: fit.y + Math.max(0, rect.y) * sy,
-        width: Math.max(1, rect.width * sx),
-        height: Math.max(1, rect.height * sy),
-      },
-    });
-  };
 
   // The one difference between the two pages: on one, the load is set down.
   await placed.debug.setLoadPhase(0, "placed");
@@ -269,9 +410,18 @@ it("draws a placed load inside its class box at its target pose", async () => {
       "(specs/world.md)",
   );
 
+  // One frame off each page, and every region below is read inside them.
+  const frames = {
+    waiting: await picture(waiting),
+    placed: await picture(placed),
+  };
+
   assertTrue(
-    !(await shot(waiting, fits.waiting, onPad)).equals(
-      await shot(placed, fits.placed, onPad),
+    !samePixels(
+      frames.waiting,
+      frames.placed,
+      onPad,
+      "class box at the target pose",
     ),
     "the picture inside the class box at the target pose " +
       `(${TARGET.x}, ${TARGET.y}, ${TARGET.z}) to differ once the load is ` +
@@ -281,10 +431,9 @@ it("draws a placed load inside its class box at its target pose", async () => {
 
   const spilled: string[] = [];
   for (const band of outside) {
-    const same = (await shot(waiting, fits.waiting, band.rect)).equals(
-      await shot(placed, fits.placed, band.rect),
-    );
-    if (!same) spilled.push(band.where);
+    if (!samePixels(frames.waiting, frames.placed, band.rect, band.where)) {
+      spilled.push(band.where);
+    }
   }
   assertEqual(
     spilled.join(", "),

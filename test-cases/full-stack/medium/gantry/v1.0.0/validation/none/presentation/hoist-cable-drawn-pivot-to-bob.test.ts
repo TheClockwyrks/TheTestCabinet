@@ -25,12 +25,19 @@
 // there too, and how big a hook is drawn is the build's own business
 // (specs/assets.md), so the reading keeps well clear of it.
 //
-// THE STAGING is the same as every run reading in this category: Over the Wall's
-// own crane on its own site, whose track stands at `y = 12` so that a cable eight
-// units long still hangs clear of the ground; the yard emptied to nothing; the
-// trolley run out BY THE TAPE, since a posed jump is a real pivot velocity and
-// snaps the cable (specs/rigging.md § The pendulum tick, step 5); and a last tape
-// step slow enough that nothing else moves while the pictures are taken.
+// THE STAGING IS THE SMALLEST WORLD THE READING FITS IN. The cable hangs from the
+// pivot on every crane and on every site, so this point is decided on the
+// cheapest one that shows it: the smallest crane that stands, on the first site,
+// with the yard emptied to nothing. The carriage is run out to the end of the
+// short track, which is what puts the cable in open air — read at the track
+// origin the cable hangs down the tower's own face and the tower's drawing
+// answers for the pixels instead of the cable's. It is run out BY THE TAPE, since
+// a posed jump is a real pivot velocity and snaps the cable (specs/rigging.md
+// § The pendulum tick, step 5) — that much of the route is the reading's, not a
+// convention — and a last tape step slow enough that nothing else moves while the
+// pictures are taken. The two cable lengths are chosen so the bob is well clear
+// of the ground at the shorter and the stretch between them is long enough to
+// sample along.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
@@ -39,29 +46,37 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
   assertTrue,
+  fail,
 } from "../assert";
-import { STAGE_H, STAGE_W } from "../constants";
+import { STAGE_H, STAGE_W, TICK_HZ } from "../constants";
 import {
-  DESIGNS,
   clearAll,
   createHarness,
   openSite,
-  poseCrane,
   poseTape,
   runTicks,
-  runUntil,
+  standMinimalCrane,
   startRun,
+  type GantrySnapshot,
   type Harness,
   type TapeStepSpec,
 } from "../harness";
 
-/** Over the Wall, whose crane carries its track at `y = 12`. */
-const SITE = 2;
+/** First Lift: the shortest site, and the smallest crane that stands on it. */
+const SITE = 0;
 
-/** Where the trolley is run out to, and the two cable lengths read. */
-const TROLLEY = 8;
-const SHORT = 3;
-const LONG = 8;
+/**
+ * Where the trolley is run out to, and the two cable lengths read.
+ *
+ * The minimal crane's track runs from the top flange out to `(4, 4, 0)`, so the
+ * carriage ends at the tip and the pivot stands two units clear of the tower.
+ * The bob then hangs at `y = 3.5` on the short cable and `y = 0.5` on the long
+ * one: off the ground at both, and far enough apart to sample the stretch
+ * between them.
+ */
+const TROLLEY = 4;
+const SHORT = 0.5;
+const LONG = 3.5;
 
 const TAPE: readonly TapeStepSpec[] = [
   { kind: "move", commands: [{ axis: "trolley", target: TROLLEY, rate: 4 }] },
@@ -74,8 +89,9 @@ const ALONG = [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85];
 /** How far past the lower bob the controls stand, in logical pixels. */
 const BEYOND = [30, 60];
 
-/** Ticks driven in one span before the sweep that waits for the trolley. */
-const RUN_OUT = 120;
+/** Ticks driven per span while the carriage runs out, and the cap on the run. */
+const RUN_OUT_SPAN = 60;
+const RUN_OUT_CAP = 420;
 
 /** How far two colours must stand apart, of the 441 the colour cube spans. */
 const CHANGED = 50;
@@ -95,6 +111,10 @@ interface At {
 }
 
 async function picture(harness: Harness): Promise<Picture> {
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await harness.paintFrame();
   const png = await harness.page.screenshot({ type: "png" });
   const image = await loadImage(png);
   const canvas = createCanvas(image.width, image.height);
@@ -146,21 +166,18 @@ afterEach(async () => {
 it("draws the cable down to the bob the hoist length puts there", async () => {
   await openSite(h, SITE);
   await clearAll(h);
-  await poseCrane(h, DESIGNS[SITE]!);
+  await standMinimalCrane(h);
   await poseTape(h, TAPE);
   await startRun(h);
 
-  // Driven in one span and then a tick at a time: the move is `TROLLEY` units
-  // at rate 4 with an acceleration of 4 (specs/program.md), which cannot be
-  // over inside two seconds however a build ramps it, and the sweep that
-  // follows fails the item if it never arrives.
-  await runTicks(h, RUN_OUT);
-  const out = await runUntil(
-    h,
-    (s) => s.run.axes.trolley.value >= TROLLEY - 1e-9,
-    300,
-    `the trolley to run out to ${TROLLEY}`,
-  );
+  // Driven in spans rather than a tick at a time: the move is `TROLLEY` units
+  // at rate 4 with an acceleration of 4 (specs/program.md), so it is over well
+  // inside the cap however a build ramps it, and all this reading needs is that
+  // the carriage HAS arrived before the pictures are taken. A tick-by-tick sweep
+  // reads the state across the surface once per tick and pays for the reading
+  // many times over; a span-by-span one reads it once per span and still fails
+  // the item, on the same cap, if the carriage never arrives.
+  const out = await runOut(h);
   const pivot = out.run.pivot;
   await h.debug.setAxis("hoist", SHORT);
   await h.debug.setBob(pivot.x, pivot.y - SHORT, pivot.z);
@@ -259,3 +276,28 @@ it("draws the cable down to the bob the hoist length puts there", async () => {
     );
   }
 });
+
+/**
+ * Run until the carriage has reached the end of its move, in spans.
+ *
+ * The cap is not a quiet ceiling: a reading whose carriage never arrived would
+ * fall through to assertions about a cable hanging somewhere else, so a run that
+ * has not arrived by `RUN_OUT_CAP` fails the item and says so.
+ */
+async function runOut(h: Harness): Promise<GantrySnapshot> {
+  let state: GantrySnapshot | null = null;
+  for (let driven = 0; driven < RUN_OUT_CAP; driven += RUN_OUT_SPAN) {
+    state = await runTicks(h, Math.min(RUN_OUT_SPAN, RUN_OUT_CAP - driven));
+    if (state.run.axes.trolley.value >= TROLLEY - 1e-9) return state;
+  }
+  return fail(
+    `the trolley to run out to ${TROLLEY} within ${RUN_OUT_CAP} ticks ` +
+      `(${(RUN_OUT_CAP / TICK_HZ).toFixed(2)}s of run clock): the step moves ` +
+      `it there at rate 4 with an acceleration of 4 (specs/program.md)`,
+    state === null
+      ? "the run was never driven"
+      : `it stands at ${state.run.axes.trolley.value.toFixed(3)} and the run ` +
+          `is "${state.run.phase}"` +
+          (state.run.cause === null ? "" : ` (${state.run.cause})`),
+  );
+}

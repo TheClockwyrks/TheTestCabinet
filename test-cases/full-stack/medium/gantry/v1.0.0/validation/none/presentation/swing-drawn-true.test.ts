@@ -10,28 +10,29 @@
 // pendulum has put the bob — not near it, not lagging behind it on an animation
 // of the build's own.
 //
-// TWO RUNS OF THE SAME SWING, one carrying the load on the hook and one leaving
-// it standing in the yard, are what makes that readable. The pendulum tick reads
-// "nothing but the pivot, the hoist length, and its own state"
-// (specs/rigging.md § Determinism) — no mass appears anywhere in its seven steps
-// — so the bob traces the same path in both runs, and the two pictures at the
-// same tick differ by exactly one thing: whether the load is drawn at the bob.
-// Comparing one run against itself at two ticks could not tell a load drawn at
-// the bob from a hook drawn at the bob, and comparing against a picture with no
-// load in the world at all would not be the same world.
+// FOUR PLACES ALONG THE ARC, each posed and then earned by a real tick. Where on
+// its cable the bob hangs is a precondition — the pendulum takes the pose and the
+// tick that follows is what puts the load's lift point on it — so the bob is put
+// at each in turn rather than watched through a free swing. That is also what
+// makes the reading sharp: consecutive places stand a long way apart, so a load
+// painted at one fixed place, animated on its own clock, or drawn where the bob
+// WAS a tick ago cannot answer for all four.
 //
-// THE SAMPLES ARE FOUR TICKS SPREAD ACROSS THE SWING, each far enough from the
-// last that the bob has moved a long way across the stage; a load painted at one
-// fixed place, or one animated on its own clock, cannot be at all four. The bob
-// is released well off the vertical, from rest, and the load is light so that the
-// swing loads the crane gently rather than pulling it down mid-reading.
+// TWO PICTURES OF THE SAME WORLD AT EACH PLACE, one with the load on the hook and
+// one with it out in the yard, are what makes that readable. Everything else —
+// the crane, the cable, the hook, the camera, the bob itself — stands in both, so
+// the two pictures differ at the crate's own box and nowhere else. Comparing one
+// picture against another taken with the bob somewhere else could not tell a load
+// drawn at the bob from a hook drawn at the bob; here the hook is in both, so only
+// the load can part them.
 //
 // The rest of the staging is the same as every run reading in this category: Over
 // the Wall's own crane on its own site, the yard emptied to nothing but one load,
-// the trolley run out BY THE TAPE — a posed jump would be a real pivot velocity
-// and would snap the cable (specs/rigging.md § The pendulum tick, step 5) — and a
-// last tape step slow enough that nothing else moves while the pictures are
-// taken.
+// and a tape slow enough that nothing else moves while the pictures are taken. The
+// trolley is run out and the cable let down by POSE, with the bob put straight back
+// under where that leaves the pivot in the same breath, so the pendulum's
+// pivot-velocity step (specs/rigging.md, step 5) takes the jump as the still hang
+// it is rather than as a jolt.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
@@ -47,10 +48,11 @@ import {
   poseCrane,
   poseTape,
   runTicks,
-  runUntil,
   startRun,
   type Harness,
+  type LoadPose,
   type TapeStepSpec,
+  type Vec3,
 } from "../harness";
 
 /** Over the Wall, whose crane carries its track at `y = 12`: room to swing. */
@@ -58,32 +60,41 @@ const SITE = 2;
 
 const CLASS = "crate";
 const MASS = 10;
-const START = { x: -6, y: 2, z: 6, yaw: 0 } as const;
+const START: LoadPose = { x: -6, y: 2, z: 6, yaw: 0 };
 
-/** Where the trolley is run out to, and the cable the load swings on. */
+/** Where the load stands while the picture without it is taken. */
+const AWAY: LoadPose = { x: -8, y: 2, z: -8, yaw: 0 };
+
+/**
+ * Where the trolley is run out to, the cable the load swings on, and the node the
+ * pair leaves the pivot on.
+ *
+ * The crane's track runs from `(0, 12, 0)` out along `+x` to `(10, 12, 0)`, so the
+ * track's origin is `(0, 12, 0)` and the trolley's distance along it is its `x`.
+ */
 const TROLLEY = 8;
 const HOIST = 6;
+const NODE: Vec3 = { x: 8, y: 12, z: 0 };
 
-/** How far off the vertical the bob is released, in degrees. */
-const RELEASE = 45;
-
-/** The samples: four of them, this many ticks apart. */
-const SAMPLES = 4;
-const STRIDE = 25;
+/**
+ * The places along the arc the load is read at, in degrees off the vertical.
+ *
+ * Four, spread wide enough that the bob travels a long way across the stage
+ * between them, and all on the same side of the tower so the crate hangs in open
+ * air at every one of them.
+ */
+const ARC = [-45, -15, 15, 45] as const;
 
 /** How far the drawn bob has to travel between samples, in logical pixels. */
 const SEPARATION = 20;
 
-/** How far the two runs' bobs may stand apart, in world units. */
-const SAME_SWING = 0.01;
+/** How far the two pictures' bobs may stand apart, in world units. */
+const SAME_BOB = 0.01;
 
+/** The tape: a slew slow enough that nothing moves while the pictures are taken. */
 const TAPE: readonly TapeStepSpec[] = [
-  { kind: "move", commands: [{ axis: "trolley", target: TROLLEY, rate: 4 }] },
   { kind: "move", commands: [{ axis: "slew", target: 360, rate: 0.01 }] },
 ];
-
-/** Ticks driven in one span before the sweep that waits for the trolley. */
-const RUN_OUT = 120;
 
 /** How far two colours must stand apart, of the 441 the colour cube spans. */
 const CHANGED = 50;
@@ -103,6 +114,10 @@ interface At {
 }
 
 async function picture(harness: Harness): Promise<Picture> {
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await harness.paintFrame();
   const png = await harness.page.screenshot({ type: "png" });
   const image = await loadImage(png);
   const canvas = createCanvas(image.width, image.height);
@@ -163,131 +178,126 @@ function boxCorners(lift: {
   return corners;
 }
 
-/**
- * Stand the crane up, run a swing's worth of staging, and leave the bob
- * released off the vertical, with the load on the hook or standing in the yard.
- */
-async function stageSwing(harness: Harness, carry: boolean): Promise<void> {
-  await openSite(harness, SITE);
-  await clearAll(harness);
-  await poseCrane(harness, DESIGNS[SITE]!);
-  await addOneLoad(harness, CLASS, MASS, START, START);
-  await poseTape(harness, TAPE);
-  await startRun(harness);
-
-  // Driven in one span and then a tick at a time: the move is `TROLLEY` units
-  // at rate 4 with an acceleration of 4 (specs/program.md), which cannot be
-  // over inside two seconds however a build ramps it, and the sweep that
-  // follows fails the item if it never arrives.
-  await runTicks(harness, RUN_OUT);
-  const out = await runUntil(
-    harness,
-    (s) => s.run.axes.trolley.value >= TROLLEY - 1e-9,
-    300,
-    `the trolley to run out to ${TROLLEY}`,
-  );
-  const pivot = out.run.pivot;
-  await harness.debug.setAxis("hoist", HOIST);
-  if (carry) await harness.debug.setLoadPhase(0, "attached");
-  // Released from rest, `RELEASE` degrees off the vertical, on a cable of the
-  // length the hoist axis is holding: a bob the constraint can keep.
-  const radians = (RELEASE * Math.PI) / 180;
-  await harness.debug.setBob(
-    pivot.x + HOIST * Math.sin(radians),
-    pivot.y - HOIST * Math.cos(radians),
-    pivot.z,
-  );
-  await harness.debug.setBobVelocity(0, 0, 0);
-  await harness.advance(1);
+/** Where the bob hangs `degrees` off the vertical on a cable from `pivot`. */
+function onArc(pivot: Vec3, degrees: number): Vec3 {
+  const radians = (degrees * Math.PI) / 180;
+  return {
+    x: pivot.x + HOIST * Math.sin(radians),
+    y: pivot.y - HOIST * Math.cos(radians),
+    z: pivot.z,
+  };
 }
 
 let h: Harness;
-let control: Harness;
 
 beforeEach(async () => {
   h = await createHarness();
-  control = await createHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
-  await control.dispose();
 });
 
 it("draws the load at the bob at every tick of a swing", async () => {
-  await stageSwing(h, true);
-  await stageSwing(control, false);
+  await openSite(h, SITE);
+  await clearAll(h);
+  await poseCrane(h, DESIGNS[SITE]!);
+  await addOneLoad(h, CLASS, MASS, START, START);
+  await poseTape(h, TAPE);
+  await startRun(h);
 
+  // The trolley out along the track and the cable let down, with the bob put back
+  // under where that leaves the pivot so the pendulum takes no jolt from the jump.
+  await h.debug.setAxis("trolley", TROLLEY);
+  await h.debug.setAxis("hoist", HOIST);
+  await h.debug.setBob(NODE.x, NODE.y - HOIST, NODE.z);
+  await h.debug.setBobVelocity(0, 0, 0);
+  let state = await runTicks(h, 1);
   assertEqual(
-    (await h.snapshot()).run.loads[0]?.phase,
-    "attached",
-    "the load's phase in the run this reading is of " +
-      "(specs/instrumentation.md)",
-  );
-  assertEqual(
-    (await control.snapshot()).run.loads[0]?.phase,
-    "waiting",
-    "the load's phase in the run this reading is compared against, which " +
-      "carries the same load in the same yard and leaves it standing",
+    state.run.phase,
+    "running",
+    "the run this reading is taken in, once the arm stands where the pictures " +
+      "are taken from",
   );
 
   let previous: At | null = null;
-  for (let sample = 0; sample < SAMPLES; sample += 1) {
-    const swung = await runTicks(h, STRIDE);
-    const alone = await runTicks(control, STRIDE);
+  for (const [sample, degrees] of ARC.entries()) {
+    const at = onArc(state.run.pivot, degrees);
+
+    // The picture with the load on the hook. The pose puts the bob on its cable;
+    // the tick that follows is what carries the load's lift point onto it.
+    await h.debug.setLoadPhase(0, "attached");
+    await h.debug.setBob(at.x, at.y, at.z);
+    await h.debug.setBobVelocity(0, 0, 0);
+    state = await runTicks(h, 1);
     assertEqual(
-      swung.run.phase,
+      state.run.phase,
       "running",
-      `the run at sample ${sample + 1}, ${swung.run.tick} ticks in, which ` +
+      `the run at sample ${sample + 1}, ${state.run.tick} ticks in, which ` +
         "this reading needs still under way",
     );
     assertEqual(
-      alone.run.phase,
-      "running",
-      `the compared run at sample ${sample + 1}, which carries the same load ` +
-        "and is not holding it",
+      state.run.loads[0]?.phase,
+      "attached",
+      `the load's phase in the picture this reading is of, at sample ` +
+        `${sample + 1} (specs/instrumentation.md)`,
+    );
+    const swungShot = await picture(h);
+    const bob = state.run.bob.pos;
+
+    // And the same world with the load out of it: the same crane, the same
+    // camera, the same bob on the same cable, and the crate standing in the yard.
+    await h.debug.setLoadPhase(0, "waiting");
+    await h.debug.setLoadPose(0, AWAY.x, AWAY.y, AWAY.z, AWAY.yaw);
+    await h.debug.setBob(at.x, at.y, at.z);
+    await h.debug.setBobVelocity(0, 0, 0);
+    const alone = await runTicks(h, 1);
+    assertEqual(
+      alone.run.loads[0]?.phase,
+      "waiting",
+      `the load's phase in the picture this reading is compared against, at ` +
+        `sample ${sample + 1}, which holds the same world and leaves the crate ` +
+        "standing in the yard",
     );
     assertTrue(
-      distance3(swung.run.bob.pos, alone.run.bob.pos) <= SAME_SWING,
-      `the two runs' bobs to stand together at sample ${sample + 1}: the ` +
+      distance3(bob, alone.run.bob.pos) <= SAME_BOB,
+      `the two pictures' bobs to stand together at sample ${sample + 1}: the ` +
         "pendulum reads nothing but the pivot, the hoist length and its own " +
         "state, so a load on the hook does not move it (specs/rigging.md " +
         `§ Determinism) — they stand ${distance3(
-          swung.run.bob.pos,
+          bob,
           alone.run.bob.pos,
         ).toFixed(3)} apart`,
     );
+    const aloneShot = await picture(h);
 
-    const bob = swung.run.bob.pos;
-    const at = await h.project(bob.x, bob.y, bob.z);
+    const point = await h.project(bob.x, bob.y, bob.z);
     assertTrue(
-      at.visible,
+      point.visible,
       `the bob at sample ${sample + 1}, (${bob.x.toFixed(2)}, ` +
         `${bob.y.toFixed(2)}, ${bob.z.toFixed(2)}), to be drawn on the stage, ` +
         "so this point has a picture to read (specs/instrumentation.md)",
     );
     if (previous !== null) {
       assertGreaterThan(
-        Math.hypot(at.x - previous.x, at.y - previous.y),
+        Math.hypot(point.x - previous.x, point.y - previous.y),
         SEPARATION,
         `the logical pixels the bob travelled between sample ${sample} and ` +
           `sample ${sample + 1}, which this reading needs so that a load ` +
           "painted at one place cannot answer for two of them",
       );
     }
-    previous = at;
+    previous = point;
 
-    const swungShot = await picture(h);
-    const aloneShot = await picture(control);
-    if (sample === SAMPLES - 1) {
+    if (sample === ARC.length - 1) {
       await h.capture("swing", "The load drawn at the bob across the swing");
     }
 
     let carried = 0;
     for (const corner of boxCorners(bob)) {
-      const point = await h.project(corner.x, corner.y, corner.z);
-      if (!point.visible) continue;
-      if (changeNear(swungShot, aloneShot, point, TOLERANCE) > CHANGED) {
+      const seen = await h.project(corner.x, corner.y, corner.z);
+      if (!seen.visible) continue;
+      if (changeNear(swungShot, aloneShot, seen, TOLERANCE) > CHANGED) {
         carried += 1;
       }
     }
@@ -295,13 +305,15 @@ it("draws the load at the bob at every tick of a swing", async () => {
       carried,
       MOST - 1,
       `the corners of the crate's box at the bob at sample ${sample + 1}, ` +
-        `tick ${swung.run.tick} — (${bob.x.toFixed(2)}, ` +
-        `${bob.y.toFixed(2)}, ${bob.z.toFixed(2)}) — that the run carrying ` +
-        "the load draws differently from the run leaving it standing, out of " +
-        "8: an attached load's lift point is the bob's position at every " +
+        `tick ${state.run.tick} — (${bob.x.toFixed(2)}, ` +
+        `${bob.y.toFixed(2)}, ${bob.z.toFixed(2)}) — that the picture carrying ` +
+        "the load draws differently from the picture leaving it standing, out " +
+        "of 8: an attached load's lift point is the bob's position at every " +
         "tick, so its swing is drawn true to the simulation " +
         "(specs/rigging.md § The pivot and the bob, specs/overview.md " +
         "§ Visual design)",
     );
+
+    state = alone;
   }
 });

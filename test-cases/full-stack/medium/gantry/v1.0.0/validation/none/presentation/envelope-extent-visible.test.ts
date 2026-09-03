@@ -30,6 +30,7 @@
 // two frames are the same view of two different envelopes.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
@@ -77,8 +78,10 @@ const PARKED = { x: STAGE_W - 4, y: STAGE_H - 4 } as const;
 // An engineless build draws the yard through WebGL, so nothing here reads pixels
 // off a 2D context: what a check reads is the page's own composited frame, taken
 // with `page.screenshot` — the same picture `h.capture` writes as the review
-// item's evidence. The PNG goes back INTO the page to be decoded, because the
-// page carries an image decoder and this process carries none.
+// item's evidence. The PNG is decoded HERE, with `@napi-rs/canvas`, rather than
+// handed back to the page: a frame is two million pixels and sending it back out
+// of the browser costs several megabytes of base64 over the debugging channel,
+// which is time this point spends on nothing it reads.
 //
 // A point is addressed in LOGICAL STAGE UNITS, the units `project` answers in
 // and the units `specs/overview.md` lays the stage out in, and the canvas's own
@@ -110,28 +113,16 @@ async function readFrame(h: Harness): Promise<Frame> {
     box !== null,
     "a <canvas> on the page for the build to draw the yard in",
   );
-  const shot = (await h.page.screenshot({ type: "png" })).toString("base64");
-  const decoded = (await h.page.evaluate(async (png: string) => {
-    const image = new Image();
-    image.src = `data:image/png;base64,${png}`;
-    await image.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const context = canvas.getContext("2d")!;
-    context.drawImage(image, 0, 0);
-    const pixels = context.getImageData(0, 0, image.width, image.height);
-    // Base64 rather than an array of numbers: a whole frame is two million
-    // entries, and it is built in chunks because `String.fromCharCode` is
-    // applied to its arguments and that many of them overflow the stack.
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < pixels.data.length; i += chunk) {
-      binary += String.fromCharCode(...pixels.data.subarray(i, i + chunk));
-    }
-    return { width: image.width, height: image.height, b64: btoa(binary) };
-  }, shot)) as { width: number; height: number; b64: string };
-  const bytes = Buffer.from(decoded.b64, "base64");
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
+  const image = await loadImage(await h.page.screenshot({ type: "png" }));
+  const surface = createCanvas(image.width, image.height);
+  const context = surface.getContext("2d");
+  context.drawImage(image, 0, 0);
+  const decoded = { width: image.width, height: image.height };
+  const bytes = context.getImageData(0, 0, image.width, image.height).data;
   const fit = box as { x: number; y: number; width: number; height: number };
   const scale = Math.min(fit.width / STAGE_W, fit.height / STAGE_H);
   const originX = fit.x + (fit.width - STAGE_W * scale) / 2;
@@ -148,13 +139,24 @@ async function readFrame(h: Harness): Promise<Frame> {
     },
   };
 }
-/** The heights at which the corner at `x` carries something its inside does not. */
-async function boundaryAt(
-  h: Harness,
-  frame: Frame,
-  x: number,
-): Promise<number[]> {
-  const carrying: number[] = [];
+/** One height's pair of stage points: the corner, and its control inside it. */
+interface Reading {
+  y: number;
+  on: { x: number; y: number };
+  inside: { x: number; y: number };
+}
+
+/**
+ * Where the build draws the corner at `x`, and its control, at each height.
+ *
+ * ASKED ONCE FOR BOTH FRAMES. Opening a site puts the camera back at its start
+ * pose (`specs/instrumentation.md`), so the two sites are photographed through
+ * the same camera and a world position is drawn at the same stage point in both.
+ * The caller checks that the two cameras did come back to the same pose before
+ * it reuses these, so nothing rests on the assumption.
+ */
+async function readingsAt(h: Harness, x: number): Promise<Reading[]> {
+  const readings: Reading[] = [];
   for (const y of HEIGHTS) {
     const on = await h.project(x, y, FACE_Z);
     const inside = await h.project(x - INSIDE, y, FACE_Z);
@@ -164,6 +166,15 @@ async function boundaryAt(
         "drawn on the stage at the start camera pose, which this point needs " +
         "a picture of (specs/instrumentation.md)",
     );
+    readings.push({ y, on, inside });
+  }
+  return readings;
+}
+
+/** The heights at which the corner carries something its inside does not. */
+function boundaryAt(frame: Frame, readings: readonly Reading[]): number[] {
+  const carrying: number[] = [];
+  for (const { y, on, inside } of readings) {
     const bare = frame.at(inside.x, inside.y);
     let strongest = 0;
     for (let dy = -REACH; dy <= REACH; dy += 1) {
@@ -204,8 +215,10 @@ it("draws the envelope's boundary where the open site's ranges put it", async ()
   const nearFrame = await readFrame(h);
   await h.capture("envelope", "The envelope aid on two sites");
 
-  const nearOwn = await boundaryAt(h, nearFrame, NEAR_EDGE);
-  const nearFar = await boundaryAt(h, nearFrame, FAR_EDGE);
+  const atNearEdge = await readingsAt(h, NEAR_EDGE);
+  const atFarEdge = await readingsAt(h, FAR_EDGE);
+  const nearOwn = boundaryAt(nearFrame, atNearEdge);
+  const nearFar = boundaryAt(nearFrame, atFarEdge);
 
   await openSite(h, FAR_SITE);
   await clearAll(h);
@@ -217,10 +230,18 @@ it("draws the envelope's boundary where the open site's ranges put it", async ()
     far.site.envelope.max.x === FAR_EDGE,
     `site ${FAR_SITE + 1} to run out to x ${FAR_EDGE} (specs/sites.md)`,
   );
+  assertTrue(
+    far.camera.yaw === near.camera.yaw &&
+      far.camera.pitch === near.camera.pitch &&
+      far.camera.dist === near.camera.dist,
+    "both sites to be opened onto the same start camera pose, which is what " +
+      "lets one frame be compared with the other at the same stage points " +
+      "(specs/instrumentation.md)",
+  );
   const farFrame = await readFrame(h);
 
-  const farOwn = await boundaryAt(h, farFrame, FAR_EDGE);
-  const farNear = await boundaryAt(h, farFrame, NEAR_EDGE);
+  const farOwn = boundaryAt(farFrame, atFarEdge);
+  const farNear = boundaryAt(farFrame, atNearEdge);
 
   assertGreaterThanOrEqual(
     nearOwn.length,

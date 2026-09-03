@@ -41,15 +41,21 @@
 // THE TWO PAGES ARE DRIVEN IDENTICALLY, through the surface alone, and the game
 // is off its own clock on both, so the frames are two pictures of the same posed
 // world.
+//
+// AND ONE COMPOSITE IS TAKEN OFF EACH PAGE, read once inside the box and once
+// per band. A clipped capture costs a fresh composite per rectangle, and the
+// pixels it returns are the pixels the whole frame already holds, so ten
+// captures bought nothing two composites read five ways each do not.
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import { afterEach, beforeEach, it } from "vitest";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { assertEqual, assertTrue, fail } from "../assert";
 import { LOAD_CLASS_DIMENSIONS, STAGE_H, STAGE_W } from "../constants";
-import { createHarness, type Harness, type LoadPose } from "../harness";
+import { createHarness, type Harness, type LoadPose, paintPage } from "../harness";
 
 /** The build workspace: this suite is staged at `<workspace>/validation/assets/`. */
 const WORKSPACE = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -63,9 +69,13 @@ const CLASS = "container" as const;
  * Whichever is committed: the substitute only has to be a different produced
  * model, and a smaller one cannot draw outside the subject's own box.
  */
-const SUBSTITUTES = ["hook", "mount", "trolley", "counterweight", "ring"].filter(
-  (name) => name !== CLASS,
-);
+const SUBSTITUTES = [
+  "hook",
+  "mount",
+  "trolley",
+  "counterweight",
+  "ring",
+].filter((name) => name !== CLASS);
 
 const SITE = 0;
 const MASS = 40;
@@ -199,11 +209,11 @@ it("draws the container from the bytes of its produced model file", async () => 
   for (const dx of [-size.x / 2, size.x / 2]) {
     for (const dz of [-size.z / 2, size.z / 2]) {
       for (const dy of [-size.y, 0]) {
-        const at = (await h.project(
-          pose.x + dx,
-          pose.y + dy,
-          pose.z + dz,
-        )) as { x: number; y: number; visible: boolean };
+        const at = (await h.project(pose.x + dx, pose.y + dy, pose.z + dz)) as {
+          x: number;
+          y: number;
+          visible: boolean;
+        };
         assertTrue(
           at.visible,
           `every corner of the ${CLASS}'s class box to be drawn on the stage ` +
@@ -232,14 +242,27 @@ it("draws the container from the bytes of its produced model file", async () => 
     bottom: bottom + margin,
   };
   const outside: { where: string; rect: Rect }[] = [
-    { where: `left of the ${CLASS}`, rect: { x: 0, y: 0, width: near.left, height: STAGE_H } },
+    {
+      where: `left of the ${CLASS}`,
+      rect: { x: 0, y: 0, width: near.left, height: STAGE_H },
+    },
     {
       where: `right of the ${CLASS}`,
-      rect: { x: near.right, y: 0, width: STAGE_W - near.right, height: STAGE_H },
+      rect: {
+        x: near.right,
+        y: 0,
+        width: STAGE_W - near.right,
+        height: STAGE_H,
+      },
     },
     {
       where: `above the ${CLASS}`,
-      rect: { x: near.left, y: 0, width: near.right - near.left, height: near.top },
+      rect: {
+        x: near.left,
+        y: 0,
+        width: near.right - near.left,
+        height: near.top,
+      },
     },
     {
       where: `below the ${CLASS}`,
@@ -258,34 +281,10 @@ it("draws the container from the bytes of its produced model file", async () => 
       "point needs the box to stand clear of the stage's edges for",
   );
 
-  const fitOf = async (page: Page): Promise<Rect> => {
-    const fit = (await page.evaluate(() => {
-      const canvas = document.querySelector("canvas");
-      if (canvas === null) return null;
-      const at = canvas.getBoundingClientRect();
-      return { x: at.x, y: at.y, width: at.width, height: at.height };
-    })) as Rect | null;
-    assertTrue(fit !== null, "a <canvas> on the page for the build to draw in");
-    return fit!;
-  };
-  const fits = { served: await fitOf(h.page), swapped: await fitOf(swapped) };
-  const shot = (page: Page, fit: Rect, rect: Rect): Promise<Buffer> => {
-    const sx = fit.width / STAGE_W;
-    const sy = fit.height / STAGE_H;
-    return page.screenshot({
-      clip: {
-        x: fit.x + Math.max(0, rect.x) * sx,
-        y: fit.y + Math.max(0, rect.y) * sy,
-        width: Math.max(1, rect.width * sx),
-        height: Math.max(1, rect.height * sy),
-      },
-    });
-  };
+  const drawn = { served: await frame(h.page), swapped: await frame(swapped) };
 
   assertTrue(
-    !(await shot(h.page, fits.served, inside)).equals(
-      await shot(swapped, fits.swapped, inside),
-    ),
+    !alike(drawn.served, drawn.swapped, inside),
     `the picture inside the ${CLASS}'s projected box to change when the bytes ` +
       `served for its produced model are another model's, since the ${CLASS} ` +
       "is that committed file decoded and drawn rather than geometry drawn in " +
@@ -294,10 +293,8 @@ it("draws the container from the bytes of its produced model file", async () => 
 
   const spilled: string[] = [];
   for (const band of outside) {
-    const same = (await shot(h.page, fits.served, band.rect)).equals(
-      await shot(swapped, fits.swapped, band.rect),
-    );
-    if (!same) spilled.push(band.where);
+    if (!alike(drawn.served, drawn.swapped, band.rect))
+      spilled.push(band.where);
   }
   assertEqual(
     spilled.join(", "),
@@ -310,3 +307,78 @@ it("draws the container from the bytes of its produced model file", async () => 
 
   await h.capture("container", "The container drawn from its produced model");
 });
+
+/**
+ * One page's whole composited frame, decoded, with the map from stage units.
+ *
+ * The build fits the stage into its own canvas, so a logical rectangle is
+ * mapped through the canvas the page reports rather than through any fit
+ * assumed here.
+ */
+interface Frame {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+  /** Image pixels per logical stage unit, and where the stage's origin lands. */
+  sx: number;
+  sy: number;
+  ox: number;
+  oy: number;
+}
+
+async function frame(page: Page): Promise<Frame> {
+  const fit = (await page.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    if (canvas === null) return null;
+    const at = canvas.getBoundingClientRect();
+    return { x: at.x, y: at.y, width: at.width, height: at.height };
+  })) as Rect | null;
+  assertTrue(fit !== null, "a <canvas> on the page for the build to draw in");
+  const view = page.viewportSize();
+  assertTrue(view !== null, "a sized viewport on the page the build draws in");
+  // One held frame first; see `paint-gate.js`.
+  await paintPage(page);
+  const png = await page.screenshot({ type: "png" });
+  const image = await loadImage(png);
+  const canvas = createCanvas(image.width, image.height);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0);
+  const { data } = ctx.getImageData(0, 0, image.width, image.height);
+  const dx = image.width / view!.width;
+  const dy = image.height / view!.height;
+  return {
+    width: image.width,
+    height: image.height,
+    data,
+    sx: (fit!.width / STAGE_W) * dx,
+    sy: (fit!.height / STAGE_H) * dy,
+    ox: fit!.x * dx,
+    oy: fit!.y * dy,
+  };
+}
+
+/** Whether two frames are drawn identically over a logical rectangle. */
+function alike(a: Frame, b: Frame, rect: Rect): boolean {
+  if (a.width !== b.width || a.height !== b.height) return false;
+  const x0 = Math.max(0, Math.round(a.ox + rect.x * a.sx));
+  const y0 = Math.max(0, Math.round(a.oy + rect.y * a.sy));
+  const x1 = Math.min(a.width, Math.round(a.ox + (rect.x + rect.width) * a.sx));
+  const y1 = Math.min(
+    a.height,
+    Math.round(a.oy + (rect.y + rect.height) * a.sy),
+  );
+  for (let y = y0; y < y1; y += 1) {
+    let i = (y * a.width + x0) * 4;
+    for (let x = x0; x < x1; x += 1, i += 4) {
+      if (
+        a.data[i] !== b.data[i] ||
+        a.data[i + 1] !== b.data[i + 1] ||
+        a.data[i + 2] !== b.data[i + 2] ||
+        a.data[i + 3] !== b.data[i + 3]
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}

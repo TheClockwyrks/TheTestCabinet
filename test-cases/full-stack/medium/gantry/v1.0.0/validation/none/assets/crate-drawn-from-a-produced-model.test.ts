@@ -49,7 +49,7 @@ import type { Page } from "playwright";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue, fail } from "../assert";
 import { LOAD_CLASS_DIMENSIONS, STAGE_H, STAGE_W } from "../constants";
-import { createHarness, type Harness, type LoadPose } from "../harness";
+import { createHarness, type Harness, type LoadPose, paintPage } from "../harness";
 
 /** The build workspace: this suite is staged at `<workspace>/validation/assets/`. */
 const WORKSPACE = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -269,9 +269,15 @@ it("draws the crate from the bytes of its produced model file", async () => {
     return fit!;
   };
   const fits = { served: await fitOf(h.page), swapped: await fitOf(swapped) };
-  const shot = (page: Page, fit: Rect, rect: Rect): Promise<Buffer> => {
+  const shot = async (
+    page: Page,
+    fit: Rect,
+    rect: Rect,
+  ): Promise<Buffer> => {
     const sx = fit.width / STAGE_W;
     const sy = fit.height / STAGE_H;
+    // One held frame first; see `paint-gate.js`.
+    await paintPage(page);
     return page.screenshot({
       clip: {
         x: fit.x + Math.max(0, rect.x) * sx,

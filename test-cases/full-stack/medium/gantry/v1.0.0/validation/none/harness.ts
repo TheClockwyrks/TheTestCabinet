@@ -145,6 +145,9 @@ export const REQUIRED_OPS = [
 /** The page global this project's own cue-naming probe installs itself on. */
 const CUE_GLOBAL = "__gantryCues";
 
+/** The page global this project's own paint gate installs itself on. */
+const PAINT_GLOBAL = "__gantryPaint";
+
 /** What `cues()` reports a sound whose produced file it could not name as. */
 export const UNNAMED_CUE = "?";
 
@@ -206,7 +209,17 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   readOpeningSnapshot: true,
   // Gantry draws through WebGL, so nothing here reads pixels off a 2D context;
   // what a still captures is the page's own composited frame.
-  extraInitScripts: ["cues-init.js"],
+  //
+  // `paint-gate.js` takes the page off its own PAINT clock the moment the build's
+  // surface answers, the way `setAutoStep(false)` takes it off the wall clock:
+  // the frames `advance` is specified to run still paint, and the ones the
+  // build's loop would have painted between two calls are held. A crossing into
+  // a page that is painting freely costs about ten times one into a page that is
+  // not, and this project drives enough of them for that to decide whether its
+  // suites finish inside the platform's cap. The file's own header carries the
+  // full reasoning, and `releasePaint` below is the way out for the one check
+  // whose subject is the free-running loop itself.
+  extraInitScripts: ["cues-init.js", "paint-gate.js"],
   projectRoot: PROJECT_ROOT,
 });
 
@@ -290,6 +303,37 @@ export interface Harness {
 
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
+
+  /**
+   * Hand the page back its own paint loop, for the rest of this harness's life.
+   *
+   * ONLY FOR A CHECK WHOSE SUBJECT IS THAT LOOP. The harness holds the build's
+   * free-running frames back (see `paint-gate.js`), which is invisible to every
+   * check that drives the game with `advance` — the render each advanced frame is
+   * specified to run still happens. It is NOT invisible to a check that lets
+   * wall-clock time pass and asserts what did or did not move in it: a build that
+   * keeps stepping through a `setAutoStep(false)` shows itself only to a page
+   * that is still painting. Such a check calls this first, and pays the crossings
+   * back at the free-running price.
+   *
+   * A no-op on the two engines, which have no page and no paint clock.
+   */
+  releasePaint(): Promise<void>;
+
+  /**
+   * Run one of the frames the page has asked for and is being held back from.
+   *
+   * FOR A CHECK THAT READS WHAT THE BUILD DRAWS AROUND THE CANVAS. `advance`
+   * draws the canvas itself — the specification has every advanced frame followed
+   * by a render, and that render happens inside the call — so a check reading the
+   * picture needs nothing from this. A build is free to refresh what sits outside
+   * the canvas on its own loop instead (this case's reference draws its
+   * diagnostics overlay that way), and that loop is held; one pumped frame is
+   * what a page painting freely would have given it.
+   *
+   * A no-op on the two engines, for the reason `releasePaint` gives.
+   */
+  paintFrame(): Promise<void>;
 
   /* ---- This engine's own, for the few suites that are about it ------------ */
 
@@ -405,7 +449,16 @@ export async function createHarness(
     cues: () => readCues(base, "take"),
     loopingCues: () => readCues(base, "looping"),
 
+    releasePaint: () => paint(base, "release"),
+    paintFrame: () => paint(base, "pump"),
+
     async capture(id, name) {
+      // One held frame first, so the picture composited into the still is the one
+      // the build has just drawn. Everything the build draws on the canvas is
+      // already there — `advance` renders — but a build is free to refresh what
+      // sits AROUND the canvas on its own frame (this case's reference draws its
+      // diagnostics overlay that way), and a still is the whole page.
+      await paint(base, "pump");
       // The still is addressed by the review item's output id; the name is what
       // the reviewer is being shown, and it goes to the run log so a person
       // scanning the output can tell one still from another without opening it.
@@ -422,6 +475,55 @@ export async function createHarness(
 
   bases.set(harness, base);
   return harness;
+}
+
+/**
+ * Drive this project's paint gate.
+ *
+ * As with the cue probe, a page that does not carry it is a fault in this
+ * project rather than in the build — the gate is injected before a line of the
+ * build runs — so it says so rather than carrying on against a page whose frames
+ * are not where this harness believes they are.
+ */
+async function paint(
+  base: BaseHarness<GantrySnapshot, GantryDebugApi>,
+  op: "pump" | "release",
+): Promise<void> {
+  const ran = await base.page.evaluate(
+    ([global, name]) => {
+      const gate = (
+        window as unknown as Record<string, Record<string, () => void> | undefined>
+      )[global];
+      if (gate === undefined) return false;
+      gate[name]!();
+      return true;
+    },
+    [PAINT_GLOBAL, op] as const,
+  );
+  if (!ran) {
+    throw new Error(
+      `gantry: window.${PAINT_GLOBAL} is absent, so the harness's own paint ` +
+        "gate did not run — validation/none/paint-gate.js is injected by " +
+        "`extraInitScripts` and this is a fault in the validator project, not " +
+        "in the build",
+    );
+  }
+}
+
+/**
+ * Run one held frame on a page this project opened but does not hold a harness
+ * for — a second page serving the build a swapped asset, say.
+ *
+ * The gate is installed on the CONTEXT, so every page in it carries one; what
+ * such a page has no other route to is the harness method.
+ */
+export async function paintPage(page: Page): Promise<void> {
+  await page.evaluate((global) => {
+    const gate = (
+      window as unknown as Record<string, { pump(): void } | undefined>
+    )[global];
+    if (gate !== undefined) gate.pump();
+  }, PAINT_GLOBAL);
 }
 
 /**
@@ -619,10 +721,7 @@ export async function openSite(h: Harness, index: number): Promise<void> {
  * nothing and changes nothing that is built.
  */
 export async function emptyYard(h: Harness): Promise<void> {
-  await onEditScreen(h, async () => {
-    await h.debug.clearLoads();
-    await h.debug.clearObstacles();
-  });
+  await poseAll(h, await onEditScreenCalls(h, [["clearLoads"], ["clearObstacles"]]));
 }
 
 /**
@@ -633,12 +732,73 @@ export async function emptyYard(h: Harness): Promise<void> {
  * where each applies and put back where the check was standing.
  */
 export async function clearAll(h: Harness): Promise<void> {
-  await onEditScreen(h, async () => {
-    await h.debug.clearLoads();
-    await h.debug.clearObstacles();
-    await h.debug.clearStructure();
-  });
-  await onScreen(h, "program", () => h.debug.clearProgram());
+  // The site's and the structure's poses apply on the build screen and the tape's
+  // on the program screen, so the screen is taken where each applies and put back
+  // where the check was standing — all of it in one crossing.
+  const was = (await h.snapshot()).screen;
+  const calls: PoseCall[] = [];
+  if (was !== "build" && was !== "program") calls.push(["setScreen", "build"]);
+  calls.push(["clearLoads"], ["clearObstacles"], ["clearStructure"]);
+  calls.push(["setScreen", "program"], ["clearProgram"]);
+  calls.push(["setScreen", was]);
+  await poseAll(h, calls);
+}
+
+/**
+ * Run a whole sequence of poses in ONE crossing into the page.
+ *
+ * WHY. Every call on the surface is a round trip, and a round trip against this
+ * build costs about 30 ms — not the trip itself, but waiting on a renderer that
+ * has just composited a 1280x720 WebGL frame under software GL. Posing a
+ * reference crane member by member is 60 to 130 of them, so the pose costs
+ * seconds before the check has driven a tick. The engineless suite has to fit
+ * inside the platform's cap on a validator suite ON A TWO-CORE HOST, and a suite
+ * the runner stops decides no point at all.
+ *
+ * WHAT IT DOES NOT CHANGE. The operations are the same operations, called in the
+ * same order, on the same surface, so every rule `specs/structure.md` and
+ * `specs/program.md` state runs exactly as it did — a refused edit is still
+ * refused, silently, and the crane that stands at the end is still one a player
+ * could have built. `specs/instrumentation.md` is explicit that a caller poses a
+ * whole crane "as the sequence of edits that builds it"; this is that sequence,
+ * delivered in one call rather than one call per edit. Nothing is batched INSIDE
+ * the game: no tick is skipped and no pose is merged.
+ *
+ * Poses only. A reading has to come back across, and the verification each helper
+ * does afterwards is what catches an edit the rules refused.
+ */
+type PoseCall = readonly [string, ...(string | number | boolean)[]];
+
+/**
+ * The same calls, bracketed onto a screen the SITE and STRUCTURE poses apply on.
+ *
+ * `onEditScreen` in call form: a pose that applies on `build` or `program` is left
+ * where it stands, and anywhere else the screen is taken to `build` and put back.
+ */
+async function onEditScreenCalls(
+  h: Harness,
+  calls: readonly PoseCall[],
+): Promise<PoseCall[]> {
+  const was = (await h.snapshot()).screen;
+  if (was === "build" || was === "program") return [...calls];
+  return [["setScreen", "build"], ...calls, ["setScreen", was]];
+}
+
+async function poseAll(
+  h: Harness,
+  calls: readonly PoseCall[],
+): Promise<void> {
+  await h.page.evaluate(
+    ({ handle, ops }) => {
+      const surface = (window as unknown as Record<string, Record<string, unknown>>)[
+        handle
+      ];
+      for (const [name, ...args] of ops) {
+        (surface[name] as (...a: unknown[]) => unknown)(...args);
+      }
+    },
+    { handle: HANDLE, ops: calls as (string | number | boolean)[][] },
+  );
 }
 
 /**
@@ -670,18 +830,21 @@ export async function poseCrane(
   h: Harness,
   design: CraneDesign,
 ): Promise<void> {
-  await onScreen(h, "build", async () => {
-    await h.debug.clearStructure();
-    if (design.ring !== null) {
-      await h.debug.setRing(design.ring[0], design.ring[1], design.ring[2]);
-    }
-    for (const [a, b, material] of design.members) {
-      await h.debug.addMember(a[0], a[1], a[2], b[0], b[1], b[2], material);
-    }
-    for (const node of design.counterweights) {
-      await h.debug.addCounterweight(node[0], node[1], node[2]);
-    }
-  });
+  const was = (await h.snapshot()).screen;
+  const calls: PoseCall[] = [];
+  if (was !== "build") calls.push(["setScreen", "build"]);
+  calls.push(["clearStructure"]);
+  if (design.ring !== null) {
+    calls.push(["setRing", design.ring[0], design.ring[1], design.ring[2]]);
+  }
+  for (const [a, b, material] of design.members) {
+    calls.push(["addMember", a[0], a[1], a[2], b[0], b[1], b[2], material]);
+  }
+  for (const node of design.counterweights) {
+    calls.push(["addCounterweight", node[0], node[1], node[2]]);
+  }
+  if (was !== "build") calls.push(["setScreen", was]);
+  await poseAll(h, calls);
 
   const { structure } = await h.snapshot();
   const placed = new Set(structure.members.map((m) => edgeKey(m.a, m.b)));
@@ -881,11 +1044,14 @@ export async function addOneLoad(
   from: LoadPose,
   to: LoadPose,
 ): Promise<void> {
-  await onEditScreen(h, async () => {
-    await h.debug.clearLoads();
-    await h.debug.addLoad(cls, mass, from.x, from.y, from.z, from.yaw);
-    await h.debug.setLoadTarget(0, to.x, to.y, to.z, to.yaw);
-  });
+  await poseAll(
+    h,
+    await onEditScreenCalls(h, [
+      ["clearLoads"],
+      ["addLoad", cls, mass, from.x, from.y, from.z, from.yaw],
+      ["setLoadTarget", 0, to.x, to.y, to.z, to.yaw],
+    ]),
+  );
 }
 
 /** The yard holding exactly one obstacle: the box with that corner and size. */
@@ -894,10 +1060,13 @@ export async function addOneObstacle(
   min: Vec3,
   size: Vec3,
 ): Promise<void> {
-  await onEditScreen(h, async () => {
-    await h.debug.clearObstacles();
-    await h.debug.addObstacle(min.x, min.y, min.z, size.x, size.y, size.z);
-  });
+  await poseAll(
+    h,
+    await onEditScreenCalls(h, [
+      ["clearObstacles"],
+      ["addObstacle", min.x, min.y, min.z, size.x, size.y, size.z],
+    ]),
+  );
 }
 
 /* -------------------------------------------------------------------------- */

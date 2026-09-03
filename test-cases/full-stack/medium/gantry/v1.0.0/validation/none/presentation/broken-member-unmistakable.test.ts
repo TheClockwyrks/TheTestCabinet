@@ -143,6 +143,10 @@ async function readFrame(h: Harness): Promise<Frame> {
     box !== null,
     "a <canvas> on the page for the build to draw the yard in",
   );
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
   const shot = (await h.page.screenshot({ type: "png" })).toString("base64");
   const decoded = (await h.page.evaluate(async (png: string) => {
     const image = new Image();

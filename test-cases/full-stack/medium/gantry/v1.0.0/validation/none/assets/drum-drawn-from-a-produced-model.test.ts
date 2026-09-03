@@ -41,6 +41,14 @@
 // THE TWO PAGES ARE DRIVEN IDENTICALLY, through the surface alone, and the game
 // is off its own clock on both, so the frames are two pictures of the same posed
 // world.
+//
+// AND EACH PAGE IS PHOTOGRAPHED ONCE. A frame under software GL costs about a
+// second and a half to photograph, so the five rectangles this point reads are
+// cut out of ONE picture of each page rather than asked for one screenshot at a
+// time: the two frames are handed back into the browser, decoded, and compared
+// rectangle by rectangle there. The reading is the same reading — every device
+// pixel of a rectangle against the same pixel of the other — and it is taken off
+// the same two frames, so nothing about what this point decides turns on it.
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -49,7 +57,7 @@ import type { Page } from "playwright";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue, fail } from "../assert";
 import { LOAD_CLASS_DIMENSIONS, STAGE_H, STAGE_W } from "../constants";
-import { createHarness, type Harness, type LoadPose } from "../harness";
+import { createHarness, type Harness, type LoadPose, paintPage } from "../harness";
 
 /** The build workspace: this suite is staged at `<workspace>/validation/assets/`. */
 const WORKSPACE = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -63,9 +71,13 @@ const CLASS = "drum" as const;
  * Whichever is committed: the substitute only has to be a different produced
  * model, and a smaller one cannot draw outside the subject's own box.
  */
-const SUBSTITUTES = ["hook", "mount", "trolley", "counterweight", "ring"].filter(
-  (name) => name !== CLASS,
-);
+const SUBSTITUTES = [
+  "hook",
+  "mount",
+  "trolley",
+  "counterweight",
+  "ring",
+].filter((name) => name !== CLASS);
 
 const SITE = 0;
 const MASS = 40;
@@ -199,11 +211,11 @@ it("draws the drum from the bytes of its produced model file", async () => {
   for (const dx of [-size.x / 2, size.x / 2]) {
     for (const dz of [-size.z / 2, size.z / 2]) {
       for (const dy of [-size.y, 0]) {
-        const at = (await h.project(
-          pose.x + dx,
-          pose.y + dy,
-          pose.z + dz,
-        )) as { x: number; y: number; visible: boolean };
+        const at = (await h.project(pose.x + dx, pose.y + dy, pose.z + dz)) as {
+          x: number;
+          y: number;
+          visible: boolean;
+        };
         assertTrue(
           at.visible,
           `every corner of the ${CLASS}'s class box to be drawn on the stage ` +
@@ -232,14 +244,27 @@ it("draws the drum from the bytes of its produced model file", async () => {
     bottom: bottom + margin,
   };
   const outside: { where: string; rect: Rect }[] = [
-    { where: `left of the ${CLASS}`, rect: { x: 0, y: 0, width: near.left, height: STAGE_H } },
+    {
+      where: `left of the ${CLASS}`,
+      rect: { x: 0, y: 0, width: near.left, height: STAGE_H },
+    },
     {
       where: `right of the ${CLASS}`,
-      rect: { x: near.right, y: 0, width: STAGE_W - near.right, height: STAGE_H },
+      rect: {
+        x: near.right,
+        y: 0,
+        width: STAGE_W - near.right,
+        height: STAGE_H,
+      },
     },
     {
       where: `above the ${CLASS}`,
-      rect: { x: near.left, y: 0, width: near.right - near.left, height: near.top },
+      rect: {
+        x: near.left,
+        y: 0,
+        width: near.right - near.left,
+        height: near.top,
+      },
     },
     {
       where: `below the ${CLASS}`,
@@ -269,36 +294,103 @@ it("draws the drum from the bytes of its produced model file", async () => {
     return fit!;
   };
   const fits = { served: await fitOf(h.page), swapped: await fitOf(swapped) };
-  const shot = (page: Page, fit: Rect, rect: Rect): Promise<Buffer> => {
-    const sx = fit.width / STAGE_W;
-    const sy = fit.height / STAGE_H;
-    return page.screenshot({
-      clip: {
-        x: fit.x + Math.max(0, rect.x) * sx,
-        y: fit.y + Math.max(0, rect.y) * sy,
-        width: Math.max(1, rect.width * sx),
-        height: Math.max(1, rect.height * sy),
-      },
-    });
+  const frameOf = async (page: Page, fit: Rect): Promise<string> => {
+    // One held frame first; see `paint-gate.js`.
+    await paintPage(page);
+    return (
+      await page.screenshot({
+        clip: { x: fit.x, y: fit.y, width: fit.width, height: fit.height },
+      })
+    ).toString("base64");
+  };
+  const frames = {
+    served: await frameOf(h.page, fits.served),
+    swapped: await frameOf(swapped, fits.swapped),
   };
 
+  /** A stage rectangle as a share of the stage, clamped to it. */
+  const share = (rect: Rect): readonly [number, number, number, number] => {
+    const x0 = Math.max(0, Math.min(STAGE_W, rect.x));
+    const y0 = Math.max(0, Math.min(STAGE_H, rect.y));
+    const x1 = Math.max(x0, Math.min(STAGE_W, rect.x + rect.width));
+    const y1 = Math.max(y0, Math.min(STAGE_H, rect.y + rect.height));
+    return [
+      x0 / STAGE_W,
+      y0 / STAGE_H,
+      (x1 - x0) / STAGE_W,
+      (y1 - y0) / STAGE_H,
+    ];
+  };
+  const regions = [inside, ...outside.map((band) => band.rect)].map(share);
+
+  // The comparison runs in the SWAPPED page, which nothing reads after this: the
+  // page under test is left exactly as it was photographed, so the still this
+  // point writes below is the frame it decided on.
+  const differs = (await swapped.evaluate(
+    async ([a, b, rects]) => {
+      const decode = async (
+        base64: string,
+      ): Promise<OffscreenCanvasRenderingContext2D> => {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1)
+          bytes[i] = binary.charCodeAt(i);
+        const bitmap = await createImageBitmap(
+          new Blob([bytes], { type: "image/png" }),
+        );
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext("2d");
+        if (ctx === null) throw new Error("no 2D context to decode a frame in");
+        ctx.drawImage(bitmap, 0, 0);
+        return ctx;
+      };
+      const one = await decode(a as string);
+      const two = await decode(b as string);
+      if (
+        one.canvas.width !== two.canvas.width ||
+        one.canvas.height !== two.canvas.height
+      ) {
+        throw new Error("the two pages drew at different sizes");
+      }
+      return (rects as readonly (readonly number[])[]).map((rect) => {
+        const x = Math.round(rect[0]! * one.canvas.width);
+        const y = Math.round(rect[1]! * one.canvas.height);
+        const w = Math.max(
+          1,
+          Math.min(
+            one.canvas.width - x,
+            Math.round(rect[2]! * one.canvas.width),
+          ),
+        );
+        const h = Math.max(
+          1,
+          Math.min(
+            one.canvas.height - y,
+            Math.round(rect[3]! * one.canvas.height),
+          ),
+        );
+        const left = one.getImageData(x, y, w, h).data;
+        const right = two.getImageData(x, y, w, h).data;
+        for (let i = 0; i < left.length; i += 1) {
+          if (left[i] !== right[i]) return true;
+        }
+        return false;
+      });
+    },
+    [frames.served, frames.swapped, regions] as const,
+  )) as boolean[];
+
   assertTrue(
-    !(await shot(h.page, fits.served, inside)).equals(
-      await shot(swapped, fits.swapped, inside),
-    ),
+    differs[0] === true,
     `the picture inside the ${CLASS}'s projected box to change when the bytes ` +
       `served for its produced model are another model's, since the ${CLASS} ` +
       "is that committed file decoded and drawn rather than geometry drawn in " +
       "code (specs/assets.md)",
   );
 
-  const spilled: string[] = [];
-  for (const band of outside) {
-    const same = (await shot(h.page, fits.served, band.rect)).equals(
-      await shot(swapped, fits.swapped, band.rect),
-    );
-    if (!same) spilled.push(band.where);
-  }
+  const spilled = outside
+    .filter((_, index) => differs[index + 1] === true)
+    .map((band) => band.where);
   assertEqual(
     spilled.join(", "),
     "",

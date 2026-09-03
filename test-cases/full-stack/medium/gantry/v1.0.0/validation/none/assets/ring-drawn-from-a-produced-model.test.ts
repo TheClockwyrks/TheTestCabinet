@@ -33,9 +33,14 @@
 // against any path.
 //
 // WHY THE BANDS. Two fresh pages of one build draw the same frame, so the stage
-// outside the ring's own extent has to come back byte-identical between them.
+// outside the ring's own extent has to come back pixel-identical between them.
 // That is what makes the difference inside that extent a reading of the ring
 // rather than of two pages that happened to differ.
+//
+// ONE FRAME IS TAKEN OFF EACH PAGE, and the extent and the bands are read out of
+// it. A clipped capture costs a fresh composite per rectangle, and five of them
+// per page bought nothing a single composite read five ways does not: the pixels
+// compared are the same pixels either way.
 //
 // THE WORLD IS THE RING ALONE. specs/structure.md refuses a ring only for a second
 // ring, the envelope, a base corner on the ground, the arm-to-tower rule and the
@@ -43,6 +48,7 @@
 // wants: no members, no loads, no obstacles, no tape.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import type { BrowserContext } from "playwright";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -123,10 +129,7 @@ it("draws the ring from the committed ring model", async () => {
   await poseRing(served);
   const region = await ringRegion(served);
   const bands = surrounding(region);
-  const before = {
-    inside: await shot(served, region),
-    outside: await Promise.all(bands.map((band) => shot(served, band.rect))),
-  };
+  const before = await frame(served);
   await served.capture("ring", "The ring drawn from its produced model");
 
   // The same build, served again with the ring's model replaced by another of
@@ -141,7 +144,10 @@ it("draws the ring from the committed ring model", async () => {
       await route.fulfill({ response, body: standIn });
       return;
     }
-    await route.fulfill({ response, body });
+    // Answered from the fetched response itself, rather than by handing the
+    // same bytes back: the bundle and the music bed would otherwise cross the
+    // protocol a second time.
+    await route.fulfill({ response });
   });
   substituted = await createHarness();
   await poseRing(substituted);
@@ -155,10 +161,11 @@ it("draws the ring from the committed ring model", async () => {
       "from it",
   );
 
+  const after = await frame(substituted);
+
   const spilled: string[] = [];
-  for (const [index, band] of bands.entries()) {
-    const again = await shot(substituted, band.rect);
-    if (!before.outside[index]!.equals(again)) spilled.push(band.where);
+  for (const band of bands) {
+    if (!alike(before, after, band.rect)) spilled.push(band.where);
   }
   if (spilled.length > 0) {
     fail(
@@ -170,9 +177,8 @@ it("draws the ring from the committed ring model", async () => {
     );
   }
 
-  const insideAgain = await shot(substituted, region);
   assertTrue(
-    !before.inside.equals(insideAgain),
+    !alike(before, after, region),
     "the ring on the stage to change when the site serves other bytes under " +
       `assets/models/${SUBJECT}.glb, since the ring on screen is that ` +
       "produced model decoded and drawn rather than geometry the build draws " +
@@ -262,8 +268,24 @@ function surrounding(region: Rect): { where: string; rect: Rect }[] {
   ].filter(({ rect }) => rect.width >= 1 && rect.height >= 1);
 }
 
-/** A logical rectangle of one page's composited frame, as PNG bytes. */
-async function shot(h: Harness, rect: Rect): Promise<Buffer> {
+/**
+ * One page's whole composited frame, decoded, with the map from stage units.
+ *
+ * The build fits the stage into its own canvas, so a logical rectangle is read
+ * through the canvas the page reports rather than through any fit assumed here.
+ */
+interface Frame {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+  /** Image pixels per logical stage unit, and where the stage's origin lands. */
+  sx: number;
+  sy: number;
+  ox: number;
+  oy: number;
+}
+
+async function frame(h: Harness): Promise<Frame> {
   const fit = (await h.page.evaluate(() => {
     const canvas = document.querySelector("canvas");
     if (canvas === null) return null;
@@ -271,14 +293,53 @@ async function shot(h: Harness, rect: Rect): Promise<Buffer> {
     return { x: at.x, y: at.y, width: at.width, height: at.height };
   })) as Rect | null;
   assertTrue(fit !== null, "a <canvas> on the page for the build to draw in");
-  const sx = fit!.width / STAGE_W;
-  const sy = fit!.height / STAGE_H;
-  return h.page.screenshot({
-    clip: {
-      x: fit!.x + rect.x * sx,
-      y: fit!.y + rect.y * sy,
-      width: Math.max(1, rect.width * sx),
-      height: Math.max(1, rect.height * sy),
-    },
-  });
+  const view = h.page.viewportSize();
+  assertTrue(view !== null, "a sized viewport on the page the build draws in");
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
+  const png = await h.page.screenshot({ type: "png" });
+  const image = await loadImage(png);
+  const canvas = createCanvas(image.width, image.height);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0);
+  const { data } = ctx.getImageData(0, 0, image.width, image.height);
+  const dx = image.width / view!.width;
+  const dy = image.height / view!.height;
+  return {
+    width: image.width,
+    height: image.height,
+    data,
+    sx: (fit!.width / STAGE_W) * dx,
+    sy: (fit!.height / STAGE_H) * dy,
+    ox: fit!.x * dx,
+    oy: fit!.y * dy,
+  };
+}
+
+/** Whether two frames are drawn identically over a logical rectangle. */
+function alike(a: Frame, b: Frame, rect: Rect): boolean {
+  if (a.width !== b.width || a.height !== b.height) return false;
+  const x0 = Math.max(0, Math.round(a.ox + rect.x * a.sx));
+  const y0 = Math.max(0, Math.round(a.oy + rect.y * a.sy));
+  const x1 = Math.min(a.width, Math.round(a.ox + (rect.x + rect.width) * a.sx));
+  const y1 = Math.min(
+    a.height,
+    Math.round(a.oy + (rect.y + rect.height) * a.sy),
+  );
+  for (let y = y0; y < y1; y += 1) {
+    let i = (y * a.width + x0) * 4;
+    for (let x = x0; x < x1; x += 1, i += 4) {
+      if (
+        a.data[i] !== b.data[i] ||
+        a.data[i + 1] !== b.data[i + 1] ||
+        a.data[i + 2] !== b.data[i + 2] ||
+        a.data[i + 3] !== b.data[i + 3]
+      ) {
+        return false;
+      }
+    }
+  }
+  return true;
 }

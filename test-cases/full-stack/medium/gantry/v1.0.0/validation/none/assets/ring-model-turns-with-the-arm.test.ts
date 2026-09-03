@@ -55,8 +55,8 @@ import {
   STAGE_W,
 } from "../constants";
 import {
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseTape,
   standMinimalCrane,
@@ -141,7 +141,7 @@ afterEach(async () => {
 
 it("draws the ring turned by the slew angle", async () => {
   await openSite(h, SITE);
-  await clearAll(h);
+  await emptyYard(h);
   await standMinimalCrane(h);
   await poseTape(h, [HOLD]);
   await h.debug.setCamera(CAMERA_START_YAW, CAMERA_PITCH_MIN, VIEW_DIST);
@@ -311,6 +311,10 @@ async function shot(rect: Rect): Promise<Buffer> {
   assertTrue(fit !== null, "a <canvas> on the page for the build to draw in");
   const sx = fit!.width / STAGE_W;
   const sy = fit!.height / STAGE_H;
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await h.paintFrame();
   return h.page.screenshot({
     clip: {
       x: fit!.x + rect.x * sx,

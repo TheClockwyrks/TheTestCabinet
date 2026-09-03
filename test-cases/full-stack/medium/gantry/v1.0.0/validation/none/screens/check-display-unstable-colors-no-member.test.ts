@@ -35,13 +35,14 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { assertGreaterThan, assertLength, assertTrue, fail } from "../assert";
 import {
   MINIMAL_CRANE,
-  clearAll,
   createHarness,
+  emptyYard,
   openSite,
   poseCrane,
   type CraneDesign,
   type DesignMember,
   type Harness,
+  type LatticeNode,
 } from "../harness";
 import { STAGE_H, STAGE_W } from "../constants";
 
@@ -72,6 +73,10 @@ interface At {
 
 /** The page as it stands, composited: the 3D yard with the readouts over it. */
 async function picture(harness: Harness): Promise<Picture> {
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await harness.paintFrame();
   const png = await harness.page.screenshot({ type: "png" });
   const image = await loadImage(png);
   const canvas = createCanvas(image.width, image.height);
@@ -100,15 +105,35 @@ function apart(a: readonly number[], b: readonly number[]): number {
   return Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
 }
 
-/** Points along every member's projected segment, away from its ends. */
+/**
+ * Points along every member's projected segment, away from its ends.
+ *
+ * A NODE IS ASKED FOR ONCE. The crane's members run between far fewer nodes than
+ * there are members — every leg, brace and tie of the tower meets at one of ten —
+ * and `project` is a pure reading of a camera that does not move while this runs,
+ * so the same node projects to the same point however often it is asked. Asking
+ * once a node rather than twice a member is the same set of points for a third of
+ * the calls into the page.
+ */
 async function alongMembers(
   harness: Harness,
   members: readonly DesignMember[],
 ): Promise<At[]> {
+  const drawnAt = new Map<string, At>();
+  const nodePoint = async (node: LatticeNode): Promise<At> => {
+    const key = node.join(",");
+    const known = drawnAt.get(key);
+    if (known !== undefined) return known;
+    const at = await harness.project(node[0], node[1], node[2]);
+    const point = { x: at.x, y: at.y };
+    drawnAt.set(key, point);
+    return point;
+  };
+
   const points: At[] = [];
   for (const [a, b] of members) {
-    const from = await harness.project(a[0], a[1], a[2]);
-    const to = await harness.project(b[0], b[1], b[2]);
+    const from = await nodePoint(a);
+    const to = await nodePoint(b);
     for (const t of ALONG) {
       points.push({
         x: from.x + (to.x - from.x) * t,
@@ -178,7 +203,7 @@ afterEach(async () => {
 
 it("leaves every member the colour it was when the check finds a mechanism", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await poseCrane(h, UNBRACED);
 
   const points = await alongMembers(h, UNBRACED.members);

@@ -27,7 +27,7 @@ import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { fail } from "../assert";
 import { textDraws, toDrawCall, type RecordedOp } from "../case-harness/index";
 import { STAGE_H, STAGE_W } from "../constants";
-import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
 /** The page global the shared harness installs its draw recorder on. */
 const RECORDER = "__tcabRec";
@@ -54,6 +54,10 @@ interface Picture {
 
 /** The page as it stands, composited: the 3D yard with the readouts over it. */
 async function picture(harness: Harness): Promise<Picture> {
+  // One held frame first: the page is off its own paint clock (see
+  // `paint-gate.js`), and a screenshot is the whole page rather than just the
+  // canvas `advance` has already drawn.
+  await harness.paintFrame();
   const png = await harness.page.screenshot({ type: "png" });
   const image = await loadImage(png);
   const canvas = createCanvas(image.width, image.height);
@@ -121,7 +125,7 @@ afterEach(async () => {
 
 it("moves the palette's mark to the tool that is selected", async () => {
   await openSite(h, 0);
-  await clearAll(h);
+  await emptyYard(h);
   await h.debug.setTool("strut");
   await h.advance(1);
 
