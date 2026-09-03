@@ -701,12 +701,18 @@ async function readSurfaceFault(
   loaded: boolean,
 ): Promise<string | null> {
   const installed = (): Promise<boolean> =>
-    page.evaluate(
-      (handle) =>
-        typeof (window as never)[handle] === "object" &&
-        (window as never)[handle] !== null,
-      HANDLE,
-    );
+    page
+      .evaluate(
+        (handle) =>
+          typeof (window as never)[handle] === "object" &&
+          (window as never)[handle] !== null,
+        HANDLE,
+      )
+      // A look that could not be TAKEN is not an answer. A page still navigating
+      // has no execution context to ask, which says nothing about whether the
+      // build installs a surface; the polled wait below is what settles that, and
+      // it survives a navigation where a single evaluation does not.
+      .catch(() => false);
   // The common case, and the one that must not depend on how busy the machine
   // is: `load` has fired, so a build that installs its surface from its entry
   // module has already installed it, and one look settles it with no wait. A page
