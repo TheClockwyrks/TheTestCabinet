@@ -14,7 +14,7 @@ use super::{
 /// at it. `manifest_extra` is spliced between the required
 /// `name`/`difficulty`/`tags`/`prompt` header and the single `base` variant, so a
 /// test can drop in a `[build]` table.
-fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+pub(super) fn catalog_with_manifest(manifest_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     let version = dir.path().join("end-to-end/easy/demo/v1.0.0");
     fs::create_dir_all(version.join("variants")).expect("create version dir");
@@ -2442,7 +2442,7 @@ fn audio_sample_resolves_its_format() {
     let manifest = format!(
         "{NEW_FAMILY_HEADER}asset_kind = \"sfx-sample\"\nvariants = [\"variants/base.toml\"]\n\
          [audio]\nsample_rate = 44100\nchannels = \"stereo\"\nmax_duration_ms = 5000\n\
-         sample_pack = \"naval-weapons@1\"\n\
+         packs = [\"naval-weapons@1.0.0\"]\n\
          [tool]\nbinary = \"sfx-sample\"\npreview = \"waveform.png\"\n\
          [output]\nactions = \"actions.json\"\n{NEW_FAMILY_TAIL}"
     );
@@ -2454,12 +2454,13 @@ fn audio_sample_resolves_its_format() {
     let audio = version.audio.as_ref().expect("audio");
     assert_eq!(audio.sample_rate, 44100);
     assert_eq!(audio.channels, "stereo");
-    assert_eq!(audio.sample_pack.as_deref(), Some("naval-weapons@1"));
-    assert!(audio.instrument_bank.is_none());
+    // The palette is not part of the clip's output format: it is one ordered list
+    // for every test type.
+    assert_eq!(version.audio_packs, vec!["naval-weapons@1.0.0".to_string()]);
 }
 
 #[test]
-fn audio_sample_requires_a_sample_pack() {
+fn audio_sample_requires_one_pack() {
     let manifest = format!(
         "{NEW_FAMILY_HEADER}asset_kind = \"sfx-sample\"\nvariants = [\"variants/base.toml\"]\n\
          [audio]\nsample_rate = 44100\nchannels = \"stereo\"\nmax_duration_ms = 5000\n\
@@ -2469,8 +2470,12 @@ fn audio_sample_requires_a_sample_pack() {
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
-        .expect_err("a sfx-sample case without a sample_pack is rejected");
-    assert!(format!("{err}").contains("sample_pack"), "got: {err}");
+        .expect_err("a sfx-sample case declaring no pack is rejected");
+    assert!(
+        format!("{err}")
+            .contains("a `sfx-sample` case declares exactly one pack in audio.packs, not 0"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -2777,7 +2782,7 @@ fn a_reference_implementation_is_never_seeded_into_the_run() {
 /// `test-cases/` root with a sibling `game-jams/` folder discovery folds in — and
 /// return the temp dir (kept alive) plus the catalog rooted at `test-cases/`.
 /// `manifest` is the full `game-jam.toml` body.
-fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+pub(super) fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let dir = tempfile::tempdir().expect("temp dir");
     // An (empty) test-cases root so discovery has a catalog root to walk; the jam
     // lives in the sibling game-jams/ folder that `case_folders` folds in.
@@ -2798,7 +2803,7 @@ fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
 
 /// The smallest valid `game-jam.toml`: identity, prompt, changelog, and a `[build]`.
 /// No `difficulty`, no `variants`, none of the spec-driven tables.
-const MINIMAL_JAM: &str = "slug = \"trains\"\nname = \"Trains\"\nprompt = \"prompt.hbs\"\n\
+pub(super) const MINIMAL_JAM: &str = "slug = \"trains\"\nname = \"Trains\"\nprompt = \"prompt.hbs\"\n\
      changelog = \"changelog.md\"\nmax_runtime_hours = 8\n\
      [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n";
 

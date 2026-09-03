@@ -639,6 +639,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         material: resolved.material.clone(),
         particle: resolved.particle.clone(),
         audio: resolved.audio.clone(),
+        audio_packs: resolved.audio_packs.clone(),
         prompt_template,
         common_specs,
         workspace,

@@ -731,6 +731,7 @@ fn version_response(
         material: manifest.material.clone(),
         particle: manifest.particle.clone(),
         audio: manifest.audio.clone(),
+        audio_packs: manifest.audio_packs.clone(),
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
         packages: manifest
@@ -1268,6 +1269,11 @@ pub struct VersionResponse {
     particle: Option<ParticleSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order.
+    /// The driver reads it to stage the run container's palette, so it is served for
+    /// every test type, not just the audio kinds — always present, empty for a
+    /// version that declares none, like the other list-valued keys beside it.
+    audio_packs: Vec<String>,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
     /// The Test Cabinet runtime packages this case ships into every run, each with

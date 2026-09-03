@@ -1720,6 +1720,12 @@ struct VersionBody {
     /// The clip format of an audio case (the wire shape matches [`AudioSpec`]).
     #[serde(default)]
     audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order
+    /// (see [`TestCaseVersion::audio_packs`]). Defaulted, so a definition stored
+    /// before packs were declared per case reads as declaring none — which is why
+    /// adding the field bumps the store format, forcing a re-ingest that resolves it.
+    #[serde(default)]
+    audio_packs: Vec<String>,
     prompt_template: String,
     common_specs: Vec<SpecBody>,
     /// The starter workspace files, keyed by [engine](crate::engine) slug. A
@@ -1864,6 +1870,7 @@ impl VersionBody {
             material: self.material,
             particle: self.particle,
             audio: self.audio,
+            audio_packs: self.audio_packs,
             common_specs: self.common_specs.iter().map(spec_from).collect(),
             common_workspace: self.workspace.resolve(),
             init: self.init,

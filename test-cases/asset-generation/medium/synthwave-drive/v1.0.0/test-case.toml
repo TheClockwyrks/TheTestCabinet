@@ -17,14 +17,14 @@ asset_kind = "music"
 
 variants = ["variants/base.toml"]
 
-# The output format the rendered clip is fixed to. A music case names the baked
-# instrument bank it plays; `synthwave@0.1.0` is a name@version palette baked into
-# the run-container image, never a path in this repo.
+# The output format the rendered clip is fixed to, and the one instrument bank
+# this case plays. `synthwave@0.1.0` is a name@version pack ref, never a path in
+# this repo: the run container is staged with that pack and nothing else.
 [audio]
 sample_rate = 44100                  # output sample rate in Hz (required)
 channels = "stereo"                  # "mono" | "stereo" (required)
 max_duration_ms = 30000              # cap on the rendered clip's length in ms (required, positive) — about 30 seconds
-instrument_bank = "synthwave@0.1.0"  # music ONLY: the baked instrument bank (name@version)
+packs = ["synthwave@0.1.0"]         # music: exactly one instrument bank (name@version)
 
 # The sequencer. `music` is the only way to shape sound; it records every
 # operation to the action log and renders the waveform + spectrogram + piano-roll

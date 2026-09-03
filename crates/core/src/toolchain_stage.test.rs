@@ -51,6 +51,7 @@ fn version(toolchain: Option<ToolchainCommands>, build: Option<BuildCommands>) -
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,

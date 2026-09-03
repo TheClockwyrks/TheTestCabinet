@@ -202,6 +202,7 @@ fn manifest() -> StoredManifest {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         prompt_template: "build it".to_string(),
         common_specs: vec![],
         workspace: Default::default(),

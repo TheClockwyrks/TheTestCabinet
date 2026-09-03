@@ -573,3 +573,84 @@ fn git_stdout(repo: &Path, args: &[&str]) -> String {
     );
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
+
+// --- the audio tool config --------------------------------------------------
+
+/// Resolve an audio asset-generation case of `kind` declaring `packs` (the TOML
+/// value, for example `["combat-core@0.1.0"]`), returning the resolved version. The
+/// pack line is omitted entirely when `packs` is `None`, which is how a `sfx-synth`
+/// case is authored.
+fn audio_version(kind: &str, packs: Option<&str>) -> (tempfile::TempDir, crate::TestCaseVersion) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let version = dir.path().join("asset-generation/medium/clip/v1.0.0");
+    std::fs::create_dir_all(version.join("specs")).expect("specs dir");
+    std::fs::create_dir_all(version.join("variants")).expect("variants dir");
+    std::fs::write(version.join("prompt.hbs"), "Make a sound.").expect("prompt");
+    std::fs::write(version.join("changelog.md"), "Introduced.").expect("changelog");
+    std::fs::write(version.join("specs/brief.md"), "The brief.").expect("brief");
+    std::fs::write(version.join("variants/base.toml"), "slug = \"base\"\n").expect("variant");
+    let packs_line = packs.map(|p| format!("packs = {p}\n")).unwrap_or_default();
+    let manifest = format!(
+        "slug = \"clip\"\nname = \"Clip\"\ndifficulty = \"medium\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\n\
+         type = \"asset-generation\"\nasset_kind = \"{kind}\"\n\
+         variants = [\"variants/base.toml\"]\n\
+         [audio]\nsample_rate = 44100\nchannels = \"stereo\"\nmax_duration_ms = 5000\n\
+         {packs_line}\
+         [tool]\nbinary = \"{kind}\"\npreview = \"waveform.png\"\n\
+         [output]\nactions = \"actions.json\"\n\
+         [[spec]]\nsource = \"specs/brief.md\"\ndest = \"specs/brief.md\"\n\
+         [[domain]]\nid = \"fidelity\"\ndescription = \"How close the clip is.\"\n"
+    );
+    std::fs::write(version.join("test-case.toml"), manifest).expect("manifest");
+    let catalog = crate::test_case::TestCaseCatalog::new(dir.path());
+    let resolved = catalog.resolve("clip", "v1.0.0").expect("resolve");
+    (dir, resolved)
+}
+
+/// Seed `version`'s audio tool config into a fresh repo and return it parsed.
+fn seeded_audio_config(version: &crate::TestCaseVersion) -> serde_json::Value {
+    let repo = tempfile::tempdir().expect("repo dir");
+    super::seed_audio_tool(version, repo.path(), None).expect("seed the audio tool");
+    let raw = std::fs::read_to_string(repo.path().join(version.asset_kind.config_dest()))
+        .expect("read the seeded config");
+    serde_json::from_str(&raw).expect("parse the seeded config")
+}
+
+#[test]
+fn a_sfx_sample_run_is_pinned_to_the_declared_pack() {
+    // The seeded config is the binary's contract, and its `sample_pack` key is the
+    // pin `check_identity` holds the loaded pack against. It is derived from the
+    // case's one declaration (`audio.packs`) routed by the asset kind, so the pin and
+    // the staged tree can never name different packs.
+    let (_dir, version) = audio_version("sfx-sample", Some("[\"combat-core@0.1.0\"]"));
+    let config = seeded_audio_config(&version);
+    assert_eq!(config["sample_pack"], "combat-core@0.1.0");
+    assert!(
+        config.get("instrument_bank").is_none(),
+        "a sample-library effect names no bank: {config}"
+    );
+}
+
+#[test]
+fn a_music_run_is_pinned_to_the_declared_bank() {
+    let (_dir, version) = audio_version("music", Some("[\"gm-lite@0.1.0\"]"));
+    let config = seeded_audio_config(&version);
+    assert_eq!(config["instrument_bank"], "gm-lite@0.1.0");
+    assert!(
+        config.get("sample_pack").is_none(),
+        "a music case names no sample pack: {config}"
+    );
+}
+
+#[test]
+fn a_sfx_synth_run_is_pinned_to_no_pack_at_all() {
+    // It synthesizes from oscillators, so it declares no pack and the config names
+    // neither key — the binary loads no library.
+    let (_dir, version) = audio_version("sfx-synth", None);
+    let config = seeded_audio_config(&version);
+    assert!(
+        config.get("sample_pack").is_none() && config.get("instrument_bank").is_none(),
+        "a synthesized effect names no palette: {config}"
+    );
+}
