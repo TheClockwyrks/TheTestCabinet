@@ -165,6 +165,23 @@ repos:
         files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^packages/gg-sandbox'
         pass_filenames: false
 
+      - id: audio-packs
+        name: audio pack declarations
+        description: Reject a version whose [audio] packs is missing, or names a pack that does not resolve against containers/sample-packs/.
+        entry: scripts/ci/audio-packs-check.mjs
+        language: script
+        # Points straight at the CI checker rather than a wrapper under
+        # scripts/hooks/, the way build-context does: the only thing
+        # scripts/ci/audio-packs-lint.sh adds is the `npm ci` a clean CI checkout
+        # needs, and a working tree already has node_modules.
+        #
+        # It reads EVERY version, not the staged ones, so it takes no file
+        # arguments — and it has to, because the rule it enforces is that a
+        # declaration EXISTS: publishing a pack, or retiring one, re-judges every
+        # manifest in the repository rather than only the file that changed.
+        files: '^(test-cases|game-jams)/.*/(test-case|game-jam)\.toml$|^containers/sample-packs/'
+        pass_filenames: false
+
       - id: rust-fmt
         name: cargo fmt (--check)
         description: Enforce rustfmt formatting across the workspace.
