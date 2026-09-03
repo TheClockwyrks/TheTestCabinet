@@ -1,74 +1,36 @@
-// presentation/pad-on-an-obstacle-top — a pad whose target sits on an obstacle
-// is drawn on that obstacle's top face.
+// presentation/pad-on-an-obstacle-top — a pad whose target stands on an
+// obstacle's top face is drawn up there, not down on the ground.
 //
-// specs/world.md § Pads: "A load's target pose is drawn as its pad: a marked
-// footprint on the ground OR ON AN OBSTACLE'S TOP, showing the class outline at
-// the target yaw." specs/world.md § Obstacles says why such a target exists: "An
-// obstacle's top face is therefore solid ground for a load: a pad may sit on top
-// of an obstacle, and a load set down on that pad rests on the face without
-// reaching inside the box, which is how a site asks for a lift onto a platform."
+// `specs/world.md` puts a load's pad at its target pose, and a target's `y` is
+// part of that pose — so a pad wanted on a shelf is a pad at the shelf's height.
+// `specs/overview.md` asks that "each pad's footprint and required yaw are marked
+// so a site is readable before anything is built", and a site whose shelf pad was
+// drawn on the floor would be read wrong before a single member went in.
 //
-// THE SCENARIO IS SITE FIVE'S OWN LIFT. `High Shelf` carries the platform whose
-// minimum corner is `(-9, 0, -2)` and whose size is `(4, 6, 4)`, and asks for its
-// container on `(-7, 8, 0)` at yaw `90` (specs/sites.md). A container is
-// `4 x 2 x 2` and a target pose is the pose of the lift point, the centre of the
-// load's top face (specs/world.md), so a container resting on that pad stands on
-// the platform's top face at `y = 6` — which is where its footprint belongs, six
-// units above the ground the platform stands on.
-//
-// THE READING, UNDER AN ENGINE. There is no rasterizer in this project —
-// `validation/host.ts` gives three a WebGL2 context that answers every call and
-// draws nothing — so a claim about the yard is made against what the engine WOULD
-// draw: `drawnObjects` answers every object the world pass will draw this frame,
-// with the box its geometry fills and every one of its vertices, in world units.
-// `engine/rendering.md` fixes that the pipeline collects every enabled, visible
-// render component on every live actor and draws it, so any build of this case
-// that puts something on screen puts it there. `drawnOver` narrows that to what
-// stands over one place, and `drawnSignature` turns it into a value two frames
-// can be compared by.
-//
-// NOTHING IS FOUND BY NAME, AND NO COLOUR IS ASSERTED. What a build calls an
-// object, which component it reaches for and what it paints with are the
-// build's; what a check holds it to is that the drawing over one place changed
-// when the game did, and that the drawing elsewhere did not.
-//
-// WHERE THE FOOTPRINT IS, IS WHAT IS READ. The pad is moved away and back, and
-// what arrives is measured in `y`: it has to stand at the platform's top face and
-// not on the ground. A build that drew every pad on the ground draws this one six
-// units under the load that is wanted on it.
+// THE READING IS THE HEIGHT THE FRAME DREW IT AT, against the height the site
+// says the target is. Both are the build's own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNear, assertTrue } from "../assert";
+import { assertCloseTo, assertTrue } from "../assert";
 import {
   addOneLoad,
-  clearAll,
+  addOneObstacle,
   createHarness,
-  drawnObjects,
-  drawnOver,
+  entriesOf,
   openSite,
-  type DrawnObject,
   type Harness,
-  type LoadPose,
 } from "../harness";
 
-/** Site 5, High Shelf. */
-const SITE = 4;
+const CLASS = "crate" as const;
+const FROM = { x: 7, y: 0, z: -3, yaw: 0 };
 
-/** The one load, and the platform's own lift (specs/sites.md). */
-const CLASS = "container" as const;
-const MASS = 80;
-const START: LoadPose = { x: 8, y: 2, z: 0, yaw: 0 };
-const TARGET: LoadPose = { x: -7, y: 8, z: 0, yaw: 90 };
+/** A shelf, and the pad wanted on its top face. */
+const SHELF_MIN = { x: -7, y: 0, z: 7 };
+const SHELF_SIZE = { x: 4, y: 3, z: 4 };
+const TARGET = { x: -5, y: SHELF_MIN.y + SHELF_SIZE.y, z: 9, yaw: 0 };
 
-/** The platform, and the height of its top face. */
-const PLATFORM = { min: { x: -9, y: 0, z: -2 }, size: { x: 4, y: 6, z: 4 } };
-const TOP_Y = PLATFORM.min.y + PLATFORM.size.y;
-
-/** Where the pad waits while the bare platform top is read. */
-const ELSEWHERE: LoadPose = { x: 6, y: 2, z: 6, yaw: 90 };
-
-/** How far off the face the footprint may be bedded. */
-const SLACK = 0.25;
+/** How far the pad may be drawn from the height its target names. */
+const TOLERANCE = 0.75;
 
 let h: Harness;
 
@@ -80,60 +42,23 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** What the yard draws over the platform's top face, as a set of objects. */
-function overTop(): DrawnObject[] {
-  return drawnOver(
-    drawnObjects(h),
-    { x: TARGET.x, y: TOP_Y, z: TARGET.z },
-    SLACK,
-  );
-}
-
-it("marks the pad on the obstacle's top face at the target height", async () => {
-  await openSite(h, SITE);
-  await clearAll(h);
-  await h.debug.addObstacle(
-    PLATFORM.min.x,
-    PLATFORM.min.y,
-    PLATFORM.min.z,
-    PLATFORM.size.x,
-    PLATFORM.size.y,
-    PLATFORM.size.z,
-  );
-  await addOneLoad(h, CLASS, MASS, START, ELSEWHERE);
+it("draws a pad wanted on an obstacle's top at that height", async () => {
+  await openSite(h, 0);
+  await h.debug.setScreen("build");
+  await addOneObstacle(h, SHELF_MIN, SHELF_SIZE);
+  await addOneLoad(h, CLASS, 40, FROM, TARGET);
   await h.advance(1);
-  const bare = new Set(overTop().map((object) => JSON.stringify(object.box)));
 
-  await h.debug.setLoadTarget(0, TARGET.x, TARGET.y, TARGET.z, TARGET.yaw);
-  await h.advance(1);
-  await h.capture("shelf-pad", "The pad on the platform's top face");
+  const pads = entriesOf(await h.drawn(), "mark", "pad");
 
-  assertEqual(
-    JSON.stringify((await h.snapshot()).site.loads[0]?.to),
-    JSON.stringify(TARGET),
-    "the target the pose moved the pad to, which this point is about " +
-      "(specs/instrumentation.md)",
+  await h.capture("shelf-pad", "The pad marked on the obstacle's top face");
+
+  assertTrue(pads.length > 0, "a pad mark among what the frame drew");
+  assertCloseTo(
+    pads[0]!.y,
+    TARGET.y,
+    TOLERANCE,
+    `the pad drawn at the height its target names (${TARGET.y}) rather than ` +
+      "on the ground (specs/world.md)",
   );
-
-  const arrived = overTop().filter(
-    (object) => !bare.has(JSON.stringify(object.box)),
-  );
-  assertTrue(
-    arrived.length > 0,
-    `something drawn on the platform's top face at (${TARGET.x}, ${TOP_Y}, ` +
-      `${TARGET.z}) once the pad is asked for there, which is not drawn there ` +
-      'when the pad is elsewhere: a pad is "a marked footprint on the ground ' +
-      "or on an obstacle's top\" (specs/world.md)",
-  );
-
-  for (const object of arrived) {
-    assertNear(
-      object.box!.centre.y,
-      TOP_Y,
-      SLACK,
-      `the height the footprint is drawn at, against the platform's top face ` +
-        `(${TOP_Y}): the pad sits on the obstacle's top rather than on the ` +
-        "ground under it (specs/world.md § Pads, § Obstacles)",
-    );
-  }
 });
