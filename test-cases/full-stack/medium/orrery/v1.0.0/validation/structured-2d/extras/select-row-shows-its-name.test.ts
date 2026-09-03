@@ -17,17 +17,18 @@
 // item's, and the solved state and the records are theirs. What is decided here
 // is that each of the ten names is drawn, and that no two of them share a row.
 //
-// HOW A NAME IS READ. `specs/ui.md` "fixes no palette, no font", and no sentence
-// of `specs/` says how a string reaches the canvas: a build may draw a row as one
-// run of text, as a run per word, or as a run per glyph — this reference draws its
-// state word letter by letter. What every one of those shares is the baseline, so
-// the frame's text runs are gathered into the baselines they were drawn on,
-// joined in `x` order, and matched with the whitespace dropped. A row counts as a
+// HOW A NAME IS READ. `specs/ui.md` "fixes no palette, no font", and
+// `specs/assets.md`, which puts every word on the stage on the frame as drawn
+// text, fixes no more than that: a build may draw a row as one run of text, as
+// a run per word, or as a run per glyph — this reference draws its state word
+// letter by letter. What every one of those shares is the baseline, so the
+// frame's text runs are gathered into the baselines they were drawn on, joined
+// in `x` order, and matched with the whitespace dropped. A row counts as a
 // challenge's when its line carries that challenge's name.
 //
 // THE SHELF IS READ FRESH: nothing is solved and no record is set, so a row
-// carries the least text it ever carries ("An unsolved row shows none" of the
-// three records, `specs/modes/campaign.md`) and nothing on it can be mistaken for
+// carries the least text it ever carries ("An unsolved row shows none of the
+// three" records, `specs/modes/campaign.md`) and nothing on it can be mistaken for
 // a name.
 //
 // THE VERDICT. Every one of the ten names of `specs/challenges.md` is drawn on

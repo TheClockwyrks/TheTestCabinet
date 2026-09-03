@@ -8,6 +8,13 @@
 // them, running down the screen in course order. What each row shows is its own
 // item, and the highlight and the keys are theirs.
 //
+// AND THE WHOLE COURSE IS ON ONE FRAME. "Every row of the list is on the screen at
+// once: however many challenges the list holds, up to `CAMPAIGN_MAX` (`16`), every
+// row is drawn on the same frame, and the list never scrolls" (the same paragraph).
+// That is what lets the chain below be read off a SINGLE captured still: a build
+// that showed a window onto the course and scrolled the rest into view would draw
+// some of them on no frame this point ever sees, and it is refused for that.
+//
 // A ROW IS FOUND BY ITS CHALLENGE'S NAME, which is the one thing on it the
 // specification fixes and the snapshot reports: `challenge.name`
 // (`specs/instrumentation.md`, Snapshot shape), read by opening each challenge in
@@ -15,7 +22,7 @@
 // coordinate or a layout figure, because `specs/` fixes none for this screen.
 //
 // THE COURSE IS LISTED FRESH. Nothing is solved and no record is set, so a row
-// carries the least text it ever carries: "An unsolved row shows none"
+// carries the least text it ever carries: "An unsolved row shows none of the three"
 // (`specs/modes/campaign.md`) of its three records. Every row is still listed —
 // locked rows included, since the screen "lists every challenge of the course".
 //
@@ -55,11 +62,12 @@ interface Line {
  * The frame's text runs gathered into the baselines they were drawn on.
  *
  * A build is free to draw a row as one run of text or as a run per word or per
- * glyph — `specs/ui.md` "fixes no palette, no font", and nothing in `specs/` says
- * how a string reaches the canvas. What every one of those does share is the
- * baseline: the runs of one row are drawn at one `y`, and the rows are drawn at
- * different ones. So the runs are grouped by the `y` their anchor maps to and
- * joined in `x` order, which reads a row the same way whichever way it was drawn.
+ * glyph — `specs/ui.md` "fixes no palette, no font", and `specs/assets.md`,
+ * which puts every word on the stage on the frame as drawn text, fixes no more
+ * than that. What every one of those does share is the baseline: the runs of
+ * one row are drawn at one `y`, and the rows are drawn at different ones. So
+ * the runs are grouped by the `y` their anchor maps to and joined in `x`
+ * order, which reads a row the same way whichever way it was drawn.
  */
 function linesOf(draws: readonly TextDraw[]): Line[] {
   const baselines = new Map<number, TextDraw[]>();

@@ -24,12 +24,13 @@
 // boundary's own test: "After the rises, if every set's tally has reached the
 // challenge's `target`, the run completes" (`specs/simulation.md`).
 //
-// HOW THE TEXT IS READ. Nothing in `specs/` says how a string reaches the canvas,
-// and letter spacing is not portable, so a build is free to draw one entry as one
-// call, as a call per word, or as a call per glyph. What all of those share is
-// the baseline: one entry is drawn at one `y`, and stacked entries at different
-// ones. So the frame's text runs are gathered by the `y` their anchor maps to and
-// joined in `x` order.
+// HOW THE TEXT IS READ. `specs/assets.md` puts every word on the stage on the
+// frame as drawn text and fixes no more — "Which typeface carries them is
+// yours" — and letter spacing is not portable, so a build is free to draw one
+// entry as one call, as a call per word, or as a call per glyph. What all of
+// those share is the baseline: one entry is drawn at one `y`, and stacked
+// entries at different ones. So the frame's text runs are gathered by the `y`
+// their anchor maps to and joined in `x` order.
 //
 // THE VERDICT. The frame that carries the panel draws `KEEP TINKERING` and, below
 // it, `BACK TO SELECT`, and draws `NEXT CHALLENGE` nowhere at all.

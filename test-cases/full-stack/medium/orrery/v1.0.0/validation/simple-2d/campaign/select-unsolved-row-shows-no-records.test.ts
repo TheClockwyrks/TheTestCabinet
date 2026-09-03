@@ -2,7 +2,8 @@
 // carries no record figures at all.
 //
 // THE RULE. "A solved row also shows its three records, `cost`, `cycles`, and
-// `area`, each labelled. An unsolved row shows none"
+// `area`, each figure drawn beside a label naming its metric. An unsolved row
+// shows none of the three"
 // (`specs/modes/campaign.md`, The select screen). This point decides the SECOND
 // sentence, in the one direction it states: a challenge the session has no records
 // entry for draws no record figures on its row. What a solved row shows is its own
@@ -21,13 +22,16 @@
 // point would decide nothing. Its own row's figures are not read here — that is
 // `select-solved-row-shows-three-records` — only that they are on the screen.
 //
-// WHAT COUNTS AS A RECORD FIGURE. `specs/` fixes no layout, no wording and no
-// palette for a row, so a figure cannot be told from the pixels it is drawn in.
-// What a row with no records shows is its number, its name and its state, so the
-// reading is: the row carries none of the three record LABELS the specification
-// names (`cost`, `cycles`, `area`), and the only number on it is its own challenge
-// number. The name is taken out of the row's text first, so a challenge whose name
-// carries a word or a digit of its own is read the same as any other.
+// WHAT COUNTS AS A RECORD FIGURE is fixed by the same paragraph: "A solved row
+// also shows its three records, `cost`, `cycles`, and `area`, EACH FIGURE DRAWN
+// BESIDE A LABEL NAMING ITS METRIC. An unsolved row shows none of the three, and
+// APART FROM ITS RECORDS THE ONLY FIGURE A ROW CARRIES IS ITS OWN CHALLENGE
+// NUMBER" (`specs/modes/campaign.md`). So a row with no records is read twice
+// over: it carries none of the three record LABELS the specification names
+// (`cost`, `cycles`, `area`), and the only number on it is its own challenge
+// number. No layout, wording or palette is read — `specs/` fixes none. The name is
+// taken out of the row's text first, so a challenge whose name carries a word or a
+// digit of its own is read the same as any other.
 //
 // THE VERDICT. Neither unsolved row carries a record label or a figure that is not
 // its own number, while the solved row's records are on the screen.

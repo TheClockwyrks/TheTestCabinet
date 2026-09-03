@@ -17,10 +17,11 @@
 // pointer, rather than through a surface operation — the machine operations "push
 // no undo entry" by specification (`specs/instrumentation.md`).
 //
-// THE DEPTH IS READ AS A RISE, NOT AS A VALUE, and the undo is read on the
-// MACHINE rather than on a part id: what `undo` restores is "the machine as it
-// stood before the edit", and nothing fixes the ids a restored machine carries.
-// One arm is on the field, so "the part" afterwards is the machine's one arm.
+// THE DEPTH IS READ AS A RISE, NOT AS A VALUE, and "the part" the undo returns is
+// read as the part it was: "A part an entry restores is the part it was, its
+// identity included" (`specs/editor.md`, Undo and redo). So the arm standing on
+// `(0, 0)` after the undo is asserted to carry the id the arm carried before the
+// drag, rather than merely to be an arm of the same kind at the same anchor.
 //
 // THE CONFIGURATION. One arm anchored at `(0, 0)`, posed through the surface so
 // the history begins where the drag finds it, and a drag from that hex to
@@ -73,6 +74,7 @@ it("raises the depth by one on the release, and one undo returns the part", asyn
     ORIGIN.q,
     "the arm is anchored on the hex the drag will press",
   );
+  const arm = partsOfKind(before, "arm")[0]?.id;
   const depth = before.editor.undoDepth;
 
   const moved = await captureReplay(h, "undone", async () => {
@@ -110,6 +112,11 @@ it("raises the depth by one on the release, and one undo returns the part", asyn
     `${partsOfKind(undone, "arm")[0]?.q},${partsOfKind(undone, "arm")[0]?.r}`,
     `${ORIGIN.q},${ORIGIN.r}`,
     "one undo returns the part to the anchor it was pressed at",
+  );
+  assertEqual(
+    partsOfKind(undone, "arm")[0]?.id,
+    arm,
+    "and it is the part it was, identity included, rather than one placed in its stead",
   );
   assertEqual(
     undone.editor.undoDepth,

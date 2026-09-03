@@ -164,10 +164,11 @@ interface Line {
 /**
  * The frame's text runs gathered into the baselines they were drawn on.
  *
- * Nothing in `specs/` says how a string reaches the canvas, and letter spacing is
- * not portable, so a build is free to draw one line of copy as one call, as a
- * call per word, or as a call per glyph. What all of those share is the baseline:
- * one line of copy is drawn at one `y`. This is the gathering
+ * `specs/assets.md` puts every word on the stage on the frame as drawn text
+ * and fixes no more — "Which typeface carries them is yours" — and letter
+ * spacing is not portable, so a build is free to draw one line of copy as one
+ * call, as a call per word, or as a call per glyph. What all of those share is
+ * the baseline: one line of copy is drawn at one `y`. This is the gathering
  * `screens/title-draws-title-text` reads a line of screen copy with.
  */
 function linesOf(draws: readonly TextDraw[]): Line[] {

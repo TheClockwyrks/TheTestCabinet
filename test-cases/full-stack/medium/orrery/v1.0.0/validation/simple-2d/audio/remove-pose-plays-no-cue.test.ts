@@ -9,8 +9,9 @@
 // `part-delete` does" — and it is a pose like every other one there.
 // `CUES.erase` is the cue of the player's own removal: "`erase` | `CUES.erase` |
 // A part is removed" (`specs/ui.md`), played "on the frame its event happens",
-// and the deferral the specification grants is granted to the pointer's edits
-// alone.
+// and the deferral the specification grants is the pointer's alone: "no other
+// pose raises a cue at all, on that frame or any later one — A PART THE MACHINE
+// GROUP PLACES, MOVES, OR REMOVES IS SILENT" (`specs/instrumentation.md`).
 //
 // THE SILENCE IS READ TWICE, at the call and over the frames advanced afterwards,
 // where a cue the pose had merely deferred would arrive. The editor holds no run,

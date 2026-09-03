@@ -21,8 +21,12 @@
 // THE VERDICT is read as a difference between those two frames, over the four
 // regions that are NOT the field's: `specs/editor.md`'s heading, tray, readout
 // and tape panel tile the whole of the stage the field's region does not cover.
-// Not one pixel of any of them moved, so nothing a mote put on the field was
-// drawn over them.
+// Not one pixel of any of them moved, which is the layout rule stated whole:
+// "Each region draws from its own contents alone: what a region holds is drawn
+// inside that region's extent and nowhere else on the stage. The motes on the
+// field are the field's — no other region draws one or counts what rests there."
+// So thirty motes arriving on the field change the field's region and nothing
+// beside it — not the readout, which counts nothing that rests there either.
 //
 // AND THE MOTES WERE REALLY THERE. A build that drew no mote at all would move no
 // pixel anywhere, so the same difference is read the other way round inside the

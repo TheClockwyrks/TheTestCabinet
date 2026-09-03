@@ -12,15 +12,16 @@
 // stacking is a fact about the screen rather than about any state it can be
 // posed into.
 //
-// HOW THE TEXT IS READ. Nothing in `specs/` says how a string reaches the canvas,
-// and letter spacing is not portable, so a build is free to draw one run of copy
-// as one call, as a call per word, or as a call per glyph. What all of those
-// share is the baseline: one line of copy is drawn at one `y`, and stacked lines
-// are drawn at different ones. So the frame's text runs are gathered by the `y`
-// their anchor maps to and joined in `x` order, and each piece of copy is found
-// by the line it lies on. Nothing here reads a coordinate, a size or a colour
-// `specs/` does not fix — only which line is further down the stage than which,
-// and the stage's `y` grows downward.
+// HOW THE TEXT IS READ. `specs/assets.md` puts every word on the stage on the
+// frame as drawn text and fixes no more — "Which typeface carries them is
+// yours" — and letter spacing is not portable, so a build is free to draw one
+// run of copy as one call, as a call per word, or as a call per glyph. What
+// all of those share is the baseline: one line of copy is drawn at one `y`,
+// and stacked lines are drawn at different ones. So the frame's text runs are
+// gathered by the `y` their anchor maps to and joined in `x` order, and each
+// piece of copy is found by the line it lies on. Nothing here reads a
+// coordinate, a size or a colour `specs/` does not fix — only which line is
+// further down the stage than which, and the stage's `y` grows downward.
 //
 // THE VERDICT. `EXTRAS` is drawn below `CAMPAIGN`, `HOW TO PLAY` below `EXTRAS`,
 // and all three below both the title and the tagline. A build that listed the

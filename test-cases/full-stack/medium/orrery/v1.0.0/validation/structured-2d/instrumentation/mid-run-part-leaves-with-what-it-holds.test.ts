@@ -8,12 +8,14 @@
 // (`specs/instrumentation.md`, The machine).
 //
 // THE SECOND HALF ALONE IS DECIDED HERE, in one direction: what `removePart`
-// takes. Three readings go with the part — its entry in `sim.poses`, its entries
-// in `sim.grips`, and, for a wheel, its six fixtures in `sim.motes` — and a fourth
-// thing is deliberately NOT among them. A mote the part merely CARRIED is not its
-// pose, not its grip and not its fixture, so nothing takes it off the field; it is
-// left exactly where an opened gripper leaves what it held, "resting where it
-// stands" (`specs/instrumentation.md`, `releaseGrip`), on the hex it stood on.
+// takes, and what it leaves. Three readings go with the part — its entry in
+// `sim.poses`, its entries in `sim.grips`, and, for a wheel, its six fixtures in
+// `sim.motes` — and a fourth thing is named as staying: "Nothing else goes with
+// it: a mote the part merely carried is left unheld, resting on the hex it stood
+// on, exactly as `releaseGrip` leaves one" (the same rule). So the carried mote is
+// read twice over — it is still on the field, on the hex it stood on, and it is
+// held by nothing, which is what "unheld" fixes and what tells this from a build
+// that left the mote behind still bound to a gripper that is gone.
 //
 // THE WORLD IS POSED, NOT SEARCHED. The run is opened on a posed challenge with a
 // machine of exactly two parts — one arm and one wheel, far enough apart that
@@ -30,6 +32,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertDeepEqual,
   assertEqual,
   assertLength,
   assertNotNull,
@@ -141,5 +144,10 @@ it("takes the removed part's pose, grips and fixtures, and leaves what it carrie
     after.sim?.motes ?? [],
     1,
     "the six fixtures went with the wheel, and the carried mote alone is left",
+  );
+  assertDeepEqual(
+    (after.sim?.grips ?? []).filter((grip) => grip.mote === carried),
+    [],
+    "and it is left unheld, exactly as releaseGrip leaves what a gripper let go",
   );
 });

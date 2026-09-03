@@ -11,20 +11,23 @@
 // `Period`. So the list this page must name is derived from `BINDINGS` here
 // rather than written out.
 //
-// THE COPY IS READ AS TEXT, because `specs/assets.md` says where it comes from:
-// under What stays drawn in code, "The title, howto, and select screens, the
-// solved panel, and all text" are drawn by the build, and "No produced file
-// covers the following".
+// THE COPY IS READ AS TEXT, because that is how `specs/assets.md` puts it on the
+// stage: under What stays drawn in code, "The title, howto, and select screens,
+// the solved panel, and all text" are drawn by the build, and "Every word the
+// game puts on the stage is drawn as text ... rather than as shapes traced into
+// the form of letters or assembled from images of glyphs".
 //
-// HOW A KEY COUNTS AS NAMED. `specs/` fixes the KEY — its `KeyboardEvent.code` —
-// and not the spelling a page uses for it, so the reading accepts every way a
-// page tells a player which key to press. A cap standing on its own among the
-// words of the page names it (`N`, `(N)`); a key whose name is a word is named
-// wherever that word appears in any case (`Space`); and the two punctuation keys
-// are named either by their plain-English names — `comma`, `period`, `full stop`,
-// `dot` — or by the character itself standing alone rather than doing a
-// sentence's own punctuation, so a page's every full stop does not name the
-// `Period` key.
+// HOW A KEY COUNTS AS NAMED is fixed with the pages: "Where a page names a key it
+// names the key itself rather than the action it fires, spelled as the keyboard
+// spells it: a letter key by its capital letter standing on its own, `Space`,
+// `Delete`, and `Backspace` by their names, and the comma and period keys by the
+// character each types or by that character's name" (`specs/ui.md`). So a cap
+// standing on its own among the words of the page names a letter key (`N`,
+// `(N)`); a key whose name is a word is named wherever that word appears, in any
+// case (`Space`); and the two punctuation keys are named either by that
+// character's name — `comma`, `period`, `full stop`, `dot` — or by the character
+// itself standing alone rather than doing a sentence's own punctuation, so a
+// page's every full stop does not name the `Period` key.
 //
 // THE POSE. A fresh session, the how-to, and its page moved to `3` with
 // `setHowtoPage`, the faculty gate `specs/instrumentation.md` names for the page.

@@ -13,13 +13,21 @@
 // THE CONFIGURATION. An empty machine on a posed challenge, with no run live. The
 // pairing is swept: for each ORDERED pair of the six kinds, the machine is
 // emptied, the first kind is anchored on `(0, 0)`, and the second is offered on
-// `(0, 0)` and then on `(1, 0)`. Thirty-six pairings, each posed alone, because
+// `(0, 0)` and then on `(3, 0)`. Thirty-six pairings, each posed alone, because
 // the rule is stated over arms and wheels rather than over one kind and a build
 // may hold the six in different places. Both hexes are on the field and neither
-// part carries a footprint or a cell, so nothing but rule 4 is in play.
+// part carries a footprint or a cell.
+//
+// WHY THE FREE ANCHOR IS THREE HEXES OFF. The same rule carries a second clause:
+// "no two wheels' rings meet: no hex is adjacent to the anchors of two wheels".
+// A wheel's ring reaches one hex out, so two wheels anchored one or two hexes
+// apart share a ring hex and the second is refused for THAT clause rather than
+// for the shared anchor this point is about. Three hexes leaves no hex adjacent
+// to both, so across all thirty-six pairings the only thing standing between the
+// second part and its anchor is whether the anchor is already taken.
 //
 // THE VERDICT. Every offer on the occupied anchor is refused and adds no part;
-// every offer one hex away is taken.
+// every offer on the free anchor is taken.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -61,9 +69,9 @@ const ANCHORED: readonly PartName[] = [
   "wheel",
 ];
 
-/** The contested anchor, and the free hex one step from it. */
+/** The contested anchor, and a free anchor three hexes from it. */
 const TAKEN: Hex = at(0, 0);
-const BESIDE: Hex = at(1, 0);
+const BESIDE: Hex = at(3, 0);
 
 let h: Harness;
 
@@ -78,7 +86,7 @@ afterEach(async () => {
 it("refuses a second arm or wheel on an occupied anchor, in every pairing", async () => {
   await openChallengeDocument(h, BARE);
   assertEqual(onField(TAKEN), true, "the contested anchor is on the field");
-  assertEqual(onField(BESIDE), true, "the free hex beside it is on the field");
+  assertEqual(onField(BESIDE), true, "the free anchor three hexes off is on the field");
 
   // The representative pairing, posed and drawn first so the evidence exists
   // whichever pairing of the sweep below turns out to fail.
@@ -141,12 +149,12 @@ it("refuses a second arm or wheel on an occupied anchor, in every pairing", asyn
       assertEqual(
         onBeside,
         false,
-        `${pairing}: the second part is taken one hex away, where no anchor is shared`,
+        `${pairing}: the second part is taken three hexes off, where no anchor is shared`,
       );
       assertEqual(
         partById(await h.snapshot(), beside)?.kind,
         second,
-        `${pairing}: the second part stands on (1, 0)`,
+        `${pairing}: the second part stands on (3, 0)`,
       );
       assertEqual(
         (await partIds(h)).length,

@@ -4,8 +4,9 @@
 // THE RULE. The Extras select screen shows "the records a solved row shows ... as
 // `specs/modes/campaign.md` states them" (`specs/modes/extras.md`, The select
 // screen), and that file states both halves of it: "A solved row also shows its
-// three records, `cost`, `cycles`, and `area`, each labelled. AN UNSOLVED ROW SHOWS
-// NONE." This point decides the second sentence, and only in that direction: what a
+// three records, `cost`, `cycles`, and `area`, each figure drawn beside a label
+// naming its metric. AN UNSOLVED ROW SHOWS NONE OF THE THREE." This point decides
+// the second sentence, and only in that direction: what a
 // SOLVED row draws is `select-shows-three-records-on-a-solved-row`'s.
 //
 // WHAT MAKES A ROW UNSOLVED is the mode's solved set — "solved — Completed at least

@@ -18,8 +18,16 @@
 // baseline each name was drawn on, and that the baselines run down the screen in
 // shelf order.
 //
+// AND ALL TEN ARE ON ONE FRAME. `specs/modes/extras.md` hands it over with the
+// rest — "That every row is on the screen at once, the highlight, its movement,
+// its resting position on arrival ... are as `specs/modes/campaign.md` states
+// them" — and that file states it: "every row is drawn on the same frame, and the
+// list never scrolls". So the chain below is read off a SINGLE captured still, and
+// a build that scrolled the shelf through a window would draw some of the ten on
+// no frame this point ever sees.
+//
 // THE SHELF IS LISTED FRESH. Nothing is solved and no record is set, so a row
-// carries the least text it ever carries — "An unsolved row shows none"
+// carries the least text it ever carries — "An unsolved row shows none of the three"
 // (`specs/modes/campaign.md`) of its three records — and all ten are still listed,
 // because the Extras lock nothing and "Every row can be entered".
 //
@@ -61,11 +69,12 @@ interface Line {
  * The frame's text runs gathered into the baselines they were drawn on.
  *
  * A build is free to draw a row as one run of text or as a run per word or per
- * glyph — `specs/ui.md` "fixes no palette, no font", and nothing in `specs/` says
- * how a string reaches the canvas. What every one of those does share is the
- * baseline: the runs of one row are drawn at one `y`, and the rows are drawn at
- * different ones. So the runs are grouped by the `y` their anchor maps to and
- * joined in `x` order, which reads a row the same way whichever way it was drawn.
+ * glyph — `specs/ui.md` "fixes no palette, no font", and `specs/assets.md`,
+ * which puts every word on the stage on the frame as drawn text, fixes no more
+ * than that. What every one of those does share is the baseline: the runs of
+ * one row are drawn at one `y`, and the rows are drawn at different ones. So
+ * the runs are grouped by the `y` their anchor maps to and joined in `x`
+ * order, which reads a row the same way whichever way it was drawn.
  */
 function linesOf(draws: readonly TextDraw[]): Line[] {
   const baselines = new Map<number, TextDraw[]>();

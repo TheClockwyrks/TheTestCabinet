@@ -20,11 +20,11 @@
 //
 // HOW TWO PAGES ARE TOLD APART. By the pixels of the whole stage, which is the
 // one reading that holds whatever a build draws its pages with — `specs/ui.md`
-// "fixes no palette, no font, and no background", and a page's copy may reach the
-// canvas as text, as a picture, or as both. Two pages are different when any
-// device pixel of the stage differs; the comparison is `samePicture`, which
-// counts a pixel as moved only past `CHANNEL_EPSILON`, so a build is not held to
-// a byte.
+// "fixes no palette, no font, and no background", and beside the copy
+// `specs/assets.md` draws as text a page may carry a picture of its own. Two
+// pages are different when any device pixel of the stage differs; the comparison
+// is `samePicture`, which counts a pixel as moved only past `CHANNEL_EPSILON`, so
+// a build is not held to a byte.
 //
 // THE VERDICT. Every page from `0` to `HOWTO_PAGES - 1` is reached and reported
 // as the page shown, and each of the ten pairs of pages is drawn differently from

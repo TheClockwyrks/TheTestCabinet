@@ -24,8 +24,11 @@
 // mote still on its own hex, so the positions the rule reads are the two hex
 // centres.
 //
-// HOW AN EFFECT IS READ. A played system is a picture that changes from frame to
-// frame — "Each play of a system varies, and that variation is correct" — where it
+// HOW AN EFFECT IS READ. A played system goes on changing the picture over the
+// frames after the one it fired on — "A play is watched rather than glimpsed: an
+// instance fired on one frame goes on changing the picture at its event's position
+// over the frames that follow it, decaying to empty across them rather than being
+// over by the next frame" (`specs/assets.md`) — where it
 // plays, and a faulted run is the quietest place to read one: "A fault freezes the
 // run where it stood ... nothing advances further" (`specs/simulation.md`). No rise
 // and no set is placed, so no aperture turns either. Each system is "authored

@@ -1,11 +1,13 @@
 // assets/rise-frames-distinct — the six rise frames differ from one another.
 //
-// THE RULE, from the art bar of `specs/assets.md`: "The six frames of each aperture
-// read as one continuous turn rather than a flicker." The sheet is played for that
-// reason — each rise on the field "draws frame `floor(state.simTime /
-// APERTURE_FRAME_TIME) mod APERTURE_FRAMES` of its own sheet ... so both apertures
-// turn continuously" — and a sheet whose frames are all the same picture turns
-// through nothing at all, however fast it is indexed.
+// THE RULE, from the sheets of `specs/assets.md`: "The six frames are six stages
+// of one turn, advancing by an equal step through exactly one period of the
+// aperture's own motif: frame `5` runs back into frame `0`, and NO TWO FRAMES OF
+// A SHEET ARE THE SAME IMAGE." The sheet is played for that reason — each rise on
+// the field "draws frame `floor(state.simTime / APERTURE_FRAME_TIME) mod
+// APERTURE_FRAMES` of its own sheet ... so both apertures turn continuously" — and
+// a sheet whose frames repeat turns through less than the period, however fast it
+// is indexed.
 //
 // WHAT IT READS. Every one of the fifteen pairs differs on at least
 // `DIFFER_MIN_SHARE` of the `48 x 48` canvas the two share. One frame shipped six
@@ -15,9 +17,10 @@
 // straight-alpha canvas leaves those bytes undefined and a player sees nothing either
 // way.
 //
-// WHAT IT DOES NOT DECIDE. Whether the six read as ONE CONTINUOUS TURN rather than a
-// flicker is the art bar itself, and the reviewer's judgement. This point decides that
-// six pictures were drawn rather than one repeated.
+// WHAT IT DOES NOT DECIDE. Whether the step between the six is an equal one through
+// exactly one period of the motif, and whether the turn reads as continuous rather
+// than as a flicker, are the art bar's own and the reviewer's judgement. This point
+// decides the half a file answers: six pictures were drawn rather than one repeated.
 //
 // THE EVIDENCE is the six frames in order, magnified, so the turn is followed by eye
 // beside the verdict.

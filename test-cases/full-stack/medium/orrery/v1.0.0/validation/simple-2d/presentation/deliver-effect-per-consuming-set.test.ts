@@ -10,10 +10,12 @@
 // EVERY SET IS EVALUATED, then every rise, each in the same reading order."
 //
 // HOW AN EFFECT IS READ. Not by which module a build calls — that is the build's —
-// but by what the frames DO. "Each play of a system varies, and that variation is
-// correct" (`specs/assets.md`), so a played effect is a picture that changes from
-// frame to frame, where it plays. The check poses a world in which nothing else on
-// the field can move and counts the pixels that changed inside each set's own hex.
+// but by what the frames DO. "A play is watched rather than glimpsed: an instance
+// fired on one frame goes on changing the picture at its event's position over the
+// frames that follow it, decaying to empty across them rather than being over by
+// the next frame" (`specs/assets.md`). So the check poses a world in which nothing
+// else on the field can move and counts the pixels that changed inside each set's
+// own hex over the frames AFTER the boundary.
 //
 // WHY NOTHING ELSE CAN MOVE, AND THE ONE THING THAT COULD. The machine is two sets:
 // no arm, no wheel, no track, no sigil, no rise, and — after the boundary consumed

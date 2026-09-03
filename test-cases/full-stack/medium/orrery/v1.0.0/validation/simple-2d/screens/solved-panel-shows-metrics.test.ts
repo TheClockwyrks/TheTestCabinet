@@ -28,13 +28,14 @@
 // if every set's tally has reached the challenge's `target`, the run completes"
 // — and a delivery would be another point's business.
 //
-// HOW THE TEXT IS READ. Nothing in `specs/` says how a string reaches the canvas,
-// so the frame's text runs are gathered by the baseline they were drawn on and
-// read left to right: a build that draws a figure as one call and one that draws
-// it glyph by glyph read alike. A figure counts as drawn when the line carries
-// its digits with no digit beside them, or when a run — or a run of consecutive
-// runs — spells it exactly, which is what a right-aligned column of figures
-// drawn beside one another looks like.
+// HOW THE TEXT IS READ. `specs/assets.md` puts every word on the stage on the
+// frame as drawn text and fixes no more, so the frame's text runs are gathered
+// by the baseline they were drawn on and read left to right: a build that
+// draws a figure as one call and one that draws it glyph by glyph read alike.
+// A figure counts as drawn when the line carries its digits with no digit
+// beside them, or when a run — or a run of consecutive runs — spells it
+// exactly, which is what a right-aligned column of figures drawn beside one
+// another looks like.
 //
 // THE VERDICT. The run really is `complete`, it really reports metrics, and the
 // frame that drew the panel drew all three of them. `cycles` is the figure that

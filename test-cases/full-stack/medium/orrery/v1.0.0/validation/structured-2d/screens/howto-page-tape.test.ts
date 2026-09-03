@@ -11,21 +11,24 @@
 // list this page must name is derived from `BINDINGS` here rather than written
 // out, which is what makes it the specification's list and not a copy of one.
 //
-// THE COPY IS READ AS TEXT, because `specs/assets.md` says where it comes from:
-// under What stays drawn in code, "The title, howto, and select screens, the
-// solved panel, and all text" are drawn by the build, and "No produced file
-// covers the following". A page's words reach the canvas through the text
-// operations, so that is where they are read.
+// THE COPY IS READ AS TEXT, because that is how `specs/assets.md` puts it on the
+// stage: under What stays drawn in code, "The title, howto, and select screens,
+// the solved panel, and all text" are drawn by the build, and "Every word the
+// game puts on the stage is drawn as text ... rather than as shapes traced into
+// the form of letters or assembled from images of glyphs". A page's words reach
+// the canvas through the text operations, so that is where they are read.
 //
-// HOW A KEY COUNTS AS NAMED. `specs/` fixes the KEY — its `KeyboardEvent.code` —
-// and not the spelling a page uses for it, and `specs/ui.md` fixes no font and no
-// layout, so the reading is deliberately loose about everything but the name
-// itself. The frame's text runs are gathered onto the baselines they were drawn
-// on, exactly as the select-screen checks gather a row, and a key counts as named
-// when its CAP stands on its own among the words of the page — `A`, `W / S`,
-// `(G)` and `[T]` all count, and the `a` of "a tape" does not, because a key is
-// named on a screen by its cap. A key whose name is a word — `Delete`,
-// `Backspace` — counts wherever that word appears, in any case.
+// HOW A KEY COUNTS AS NAMED is fixed with the pages: "Where a page names a key it
+// names the key itself rather than the action it fires, spelled as the keyboard
+// spells it: a letter key by its capital letter standing on its own, `Space`,
+// `Delete`, and `Backspace` by their names, and the comma and period keys by the
+// character each types or by that character's name" (`specs/ui.md`). Nothing
+// beyond the spelling is fixed — `specs/ui.md` fixes no font and no layout — so
+// the frame's text runs are gathered onto the baselines they were drawn on,
+// exactly as the select-screen checks gather a row, and a letter key counts as
+// named when its CAP stands on its own among the words of the page: `A`, `W / S`,
+// `(G)` and `[T]` all count, and the `a` of "a tape" does not. A key whose name is
+// a word — `Delete`, `Backspace` — counts wherever that word appears, in any case.
 //
 // THE POSE. A fresh session, the how-to, and its page moved to `2` with
 // `setHowtoPage`, the faculty gate `specs/instrumentation.md` names for the page.

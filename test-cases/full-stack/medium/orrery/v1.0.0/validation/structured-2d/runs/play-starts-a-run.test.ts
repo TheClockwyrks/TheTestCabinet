@@ -10,10 +10,9 @@
 //
 // WHY THE STATUS IS `running` RATHER THAN `paused`. `specs/simulation.md` defers
 // it — "Which action produces `running` rather than `paused` is in
-// `specs/editor.md`" — and `specs/editor.md` fixes the pair: `step` "starts the
-// run paused at its settle", and "While the status is `running` or `paused`,
-// `play` toggles between the two". `play` is therefore the action that produces
-// the other one of the two, `running`.
+// `specs/editor.md`" — and `specs/editor.md` says it outright: "The `play` action
+// starts a run when every rise and every set is placed, and THE RUN IT STARTS IS
+// `running`", where `step` "starts the run paused at its settle".
 //
 // THE CONFIGURATION. `BARE` — one reagent, one product — with every part its
 // readiness condition names: the rise for reagent `0`, the set for product `0`,

@@ -11,10 +11,11 @@
 // `solved-panel-appears-on-complete`'s, and the metrics, the records and the menu
 // under the heading are each their own item.
 //
-// THE COPY IS READ AS TEXT, because `specs/assets.md` says where it comes from:
-// under What stays drawn in code, "The title, howto, and select screens, the
-// solved panel, and all text" are drawn by the build, and "No produced file
-// covers the following". The frame's text runs are gathered onto the baselines
+// THE COPY IS READ AS TEXT, because that is how `specs/assets.md` puts it on the
+// stage: under What stays drawn in code, "The title, howto, and select screens,
+// the solved panel, and all text" are drawn by the build, and "Every word the
+// game puts on the stage is drawn as text ... rather than as shapes traced into
+// the form of letters or assembled from images of glyphs". The frame's text runs are gathered onto the baselines
 // they were drawn on, so a heading drawn as one run and a heading drawn word by
 // word read alike, and the comparison ignores spacing and case, which
 // `specs/ui.md` fixes no more than it fixes a palette or a font.

@@ -9,10 +9,12 @@
 // pose holding nothing, every wheel's six fixtures placed, the settle, `sim.cycle`
 // at `0` ... and `sim.status` `running`" — and it is a pose like every other one
 // there. `CUES.start` is the cue of the player starting a run: "`start` |
-// `CUES.start` | A run starts" (`specs/ui.md`), and the same row of
-// `specs/instrumentation.md` marks exactly where the two part company: "The
-// readiness condition the `play` action applies is not applied", so `startRun` is
-// deliberately not the player's `play`.
+// `CUES.start` | A run starts" (`specs/ui.md`), and the same file says outright
+// which side `startRun` is on: "no other pose raises a cue at all, on that frame
+// or any later one — a part the machine group places, moves, or removes is silent,
+// AND SO IS A RUN `startRun` BEGINS". Its own row marks where the two part
+// company: "The readiness condition the `play` action applies is not applied", so
+// `startRun` is deliberately not the player's `play`.
 //
 // THE SILENCE IS READ TWICE, at the call and over the frames advanced afterwards,
 // where a cue the pose had merely deferred would arrive. The machine is a rise, a

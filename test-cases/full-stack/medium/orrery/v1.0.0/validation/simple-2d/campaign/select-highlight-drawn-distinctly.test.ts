@@ -23,11 +23,14 @@
 // SO BOTH ROWS MUST CHANGE, AND ONLY THEY MAY. Challenge 1's row was distinct from
 // the rest in the first frame and is one of the rest in the second, and challenge
 // 2's row the other way about, so each of the two bands is drawn differently
-// between the frames. And the difference is confined to what the two poses
-// changed: outside the two rows and a full row's pitch of margin either side, the
-// frame is the frame it was. A build that redrew the whole screen, or that
-// answered the highlight somewhere other than on the row, is not showing which row
-// `confirm` would open.
+// between the frames. The confinement is the rule's own second half: "One row is
+// highlighted, drawn distinctly from the rest, and NOTHING ELSE ON THE SCREEN
+// READS OFF THE HIGHLIGHT: moving it changes how the row it left and the row it
+// reached are drawn, and leaves the rest of the screen as it was"
+// (`specs/modes/campaign.md`). So outside the two rows and a full row's pitch of
+// margin either side, the frame is the frame it was: a build that redrew the
+// whole screen, or that answered the highlight somewhere other than on the row,
+// leaves the rest of the screen as it was in neither case.
 //
 // WHAT IS READ is the whole stage, once per pose, with the rows' bands found by
 // their challenges' names rather than by a layout figure `specs/` does not fix.

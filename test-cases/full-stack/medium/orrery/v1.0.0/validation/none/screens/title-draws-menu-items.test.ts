@@ -16,13 +16,14 @@
 // arrival state `specs/ui.md` fixes — `menuIndex` `0` — where two of the three
 // are unhighlighted.
 //
-// HOW THE TEXT IS READ. Nothing in `specs/` says how a string reaches the canvas,
-// and letter spacing is not portable, so a build is free to draw one run of copy
-// as one call, as a call per word, or as a call per glyph. What all of those
-// share is the baseline: one line of copy is drawn at one `y`. So the frame's
-// text runs are gathered by the `y` their anchor maps to and joined in `x` order,
-// and the match is by substring, so a build is free to draw a marker or padding
-// around an item's words.
+// HOW THE TEXT IS READ. `specs/assets.md` puts every word on the stage on the
+// frame as drawn text and fixes no more — "Which typeface carries them is
+// yours" — and letter spacing is not portable, so a build is free to draw one
+// run of copy as one call, as a call per word, or as a call per glyph. What
+// all of those share is the baseline: one line of copy is drawn at one `y`. So
+// the frame's text runs are gathered by the `y` their anchor maps to and
+// joined in `x` order, and the match is by substring, so a build is free to
+// draw a marker or padding around an item's words.
 //
 // THE VERDICT. Every entry of `TITLE_ITEMS` is on some line of the title frame,
 // and the failure names the first entry that is not.

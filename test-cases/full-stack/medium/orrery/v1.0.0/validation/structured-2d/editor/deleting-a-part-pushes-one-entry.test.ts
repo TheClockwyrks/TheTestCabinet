@@ -27,14 +27,18 @@
 // second press is measured from a history the first left as it found it. Neither
 // part is on a hex of the other, and the arm's grippers reach neither.
 //
-// THE PART IS FOUND BY ITS KIND RATHER THAN BY ITS ID. Nothing in `specs/`
-// requires a restored part to carry the id it had before it was deleted, so the
-// check reads the one arm and the one track on the field rather than asking for an
-// id the specification never promised.
+// AND THE PART THAT COMES BACK IS THE PART THAT WENT. "A part an entry restores
+// is the part it was, its identity included, so a selection or a cursor that
+// named it names it still, and only a part the restored machine does not hold
+// counts as removed" (`specs/editor.md`, Undo and redo). "Whole" therefore takes
+// in the id as well as the pose, the path and the tape, so each undo is read on
+// the id the deletion took away rather than on whatever part of that kind the
+// machine now holds.
 //
 // THE VERDICT. `editor.undoDepth` rises by exactly `1` on each press, the part is
-// off the field afterwards, and one undo puts it back with the rotation, length
-// and tape it had, or with the path and the `closed` flag it had.
+// off the field afterwards, and one undo puts it back under the id it had, with
+// the rotation, length and tape it had, or with the path and the `closed` flag it
+// had.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -132,10 +136,10 @@ it("raises the undo depth by one per deletion, and one undo returns the part who
     "deleting a part pushes exactly one entry onto the undo history",
   );
 
-  const restoredArm = solePartOfKind(readings.armBack, "arm");
+  const restoredArm = partById(readings.armBack, arm?.id ?? -1);
   assertNotNull(
     restoredArm,
-    "one undo restores the machine, so the arm is on the field again",
+    "one undo restores the machine, so the arm is on the field again as the part it was",
   );
   assertEqual(restoredArm?.q, ARM_AT.q, "the entry held the arm's anchor");
   assertEqual(restoredArm?.r, ARM_AT.r, "the entry held the arm's anchor");
@@ -170,10 +174,10 @@ it("raises the undo depth by one per deletion, and one undo returns the part who
     "deleting the track pushes exactly one entry, measured from the history the undo left",
   );
 
-  const restoredTrack = solePartOfKind(readings.trackBack, "track");
+  const restoredTrack = partById(readings.trackBack, track?.id ?? -1);
   assertNotNull(
     restoredTrack,
-    "one undo restores the machine, so the track is on the field again",
+    "one undo restores the machine, so the track is on the field again as the part it was",
   );
   assertDeepEqual(
     restoredTrack?.cells,

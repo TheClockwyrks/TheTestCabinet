@@ -9,9 +9,11 @@
 // pose sets one thing, and the game's own editor rules, simulation, sigils, and
 // completion test do the rest"; "No pose decides an outcome". What `CUES.place`
 // is the cue OF is the player's own edit — "`place` | `CUES.place` | A part is
-// placed or moved" (`specs/ui.md`) — and the specification hands the deferral to
-// the pointer alone: "The cue of an edit one of THEM commits sounds on the next
-// frame advanced."
+// placed or moved" (`specs/ui.md`) — and the deferral is the pointer's alone:
+// "The three pointer operations feed the player's input path, so the edit one of
+// them commits sounds on the next frame advanced; NO OTHER POSE RAISES A CUE AT
+// ALL, ON THAT FRAME OR ANY LATER ONE — a part the machine group places, moves, or
+// removes is silent, and so is a run `startRun` begins."
 //
 // SO THE SILENCE IS READ TWICE. Once at the call, with no frame between the five
 // poses, which is the sentence above stated exactly; and once over the frames

@@ -17,9 +17,11 @@
 // and an item about the history has to be driven through the editor.
 //
 // THE DEPTH IS READ AS A RISE, NOT AS A VALUE, and the undo is read on the
-// MACHINE rather than on a part id: what `undo` restores is "the machine as it
-// stood before the edit", and nothing fixes the ids a restored machine carries.
-// Before the drag the field is empty, so afterwards it must be empty again.
+// MACHINE: what `undo` restores is "the machine as it stood before the edit", and
+// "only a part the restored machine does not hold counts as removed"
+// (`specs/editor.md`, Undo and redo). Before the drag the field is empty, so the
+// part the release added is one the restored machine does not hold, and
+// afterwards the field must be empty again.
 //
 // THE CONFIGURATION. The bare challenge, whose tray's first entry is its one
 // permitted kind, `arm`; an empty machine; and one drag from that entry onto the

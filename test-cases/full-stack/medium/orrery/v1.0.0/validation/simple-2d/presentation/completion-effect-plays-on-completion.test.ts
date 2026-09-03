@@ -7,14 +7,20 @@
 // every set's tally has reached the challenge's `target`, the run completes: the
 // status becomes `complete` and the metrics are recorded."
 //
-// HOW AN EFFECT IS READ. A played system is a picture that changes from frame to
-// frame — "Each play of a system varies, and that variation is correct"
-// (`specs/assets.md`) — where it plays, and each is "authored radially symmetric",
-// so an instance centered on a hex moves more of that hex than of one three hexes
-// away. A completed run is the quietest place there is to read one: nothing of the
-// machine advances once the status is `complete`, and `specs/ui.md` keeps the field
-// itself in view, the panel "drawn over" a run whose "field stays visible behind
-// them".
+// HOW AN EFFECT IS READ. "A play is watched rather than glimpsed: an instance
+// fired on one frame goes on changing the picture at its event's position over the
+// frames that follow it, decaying to empty across them rather than being over by
+// the next frame" (`specs/assets.md`), and each system is "authored radially
+// symmetric", so an instance centered on a hex moves more of that hex than of one
+// three hexes away. A completed run is the quietest place there is to read one:
+// nothing of the machine advances once the status is `complete`.
+//
+// AND THE PANEL DOES NOT HIDE IT. Hex `(0, 0)` is the middle of the field, which
+// is where the solved panel is drawn, so this point turns on `specs/ui.md`'s
+// "Neither panel hides what it covers: at every hex under a panel the machine, the
+// motes, and any effect playing there show through it, so what changes beneath a
+// panel changes the frame." A build whose panel painted over the middle of the
+// field would still be showing the effect there.
 //
 // THE COMPLETION IS REACHED WITH NOTHING DELIVERED, which is what isolates this
 // effect from the delivery one. `setTally(index, n)` "Sets the tally of the open

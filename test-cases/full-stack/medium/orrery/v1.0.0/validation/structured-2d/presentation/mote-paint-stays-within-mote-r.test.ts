@@ -17,13 +17,15 @@
 // one with it removed, everything else untouched — so what is measured is the
 // mote's own contribution and not the field drawn under it.
 //
-// WHAT COUNTS AS A PIXEL "MORE THAN MOTE_R FROM ITS POSITION". A pixel covers an
-// area rather than a point, so a pixel is outside the radius only when the WHOLE
-// of it is: the distance from the mote's position to the nearest point of the
-// pixel's square is more than `MOTE_R`. That is the reading of the rule that does
-// not turn on where a hex centre falls between two pixels — `hexY` is not a whole
-// number for most rows — and it leaves the verdict where the rule puts it, on the
-// form rather than on the resampling.
+// WHAT COUNTS AS A PIXEL "MORE THAN MOTE_R FROM ITS POSITION" is the art bar's
+// own next clause: "The radius bounds the form drawn rather than the pixels it
+// lands on: a form drawn to `MOTE_R` meets the bound wherever a hex center falls
+// between two pixels, and paint sits outside the radius only where the whole of a
+// pixel does" (`specs/assets.md`). A pixel covers an area rather than a point, so
+// it is outside the radius only when the distance from the mote's position to the
+// NEAREST point of the pixel's square is more than `MOTE_R`. That leaves the
+// verdict where the rule puts it, on the form rather than on the resampling —
+// `hexY` is not a whole number for most rows.
 //
 // A MOTIONLESS BUILD DOES NOT PASS THIS. A frame that drew nothing for the mote
 // differs from the frame without it nowhere at all, and would clear an "outside

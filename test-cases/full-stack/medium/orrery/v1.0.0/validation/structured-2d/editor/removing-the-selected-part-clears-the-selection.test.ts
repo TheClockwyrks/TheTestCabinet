@@ -24,23 +24,24 @@
 // and reads `null` just after. Without the first reading a build that never
 // selects anything would pass; without the second the item is not decided.
 //
+// THE RESTORED ARM IS THE ARM. "A part an entry restores is the part it was, its
+// identity included, so a selection or a cursor that named it names it still, and
+// only a part the restored machine does not hold counts as removed"
+// (`specs/editor.md`, Undo and redo). So route 2's undo is read on the id: the
+// arm the undo hands back carries the id the arm the delete took away had, and
+// that id is what the redo is asked to remove a second time. Without it the two
+// halves of route 2 are about two different parts.
+//
 // THE CONFIGURATION. One arm at `(0, 0)` and one wheel at `(3, 0)`, far enough
 // apart that neither reaches the other. The wheel is the part the removals never
 // touch, so the field is never empty and "clears the selection" cannot be
-// confused with "there is nothing to select". The arm and the wheel are of
-// different kinds, so the arm restored by the undo in route 2 is found by its kind
-// rather than by an id nothing in `specs/` requires a restored part to keep.
+// confused with "there is nothing to select".
 //
 // THE VERDICT. `editor.selected` reads `null` after the delete, after the redo,
 // and after the undo.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLength,
-  assertNotNull,
-  assertNull,
-} from "../assert";
+import { assertEqual, assertLength, assertNull } from "../assert";
 import { armPart, derivedTray, solution } from "../formats";
 import { BARE, EAST, ORIGIN, WEST } from "../fixtures";
 import {
@@ -81,16 +82,17 @@ it("clears the selection on the delete, on the redo, and on the undo", async () 
     const posed = await h.snapshot();
 
     // Route 1: the edit.
+    const arm = solePartOfKind(posed, "arm")?.id ?? -1;
     await h.debug.setFocus("field");
-    await h.debug.setSelected(solePartOfKind(posed, "arm")?.id ?? -1);
+    await h.debug.setSelected(arm);
     const beforeDelete = await h.snapshot();
     await pressAction(h, "part-delete");
     const deleted = await h.snapshot();
 
-    // Route 2: the redo of that same deletion.
+    // Route 2: the redo of that same deletion, on the arm the undo hands back.
     await pressAction(h, "undo");
     const restored = await h.snapshot();
-    await h.debug.setSelected(solePartOfKind(restored, "arm")?.id ?? -1);
+    await h.debug.setSelected(arm);
     const beforeRedo = await h.snapshot();
     await pressAction(h, "redo");
     const redone = await h.snapshot();
@@ -102,6 +104,7 @@ it("clears the selection on the delete, on the redo, and on the undo", async () 
     const undone = await h.snapshot();
 
     return {
+      arm,
       posed,
       beforeDelete,
       deleted,
@@ -119,8 +122,9 @@ it("clears the selection on the delete, on the redo, and on the undo", async () 
     "the machine stands with the arm and the wheel the scenario placed",
   );
 
-  assertNotNull(
+  assertEqual(
     readings.beforeDelete.editor.selected,
+    readings.arm,
     "the arm is selected before the part-delete press",
   );
   assertNull(
@@ -128,13 +132,15 @@ it("clears the selection on the delete, on the redo, and on the undo", async () 
     "an edit that removes the selected part clears the selection",
   );
 
-  assertNotNull(
-    solePartOfKind(readings.restored, "arm"),
-    "the undo put the arm back, so there is something for the redo to remove",
+  assertEqual(
+    solePartOfKind(readings.restored, "arm")?.id,
+    readings.arm,
+    "the undo put the arm back as the part it was, identity included",
   );
-  assertNotNull(
+  assertEqual(
     readings.beforeRedo.editor.selected,
-    "the restored arm is selected before the redo press",
+    readings.arm,
+    "so the selection names it again before the redo press",
   );
   assertNull(
     readings.redone.editor.selected,

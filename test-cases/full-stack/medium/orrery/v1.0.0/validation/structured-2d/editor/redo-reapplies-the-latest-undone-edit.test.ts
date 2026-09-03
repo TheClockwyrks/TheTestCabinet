@@ -13,10 +13,14 @@
 // is the build's own report against itself rather than against an object written
 // out here, so no field the specification does not fix is required or forbidden.
 //
-// THE EDIT IS A ROTATION, chosen because it removes and re-adds nothing: nothing
-// in `specs/` fixes a restored part's id, and a rotation asks the redo to
-// re-apply an edit without giving a build any excuse to hand back a different
-// machine.
+// AND IT TAKES IN EACH PART'S IDENTITY, because `editor.parts` carries every
+// part's `id` and the rule fixes it: "A part an entry restores is the part it
+// was, its identity included" (`specs/editor.md`, Undo and redo). A build that
+// re-applied the edit and renumbered the machine while doing it fails here.
+//
+// THE EDIT IS A ROTATION, which changes one part and touches the placement order
+// of none, so what the redo has to re-apply is one edit over a machine that is
+// otherwise exactly the one the undo left.
 //
 // THE UNDO IS READ AS WELL AS THE REDO. If the undo restored nothing, the parts
 // after the redo would trivially equal the parts before it, so the check reads

@@ -85,9 +85,10 @@ afterEach(async () => {
  *
  * The runs are gathered into the baselines they were drawn on and read left to
  * right, because a build is free to draw a line of copy as one call, as a call
- * per word, or as a call per glyph — letter spacing is not portable, and nothing
- * in `specs/` says how a string reaches the canvas. Joining a baseline's runs in
- * `x` order reads a banner the same way whichever of those it was drawn as.
+ * per word, or as a call per glyph — letter spacing is not portable, and
+ * `specs/assets.md` fixes no more than that the copy reaches the frame as
+ * drawn text. Joining a baseline's runs in `x` order reads a banner the same
+ * way whichever of those it was drawn as.
  */
 function faultsNamedOnField(calls: readonly DrawCall[]): string[] {
   const baselines = new Map<number, TextDraw[]>();

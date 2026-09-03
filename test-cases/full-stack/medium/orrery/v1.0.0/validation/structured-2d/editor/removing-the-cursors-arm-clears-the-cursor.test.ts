@@ -32,12 +32,17 @@
 // reads `null` just after. Without the first reading a build whose cursor is never
 // set would pass.
 //
+// THE RESTORED ARM IS THE ARM. "A part an entry restores is the part it was, its
+// identity included, so a selection or a cursor that named it names it still, and
+// only a part the restored machine does not hold counts as removed"
+// (`specs/editor.md`, Undo and redo). Route 2 therefore reads the undo on the id:
+// the arm handed back carries the id the deleted arm had, and the cursor is
+// pointed back at that same id for the redo to take away a second time.
+//
 // THE CONFIGURATION. One arm at `(0, 0)` and one wheel at `(3, 0)` — "a wheel
 // carries a tape like an arm" (`specs/parts.md`), so the panel keeps a row after
 // every removal and a cleared cursor cannot be confused with a panel that has no
-// rows left. The two are of different kinds, so the arm restored by the undo in
-// route 2 is found by its kind rather than by an id nothing in `specs/` requires a
-// restored part to keep.
+// rows left.
 //
 // THE VERDICT. `editor.cursor` reads `null` after the delete, after the redo, and
 // after the undo.
@@ -45,8 +50,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertDeepEqual,
+  assertEqual,
   assertLength,
-  assertNotNull,
   assertNull,
 } from "../assert";
 import { armPart, derivedTray, solution } from "../formats";
@@ -100,11 +105,11 @@ it("clears the cursor on the delete, on the redo, and on the undo", async () => 
     await pressAction(h, "part-delete");
     const deleted = await h.snapshot();
 
-    // Route 2: the redo of that same deletion.
+    // Route 2: the redo of that same deletion, on the arm the undo hands back.
     await pressAction(h, "undo");
     const restored = await h.snapshot();
     const back = solePartOfKind(restored, "arm")?.id ?? -1;
-    await h.debug.setCursor(back, COLUMN);
+    await h.debug.setCursor(arm, COLUMN);
     const beforeRedo = await h.snapshot();
     await pressAction(h, "redo");
     const redone = await h.snapshot();
@@ -148,14 +153,15 @@ it("clears the cursor on the delete, on the redo, and on the undo", async () => 
     "an edit that removes the cursor's arm clears the cursor",
   );
 
-  assertNotNull(
-    solePartOfKind(readings.restored, "arm"),
-    "the undo put the arm back, so there is something for the redo to remove",
+  assertEqual(
+    readings.back,
+    readings.arm,
+    "the undo put the arm back as the part it was, identity included",
   );
   assertDeepEqual(
     readings.beforeRedo.editor.cursor,
-    { part: readings.back, col: COLUMN },
-    "the cursor points at the restored arm's row before the redo press",
+    { part: readings.arm, col: COLUMN },
+    "so the cursor points at that same arm's row again before the redo press",
   );
   assertNull(
     readings.redone.editor.cursor,

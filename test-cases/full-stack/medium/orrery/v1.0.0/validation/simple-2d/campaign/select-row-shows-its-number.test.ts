@@ -17,9 +17,11 @@
 //
 // WHY THE COURSE IS READ FRESH. Nothing is solved and no record is set, because "A
 // solved row also shows its three records, `cost`, `cycles`, and `area`, each
-// labelled. An unsolved row shows none" (`specs/modes/campaign.md`) — and those
-// figures are digits on the row that are not the row's number. On a fresh course
-// the only number a row has any business drawing is the one this point is about.
+// figure drawn beside a label naming its metric. An unsolved row shows none of the
+// three, and apart from its records the only figure a row carries is its own
+// challenge number" (`specs/modes/campaign.md`) — and those record figures are
+// digits on the row that are not the row's number. On a fresh course the only
+// number a row has any business drawing is the one this point is about.
 //
 // THE VERDICT. Every row draws its own number, `1` through `campaign.count` down
 // the list.
@@ -56,11 +58,12 @@ interface Line {
  * The frame's text runs gathered into the baselines they were drawn on.
  *
  * A build is free to draw a row as one run of text or as a run per word or per
- * glyph — `specs/ui.md` "fixes no palette, no font", and nothing in `specs/` says
- * how a string reaches the canvas. What every one of those does share is the
- * baseline: the runs of one row are drawn at one `y`, and the rows are drawn at
- * different ones. So the runs are grouped by the `y` their anchor maps to and
- * joined in `x` order, which reads a row the same way whichever way it was drawn.
+ * glyph — `specs/ui.md` "fixes no palette, no font", and `specs/assets.md`,
+ * which puts every word on the stage on the frame as drawn text, fixes no more
+ * than that. What every one of those does share is the baseline: the runs of
+ * one row are drawn at one `y`, and the rows are drawn at different ones. So
+ * the runs are grouped by the `y` their anchor maps to and joined in `x`
+ * order, which reads a row the same way whichever way it was drawn.
  */
 function linesOf(draws: readonly TextDraw[]): Line[] {
   const baselines = new Map<number, TextDraw[]>();

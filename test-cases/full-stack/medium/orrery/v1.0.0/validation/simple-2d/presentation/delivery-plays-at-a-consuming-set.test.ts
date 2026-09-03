@@ -10,12 +10,14 @@
 // `specs/simulation.md`: "the sigil phase, then sets, then rises".
 //
 // HOW AN EFFECT IS READ. Not by which module a build calls — that is the build's —
-// but by what the frames DO. "Each play of a system varies, and that variation is
-// correct" (`specs/assets.md`), so a played effect is a picture that changes from
-// frame to frame; and it is placed, so it changes the picture WHERE it plays. The
-// check therefore poses a world in which nothing else on the field can move, and
-// then counts the pixels that changed inside the set's own hex, and inside a bare
-// hex four hexes away.
+// but by what the frames DO. "A play is watched rather than glimpsed: an instance
+// fired on one frame goes on changing the picture at its event's position over the
+// frames that follow it, decaying to empty across them rather than being over by
+// the next frame" (`specs/assets.md`) — so a play is a picture that goes on moving
+// over the frames after the event, and it is placed, so it moves the picture WHERE
+// it plays. The check therefore poses a world in which nothing else on the field
+// can move, and then counts the pixels that changed inside the set's own hex, and
+// inside a bare hex four hexes away.
 //
 // WHY NOTHING ELSE CAN MOVE, AND THE ONE THING THAT COULD. The machine is one set:
 // no arm, no wheel, no track, no sigil, no rise, and — after the boundary consumed

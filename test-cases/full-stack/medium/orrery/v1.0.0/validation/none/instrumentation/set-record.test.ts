@@ -11,7 +11,8 @@
 // The three metrics are the ones `specs/modes/campaign.md` keeps per challenge —
 // "the lowest `cost`, the lowest `cycles`, and the lowest `area` ... each metric
 // independently" — and a solved row is where they are read: "A solved row also
-// shows its three records, `cost`, `cycles`, and `area`, each labelled." That
+// shows its three records, `cost`, `cycles`, and `area`, each figure drawn beside
+// a label naming its metric." That
 // drawing is this item's EVIDENCE; the verdict is the records the snapshot
 // reports, which is what the row is drawn from. How a build labels and formats a
 // figure is the build's, and no sentence of `specs/` fixes it.

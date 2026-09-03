@@ -2,7 +2,8 @@
 // records, each beside its own label.
 //
 // THE RULE. "A solved row also shows its three records, `cost`, `cycles`, and
-// `area`, each labelled" (`specs/modes/campaign.md`, The select screen), and what
+// `area`, each figure drawn beside a label naming its metric"
+// (`specs/modes/campaign.md`, The select screen), and what
 // those figures are is Progression's: "Each challenge keeps its records: the lowest
 // `cost`, the lowest `cycles`, and the lowest `area` over the session's completed
 // runs of it, each metric independently." The snapshot carries them as that
@@ -157,8 +158,9 @@ async function courseNames(count: number): Promise<string[]> {
 /**
  * Whether `text` carries `figure` beside `label`, in either order.
  *
- * "each labelled" fixes that the word and its figure belong together; it fixes
- * neither which side the word goes nor what may sit between them, so a run of up
+ * "Each figure drawn beside a label naming its metric" fixes that the word and its
+ * figure belong together; it fixes neither which side the word goes nor what may
+ * sit between them, so a run of up
  * to six characters that are neither letters nor digits — a space, a colon, a
  * bullet, nothing at all — is allowed between the two, and the figure is required
  * to stand alone rather than inside a longer number.

@@ -15,14 +15,15 @@
 // live, and no key has been pressed, so the only thing the frame can be drawing
 // is the title screen.
 //
-// HOW THE TEXT IS READ. Nothing in `specs/` says how a string reaches the canvas,
-// and letter spacing is not portable, so a build is free to draw one run of copy
-// as one call, as a call per word, or as a call per glyph. What all of those
-// share is the baseline: one line of copy is drawn at one `y`. So the frame's
-// text runs are gathered by the `y` their anchor maps to and joined in `x` order,
-// which reads a line the same way whichever way it was drawn, and the match is by
-// substring rather than by equality so a build is free to set the name inside
-// wider copy.
+// HOW THE TEXT IS READ. `specs/assets.md` puts every word on the stage on the
+// frame as drawn text and fixes no more — "Which typeface carries them is
+// yours" — and letter spacing is not portable, so a build is free to draw one
+// run of copy as one call, as a call per word, or as a call per glyph. What
+// all of those share is the baseline: one line of copy is drawn at one `y`. So
+// the frame's text runs are gathered by the `y` their anchor maps to and
+// joined in `x` order, which reads a line the same way whichever way it was
+// drawn, and the match is by substring rather than by equality so a build is
+// free to set the name inside wider copy.
 //
 // THE VERDICT. Some line of the title frame carries `TITLE_TEXT`.
 

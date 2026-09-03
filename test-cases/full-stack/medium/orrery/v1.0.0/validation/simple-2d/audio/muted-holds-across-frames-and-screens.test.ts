@@ -25,10 +25,12 @@
 // every one of those frames, so a build that cleared it on a screen change and a
 // build that let it decay a frame later are each caught where they went wrong.
 //
-// THE POSE IS A PRESS, NOT A VALUE. No sentence of `specs/` fixes which way the
-// runtime's bit starts, so the bit is read first and pressed only if it is not
-// already on. What is asserted afterwards is that it stayed on — never that it
-// started off.
+// THE BIT STARTS OFF, SO ONE PRESS POSES IT. "Sound is on when the game starts:
+// the mute bit is off on the first frame, so `state.muted` reports `false` until
+// the `mute` action is first pressed, and that first press mutes"
+// (`specs/ui.md`, Audio). The opening value is read before the press, so the ON
+// the tour holds is the work of exactly one press rather than of whatever the
+// session happened to open at.
 //
 // AND THE CLAIM IS BOUNDED. "Until the mute action is pressed again" is the other
 // half of it: the tour ends with a second press, which must put the bit back.
@@ -109,11 +111,17 @@ async function tour(): Promise<Reading[]> {
 
 it("holds the mute bit across every screen and every frame until it is pressed again", async () => {
   await openTitle(h);
-  if (!(await mirrored())) await pressAction(h, "mute");
+  assertEqual(
+    await mirrored(),
+    false,
+    "sound is on when the game starts: the mute bit is off on the first frame",
+  );
+
+  await pressAction(h, "mute");
   assertEqual(
     await mirrored(),
     true,
-    "the mute action poses the runtime's bit ON, which is the state this check holds",
+    "and that first press mutes, which is the state this check holds",
   );
 
   const readings = await captureReplay(h, "held", () => tour());

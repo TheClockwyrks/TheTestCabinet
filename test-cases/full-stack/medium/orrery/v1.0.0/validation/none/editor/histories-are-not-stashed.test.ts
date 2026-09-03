@@ -32,7 +32,8 @@
 // "the current machine as a solution document, exactly what `loadSolution` would
 // accept to rebuild it". That is the build's own report of the machine against
 // itself, and it carries no part ids — which nothing in `specs/` requires a
-// restored machine to keep.
+// machine a STASH restores to keep. (The identity rule of Undo and redo is about
+// a part an undo ENTRY restores, and a visit's histories do not survive it.)
 //
 // THE VERDICT. The second visit shows the same challenge with the machine the
 // first visit left, and `editor.undoDepth` and `editor.redoDepth` both read `0`.

@@ -15,15 +15,17 @@
 // is posed: the bit belongs to the runtime, so the check reads whatever it stands
 // at, presses the bound key, and reads it again.
 //
-// WHY THE READING IS A FLIP RATHER THAN A VALUE. No sentence of `specs/` fixes
-// which way the runtime's bit starts, so a check that demanded `false` first would
-// be asserting the reference rather than the specification. What the rule fixes is
-// that the action TOGGLES and that the snapshot reports the bit as it stands, so
-// the reading is that the press changed it and a second press changed it back.
+// WHERE THE BIT STANDS TO BEGIN WITH IS FIXED TOO. "Sound is on when the game
+// starts: the mute bit is off on the first frame, so `state.muted` reports
+// `false` until the `mute` action is first pressed, and that first press mutes"
+// (`specs/ui.md`, Audio). So the opening reading is a value and not a
+// don't-care, and the two presses after it are read as the flips the toggle
+// makes: on, then off again.
 //
-// THE VERDICT. The value the snapshot reports flips on the frame the `mute` press
-// is delivered, and flips back on the next one — so what it reports is a bit the
-// action moves rather than a constant.
+// THE VERDICT. The snapshot opens reporting `false`; the value flips to `true` on
+// the frame the `mute` press is delivered and stands there across a frame; and a
+// second press flips it back — so what it reports is the runtime's bit as the
+// action moves it rather than a constant.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -47,28 +49,31 @@ afterEach(async () => {
 
 it("flips with the mute action and reports the bit as it stands", async () => {
   await openTitle(h);
-  const before = (await h.snapshot()).muted;
-  assertEqual(typeof before, "boolean", "muted is a boolean");
+  assertEqual(
+    (await h.snapshot()).muted,
+    false,
+    "sound is on when the game starts: the mute bit is off on the first frame",
+  );
 
   await pressAction(h, "mute");
   await captureStill(h, "toggled");
   assertEqual(
     (await h.snapshot()).muted,
-    !before,
-    "the mute action toggles the runtime's bit, and muted reports it flipped",
+    true,
+    "the first press mutes, and muted reports the runtime's bit flipped",
   );
 
   await h.advance(1);
   assertEqual(
     (await h.snapshot()).muted,
-    !before,
+    true,
     "the flipped bit stands across a frame, because muted mirrors it rather than pulsing",
   );
 
   await pressAction(h, "mute");
   assertEqual(
     (await h.snapshot()).muted,
-    before,
+    false,
     "a second press toggles it back, so what is reported is the bit rather than a constant",
   );
 });

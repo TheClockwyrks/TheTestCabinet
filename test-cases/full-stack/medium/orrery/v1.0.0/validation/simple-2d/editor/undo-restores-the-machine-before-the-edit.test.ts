@@ -20,10 +20,16 @@
 // required or forbidden. The reading is guarded first: an empty `parts` would
 // compare equal to an empty `parts`, so the machine is asserted to be standing.
 //
-// THE EDIT IS A ROTATION, chosen because it removes and re-adds nothing. Placing
-// and deleting are the routes that could make a build renumber the machine, and
-// nothing in `specs/` fixes a restored part's id; a rotation asks the entry to
-// hold the machine without giving a build any excuse to hand back a different one.
+// AND IT TAKES IN EACH PART'S IDENTITY, because `editor.parts` carries every
+// part's `id` and the rule fixes it: "A part an entry restores is the part it
+// was, its identity included, so a selection or a cursor that named it names it
+// still" (`specs/editor.md`, Undo and redo). A build that put the same three
+// parts back under fresh ids has not restored the machine as the snapshot
+// reported it, and fails here.
+//
+// THE EDIT IS A ROTATION, which changes one part and touches the placement order
+// of none, so what the entry has to hold is the whole machine rather than only
+// the part the press moved.
 //
 // THE CONFIGURATION. An arm at `(0, 0)` at rotation `1`, length `2`, carrying a
 // two-cell tape; a three-cell open track at `(-2, 2)`; and a `bind` at `(2, -2)`

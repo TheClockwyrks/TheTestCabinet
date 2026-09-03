@@ -4,7 +4,8 @@
 // THE RULE. The Extras select screen shows "the records a solved row shows ... as
 // `specs/modes/campaign.md` states them" (`specs/modes/extras.md`, The select
 // screen), and that file states them: "A solved row also shows its three records,
-// `cost`, `cycles`, and `area`, each labelled. An unsolved row shows none."
+// `cost`, `cycles`, and `area`, each figure drawn beside a label naming its
+// metric. An unsolved row shows none of the three."
 // The records themselves are what the challenge keeps: "Each challenge keeps its
 // records: the lowest `cost`, the lowest `cycles`, and the lowest `area` over the
 // session's completed runs of it, each metric independently" (Progression), and
