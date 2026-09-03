@@ -27,9 +27,20 @@
 // counted wherever in that window it lands, without this check having to arrange
 // for real time to pass. What the window is, is the check's own duration — the
 // load, the crossings and the frames it drives, some half a second of real time on
-// an idle host and longer on a busy one — rather than a span it sets aside. What
-// it does not reach is a sound a build defers past the read, and no finite reading
-// of a negative reaches that.
+// an idle host and longer on a busy one — rather than a span it sets aside.
+//
+// AND WHAT IT DOES NOT REACH, SAID PLAINLY. A sound a build defers behind a timer
+// longer than that window. The two engine-backed suites close that door outright:
+// their build's timers are the suite's own process's, so they run on fake ones and
+// wind a simulated minute forward for nothing. A build's timers here are the
+// BROWSER's, out of this process's reach, and the alternatives — firing the page's
+// pending callbacks early, or installing a virtual clock under a build that owns
+// its own frame loop — would each put a mechanism between a conforming build and
+// its point, which is a worse thing to be wrong about than a sound no build in
+// this project has ever deferred. So the window is the honest one, and it is
+// stated here rather than papered over: sitting through a fixed stretch of the
+// wall clock would only have moved it, and would have moved it by however much a
+// busy host felt like.
 //
 // AND THE BUILD'S OWN LOOP IS INSIDE THAT WINDOW TOO. `setAutoStep(false)` "stops
 // the frame loop advancing the simulation from the wall clock" and does no more

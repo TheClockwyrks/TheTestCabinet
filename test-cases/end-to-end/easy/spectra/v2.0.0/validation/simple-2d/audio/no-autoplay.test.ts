@@ -28,14 +28,22 @@
 //
 // AND THE FAR EDGE IS THE READ, NOT A STRETCH INSIDE IT. Both subscriptions are
 // passive and stay live for the whole check: the bus announces a play
-// synchronously, from inside the call the game makes, so a cue the build plays off
-// a timer it set is recorded wherever in this check it fires, in real time,
-// whether or not anything is stepping the game at that moment. Nothing here
-// samples a window; the arrays below hold everything the bus announced between the
-// build's first line and the read. What that window is, is the check's own
-// duration — the harness, the art, and the frames it drives — rather than a span it
-// sets aside. What it does not reach is a cue a build defers past the read, and no
-// finite reading of a negative reaches that.
+// synchronously, from inside the call the game makes, so a cue the build plays is
+// recorded whether or not anything is stepping the game at that moment. Nothing
+// here samples a window; the arrays below hold everything the bus announced
+// between the build's first line and the read.
+//
+// THE BUILD'S OWN TIMERS ARE WOUND ON RATHER THAN WAITED OUT. A cue the build
+// plays from a `setTimeout` it set at load is a cue played before the first key,
+// and the driven frames alone would never see it: the timer fires against the
+// wall clock, not against a tick. So the suite runs the whole check on FAKE
+// timers, installed before the build's first line, and winds them
+// {@link TIMER_HORIZON_MS} forward once the frames are driven — which fires every
+// timer and every interval the build armed inside that horizon, immediately, and
+// records what each of them played. A whole simulated minute costs no wall clock
+// at all and the same thing happens on an idle host and a loaded one, so this
+// reaches further than sitting through a stretch of real time ever did and reaches
+// exactly as far every time.
 //
 // SO NO STRETCH OF THE WALL CLOCK IS DRIVEN, and that is deliberate. Handing the
 // game to the engine's own frame loop would reach no code these frames do not: the
@@ -46,14 +54,15 @@
 // `instrumentation/advances-in-real-time`, and even that one ends its wait on the
 // build's own clock passing a floor rather than on a fixed span of the wall clock.
 // A fixed span here would have decided nothing except how many frames of its own a
-// busy host let the engine run — reach that rises and falls with the machine
-// rather than with the build.
+// busy host let the engine run, and how many of the build's timers a busy host let
+// through — reach that rises and falls with the machine rather than with the
+// build.
 //
 // WHAT THIS DOES NOT DECIDE. That the build makes any sound at all once a key HAS
 // been pressed, which is what the nine cue points above decide, and what a build
 // silent for a different reason fails there rather than here.
 
-import { afterEach, beforeEach, it } from "vitest";
+import { afterEach, beforeEach, it, vi } from "vitest";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
@@ -73,14 +82,30 @@ import { watchSounds } from "./cues";
  */
 const IDLE_FRAMES = ticksFor(2);
 
+/**
+ * How far the build's own timers are wound on once the frames are driven.
+ *
+ * A simulated minute. It is not a wait — the timers are fake, so this costs no
+ * wall clock and takes the same time on any host — and it is set far past
+ * anything a build would plausibly defer a load-time sound behind, because the
+ * only thing a bigger horizon costs is the firing of timers a conforming build
+ * did not set.
+ */
+const TIMER_HORIZON_MS = 60_000;
+
 let h: Harness;
 
 beforeEach(async () => {
+  // Before the build's first line, so every timer it arms is one this check can
+  // wind on. Only the two timer faces are faked: `Date` and `performance` are the
+  // engine's own business and nothing here reads them.
+  vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
   h = await createHarness();
 });
 
 afterEach(() => {
   h?.dispose();
+  vi.useRealTimers();
 });
 
 it("plays no cue before the player's first key press", async () => {
@@ -93,6 +118,8 @@ it("plays no cue before the player's first key press", async () => {
 
   // Two seconds of it, frame by frame, with no key ever delivered either.
   await h.advance(IDLE_FRAMES);
+  // And a simulated minute of the build's own timers, fired where it armed them.
+  await vi.advanceTimersByTimeAsync(TIMER_HORIZON_MS);
 
   const played = [...h.cues];
   const looped = started.filter((one) => one.how === "looped");
@@ -102,8 +129,9 @@ it("plays no cue before the player's first key press", async () => {
     played,
     0,
     "cues the build played between the page loading and the first key — over " +
-      `${String(IDLE_FRAMES)} driven frames on the ${opened.screen} screen, ` +
-      `with no key ever pressed (specs/ui.md); it played ${played
+      `${String(IDLE_FRAMES)} driven frames on the ${opened.screen} screen and ` +
+      `${String(TIMER_HORIZON_MS)} ms of its own timers, with no key ever ` +
+      `pressed (specs/ui.md); it played ${played
         .map((one) => one.cue)
         .join(", ")}`,
   );
