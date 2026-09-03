@@ -3013,15 +3013,17 @@ export async function blitsOfFrame(h: Harness): Promise<Blit[]> {
     { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
   );
   await h.step(1);
-  // The same refusal `frameCalls` makes, for the same reason: a frame the host
-  // never presented carries no blits, and reading that as a build that drew no
-  // sprite would name the build for the machine's silence.
-  if (harnessInternals.get(h)?.stalled() === true) failHostStall();
+  const stalled = harnessInternals.get(h)?.stalled() === true;
   const recording = (await h.page.evaluate(() =>
     (
       window as unknown as { __floeRec: { disarm(): unknown } }
     ).__floeRec.disarm(),
   )) as Recording | null;
+  // The same refusal `frameCalls` makes, for the same reason: a frame the host
+  // never presented carries no blits, and reading that as a build that drew no
+  // sprite would name the build for the machine's silence. Raised AFTER the
+  // disarm above, so the page is not left with the recorder still armed.
+  if (stalled) failHostStall();
 
   const blits: Blit[] = [];
   if (recording === null || recording.frames.length === 0) return blits;
