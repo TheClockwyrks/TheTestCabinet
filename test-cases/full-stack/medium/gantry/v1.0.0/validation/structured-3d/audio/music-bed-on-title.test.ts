@@ -36,6 +36,15 @@ import { createHarness, ticks, type Harness } from "../harness";
 /** The stretch the bed is read across: half a second of the game's own clock. */
 const STRETCH = ticks(0.5);
 
+/**
+ * The longest this waits for the bed to start, in ticks.
+ *
+ * Generous, because what it bounds is a build that never sounds the bed at all
+ * rather than one that took a moment to decode nine megabytes of it — and this
+ * project runs four suites at once, each loading its own copy of the page.
+ */
+const PATIENCE = ticks(20);
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -53,8 +62,17 @@ it("sounds the produced music bed while the title screen shows", async () => {
     "the screen a fresh game opens on (specs/ui.md § Title)",
   );
 
-  await h.advance(STRETCH);
-  const sounding = [...(await h.loopingCues()), ...(await h.cues())];
+  // WAITED FOR RATHER THAN ASSUMED. The bed is a produced file the build has to
+  // fetch and decode before it can play any of it, and a build is free to take as
+  // long over that as the file needs — so a fixed stretch of frames asks a
+  // conforming build to have finished by a deadline the specification does not
+  // set. This drives the same frames and stops the moment the bed is sounding.
+  let sounding: string[] = [];
+  for (let waited = 0; waited < PATIENCE; waited += STRETCH) {
+    await h.advance(STRETCH);
+    sounding = [...(await h.loopingCues()), ...(await h.cues())];
+    if (sounding.includes("music")) break;
+  }
   await h.capture("title", "The title screen");
 
   assertContains(
@@ -64,6 +82,6 @@ it("sounds the produced music bed while the title screen shows", async () => {
       'select screens carry the produced music bed" (specs/ui.md § Audio), ' +
       "the piece committed as assets/audio/music.wav (specs/assets.md § The " +
       `sound). Across ${STRETCH} frames the page sounded ` +
-      `${JSON.stringify(sounding)}`,
+      `${JSON.stringify(sounding)} across ${PATIENCE} frames`,
   );
 });
