@@ -12,8 +12,9 @@ The game is written inside `@test-cabinet/structured-2d`'s framework: a game
 instance, one game mode, a lamplighter pawn and the player controller that
 drives it, and the tagged actors and draw components that populate the night.
 The engine owns the frame loop, the canvas fit, rendering and the camera that
-follows the lamplighter, the keyboard actions, the audio cue bus with its two
-loops, asset loading, and the debug overlay. Every contact is the simulation's
+follows the lamplighter, the keyboard actions and the pointer in the stage's
+own coordinates, the audio cue bus with its two loops, asset loading, and the
+debug overlay. Every contact is the simulation's
 own circle and rectangle math over the world's game state. There is no
 backend: everything needed to play is in `dist/`.
 
@@ -52,17 +53,21 @@ npm test            # vitest run, with coverage
 
 ## Controls
 
-The game is keyboard only. Keys are bound by physical position
-(`KeyboardEvent.code`), so they hold on any layout.
+The night is played from the keyboard, and every menu answers the mouse as
+well. Keys are bound by physical position (`KeyboardEvent.code`), so they hold
+on any layout.
 
 | Action | Keys | Does |
 | --- | --- | --- |
-| Move | `ArrowUp` / `KeyW`, `ArrowDown` / `KeyS`, `ArrowLeft` / `KeyA`, `ArrowRight` / `KeyD` (held) | Moves the lamplighter; up and down also move a menu highlight |
+| Move | `ArrowUp` / `KeyW`, `ArrowDown` / `KeyS`, `ArrowLeft` / `KeyA`, `ArrowRight` / `KeyD` (held) | Moves the lamplighter; up and down also move a menu highlight, and left and right the almanac's tab |
 | Confirm | `Enter` / `Space` | Accepts the highlighted item; closes the chest overlay |
-| Back | `Escape` | Leaves the how-to screen; abandons a paused run; returns to the title from an end screen |
+| Back | `Escape` | Leaves the how-to screen and the almanac; pauses the night and resumes it; returns to the title from an end screen |
 | Pause | `KeyP` | Pauses the night; resumes it |
 | Mute | `KeyM` | Toggles sound, on every screen |
 | Diagnostics | `` ` `` (backquote) | Shows and hides the engine's debug overlay, which lists the values the game registers: the screen, the clock, the loadout, the switches, and the mute bit |
+
+The pointer moves the highlight to whatever item it rests on, a click takes
+that item, and the wheel scrolls the almanac's list.
 
 ## The source, file by file
 
@@ -82,8 +87,13 @@ half.
   the timers, the lamplighter, the enemies, the weapons' firing and placement,
   the projectiles and zones and their hits, the drops, the spawn director,
   progression, and the two endings.
-- `src/flow.ts`: the eight screens, the menus, the tick accumulator, and the
-  cues each answers with.
+- `src/flow.ts`: the nine screens, the menus, the transitions, the tick
+  accumulator, and the cues each answers with.
+- `src/menus.ts`: where every menu and the almanac's tab bar sit on the stage,
+  the one definition the renderer draws from and the pointer hit-tests
+  against.
+- `src/almanac.ts`: what the almanac browses, tab by tab: every tool, trinket,
+  enemy, gem, and pickup with its name, its figures, and its line.
 
 ### The engine-facing half
 
@@ -91,13 +101,17 @@ half.
   the engine drives; re-exports the state and the debug surface type.
 - `src/controller.ts`: the player controller, the one seat the registered
   actions are read from.
-- `src/input.ts`: the action registry, names and key bindings.
+- `src/input.ts`: the action registry, names and key bindings, and the
+  frame's pointer as the menus read it.
+- `src/pointer.ts`: the three pointer rules over the menus: hover, click, and
+  the wheel.
 - `src/actors.ts`: the lamplighter pawn with its camera and mirrored sprite,
   the tagged actors that follow every enemy, projectile, zone, gem, pickup,
   and puff, the ground, the HUD and screen actors pinned to the camera target,
   and the reconciler that keeps the population mirroring the state.
 - `src/render/`: the palette and layer table, the drawing helpers, the world's
-  pictures, the effects over the live shapes, the HUD, and the screens.
+  pictures, the effects over the live shapes, the HUD with the hurt cast, the
+  screens, and the almanac.
 - `src/audio.ts`: the fifteen cues bound to the produced files, each with a
   synthesized fallback beneath it, and the two loops reconciled every frame.
 - `src/assets.ts`: loads the committed produced sprites; every load failure
@@ -109,10 +123,10 @@ half.
 - `src/main.ts`: the fixed entry point, supplied with the project.
 
 Tests sit beside what they test as `src/**/*.test.ts` and run in Node with no
-browser: the simulation and flow suites over the bare state, and the engine,
-debug, and diagnostics suites over a real engine stood up on an
+browser: the simulation, flow, and pointer suites over the bare state, and the
+engine, debug, and diagnostics suites over a real engine stood up on an
 `@napi-rs/canvas` canvas with a `ConstantClock`, driven by `engine.advance`
-(`src/harness.ts`).
+and dispatched keyboard, pointer, and wheel events (`src/harness.ts`).
 
 ## The art and the sound
 

@@ -4,8 +4,10 @@ import {
   CONTACT_COOLDOWN,
   DAWN_TICK,
   ENEMIES,
+  HURT_FLASH,
   MOVE_SPEED,
   TICK_DT,
+  TICK_HZ,
   type Cue,
 } from "../constants";
 import { Rng } from "../rng";
@@ -162,6 +164,46 @@ describe("contact", () => {
     spawnEnemy(world.state.run, "moth", ENEMIES.moth.radius + 12, 0);
     run(world, 5);
     expect(world.state.run.player.hp).toBe(BASE_MAX_HP);
+  });
+});
+
+describe("the hurt flash", () => {
+  it("is armed by a hit, counts down, and clears on its due tick", () => {
+    const world = playing();
+    world.state.switches.enemyMotion = false;
+    expect(world.state.run.hurtFlash).toBe(0);
+    spawnEnemy(world.state.run, "moth", 0, 0);
+    run(world, 1);
+    expect(world.state.run.hurtFlash).toBe(HURT_FLASH);
+    run(world, 1);
+    expect(world.state.run.hurtFlash).toBeCloseTo(HURT_FLASH - TICK_DT, 9);
+    run(world, Math.round(HURT_FLASH * TICK_HZ) - 1);
+    expect(world.state.run.hurtFlash).toBe(0);
+  });
+
+  it("is armed once however many enemies hit, and rearms on the next hit", () => {
+    const world = playing();
+    world.state.switches.enemyMotion = false;
+    spawnEnemy(world.state.run, "moth", 0, 0);
+    spawnEnemy(world.state.run, "bat", 0, 0);
+    run(world, 1);
+    expect(world.state.run.hurtFlash).toBe(HURT_FLASH);
+    run(world, 10);
+    expect(world.state.run.hurtFlash).toBeCloseTo(HURT_FLASH - 10 * TICK_DT, 9);
+    // The moth's cooldown is due again on tick 31, which arms the flash anew.
+    run(world, 20);
+    expect(world.state.run.hurtFlash).toBe(HURT_FLASH);
+  });
+
+  it("is left alone by a tick with no hit, and by a heal", () => {
+    const world = playing();
+    world.state.switches.enemyContact = false;
+    world.state.run.passives.push({ id: "tinder", level: 5 });
+    world.state.run.player.hp = 50;
+    spawnEnemy(world.state.run, "moth", 0, 0);
+    run(world, 30);
+    expect(world.state.run.hurtFlash).toBe(0);
+    expect(world.state.run.player.hp).toBeGreaterThan(50);
   });
 });
 

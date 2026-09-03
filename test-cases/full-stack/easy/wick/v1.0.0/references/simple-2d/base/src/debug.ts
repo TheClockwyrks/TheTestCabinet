@@ -31,11 +31,13 @@ import {
   pause,
   resume,
   startRun,
+  toAlmanac,
   toHowto,
   toTitle,
   choose as chooseOffer,
 } from "./flow";
 import type { Screen, WickDebugApi, WickSnapshot, WickState } from "./game";
+import { menuRects, tabRects } from "./menus";
 import { seedState } from "./rng";
 import {
   cloneState,
@@ -86,7 +88,7 @@ function real(value: unknown, name: string, min = -Infinity): number {
 function whole(
   value: unknown,
   name: string,
-  min: number,
+  min = -Infinity,
   max = Infinity,
 ): number {
   if (
@@ -163,6 +165,8 @@ export function snapshot(state: View): WickSnapshot {
     version: WICK_DEBUG_VERSION,
     screen: state.screen,
     menuIndex: state.menuIndex,
+    almanacTab: state.almanacTab,
+    almanacScroll: state.almanacScroll,
     spawning: state.spawning,
     events: state.events,
     despawning: state.despawning,
@@ -178,6 +182,7 @@ export function snapshot(state: View): WickSnapshot {
       xpToNext: xpToNext(r.level),
       kills: r.kills,
       player: { ...r.player },
+      hurtFlash: r.hurtFlash,
       maxHp: maxHp(r.passives),
       armor: armor(r.passives),
       moveSpeed: moveSpeed(r.passives),
@@ -270,6 +275,7 @@ function setScreen(state: View, name: unknown): WickState {
   const target = oneOf(name, "name", [
     "title",
     "howto",
+    "almanac",
     "playing",
     "levelup",
     "paused",
@@ -285,6 +291,9 @@ function setScreen(state: View, name: unknown): WickState {
       break;
     case "howto":
       toHowto(draft);
+      break;
+    case "almanac":
+      toAlmanac(draft);
       break;
     case "playing":
       if (draft.screen === "paused") resume(draft);
@@ -324,10 +333,12 @@ export function createDebugApi(): WickDebugApi {
       return draft;
     },
     snapshot,
+    menuRects,
+    tabRects,
 
     setScreen,
     choose(state, index) {
-      whole(index, "index", 0);
+      whole(index, "index");
       const draft = cloneState(state);
       chooseOffer(draft, index, new Set<CueName>());
       return draft;

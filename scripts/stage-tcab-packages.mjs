@@ -29,7 +29,7 @@
 // crates/core/src/test_case.rs. That allowlist is what a case's manifest `packages`
 // names are validated against, so every name a case may request must appear in both
 // lists. The extra entries here are ENGINE runtimes (@test-cabinet/simple-2d,
-// @test-cabinet/structured-2d) and the shared validator harness
+// @test-cabinet/structured-2d, @test-cabinet/simple-3d, @test-cabinet/structured-3d) and the shared validator harness
 // (@test-cabinet/case-harness).
 // They are staged into the same store, but an engine is a run dimension selected
 // per run (`tcab run --engine <slug>`) rather than something a case declares, and
@@ -65,6 +65,8 @@ const SHIPPABLE = [
   // Engine runtimes — staged, but not `packages` names. See above.
   "@test-cabinet/simple-2d",
   "@test-cabinet/structured-2d",
+  "@test-cabinet/simple-3d",
+  "@test-cabinet/structured-3d",
   // The shared engineless (`none`) validator harness and canvas recorder. It has no
   // build step and publishes `"files": ["src"]`, so what lands in the store is its
   // TypeScript source — which is what the vitest validator copies into a staged

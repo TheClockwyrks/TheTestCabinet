@@ -76,6 +76,21 @@ export function effectFrame(weapon: WeaponId, t: number): number {
   }
 }
 
+/**
+ * Seconds `weapon`'s effect sheet takes to play once through, which the
+ * almanac loops its picture on; a single-sprite effect holds one frame.
+ */
+export function effectCycle(weapon: WeaponId): number {
+  switch (weapon) {
+    case "spark":
+      return SPARK_FLASH;
+    case "flare":
+      return FLARE_FLASH;
+    default:
+      return EFFECT_SPRITES[weapon].frames * WALK_FRAME_TIME;
+  }
+}
+
 /** The effect image of `weapon` at `t` seconds of age, or `null`. */
 export function effectImage(weapon: WeaponId, t: number): ImageBitmap | null {
   return spriteImage(effectPath(weapon, effectFrame(weapon, t)));

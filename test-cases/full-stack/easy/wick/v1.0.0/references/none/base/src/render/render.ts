@@ -1,10 +1,11 @@
 // Wick — one frame's picture, by screen (specs/ui.md "Screens").
 //
-// The world is drawn beneath every screen but `howto`, frozen where the last
-// tick left it, and the screen's own chrome over it.
+// The world is drawn beneath every screen but `howto` and `almanac`, frozen
+// where the last tick left it, and the screen's own chrome over it.
 
 import type { Assets } from "../assets";
 import type { WickState } from "../state";
+import { drawAlmanac } from "./almanac";
 import { drawHud } from "./hud";
 import {
   drawChest,
@@ -32,6 +33,9 @@ export function render(
       drawWorld(ctx, run, assets);
       drawHowto(ctx);
       break;
+    case "almanac":
+      drawAlmanac(ctx, state, assets);
+      break;
     case "playing":
       drawWorld(ctx, run, assets);
       drawHud(ctx, run, assets);
@@ -49,7 +53,7 @@ export function render(
     case "paused":
       drawWorld(ctx, run, assets);
       drawHud(ctx, run, assets);
-      drawPaused(ctx);
+      drawPaused(ctx, state);
       break;
     case "fallen":
     case "dawn":

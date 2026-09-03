@@ -11,18 +11,6 @@ slug = "wick"
 # Human-readable display name for this test case.
 name = "Wick"
 
-# Experimental until the case carries what a public version must. The checklist
-# below is already on the engine format, every item names its validator, and
-# `variants/base.toml` names the three reference implementations, but the
-# validator suites those names point at (`validation/none/`,
-# `validation/simple-2d/`, and `validation/structured-2d/`), the baselines
-# `tcab capture-baselines` synthesizes from the references, and the showcase
-# have yet to land. A version that runs freezes, and a frozen version can never
-# gain a validator, so this keeps the version off the catalog unless a
-# deployment opts in with `TCAB_BACKEND_ALLOW_EXPERIMENTAL`. Drop the key when
-# the suites and baselines are in.
-experimental = true
-
 # Relative difficulty, surfaced on the site. Easy: the case is a great deal of
 # BREADTH, not depth of reasoning. Every rule is a table row or a one-line
 # formula; there is no physics to tune, no opponent to model, and no solver.
@@ -59,7 +47,7 @@ prompt = "prompt.hbs"
 # Maximum wall-clock runtime, in hours, before the harness session is stopped.
 # Wick is a large build by count: ten weapons with eight-row tables and six
 # evolved rows, ten derived stats, thirteen enemy behaviors, a spawn director
-# with twenty windows and seven events, the level-up economy, eight screens, the
+# with twenty windows and seven events, the level-up economy, nine screens, the
 # debug surface, and a produced set of some forty sprites and sheets, twenty-seven
 # icons, fourteen cues, and a music bed. Eight hours is comfortably more than a
 # healthy build needs while still bounding a runaway session.
@@ -409,12 +397,13 @@ format = 2
 # case in its own right. Each operation is posed and read back one at a time,
 # each row of setScreen is its own point, each of the seven driver switches is
 # checked alone, each refusal the specification states is a point of its own,
-# and the four overlay points close the category, so a surface that is missing,
-# hollow, or wired to nothing fails here by name rather than only as every
-# other suite failing to run. Under an engine the clock is the harness's
-# ConstantClock and the overlay's toggle is the engine's, so the points that
-# name setAutoStep, step, advance, and the backtick pass by construction there
-# and are decided in full under none.
+# the two rectangle readings are decided on what they report rather than on
+# what the pointer does with them, and the four overlay points close the
+# category, so a surface that is missing, hollow, or wired to nothing fails
+# here by name rather than only as every other suite failing to run. Under an
+# engine the clock is the harness's ConstantClock and the overlay's toggle is
+# the engine's, so the points that name setAutoStep, step, advance, and the
+# backtick pass by construction there and are decided in full under none.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -430,7 +419,7 @@ validation = { script = "instrumentation/surface-present.test.ts", outputs = [ {
 [[review.categories.items]]
 id = "snapshot-shape"
 title = "Snapshot reports the full documented shape"
-description = "On a posed run holding enemies, projectiles, zones, gems, pickups, held weapons, and held passives, snapshot returns every field specs/instrumentation.md documents with its documented type, the nested player, enemy, projectile, zone, gem, pickup, weapon, and passive entries included, with values matching what was posed."
+description = "On a posed run holding enemies, projectiles, zones, gems, pickups, held weapons, and held passives, snapshot returns every field specs/instrumentation.md documents with its documented type, the nested player, enemy, projectile, zone, gem, pickup, weapon, and passive entries and the almanacTab, almanacScroll, and run.hurtFlash fields included, with values matching what was posed."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [ { id = "posed", name = "The posed run", kind = "image" } ] }
@@ -438,7 +427,7 @@ validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [ { 
 [[review.categories.items]]
 id = "snapshot-fixed-shape"
 title = "The snapshot shape is fixed on every screen"
-description = "The snapshot carries every documented field on each of the eight screens, run reporting the idle run of specs/state.md on title and howto and the run that just ended on fallen and dawn, pool empty on every screen but levelup, and menuIndex resting at 0 on a screen with no menu."
+description = "The snapshot carries every documented field on each of the nine screens, almanacTab, almanacScroll, and run.hurtFlash among them, run reporting the idle run of specs/state.md on title, howto, and almanac and the run that just ended on fallen and dawn, pool empty on every screen but levelup, and menuIndex resting at 0 on a screen with no menu."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-fixed-shape.test.ts", outputs = [ { id = "screens", name = "The screen sweep", kind = "image" } ] }
@@ -468,9 +457,65 @@ failure_cap = "passable"
 validation = { script = "instrumentation/snapshot-pool-on-levelup.test.ts", outputs = [ { id = "pool", name = "The pool beside the offers drawn from it", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "snapshot-almanac-fields"
+title = "The snapshot reports the almanac's tab and its scroll"
+description = "On almanac, almanacTab reads the tab the screen shows and almanacScroll reads the list's first visible row, both read back after a tab change and after the highlight has scrolled the list."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/snapshot-almanac-fields.test.ts", outputs = [ { id = "fields", name = "The almanac fields read back", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "snapshot-hurt-flash"
+title = "The snapshot reports the hurt flash timer"
+description = "run.hurtFlash is present in every snapshot and reads the seconds left of the flash: HURT_FLASH (0.3) on the tick a contact hit lands, and 0 on a run that has taken none."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/snapshot-hurt-flash.test.ts", outputs = [ { id = "flash", name = "The hurt flash read back", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "menu-rects-reported"
+title = "menuRects reports the rectangles of the menu shown"
+description = "menuRects() reports one rectangle per item of the menu the screen shows, in menu order, each carrying x, y, width, and height in stage coordinates, on title, levelup, paused, fallen, and dawn."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/menu-rects-reported.test.ts", outputs = [ { id = "rects", name = "The menu rectangles reported", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "menu-rects-almanac-window"
+title = "menuRects reports the almanac's visible row window"
+description = "On the almanac's TOOLS tab scrolled to almanacScroll 1, menuRects() reports ALMANAC_ROWS (10) rectangles, the first of them the row of the entry at menuIndex 1, so the rectangle at position i belongs to the entry at menuIndex almanacScroll plus i."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/menu-rects-almanac-window.test.ts", outputs = [ { id = "window", name = "The window of rows the almanac reports", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "menu-rects-empty-without-menu"
+title = "menuRects is empty on a screen carrying no menu"
+description = "menuRects() reports an empty list on howto, playing, and chest."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/menu-rects-empty-without-menu.test.ts", outputs = [ { id = "empty", name = "No rectangles where there is no menu", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "tab-rects-reported"
+title = "tabRects reports the almanac's tab bar"
+description = "On almanac, tabRects() reports one rectangle per tab in ALMANAC_TABS order, each carrying x, y, width, and height in stage coordinates."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/tab-rects-reported.test.ts", outputs = [ { id = "tabs", name = "The tab rectangles reported", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "tab-rects-empty-off-almanac"
+title = "tabRects is empty off the almanac"
+description = "tabRects() reports an empty list on title, howto, playing, levelup, chest, paused, fallen, and dawn."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/tab-rects-empty-off-almanac.test.ts", outputs = [ { id = "empty", name = "No tab rectangles off the almanac", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "reset-restores-fields"
 title = "reset restores every declared field to its title-screen value"
-description = "From a thoroughly disturbed run, reset() returns the game to title with menuIndex 0 and the idle run of specs/state.md: tick 0, level 1, xp 0, kills 0, the lamplighter at the origin facing right with hp 100, no weapons, no passives, nothing alive, nothing dropped, no offers, no level-up queued, no chest result, the spawn timer at 0, no events fired, and nextId 0, with accumulator and simTime at 0."
+description = "From a thoroughly disturbed run, reset() returns the game to title with menuIndex 0, almanacTab 0, almanacScroll 0, and the idle run of specs/state.md: tick 0, level 1, xp 0, kills 0, the lamplighter at the origin facing right with hp 100 and hurtFlash 0, no weapons, no passives, nothing alive, nothing dropped, no offers, no level-up queued, no chest result, the spawn timer at 0, no events fired, and nextId 0, with accumulator and simTime at 0."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/reset-restores-fields.test.ts", outputs = [ { id = "reset", name = "The title state after reset", kind = "image" } ] }
@@ -606,7 +651,7 @@ validation = { script = "instrumentation/set-spawn-timer.test.ts", outputs = [ {
 [[review.categories.items]]
 id = "set-screen-title"
 title = "setScreen('title') discards the run"
-description = "setScreen('title') from playing enters title with menuIndex 0 and the idle run, exactly as back on paused does."
+description = "setScreen('title') from playing enters title with menuIndex 0 and the idle run, exactly as MAIN MENU on paused does."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-screen-title.test.ts", outputs = [ { id = "title", name = "The title screen after setScreen", kind = "image" } ] }
@@ -618,6 +663,14 @@ description = "setScreen('howto') from title enters howto with menuIndex 0 and t
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-screen-howto.test.ts", outputs = [ { id = "howto", name = "The how-to screen after setScreen", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-screen-almanac"
+title = "setScreen('almanac') enters the almanac"
+description = "setScreen('almanac') from playing enters almanac with the idle run and menuIndex, almanacTab, and almanacScroll all 0, exactly as confirming THE ALMANAC does."
+domains = ["survival", "arsenal", "progression", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-screen-almanac.test.ts", outputs = [ { id = "almanac", name = "The almanac entered by setScreen", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-playing-fresh"
@@ -1765,6 +1818,178 @@ domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "controls/omitted-action-inert.test.ts", outputs = [ { id = "inert", name = "The screens untouched by omitted actions", kind = "image" } ] }
 
+# --- Pointer ------------------------------------------------------------------
+# What the mouse does with the menus the keyboard already drives: a hover that
+# moves a highlight, a click that moves it and then takes the item, a click
+# that lands on nothing, and the wheel over the almanac's list. Each screen's
+# hover and each screen's click is a point of its own, driven at a stage point
+# inside the rectangle the debug surface reports and read back off the
+# snapshot. What those rectangles are is decided under Instrumentation; what
+# the pointer does with them is decided here.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+
+[[review.categories.items]]
+id = "title-hover-highlights"
+title = "Hovering a title item highlights it"
+description = "On title with menuIndex 0, the pointer moved inside the rectangle of the second title item reads menuIndex 1."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-hover-highlights.test.ts", outputs = [ { id = "hover", name = "The title item under the pointer", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-hover-outside-inert"
+title = "Hovering outside every rectangle moves no highlight"
+description = "On title with menuIndex 0, the pointer moved to a stage point inside no menu rectangle reads menuIndex 0."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-hover-outside-inert.test.ts", outputs = [ { id = "outside", name = "The highlight held under a pointer outside the menu", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-hover-plays-menu-move"
+title = "A hover that moves a highlight plays menu-move"
+description = "The frame on which the pointer enters the second title item's rectangle from menuIndex 0 plays the menu-move cue exactly once."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-hover-plays-menu-move.test.ts", outputs = [ { id = "move", name = "The menu-move cue raised by a hover", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "title-click-confirms"
+title = "Clicking LIGHT THE LAMP starts a fresh run"
+description = "On title with LIGHT THE LAMP highlighted, a primary press inside its rectangle reads screen playing with a fresh run."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-click-confirms.test.ts", outputs = [ { id = "click", name = "The run started by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-click-moves-then-confirms"
+title = "Clicking a title item the highlight is not on takes that item"
+description = "On title with menuIndex 0, a primary press inside HOW TO PLAY's rectangle reads screen howto, the click taking the item it landed in rather than the highlighted one."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-click-moves-then-confirms.test.ts", outputs = [ { id = "clicked", name = "The how-to screen opened by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "title-click-outside-inert"
+title = "Clicking outside every rectangle takes no item"
+description = "On title with menuIndex 0, a primary press at a stage point inside no menu rectangle reads screen title with menuIndex 0."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/title-click-outside-inert.test.ts", outputs = [ { id = "outside", name = "The title untouched by a click outside the menu", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "levelup-hover-highlights"
+title = "Hovering an offer highlights it"
+description = "On levelup holding three offers with menuIndex 0, the pointer moved inside the second offer's rectangle reads menuIndex 1."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/levelup-hover-highlights.test.ts", outputs = [ { id = "hover", name = "The offer under the pointer", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "levelup-click-accepts"
+title = "Clicking an offer accepts it"
+description = "On levelup holding three offers with pendingLevelUps 1, a primary press inside the second offer's rectangle applies that offer and reads screen playing."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/levelup-click-accepts.test.ts", outputs = [ { id = "accepted", name = "The offer accepted by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-hover-highlights"
+title = "Hovering a pause menu item highlights it"
+description = "On paused with menuIndex 0, the pointer moved inside MAIN MENU's rectangle reads menuIndex 1."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/paused-hover-highlights.test.ts", outputs = [ { id = "hover", name = "The pause menu item under the pointer", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-click-resumes"
+title = "Clicking RESUME returns to the run"
+description = "On paused, a primary press inside RESUME's rectangle reads screen playing with the run exactly as the pause left it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/paused-click-resumes.test.ts", outputs = [ { id = "resumed", name = "The run resumed by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-click-main-menu"
+title = "Clicking MAIN MENU abandons the run"
+description = "On paused with menuIndex 0, a primary press inside MAIN MENU's rectangle reads screen title with menuIndex 0 and the idle run."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/paused-click-main-menu.test.ts", outputs = [ { id = "abandoned", name = "The run abandoned by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "end-hover-highlights"
+title = "Hovering an end screen item highlights it"
+description = "On fallen with menuIndex 0, the pointer moved inside TITLE's rectangle reads menuIndex 1."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/end-hover-highlights.test.ts", outputs = [ { id = "hover", name = "The end screen item under the pointer", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "end-click-confirms"
+title = "Clicking TRY AGAIN on fallen starts a fresh run"
+description = "On fallen, a primary press inside TRY AGAIN's rectangle reads screen playing with a fresh run."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/end-click-confirms.test.ts", outputs = [ { id = "again", name = "The run restarted by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-entry-hover-highlights"
+title = "Hovering an almanac entry highlights it"
+description = "On almanac with almanacScroll 0 and menuIndex 0, the pointer moved inside the third visible entry row's rectangle reads menuIndex 2."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/almanac-entry-hover-highlights.test.ts", outputs = [ { id = "hover", name = "The almanac entry under the pointer", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-entry-click-highlights"
+title = "Clicking an almanac entry only moves the highlight"
+description = "On almanac with almanacScroll 0 and menuIndex 0, a primary press inside the third visible entry row's rectangle reads menuIndex 2 with screen still almanac."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/almanac-entry-click-highlights.test.ts", outputs = [ { id = "clicked", name = "The almanac entry highlighted by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-tab-click-selects"
+title = "Clicking an almanac tab selects it"
+description = "On almanac with almanacTab 0, a primary press inside the third tab's rectangle reads almanacTab 2, exactly as right reaching that tab does."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/almanac-tab-click-selects.test.ts", outputs = [ { id = "tab", name = "The tab selected by a click", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-shown-tab-click-inert"
+title = "A click on the tab the almanac is already showing changes nothing"
+description = "On almanac showing the TOOLS tab with menuIndex 4 and almanacScroll 0, a primary press inside the first tab's rectangle reads almanacTab 0 with menuIndex 4 and almanacScroll 0, the reader's place in the list kept."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/almanac-shown-tab-click-inert.test.ts", outputs = [ { id = "shown", name = "A click on the tab already shown", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-wheel-scrolls"
+title = "Wheel travel scrolls the almanac list"
+description = "On the almanac's TOOLS tab with almanacScroll 0, one frame carrying WHEEL_ROW (100) stage units of downward wheel travel reads almanacScroll 1."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/almanac-wheel-scrolls.test.ts", outputs = [ { id = "scrolled", name = "The list scrolled by the wheel", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-wheel-leaves-highlight"
+title = "The wheel leaves the almanac highlight where it is"
+description = "On the almanac's TOOLS tab with menuIndex 3, one frame carrying WHEEL_ROW (100) stage units of downward wheel travel reads menuIndex 3."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/almanac-wheel-leaves-highlight.test.ts", outputs = [ { id = "held", name = "The highlight held under the wheel", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-wheel-clamped"
+title = "Wheel travel stops at the end of the list"
+description = "On the almanac's TOOLS tab, 40 times WHEEL_ROW of downward wheel travel reads almanacScroll 6, the tab's sixteen entries less ALMANAC_ROWS (10)."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/almanac-wheel-clamped.test.ts", outputs = [ { id = "clamped", name = "The scroll held at the end of the list", kind = "image" } ] }
+
 # --- Contact and Endings ------------------------------------------------------
 # How the night hurts and how it ends: the overlap rule, the contact
 # cooldown and its schedule, the floor every hit respects, recovery and its
@@ -1925,6 +2150,73 @@ description = "With a chest posed at the lamplighter's center, every held item a
 domains = ["survival", "progression"]
 failure_cap = "passable"
 validation = { script = "contact/chest-result-kept-on-ending-tick.test.ts", outputs = [ { id = "kept", name = "The chest result kept on the end screen", kind = "image" } ] }
+
+# --- Hurt Feedback ------------------------------------------------------------
+# The timer a contact hit arms on the lamplighter and the cast it draws over
+# the view: the tick that arms it, its countdown, the tick it reaches 0 on, a
+# second hit while it runs, a tick that arms nothing, the fresh run that starts
+# without it, and the frame that differs while it runs. The timer is read off
+# the snapshot; the cast is decided by comparing two frames posed alike but for
+# it.
+[[review.categories]]
+id = "hurt"
+title = "Hurt Feedback"
+
+[[review.categories.items]]
+id = "flash-armed-on-contact"
+title = "A contact hit arms the hurt flash"
+description = "The tick on which a rat's contact hit lands reads run.hurtFlash HURT_FLASH (0.3)."
+domains = ["survival", "presentation"]
+failure_cap = "passable"
+validation = { script = "hurt/flash-armed-on-contact.test.ts", outputs = [ { id = "armed", name = "The flash armed by a hit", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "flash-counts-down"
+title = "The hurt flash counts down with the tick"
+description = "Ten ticks after the hit that armed it, with no further hit landing, run.hurtFlash reads HURT_FLASH minus 10 times TICK_DT."
+domains = ["survival", "presentation"]
+failure_cap = "passable"
+validation = { script = "hurt/flash-counts-down.test.ts", outputs = [ { id = "counting", name = "The flash counting down", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "flash-clears"
+title = "The hurt flash reaches 0 HURT_FLASH after the hit"
+description = "Eighteen ticks after the hit that armed it, round(HURT_FLASH times TICK_HZ) of them, run.hurtFlash reads 0."
+domains = ["survival", "presentation"]
+failure_cap = "passable"
+validation = { script = "hurt/flash-clears.test.ts", outputs = [ { id = "cleared", name = "The flash run out", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "flash-rearms"
+title = "A second hit rearms the hurt flash"
+description = "A contact hit landing while run.hurtFlash reads 0.1 sets it back to HURT_FLASH (0.3)."
+domains = ["survival", "presentation"]
+failure_cap = "passable"
+validation = { script = "hurt/flash-rearms.test.ts", outputs = [ { id = "rearmed", name = "The flash rearmed by a second hit", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "flash-not-armed-without-damage"
+title = "A tick landing no contact hit arms nothing"
+description = "With run.hurtFlash 0 and no enemy overlapping the lamplighter, 10 ticks leave run.hurtFlash 0."
+domains = ["survival", "presentation"]
+failure_cap = "passable"
+validation = { script = "hurt/flash-not-armed-without-damage.test.ts", outputs = [ { id = "unarmed", name = "The flash left unarmed", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "flash-drawn"
+title = "The hurt flash is drawn over the view"
+description = "The playing frame drawn with run.hurtFlash above 0 differs in its pixels from the frame drawn on the same state with run.hurtFlash 0."
+domains = ["survival", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "hurt/flash-drawn.test.ts", outputs = [ { id = "flash", name = "The hurt cast over the view", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "flash-clear-on-fresh-run"
+title = "A fresh run starts with no hurt flash"
+description = "After a run in which the lamplighter was hit, confirming TRY AGAIN reads run.hurtFlash 0."
+domains = ["survival", "presentation"]
+failure_cap = "passable"
+validation = { script = "hurt/flash-clear-on-fresh-run.test.ts", outputs = [ { id = "fresh", name = "The fresh run without a flash", kind = "image" } ] }
 
 # --- Weapons ------------------------------------------------------------------
 # The rules every weapon shares: the cooldown timer and its first-tick fire,
@@ -5261,11 +5553,11 @@ failure_cap = "passable"
 validation = { script = "pickups/elites-make-no-draw.test.ts", outputs = [ { id = "chest", name = "The elite's chest alone", kind = "image" } ] }
 
 # --- Screens ------------------------------------------------------------------
-# The eight screens and the flow between them: each screen's copy, each
+# The nine screens and the flow between them: each screen's copy, each
 # menu's four navigation points, each transition in one direction, what a
-# fresh run starts from and discards, what the overlays and the pause read,
-# the end screens' figures, and mute. Copy is read off the frame; flow is
-# driven with real keys and read off the snapshot.
+# fresh run starts from and discards, what the overlays, the pause menu, and
+# the almanac read and list, the end screens' figures, and mute. Copy is read
+# off the frame; flow is driven with real keys and read off the snapshot.
 [[review.categories]]
 id = "screens"
 title = "Screens"
@@ -5281,7 +5573,7 @@ validation = { script = "screens/opens-on-title.test.ts", outputs = [ { id = "ti
 [[review.categories.items]]
 id = "title-copy"
 title = "The title screen draws its copy"
-description = "The title frame draws WICK, KEEP THE LIGHT, LIGHT THE LAMP, and HOW TO PLAY, the two menu items stacked one above the next."
+description = "The title frame draws WICK, KEEP THE LIGHT, LIGHT THE LAMP, THE ALMANAC, and HOW TO PLAY, the three menu items stacked one above the next."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "screens/title-copy.test.ts", outputs = [ { id = "title", name = "The title screen", kind = "image" } ] }
@@ -5305,7 +5597,7 @@ validation = { script = "screens/title-up-moves-highlight.test.ts", outputs = [ 
 [[review.categories.items]]
 id = "title-wraps-at-bottom"
 title = "The title menu highlight wraps past the bottom"
-description = "On title with the last item highlighted, pressing ArrowDown reads menuIndex 0."
+description = "On title with the last of the three items highlighted, pressing ArrowDown reads menuIndex 0."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "screens/title-wraps-at-bottom.test.ts", outputs = [ { id = "wrap", name = "The title menu highlight wrapped to the top", kind = "image" } ] }
@@ -5313,7 +5605,7 @@ validation = { script = "screens/title-wraps-at-bottom.test.ts", outputs = [ { i
 [[review.categories.items]]
 id = "title-wraps-at-top"
 title = "The title menu highlight wraps past the top"
-description = "On title with menuIndex 0, pressing ArrowUp reads the last item's index."
+description = "On title with menuIndex 0, pressing ArrowUp reads menuIndex 2, the last of the three items."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "screens/title-wraps-at-top.test.ts", outputs = [ { id = "wrap", name = "The title menu highlight wrapped to the bottom", kind = "image" } ] }
@@ -5327,9 +5619,17 @@ failure_cap = "broken"
 validation = { script = "screens/title-confirm-light-the-lamp.test.ts", outputs = [ { id = "started", name = "The run started from the title", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "title-confirm-the-almanac"
+title = "Confirming THE ALMANAC opens the almanac"
+description = "On title with THE ALMANAC highlighted, pressing Enter reads screen almanac with menuIndex, almanacTab, and almanacScroll all 0."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-confirm-the-almanac.test.ts", outputs = [ { id = "almanac", name = "The almanac opened from the title", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "title-confirm-how-to-play"
 title = "Confirming HOW TO PLAY opens the how-to screen"
-description = "On title with HOW TO PLAY highlighted, pressing Enter reads screen howto with menuIndex 0."
+description = "On title with HOW TO PLAY highlighted, the third of TITLE_ITEMS, pressing Enter reads screen howto with menuIndex 0."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "screens/title-confirm-how-to-play.test.ts", outputs = [ { id = "howto", name = "The how-to screen opened", kind = "image" } ] }
@@ -5345,7 +5645,7 @@ validation = { script = "screens/title-back-inert.test.ts", outputs = [ { id = "
 [[review.categories.items]]
 id = "howto-names-keys"
 title = "The how-to screen names the keys"
-description = "The howto frame draws text naming the arrows, WASD, Enter, Space, Escape, P, and M, the keys BINDINGS gives each action."
+description = "The howto frame draws text naming the arrows, WASD, Enter, Space, Escape for going back and for pausing, P, and M, the keys BINDINGS gives each action, and that every menu also answers the mouse."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "screens/howto-names-keys.test.ts", outputs = [ { id = "howto", name = "The how-to screen naming the keys", kind = "image" } ] }
@@ -5365,6 +5665,214 @@ description = "On howto, pressing Escape reads screen title with menuIndex 0."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "screens/howto-back-returns.test.ts", outputs = [ { id = "back", name = "The title returned to", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-copy"
+title = "The almanac draws its heading and its tabs"
+description = "The almanac frame draws THE ALMANAC and every name in ALMANAC_TABS: TOOLS, TRINKETS, ENEMIES, and PICKUPS, in that order."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/almanac-copy.test.ts", outputs = [ { id = "almanac", name = "The almanac screen", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-back-returns"
+title = "back returns from the almanac"
+description = "On almanac, pressing Escape reads screen title with menuIndex 0."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/almanac-back-returns.test.ts", outputs = [ { id = "back", name = "The title returned to from the almanac", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-right-moves-tab"
+title = "right moves the almanac tab right"
+description = "On almanac with almanacTab 0, pressing ArrowRight reads almanacTab 1."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/almanac-right-moves-tab.test.ts", outputs = [ { id = "right", name = "The tab moved right", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-left-moves-tab"
+title = "left moves the almanac tab left"
+description = "On almanac with almanacTab 1, pressing ArrowLeft reads almanacTab 0."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/almanac-left-moves-tab.test.ts", outputs = [ { id = "left", name = "The tab moved left", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-tab-wraps-at-end"
+title = "The almanac tab wraps past the last tab"
+description = "On almanac with almanacTab 3, the last of the four ALMANAC_TABS, pressing ArrowRight reads almanacTab 0."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-tab-wraps-at-end.test.ts", outputs = [ { id = "wrap", name = "The tab wrapped to the first", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-tab-wraps-at-start"
+title = "The almanac tab wraps past the first tab"
+description = "On almanac with almanacTab 0, pressing ArrowLeft reads almanacTab 3, the last of the four ALMANAC_TABS."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-tab-wraps-at-start.test.ts", outputs = [ { id = "wrap", name = "The tab wrapped to the last", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-tab-change-resets-entry"
+title = "A tab change returns the list to its first entry"
+description = "On the almanac's TOOLS tab with menuIndex 12 and the list scrolled, pressing ArrowRight reads menuIndex 0 and almanacScroll 0."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-tab-change-resets-entry.test.ts", outputs = [ { id = "reset", name = "The list reset by a tab change", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-down-moves-entry"
+title = "down moves the almanac entry highlight down"
+description = "On almanac with menuIndex 0, pressing ArrowDown reads menuIndex 1."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/almanac-down-moves-entry.test.ts", outputs = [ { id = "down", name = "The entry highlight moved down", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-up-moves-entry"
+title = "up moves the almanac entry highlight up"
+description = "On almanac with menuIndex 1, pressing ArrowUp reads menuIndex 0."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/almanac-up-moves-entry.test.ts", outputs = [ { id = "up", name = "The entry highlight moved up", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-entry-wraps-at-bottom"
+title = "The almanac entry highlight wraps past the last entry"
+description = "On the almanac's TOOLS tab with menuIndex 15, the last of its sixteen entries, pressing ArrowDown reads menuIndex 0."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-entry-wraps-at-bottom.test.ts", outputs = [ { id = "wrap", name = "The entry highlight wrapped to the first", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-entry-wraps-at-top"
+title = "The almanac entry highlight wraps past the first entry"
+description = "On the almanac's TOOLS tab with menuIndex 0, pressing ArrowUp reads menuIndex 15, the last of its sixteen entries."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-entry-wraps-at-top.test.ts", outputs = [ { id = "wrap", name = "The entry highlight wrapped to the last", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-scroll-follows-highlight"
+title = "The almanac list scrolls to hold the highlight"
+description = "On the almanac's TOOLS tab with menuIndex 9 and almanacScroll 0, pressing ArrowDown reads menuIndex 10 with almanacScroll 1, the highlight kept inside the ALMANAC_ROWS (10) rows shown."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-scroll-follows-highlight.test.ts", outputs = [ { id = "scrolled", name = "The list scrolled after the highlight", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-scroll-clamped-at-top"
+title = "The almanac list returns to its top with the highlight"
+description = "On the almanac's TOOLS tab, ten ArrowDown presses followed by ten ArrowUp presses read menuIndex 0 with almanacScroll 0."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-scroll-clamped-at-top.test.ts", outputs = [ { id = "top", name = "The list back at its first row", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-confirm-inert"
+title = "confirm does nothing on the almanac"
+description = "On almanac, pressing Enter leaves screen almanac with menuIndex, almanacTab, and almanacScroll as they were."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-confirm-inert.test.ts", outputs = [ { id = "inert", name = "The almanac untouched by confirm", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-lists-tools"
+title = "The TOOLS tab lists every weapon"
+description = "The almanac's TOOLS tab lists the sixteen names of WEAPON_NAMES, the ten of BASE_WEAPON_IDS then the six of EVOLUTION_IDS, in that order, ten rows at a time as the highlight walks the list."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-lists-tools.test.ts", outputs = [ { id = "tools", name = "The tools listed", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-lists-trinkets"
+title = "The TRINKETS tab lists every passive"
+description = "The almanac's TRINKETS tab lists the ten passive names of PASSIVES in PASSIVE_IDS order."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-lists-trinkets.test.ts", outputs = [ { id = "trinkets", name = "The trinkets listed", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-lists-enemies"
+title = "The ENEMIES tab lists every enemy"
+description = "The almanac's ENEMIES tab lists the thirteen enemy names of ENEMIES in ENEMY_IDS order, ten rows at a time as the highlight walks the list."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-lists-enemies.test.ts", outputs = [ { id = "enemies", name = "The enemies listed", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-lists-pickups"
+title = "The PICKUPS tab lists every gem and pickup"
+description = "The almanac's PICKUPS tab lists Small Gem, Medium Gem, Large Gem, Chest, Bread, and Draft, the three of GEM_NAMES then the three of PICKUP_NAMES, in that order."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-lists-pickups.test.ts", outputs = [ { id = "pickups", name = "The pickups listed", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-shows-tool-detail"
+title = "The TOOLS tab describes the highlighted weapon"
+description = "On the almanac's TOOLS tab with Taper highlighted, the frame draws Taper, DAMAGE 10 and COOLDOWN 1.35 from its level 1 row, and Taper's line from WEAPON_DESCRIPTIONS."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-shows-tool-detail.test.ts", outputs = [ { id = "tool", name = "The highlighted tool's entry", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-shows-trinket-detail"
+title = "The TRINKETS tab describes the highlighted passive"
+description = "On the almanac's TRINKETS tab with Wick highlighted, the frame draws Wick, MAX LEVEL 5, and Wick's line from PASSIVE_DESCRIPTIONS."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-shows-trinket-detail.test.ts", outputs = [ { id = "trinket", name = "The highlighted trinket's entry", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-shows-enemy-detail"
+title = "The ENEMIES tab describes the highlighted enemy"
+description = "On the almanac's ENEMIES tab with Moth highlighted, the frame draws Moth, HEALTH 5, SPEED 100, DAMAGE 5, and Moth's line from ENEMY_DESCRIPTIONS."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-shows-enemy-detail.test.ts", outputs = [ { id = "enemy", name = "The highlighted enemy's entry", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-shows-pickup-detail"
+title = "The PICKUPS tab describes the highlighted pickup"
+description = "On the almanac's PICKUPS tab with Small Gem highlighted, the frame draws Small Gem, EXPERIENCE 1, and the small gem's line from GEM_DESCRIPTIONS."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-shows-pickup-detail.test.ts", outputs = [ { id = "pickup", name = "The highlighted pickup's entry", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-draws-tool-picture"
+title = "The TOOLS tab pictures the highlighted weapon"
+description = "On the almanac's TOOLS tab with Taper highlighted, the frame draws Taper's produced icon and its produced slash effect."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-draws-tool-picture.test.ts", outputs = [ { id = "picture", name = "The highlighted tool's picture", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "almanac-draws-enemy-animation"
+title = "The ENEMIES tab animates the highlighted enemy"
+description = "On the almanac's ENEMIES tab with Moth highlighted, the picture drawn on one frame differs from the picture drawn WALK_FRAME_TIME (0.1) later, the walk sheet playing while nothing advances."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-draws-enemy-animation.test.ts", outputs = [ { id = "animation", name = "The enemy picture animating", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "almanac-no-music"
+title = "No music loops on the almanac"
+description = "music is not looping on any frame of almanac."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-no-music.test.ts", outputs = [ { id = "silent", name = "The silent almanac", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "almanac-ticks-nothing"
+title = "The almanac advances nothing"
+description = "Across 60 frames on almanac, run.tick holds 0 and the idle run is unchanged."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/almanac-ticks-nothing.test.ts", outputs = [ { id = "still", name = "The almanac holding the idle run", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "fresh-run-state"
@@ -5391,12 +5899,76 @@ failure_cap = "scuffed"
 validation = { script = "screens/pause-via-key.test.ts", outputs = [ { id = "paused", name = "The run paused", kind = "image" } ] }
 
 [[review.categories.items]]
+id = "playing-back-pauses"
+title = "back on playing opens the pause screen"
+description = "On playing, pressing Escape reads screen paused with menuIndex 0 and the run exactly as it was, as KeyP does."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/playing-back-pauses.test.ts", outputs = [ { id = "paused", name = "The night paused by back", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "paused-copy"
 title = "The pause screen draws PAUSED over the held world"
-description = "The paused frame draws PAUSED and the HUD over the world exactly as the pause left it."
+description = "The paused frame draws PAUSED with the pause menu beneath it and the HUD over the world exactly as the pause left it."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "screens/paused-copy.test.ts", outputs = [ { id = "paused", name = "The pause screen", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-lists-items"
+title = "The pause screen lists its two items"
+description = "The paused frame draws RESUME and MAIN MENU, the two names of PAUSE_ITEMS, in that order."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/paused-lists-items.test.ts", outputs = [ { id = "menu", name = "The pause menu", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-down-moves-highlight"
+title = "down moves the pause menu highlight down"
+description = "On paused with menuIndex 0, pressing ArrowDown reads menuIndex 1."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/paused-down-moves-highlight.test.ts", outputs = [ { id = "down", name = "The pause menu highlight moved down", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-up-moves-highlight"
+title = "up moves the pause menu highlight up"
+description = "On paused with menuIndex 1, pressing ArrowUp reads menuIndex 0."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/paused-up-moves-highlight.test.ts", outputs = [ { id = "up", name = "The pause menu highlight moved up", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-wraps-at-bottom"
+title = "The pause menu highlight wraps past the bottom"
+description = "On paused with MAIN MENU highlighted, pressing ArrowDown reads menuIndex 0."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/paused-wraps-at-bottom.test.ts", outputs = [ { id = "wrap", name = "The pause menu highlight wrapped to the top", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-wraps-at-top"
+title = "The pause menu highlight wraps past the top"
+description = "On paused with RESUME highlighted, pressing ArrowUp reads menuIndex 1, the last item's index."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/paused-wraps-at-top.test.ts", outputs = [ { id = "wrap", name = "The pause menu highlight wrapped to the bottom", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-confirm-resume"
+title = "Confirming RESUME returns to the run"
+description = "On paused with RESUME highlighted, pressing Enter reads screen playing with the run exactly as the pause left it."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "screens/paused-confirm-resume.test.ts", outputs = [ { id = "resumed", name = "The run resumed from the pause menu", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "paused-confirm-main-menu"
+title = "Confirming MAIN MENU abandons the run"
+description = "On paused with MAIN MENU highlighted, pressing Enter reads screen title with menuIndex 0 and the idle run."
+domains = ["survival"]
+failure_cap = "scuffed"
+validation = { script = "screens/paused-confirm-main-menu.test.ts", outputs = [ { id = "title", name = "The run abandoned for the title", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "paused-resume-via-key"
@@ -5407,20 +5979,12 @@ failure_cap = "scuffed"
 validation = { script = "screens/paused-resume-via-key.test.ts", outputs = [ { id = "resumed", name = "The run resumed", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "paused-back-abandons"
-title = "back on paused abandons the run"
-description = "On paused, pressing Escape reads screen title with menuIndex 0 and the idle run."
+id = "paused-back-resumes"
+title = "back on paused resumes the run"
+description = "On paused, pressing Escape reads screen playing with the run exactly as the pause left it."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "screens/paused-back-abandons.test.ts", outputs = [ { id = "abandoned", name = "The run abandoned", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "paused-menu-keys-inert"
-title = "up, down, and confirm do nothing on paused"
-description = "On paused, pressing ArrowUp, ArrowDown, and Enter leaves screen paused with menuIndex 0."
-domains = ["survival"]
-failure_cap = "passable"
-validation = { script = "screens/paused-menu-keys-inert.test.ts", outputs = [ { id = "inert", name = "The pause screen untouched", kind = "image" } ] }
+validation = { script = "screens/paused-back-resumes.test.ts", outputs = [ { id = "resumed", name = "The run resumed by back", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "levelup-copy"
@@ -5469,6 +6033,22 @@ description = "On levelup, an offer for Taper held at level 3 draws LEVEL 4."
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "screens/offer-tag-level.test.ts", outputs = [ { id = "level", name = "The LEVEL tag", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "levelup-shows-description"
+title = "The level-up overlay describes the highlighted offer"
+description = "On levelup, the frame draws the highlighted offer's line beneath the offer list: a weapon's from WEAPON_DESCRIPTIONS, a passive's from PASSIVE_DESCRIPTIONS, and lamp oil's LAMP_OIL_DESCRIPTION."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "screens/levelup-shows-description.test.ts", outputs = [ { id = "description", name = "The highlighted offer's description", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "levelup-description-follows-highlight"
+title = "The description follows the level-up highlight"
+description = "On levelup holding three offers with menuIndex 0, pressing ArrowDown draws the second offer's description in place of the first's."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "screens/levelup-description-follows-highlight.test.ts", outputs = [ { id = "followed", name = "The description under the moved highlight", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "levelup-down-moves-highlight"
@@ -5729,7 +6309,7 @@ validation = { script = "screens/dawn-back.test.ts", outputs = [ { id = "back", 
 [[review.categories.items]]
 id = "menu-index-resets-on-entry"
 title = "Arriving on any screen sets menuIndex to 0"
-description = "Entering howto, playing, levelup, chest, paused, fallen, dawn, and title each from a screen whose menuIndex was 1 reads menuIndex 0 on arrival."
+description = "Entering howto, almanac, playing, levelup, chest, paused, fallen, dawn, and title each from a screen whose menuIndex was 1 reads menuIndex 0 on arrival."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "screens/menu-index-resets-on-entry.test.ts", outputs = [ { id = "reset", name = "menuIndex reset on every arrival", kind = "image" } ] }
@@ -5745,7 +6325,7 @@ validation = { script = "screens/menu-highlight-distinct.test.ts", outputs = [ {
 [[review.categories.items]]
 id = "mute-toggles-from-any-screen"
 title = "mute toggles from every screen"
-description = "Pressing KeyM on title, howto, playing, levelup, chest, paused, fallen, and dawn each flips muted in the next snapshot."
+description = "Pressing KeyM on title, howto, almanac, playing, levelup, chest, paused, fallen, and dawn each flips muted in the next snapshot."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/mute-toggles-from-any-screen.test.ts", outputs = [ { id = "muted", name = "The mute bit flipped on every screen", kind = "image" } ] }
@@ -5784,8 +6364,8 @@ title = "HUD"
 
 [[review.categories.items]]
 id = "health-bar-scales"
-title = "The health bar's fill scales with hp"
-description = "The frame at hp 100 of 100 and the frame at hp 25 of 100 differ in a bar whose filled width at 25 is about a quarter of its width at 100."
+title = "The health bar fills from its left edge by hp / maxHp"
+description = "The bar's fill begins at the bar's left edge, and its width at hp 25 of 100 is about a quarter of its width at hp 100 of 100."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "hud/health-bar-scales.test.ts", outputs = [ { id = "bar", name = "The health bar at two fills", kind = "image" } ] }
@@ -5800,8 +6380,8 @@ validation = { script = "hud/health-numbers-drawn.test.ts", outputs = [ { id = "
 
 [[review.categories.items]]
 id = "experience-bar-scales"
-title = "The experience bar's fill scales with xp"
-description = "The frame at xp 0 of 15 and the frame at xp 12 of 15 differ in a bar whose filled width at 12 is about four fifths of its full width."
+title = "The experience bar fills from its left edge by xp / xpToNext"
+description = "The bar's fill begins at the bar's left edge, and its width at xp 12 of 15 is about four fifths of its width at xp 15 of 15."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "hud/experience-bar-scales.test.ts", outputs = [ { id = "bar", name = "The experience bar at two fills", kind = "image" } ] }
@@ -5849,7 +6429,7 @@ validation = { script = "hud/passive-slots-drawn.test.ts", outputs = [ { id = "s
 [[review.categories.items]]
 id = "level-pips"
 title = "Each held item shows one pip per level"
-description = "The frame with Taper at level 1 and the frame with Taper at level 5 differ in Taper's slot by pips, five drawn at level 5 and one at level 1, and Brass at level 3 shows three."
+description = "Against a slot holding nothing, Taper's slot draws one pip in its pip row at level 1 and five at level 5, and Brass at level 3 draws three."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "hud/level-pips.test.ts", outputs = [ { id = "pips", name = "The pips at three levels", kind = "image" } ] }
@@ -6048,12 +6628,28 @@ failure_cap = "passable"
 validation = { script = "audio/cue-menu-move.test.ts", outputs = [ { id = "move", name = "The menu-move cue", kind = "replay" } ] }
 
 [[review.categories.items]]
+id = "cue-menu-move-on-tab-change"
+title = "A tab change on the almanac plays the menu-move cue"
+description = "On almanac showing the first tab, one ArrowRight plays menu-move exactly once on the frame the tab changes."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "audio/cue-menu-move-on-tab-change.test.ts", outputs = [ { id = "tab", name = "The cue a tab change sounded", kind = "replay" } ] }
+
+[[review.categories.items]]
 id = "cue-menu-confirm"
 title = "menu-confirm plays when a menu item is confirmed"
 description = "The frame on which Enter confirms HOW TO PLAY plays the menu-confirm cue, and so does confirming TRY AGAIN on fallen."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "audio/cue-menu-confirm.test.ts", outputs = [ { id = "confirm", name = "The menu-confirm cue", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "cue-menu-confirm-on-pause-item"
+title = "Confirming a pause menu item plays the menu-confirm cue"
+description = "On paused with RESUME highlighted, Enter plays menu-confirm exactly once on the frame the item is confirmed."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "audio/cue-menu-confirm-on-pause-item.test.ts", outputs = [ { id = "pause", name = "The cue a pause item sounded", kind = "replay" } ] }
 
 [[review.categories.items]]
 id = "music-starts-on-run"
@@ -6106,7 +6702,7 @@ validation = { script = "audio/music-stops-on-dawn.test.ts", outputs = [ { id = 
 [[review.categories.items]]
 id = "music-stops-on-abandon"
 title = "The music stops when a run is abandoned"
-description = "music is not looping on the frame after back on paused returns to the title."
+description = "music is not looping on the frame after MAIN MENU on paused returns to the title."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "audio/music-stops-on-abandon.test.ts", outputs = [ { id = "stopped", name = "The music stopped on abandon", kind = "replay" } ] }
@@ -6236,7 +6832,7 @@ validation = { script = "presentation/walk-frame-counts-moved-ticks.test.ts", ou
 [[review.categories.items]]
 id = "lamplighter-faces-left"
 title = "The lamplighter's sprite faces left while facing left"
-description = "With facing left, the lamplighter's sprite is drawn mirrored across its vertical axis relative to the frame drawn with facing right."
+description = "With facing left, the lamplighter drawn on the stage is the produced idle sprite reflected across its vertical axis."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/lamplighter-faces-left.test.ts", outputs = [ { id = "left", name = "The sprite facing left", kind = "image" } ] }
@@ -6244,7 +6840,7 @@ validation = { script = "presentation/lamplighter-faces-left.test.ts", outputs =
 [[review.categories.items]]
 id = "lamplighter-faces-right"
 title = "The lamplighter's sprite faces right while facing right"
-description = "With facing right, the lamplighter's sprite is drawn without the mirror, so it differs from the frame drawn with facing left by a reflection across its vertical axis."
+description = "With facing right, the lamplighter drawn on the stage is the produced idle sprite as it was authored."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/lamplighter-faces-right.test.ts", outputs = [ { id = "right", name = "The sprite facing right", kind = "image" } ] }

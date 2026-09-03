@@ -3,15 +3,17 @@
 // A harness builds a real engine over an `@napi-rs/canvas` canvas and a
 // `SurfaceMetrics` of its own, so the game runs with no browser and no
 // document behind it, and steps it with `engine.advance` against a
-// `ConstantClock` of one tick per frame. Keys are driven by dispatching
-// keyboard-shaped events at the surface's event target, the same listener a
-// player's key reaches, and what is read back is the world's own
+// `ConstantClock` of one tick per frame. Keys, the pointer, and the wheel are
+// driven by dispatching keyboard-, pointer-, and wheel-shaped events at the
+// surface's event target, the same listeners a player's mouse and keyboard
+// reach, and what is read back is the world's own
 // `WickState`, the debug surface `initialize` returned, the engine's cue
 // events, and the pixels the render produced.
 //
 // The surface reports the canvas at the design size with a device pixel
 // ratio of 1 and no origin, so logical units and device pixels coincide and
-// a pixel read needs no conversion.
+// a pixel read needs no conversion, and a dispatched event's client position
+// is read as the stage point of the same numbers.
 //
 // Nothing in this process can fetch or decode an image or a sound, so every
 // produced file fails to load here. That is deliberate: the suite runs
@@ -49,6 +51,39 @@ export class KeyEvent extends Event {
   }
 }
 
+/** A pointer-shaped event carrying the fields the engine reads. */
+export class PointEvent extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+    buttons = 0,
+  ) {
+    super(type);
+    this.clientX = x;
+    this.clientY = y;
+    this.button = 0;
+    this.buttons = buttons;
+  }
+}
+
+/** A wheel-shaped event, its travel in CSS pixels down the page. */
+export class ScrollEvent extends Event {
+  readonly deltaX = 0;
+  readonly deltaY: number;
+  readonly deltaMode = 0;
+
+  constructor(deltaY: number) {
+    super("wheel");
+    this.deltaY = deltaY;
+  }
+}
+
 export interface Harness {
   readonly engine: Engine<WickDebugApi>;
   /** The world's live game state. */
@@ -66,6 +101,12 @@ export interface Harness {
   release(code: string): void;
   /** Press a key and let it up, arming one edge for the next frame. */
   tap(code: string, repeat?: boolean): void;
+  /** Move the pointer to the stage point `(x, y)`. */
+  hover(x: number, y: number): void;
+  /** Click the primary button at the stage point `(x, y)`. */
+  click(x: number, y: number): void;
+  /** Turn the wheel `travel` units down the stage. */
+  scroll(travel: number): void;
   /** Run `frames` frames, each worth exactly one tick. */
   step(frames: number): Promise<void>;
   /** The pixel at the stage point `(x, y)`, as red, green and blue. */
@@ -145,6 +186,16 @@ export async function createHarness(): Promise<Harness> {
     tap: (code, repeat = false) => {
       events.dispatchEvent(new KeyEvent("keydown", code, repeat));
       events.dispatchEvent(new KeyEvent("keyup", code));
+    },
+    hover: (x, y) => {
+      events.dispatchEvent(new PointEvent("pointermove", x, y));
+    },
+    click: (x, y) => {
+      events.dispatchEvent(new PointEvent("pointerdown", x, y, 1));
+      events.dispatchEvent(new PointEvent("pointerup", x, y));
+    },
+    scroll: (travel) => {
+      events.dispatchEvent(new ScrollEvent(travel));
     },
     step: (frames) => engine.advance(frames),
     pixel: (x, y) => {

@@ -32,11 +32,12 @@ it is `0` after its count-down, so a timer set to `s` seconds is due
 `round(s × TICK_HZ)` ticks after the tick it was set on, and a timer at `0`
 stays due on every tick until it is set again. An interval of `s` seconds
 anywhere in this specification is likewise `round(s × TICK_HZ)` ticks. The
-weapon cooldown timers, the contact cooldowns, the re-hit entries, the spawn
-timer, and every `ttl` all count this way. A timer held by one of the driver
-switches `specs/instrumentation.md` names, a weapon's cooldown timer while
-`weaponFire` is off or `spawnTimer` while `spawning` is off, neither counts
-down nor is due until the switch is on again.
+weapon cooldown timers, the contact cooldowns, the lamplighter's `hurtFlash`,
+the re-hit entries, the spawn timer, and every `ttl` all count this way. A
+timer held by one of the driver switches `specs/instrumentation.md` names, a
+weapon's cooldown timer while `weaponFire` is off or `spawnTimer` while
+`spawning` is off, neither counts down nor is due until the switch is on
+again.
 
 ## One tick
 
@@ -53,13 +54,15 @@ which is how the game is played, and holds while it is off.
 5. The weapons, in two parts. The firing, while `weaponFire` is on: each held
    weapon's timer counts down, and each weapon whose timer is due fires,
    creating its projectiles and zones at the lamplighter's and the enemies'
-   positions of this tick. The placement, on every `playing` tick: an aura or
-   a lantern set is created on a tick its weapon is held and none exists, and
-   removed on a tick its weapon is no longer held; the aura's center and each
-   lantern's center are placed about the lamplighter's position of this tick;
-   and the aura's radius and damage and each Chandelier lantern's orbit,
-   radius, and damage are recomputed from the level, `areaMul`, and
-   `damageMul` in force.
+   positions of this tick. The placement, on every `playing` tick: an aura is
+   created on a tick its weapon is held and none exists, and a Chandelier
+   lantern set on a tick Chandelier is held and no Chandelier lantern exists;
+   an aura or a lantern set is removed on a tick its weapon is no longer held;
+   the aura's center and each lantern's center are placed about the
+   lamplighter's position of this tick; and the aura's radius and damage and
+   each Chandelier lantern's orbit, radius, and damage are recomputed from the
+   level, `areaMul`, and `damageMul` in force. A base Lantern set is created by
+   firing alone.
 6. Projectiles and zones. Every projectile and zone that existed before this
    tick counts its `ttl` down and is removed when it is due; every re-hit entry
    counts down. Then, while `effectMotion` is on, every remaining projectile
@@ -74,9 +77,9 @@ which is how the game is played, and holds while it is off.
    enemy whose `hp` is at or below `0` dies: its drop and its bread or draft
    land at its center, at rest for this tick, and every re-hit entry naming it
    is dropped.
-7. Contact. Every live enemy's `contactCooldown` counts down, and, while
-   `enemyContact` is on, an overlapping enemy whose cooldown is due hits, as
-   Contact damage states.
+7. Contact. Every live enemy's `contactCooldown` and the lamplighter's
+   `hurtFlash` count down, and, while `enemyContact` is on, an overlapping
+   enemy whose cooldown is due hits, as Contact damage states.
 8. Pickups. Every pickup meeting the collection condition is collected, this
    tick's drops included.
 9. Gems. Every gem within `pickupRadius` becomes attracted, every attracted
@@ -170,6 +173,7 @@ and caps it at the `maxHp` in force when the heal is applied.
 | --- | --- | --- |
 | Seconds between hits by one enemy | `CONTACT_COOLDOWN` | `0.5` |
 | Least health a hit removes | `MIN_DAMAGE_TAKEN` | `1` |
+| Seconds the hurt flash runs | `HURT_FLASH` | `0.3` |
 
 Every enemy carries its own contact cooldown, `contactCooldown`, a timer that
 is `0` when the enemy spawns. On every tick, for every live enemy, the enemy's
@@ -184,6 +188,13 @@ contact. An enemy in continuous contact therefore hits once every
 `CONTACT_COOLDOWN` seconds, and several overlapping enemies each hit on their
 own schedule. Enemy damage and radius per type are in `specs/enemies.md`;
 `armor` is `0` with no Brass held.
+
+The lamplighter carries `hurtFlash`, a timer that counts down with the contact
+cooldowns in phase 7 and is set to `HURT_FLASH` on every tick on which a
+contact hit lands, whatever the number of hits that tick. It is `0` on the idle
+run and on a fresh run, and a contact hit is the only thing that sets it, so a
+heal from any source leaves it as it was. What the flash looks like is in
+`specs/ui.md`.
 
 ### Fallen and dawn
 

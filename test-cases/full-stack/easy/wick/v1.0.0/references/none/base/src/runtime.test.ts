@@ -2,16 +2,18 @@ import { createCanvas } from "@napi-rs/canvas";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Assets } from "./assets";
 import { WebAudioBus } from "./audio";
-import { STAGE_H, STAGE_W, TICK_DT } from "./constants";
+import { STAGE_H, STAGE_W, TICK_DT, WHEEL_ROW } from "./constants";
+import { MENU_LINE, titleRects } from "./layout";
 import { Diagnostics, registerGameDiagnostics } from "./diagnostics";
 import { Game } from "./game";
-import { Keyboard } from "./input";
+import { Keyboard, Pointer } from "./input";
 import { Runtime } from "./runtime";
 
 interface Built {
   runtime: Runtime;
   game: Game;
   keyboard: Keyboard;
+  pointer: Pointer;
   audio: WebAudioBus;
 }
 
@@ -24,6 +26,7 @@ function build(): Built {
     isMuted: () => audio.muted,
   });
   const keyboard = new Keyboard();
+  const pointer = new Pointer();
   const diagnostics = new Diagnostics();
   registerGameDiagnostics(diagnostics, game);
   const canvas = createCanvas(STAGE_W, STAGE_H);
@@ -33,10 +36,11 @@ function build(): Built {
     game,
     assets: new Assets(),
     keyboard,
+    pointer,
     diagnostics,
     audio,
   });
-  return { runtime, game, keyboard, audio };
+  return { runtime, game, keyboard, pointer, audio };
 }
 
 const globals = globalThis as { window?: unknown };
@@ -121,6 +125,33 @@ describe("a frame", () => {
     runtime.advance(1);
     expect(game.state.run.tick).toBe(1);
     expect(game.state.accumulator).toBe(0);
+  });
+
+  it("reads the pointer through the fit, after the frame's press edges", () => {
+    const { runtime, game, keyboard, pointer } = build();
+    const item = titleRects()[1];
+    pointer.moveTo(item.x + item.width / 2, item.y + item.height / 2);
+    runtime.step(1);
+    expect(game.state.menuIndex).toBe(1);
+    // The edges are read first, so this frame's confirm takes the item the
+    // frame began on rather than the one the hover is about to move to.
+    pointer.moveTo(item.x + 2, item.y + 2 + MENU_LINE);
+    keyboard.keyDown("Enter", false);
+    runtime.step(1);
+    expect(game.state.screen).toBe("almanac");
+    keyboard.keyUp("Enter");
+    pointer.roll(WHEEL_ROW);
+    runtime.step(1);
+    expect(game.state.almanacScroll).toBe(1);
+  });
+
+  it("takes an item on a click where the picture is", () => {
+    const { runtime, game, pointer } = build();
+    const item = titleRects()[0];
+    pointer.pressAt(item.x + item.width / 2, item.y + item.height / 2);
+    runtime.step(1);
+    expect(game.state.screen).toBe("playing");
+    expect(game.state.run.tick).toBe(1);
   });
 
   it("mirrors the mute bit and toggles the overlay on the backtick", () => {

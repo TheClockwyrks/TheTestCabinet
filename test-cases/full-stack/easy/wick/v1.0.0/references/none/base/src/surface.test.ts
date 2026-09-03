@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { DAWN_TICK, TICK_DT } from "./constants";
+import {
+  ALMANAC_ROWS,
+  ALMANAC_TABS,
+  DAWN_TICK,
+  END_ITEMS,
+  PAUSE_ITEMS,
+  STAGE_H,
+  STAGE_W,
+  TICK_DT,
+  TITLE_ITEMS,
+} from "./constants";
+import { almanacEntries } from "./almanac";
 import { Game } from "./game";
 import { createApi, type Clock, type WickDebugApi } from "./surface";
 
@@ -50,6 +61,9 @@ describe("the snapshot", () => {
     const snap = api.snapshot();
     expect(snap.version).toBe(1);
     expect(snap.screen).toBe("title");
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
     expect(snap.autoStep).toBe(true);
     for (const name of [
       "spawning",
@@ -70,6 +84,7 @@ describe("the snapshot", () => {
       xpToNext: 5,
       kills: 0,
       player: { x: 0, y: 0, facing: "right", hp: 100 },
+      hurtFlash: 0,
       maxHp: 100,
       armor: 0,
       moveSpeed: 180,
@@ -114,6 +129,35 @@ describe("the snapshot", () => {
     expect(api.snapshot().run.pool).toEqual([]);
   });
 
+  it("reports the almanac's indices there and zero everywhere else", () => {
+    const { api, game } = build();
+    api.setScreen("almanac");
+    game.handleAction("right");
+    game.handleAction("down");
+    let snap = api.snapshot();
+    expect(snap.screen).toBe("almanac");
+    expect(snap.almanacTab).toBe(1);
+    expect(snap.menuIndex).toBe(1);
+    api.setScreen("playing");
+    snap = api.snapshot();
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
+  });
+
+  it("reports the seconds left of the hurt flash", () => {
+    const { api } = playing();
+    api.setEnemyMotion(false);
+    api.setWeaponFire(false);
+    api.spawnEnemy("moth", 0, 0);
+    expect(api.snapshot().run.hurtFlash).toBe(0);
+    api.step(1);
+    expect(api.snapshot().run.hurtFlash).toBeCloseTo(0.3, 9);
+    api.step(1);
+    expect(api.snapshot().run.hurtFlash).toBeCloseTo(0.3 - TICK_DT, 9);
+    api.setScreen("title");
+    expect(api.snapshot().run.hurtFlash).toBe(0);
+  });
+
   it("derives time, xpToNext, and the stats from the passives", () => {
     const { api } = playing();
     api.setTick(1800);
@@ -148,6 +192,9 @@ describe("reset", () => {
     expect(snap.rngState).toBe(7);
     expect(snap.simTime).toBe(0);
     expect(snap.autoStep).toBe(false);
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
     expect(snap.run.tick).toBe(0);
     api.reset();
     expect(api.snapshot().rngState).toBe(1);
@@ -198,6 +245,19 @@ describe("setScreen", () => {
     expect(api.snapshot().screen).toBe("playing");
   });
 
+  it("enters the almanac exactly as confirming THE ALMANAC does", () => {
+    const { api } = playing();
+    api.setKills(4);
+    api.setScreen("almanac");
+    const snap = api.snapshot();
+    expect(snap.screen).toBe("almanac");
+    expect(snap.menuIndex).toBe(0);
+    expect(snap.almanacTab).toBe(0);
+    expect(snap.almanacScroll).toBe(0);
+    expect(snap.run.kills).toBe(0);
+    expect(snap.accumulator).toBe(0);
+  });
+
   it("needs a pending level-up to open the overlay", () => {
     const { api } = playing();
     api.setScreen("levelup");
@@ -224,6 +284,66 @@ describe("setScreen", () => {
     api.setScreen("dawn");
     expect(api.snapshot().screen).toBe("dawn");
     expect(() => api.setScreen("nowhere" as never)).toThrow();
+  });
+});
+
+describe("the menu readings", () => {
+  it("reports one box per item of the screen's menu, and none without one", () => {
+    const { api, game } = build();
+    expect(api.menuRects()).toHaveLength(TITLE_ITEMS.length);
+    api.setScreen("playing");
+    expect(api.menuRects()).toEqual([]);
+    api.setScreen("paused");
+    expect(api.menuRects()).toHaveLength(PAUSE_ITEMS.length);
+    api.setScreen("fallen");
+    expect(api.menuRects()).toHaveLength(END_ITEMS.length);
+    api.setScreen("playing");
+    api.setPendingLevelUps(1);
+    api.setScreen("levelup");
+    expect(api.menuRects()).toHaveLength(game.state.run.offers.length);
+    api.setScreen("howto");
+    expect(api.menuRects()).toEqual([]);
+  });
+
+  it("reports the almanac's visible rows, counted from its scroll", () => {
+    const { api, game } = build();
+    api.setScreen("almanac");
+    expect(api.menuRects()).toHaveLength(ALMANAC_ROWS);
+    game.state.almanacTab = 3;
+    expect(api.menuRects()).toHaveLength(almanacEntries(3).length);
+  });
+
+  it("reports the tab bar on the almanac alone, clear of every row", () => {
+    const { api } = build();
+    expect(api.tabRects()).toEqual([]);
+    api.setScreen("almanac");
+    const tabs = api.tabRects();
+    expect(tabs).toHaveLength(ALMANAC_TABS.length);
+    for (const tab of tabs) {
+      for (const row of api.menuRects()) {
+        const meets =
+          tab.x < row.x + row.width &&
+          row.x < tab.x + tab.width &&
+          tab.y < row.y + row.height &&
+          row.y < tab.y + tab.height;
+        expect(meets).toBe(false);
+      }
+    }
+    api.setScreen("title");
+    expect(api.tabRects()).toEqual([]);
+  });
+
+  it("reports stage coordinates, and a copy each time", () => {
+    const { api } = build();
+    for (const rect of api.menuRects()) {
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.y).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.width).toBeLessThanOrEqual(STAGE_W);
+      expect(rect.y + rect.height).toBeLessThanOrEqual(STAGE_H);
+    }
+    const first = api.menuRects();
+    first[0].x = -1;
+    expect(api.menuRects()[0].x).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -350,7 +470,9 @@ describe("the lamplighter and progression poses", () => {
     expect(api.snapshot().run.offers).toEqual(["lure"]);
     api.choose(5);
     expect(api.snapshot().screen).toBe("levelup");
-    expect(() => api.choose(-1)).toThrow();
+    api.choose(-1);
+    expect(api.snapshot().screen).toBe("levelup");
+    expect(api.snapshot().run.offers).toEqual(["lure"]);
   });
 });
 

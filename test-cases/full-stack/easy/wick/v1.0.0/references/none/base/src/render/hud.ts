@@ -1,16 +1,19 @@
 // Wick — the HUD over the live world (specs/ui.md "`playing`").
 //
 // Health with its numbers, experience with the level, the clock, the kill
-// count, and the twelve slots with their level pips and each weapon's
-// cooldown state.
+// count, the twelve slots with their level pips and each weapon's cooldown
+// state, and the hurt cast the view carries while the flash runs.
 
 import type { Assets } from "../assets";
 import {
   ASSET_PATHS,
+  HURT_FLASH,
   ICON_SIZE,
   LEVEL_LABEL,
   PASSIVES,
   PASSIVE_SLOTS,
+  STAGE_CX,
+  STAGE_CY,
   STAGE_H,
   STAGE_W,
   WEAPON_NAMES,
@@ -118,11 +121,34 @@ function drawSlots(
   }
 }
 
+/**
+ * The hurt cast over the view: a red gathering at the edges that fades as
+ * `hurtFlash` runs out, so a tick that was hit reads differently from one
+ * that was not.
+ */
+function drawHurt(ctx: CanvasRenderingContext2D, run: RunState): void {
+  if (run.hurtFlash <= 0) return;
+  const strength = Math.min(1, run.hurtFlash / HURT_FLASH);
+  const cast = ctx.createRadialGradient(
+    STAGE_CX,
+    STAGE_CY,
+    STAGE_H * 0.44,
+    STAGE_CX,
+    STAGE_CY,
+    STAGE_W * 0.62,
+  );
+  cast.addColorStop(0, `rgba(${COLORS.hurt}, 0)`);
+  cast.addColorStop(1, `rgba(${COLORS.hurt}, ${0.58 * strength})`);
+  ctx.fillStyle = cast;
+  ctx.fillRect(0, 0, STAGE_W, STAGE_H);
+}
+
 export function drawHud(
   ctx: CanvasRenderingContext2D,
   run: RunState,
   assets: Assets,
 ): void {
+  drawHurt(ctx, run);
   const max = maxHp(run.passives);
   const hp = Math.max(0, run.player.hp);
   bar(ctx, MARGIN, MARGIN, hp / max, COLORS.health, COLORS.healthBack);

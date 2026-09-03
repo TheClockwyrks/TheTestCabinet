@@ -42,9 +42,11 @@ import {
   resume,
   setSwitch,
   startRun,
+  toAlmanac,
   toHowto,
   toTitle,
 } from "./flow";
+import { menuRects, tabRects, type WickRect } from "./menus";
 import { forgetHits } from "./sim/effects";
 import {
   aliveCommons,
@@ -84,6 +86,8 @@ export interface WickSnapshot {
   version: number;
   screen: Screen;
   menuIndex: number;
+  almanacTab: number;
+  almanacScroll: number;
   spawning: boolean;
   events: boolean;
   despawning: boolean;
@@ -99,6 +103,7 @@ export interface WickSnapshot {
     xpToNext: number;
     kills: number;
     player: { x: number; y: number; facing: Facing; hp: number };
+    hurtFlash: number;
     maxHp: number;
     armor: number;
     moveSpeed: number;
@@ -169,11 +174,15 @@ export interface WickSnapshot {
   rngState: number;
 }
 
+export type { WickRect };
+
 /** The surface, exactly as `specs/instrumentation.md` declares it. */
 export interface WickDebugApi {
   readonly version: number;
   reset(options?: { readonly seed?: number }): void;
   snapshot(): WickSnapshot;
+  menuRects(): readonly WickRect[];
+  tabRects(): readonly WickRect[];
   setScreen(name: Screen): void;
   choose(index: number): void;
   setSpawning(on: boolean): void;
@@ -242,7 +251,7 @@ function real(value: unknown, name: string, min = -Infinity): number {
 function whole(
   value: unknown,
   name: string,
-  min: number,
+  min = -Infinity,
   max = Infinity,
 ): number {
   if (
@@ -282,6 +291,7 @@ function oneOf<T extends string>(
 const SCREENS: readonly Screen[] = [
   "title",
   "howto",
+  "almanac",
   "playing",
   "levelup",
   "chest",
@@ -302,6 +312,8 @@ export function snapshotOf(state: WickState): WickSnapshot {
     version: WICK_DEBUG_VERSION,
     screen: state.screen,
     menuIndex: state.menuIndex,
+    almanacTab: state.almanacTab,
+    almanacScroll: state.almanacScroll,
     ...switches,
     run: {
       tick: r.tick,
@@ -311,6 +323,7 @@ export function snapshotOf(state: WickState): WickSnapshot {
       xpToNext: xpToNext(r.level),
       kills: r.kills,
       player: { ...r.player },
+      hurtFlash: r.hurtFlash,
       maxHp: maxHp(r.passives),
       armor: armor(r.passives),
       moveSpeed: moveSpeed(r.passives),
@@ -420,6 +433,9 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
       case "howto":
         toHowto(s);
         break;
+      case "almanac":
+        toAlmanac(s);
+        break;
       case "playing":
         if (from === "paused") resume(s);
         else if (from === "chest") closeChest(s);
@@ -461,10 +477,16 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
     snapshot() {
       return snapshotOf(state());
     },
+    menuRects() {
+      return menuRects(state());
+    },
+    tabRects() {
+      return tabRects(state());
+    },
 
     setScreen,
     choose(index) {
-      whole(index, "index", 0);
+      whole(index, "index");
       if (state().screen !== "levelup") return;
       choose(state(), index, SILENT);
       settle();

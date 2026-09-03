@@ -3,8 +3,10 @@ import {
   BASE_MAX_HP,
   CONTACT_COOLDOWN,
   ENEMIES,
+  HURT_FLASH,
   MOVE_SPEED,
   TICK_DT,
+  TICK_HZ,
   type CueName,
 } from "../constants";
 import { Rng } from "../rng";
@@ -154,6 +156,47 @@ describe("contact", () => {
     run(world, 60);
     expect(world.state.run.player.hp).toBe(BASE_MAX_HP - 10);
     expect(world.state.run.enemies[0].contactCooldown).toBe(0);
+  });
+
+  it("arms the hurt flash on the tick a hit lands and counts it down", () => {
+    const world = playing();
+    world.state.enemyMotion = false;
+    expect(world.state.run.hurtFlash).toBe(0);
+    spawnEnemy(world.state.run, "moth", 0, 0);
+    run(world, 1);
+    expect(world.state.run.hurtFlash).toBe(HURT_FLASH);
+    run(world, 1);
+    expect(world.state.run.hurtFlash).toBeCloseTo(HURT_FLASH - TICK_DT, 9);
+    run(world, Math.round(HURT_FLASH * TICK_HZ) - 2);
+    expect(world.state.run.hurtFlash).toBeCloseTo(TICK_DT, 9);
+    run(world, 1);
+    expect(world.state.run.hurtFlash).toBe(0);
+  });
+
+  it("arms it again on the next hit, and a heal leaves it as it was", () => {
+    const world = playing();
+    world.state.enemyMotion = false;
+    spawnEnemy(world.state.run, "moth", 0, 0);
+    run(world, 1);
+    run(world, 4);
+    const running = world.state.run.hurtFlash;
+    expect(running).toBeLessThan(HURT_FLASH);
+    world.state.run.passives.push({ id: "tinder", level: 5 });
+    world.state.run.player.hp = 10;
+    run(world, 1);
+    expect(world.state.run.player.hp).toBeGreaterThan(10 - ENEMIES.moth.damage);
+    expect(world.state.run.hurtFlash).toBeCloseTo(running - TICK_DT, 9);
+    // CONTACT_COOLDOWN after the first hit the moth hits again.
+    run(world, Math.round(CONTACT_COOLDOWN * TICK_HZ) - 5);
+    expect(world.state.run.hurtFlash).toBe(HURT_FLASH);
+  });
+
+  it("leaves the flash alone on a tick with no hit", () => {
+    const world = playing();
+    world.state.enemyMotion = false;
+    spawnEnemy(world.state.run, "moth", ENEMIES.moth.radius + 12, 0);
+    run(world, 5);
+    expect(world.state.run.hurtFlash).toBe(0);
   });
 
   it("is not made by an enemy just out of reach", () => {

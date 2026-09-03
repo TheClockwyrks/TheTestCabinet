@@ -2,21 +2,23 @@
 
 This file defines the screens Wick opens on and plays on, what each shows, how a
 player moves between them, and the game's audio. The rules the screens present
-are in `specs/world.md`, `specs/progression.md`, and `specs/evolutions.md`;
-the actions the menus are driven by are bound in `specs/controls.md`; and the
-icons, sprites, and sounds the screens draw and play are the produced files
+are in `specs/world.md`, `specs/progression.md`, and `specs/evolutions.md`; the
+actions and the pointer the menus are driven by are in `specs/controls.md`; and
+the icons, sprites, and sounds the screens draw and play are the produced files
 `specs/assets.md` lists. Every figure and every piece of screen copy below
 carries the name this specification gives it.
 
 ## Presentation
 
-Wick fixes no palette, no font, no layout, and no styling for any screen. The
-look of the night is yours, and `specs/overview.md` states what a player reads
-at a glance in the world. Two requirements are this file's own. Every piece of
-text a screen shows is legible against whatever sits behind it at the logical
-stage size `STAGE_W x STAGE_H` (`1280 x 720`), the HUD included, which is drawn
-over the live world. On every menu the item at `menuIndex` is drawn distinctly
-from the others, so a player always sees which item `confirm` would accept.
+Wick fixes no palette, no font, and no styling for any screen, and each
+screen's layout is yours except where a table below places one element relative
+to another. The look of the night is yours, and `specs/overview.md` states what
+a player reads at a glance in the world. Two requirements are this file's own.
+Every piece of text a screen shows is legible against whatever sits behind it at
+the logical stage size `STAGE_W x STAGE_H` (`1280 x 720`), the HUD included,
+which is drawn over the live world. On every menu the item at `menuIndex` is
+drawn distinctly from the others, so a player always sees which item `confirm`
+would accept.
 
 ## Screens
 
@@ -26,6 +28,7 @@ from the others, so a player always sees which item `confirm` would accept.
 | --- | --- |
 | `title` | The front door: the title, the tagline, and the main menu. |
 | `howto` | How the game is played, in a player's words. |
+| `almanac` | Everything the night holds, listed and described. |
 | `playing` | The night: the world, the lamplighter, and the HUD. The only screen that ticks. |
 | `levelup` | An overlay over the held world, offering a level-up's choices. |
 | `chest` | An overlay over the held world, showing what a chest did. |
@@ -41,7 +44,7 @@ The game opens here, and the debug surface's `reset` returns here.
 | --- | --- | --- |
 | Title | `TITLE_TEXT` | `WICK` |
 | Tagline | `TAGLINE_TEXT` | `KEEP THE LIGHT` |
-| Menu | `TITLE_ITEMS` | `LIGHT THE LAMP`, `HOW TO PLAY`, in that order |
+| Menu | `TITLE_ITEMS` | `LIGHT THE LAMP`, `THE ALMANAC`, `HOW TO PLAY`, in that order |
 
 The menu's items are stacked one above the next under the title and tagline.
 `menuIndex` is `0` on arriving. `up` and `down` move the highlight by one item
@@ -51,6 +54,7 @@ nothing.
 | Item | Does |
 | --- | --- |
 | `LIGHT THE LAMP` | Starts a fresh run, defined below, and sets `screen = playing`. |
+| `THE ALMANAC` | Sets `screen = almanac`, with `menuIndex`, `almanacTab`, and `almanacScroll` all `0`. |
 | `HOW TO PLAY` | Sets `screen = howto` and `menuIndex = 0`. |
 
 The night may show behind the menu, dimmed or otherwise quieted.
@@ -70,11 +74,78 @@ It covers:
   level when the lamplighter carries its trinket;
 - that the night ends at dawn, `10:00` on the clock, and that reaching it is
   the win;
+- that the almanac, opened from the title, lists every tool, trinket, enemy,
+  and pickup the night holds;
 - the controls, naming the keys `BINDINGS` gives each action: the arrows or
-  `WASD` to move, `Enter` or `Space` to confirm, `Escape` to go back, `P` to
-  pause, and `M` to mute.
+  `WASD` to move, `Enter` or `Space` to confirm, `Escape` to go back or to
+  pause, `P` to pause, and `M` to mute, and that every menu answers the mouse
+  as well.
 
 `back` returns to `title` with `menuIndex = 0`.
+
+### `almanac`
+
+Everything the night holds, browsed at rest. It shows `ALMANAC_TEXT`
+(`THE ALMANAC`), the tab bar `ALMANAC_TABS` (`TOOLS`, `TRINKETS`, `ENEMIES`,
+`PICKUPS`, in that order) across the top with the tab at `almanacTab` drawn
+distinctly, the entries of that tab listed down the left with the entry at
+`menuIndex` drawn distinctly, and that entry shown in full to the right of the
+list.
+
+| Tab | Entries, in this order |
+| --- | --- |
+| `TOOLS` | the ten of `BASE_WEAPON_IDS`, then the six of `EVOLUTION_IDS` |
+| `TRINKETS` | the ten of `PASSIVE_IDS` |
+| `ENEMIES` | the thirteen of `ENEMY_IDS` |
+| `PICKUPS` | the three of `GEM_TIERS`, then the three of `PICKUP_KINDS` |
+
+The list shows `ALMANAC_ROWS` (`10`) entries at a time, beginning at the entry
+at `almanacScroll`, and a tab of `ALMANAC_ROWS` entries or fewer shows all of
+them. Each row shows its entry's name.
+
+The entry at `menuIndex` is shown in four parts:
+
+| Part | Content |
+| --- | --- |
+| Name | The weapon's from `WEAPON_NAMES`, the passive's from `PASSIVES`, the enemy's from `ENEMIES`, or the gem's or the pickup's from the names below. |
+| Picture | The produced sprite the table below names, animated where that sprite is a sheet. |
+| Stats | The lines the table below names, each the label written exactly as it appears there and its figure beside it. |
+| Description | The entry's line from the Descriptions section below, on one line. |
+
+| Tab | Picture | Stats |
+| --- | --- | --- |
+| `TOOLS` | the weapon's icon and its effect, animated where the effect is a sheet | `DAMAGE` and the `damage` of its level `1` row, and `COOLDOWN` and that row's `cooldown` in seconds; an evolved weapon's fixed row is that row, and Chandelier, whose fixed row carries no cooldown, shows `DAMAGE` alone |
+| `TRINKETS` | the passive's icon | `MAX LEVEL` and its max level in `PASSIVES` |
+| `ENEMIES` | the enemy's walk sheet, animated at `WALK_FRAME_TIME` | `HEALTH`, `SPEED`, and `DAMAGE`, and the `hp`, `speed`, and `damage` of its row in `ENEMIES` |
+| `PICKUPS` | the gem's or the pickup's sprite | a gem: `EXPERIENCE` and its tier's value in `GEM_VALUES`; `bread`: `HEALS` and `BREAD_HEAL` (`30`); `chest` and `draft`: none |
+
+The gems and the pickups carry the display names `GEM_NAMES` and
+`PICKUP_NAMES` give them:
+
+| Constant | Id | Name |
+| --- | --- | --- |
+| `GEM_NAMES` | `small` | `Small Gem` |
+| `GEM_NAMES` | `medium` | `Medium Gem` |
+| `GEM_NAMES` | `large` | `Large Gem` |
+| `PICKUP_NAMES` | `chest` | `Chest` |
+| `PICKUP_NAMES` | `bread` | `Bread` |
+| `PICKUP_NAMES` | `draft` | `Draft` |
+
+`menuIndex`, `almanacTab`, and `almanacScroll` are `0` on arriving. `up` and
+`down` move `menuIndex` by one over the tab's entries and wrap at both ends.
+`left` and `right` move `almanacTab` by one over `ALMANAC_TABS`, wrap at both
+ends, and set `menuIndex` and `almanacScroll` to `0`. `back` returns to `title`
+with `menuIndex`, `almanacTab`, and `almanacScroll` all `0`. `confirm` and
+`pause` do nothing here.
+
+`almanacScroll` follows the highlight: after every move of `menuIndex` it
+becomes the lesser of `almanacScroll` and `menuIndex`, then the greater of that
+and `menuIndex − ALMANAC_ROWS + 1`, and is then held between `0` and
+`max(0, count − ALMANAC_ROWS)`, for `count` the number of entries the tab
+holds.
+
+The almanac holds the idle run, nothing advances while it is open, and no cue
+loops on it.
 
 ### `playing`
 
@@ -89,13 +160,14 @@ The HUD is drawn over the world and reads against it:
 
 | Element | What the player sees |
 | --- | --- |
-| Health | A bar whose filled width scales with `hp / maxHp`, with both numbers beside it, `hp` rounded up to a whole number. |
-| Experience | A bar whose filled width scales with `xp / xpToNext`, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level, as `LEVEL 4`. |
+| Health | A bar filled from its left edge, its filled width `hp / maxHp` of the bar's width, with both numbers beside it, `hp` rounded up to a whole number. |
+| Experience | A bar filled from its left edge, its filled width `xp / xpToNext` of the bar's width, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level, as `LEVEL 4`. |
 | Clock | The run clock as `m:ss`, counting up from `0:00` in whole seconds, the seconds always two digits. |
 | Kills | The kill count. |
-| Weapon slots | `WEAPON_SLOTS` (`6`) slots in slot order, each held weapon as its icon with one pip per level held, and an empty slot visibly empty. |
+| Weapon slots | `WEAPON_SLOTS` (`6`) slots in slot order, each held weapon as its icon with one pip per level held, the pips in a row outside the square the icon is drawn in and the only marks that row gains over a slot holding nothing, and an empty slot visibly empty, drawing neither icon nor pip. |
 | Passive slots | `PASSIVE_SLOTS` (`6`) slots, the same way. |
-| Cooldowns | On each weapon's slot, its cooldown state: the slot's picture on the tick the weapon fires differs from its picture on the tick before, and a weapon whose timer is `0` shows nothing left to run. A Lantern slot's timer covers the set's life and the gap after it together. |
+| Cooldowns | On each weapon's slot, its cooldown state: the slot's picture on the tick the weapon fires differs from its picture on the tick before, and a weapon whose timer is `0` shows nothing left to run, its slot drawing the same picture on every tick the timer stays `0`. A Lantern slot's timer covers the set's life and the gap after it together. |
+| Hurt | While `hurtFlash` is above `0`, a hurt cast over the view, so the stage drawn on a tick with `hurtFlash` above `0` differs from the stage drawn on the same state with `hurtFlash` at `0`. Its color, its shape, and its fade are yours. |
 
 ### `levelup`
 
@@ -109,6 +181,11 @@ that order. Each offer shows three things:
 | Icon | The item's produced icon. |
 | Name | The weapon's name from `WEAPON_NAMES`, the passive's from `PASSIVES`, or `LAMP_OIL_NAME` (`Lamp Oil`). |
 | Tag | `OFFER_NEW_TEXT` (`NEW`) for an item not yet held, else `LEVEL_LABEL` and the level it would become, as `LEVEL 3`. Lamp oil is never held, so its tag is `NEW`. |
+
+Beneath the offer list the overlay draws one more line: the description of the
+offer at `menuIndex`, on one line. A weapon's is its line in
+`WEAPON_DESCRIPTIONS`, a passive's is its line in `PASSIVE_DESCRIPTIONS`, and
+lamp oil's is `LAMP_OIL_DESCRIPTION`, all of them below.
 
 `menuIndex` is `0` on opening. `up` and `down` move the highlight and wrap at
 both ends, and `confirm` accepts the highlighted offer, as
@@ -134,9 +211,17 @@ nothing here.
 
 ### `paused`
 
-The world held still, with the HUD, under `PAUSED_TEXT` (`PAUSED`). `pause`
-returns to `playing`, and `back` abandons the run and returns to `title` with
-`menuIndex = 0`. `up`, `down`, and `confirm` do nothing here.
+The world held still, with the HUD, under `PAUSED_TEXT` (`PAUSED`), and the
+menu `PAUSE_ITEMS` below it: `RESUME`, `MAIN MENU`, in that order.
+
+| Item | Does |
+| --- | --- |
+| `RESUME` | Sets `screen = playing`, with the run untouched. |
+| `MAIN MENU` | Abandons the run and returns to `title` with `menuIndex = 0`. |
+
+`menuIndex` is `0` on arriving. `up` and `down` move the highlight and wrap at
+both ends, and `confirm` takes the highlighted item. `pause` and `back` both
+return to `playing` with the run untouched, sounding no cue.
 
 ### `fallen` and `dawn`
 
@@ -156,15 +241,102 @@ and `confirm` takes the highlighted item: `TRY AGAIN` starts a fresh run and
 sets `screen = playing`, and `TITLE` returns to `title` with `menuIndex = 0`.
 `back` does what `TITLE` does.
 
+## Descriptions
+
+Every tool, trinket, enemy, gem, and pickup carries one fixed line of copy, and
+the lines below are those strings exactly. `WEAPON_DESCRIPTIONS`,
+`PASSIVE_DESCRIPTIONS`, `ENEMY_DESCRIPTIONS`, `GEM_DESCRIPTIONS`, and
+`PICKUP_DESCRIPTIONS` hold them by id, and `LAMP_OIL_DESCRIPTION` holds lamp
+oil's. Each is the line the almanac draws for that entry, and a weapon's, a
+passive's, and lamp oil's is also the line the level-up overlay draws beneath
+its offer list.
+
+### `WEAPON_DESCRIPTIONS`
+
+| Id | Line |
+| --- | --- |
+| `taper` | `A slash in the way you face, striking everything the arc covers.` |
+| `ember` | `A bolt at the nearest enemy, spent on the first thing it hits.` |
+| `pin` | `A fan of darts at the nearest enemy, each one piercing.` |
+| `lantern` | `Lanterns that circle the lamp and burn what they pass through.` |
+| `halo` | `A ring of light around the lamp that pulses on its own rhythm.` |
+| `oil-splash` | `Puddles scattered nearby that burn everything standing in them.` |
+| `spark` | `Strikes on random enemies within range of the lamp.` |
+| `shard` | `A shard that bounces off the edges of the view and keeps going.` |
+| `sconce` | `A boomerang that slows, turns, and comes back to the lamp.` |
+| `flare` | `A burst that catches every enemy around the lamp at once.` |
+| `pyre` | `Taper transformed: a wider slash that feeds the lamp as it lands.` |
+| `beacon` | `Ember transformed: a faster bolt that carries through a crowd.` |
+| `hail` | `Pin transformed: a wider fan of darts that pierce further.` |
+| `chandelier` | `Lantern transformed: lanterns that never go out.` |
+| `corona` | `Halo transformed: a wider ring that feeds the lamp as it pulses.` |
+| `blaze` | `Oil Splash transformed: puddles that burn hotter and faster.` |
+
+### `PASSIVE_DESCRIPTIONS`
+
+| Id | Line |
+| --- | --- |
+| `wick` | `Every tool you carry does more damage.` |
+| `oil` | `Every tool you carry fires more often.` |
+| `glass` | `Every shape your tools make covers more ground.` |
+| `brass` | `Armor: every hit against you takes less health.` |
+| `mirror` | `Your tools make one more of whatever they make.` |
+| `bellows` | `The lamplighter walks faster.` |
+| `tallow` | `The lamp holds more health.` |
+| `tinder` | `The lamp recovers health as the night goes on.` |
+| `soot` | `Gems are worth more experience.` |
+| `lure` | `Gems are drawn to the lamp from further away.` |
+
+### `ENEMY_DESCRIPTIONS`
+
+| Id | Line |
+| --- | --- |
+| `moth` | `The first thing the light draws. Slow, weak, and never alone.` |
+| `bat` | `Quicker than a moth and just as thin.` |
+| `rat` | `Low and steady, and it takes more than one hit.` |
+| `gnat` | `Drifts in a straight line and never turns. Arrives in swarms.` |
+| `beetle` | `Armored and slow, and it hurts more than it looks like it should.` |
+| `wisp` | `Weaves as it comes, so it never quite arrives where you expect.` |
+| `spider` | `Fast and tough, and it closes the distance quickly.` |
+| `crow` | `Fast, and it hits hard for its size.` |
+| `shade` | `Heavy and slow, and it leaves a larger gem behind.` |
+| `hound` | `The heaviest of the common dark, and the fastest of the heavy.` |
+| `mothwing` | `An elite: a great moth that drops a chest when it falls.` |
+| `owl` | `An elite: silent, heavy, and it drops a chest when it falls.` |
+| `dark` | `The night itself, from nine minutes on. It outlasts almost anything.` |
+
+### `GEM_DESCRIPTIONS`
+
+| Id | Line |
+| --- | --- |
+| `small` | `The experience a common death leaves behind.` |
+| `medium` | `A heavier gem, worth more toward the next level.` |
+| `large` | `The heaviest gem, left by the heaviest of the dark.` |
+
+### `PICKUP_DESCRIPTIONS`
+
+| Id | Line |
+| --- | --- |
+| `chest` | `Opens beside the lamp and transforms a tool at its top level.` |
+| `bread` | `Restores 30 health to the lamplighter who walks over it.` |
+| `draft` | `Draws every gem in the night to the lamp at once.` |
+
+### `LAMP_OIL_DESCRIPTION`
+
+| Item | Line |
+| --- | --- |
+| Lamp Oil | `Restores 30 health and fills no slot.` |
+
 ## A fresh run
 
 `LIGHT THE LAMP`, `TRY AGAIN`, and the debug surface's `setScreen("playing")`
 each begin a fresh run, and whatever the previous run held is discarded. A
 fresh run has the run clock at `0:00`, the lamplighter at the world origin
-`(0, 0)` with `hp = BASE_MAX_HP` (`100`) and `facing = "right"`, level `1` with
-`xp = 0` and `kills = 0`, Taper at level `1` alone in the first weapon slot and
-no passive held, no enemy, projectile, zone, gem, or pickup in the world, no
-level-up queued, and the spawn timer at `0`, as `specs/enemies.md` states.
+`(0, 0)` with `hp = BASE_MAX_HP` (`100`), `facing = "right"`, and `hurtFlash`
+at `0`, level `1` with `xp = 0` and `kills = 0`, Taper at level `1` alone in
+the first weapon slot and no passive held, no enemy, projectile, zone, gem, or
+pickup in the world, no level-up queued, and the spawn timer at `0`, as
+`specs/enemies.md` states.
 
 ## What advances on each screen
 
@@ -173,7 +345,7 @@ screen, and input is read on every screen. The simulation is the exception:
 
 | Screen | What advances |
 | --- | --- |
-| `title`, `howto` | Nothing. |
+| `title`, `howto`, `almanac` | Nothing. |
 | `playing` | The simulation, in whole ticks of `TICK_DT` (`1/60`) consumed from the accumulated delta time, as `specs/overview.md` states. |
 | `levelup`, `chest`, `paused` | Nothing. The world beneath holds exactly the tick it was at. |
 | `fallen`, `dawn` | Nothing. |
@@ -185,15 +357,19 @@ every screen but `playing` by every route.
 
 ## Menu navigation
 
-Menus are keyboard only, through the registered actions in `specs/controls.md`:
-`up` and `down` move the highlight, `confirm` accepts the highlighted item, and
-`back` returns. `menuIndex` is `0` on entering every screen, and on a screen
-with no menu it stays `0`. Every move of a highlight plays `menu-move`, on the
-level-up overlay included. `menu-confirm` plays when an item of `TITLE_ITEMS`
-or `END_ITEMS` is confirmed; an accepted offer plays `choose` alone, and
-closing the chest overlay plays nothing. `pause` is read on `playing` and
-`paused` alone, the movement actions are read as held values on `playing`
-alone, and `mute` is read on every screen.
+Every menu is driven two ways, both defined in `specs/controls.md`: the
+registered actions, where `up` and `down` move the highlight, `confirm` accepts
+the highlighted item, and `back` returns; and the pointer, which highlights the
+item it rests on and, on a click, takes that item exactly as `confirm` on it
+does. `menuIndex` is `0` on
+entering every screen, and on a screen with no menu it stays `0`. Every move of
+a highlight plays `menu-move`, whichever of the two moved it, the level-up
+overlay's offers and the almanac's tab bar included. `menu-confirm` plays when
+an item of `TITLE_ITEMS`, `PAUSE_ITEMS`, or `END_ITEMS` is confirmed; an
+accepted offer plays `choose` alone, and closing the chest overlay plays
+nothing. `pause` is read on `playing` and `paused` alone, the movement actions
+are read as held values on `playing` alone, and `mute` is read on every
+screen.
 
 ## Audio
 
@@ -226,7 +402,7 @@ the fifteen cues in `CUES`, under exactly these names, one per event:
 | `fallen` | `CUES.fallen` | The run ends fallen. |
 | `dawn` | `CUES.dawn` | The run ends at dawn. |
 | `menu-move` | `CUES.menuMove` | A menu highlight moves. |
-| `menu-confirm` | `CUES.menuConfirm` | An item of `TITLE_ITEMS` or `END_ITEMS` is confirmed. |
+| `menu-confirm` | `CUES.menuConfirm` | An item of `TITLE_ITEMS`, `PAUSE_ITEMS`, or `END_ITEMS` is confirmed. |
 | `music` | `CUES.music` | Loops from the start of a run to its end. |
 | `hum` | `CUES.hum` | Loops while Halo or Corona is held on `playing`. |
 
@@ -245,8 +421,8 @@ once.
 - `music` is looping on every frame exactly when `screen` is `playing`,
   `levelup`, `chest`, or `paused`. It starts on the frame a fresh run starts
   and keeps playing through the overlays and the pause, and it stops on the
-  frame the run ends, fallen or at dawn, or `back` on `paused` abandons it.
-  `title` and `howto` carry no music.
+  frame the run ends, fallen or at dawn, or `MAIN MENU` on `paused` abandons
+  it. `title`, `howto`, and `almanac` carry no music.
 - `hum` is looping on every frame exactly when `screen` is `playing` and a
   held weapon is `halo` or `corona`. It starts on the frame that first makes
   both true, whether Halo was just acquired or play just resumed from an
@@ -294,6 +470,7 @@ sound muted.
 ## Out of scope
 
 - Network or online play.
-- Touch and gamepad input. Every screen is driven from the keyboard.
+- Touch and gamepad input. Every screen is driven from the keyboard and the
+  mouse.
 - Persistence of progress or settings between sessions. Each session starts
   fresh.

@@ -1,4 +1,5 @@
-// Wick — the keyboard beneath the actions (specs/controls.md).
+// Wick — the keyboard beneath the actions, and the pointer beside it
+// (specs/controls.md).
 //
 // Keys are bound by `KeyboardEvent.code`, so a binding is a physical key
 // whatever the layout. Each action is reported two ways: as a held value, `1`
@@ -6,6 +7,11 @@
 // in which the held value went from `0` to `1`. A key event whose `repeat`
 // flag is set arms no edge. `Backquote` belongs to the debug overlay rather
 // than to the action registry, so it is counted apart.
+//
+// The pointer is gathered the same way: the listeners sit on the canvas and
+// keep each event's client position, and a frame reads where the pointer
+// rests, the primary presses since its last read, and the wheel travel since
+// then, all mapped into stage units through the fit the frame draws under.
 
 import {
   ACTIONS,
@@ -14,6 +20,7 @@ import {
   type Action,
 } from "./constants";
 import type { Held } from "./sim/context";
+import type { StagePoint } from "./viewport";
 
 /** The action each bound code fires. */
 const CODE_TO_ACTION: ReadonlyMap<string, Action> = (() => {
@@ -127,5 +134,108 @@ export class Keyboard {
   /** Forget every held key, as when the window loses focus mid-hold. */
   releaseAll(): void {
     this.down.clear();
+  }
+}
+
+/** How a client position and a client travel reach the stage on one frame. */
+export interface StageMapping {
+  point(clientX: number, clientY: number): StagePoint;
+  travel(delta: number): number;
+}
+
+/** What the pointer did over one frame, in stage units. */
+export interface PointerFrame {
+  /** Where the pointer rests, or `null` while it is off the canvas. */
+  at: StagePoint | null;
+  /** The points of the primary presses since the last read, in order. */
+  presses: StagePoint[];
+  /** Vertical wheel travel since the last read, downward positive. */
+  wheel: number;
+}
+
+/** A position in the page's own client CSS pixels. */
+interface ClientPoint {
+  x: number;
+  y: number;
+}
+
+/** The button a primary press carries. */
+const PRIMARY_BUTTON = 0;
+
+export class Pointer {
+  /** Where the pointer rests, in client CSS pixels, or `null` while it is off. */
+  private at: ClientPoint | null = null;
+  /** The client positions of the primary presses since the last read. */
+  private readonly presses: ClientPoint[] = [];
+  private travel = 0;
+  private detach: (() => void) | null = null;
+
+  /** Start listening on `target`, which is the canvas the stage is drawn on. */
+  attach(target: EventTarget): void {
+    const onMove = (event: Event): void => {
+      const pointer = event as PointerEvent;
+      this.moveTo(pointer.clientX, pointer.clientY);
+    };
+    const onDown = (event: Event): void => {
+      const pointer = event as PointerEvent;
+      this.moveTo(pointer.clientX, pointer.clientY);
+      if (pointer.button === PRIMARY_BUTTON) {
+        this.pressAt(pointer.clientX, pointer.clientY);
+      }
+    };
+    const onLeave = (): void => this.leave();
+    const onWheel = (event: Event): void => {
+      const wheel = event as WheelEvent;
+      this.roll(wheel.deltaY);
+      wheel.preventDefault();
+    };
+    target.addEventListener("pointermove", onMove);
+    target.addEventListener("pointerdown", onDown);
+    target.addEventListener("pointerleave", onLeave);
+    target.addEventListener("wheel", onWheel, { passive: false });
+    this.detach = () => {
+      target.removeEventListener("pointermove", onMove);
+      target.removeEventListener("pointerdown", onDown);
+      target.removeEventListener("pointerleave", onLeave);
+      target.removeEventListener("wheel", onWheel);
+    };
+  }
+
+  /** Stop listening. */
+  release(): void {
+    this.detach?.();
+    this.detach = null;
+  }
+
+  /** The pointer rests at a client position. */
+  moveTo(clientX: number, clientY: number): void {
+    this.at = { x: clientX, y: clientY };
+  }
+
+  /** One primary press at a client position. */
+  pressAt(clientX: number, clientY: number): void {
+    this.presses.push({ x: clientX, y: clientY });
+  }
+
+  /** The pointer has left the canvas, so it rests on nothing. */
+  leave(): void {
+    this.at = null;
+  }
+
+  /** One wheel event's vertical travel, in client CSS pixels. */
+  roll(delta: number): void {
+    this.travel += delta;
+  }
+
+  /** Everything since the last read, in the stage units `mapping` gives. */
+  drain(mapping: StageMapping): PointerFrame {
+    const frame: PointerFrame = {
+      at: this.at === null ? null : mapping.point(this.at.x, this.at.y),
+      presses: this.presses.map((press) => mapping.point(press.x, press.y)),
+      wheel: mapping.travel(this.travel),
+    };
+    this.presses.length = 0;
+    this.travel = 0;
+    return frame;
   }
 }

@@ -1,9 +1,9 @@
 // Wick — the entry point (specs/overview.md).
 //
 // Loads the produced assets, builds the runtime layer beneath the game (the
-// keyboard, the audio bus, the diagnostics, the frame loop), installs the
-// debugging and automation surface on `window.__wick`, and starts the loop.
-// Nothing here decides a rule of the game.
+// keyboard, the pointer, the audio bus, the diagnostics, the frame loop),
+// installs the debugging and automation surface on `window.__wick`, and
+// starts the loop. Nothing here decides a rule of the game.
 
 import { loadAssets } from "./assets";
 import { WebAudioBus } from "./audio";
@@ -13,7 +13,7 @@ import {
   registerGameDiagnostics,
 } from "./diagnostics";
 import { Game } from "./game";
-import { Keyboard } from "./input";
+import { Keyboard, Pointer } from "./input";
 import { Runtime } from "./runtime";
 import { createApi, installApi } from "./surface";
 
@@ -33,12 +33,16 @@ async function main(): Promise<void> {
     isMuted: () => audio.muted,
   });
   const keyboard = new Keyboard();
+  // The pointer listens on the canvas, so an event's client position maps
+  // through the very fit the stage is drawn under.
+  const pointer = new Pointer();
   const diagnostics = new Diagnostics();
   registerGameDiagnostics(diagnostics, game);
   registerAudioDiagnostics(diagnostics, audio);
 
   keyboard.onFirstPress(() => audio.unlock());
   keyboard.attach(window);
+  pointer.attach(canvas);
   window.addEventListener("pointerdown", () => audio.unlock());
 
   // Every image is decoded and every sound bound before the first frame.
@@ -51,6 +55,7 @@ async function main(): Promise<void> {
     game,
     assets,
     keyboard,
+    pointer,
     diagnostics,
     audio,
   });

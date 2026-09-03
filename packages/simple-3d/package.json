@@ -1,0 +1,38 @@
+{
+  "name": "@test-cabinet/simple-3d",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "The Simple 3D engine: the runtime a produced 3D game is built on. An engine is created over a canvas and bound to one game, and it owns the frame loop and its replaceable clock, the letterboxed device-pixel-ratio-aware canvas fit, the renderer over the canvas with the retained scene and the perspective or orthographic camera it draws through, the 2D screen layer composited over that picture for the readouts every game needs, named input actions over keyboard bindings and touch layouts, a pointer mapped into the game's logical coordinates and turned into a world-space ray through the camera on request, an audio cue bus with its positional cues and its first-gesture unlock, asset resolution under a fixed root with its texture and model decoders, a diagnostics overlay, the debug surface a game returns beside its state, and an opt-in recorder whose recordings are video of the frames a build drew, timestamped in simulated time — leaving the game to write only its own simulation and its own picture. Everything it does is observed by subscribing to its events rather than by reading a log it accumulates.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "three": "~0.182.0"
+  },
+  "devDependencies": {
+    "@types/three": "~0.182.0",
+    "jsdom": "^25",
+    "three": "~0.182.0",
+    "typescript": "^5",
+    "vitest": "^3"
+  },
+  "dependencies": {
+    "ts-essentials": "^10.2.1"
+  }
+}

@@ -9,9 +9,9 @@ uploads a published run's record, its events, and all media to a public
 is the [public projection](/components/backend/projection/), whose rows name
 these objects. This page is the authoritative contract for the bucket's layout.
 
-A run's row carries every headline figure a listing needs — outcome, functional
-rating, aesthetic rating, whether the run is validator-rated, and score — so
-ranking and paging the published set costs no document fetch. The score and a
+A run's row carries every headline figure a listing needs, so ranking and paging
+the published set costs no document fetch: outcome, functional rating, aesthetic
+rating, whether the run is validator-rated, and score. The score and a
 validator-rated run's functional rating are the figures not readable from a run
 record alone: the checklist point weights, domains, and failure caps live in
 the case catalog rather than on the record, and a review may override validator
@@ -35,8 +35,6 @@ This gives a publish a cost proportional to what changed. A run's media and a
 [frozen](/development/frozen-versions/) case version's baselines are written once
 and referenced by every later publish. A run document that gains a review lands
 on a new key and is uploaded, and one whose content is unchanged is skipped.
-There is no separate "has this run changed?" signal that can go stale, because
-the bytes are the signal.
 
 A refresh therefore rebuilds every document in memory, which costs no network
 and no source bytes, and writes only what genuinely differs. The uploads that do
@@ -94,10 +92,9 @@ effective scores and its functional rating the worst of their effective
 ratings, and the validators' own figures stand while the run has no reviews.
 
 A validator-rated review entry carries its run-wide `aesthetic` tier and, in
-`checklist`, only the verdicts it overrides. The per-domain `aesthetics` array
-is a compatibility field the builder no longer emits; a reader resolves a
-review's tier as `aesthetic` when set, falling back to the worst tier in
-`aesthetics`.
+`checklist`, only the verdicts it overrides. A reader resolves a review's tier
+as `aesthetic` when set, falling back to the worst tier in a per-domain
+`aesthetics` array when that is what the entry carries.
 
 When the run captured a normalized [event
 stream](/components/core/events/) it is included as `events`. Raw harness output
@@ -169,7 +166,9 @@ the run id and written once:
   a video is transcoded from webm to mp4, for iOS playback, exactly once. A
   transcoded video's recorded file name keeps its `.webm` spelling while its
   published key ends `.mp4`, which is why a reader follows the key rather than
-  composing one from the name.
+  composing one from the name. The transcode applies to `video` media; a
+  `replay` recorded as `.webm` is published as recorded, because the player
+  decodes its frames and timestamps as the engine wrote them.
 - Only media not yet in the bucket is read, from the backend store or the
   [artifact service](/components/artifacts/overview/), and uploaded.
 
@@ -181,9 +180,9 @@ a cluster is recreated. To re-seed the bucket from a prior snapshot in that
 recovery case, use `scripts/recover-run-media-from-snapshot.sh`.
 
 An upload stores both labels the object is served under: what the resource is
-and how its bytes are framed. A validation recording is stored as
+and how its bytes are framed. A 2D engine's validation recording is stored as
 `application/json` with a gzip content encoding, so a published recording
-arrives at the gallery as JSON.
+arrives at the gallery as JSON, and a 3D engine's is stored as `video/webm`.
 
 ## Case media
 
@@ -213,7 +212,9 @@ store read.
 Showcase media follows the same content-addressed rule, and its videos the
 same transcode rule as run media: a `.webm` entry is published as `.mp4`, with
 the entry's `file` keeping its authored spelling while its `key` ends `.mp4`,
-so a reader follows the key rather than composing one from the name.
+so a reader follows the key rather than composing one from the name. A `replay`
+baseline recorded as `.webm` is published as recorded, because the player
+decodes its frames and timestamps as the engine wrote them.
 
 ## Case files
 
@@ -268,10 +269,8 @@ Two things follow that the surfaces above must honour:
   and only that document, so a sibling object must opt in. This one is a static
   read of model-written source, so it is parsed and passed through the same
   secret scrubber before it becomes an object.
-- An absent `code` means the run was never measured. The corpus is [not
-  backfilled](/gg/analysis/code-analysis/#publishing-and-the-analyzer-version),
-  so a run that finished before the analyzer shipped carries no figures. A view
-  must render that absence as a gap rather than as a zero.
+- An absent `code` means the run was never measured. A view renders that
+  absence as a gap rather than as a zero.
 
 ## Comparison documents
 
@@ -282,16 +281,12 @@ listed and reached by.
 
 ## Superseded objects
 
-A run whose content changes mints a new key, so the object it previously occupied
-is left with nothing referencing it. Reclaiming those, and the media of a deleted
-run, is a future cleanup. The accumulation is proportional to content changes
-rather than to publishes, so it settles at a small multiple of the live set.
-
-Deleting them needs a signal the bucket does not carry. A listing reports when an
-object was *written*, not when it fell out of use, so a document written months
-ago says nothing about the moment it was superseded — pruning on that clock would
-delete a just-orphaned document and 404 any reader still following the key it had
-a moment ago. Reclaiming the space waits on a recorded supersession time.
+A run whose content changes mints a new key, and the object at its old key is
+retained. Nothing in the bucket records when an object fell out of use (a
+listing reports only when it was written), so no process deletes superseded
+objects or the media of a deleted run. The accumulation is proportional to
+content changes rather than to publishes, so it settles at a small multiple of
+the live set.
 
 ## Case documents
 
@@ -351,8 +346,7 @@ prefix, and the snapshot's top-level `index.json` names it under an optional
 order [`GET /test-case-groups`](/components/backend/api/#get-test-case-groups)
 serves them, each with its slug, name, optional summary, and member case slugs,
 so the gallery's home page renders the same leaderboards the consoles do. A
-reader treats an absent key as an empty group set, which is what a snapshot
-written before groups existed carries.
+reader treats an absent key as an empty group set.
 
 The builder redacts the per-run documents, and a sibling object opts into
 scrubbing when it can carry model-written content. This file is repo-authored

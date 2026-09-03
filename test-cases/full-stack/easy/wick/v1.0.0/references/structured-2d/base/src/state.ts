@@ -38,6 +38,7 @@ export type { EnemyId, GemTier, OfferId, PassiveId, PickupKind, WeaponId };
 export type Screen =
   | "title"
   | "howto"
+  | "almanac"
   | "playing"
   | "levelup"
   | "chest"
@@ -165,6 +166,8 @@ export interface RunState {
   xp: number;
   kills: number;
   player: PlayerState;
+  /** Seconds left of the lamplighter's hurt flash. */
+  hurtFlash: number;
   weapons: WeaponSlot[];
   passives: PassiveSlot[];
   enemies: EnemyState[];
@@ -223,7 +226,7 @@ export const SWITCH_NAMES: readonly SwitchName[] = [
   "effectMotion",
 ];
 
-/** The idle run `title` and `howto` hold. */
+/** The idle run `title`, `howto`, and `almanac` hold. */
 export function idleRun(): RunState {
   return {
     tick: 0,
@@ -231,6 +234,7 @@ export function idleRun(): RunState {
     xp: 0,
     kills: 0,
     player: { x: 0, y: 0, facing: "right", hp: BASE_MAX_HP },
+    hurtFlash: 0,
     weapons: [],
     passives: [],
     enemies: [],
@@ -261,6 +265,10 @@ export function freshRun(): RunState {
 export class WickState extends GameState {
   screen: Screen = "title";
   menuIndex = 0;
+  /** The index into `ALMANAC_TABS` of the tab the almanac is showing. */
+  almanacTab = 0;
+  /** The index of the first entry row the almanac's list shows. */
+  almanacScroll = 0;
   run: RunState = idleRun();
   /** Frame time waiting for the next whole tick; `0` off `playing`. */
   accumulator = 0;
@@ -295,6 +303,8 @@ export function resetState(
 ): void {
   state.screen = "title";
   state.menuIndex = 0;
+  state.almanacTab = 0;
+  state.almanacScroll = 0;
   state.run = idleRun();
   state.accumulator = 0;
   state.simTime = 0;

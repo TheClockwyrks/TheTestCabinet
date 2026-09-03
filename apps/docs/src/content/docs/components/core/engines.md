@@ -116,16 +116,17 @@ seeing its source.
 ## Validators hold the engine
 
 A run under an engine decides its objective points with
-[validators](/components/core/validation/) that run in the same process as the
-build they check. A validator imports the engine and the build's own game
-module, constructs the engine over a canvas and a clock of its own, and steps it
-an exact number of frames.
+[validators](/components/core/validation/) that hold the build they check. A
+validator imports the engine and the build's own game module, constructs the
+engine over a canvas and a clock of its own, and steps it an exact number of
+frames.
 
 Everything a check observes is therefore a value it already holds: the current
-game state, the frame counter and the accumulated simulated time,
-the viewport, the events the engine broadcast, and the drawing context the game
-rendered through. A build reaches a check through the engine it was given, so a
-run under an engine publishes nothing to the page it is drawn on.
+game state, the frame counter and the accumulated simulated time, the viewport,
+the events the engine broadcast, the drawing context the game rendered through,
+the stage canvas's pixels, and the recording. A build reaches a check through
+the engine it was given, so a run under an engine publishes nothing to the page
+it is drawn on.
 
 ## The debug surface
 
@@ -152,18 +153,19 @@ model-implemented mechanism a verdict leans on.
 
 ## Recording
 
-An engine records the drawing commands a build issues, as an opt-in capture its
-owner arms and disarms. A recording is the operations themselves, frame by
-frame, so replaying it against a fresh drawing surface reproduces the picture
-the build drew.
+An engine records what a build drew, as an opt-in capture its owner arms and
+disarms. A 2D engine records the drawing operations themselves, frame by frame,
+and a player re-issues them against a fresh drawing surface to reproduce the
+picture the build drew. A 3D engine records the rendered frames as VP9 video
+timestamped in simulated time, and a player decodes it frame-exactly, so the
+frame it shows is the one the build drew.
 
-Each frame carries the drawing state it inherited alongside its own operations,
-and the recording carries the values its operations draw with, so every
-reference a frame makes resolves without any earlier frame. That makes every
-frame drawable on its own: a player seeks to any frame without replaying the
-frames before it, and two recordings of the same scenario are scrubbed in step.
-Each engine's own page documents the exact format it writes and the version a
-player checks before drawing anything.
+Either form lets a player seek to any frame at a bounded cost. A 2D frame
+carries the drawing state it inherited beside what it submitted, so it is
+drawable without the frames before it, and a 3D recording carries a keyframe at
+least every 60 frames, so a frame decodes from the nearest earlier keyframe.
+Two recordings of the same scenario are therefore scrubbed in step, and each
+engine's own page documents the exact format it writes.
 
 Recording is bracketed by the caller rather than by the engine's lifetime, so a
 validator captures the stretch of a scenario its check is about and nothing
@@ -175,14 +177,13 @@ A validator emits a recording as the media of the review item its check backs,
 declared as a `replay` output in the case's
 [manifest](/testing/end-to-end/manifests/). The same suites driven against the
 case's reference implementation produce the baseline recording, so the reviewer
-sees the operations the build issued beside the operations the reference
-issued, scrubbed together.
+sees what the build drew beside what the reference drew, scrubbed together.
 
 ## The frame
 
 The engine owns the frame loop and decides what each frame's delta time is worth.
-The engine mandates no fixed timestep; what a game does with the delta time it is
-given is the game's own business.
+A game integrates against the delta it is given; a fixed timestep is the game's
+to build on top of that delta.
 
 A clock is the object that answers what a frame is worth, supplied when the
 engine is built and replaceable afterwards. Play installs a clock that reports

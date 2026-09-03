@@ -2,7 +2,15 @@
 // accumulator, and the cues each answers with, with no engine behind them.
 
 import { describe, expect, it } from "vitest";
-import { TICK_DT, type ActionName, type CueName } from "./constants";
+import {
+  ALMANAC_ROWS,
+  ALMANAC_TABS,
+  BASE_WEAPON_IDS,
+  EVOLUTION_IDS,
+  TICK_DT,
+  type ActionName,
+  type CueName,
+} from "./constants";
 import {
   choose,
   endRun,
@@ -10,10 +18,15 @@ import {
   openLevelUpNow,
   pause,
   runFrame,
+  scrollAlmanac,
   startRun,
+  toAlmanac,
   wantedLoops,
 } from "./flow";
 import { idleRun, initialState, resetState, type WickState } from "./state";
+
+/** The tools tab's entries: the ten base weapons, then the six evolutions. */
+const WEAPON_COUNT = BASE_WEAPON_IDS.length + EVOLUTION_IDS.length;
 
 interface Bench {
   state: WickState;
@@ -47,7 +60,7 @@ describe("the title screen", () => {
   it("wraps the highlight both ways and sounds menu-move", () => {
     const b = bench();
     b.act("up");
-    expect(b.state.menuIndex).toBe(1);
+    expect(b.state.menuIndex).toBe(2);
     b.act("down");
     expect(b.state.menuIndex).toBe(0);
     b.act("down");
@@ -72,8 +85,24 @@ describe("the title screen", () => {
     expect(wantedLoops(b.state)).toEqual(["music"]);
   });
 
+  it("opens the almanac on THE ALMANAC and back returns", () => {
+    const b = bench();
+    b.act("down");
+    b.act("confirm");
+    expect(b.state.screen).toBe("almanac");
+    expect(b.state.menuIndex).toBe(0);
+    expect(b.state.almanacTab).toBe(0);
+    expect(b.state.almanacScroll).toBe(0);
+    expect(b.state.run).toEqual(idleRun());
+    expect(wantedLoops(b.state)).toEqual([]);
+    b.act("back");
+    expect(b.state.screen).toBe("title");
+    expect(b.state.menuIndex).toBe(0);
+  });
+
   it("opens howto on HOW TO PLAY and back returns", () => {
     const b = bench();
+    b.act("down");
     b.act("down");
     b.act("confirm");
     expect(b.state.screen).toBe("howto");
@@ -88,6 +117,88 @@ describe("the title screen", () => {
     b.act("back");
     b.act("pause");
     expect(b.state.screen).toBe("title");
+  });
+});
+
+describe("the almanac", () => {
+  function almanac(): Bench {
+    const b = bench();
+    toAlmanac(b.state);
+    return b;
+  }
+
+  it("wraps the entry highlight over the shown tab", () => {
+    const b = almanac();
+    b.act("up");
+    expect(b.state.menuIndex).toBe(WEAPON_COUNT - 1);
+    b.act("down");
+    expect(b.state.menuIndex).toBe(0);
+    expect(drain(b)).toEqual(["menu-move", "menu-move"]);
+  });
+
+  it("wraps the tab both ways, resetting the entry and the scroll", () => {
+    const b = almanac();
+    b.act("down");
+    b.act("down");
+    expect(b.state.menuIndex).toBe(2);
+    b.act("right");
+    expect(b.state.almanacTab).toBe(1);
+    expect(b.state.menuIndex).toBe(0);
+    expect(b.state.almanacScroll).toBe(0);
+    b.act("left");
+    expect(b.state.almanacTab).toBe(0);
+    b.act("left");
+    expect(b.state.almanacTab).toBe(ALMANAC_TABS.length - 1);
+    b.act("right");
+    expect(b.state.almanacTab).toBe(0);
+    expect(drain(b)).toEqual(Array(6).fill("menu-move"));
+  });
+
+  it("follows the highlight with the scroll and clamps it at both ends", () => {
+    const b = almanac();
+    for (let i = 0; i < ALMANAC_ROWS; i += 1) b.act("down");
+    expect(b.state.menuIndex).toBe(ALMANAC_ROWS);
+    expect(b.state.almanacScroll).toBe(1);
+    b.act("up");
+    expect(b.state.almanacScroll).toBe(1);
+    for (let i = 0; i < ALMANAC_ROWS - 1; i += 1) b.act("up");
+    expect(b.state.menuIndex).toBe(0);
+    expect(b.state.almanacScroll).toBe(0);
+    b.act("up");
+    expect(b.state.menuIndex).toBe(WEAPON_COUNT - 1);
+    expect(b.state.almanacScroll).toBe(WEAPON_COUNT - ALMANAC_ROWS);
+  });
+
+  it("holds the scroll at zero on a tab that fits", () => {
+    const b = almanac();
+    b.act("right");
+    b.act("right");
+    b.act("right");
+    expect(ALMANAC_TABS[b.state.almanacTab]).toBe("PICKUPS");
+    b.act("up");
+    expect(b.state.menuIndex).toBe(5);
+    expect(b.state.almanacScroll).toBe(0);
+  });
+
+  it("takes nothing on confirm and ticks nothing", () => {
+    const b = almanac();
+    b.act("confirm");
+    b.act("pause");
+    expect(b.state.screen).toBe("almanac");
+    runFrame(b.state, 1, () => undefined);
+    expect(b.state.run.tick).toBe(0);
+    expect(b.state.accumulator).toBe(0);
+  });
+
+  it("scrolls by whole rows of wheel travel, holding the list", () => {
+    const b = almanac();
+    scrollAlmanac(b.state, 1);
+    expect(b.state.almanacScroll).toBe(1);
+    expect(b.state.menuIndex).toBe(0);
+    scrollAlmanac(b.state, 99);
+    expect(b.state.almanacScroll).toBe(WEAPON_COUNT - ALMANAC_ROWS);
+    scrollAlmanac(b.state, -99);
+    expect(b.state.almanacScroll).toBe(0);
   });
 });
 
@@ -109,13 +220,43 @@ describe("pause", () => {
     expect(b.state.run.tick).toBe(tick);
   });
 
-  it("abandons the run on back", () => {
+  it("resumes on back as on pause, the run untouched", () => {
+    const b = bench();
+    startRun(b.state);
+    runFrame(b.state, 0.5, () => undefined);
+    const tick = b.state.run.tick;
+    pause(b.state);
+    b.act("back");
+    expect(b.state.screen).toBe("playing");
+    expect(b.state.run.tick).toBe(tick);
+    expect(drain(b)).toEqual([]);
+  });
+
+  it("opens paused on back from playing, as pause does", () => {
+    const b = bench();
+    startRun(b.state);
+    b.act("back");
+    expect(b.state.screen).toBe("paused");
+    expect(b.state.menuIndex).toBe(0);
+  });
+
+  it("wraps the two-item menu and takes each item", () => {
     const b = bench();
     startRun(b.state);
     pause(b.state);
-    b.act("back");
+    b.act("up");
+    expect(b.state.menuIndex).toBe(1);
+    b.act("down");
+    expect(b.state.menuIndex).toBe(0);
+    b.act("confirm");
+    expect(b.state.screen).toBe("playing");
+    expect(drain(b)).toEqual(["menu-move", "menu-move", "menu-confirm"]);
+    pause(b.state);
+    b.act("down");
+    b.act("confirm");
     expect(b.state.screen).toBe("title");
     expect(b.state.run).toEqual(idleRun());
+    expect(drain(b).slice(-1)).toEqual(["menu-confirm"]);
   });
 });
 

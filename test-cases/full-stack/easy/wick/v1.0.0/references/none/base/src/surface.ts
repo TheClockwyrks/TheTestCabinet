@@ -26,6 +26,7 @@ import {
   type WeaponId,
 } from "./constants";
 import type { Game } from "./game";
+import { menuRects, tabRects } from "./layout";
 import {
   SWITCH_NAMES,
   type Enemy,
@@ -53,10 +54,20 @@ import {
 } from "./sim/weapons";
 import { armor, maxHp, moveSpeed, pickupRadius, xpToNext } from "./stats";
 
+/** One rectangle a menu item or a tab occupies, in stage coordinates. */
+export interface WickRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface WickSnapshot {
   version: number;
   screen: Screen;
   menuIndex: number;
+  almanacTab: number;
+  almanacScroll: number;
   autoStep: boolean;
   spawning: boolean;
   events: boolean;
@@ -73,6 +84,7 @@ export interface WickSnapshot {
     xpToNext: number;
     kills: number;
     player: { x: number; y: number; facing: Facing; hp: number };
+    hurtFlash: number;
     maxHp: number;
     armor: number;
     moveSpeed: number;
@@ -154,6 +166,8 @@ export interface WickDebugApi {
   advance(seconds: number): void;
   reset(options?: { seed?: number }): void;
   snapshot(): WickSnapshot;
+  menuRects(): WickRect[];
+  tabRects(): WickRect[];
   setScreen(name: Screen): void;
   choose(index: number): void;
   setSpawning(on: boolean): void;
@@ -222,7 +236,7 @@ function real(value: unknown, name: string, min = -Infinity): number {
 function whole(
   value: unknown,
   name: string,
-  min: number,
+  min = -Infinity,
   max = Infinity,
 ): number {
   if (
@@ -302,6 +316,8 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
       version: WICK_DEBUG_VERSION,
       screen: s.screen,
       menuIndex: s.menuIndex,
+      almanacTab: s.almanacTab,
+      almanacScroll: s.almanacScroll,
       autoStep: game.autoStep,
       ...SWITCH_NAMES.reduce(
         (switches, name) => ({ ...switches, [name]: s.switches[name] }),
@@ -315,6 +331,7 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
         xpToNext: xpToNext(r.level),
         kills: r.kills,
         player: { ...r.player },
+        hurtFlash: r.hurtFlash,
         maxHp: maxHp(r.passives),
         armor: armor(r.passives),
         moveSpeed: moveSpeed(r.passives),
@@ -404,6 +421,7 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
     const target = oneOf(name, "name", [
       "title",
       "howto",
+      "almanac",
       "playing",
       "levelup",
       "paused",
@@ -418,6 +436,9 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
         break;
       case "howto":
         game.toHowto();
+        break;
+      case "almanac":
+        game.toAlmanac();
         break;
       case "playing":
         if (from === "paused") game.resume();
@@ -463,10 +484,12 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
       game.reset(seed);
     },
     snapshot,
+    menuRects: () => menuRects(state()).map((rect) => ({ ...rect })),
+    tabRects: () => tabRects(state()).map((rect) => ({ ...rect })),
 
     setScreen,
     choose(index) {
-      whole(index, "index", 0);
+      whole(index, "index");
       if (state().screen !== "levelup") return;
       game.choose(index);
       game.discardCues();

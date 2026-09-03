@@ -29,13 +29,15 @@ synthesized cue; `producedImagePaths()` lists every image path, and
 ## Sprites, `scripts/gen-sprites.mjs`
 
 All transparent, straight alpha, drawn at one unit per pixel and centered on
-the thing they depict, and drawn by the game with image smoothing off.
+the thing they depict, and drawn by the game with image smoothing off. The
+enemy, gem, and pickup sprites are drawn a second time, fitted to the picture
+box, by `src/render/almanac.ts`.
 
 | Files | Canvas | Count | Drawn by | Notes |
 | --- | --- | --- | --- | --- |
 | `sprites/lamplighter/idle.png` | 24 x 32 | 1 | `src/render/world.ts` through `src/actors.ts` | Faces right; mirrored in code for `facing = "left"`. The lamp hangs from a pole on the facing side. |
-| `sprites/lamplighter/walk/{0..5}.png` | 24 x 32 | 6 | `src/render/world.ts` through `src/actors.ts` | Two strides with a passing pose between, the body dipping on contact and the lamp swinging a pixel behind. Frame `floor(m × TICK_DT / WALK_FRAME_TIME) mod 6` over the moved ticks `m`. |
-| `sprites/enemies/<id>/{0..3}.png` | twice the radius, square | 52 | `src/render/world.ts` through `src/actors.ts` | One four-frame cycle per enemy, the poses up, mid, down, mid. Fliers face the camera; walkers face right and are mirrored when the heading points left. Frame `floor(age / WALK_FRAME_TIME) mod 4`. |
+| `sprites/lamplighter/walk/{0..5}.png` | 24 x 32 | 6 | `src/render/world.ts` through `src/actors.ts` | Two half-strides of three frames, a contact, a low, and a passing pose, each half leading with the other leg, the body dipping through the low frames and the lamp swinging a pixel behind. Frame `floor(m × TICK_DT / WALK_FRAME_TIME) mod 6` over the moved ticks `m`. |
+| `sprites/enemies/<id>/{0..3}.png` | twice the radius, square | 52 | `src/render/world.ts` through `src/actors.ts` | One four-frame cycle per enemy, the phases up, falling, down, rising, no two frames the same picture. Fliers face the camera; walkers face right and are mirrored when the heading points left. Frame `floor(age / WALK_FRAME_TIME) mod 4`. |
 | `sprites/puff/{0..3}.png` | 24 x 24 | 4 | `src/render/world.ts` through `src/actors.ts` | A flash, a cloud, a ring of wisps, and stray motes, over `PUFF_TIME`. |
 | `sprites/gems/{small,medium,large}.png` | 8, 12, 16 | 3 | `src/render/world.ts` through `src/actors.ts` | A cyan diamond, a green hexagon, a gold faceted stone: each tier a different size and form. |
 | `sprites/pickups/{chest,bread,draft}.png` | 24 x 24 | 3 | `src/render/world.ts` through `src/actors.ts` | A banded chest with a brass clasp, a scored loaf, and three pale gusts. |
@@ -63,7 +65,9 @@ the thing they depict, and drawn by the game with image smoothing off.
 
 Each is produced on its canvas and scaled in code to the live hitbox by
 `src/render/effects.ts`: a slash over its `width x height`, everything else
-over its circle. A sheet's frame comes from the ticks since the shape appeared.
+over its circle. A sheet's frame comes from the ticks since the shape
+appeared. `src/render/almanac.ts` draws each one again beside its tool's icon,
+fitted to the picture box and looped off `simTime`.
 
 | Files | Canvas | Count | Drawn over | Form |
 | --- | --- | --- | --- | --- |
@@ -87,11 +91,11 @@ over its circle. A sheet's frame comes from the ticks since the shape appeared.
 ## The icons, `scripts/gen-sprites.mjs`
 
 Twenty-seven 24 x 24 plates at `icons/<id>.png`, drawn by `src/render/hud.ts`
-in the slots and by `src/render/screens.ts` in the level-up and chest
-overlays, both through the pinned HUD and screen actors. The rim says what a
-thing is: slate for a base weapon, gold for an evolved one, brown for a
-passive, green for lamp oil. An evolved weapon's
-symbol is its base's burning hotter.
+in the slots, by `src/render/screens.ts` in the level-up and chest overlays,
+and by `src/render/almanac.ts` on the tools and trinkets tabs, all through the
+pinned HUD and screen actors. The rim says what a thing is: slate for a base
+weapon, gold for an evolved one, brown for a passive, green for lamp oil. An
+evolved weapon's symbol is its base's burning hotter.
 
 | Ids | Symbols |
 | --- | --- |
