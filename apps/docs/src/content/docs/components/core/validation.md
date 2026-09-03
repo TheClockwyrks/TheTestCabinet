@@ -261,11 +261,14 @@ counts toward neither side of the score, and is left for a reviewer to decide. T
 result records which of the three it was, so a reviewer reads the real reason a
 point went undecided rather than one that sounds like a fact about the build.
 
-The first is an unmet precondition. A setup often searches the model's own world
-for a place to pose its scenario, such as a blind corner in an invented maze or a
-legal build tile, and that search can come up empty against a fully conformant
-build. A validator says this by skipping its checks: a suite whose checks were all
-skipped reports an unmet precondition.
+The first is an unmet precondition, which a validator states by skipping a check.
+A setup often searches the model's own world for a place to pose its scenario,
+such as a blind corner in an invented maze or a legal build tile, and that search
+can come up empty against a fully conformant build. A setup that drives the build
+in a browser has a second reason to skip: reaching the build takes a browser the
+validator project started, a page that browser hands over, and a file the
+project's own server answers with, and the build influences none of them. A suite
+whose checks were all skipped reports an unmet precondition.
 
 The second is a check that never ran. A validator project the run's engine has
 none of, a tree with no vitest to run one, a suite the project does not contain,
