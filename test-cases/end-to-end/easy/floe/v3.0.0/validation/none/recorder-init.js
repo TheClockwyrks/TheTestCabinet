@@ -341,6 +341,33 @@
   ]);
 
   /**
+   * Every call that puts pixels on the surface.
+   *
+   * WIDER THAN {@link PAINTERS}, AND FOR A DIFFERENT QUESTION. That set is about
+   * which calls resolve a live style reference; this one is about whether the
+   * BUILD DREW — the signal `harness.ts` closes a recorded frame on instead of
+   * closing it on the host's clock. So it names the blits and the wipe as well:
+   * a build that composes its whole picture out of `drawImage` issues nothing in
+   * that set and draws every pixel on the screen.
+   *
+   * `clearRect` counts. A frame that blanks the surface and draws nothing over it
+   * is a frame the build painted — it is what a build presents while it has
+   * nothing to show — and reading it as "this build never paints" would wait out
+   * the bound on a build that is presenting perfectly well.
+   */
+  const PAINT_OPS = new Set([
+    "clearRect",
+    "fillRect",
+    "strokeRect",
+    "fill",
+    "stroke",
+    "fillText",
+    "strokeText",
+    "drawImage",
+    "putImageData",
+  ]);
+
+  /**
    * The host types a canvas can draw from.
    *
    * Named rather than sniffed for a `width` and a `height`, because a plain
@@ -704,6 +731,20 @@
        * reached the element some other way.
        */
       this.surface = null;
+
+      /**
+       * How many painting operations the build has issued against this context,
+       * ever.
+       *
+       * A FACT ABOUT THE BUILD, NOT ABOUT A RECORDING. It counts whether or not a
+       * frame is open and whether or not a capture is armed, it is never reset,
+       * and nothing here reads it — `harness.ts` does, to close a recorded frame
+       * on the moment the build drew rather than on a stretch of the host's
+       * clock. A monotonic count rather than a flag, so a reader can ask whether
+       * the build has painted SINCE some earlier moment without the recorder
+       * having to be told when that moment was.
+       */
+      this.painted = 0;
 
       /**
        * What the recording last said each style property holds.
@@ -2187,6 +2228,7 @@
       // has already noticed the resize of.
       this.shadow(name, resolved.described);
       this.recordCall(name, resolved);
+      if (PAINT_OPS.has(name)) this.painted += 1;
       return result;
     }
 
@@ -2443,6 +2485,20 @@
         { count: state.count, timeMs: state.timeMs, deltaMs },
         surfaceOf(entry),
       );
+    },
+
+    /**
+     * How many painting operations the build has issued against the primary
+     * surface since the page loaded.
+     *
+     * Monotonic and never reset, so a caller reads it once and asks later whether
+     * it moved. What that answers is "has this build drawn since then" — the one
+     * question a driver bracketing the build's own animation frame actually has,
+     * and the one it used to answer with a stopwatch.
+     */
+    painted() {
+      const recorder = recorderOf();
+      return recorder === null ? 0 : recorder.painted;
     },
 
     /** Hand the frame boundary to the animation frame, or take it back. */

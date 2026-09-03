@@ -1041,38 +1041,82 @@ const RECORD_MIN_TICKS = 4;
 const RECORD_MAX_FRAMES = 240;
 
 /**
- * The most real time one drive spends waiting on the BUILD'S OWN animation
- * frame, in milliseconds, altogether across every frame it records.
+ * How many of the BUILD'S OWN animation frames one recorded frame waits for the
+ * build to paint into it, in `"raf"` mode.
  *
- * WHY THERE IS A CEILING ON THIS AT ALL. A build that draws only from its loop
- * (`"raf"`) is recorded by bracketing one of its own animation frames, which is
- * the only place its picture exists — so this one wait cannot be replaced with a
- * step. A browser presents in a frame's time and a drive spends milliseconds of
- * this; but an animation frame is the one thing in this harness the HOST can
- * withhold, and a drive that records {@link RECORD_MAX_FRAMES} frames would wait
- * on it that many times. Without a ceiling, a host that stops presenting turns a
- * build whose loop is fine into a check that ran out of time — a verdict about
- * the machine wearing the build's name, which is the whole thing this project
- * refuses to do.
+ * WHAT CLOSES A RECORDED FRAME IS THE BUILD'S OWN ACT. A build that draws only
+ * from its loop (`"raf"`) is recorded by bracketing one of its own animation
+ * frames, which is the only place its picture exists — so this one wait cannot
+ * be replaced with a step, and it is the one place in this harness where the
+ * driver has to wait for something rather than cause it. It waits for the thing
+ * the frame was opened to catch: an operation issued against the build's own 2D
+ * context, counted by the recorder (`__floeRec.painted()`). The moment one
+ * lands, the bracket closes.
  *
- * Spending it costs the EVIDENCE and nothing else: the frames still run, the
- * ticks are still the ticks the check asked for, and every reading a check takes
- * is a snapshot of the game's own state rather than a picture. What a spent
- * budget loses is pictures in a replay, which no item is graded on.
+ * SO THE BOUND IS COUNTED IN THE BUILD'S FRAMES, NOT IN THE HOST'S CLOCK. A
+ * build that never paints has to terminate the wait too, and what says so is
+ * this many of the build's OWN animation frames going by with nothing drawn in
+ * them. That reading is the same on an idle host and on a host at load average
+ * four hundred: a busy machine delivers those frames later, and the answer it
+ * gives is unchanged. A stopwatch in this position gave a DIFFERENT answer on a
+ * busy machine — which is a verdict about the host wearing the build's name.
  *
- * Two seconds is a hundred and twenty frames' worth at sixty a second — far more
- * than any drive needs on a host that is presenting at all.
+ * Four rather than one, because `specs/overview.md` requires a loop that keeps
+ * presenting and does not require a paint on every single animation frame: a
+ * build that renders on a fixed step and skips a frame it has nothing new for is
+ * conformant, and one frame of grace would read it as a build that never draws.
  */
-const RECORD_PAINT_BUDGET_MS = 2_000;
+const RECORD_PAINT_FRAMES = 4;
 
 /**
- * The most real time ONE such wait is given, in milliseconds.
+ * The ceiling on ONE such wait, in milliseconds, for a host that presents no
+ * animation frame at all.
  *
- * The budget above is the whole drive's; this bounds a single frame so a drive
- * that is going to lose its pictures loses them early rather than spending the
- * whole budget on the first one.
+ * THE LAST RESORT, AND THE ONE THING HERE THAT IS STILL A CLOCK. The bound above
+ * is counted in the build's own frames, which is worth nothing if the host
+ * delivers none: `requestAnimationFrame` is the one thing in this harness the
+ * MACHINE can withhold outright, and a wait on a callback that never comes would
+ * hang the whole suite rather than decide anything.
+ *
+ * So it is sized the way `PATIENT_MS` is, to be uncrossable by a host that is
+ * merely BUSY. Measured on a twenty-core host under a load average of four
+ * hundred and sixty, the slowest page load this project saw was twenty-four
+ * seconds; a browser under that load still composites in frame times. Thirty
+ * seconds is what a browser that has stopped compositing altogether costs, and
+ * it costs a conforming build nothing, because a wait that returns on the
+ * build's first paint returns then whatever its ceiling is.
+ *
+ * AND CROSSING IT IS REPORTED AS THE HOST'S, NEVER AS THE BUILD'S. The two
+ * outcomes are kept apart everywhere: "this build presented frames and drew
+ * nothing in them" is a verdict, and "this host presented no frame at all" is
+ * refused as a reading — {@link failHostStall}. Within one drive it also
+ * latches, so a drive recording {@link RECORD_MAX_FRAMES} frames pays a stopped
+ * compositor once rather than that many times.
  */
-const RECORD_PAINT_MAX_MS = 500;
+const PAINT_STALL_MS = 30_000;
+
+/**
+ * Refuse to read anything off a host that presented no animation frame at all.
+ *
+ * NOT A VERDICT ABOUT THE BUILD, AND IT MUST NOT LOOK LIKE ONE. Everything a
+ * `"raf"` build's picture is read through — its recorded draw calls, its blits,
+ * the pixels on its canvas — is only as current as the last frame the browser
+ * presented. When none was presented, the honest answers are "the build drew
+ * nothing" and "the canvas holds what it held", and both are wrong in the one
+ * way this project refuses: they name the build for something the machine did.
+ *
+ * So the check errors out instead, saying whose fault it is. A run that lands
+ * here has a browser that stopped compositing for {@link PAINT_STALL_MS}, which
+ * no measurement in this project has ever produced.
+ */
+function failHostStall(): never {
+  throw new Error(
+    `floe: the browser presented no animation frame for ` +
+      `${PAINT_STALL_MS / 1000}s, so nothing this build has drawn since is on ` +
+      `its canvas yet. This is the HOST having stopped compositing and says ` +
+      `nothing about the build — no reading was taken.`,
+  );
+}
 
 /**
  * Load the built site in a browser, take the game off the wall clock, and hand
@@ -1189,6 +1233,9 @@ export async function createHarness(
   let tickCount = 0;
   let capturing = false;
 
+  /** Whether the last recorded drive lost a paint to a host presenting nothing. */
+  let driveStalled = false;
+
   /**
    * Run each of `calls` ticks, in one crossing, closing a recorded frame around
    * each when `record` is set.
@@ -1221,8 +1268,8 @@ export async function createHarness(
         dt,
         before,
         series,
-        budgetMs,
-        maxPaintMs,
+        stallMs,
+        silentFrames,
       ]) => {
         const api = (
           window as unknown as Record<
@@ -1238,31 +1285,57 @@ export async function createHarness(
         const audio = (
           window as unknown as { __floeAudio: { started(): number } }
         ).__floeAudio;
-        // The build's own animation frame, waited on for at most what the
-        // budget has left — see `RECORD_PAINT_BUDGET_MS`. A frame that arrives
-        // costs its own time and no more; one the host never presents costs the
-        // wait its ceiling and then costs nothing, so a drive cannot be held up
-        // by a renderer that has stopped.
-        let paintLeft = budgetMs;
+        // The bracket around one of the build's OWN animation frames, closed on
+        // the moment the build draws into it — see `RECORD_PAINT_FRAMES`.
+        //
+        // THREE WAYS OUT, AND ONLY THE FIRST TWO ARE ABOUT THE BUILD.
+        //
+        //   - It paints. The recorder's count moves and the bracket closes on
+        //     that operation, which is the whole of what it was opened to catch.
+        //   - It presents `silentFrames` of its own animation frames without
+        //     painting into any of them. This build does not paint — a fact read
+        //     off ITS frames, so a slow host delays the answer without changing
+        //     it.
+        //   - The host presents no animation frame at all for `stallMs`. That is
+        //     a fact about the MACHINE. It is latched for the rest of this drive,
+        //     so a drive recording hundreds of frames pays a stopped compositor
+        //     once, and it is handed back rather than passed off as the build
+        //     having drawn nothing.
+        let stalled = false;
         const paint = (): Promise<void> =>
           new Promise((done) => {
-            if (paintLeft <= 0) {
+            if (stalled) {
               done();
               return;
             }
-            const opened = performance.now();
+            // Named apart from the drive's `before` poses: this is the
+            // build's paint count as the bracket opens.
+            const painted = rec.painted() as number;
+            let presented = 0;
             let closed = false;
-            const close = (): void => {
+            const close = (stall: boolean): void => {
               if (closed) return;
               closed = true;
-              paintLeft -= performance.now() - opened;
+              clearTimeout(timer);
+              if (stall) stalled = true;
               done();
             };
-            const timer = setTimeout(close, Math.min(paintLeft, maxPaintMs));
-            requestAnimationFrame(() => {
-              clearTimeout(timer);
-              close();
-            });
+            const timer = setTimeout(() => close(true), stallMs);
+            const step = (): void => {
+              presented += 1;
+              // The build drew, or it has now had `silentFrames` of its own
+              // frames to and has not. Either way the answer came from the
+              // build.
+              if (
+                (rec.painted() as number) > painted ||
+                presented >= silentFrames
+              ) {
+                close(false);
+                return;
+              }
+              requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
           });
         const sounds: number[] = [];
         const shots: unknown[] = [];
@@ -1289,7 +1362,12 @@ export async function createHarness(
           sounds.push(audio.started() - started);
           if (series) shots.push(api.snapshot());
         }
-        return { snapshot: api.snapshot(), sounds, series: shots };
+        return {
+          snapshot: api.snapshot(),
+          sounds,
+          series: shots,
+          stalled,
+        };
       },
       [
         HANDLE,
@@ -1298,14 +1376,20 @@ export async function createHarness(
         TICK_DT * 1000,
         calls.map((_, index) => poses[index] ?? null),
         collect,
-        RECORD_PAINT_BUDGET_MS,
-        RECORD_PAINT_MAX_MS,
+        PAINT_STALL_MS,
+        RECORD_PAINT_FRAMES,
       ] as const,
     )) as {
       snapshot: FloeSnapshot;
       sounds: number[];
       series: FloeSnapshot[];
+      stalled: boolean;
     };
+
+    // Whether the host went quiet under this drive. Only the readings that
+    // GRADE a picture escalate it; a plain advance under a capture loses
+    // pictures and nothing else.
+    driveStalled = result.stalled;
 
     for (const [index, ticks] of calls.entries()) {
       tickCount += ticks;
@@ -1383,28 +1467,62 @@ export async function createHarness(
     );
 
   /**
-   * Wait for the build's own loop to present, when this build draws nowhere
-   * else.
+   * Wait for the build's own loop to present what the last drive produced, when
+   * this build draws nowhere else.
    *
    * A build that draws inside `advance` has already painted what the last drive
    * produced; a build that draws only from its loop has not, and reading its
    * canvas before it does would sample the frame before the one the check posed.
+   *
+   * WAITED OUT ON THE BUILD'S PAINT, NOT ON A STRETCH OF CLOCK. Every pixel this
+   * project grades comes through here, so a wait that gave up early handed a
+   * check the PREVIOUS frame's pixels and let it grade them — the busier the
+   * host, the likelier a conforming build was graded on a picture it had already
+   * replaced. What is waited for instead is the build issuing a paint: the
+   * recorder's count, read as this wait opens and watched for it to move. The
+   * bound is {@link RECORD_PAINT_FRAMES} of the build's OWN animation frames, so
+   * a build that paints nothing still has its canvas read and is graded on what
+   * is actually on it.
+   *
+   * The count is taken HERE rather than carried from the last drive, so a pose,
+   * a key or anything else that changed the picture between the two is inside
+   * what this waits for.
    */
   const settle = async (): Promise<void> => {
     if (frameMode === "advance") return;
-    await page.evaluate(
-      // Bounded for the reason `RECORD_PAINT_BUDGET_MS` gives: a host that has
-      // stopped presenting must cost this a wait, not the check its verdict.
-      (maxPaintMs) =>
-        new Promise<void>((done) => {
-          const timer = setTimeout(done, maxPaintMs);
-          requestAnimationFrame(() => {
+    const stalled = await page.evaluate(
+      ([silentFrames, stallMs]) =>
+        new Promise<boolean>((done) => {
+          const rec = (
+            window as unknown as { __floeRec: { painted(): number } }
+          ).__floeRec;
+          const mark = rec.painted();
+          let presented = 0;
+          let closed = false;
+          const close = (stall: boolean): void => {
+            if (closed) return;
+            closed = true;
             clearTimeout(timer);
-            done();
-          });
+            done(stall);
+          };
+          // The one clock left, and it measures the HOST: see `PAINT_STALL_MS`.
+          const timer = setTimeout(() => close(true), stallMs);
+          const step = (): void => {
+            presented += 1;
+            if (rec.painted() > mark || presented >= silentFrames) {
+              close(false);
+              return;
+            }
+            requestAnimationFrame(step);
+          };
+          requestAnimationFrame(step);
         }),
-      RECORD_PAINT_MAX_MS,
+      [RECORD_PAINT_FRAMES, PAINT_STALL_MS] as const,
     );
+    // A canvas nothing has presented holds the frame before the one the check
+    // posed, and grading those pixels would name the build for the host's
+    // silence.
+    if (stalled) failHostStall();
   };
 
   const harness: Harness = {
@@ -1587,6 +1705,12 @@ export async function createHarness(
 
     async frameCalls(ticks = 1) {
       await this.step(ticks);
+      // A `"raf"` build's frame is whatever the browser presented, so a frame
+      // the host never presented is an empty operation list — indistinguishable,
+      // from here, from a build that drew nothing. It is refused rather than
+      // read (see `failHostStall`); a build that presents its frames and draws
+      // nothing in them reaches the check as the empty list it earned.
+      if (driveStalled) failHostStall();
       const ops = (await page.evaluate(() =>
         (
           window as unknown as { __floeRec: { last(): unknown[] } }
@@ -1679,6 +1803,7 @@ export async function createHarness(
     setCapturing: (on: boolean) => {
       capturing = on;
     },
+    stalled: () => driveStalled,
   });
   return harness;
 }
@@ -1687,6 +1812,13 @@ export async function createHarness(
 interface Internals {
   cues: TimedCue[][];
   setCapturing(on: boolean): void;
+  /**
+   * Whether the last recorded drive lost its paint to a host that presented no
+   * animation frame — see {@link PAINT_STALL_MS}. Read by the free functions
+   * that GRADE a recorded frame, so they refuse the reading instead of taking a
+   * blank one for the build's own.
+   */
+  stalled(): boolean;
 }
 
 const harnessInternals = new WeakMap<Harness, Internals>();
@@ -2881,6 +3013,10 @@ export async function blitsOfFrame(h: Harness): Promise<Blit[]> {
     { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
   );
   await h.step(1);
+  // The same refusal `frameCalls` makes, for the same reason: a frame the host
+  // never presented carries no blits, and reading that as a build that drew no
+  // sprite would name the build for the machine's silence.
+  if (harnessInternals.get(h)?.stalled() === true) failHostStall();
   const recording = (await h.page.evaluate(() =>
     (
       window as unknown as { __floeRec: { disarm(): unknown } }

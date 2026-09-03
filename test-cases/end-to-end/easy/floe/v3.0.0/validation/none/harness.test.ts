@@ -588,6 +588,19 @@ it("reads a render with the frame boundary on the animation frame too", async ()
     1,
     "the critter, read through an animation frame",
   );
+
+  // And its PIXELS, which is the other half of what a build that draws only from
+  // its loop is read through. A pixel read here waits for the loop's own paint
+  // before it samples — on the paint itself rather than on a stretch of the
+  // host's clock — so what a check grades is the frame it posed rather than
+  // whatever the canvas happened to be holding when the wait gave up.
+  const median = await sampleRow(looped, 10);
+  const water = await sampleTile(looped, 6, 6);
+  assertGreaterThan(
+    colorDistance(median, water),
+    0,
+    "the median band and the water read apart, sampled through the loop",
+  );
 });
 
 it("writes a still and a replay under the media directory", async () => {
