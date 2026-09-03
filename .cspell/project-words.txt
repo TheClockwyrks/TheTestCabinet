@@ -72,6 +72,7 @@
 # Full-stack reference-impl DESIGN/ASSETS/README (holdfast, hollowdeep, midway).
 # Full-stack test cases (hollowdeep, holdfast, junction, midway): case + variant
 # Game-jam vocabulary.
+# Gantry showcase capture driver: the Chromium GL backend, the VP9 encoder and the prober it shells out to, all named verbatim on a command line.
 # Gantry v1.0.0 authoring notes and manifest prose: the load model — static
 # Generic asset-pack test-case prose (2D / particle / music briefs) and the
 # Includes graphics/particle jargon and bold-prefix markup fragments the tokenizer
@@ -257,6 +258,7 @@ erator
 eyelessness
 Factorio
 ferron
+ffprobe
 fingerpicked
 fingerpicking
 firemode
@@ -347,6 +349,7 @@ letterboxing
 levelclear
 levelup
 levelups
+libvpx
 loadouts
 locomotivation
 lofi
@@ -414,6 +417,7 @@ pbullet
 peekable
 Perlin
 permadeath
+pickable
 pickupable
 platformer
 playables
@@ -529,6 +533,7 @@ Sunfront
 Sunhawk
 supercover
 svgl
+swiftshader
 synthwave
 taiko
 tankier
