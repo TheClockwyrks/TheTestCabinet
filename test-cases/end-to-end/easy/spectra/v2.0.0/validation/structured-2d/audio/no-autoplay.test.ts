@@ -3,8 +3,8 @@
 // `specs/ui.md`: "No sound is started between the page loading and the player's
 // first key press: the game plays no cue before that first input."
 //
-// So the measurement is: build the game as a loaded page does, let it run without
-// ever delivering a key, and read the engine's cue bus. The bus announces a play
+// So the measurement is: build the game as a loaded page does, run it without ever
+// delivering a key, and read the engine's cue bus. The bus announces a play
 // whether or not it is unlocked (`audio:unlocked` is the engine's own affair), so
 // a build that plays a cue while it initializes is caught here even though the
 // browser's autoplay policy would have kept it inaudible.
@@ -27,10 +27,28 @@
 // from the moment the harness hands the game back, which is the earliest a
 // validator can subscribe to them.
 //
-// BOTH CLOCKS ARE RUN. The suite steps frames itself, which is not how a loaded
-// page runs on its own; a build that sounded from a timer of its own would sit
-// quiet under a driven clock alone. So the game is also handed to the engine's own
-// frame loop for a stretch of real time, and the bus is read after both.
+// AND THE FAR EDGE IS THE READ, NOT A STRETCH INSIDE IT. Both subscriptions are
+// passive and stay live for the whole check: the bus announces a play
+// synchronously, from inside the call the game makes, so a cue the build plays off
+// a timer it set is recorded wherever in this check it fires, in real time,
+// whether or not anything is stepping the game at that moment. Nothing here
+// samples a window; the arrays below hold everything the bus announced between the
+// build's first line and the read. What that window is, is the check's own
+// duration — the harness, the art, and the frames it drives — rather than a span it
+// sets aside. What it does not reach is a cue a build defers past the read, and no
+// finite reading of a negative reaches that.
+//
+// SO NO STRETCH OF THE WALL CLOCK IS DRIVEN, and that is deliberate. Handing the
+// game to the engine's own frame loop would reach no code these frames do not: the
+// loop is a wall clock over the same tick `advance` runs, and a cue reaches the
+// bus from the game's own call inside that tick. And what this point requires is
+// silence before a key, not that the game advances on its own; the one point in
+// this project whose requirement IS unstepped advance is
+// `instrumentation/advances-in-real-time`, and even that one ends its wait on the
+// build's own clock passing a floor rather than on a fixed span of the wall clock.
+// A fixed span here would have decided nothing except how many frames of its own a
+// busy host let the engine run — reach that rises and falls with the machine
+// rather than with the build.
 //
 // WHAT THIS DOES NOT DECIDE. That the build makes any sound at all once a key HAS
 // been pressed, which is what the nine cue points above decide, and what a build
@@ -49,18 +67,12 @@ import { watchSounds } from "./cues";
 /**
  * Frames of the loaded game driven under the suite's clock.
  *
- * A whole second of the screen the game opens on, which is long enough for any
- * per-frame or timed sound a build might start to have started.
+ * Two seconds of the screen the game opens on, which is long enough for any
+ * per-frame or timed sound a build might start to have started, and more game
+ * time than the engine's own loop covers over the same stretch of a busy host's
+ * wall clock.
  */
-const IDLE_FRAMES = ticksFor(1);
-
-/**
- * Milliseconds the game is handed to the engine's OWN frame loop, in real time.
- *
- * Enough for that loop to run some two dozen frames of its own, so a build that
- * sounds from a timer it set rather than from a driven `advance` is read as well.
- */
-const IDLE_MS = 400;
+const IDLE_FRAMES = ticksFor(2);
 
 let h: Harness;
 
@@ -80,9 +92,8 @@ it("plays no cue before the player's first key press", async () => {
   // ever delivered to it.
   const opened = h.snapshot();
 
-  // A second of it under the suite's clock, then a stretch under the engine's own.
+  // Two seconds of it, frame by frame, with no key ever delivered either.
   await h.advance(IDLE_FRAMES);
-  await h.runFor(IDLE_MS);
 
   const played = [...h.cues];
   const looped = started.filter((one) => one.how === "looped");
@@ -92,9 +103,8 @@ it("plays no cue before the player's first key press", async () => {
     played,
     0,
     "cues the build played between the page loading and the first key — over " +
-      `${String(IDLE_FRAMES)} driven frames and ${String(IDLE_MS)} ms of the ` +
-      `engine's own loop on the ${opened.screen} screen, with no key ever ` +
-      `pressed (specs/ui.md); it played ${played
+      `${String(IDLE_FRAMES)} driven frames on the ${opened.screen} screen, ` +
+      `with no key ever pressed (specs/ui.md); it played ${played
         .map((one) => one.cue)
         .join(", ")}`,
   );

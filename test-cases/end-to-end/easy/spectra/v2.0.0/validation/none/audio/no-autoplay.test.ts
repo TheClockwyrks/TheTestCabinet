@@ -4,13 +4,13 @@
 // first key press, and a build whose audio cannot start still runs and still
 // plays."
 //
-// So the measurement is: load the build, let it run — both under the suite's own
-// clock and under the build's own frame loop in real time — and read the raw
-// source count without ever pressing a key. `validation/audio-init.js` is
-// injected before any of the build's script runs and counts what goes through the
-// two doors a browser can emit sound through, so a build that starts an
-// oscillator or plays an `<audio>` element while it initializes is caught even
-// though the browser's own autoplay policy would have kept it inaudible.
+// So the measurement is: load the build, run the screen it opens on without ever
+// delivering a key, and read the raw source count.
+// `validation/audio-init.js` is injected before any of the build's script runs and
+// counts what goes through the two doors a browser can emit sound through, so a
+// build that starts an oscillator or plays an `<audio>` element while it
+// initializes is caught even though the browser's own autoplay policy would have
+// kept it inaudible.
 //
 // NO KEY IS PRESSED ANYWHERE IN THIS CHECK, and that is the whole scenario. In
 // particular `armAudio` is NOT called here, though every other check in this
@@ -18,11 +18,36 @@
 // this check must stay on the near side of. Nothing below reaches for a bound key
 // either.
 //
-// WHY BOTH CLOCKS. The suite drives the game frame by frame through the debug
-// surface, which is not how a loaded page runs on its own; a build that made a
-// sound from its own `requestAnimationFrame` loop and nowhere else would sit
-// silent under a driven clock. So the page is also handed back to its own frame
-// loop for a stretch of real time, and the count is read after both.
+// THE WINDOW IS THE WHOLE CHECK, NOT A STRETCH INSIDE IT. The probe is passive: it
+// counts a source the moment that source is started, and it has been installed
+// since before the build's first line. Nothing here samples it — `h.sounds()`
+// returns a total covering every millisecond between the page loading and the
+// read, the load and the crossings as much as the driven frames. So a sound a
+// build starts off a timer of its own, or off a settled `decodeAudioData`, is
+// counted wherever in that window it lands, without this check having to arrange
+// for real time to pass. What the window is, is the check's own duration — the
+// load, the crossings and the frames it drives, some half a second of real time on
+// an idle host and longer on a busy one — rather than a span it sets aside. What
+// it does not reach is a sound a build defers past the read, and no finite reading
+// of a negative reaches that.
+//
+// AND THE BUILD'S OWN LOOP IS INSIDE THAT WINDOW TOO. `setAutoStep(false)` "stops
+// the frame loop advancing the simulation from the wall clock" and does no more
+// than that: `specs/instrumentation.md` is explicit that "drawing is unaffected
+// either way: the loop keeps rendering". The build's own animation frame therefore
+// runs in real time throughout this check, under the probe. What the loop adds
+// when it IS advancing is the update — and `advance` runs that same update, "the
+// same update the loop runs followed by a render", so handing the clock back would
+// exercise no line the frames below do not.
+//
+// SO NO STRETCH OF THE WALL CLOCK IS DRIVEN, and that is deliberate. What this
+// point requires is silence before a key, not that the game advances on its own;
+// the one point in this project whose requirement IS unstepped advance is
+// `instrumentation/advances-in-real-time`, and even that one ends its wait on the
+// build's own clock passing a floor rather than on a fixed span of the wall clock.
+// A fixed span here would have decided nothing except how many frames of its own a
+// busy host let the build run — reach that rises and falls with the machine rather
+// than with the build.
 //
 // WHAT THIS DOES NOT DECIDE. That the build makes any sound at all once a key HAS
 // been pressed, which is what the nine cue points above decide, and what a build
@@ -40,19 +65,12 @@ import {
 /**
  * Frames of the loaded game driven under the suite's clock.
  *
- * A whole second of the screen the game opens on, which is long enough for any
- * per-frame or timed sound a build might start to have started.
+ * Two seconds of the screen the game opens on, which is long enough for any
+ * per-frame or timed sound a build might start to have started, and more game
+ * time than a browser hands its own loop over the same stretch of a busy host's
+ * wall clock.
  */
-const IDLE_FRAMES = framesFor(1);
-
-/**
- * Milliseconds the page is handed back to its OWN frame loop, in real time.
- *
- * Enough for a sixty-hertz loop to run some two dozen frames of its own, so a
- * build that sounds from `requestAnimationFrame` rather than from a driven
- * `advance` is read as well.
- */
-const IDLE_MS = 400;
+const IDLE_FRAMES = framesFor(2);
 
 let h: Harness;
 
@@ -69,9 +87,8 @@ it("starts no sound before the player's first key press", async () => {
   // ever delivered to it.
   const opened = await h.snapshot();
 
-  // A second of it under the suite's clock, then a stretch under the build's own.
+  // Two seconds of it, frame by frame, with no key ever delivered either.
   await h.advance(IDLE_FRAMES);
-  await h.runFor(IDLE_MS);
 
   const started = await h.sounds();
   await captureStill(h, "loaded");
@@ -80,8 +97,7 @@ it("starts no sound before the player's first key press", async () => {
     started,
     0,
     "sounds the build started between the page loading and the first key — " +
-      `over ${String(IDLE_FRAMES)} driven frames and ${String(IDLE_MS)} ms of ` +
-      `the build's own loop on the ${opened.screen} screen, with no key ever ` +
-      "pressed (specs/ui.md)",
+      `over ${String(IDLE_FRAMES)} driven frames on the ${opened.screen} ` +
+      "screen, with no key ever pressed (specs/ui.md)",
   );
 });

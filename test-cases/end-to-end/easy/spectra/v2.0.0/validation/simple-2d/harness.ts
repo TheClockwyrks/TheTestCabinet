@@ -462,7 +462,18 @@ export interface Harness {
     predicate: (snapshot: SpectraSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
+  /**
+   * Drive the engine's own frame loop for `ms` of real time, then halt it.
+   *
+   * NO POINT MAY BE SIZED AGAINST THIS. How many frames a loop covers over a
+   * stretch of the wall clock is a fact about the machine, not about the build, so
+   * a reading taken across a fixed `ms` reaches further on a quiet host than on a
+   * busy one. A point that genuinely needs the build's own clock uses `runUntil`,
+   * which ends on the build's own reading passing a floor and simply takes longer
+   * on a loaded host; a point that needs game time to pass uses `advance`. This is
+   * the raw primitive both of those rest on, kept for a caller that wants the loop
+   * running and asserts nothing about how far it got.
+   */
   runFor(ms: number): Promise<void>;
   /**
    * Drive the engine's own frame loop until `predicate` holds of what the build
