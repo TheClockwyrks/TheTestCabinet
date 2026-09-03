@@ -260,14 +260,13 @@ reads a fixed number of driven frames and winds the build's own timers on rather
 than sitting through a stretch of the wall clock, so its still is the same
 picture on every host and any movement in it is the build's.
 
-The churn is bounded and it is all there is. Three captures of the same code —
-the committed one and two run back to back — differ pairwise in 14, 17 and 18 of
-those nineteen files and in nothing else, and the deltas within a file run from
-6 to 2291 pixels of the 921600 in a frame, inside the panel's text band or on
-one moving entity. The other 1580 stills and all 111 replays are byte-identical
-across all three.
+The churn is bounded and it is all there is. Captures of the same code differ
+inside those seventeen files and in nothing else, and a delta within a file is no
+more than 2291 pixels of the 921600 in a frame, inside the panel's text band or on
+one moving entity. The other 1582 stills and all 111 replays are byte-identical
+from one capture to the next.
 
-So a recapture that leaves only those nineteen files dirty has changed nothing
+So a recapture that leaves only those seventeen files dirty has changed nothing
 and is not worth committing. One that moves anything else has changed the
 picture a reviewer is shown, and is.
 
