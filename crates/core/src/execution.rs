@@ -163,12 +163,14 @@ pub struct ContainerSpec {
     /// `secrets` instead.
     pub env: BTreeMap<String, String>,
     /// Files materialized inside the container before the session, at absolute
-    /// paths under the run user's home. This is how subscription-authentication
-    /// credential files are made visible to a harness's CLI, and how a harness
-    /// that configures telemetry from a file rather than the environment (Codex,
-    /// OpenCode) gets that file. Like [`secrets`](Self::secrets), these may carry
-    /// credentials and must never be written into the seeded repository or
-    /// committed.
+    /// paths outside the seeded repository. This is how subscription-authentication
+    /// credential files are made visible to a harness's CLI (under the run user's
+    /// home), how a harness that configures telemetry from a file rather than the
+    /// environment (Codex, OpenCode) gets that file, and how a run's declared
+    /// [audio packs](crate::audio_stage) are staged under `/opt/audio`. Some of
+    /// these carry credentials, so like [`secrets`](Self::secrets) they must never
+    /// be written into the seeded repository or committed — which is also what
+    /// keeps a staged clip out of the tree collected as the run's result.
     pub files: Vec<ContainerFile>,
     /// Whether the container is granted outbound network access. Isolation
     /// protects the host filesystem and other runs, not the network, so this is
@@ -184,10 +186,11 @@ pub struct ContainerSpec {
 /// A file to materialize inside a started run container.
 ///
 /// Subscription authentication needs a harness's credential files present in
-/// the container at the paths its CLI reads (under the run user's `$HOME`).
-/// Carrying the bytes here — rather than a host path — keeps the runtime free of
-/// host-path coupling and lets an in-memory runtime used by tests record exactly
-/// what would be written.
+/// the container at the paths its CLI reads (under the run user's `$HOME`), and a
+/// run's [staged audio palette](crate::audio_stage) needs its pack manifests and
+/// clips present under `/opt/audio`. Carrying the bytes here — rather than a host
+/// path — keeps the runtime free of host-path coupling and lets an in-memory
+/// runtime used by tests record exactly what would be written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContainerFile {
     /// Absolute destination path inside the container (for example

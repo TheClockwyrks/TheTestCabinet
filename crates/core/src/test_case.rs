@@ -1641,6 +1641,15 @@ fn manifest_file_for(folder: &str) -> &'static str {
 /// the produced game.
 pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 
+/// The host **audio store** every published audio pack is baked into on the driver
+/// image, and which a run's declared packs are staged out of at container start (see
+/// [`crate::audio_stage`]). Overridden by `TCAB_AUDIO_STORE` for a local checkout,
+/// which fetches the same store with `scripts/fetch-audio-store.sh`. Unlike
+/// [`TCAB_PACKAGES_DIR`], nothing from it is vendored into the run repository: the
+/// clips are staged outside the workspace so only audio the model produced ships in a
+/// run's results.
+pub const TCAB_AUDIO_STORE_DIR: &str = "/opt/tcab-audio";
+
 /// The in-repository directory a `packages`-declaring case's runtime libraries are
 /// vendored into at seed time (relative to the run root). The case's workspace
 /// `package.json` depends on each via an in-repo relative `file:` path pointing

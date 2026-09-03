@@ -1367,6 +1367,21 @@ pub(crate) fn package_store_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(crate::test_case::TCAB_PACKAGES_DIR))
 }
 
+/// The host audio store a run's declared packs are staged out of: the
+/// `TCAB_AUDIO_STORE` override when set, otherwise the baked-image default
+/// ([`TCAB_AUDIO_STORE_DIR`](crate::test_case::TCAB_AUDIO_STORE_DIR)).
+///
+/// The same override shape as [`package_store_dir`], and for the same reason: the
+/// driver image bakes one store, and a local checkout points at a fetched one
+/// (`scripts/fetch-audio-store.sh`) rather than needing a credential of its own.
+/// Unlike the package store, nothing here is vendored into the run repository —
+/// [`crate::audio_stage`] materializes it in the container, outside the workspace.
+pub(crate) fn audio_store_dir() -> PathBuf {
+    std::env::var_os("TCAB_AUDIO_STORE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(crate::test_case::TCAB_AUDIO_STORE_DIR))
+}
+
 /// The `@test-cabinet/*` dependency names declared in a staged package's
 /// `package.json` — the edges the vendoring closure walk follows. A package with
 /// no such dependencies (or an unreadable/oddly-shaped manifest) contributes no

@@ -232,6 +232,7 @@ subset its test case declares. `scripts/stage-audio-store.mjs` materializes that
 store under `dist/audio-store/tree`:
 
 ```
+objects.lock.json                     the published objects, copied in as-is
 clips/<clip-id>.<profile-id>.wav      shared across packs, deduped
 packs/<name>@<version>/pack.toml      loader manifest
 ```
@@ -241,6 +242,11 @@ downloaded once. Every object is fetched through a presigned GET and verified
 against `objects.lock.json` before it lands. A missing lock entry, a failed
 presign, or a digest mismatch is a hard error, and there is no path from staging
 to Freesound.
+
+The lock is copied into the store beside the tree it describes, so the same check
+runs wherever the store ends up. [Staging a
+run](/components/core/execution/#staged-audio) verifies every clip it copies into
+a container against it.
 
 `./containers/build.sh audio-store`, and the `Build containers` CI workflow, run
 the stager and build the data-only `audio-store` image over its output. Run the

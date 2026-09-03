@@ -12,6 +12,7 @@
 pub mod accounts;
 pub mod adversarial_validator;
 pub mod asset_reference;
+pub mod audio_stage;
 pub mod auth;
 pub mod backend_client;
 pub mod browser;
@@ -841,6 +842,28 @@ where
             });
         }
 
+        // Stage the audio packs this case declares into the container, and nothing
+        // else. The palette a run reaches is fixed by its manifest rather than by the
+        // image it resolves, so the packs are resolved out of the host audio store
+        // here — verified against the published-object lock — and materialized under
+        // `/opt/audio` at start. A case declaring no packs stages nothing, which is
+        // every end-to-end, adversarial, and performance run and every `sfx-synth`
+        // one.
+        let staged_audio = audio_stage::stage_audio(
+            &seeding::audio_store_dir(),
+            &test_case.audio_packs,
+            test_case.asset_kind,
+        )?;
+        let stages_audio = staged_audio.is_some();
+        if let Some(staged) = staged_audio {
+            tracing::debug!(
+                packs = staged.manifest.packs.len(),
+                files = staged.files.len(),
+                "staged the run's audio palette",
+            );
+            files.extend(staged.files);
+        }
+
         let spec = ContainerSpec {
             image: image.clone(),
             repo_path: seeded.path.clone(),
@@ -880,6 +903,21 @@ where
             SystemStage::StartContainer,
             SystemStatus::Completed,
         ));
+
+        // Check the run image accepts staged audio, for a run that staged some.
+        //
+        // The writer of the staged tree ships here, in the driver and the CLI; the
+        // reader ships in the run image, and the two are pinned separately
+        // (`TCAB_DRIVER_IMAGE` and `TCAB_CONTAINER_TAG`) and have drifted for whole
+        // release trains. An image predating staged delivery bakes its own palette
+        // and would quietly ignore the packs the case declared, so the image states
+        // which contract it accepts and a staging run reads that statement before it
+        // spends a harness session. A run that stages nothing is never probed, so
+        // every non-audio run is untouched by the handshake.
+        if stages_audio && let Err(err) = self.check_audio_contract(&handle, &spec.image).await {
+            let _ = self.runtime.stop(&handle).await;
+            return Err(err);
+        }
 
         // Record the exact image bytes the run used. When the image was launched
         // by a mutable tag, resolve it to the registry digest now that it is
@@ -1201,6 +1239,47 @@ where
                 "assembled a session record salvaged from the failed run's container",
             );
         }
+    }
+
+    /// Check that a started run container accepts the staged audio contract this
+    /// build writes.
+    ///
+    /// A run image bakes the marker at
+    /// [`CONTRACT_MARKER`](test_cabinet_audio_core::staged::CONTRACT_MARKER) holding
+    /// the contract version it reads. An image built before audio delivery moved out
+    /// of the image has no marker: it carries its own baked palette and resolves a
+    /// pack out of that, so it would render the run against packs the case never
+    /// declared while reporting nothing wrong. Failing here costs a container start;
+    /// not failing here costs a whole harness session and produces a run whose audio
+    /// silently came from somewhere else.
+    ///
+    /// Only called for a run that staged audio, so a mismatch can only ever fail a run
+    /// whose result the mismatch would actually change.
+    async fn check_audio_contract(&self, handle: &ContainerHandle, image: &str) -> Result<()> {
+        let marker = format!(
+            "{}/{}",
+            test_cabinet_audio_core::staged::AUDIO_ROOT,
+            test_cabinet_audio_core::staged::CONTRACT_MARKER
+        );
+        let stated = self
+            .runtime
+            .exec(handle, &as_command(["cat", marker.as_str()]))
+            .await
+            .ok()
+            .filter(|out| out.exit_code == 0)
+            .map(|out| out.stdout.trim().to_string());
+        let expected = test_cabinet_audio_core::staged::CONTRACT_VERSION.to_string();
+        if stated.as_deref() == Some(expected.as_str()) {
+            return Ok(());
+        }
+        Err(Error::ContainerRuntime(format!(
+            "the run image `{image}` does not accept staged audio: `{marker}` is \
+             absent or is not `{expected}`. That image predates the change that moved \
+             the audio palette out of the image and into the run, so it would ignore \
+             the packs this case declares and use whatever it bakes. Pull a newer run \
+             image, or pin `TCAB_CONTAINER_TAG` to a commit at or after the one that \
+             publishes it."
+        )))
     }
 
     /// Probe a running container for its OS and Node.js version.

@@ -526,6 +526,7 @@ at every published version.
 
 ```
 /opt/tcab-audio/
+  objects.lock.json                     every published object, by digest and byte length
   clips/<clip-id>.<profile-id>.wav      one file per clip + profile, shared across packs
   packs/<name>@<version>/pack.toml      the loader manifest; entries point into clips/
 ```
@@ -534,6 +535,11 @@ Packs share clip files instead of each carrying its own copy, and an unpublished
 clip is a staging error rather than a silently empty palette. Keying a pack
 directory by `name@version` lets two versions of one pack sit in the store
 together.
+
+The lock travels with the tree so the store stays verifiable wherever it was
+fetched from. Staging a run's declared packs checks every clip it carries into
+the container against the recorded sha256 and byte length. A store with no lock,
+and one whose bytes disagree with it, each fail the run.
 
 That tree ships as the `audio-store` image. The driver image copies it in at
 `/opt/tcab-audio`, and a local checkout fetches it with
@@ -561,9 +567,9 @@ audio a model produced belongs in a run's output tree.
 [`base/Dockerfile`](base/Dockerfile) creates `/opt/audio`, gives it to the run
 user, and writes `.tcab-audio-contract`, which is the run image's statement of
 which staging contract it accepts. Every run image inherits that from the base,
-so no image carries a pack of its own. Core reads the marker before it stages
-anything, so an image that accepts a different contract fails the run at
-container start rather than part-way through a session.
+so no image carries a pack of its own. A run that stages audio reads the marker
+back out of its started container, so an image that accepts a different contract
+fails the run at container start rather than part-way through a session.
 
 The staging rules and the `packs.json` shape are in
 [`components/core/execution.md`](../apps/docs/src/content/docs/components/core/execution.md),

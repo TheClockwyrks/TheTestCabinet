@@ -149,6 +149,11 @@ from `/opt/audio`, which staging writes once the container has started.
   `scripts/fetch-audio-store.sh`. A ref the store does not hold, or one whose
   stored pack disagrees with the pinned name, version, or kind, fails the run
   before the container starts.
+- The store's `objects.lock.json` records every published object with its sha256
+  and byte length. Every clip a declared pack names is checked against it before
+  the clip is carried in, so a run is rendered only against audio that was
+  published. A clip the lock does not record, one whose bytes disagree with it,
+  and a store carrying no lock at all each fail the run.
 - Staging materializes one `packs/<name>@<version>/pack.toml` per declared pack,
   the union of those packs' clip files under `clips/`, and a `packs.json`
   recording what the run was given and the default pack for each kind. The
@@ -159,9 +164,10 @@ from `/opt/audio`, which staging writes once the container has started.
   of the model's workspace, its git history, and its collected tree. Only audio
   the model produced ships in a run's results.
 - A run image declares that it accepts staged audio, and a run that stages audio
-  verifies that declaration before copying anything in. A mismatch fails the run
-  at container start, before a harness session is spent, and names the image and
-  the pin that selected it.
+  reads that declaration back out of the started container. A mismatch fails the
+  run at container start, before a harness session is spent, and names the image
+  and the pin that selected it. A run that stages nothing is never asked, so
+  every non-audio run is untouched by the handshake.
 - Because staging needs a running container, it is excluded from `tcab seed`,
   which materializes the seeded workspace alone. A case that declares no packs
   stages no audio.

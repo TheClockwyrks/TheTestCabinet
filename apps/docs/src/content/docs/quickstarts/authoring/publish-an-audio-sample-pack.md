@@ -63,8 +63,9 @@ one object and leaves the rest of the pack untouched.
 
 `scripts/stage-audio-store.mjs` downloads each object through a presigned GET,
 verifies it against `objects.lock.json`, and lays out a shared clip tree under
-`dist/audio-store/tree`. A missing lock entry, a failed presign, or a digest
-mismatch fails staging, and staging never contacts Freesound.
+`dist/audio-store/tree` with a copy of that lock beside it. A missing lock entry,
+a failed presign, or a digest mismatch fails staging, and staging never contacts
+Freesound.
 
 `./containers/build.sh audio-store` runs the stager and builds the data-only
 image over its output.

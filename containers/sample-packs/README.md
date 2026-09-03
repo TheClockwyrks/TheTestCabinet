@@ -229,6 +229,11 @@ manifest names must exist and decode as PCM-16 WAV at load time. Loading a named
 whose directory is missing, unparseable, or empty is an error, so a run is never served an
 empty or partial palette.
 
+The store carries `objects.lock.json` beside that tree. Staging a run's declared packs
+checks every clip it copies into the container against the published digest and byte
+length, so the bytes are verified again on the machine that runs the case. A run container
+holds only the packs its case declares and carries no lock of its own.
+
 ## Packs in this directory
 
 - `combat-core.toml` — the combat-SFX sample pack for `sfx-sample`
