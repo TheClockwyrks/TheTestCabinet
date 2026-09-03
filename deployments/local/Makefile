@@ -255,7 +255,8 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # dev-containers credential helper) that the BuildKit builder invokes even for the
 # PUBLIC base-image pulls and which errors hard in here — the legacy builder
 # tolerated it, BuildKit does not. The service-image Dockerfiles only ever pull
-# public docker.io images, so an empty auth set is correct. Pointing DOCKER_CONFIG
+# public images (docker.io bases, plus the published audio store the driver stage
+# copies in from ghcr), so an empty auth set is correct. Pointing DOCKER_CONFIG
 # here also pins buildx to its `default` (docker-driver) builder, which loads the
 # result into the daemon image store so the `docker save`/`k3d image import` below
 # can find it — sidestepping any `docker-container` builder a host might default to.
