@@ -1,0 +1,181 @@
+// presentation/overlay-is-read-only — showing the overlay leaves the game as it
+// is.
+//
+// specs/instrumentation.md § Diagnostics: "The debug overlay shows the values the
+// game registers with it as diagnostic sources... Keep each one short enough to
+// read on a line, and KEEP EVERY SOURCE A PURE READ, SO WATCHING THE OVERLAY
+// LEAVES THE GAME AS IT IS." The engineless paragraph says it again of the panel
+// itself: "it reads the game without changing it."
+//
+// UNDER THIS ENGINE THE PANEL ITSELF IS THE ENGINE'S, AND THE POINT STILL BITES.
+// specs/instrumentation.md § Diagnostics reads the other way here: "Registering
+// those values is the whole of Gantry's part, through `InitApi.diagnostics`...
+// Drawing the panel, showing and hiding it with the backtick key
+// (`KeyboardEvent.code` `Backquote`), and keeping it read-only are the engine's."
+// What a build can still get wrong is standing in the way of it — binding
+// `Backquote` to something of its own, registering no source for the panel to
+// draw, or registering one that writes as it reads — and each of those fails this
+// reading exactly as an engineless build's own overlay would.
+//
+// A SOURCE THAT WROTE would be read once a frame while the panel is up, so the
+// reading has to be taken over a game that is MOVING and over enough frames for a
+// nudge to compound. The scenario is therefore a real run — the smallest crane
+// that stands, an emptied yard, and a tape driving the trolley and then the slew
+// — watched for two seconds of run clock.
+//
+// TWO GAMES, one watching the overlay and one not, are what makes "leaves the
+// game as it is" a comparison rather than a guess. A run is deterministic — "a
+// tape replayed over the same structure produces the same swing, the same
+// tensions, and the same verdicts, tick for tick" (specs/rigging.md
+// § Determinism), and nothing anywhere in the game reads randomness or the wall
+// clock — so two identical runs stand in identical states, field for field, and
+// the only difference between these two is that one of them was asked to draw the
+// panel. The other is given a press of a key the game binds to nothing
+// (specs/controls.md), so the two are driven frame for frame alike.
+//
+// THE VERDICT IS THE WHOLE SNAPSHOT, compared as a value: the screen, the site,
+// the structure, the tape, the camera, the pointer, the pick, the run with its
+// axes, pivot, bob, loads, forces and broken members, and the clock. That is the
+// widest reading the surface offers of "the game as it is", and a source that
+// wrote anywhere in it is caught wherever it wrote.
+
+//
+// THIS ENGINE'S HALF OF THE POINT IS WHERE THE PICTURE IS READ. Under this engine
+// the panel is drawn on the engine's own screen layer — step 9 of its frame, "the
+// diagnostics overlay draws on the screen layer, in device space" — which is the
+// 2D layer `specs/overview.md` puts every readout on, and which this harness owns
+// as a real canvas. So the reading is that layer's pixels rather than the page's
+// composited frame; the yard beneath is rendered through WebGL, which this process
+// has no driver for, and the panel is not in it either way. The requirement, the
+// scenario and every figure below are unchanged.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { UNBOUND_KEY } from "../constants";
+import {
+  clearAll,
+  createHarness,
+  openSite,
+  poseTape,
+  runTicks,
+  standMinimalCrane,
+  startRun,
+  type Harness,
+  type TapeStepSpec,
+} from "../harness";
+
+const SITE = 0;
+
+/** The key the specification names, as a `KeyboardEvent.code`. */
+const TOGGLE = "Backquote";
+
+/** A tape that keeps the run moving for far longer than this reading watches. */
+const TAPE: readonly TapeStepSpec[] = [
+  { kind: "move", commands: [{ axis: "trolley", target: 3, rate: 2 }] },
+  { kind: "move", commands: [{ axis: "slew", target: 360, rate: 10 }] },
+];
+
+/** Ticks watched: two seconds of run clock at TICK_HZ. */
+const WATCHED = 120;
+
+/** How far two colours must stand apart, of the 441 the colour cube spans. */
+const CHANGED = 50;
+/** The share of the stage a shown panel must cover. */
+const PANEL_SHARE = 0.002;
+
+interface Picture {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
+
+function picture(harness: Harness): Picture {
+  const { width, height } = harness.screen;
+  const { data } = harness.screen
+    .getContext("2d")
+    .getImageData(0, 0, width, height);
+  return { width, height, data };
+}
+
+/** How many pixels two pictures are drawn differently at. */
+function differing(a: Picture, b: Picture): number {
+  let count = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    const gap = Math.hypot(
+      a.data[i]! - b.data[i]!,
+      a.data[i + 1]! - b.data[i + 1]!,
+      a.data[i + 2]! - b.data[i + 2]!,
+    );
+    if (gap > CHANGED) count += 1;
+  }
+  return count;
+}
+
+/** Stand the crane up, append the tape, and start the run. */
+async function stageRun(harness: Harness): Promise<void> {
+  await openSite(harness, SITE);
+  await clearAll(harness);
+  await standMinimalCrane(harness);
+  await poseTape(harness, TAPE);
+  await startRun(harness);
+}
+
+let watching: Harness;
+let unwatched: Harness;
+
+beforeEach(async () => {
+  watching = await createHarness();
+  unwatched = await createHarness();
+});
+
+afterEach(async () => {
+  await watching.dispose();
+  await unwatched.dispose();
+});
+
+it("leaves the game as it is while the overlay is shown", async () => {
+  await stageRun(watching);
+  await stageRun(unwatched);
+
+  const before = picture(watching);
+  await watching.press(TOGGLE);
+  await watching.advance(1);
+  const shown = picture(watching);
+  await watching.capture("read-only", "The stage with the overlay shown");
+
+  // The other game is driven frame for frame alike, on a key bound to nothing.
+  await unwatched.press(UNBOUND_KEY);
+  await unwatched.advance(1);
+
+  assertGreaterThan(
+    differing(before, shown) / (before.width * before.height),
+    PANEL_SHARE,
+    `the share of the stage the ${TOGGLE} key drew over, which this reading ` +
+      "needs so that the game below really is being watched " +
+      "(specs/instrumentation.md § Diagnostics)",
+  );
+
+  const watched = await runTicks(watching, WATCHED);
+  const quiet = await runTicks(unwatched, WATCHED);
+
+  assertEqual(
+    watched.run.phase,
+    "running",
+    `the run after ${WATCHED} watched ticks, which this reading needs still ` +
+      "under way so that the overlay was read over a moving game",
+  );
+  assertGreaterThan(
+    watched.run.tick,
+    WATCHED - 1,
+    "the ticks the watched run covered (specs/instrumentation.md § The clock)",
+  );
+
+  assertDeepEqual(
+    watched,
+    quiet,
+    `the whole state of the game after ${WATCHED} ticks with the overlay ` +
+      "shown, against the same run driven identically without it: every " +
+      "diagnostic source is a pure read, so watching the overlay leaves the " +
+      "game as it is (specs/instrumentation.md § Diagnostics)",
+  );
+});

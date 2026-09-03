@@ -1,0 +1,89 @@
+// controls/run-key-from-the-build-screen — `KeyG` starts the run from the build
+// screen.
+//
+// `specs/controls.md` § The actions: the `run` action is bound to `KeyG` and does
+// "start the run, from build or program (`specs/program.md`)". That file states
+// what starting is: "A run starts from the build or program screen through the
+// `run` action ... A started run plays the `run-start` cue, moves to the run
+// screen, and ticks until it ends", and `specs/state.md` fixes where the run
+// stands at the call — `phase` `running`, nothing ticked yet.
+//
+// THE SCENARIO IS A CRANE THE START CANNOT REFUSE. Starting "is refused, with the
+// issues listed and no run begun, when the structure has a readiness issue
+// (`specs/structure.md`) or the tape is empty (`empty-program`)", so a scenario
+// about the binding has to remove both grounds for refusal or it would be
+// deciding the refusal instead. The minimal crane carries a ring, a valid track
+// and no disconnected member, and the tape is one step, so nothing is left to
+// refuse.
+//
+// The tape is one long grip turn: `grip` is the hook's yaw, so it asks nothing of
+// the structure, and the yard is emptied first, so no load and no obstacle can
+// end the run before it is read. This decides the start from the BUILD screen;
+// the same action from the program screen is its own review point.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { BINDINGS, GRIP_MAX_RATE } from "../constants";
+import {
+  clearAll,
+  createHarness,
+  openSite,
+  poseTape,
+  standMinimalCrane,
+  type Harness,
+  type TapeStepSpec,
+} from "../harness";
+
+/** The `run` action's binding, as `specs/controls.md` fixes it. */
+const RUN_KEY = BINDINGS.run[0]!;
+
+/** A tape that keeps a run in progress and asks nothing of the structure. */
+const HOLD_TAPE: readonly TapeStepSpec[] = [
+  {
+    kind: "move",
+    commands: [{ axis: "grip", target: 360, rate: GRIP_MAX_RATE }],
+  },
+];
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("starts the run from the build screen", async () => {
+  await openSite(h, 0);
+  await clearAll(h);
+  await standMinimalCrane(h);
+  await poseTape(h, HOLD_TAPE);
+  const posed = await h.snapshot();
+  assertEqual(
+    posed.screen,
+    "build",
+    "the screen the `run` action is pressed on",
+  );
+  assertEqual(posed.run.phase, "idle", "the run standing before the press");
+
+  await h.press(RUN_KEY);
+  const s = await h.snapshot();
+  assertEqual(
+    s.run.phase,
+    "running",
+    `the run after ${RUN_KEY} on the build screen, which starts the run ` +
+      "(specs/program.md)",
+  );
+  assertEqual(
+    s.screen,
+    "run",
+    "the screen a started run moves to (specs/program.md)",
+  );
+
+  await h.capture(
+    "state",
+    "the run the run action started from the build screen",
+  );
+});

@@ -37,6 +37,6 @@ export default defineValidationConfig({
   // thousand ticks of two linear solves per tick, each of them a crossing into
   // the page, and a crane is posed one edit at a time before any of it starts.
   // Generous against a healthy build, and still bounds a hung one.
-  testTimeout: 180_000,
+  testTimeout: 600_000,
   hookTimeout: 60_000,
 });

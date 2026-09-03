@@ -1,0 +1,149 @@
+// presentation/overlay-toggled-by-backquote — the backtick key shows and hides
+// the debug overlay.
+//
+// specs/instrumentation.md § Diagnostics, in its engineless branch: "The overlay
+// is part of the runtime layer you write. It draws the registered sources, IT IS
+// SHOWN AND HIDDEN BY THE BACKTICK KEY (`KeyboardEvent.code` `Backquote`), it is
+// off until toggled, and it reads the game without changing it."
+//
+// UNDER THIS ENGINE THE PANEL ITSELF IS THE ENGINE'S, AND THE POINT STILL BITES.
+// specs/instrumentation.md § Diagnostics reads the other way here: "Registering
+// those values is the whole of Gantry's part, through `InitApi.diagnostics`...
+// Drawing the panel, showing and hiding it with the backtick key
+// (`KeyboardEvent.code` `Backquote`), and keeping it read-only are the engine's."
+// What a build can still get wrong is standing in the way of it — binding
+// `Backquote` to something of its own, registering no source for the panel to
+// draw, or registering one that writes as it reads — and each of those fails this
+// reading exactly as an engineless build's own overlay would.
+// So this point is the toggle itself: one press puts the panel on the stage, and
+// the next takes it off again, leaving the picture the game was drawing.
+//
+// THE READING IS THE WHOLE STAGE, counted rather than sampled, because where a
+// build puts its panel is its own business — the specification asks only that it
+// be "visually plain and clearly separate from the game's own display". What is
+// fixed is that showing it changes a substantial part of the picture and hiding
+// it gives that part back.
+//
+// IT IS TAKEN ON A STILL SCREEN. The build screen of an emptied site is drawn
+// from state that nothing is changing: "Off the run screen nothing ticks"
+// (specs/instrumentation.md § The clock), no run is under way and no pointer or
+// key is held, so any pixel that differs between two of these pictures differs
+// because of the toggle. The press itself is `keyDown`, a frame, `keyUp`, which
+// is the press a build reading held keys at the top of a frame and one latching
+// the event both see.
+//
+// THE TWO FIGURES. A panel carrying the sources § Diagnostics asks a build to
+// register — the screen and site, the structure's member count, cost and issue
+// count, the run's phase, step, clock and cause, four axis values, the bob's
+// position, the highest utilization, the broken count, and the camera pose, each
+// "short enough to read on a line" — is a dozen legible lines, which cannot cover
+// less than a fifth of one per cent of a 1280 x 720 stage. And the picture that
+// comes back after the second press must be the first one: the allowance below is
+// noise, a twentieth of one per cent, not room for a panel.
+
+//
+// THIS ENGINE'S HALF OF THE POINT IS WHERE THE PICTURE IS READ. Under this engine
+// the panel is drawn on the engine's own screen layer — step 9 of its frame, "the
+// diagnostics overlay draws on the screen layer, in device space" — which is the
+// 2D layer `specs/overview.md` puts every readout on, and which this harness owns
+// as a real canvas. So the reading is that layer's pixels rather than the page's
+// composited frame; the yard beneath is rendered through WebGL, which this process
+// has no driver for, and the panel is not in it either way. The requirement, the
+// scenario and every figure below are unchanged.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { clearAll, createHarness, openSite, type Harness } from "../harness";
+
+const SITE = 0;
+
+/** The key the specification names, as a `KeyboardEvent.code`. */
+const TOGGLE = "Backquote";
+
+/** How far two colours must stand apart, of the 441 the colour cube spans. */
+const CHANGED = 50;
+
+/** The share of the stage a shown panel must cover, and the noise allowed. */
+const PANEL_SHARE = 0.002;
+const NOISE_SHARE = 0.0005;
+
+interface Picture {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
+
+function picture(harness: Harness): Picture {
+  const { width, height } = harness.screen;
+  const { data } = harness.screen
+    .getContext("2d")
+    .getImageData(0, 0, width, height);
+  return { width, height, data };
+}
+
+/** How many pixels two pictures are drawn differently at. */
+function differing(a: Picture, b: Picture): number {
+  let count = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    const gap = Math.hypot(
+      a.data[i]! - b.data[i]!,
+      a.data[i + 1]! - b.data[i + 1]!,
+      a.data[i + 2]! - b.data[i + 2]!,
+    );
+    if (gap > CHANGED) count += 1;
+  }
+  return count;
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("shows the overlay on the backtick key and hides it on the next", async () => {
+  await openSite(h, SITE);
+  await clearAll(h);
+  await h.advance(1);
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "build",
+    "the screen this reading is taken on, which nothing is ticking on " +
+      "(specs/instrumentation.md § The clock)",
+  );
+
+  const before = picture(h);
+  const pixels = before.width * before.height;
+
+  await h.press(TOGGLE);
+  await h.advance(1);
+  const shown = picture(h);
+  await h.capture("on", "The stage with the overlay shown");
+
+  await h.press(TOGGLE);
+  await h.advance(1);
+  const hidden = picture(h);
+
+  assertGreaterThan(
+    differing(before, shown) / pixels,
+    PANEL_SHARE,
+    `the share of the stage that the ${TOGGLE} key draws over, on a screen ` +
+      "where nothing else is changing: the overlay is shown by the backtick " +
+      "key and draws the diagnostic sources the specification asks a build to " +
+      "register (specs/instrumentation.md § Diagnostics)",
+  );
+
+  assertLessThan(
+    differing(before, hidden) / pixels,
+    NOISE_SHARE,
+    `the share of the stage still standing apart from the picture before the ` +
+      `first press once ${TOGGLE} has been pressed a second time: the ` +
+      "backtick key hides the overlay again, leaving the game's own display " +
+      "(specs/instrumentation.md § Diagnostics)",
+  );
+});

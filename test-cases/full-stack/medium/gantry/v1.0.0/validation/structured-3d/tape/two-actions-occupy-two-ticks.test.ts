@@ -1,0 +1,106 @@
+// tape/two-actions-occupy-two-ticks — two actions in a row occupy two ticks.
+//
+// `specs/program.md` § The tick pipeline: "An action step is taken, executed and
+// complete on one tick, and the step after it is taken on the next, so two
+// actions in a row occupy two ticks and never one." A tick takes at most one step
+// from the tape, so the tick that attaches cannot also release.
+//
+// THE TWO ACTIONS BOTH SUCCEED, so the reading is about WHEN each ran rather than
+// about either being refused. The load is lifted from the hook's own point and
+// wanted back on it, which passes all three of `specs/rigging.md`'s release
+// tests: the pivot never moves, so the bob hangs dead still and its speed is
+// zero; the lift point is the bob's position, which is the pad; and `attach`
+// "set[s] the grip's axis value to the load's current yaw", which is the yaw the
+// pad asks for. A build that ran both actions on one tick would report the load
+// `placed` on the tick it was taken up.
+//
+// THE HOIST IS PAID IN FIRST so the crate hangs a unit clear of the ground rather
+// than flush against it, which keeps `specs/statics.md`'s ground test out of a
+// reading that is about the tape.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { HOIST_MAX_RATE, HOIST_MIN } from "../constants";
+import {
+  addOneLoad,
+  clearAll,
+  createHarness,
+  openSite,
+  poseTape,
+  runTicks,
+  runUntil,
+  standMinimalCrane,
+  startRun,
+  type Harness,
+  type TapeStepSpec,
+} from "../harness";
+
+/** Where the hook hangs once the hoist is in: the minimal crane's pivot, less L. */
+const HOOK = { x: 0, y: 4 - HOIST_MIN, z: 0, yaw: 0 };
+
+/** Pay the cable in, then the two actions, back to back. */
+const TAPE: readonly TapeStepSpec[] = [
+  {
+    kind: "move",
+    commands: [{ axis: "hoist", target: HOIST_MIN, rate: HOIST_MAX_RATE }],
+  },
+  { kind: "action", action: "attach" },
+  { kind: "action", action: "release" },
+];
+
+/** Ticks the sweep is given: paying in one unit takes about twenty-six. */
+const CAP = 300;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("executes an attach and the release after it on two consecutive ticks", async () => {
+  await openSite(h, 0);
+  await clearAll(h);
+  await standMinimalCrane(h);
+  await addOneLoad(h, "crate", 40, HOOK, HOOK);
+  await poseTape(h, TAPE);
+  await startRun(h);
+
+  const attached = await runUntil(
+    h,
+    (s) => s.run.loads[0]?.phase === "attached",
+    CAP,
+    "the tape's attach step to take the load up",
+  );
+  const released = await runTicks(h, 1);
+
+  await h.capture("state", "The tick after the attach, which ran the release");
+
+  assertEqual(
+    attached.run.loads[0]?.phase,
+    "attached",
+    "the load's phase on the tick the attach ran: the release after it has " +
+      "not run, so the load is on the hook and not on its pad " +
+      "(specs/program.md)",
+  );
+  assertEqual(
+    attached.run.stepIndex,
+    2,
+    "run.stepIndex on the attach's own tick: an action step is taken, " +
+      "executed and complete on one tick (specs/program.md)",
+  );
+  assertEqual(
+    released.run.tick,
+    attached.run.tick + 1,
+    "the tick the release ran on: the step after an action is taken on the " +
+      "next tick, so two actions in a row occupy two ticks (specs/program.md)",
+  );
+  assertEqual(
+    released.run.loads[0]?.phase,
+    "placed",
+    "the load's phase on the tick after the attach, which ran the release",
+  );
+});

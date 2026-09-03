@@ -77,12 +77,19 @@ import { fileURLToPath } from "node:url";
 import {
   ConstantClock,
   createEngine,
+  ModelComponent,
+  RenderComponent,
+  type Actor,
   type Clock,
+  type Component,
+  type ComponentClass,
   type Engine,
   type GameDefinition,
   type GameInstance,
   type GameState,
+  type Model,
   type SurfaceMetrics,
+  type Transform,
   type World,
 } from "@test-cabinet/structured-3d";
 import type { Canvas } from "@napi-rs/canvas";
@@ -107,9 +114,11 @@ import {
   TICK_HZ,
 } from "./constants";
 import {
+  assetRequests,
   createEngineSurface,
   defineAudioContext,
   serveWorkspaceAssets,
+  type AssetRequest,
   type EngineSurface,
 } from "./host";
 import type {
@@ -348,6 +357,14 @@ export interface AssetFailure {
   reason: string;
 }
 
+/** One asset the build asked for and got. */
+export interface AssetLoad {
+  /** The path the build asked the engine's loader for, under the asset root. */
+  path: string;
+  /** The URL that path resolved to. */
+  url: string;
+}
+
 /** What a harness may be built differently from the default. */
 export interface HarnessOptions {
   /** The clock each frame takes its delta from. Defaults to one tick a frame. */
@@ -450,6 +467,16 @@ export interface Harness {
   readonly played: readonly TimedCue[];
   /** Every asset the build asked for and did not get, oldest first. */
   readonly assetFailures: readonly AssetFailure[];
+  /** Every asset the build asked for and got, oldest first. */
+  readonly assetLoads: readonly AssetLoad[];
+  /**
+   * Every request this build has made since this harness was built.
+   *
+   * The engine's loader and anything the build fetched for itself both go
+   * through the one transport `validation/host.ts` installs, so this is the whole
+   * of what the built site asks for at run time.
+   */
+  requests(): readonly AssetRequest[];
   /** What the build stood the game up in, before this harness reset it. */
   readonly openingSnapshot: GantrySnapshot | null;
   /** The frames this harness has driven, 1-based, as the engine counts them. */
@@ -462,6 +489,31 @@ export interface Harness {
     version: unknown;
     ops: Record<string, string>;
   };
+
+  /**
+   * Every operation the last CLOSED frame made on the screen layer, in order.
+   *
+   * What the engineless project reads back out of its injected recorder over
+   * `h.page`, read here off the context this harness wrapped. The document is the
+   * same, so a check turns it into draw calls with `toDrawCall` and reads it with
+   * `drawnText` or `textDraws` the same way in both projects.
+   *
+   * IT IS THE SCREEN LAYER AND NOT THE WHOLE FRAME. The yard is drawn through
+   * WebGL, and nothing of that pass appears here — a check about the 3D picture
+   * reads the world's own render components instead.
+   */
+  screenOps(): Promise<RecordedOp[]>;
+
+  /**
+   * The screen layer as a PNG: the readouts, menus, tape and fail copy exactly as
+   * this frame drew them, over transparency where the yard would be.
+   *
+   * For the few points whose reading is a COLOUR the screen layer paints — a
+   * utilization ramp, a refusal's mark — which is a reading no list of draw
+   * operations answers, because the colour a build ends up painting with is the
+   * one in force at the paint rather than the one in the last `fillStyle` it set.
+   */
+  screenPng(): Promise<Buffer>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -643,8 +695,118 @@ class PointerEvt extends Event {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Reading what the screen layer drew                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One operation the screen layer's 2D context was given, in the order the frame
+ * gave it.
+ *
+ * THE SAME DOCUMENT THE ENGINELESS PROJECT'S INJECTED RECORDER WRITES
+ * (`RecordedOp` in `@test-cabinet/case-harness`), so a check reads a frame's
+ * drawing through the same helpers — `toDrawCall`, `drawnText`, `textDraws` —
+ * whichever project it is running in.
+ */
+export type RecordedOp =
+  | { op: "call"; method: string; args: unknown[] }
+  | { op: "set"; property: string; value: unknown };
+
+/** The frames a screen recorder has closed, and the one it is filling. */
+interface ScreenRecorder {
+  /** Start a frame: what follows belongs to it. */
+  begin(): void;
+  /** Close the frame `begin` opened, and make it the one `last` answers. */
+  end(): void;
+  /** Every operation the last CLOSED frame issued, in order. */
+  last(): RecordedOp[];
+}
+
+/**
+ * Record every operation the engine's screen pass makes on the screen layer.
+ *
+ * WHY THIS EXISTS AT ALL. Gantry's readouts, menus, tape listing and fail copy
+ * are drawn on the screen layer, and a review point about what a screen SAYS is a
+ * point about what the frame drew rather than about what the snapshot holds — a
+ * title screen that draws none of its copy is exactly the miss those points are
+ * about. Under `none` the shared harness injects a recorder into the page before
+ * a line of the build runs and a check reads it back over `h.page`. There is no
+ * page here, so the recorder is this: the 2D context the engine hands the screen
+ * pass, wrapped so every call and every property write is written down as it goes
+ * through.
+ *
+ * IT IS A WRAPPER AND NOT A STUB. Every operation is forwarded to the real
+ * `@napi-rs/canvas` context and its answer handed back untouched, so the screen
+ * layer is genuinely drawn — `measureText` measures, a still written by
+ * `captureStill` is the picture the frame made — and the recording is a record of
+ * that drawing rather than a substitute for it.
+ *
+ * A frame is `begin` to `end`, which {@link createHarness}'s driver puts around
+ * each single frame it advances, so `last()` means what it means under `none`:
+ * every operation the last CLOSED frame issued.
+ */
+function recordScreenLayer(canvas: Canvas): ScreenRecorder {
+  const context = canvas.getContext("2d");
+  let filling: RecordedOp[] = [];
+  let closed: RecordedOp[] = [];
+
+  const held = context as unknown as Record<string, unknown>;
+  const methods = new Map<string, (...args: unknown[]) => unknown>();
+  const recording = new Proxy(held, {
+    get: (_target, property): unknown => {
+      if (typeof property === "symbol") return held[property as never];
+      const value = held[property];
+      if (typeof value !== "function") return value;
+      const memoized = methods.get(property);
+      if (memoized !== undefined) return memoized;
+      const method = (...args: unknown[]): unknown => {
+        filling.push({ op: "call", method: property, args });
+        return (value as (...rest: unknown[]) => unknown).apply(held, args);
+      };
+      methods.set(property, method);
+      return method;
+    },
+    set: (_target, property, value): boolean => {
+      if (typeof property !== "symbol") {
+        filling.push({ op: "set", property, value });
+      }
+      held[property as string] = value;
+      return true;
+    },
+  });
+
+  // The context the engine is handed, shadowing the canvas's own accessor. An own
+  // property on an ordinary object, so `captureStill` — which encodes the CANVAS
+  // rather than a context — is untouched by it.
+  (canvas as unknown as { getContext: (id: string) => unknown }).getContext = (
+    id: string,
+  ): unknown => (id === "2d" ? recording : null);
+
+  return {
+    begin() {
+      filling = [];
+    },
+    end() {
+      closed = filling;
+    },
+    last: () => closed,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Building one                                                               */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * A clock whose every frame is worth no time at all.
+ *
+ * `ConstantClock` refuses a step of zero, and rightly: a game driven by one would
+ * never move. This is not a clock a game is driven by — it delivers exactly one
+ * frame, at construction, so the engine's camera is the game's before a check
+ * asks where anything is drawn. `null` would be the clock saying "this tick is
+ * not a frame", which is the opposite of what is wanted; `0` is a frame that
+ * covers no time.
+ */
+const ZERO_CLOCK: Clock = { delta: () => 0 };
 
 /** How long a drive may hold the worker's event loop before it lets a turn by. */
 const YIELD_AFTER_MS = 100;
@@ -697,6 +859,9 @@ export async function createHarness(
     Math.round(cssWidth * dpr),
     Math.round(cssHeight * dpr),
   );
+  // Before the engine is built, so the context the screen pass is handed is the
+  // recording one from its very first frame.
+  const screenRecorder = recordScreenLayer(host.screenCanvas);
   const metrics: SurfaceMetrics = {
     cssWidth: () => cssWidth,
     cssHeight: () => cssHeight,
@@ -731,14 +896,25 @@ export async function createHarness(
   // has happened yet.
   const played: TimedCue[] = [];
   const assetFailures: AssetFailure[] = [];
+  const assetLoads: AssetLoad[] = [];
+  // Where this harness came in: what the worker requested before it was built
+  // belongs to whatever harness came before it.
+  const requestsBefore = assetRequests().length;
   let drained = 0;
+  /** Every cue name a reading may ask the bus about: see `loopingCues`. */
+  const cueNames = new Set<string>(CUES);
   engine.events.on("asset:failed", ({ path, reason }) => {
     assetFailures.push({ path, reason });
   });
+  engine.events.on("asset:loaded", ({ path, url }) => {
+    assetLoads.push({ path, url });
+  });
   engine.events.on("cue:played", ({ cue, t, gain }) => {
+    cueNames.add(cue);
     played.push({ cue, t, gain, frame: engine.frame().count, looped: false });
   });
   engine.events.on("cue:looped", ({ cue, t, gain }) => {
+    cueNames.add(cue);
     played.push({ cue, t, gain, frame: engine.frame().count, looped: true });
   });
 
@@ -818,7 +994,17 @@ export async function createHarness(
     // `YIELD_AFTER_MS`. Nothing measured here depends on wall-clock time — every
     // check supplies its own clock and the engine reads no other — so the turn
     // changes no reading.
-    await engine.advance(count);
+    //
+    // THE FRAMES ARE ADVANCED ONE AT A TIME, and that is what puts a boundary
+    // around each of them for the screen recorder: `h.screenOps()` answers the
+    // last CLOSED frame, exactly as the engineless project's injected recorder
+    // does, and a boundary only exists where one is drawn. `engine.advance(n)`
+    // runs the same `n` frames off the same clock either way.
+    for (let frame = 0; frame < count; frame += 1) {
+      screenRecorder.begin();
+      await engine.advance(1);
+      screenRecorder.end();
+    }
     if (Date.now() - yieldedAt >= YIELD_AFTER_MS) {
       await new Promise<void>((resolve) => {
         setImmediate(resolve);
@@ -919,7 +1105,18 @@ export async function createHarness(
     async loopingCues() {
       if (surface === null) refuse();
       const audio = engine.world.audio;
-      return CUES.filter((cue) => audio.looping(cue));
+      // EVERY NAME THIS BUILD HAS USED, not only the eleven `CUES` lists. The
+      // engine's bus answers `looping(cue)` for a name it was asked about and
+      // enumerates nothing, so the names have to come from somewhere — and
+      // `validation/constants.ts` carries the eleven cues `specs/ui.md` fixes for
+      // the game's own events and NOT the produced music bed of
+      // `specs/ui.md` § Audio ("The title and select screens carry the produced
+      // music bed"), which is a twelfth sound and the one a check about the bed
+      // reads. So the list is those eleven plus every name this build has
+      // announced, which is how the bed reaches a reading here the way the
+      // engineless project's cue probe reaches it there: by naming whatever the
+      // build actually sounded rather than only what the case enumerated.
+      return [...cueNames].filter((cue) => audio.looping(cue));
     },
 
     async capture(id, name) {
@@ -942,6 +1139,8 @@ export async function createHarness(
     surface,
     played,
     assetFailures,
+    assetLoads,
+    requests: () => assetRequests().slice(requestsBefore),
     openingSnapshot,
     tick: () => engine.frame().count,
 
@@ -950,6 +1149,16 @@ export async function createHarness(
       const ops: Record<string, string> = {};
       for (const op of names) ops[op] = typeof target[op];
       return { version: target.version, ops };
+    },
+
+    async screenOps() {
+      if (surface === null) refuse();
+      return screenRecorder.last();
+    },
+
+    async screenPng() {
+      if (surface === null) refuse();
+      return host.screenCanvas.toBuffer("image/png");
     },
   };
 
@@ -961,6 +1170,46 @@ export async function createHarness(
   // snapshot was taken, which is the one reading that is about what came before
   // it.
   if (surface !== null) await harness.debug.reset();
+
+  // ONE FRAME OF NO TIME, SO THE ENGINE STANDS WHERE THE GAME SAYS IT DOES.
+  //
+  // `specs/instrumentation.md` puts the camera on the engine under an engine
+  // build — "A caller that needs the stage point a lattice node, a member end, or
+  // the hook is drawn at projects that world position through the engine's
+  // camera" — and a game poses `world.camera` from the orbit pose its state holds
+  // as part of running a frame. Until a frame has run, therefore, the engine's
+  // camera is the one `createEngine` constructed rather than the one the game
+  // describes, and `h.project` would answer where a node WOULD be drawn through a
+  // lens and from a place the game has never used. Under `none` that moment does
+  // not exist: `project` is an operation of the build's own, computed from the
+  // camera its state holds, so it is right from the first call.
+  //
+  // THE FRAME CARRIES NO TIME, which is what makes it safe to run. The clock is
+  // swapped for a `ConstantClock(0)` for the one frame and put back afterwards, so
+  // the frame's delta is zero: `specs/state.md` accumulates `simTime` from the
+  // time a frame covers and every rate in `specs/rigging.md` and
+  // `specs/program.md` is integrated against it, so a frame of no time moves
+  // nothing a check can read. What it does do is give the game its one chance to
+  // pose the camera before a check asks where something is drawn.
+  //
+  // WHAT SOUNDED IS DRAINED, for the same reason. `h.cues()` reports what has
+  // sounded SINCE THE LAST READ, and under `none` nothing has sounded when a
+  // check begins, because no frame has run since the page was taken off its own
+  // clock. Draining here says the same thing here.
+  //
+  // WHAT IT IS NOT is a substitute for a frame a check owes. A check that POSES
+  // the camera with `setCamera` and then asks where a point is drawn is asking
+  // about a frame that has not been drawn yet, and it advances one itself — which
+  // is what the four `controls/camera-*` items do, and what keeps them holding the
+  // build's camera to `specs/controls.md` rather than to this harness.
+  if (surface !== null) {
+    engine.setClock(ZERO_CLOCK);
+    screenRecorder.begin();
+    await engine.advance(1);
+    screenRecorder.end();
+    engine.setClock(options.clock ?? new ConstantClock(TICK_MS));
+    drained = played.length;
+  }
 
   return harness;
 }
@@ -1575,8 +1824,525 @@ export async function nodePoint(h: Harness, node: Vec3): Promise<Projected> {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Reading the picture the engine draws                                       */
+/* -------------------------------------------------------------------------- */
+//
+// THIS IS THIS ENGINE'S ANSWER TO "WHAT IS ON SCREEN". The engineless project
+// reads the yard by taking a picture of the page and looking at its pixels. There
+// is no page here and no rasterizer either — `validation/host.ts` gives three a
+// WebGL2 context that answers every call and draws nothing — so a claim about the
+// yard is made against the thing the engine WOULD draw: the enabled, visible
+// render components the open world holds, at the world transforms the pipeline
+// places them at, and the camera those transforms are seen through. Every one of
+// those is engine data that exists whether or not a driver rasterized anything,
+// and none of it is the reference build's own architecture: `engine/rendering.md`
+// fixes that the pipeline collects every enabled, visible `RenderComponent` on
+// every live actor and draws it, so any build of this case that puts a picture on
+// screen puts it here.
+
+/** One render component the open world is drawing, and where it stands. */
+export interface Drawn {
+  /** The actor carrying it. */
+  actor: Actor;
+  /** The component itself. */
+  component: RenderComponent;
+  /** The actor's transform composed with the component's offset. */
+  transform: Transform;
+  /** Where that transform stands, which is where the component is drawn. */
+  at: Vec3;
+}
+
+/**
+ * Every enabled, visible render component the open world holds, in world space.
+ *
+ * `space` separates the two passes the engine draws (`engine/rendering.md`): a
+ * `world` component is drawn through the camera, and a `screen` one on the 2D
+ * layer over it. This is the world pass — the yard — and `h.screenOps()` is the
+ * other one.
+ */
+export function drawnInWorld(h: Harness): Drawn[] {
+  const out: Drawn[] = [];
+  for (const actor of h.world.actors()) {
+    for (const component of actor.componentsOf(RenderComponent)) {
+      if (!component.enabled || !component.visible) continue;
+      if (component.space !== "world") continue;
+      const transform = component.worldTransform();
+      out.push({
+        actor,
+        component,
+        transform,
+        at: {
+          x: transform.position.x,
+          y: transform.position.y,
+          z: transform.position.z,
+        },
+      });
+    }
+  }
+  return out;
+}
+
+/** The same, narrowed to one component class. */
+export function drawnOf<C extends Component>(
+  h: Harness,
+  type: ComponentClass<C>,
+): (Drawn & { component: C })[] {
+  return drawnInWorld(h).filter(
+    (drawn): drawn is Drawn & { component: C } =>
+      drawn.component instanceof type,
+  );
+}
+
+/**
+ * A produced model's own committed file, decoded through the ENGINE's loader.
+ *
+ * `specs/assets.md` commits each model as `assets/models/<model>.glb` and has an
+ * engine build load it "through the engine's own asset loader under its asset
+ * root", so this is the same decode of the same bytes the build's own load makes,
+ * taken independently of it. What it is FOR is identifying which produced file a
+ * component in the world is drawing: see {@link modelSignature}.
+ */
+export async function committedModel(
+  h: Harness,
+  path: string,
+): Promise<Model | null> {
+  try {
+    return await h.world.assets.loadModel(path);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What a decoded model IS, as a string two decodes of one file agree on and two
+ * decodes of different files do not.
+ *
+ * WHY A SIGNATURE AND NOT AN IDENTITY. The engine's loader decodes on every call
+ * and caches nothing, so the `Model` a check loads for itself is never the same
+ * object as the one the build loaded — the two are equal only in what they carry.
+ * So the reading is the content: every node name in traversal order, and every
+ * mesh's vertex and index count. Two of the eight produced models differ in both;
+ * one file decoded twice agrees on both.
+ *
+ * It is deliberately NOT the file's bytes. A build is free to load a model once
+ * and place it several times, and a component holds a clone of the decode rather
+ * than the file, so the bytes are not there to compare — what is there is the
+ * tree they decoded to.
+ */
+export function modelSignature(model: Model): string {
+  const parts: string[] = [`nodes:${model.nodes.join(",")}`];
+  model.scene.traverse((object) => {
+    const held = object as unknown as {
+      name?: string;
+      geometry?: {
+        attributes?: Record<string, { count?: number } | undefined>;
+        index?: { count?: number } | null;
+      };
+    };
+    const geometry = held.geometry;
+    if (geometry === undefined) return;
+    const vertices = geometry.attributes?.position?.count ?? 0;
+    const indices = geometry.index?.count ?? 0;
+    parts.push(
+      `mesh:${held.name ?? ""}:${String(vertices)}:${String(indices)}`,
+    );
+  });
+  return parts.join("|");
+}
+
+/** The axis-aligned box a decoded model's own geometry fills, in its own units. */
+export function modelBounds(
+  model: Model,
+): { min: Vec3; max: Vec3; size: Vec3 } | null {
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  let seen = false;
+  model.scene.traverse((object) => {
+    const held = object as unknown as {
+      geometry?: {
+        attributes?: Record<
+          string,
+          { count?: number; getX?: (i: number) => number } | undefined
+        >;
+      };
+      updateWorldMatrix?: (parents: boolean, children: boolean) => void;
+    };
+    const position = held.geometry?.attributes?.position as
+      | {
+          count: number;
+          getX(i: number): number;
+          getY(i: number): number;
+          getZ(i: number): number;
+        }
+      | undefined;
+    if (position === undefined) return;
+    seen = true;
+    for (let i = 0; i < position.count; i += 1) {
+      const x = position.getX(i);
+      const y = position.getY(i);
+      const z = position.getZ(i);
+      min.x = Math.min(min.x, x);
+      min.y = Math.min(min.y, y);
+      min.z = Math.min(min.z, z);
+      max.x = Math.max(max.x, x);
+      max.y = Math.max(max.y, y);
+      max.z = Math.max(max.z, z);
+    }
+  });
+  if (!seen) return null;
+  return {
+    min,
+    max,
+    size: { x: max.x - min.x, y: max.y - min.y, z: max.z - min.z },
+  };
+}
+
+/**
+ * One object the engine's world pass will draw, as three holds it.
+ *
+ * WHY THE THREE SCENE AND NOT THE COMPONENTS. A check about the PICTURE is a
+ * check about what is drawn, and a build is free to draw a thing with whichever
+ * render component suits it: a mesh, a line, a point cloud, or a three object of
+ * its own through `Object3DComponent`. `engine.scene` is where the pipeline puts
+ * every one of them, so reading it is the reading that does not presume an
+ * architecture — and it is where the geometry itself is, which a component's
+ * declaration is not.
+ *
+ * NOTHING HERE IS READ BY NAME. What a build calls an object is the build's, so a
+ * check finds an object by WHERE IT IS and WHAT SHAPE IT HAS. The names three
+ * carries are not on this record at all, so a check cannot accidentally rest on
+ * one.
+ */
+export interface DrawnObject {
+  /** Three's own class name: `"Mesh"`, `"LineSegments"`, `"Points"`, … */
+  type: string;
+  /** Where the object's own origin stands in the world. */
+  at: Vec3;
+  /** The box its geometry fills in the world, or `null` when it carries none. */
+  box: WorldBox | null;
+  /** How many vertices its geometry carries. */
+  vertices: number;
+  /** Its material's base colour as `#rrggbb`, or `null` when it has none. */
+  color: string | null;
+  /** Every vertex of its geometry, in world units. Computed on the call. */
+  points(): Vec3[];
+}
+
+/** A three object as this project reads one, without importing three. */
+interface ThreeObject {
+  type: string;
+  name: string;
+  visible: boolean;
+  parent: ThreeObject | null;
+  children: ThreeObject[];
+  matrixWorld: { elements: number[] };
+  updateWorldMatrix(parents: boolean, children: boolean): void;
+  geometry?: {
+    attributes?: Record<string, { count: number } | undefined>;
+    getAttribute?: (name: string) => {
+      count: number;
+      getX(i: number): number;
+      getY(i: number): number;
+      getZ(i: number): number;
+    } | null;
+  };
+  material?: unknown;
+  isLight?: boolean;
+  isCamera?: boolean;
+}
+
+/** `p` through the column-major 4x4 `m`. */
+function through(m: readonly number[], p: Vec3): Vec3 {
+  const w = m[3]! * p.x + m[7]! * p.y + m[11]! * p.z + m[15]!;
+  const s = w === 0 ? 1 : w;
+  return {
+    x: (m[0]! * p.x + m[4]! * p.y + m[8]! * p.z + m[12]!) / s,
+    y: (m[1]! * p.x + m[5]! * p.y + m[9]! * p.z + m[13]!) / s,
+    z: (m[2]! * p.x + m[6]! * p.y + m[10]! * p.z + m[14]!) / s,
+  };
+}
+
+/** The base colour a three material declares, as `#rrggbb`, or `null`. */
+function colorOf(material: unknown): string | null {
+  const one = Array.isArray(material) ? material[0] : material;
+  const held = (one as { color?: { getHexString?: () => string } } | undefined)
+    ?.color;
+  const hex = held?.getHexString?.();
+  return hex === undefined ? null : `#${hex}`;
+}
+
+/**
+ * Everything the engine's world pass will draw this frame, in scene order.
+ *
+ * Lights and cameras are left out: they change how the picture looks and are not
+ * things drawn in it. An object hidden by its own `visible` or by an ancestor's
+ * is left out too, because the pipeline will not draw it either.
+ *
+ * READ IT AFTER A FRAME. The pipeline syncs the scene from the world's render
+ * components as part of drawing, so a scene read before the frame that poses a
+ * thing is the scene of the frame before.
+ */
+export function drawnObjects(h: Harness): DrawnObject[] {
+  const out: DrawnObject[] = [];
+  const root = h.engine.scene as unknown as ThreeObject;
+  const walk = (object: ThreeObject, shown: boolean): void => {
+    const visible = shown && object.visible !== false;
+    if (
+      visible &&
+      object.isLight !== true &&
+      object.isCamera !== true &&
+      object.geometry !== undefined
+    ) {
+      object.updateWorldMatrix(true, false);
+      const matrix = object.matrixWorld.elements;
+      const position =
+        object.geometry.getAttribute?.("position") ??
+        (object.geometry.attributes?.position as
+          | {
+              count: number;
+              getX(i: number): number;
+              getY(i: number): number;
+              getZ(i: number): number;
+            }
+          | undefined) ??
+        null;
+      const points = (): Vec3[] => {
+        if (position === null) return [];
+        const all: Vec3[] = [];
+        for (let i = 0; i < position.count; i += 1) {
+          all.push(
+            through(matrix, {
+              x: position.getX(i),
+              y: position.getY(i),
+              z: position.getZ(i),
+            }),
+          );
+        }
+        return all;
+      };
+      const all = points();
+      let box: WorldBox | null = null;
+      if (all.length > 0) {
+        const min = { x: Infinity, y: Infinity, z: Infinity };
+        const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+        for (const point of all) {
+          min.x = Math.min(min.x, point.x);
+          min.y = Math.min(min.y, point.y);
+          min.z = Math.min(min.z, point.z);
+          max.x = Math.max(max.x, point.x);
+          max.y = Math.max(max.y, point.y);
+          max.z = Math.max(max.z, point.z);
+        }
+        box = {
+          min,
+          max,
+          centre: {
+            x: (min.x + max.x) / 2,
+            y: (min.y + max.y) / 2,
+            z: (min.z + max.z) / 2,
+          },
+          size: { x: max.x - min.x, y: max.y - min.y, z: max.z - min.z },
+        };
+      }
+      out.push({
+        type: object.type,
+        at: through(matrix, { x: 0, y: 0, z: 0 }),
+        box,
+        vertices: position?.count ?? 0,
+        color: colorOf(object.material),
+        points,
+      });
+    }
+    for (const child of object.children) walk(child, visible);
+  };
+  walk(root, true);
+  return out;
+}
+
+/**
+ * Every drawn object whose own extent stands over `at`, within `reach`.
+ *
+ * THE BOX RATHER THAN A VERTEX, because a mark is a SHAPE around a place rather
+ * than a point on it: a ring drawn at an anchor puts its vertices on its own
+ * circumference and none at the middle, and so do a square, a cross, and a
+ * fixture standing there. What all of them have in common is that the place is
+ * inside what was drawn.
+ */
+export function drawnOver(
+  objects: readonly DrawnObject[],
+  at: Vec3,
+  reach = 0,
+): DrawnObject[] {
+  return objects.filter((object) => {
+    const box = object.box;
+    return (
+      box !== null &&
+      at.x >= box.min.x - reach &&
+      at.x <= box.max.x + reach &&
+      at.y >= box.min.y - reach &&
+      at.y <= box.max.y + reach &&
+      at.z >= box.min.z - reach &&
+      at.z <= box.max.z + reach
+    );
+  });
+}
+
+/**
+ * What a set of drawn objects IS, as a string two frames can be compared by.
+ *
+ * The shape, the size, the place and the colour of each of them, sorted, so the
+ * answer does not depend on the order a build happens to spawn its actors in. It
+ * is a COMPARISON and never an assertion on its own: what a build draws a thing
+ * as is the build's, and what a check can hold it to is that the drawing over one
+ * place changed when the game did, and that the drawing elsewhere did not.
+ */
+export function drawnSignature(objects: readonly DrawnObject[]): string {
+  return objects
+    .map((object) =>
+      JSON.stringify([
+        object.type,
+        object.vertices,
+        object.color,
+        object.box === null
+          ? null
+          : [round(object.box.min), round(object.box.max)],
+      ]),
+    )
+    .sort()
+    .join("\n");
+}
+
+/** A position at a thousandth of a unit, so float noise is not a difference. */
+function round(at: Vec3): [number, number, number] {
+  return [
+    Math.round(at.x * 1000) / 1000,
+    Math.round(at.y * 1000) / 1000,
+    Math.round(at.z * 1000) / 1000,
+  ];
+}
+
+/** A box in world units. */
+export interface WorldBox {
+  min: Vec3;
+  max: Vec3;
+  centre: Vec3;
+  size: Vec3;
+}
+
+/** `p` turned by the quaternion `q`. */
+function turn(
+  q: { x: number; y: number; z: number; w: number },
+  p: Vec3,
+): Vec3 {
+  const ix = q.w * p.x + q.y * p.z - q.z * p.y;
+  const iy = q.w * p.y + q.z * p.x - q.x * p.z;
+  const iz = q.w * p.z + q.x * p.y - q.y * p.x;
+  const iw = -q.x * p.x - q.y * p.y - q.z * p.z;
+  return {
+    x: ix * q.w + iw * -q.x + iy * -q.z - iz * -q.y,
+    y: iy * q.w + iw * -q.y + iz * -q.x - ix * -q.z,
+    z: iz * q.w + iw * -q.z + ix * -q.y - iy * -q.x,
+  };
+}
+
+/**
+ * The box a placed model fills in the world: its own geometry's extent, scaled,
+ * turned, and stood where the component stands.
+ *
+ * This is what "where the model is drawn" means for a check: the component's
+ * transform is the model's own origin, which an exporter is free to put at a
+ * corner rather than at the middle, so a check that compared the transform's
+ * position with the subject's would be asserting the exporter's choice rather
+ * than the specification's "wherever its subject is".
+ */
+export function drawnModelBox(
+  drawn: Drawn & { component: ModelComponent },
+): WorldBox | null {
+  const own = modelBounds(drawn.component.model);
+  if (own === null) return null;
+  const { position, rotation, scale } = drawn.transform;
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const x of [own.min.x, own.max.x]) {
+    for (const y of [own.min.y, own.max.y]) {
+      for (const z of [own.min.z, own.max.z]) {
+        const at = turn(rotation, {
+          x: x * scale.x,
+          y: y * scale.y,
+          z: z * scale.z,
+        });
+        const world = {
+          x: position.x + at.x,
+          y: position.y + at.y,
+          z: position.z + at.z,
+        };
+        min.x = Math.min(min.x, world.x);
+        min.y = Math.min(min.y, world.y);
+        min.z = Math.min(min.z, world.z);
+        max.x = Math.max(max.x, world.x);
+        max.y = Math.max(max.y, world.y);
+        max.z = Math.max(max.z, world.z);
+      }
+    }
+  }
+  return {
+    min,
+    max,
+    centre: {
+      x: (min.x + max.x) / 2,
+      y: (min.y + max.y) / 2,
+      z: (min.z + max.z) / 2,
+    },
+    size: { x: max.x - min.x, y: max.y - min.y, z: max.z - min.z },
+  };
+}
+
+/**
+ * The yaw a placement is drawn at, in degrees, as `specs/world.md` measures one.
+ *
+ * The world's yaw carries `+x` toward `+z` (`specs/world.md`), so the reading is
+ * where the placement's rotation sends the `+x` axis. A model's own zero
+ * orientation is the build's — the sculpt faces whichever way the exporter left
+ * it — so what a check compares is two readings of ONE placement rather than a
+ * reading against a figure.
+ */
+export function drawnYaw(drawn: Drawn): number {
+  const forward = turn(drawn.transform.rotation, { x: 1, y: 0, z: 0 });
+  return (Math.atan2(forward.z, forward.x) * 180) / Math.PI;
+}
+
+/** `b - a` as a turn in degrees, brought into `-180 .. 180`. */
+export function yawBetween(a: number, b: number): number {
+  return ((((b - a) % 360) + 540) % 360) - 180;
+}
+
+/**
+ * Every placement of the produced model committed at `path`, as the world draws
+ * it.
+ *
+ * The tie between a file and a component is {@link modelSignature}: the check
+ * decodes the committed file itself and answers the components whose own model is
+ * that same decode. A subject drawn from a model the specification names some
+ * other subject's therefore does not answer here, and neither does a subject
+ * drawn from geometry the build wrote in code.
+ */
+export async function drawnFromModel(
+  h: Harness,
+  path: string,
+): Promise<(Drawn & { component: ModelComponent })[]> {
+  const committed = await committedModel(h, path);
+  if (committed === null) return [];
+  const wanted = modelSignature(committed);
+  return drawnOf(h, ModelComponent).filter(
+    (drawn) => modelSignature(drawn.component.model) === wanted,
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /* What a suite reads from here                                               */
 /* -------------------------------------------------------------------------- */
+
+export type { AssetRequest } from "./host";
 
 export type {
   AxisName,

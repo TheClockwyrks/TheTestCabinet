@@ -193,7 +193,12 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   // work rather than before it. The wait is a poll that returns the instant the
   // global appears, so a conforming build pays none of this; what it bounds is
   // the cost of a build with no surface at all.
-  surfaceTimeoutMs: 20_000,
+  // Gantry's engineless build fetches twenty produced files before it can
+  // initialize, and one of them is a 9 MB music bed, so the wait is generous —
+  // and it has to hold when four suites are loading their own page at once on a
+  // host that is also running the build. A whole suite run measured this at
+  // 20 s: not a hang, just a page waiting behind three others.
+  surfaceTimeoutMs: 90_000,
   // `specs/ui.md` says of the title screen "The game opens on `title`", which is
   // a fact about what a FRESH game opens on rather than about what a `reset` puts
   // back — and every check runs after this harness's opening reset, so that half

@@ -344,6 +344,41 @@ function defineSelfForThree(): void {
 /** Where a relative asset URL is looked for, in order, under the workspace. */
 const ASSET_SEARCH_PATH: readonly string[] = [".", "public", "dist"];
 
+/** One request the build made through the shim, in the order it made them. */
+export interface AssetRequest {
+  /** The URL as the build wrote it, before anything here resolved it. */
+  url: string;
+  /**
+   * Whether it carries a scheme, which is what "outside its own `dist/`" is here:
+   * the shim answers a relative URL out of the workspace, exactly as the static
+   * server the built site is served by would, and hands anything with a scheme to
+   * Node's real `fetch` — the network.
+   */
+  offOrigin: boolean;
+  /**
+   * The status the shim answered with, or `0` for a request it handed to the
+   * network. `404` is a file the built tree does not carry, `400` one whose URL
+   * climbed out of it, and `200` one it served.
+   */
+  status: number;
+}
+
+/**
+ * Every request the build has made through the shim, oldest first.
+ *
+ * The shim is the whole of the build's transport under this project — the engine
+ * loader's fetches and any the build made itself both come through it — so this
+ * is the record `assets/` points about what the built site asks the network for
+ * are read from. It is per WORKER and never cleared, so a harness takes the
+ * length at the moment it was built and reads only what followed.
+ */
+const requested: AssetRequest[] = [];
+
+/** Every request the shim has seen, oldest first. */
+export function assetRequests(): readonly AssetRequest[] {
+  return requested;
+}
+
 /**
  * Answer the engine's asset fetches out of the workspace on disk.
  *
@@ -381,19 +416,27 @@ export function serveWorkspaceAssets(workspaceRoot: string): void {
     init?: RequestInit,
   ): Promise<Response> => {
     const url = typeof input === "string" ? input : String(input);
-    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) return upstream(input, init);
+    const entry: AssetRequest = {
+      url,
+      offOrigin: /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url),
+      status: 0,
+    };
+    requested.push(entry);
+    if (entry.offOrigin) return upstream(input, init);
 
     const relative = url.replace(/^\.?\//, "").split(/[?#]/)[0] ?? "";
     // A URL that climbs out of the workspace is refused rather than read: the
     // shim stands in for a static server, and a static server does not serve a
     // caller's whole filesystem.
     if (relative === "" || normalize(relative).startsWith("..")) {
+      entry.status = 400;
       return new Response(null, { status: 400, statusText: "Bad Request" });
     }
 
     for (const base of ASSET_SEARCH_PATH) {
       try {
         const bytes = readFileSync(join(workspaceRoot, base, relative));
+        entry.status = 200;
         return new Response(new Uint8Array(bytes), {
           status: 200,
           statusText: "OK",
@@ -402,6 +445,7 @@ export function serveWorkspaceAssets(workspaceRoot: string): void {
         // Not there; try the next place the build may have put it.
       }
     }
+    entry.status = 404;
     return new Response(null, { status: 404, statusText: "Not Found" });
   }) as typeof globalThis.fetch;
 }

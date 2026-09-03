@@ -73,6 +73,7 @@ import { fileURLToPath } from "node:url";
 
 import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import {
+  applyViewport,
   ConstantClock,
   createEngine,
   fitViewport as fitStageViewport,
@@ -80,9 +81,11 @@ import {
   type DeepReadonly,
   type Engine,
   type Game,
+  type RenderApi,
   type SurfaceMetrics,
   type Viewport,
 } from "@test-cabinet/simple-3d";
+import * as THREE from "three";
 import { expect } from "vitest";
 
 import { BACKGROUND, game as build } from "../src/game";
@@ -257,19 +260,45 @@ export function ticksFor(duration: number): number {
 }
 
 /**
+ * How the stage maps onto a surface of this shape: one uniform scale and a
+ * letterbox.
+ *
+ * THE SAME SHAPE THE OTHER TWO PROJECTS ANSWER WITH, which is the engine's
+ * `Viewport` plus the CSS trio. `scale`/`offsetX`/`offsetY` are DEVICE pixels,
+ * which is what a pixel reading is addressed in; `cssScale`/`cssOffsetX`/
+ * `cssOffsetY` are CSS pixels, which is what a window position is delivered in.
+ * On a device pixel ratio of `1` — the shape almost every check runs at — the two
+ * agree, which is exactly why carrying only one of them is a trap.
+ */
+export interface StageViewport extends Viewport {
+  /** CSS pixels per logical unit, which is what a window position is in. */
+  cssScale: number;
+  cssOffsetX: number;
+  cssOffsetY: number;
+}
+
+/**
  * How Gantry's stage maps onto a surface of this shape.
  *
  * The stage is the case's — the fixed `STAGE_W` by `STAGE_H` logical field
  * `specs/overview.md` gives — so a check states only the window it is asking
- * about. The fit itself is the ENGINE's, because the fit under test is the one
- * the engine performs.
+ * about. The device half of the fit is the ENGINE's, because the fit under test
+ * is the one the engine performs; the CSS half is that same fit read back in the
+ * units a window position is delivered in, which is the device fit over the
+ * density.
  */
 export function fitViewport(
   cssWidth: number,
   cssHeight: number,
   dpr = 1,
-): Viewport {
-  return fitStageViewport(STAGE_W, STAGE_H, cssWidth, cssHeight, dpr);
+): StageViewport {
+  const view = fitStageViewport(STAGE_W, STAGE_H, cssWidth, cssHeight, dpr);
+  return {
+    ...view,
+    cssScale: view.scale / dpr,
+    cssOffsetX: view.offsetX / dpr,
+    cssOffsetY: view.offsetY / dpr,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -346,10 +375,102 @@ export interface AssetFailure {
   reason: string;
 }
 
+/**
+ * One operation a frame made on the screen layer, in the shape
+ * `../case-harness/draw-calls` writes one under `none`.
+ *
+ * The two projects read a build's drawing the same way — "what was called, what
+ * was set" — so a check that asks what the build wrote on its readouts reads the
+ * same list here as it does there, and `toDrawCall`, `drawnText` and `textDraws`
+ * work over it unchanged. Where the two differ is how the list is COLLECTED:
+ * under `none` a recorder is injected into the page before the build's first
+ * line, and here the engine states the seam outright — "a suite that wants the
+ * drawing operations rather than the pixels overrides `getContext` on the canvas
+ * it supplies as `screen`, and whatever that returns is the object the game's
+ * `render` is handed" (`rendering.ts`).
+ */
+export type RecordedOp =
+  | { op: "call"; method: string; args: unknown[] }
+  | { op: "set"; property: string; value: unknown };
+
+/**
+ * The screen layer's 2D context, recording every call and every property set
+ * before it passes it on.
+ *
+ * IT DELEGATES RATHER THAN STANDS IN: every operation reaches the real context,
+ * so the pixels {@link captureStill} keeps are the pixels the build drew and a
+ * reading like `measureText` answers what it really answers. What the recorder
+ * adds is the list beside them.
+ *
+ * The list holds ONE FRAME — the most recent one that drew — because that is
+ * what a check asks for ("every run of text the frame the build last drew put on
+ * its readouts") and because a run of a thousand ticks would otherwise
+ * accumulate a million operations. The frame is told by the engine's own
+ * counter, which advances at step 2, before the game draws anything.
+ */
+function recordingContext(
+  ctx: CanvasRenderingContext2D,
+  frameOf: () => number,
+  log: { frame: number; ops: RecordedOp[] },
+): CanvasRenderingContext2D {
+  const bound = new Map<string, unknown>();
+  const record = (op: RecordedOp): void => {
+    const frame = frameOf();
+    if (frame !== log.frame) {
+      log.frame = frame;
+      log.ops = [];
+    }
+    log.ops.push(op);
+  };
+  const target = ctx as unknown as Record<string, unknown>;
+  return new Proxy(ctx, {
+    get: (_t, property): unknown => {
+      if (typeof property !== "string") return target[property as never];
+      const value = target[property];
+      if (typeof value !== "function") return value;
+      const already = bound.get(property);
+      if (already !== undefined) return already;
+      const wrapper = (...args: unknown[]): unknown => {
+        record({ op: "call", method: property, args });
+        return (value as (...a: unknown[]) => unknown).apply(ctx, args);
+      };
+      bound.set(property, wrapper);
+      return wrapper;
+    },
+    set: (_t, property, value): boolean => {
+      if (typeof property === "string") {
+        record({ op: "set", property, value });
+      }
+      target[property as string] = value;
+      return true;
+    },
+  }) as CanvasRenderingContext2D;
+}
+
+/** One produced file answered with other bytes, for a check about that file. */
+export interface AssetSubstitution {
+  /** The bytes the workspace holds, which is how the file is recognized. */
+  from: Uint8Array;
+  /** The bytes answered in their place. */
+  to: Uint8Array;
+}
+
 /** How a harness's engine is built, where a check wants something other than the default. */
 export interface HarnessOptions {
   /** The clock each frame takes its delta from. Defaults to one tick a frame. */
   clock?: Clock;
+  /**
+   * Produced files to answer with other bytes while this harness's build runs.
+   *
+   * THE FILE IS MATCHED BY ITS BYTES, NEVER BY ITS PATH. What a bundler names the
+   * copy it emits into `dist/` is the build's business — `specs/assets.md` asks
+   * only that each asset be referenced page-relative through the bundler — so a
+   * response is recognized by comparing it against the bytes of the committed
+   * file rather than against any path. It is what lets a check ask whether what
+   * is on screen came out of a particular produced file: serve other bytes under
+   * it and see whether the picture follows.
+   */
+  substituteAssets?: readonly AssetSubstitution[];
   /** The element's laid-out CSS width. Defaults to the logical stage width. */
   cssWidth?: number;
   /** The element's laid-out CSS height. Defaults to the logical stage height. */
@@ -410,16 +531,27 @@ export interface Harness {
   click(x: number, y: number): Promise<void>;
 
   /**
-   * Where a world position is drawn, in logical stage units.
+   * Where a world position is drawn, in logical stage units, THROUGH THE CAMERA
+   * AS IT STANDS — not through the one a previous frame drew.
    *
-   * THE PICTURE, NOT THE STATE, so a check advances a frame after posing its
-   * scenario and before projecting. The engine's `View` "answers from the camera
-   * as it stood at the most recent render" (`camera.md`), and the camera is posed
-   * by the game's own `render`, so a pose that moves the camera reaches the
-   * projection on the next frame rather than at the call. One `advance(1)` after
-   * the arrangement is the whole of what that costs, and it is also what a
-   * scenario under `none` wants — a build there is free to read the pointer and
-   * the camera at the top of a frame too.
+   * `specs/instrumentation.md` asks `project` for "the point on the stage the
+   * world position is drawn at, through the camera as it stands", and it is a
+   * reading a check takes right after posing a scenario: a pose that opens a site
+   * or sets the camera moves the camera in the same breath, and a click made at a
+   * point projected through the previous camera would pick a different node from
+   * the one the check named.
+   *
+   * The engine's own `View`, though, "answers from the camera as it stood at the
+   * most recent render" (`camera.md`), and the camera is posed by the game's own
+   * `render`, so before a frame has drawn the current state that reading is the
+   * engine's construction defaults. {@link poseCameraNow} therefore asks the
+   * build's `render` where its camera stands for the state the game is in now —
+   * changing no state, because `render` is handed the state read-only and returns
+   * nothing — and the point is taken through that camera by the arithmetic
+   * `camera.md` states for exactly this case ("a label that must track a moving
+   * camera on the same frame projects through three itself, after the camera is
+   * posed"). What a check reads is then the same reading it reads under `none`,
+   * where the build computes it from the state it is holding.
    */
   project(x: number, y: number, z: number): Promise<Projected>;
 
@@ -455,8 +587,54 @@ export interface Harness {
   readonly playedCues: readonly TimedCue[];
   /** Every asset the build asked for and did not get, oldest first. */
   readonly assetFailures: readonly AssetFailure[];
+  /**
+   * Every path this build fetched, in order, and whether the workspace carried
+   * it.
+   *
+   * The paths are exactly as the build asked for them — relative to the page, as
+   * `specs/assets.md` requires — so a check reads both which files a build
+   * consumes and how it addresses them.
+   */
+  assetRequests(): { path: string; found: boolean }[];
+  /** How many responses this harness answered with substituted bytes. */
+  substitutedAssets(): number;
+  /**
+   * Draw the game as it stands into the engine's scene, advancing nothing.
+   *
+   * The scene is populated by the build's own `render`, which runs on a frame, so
+   * a check that poses a scenario and then reads the scene without advancing
+   * would be reading the yard some earlier frame drew. This runs `render` over
+   * the state as it stands — handed over read-only, returning nothing, so no
+   * state moves, no cue sounds, no input is consumed and no clock turns — and
+   * leaves the scene and the camera holding the yard the current state
+   * describes. It is what {@link Harness.project} does before it projects.
+   *
+   * A check that has just advanced a frame needs none of this: the frame drew.
+   */
+  draw(): Promise<void>;
+
+  /**
+   * Move the pointer to a WINDOW position, in CSS pixels off the surface's own
+   * origin, rather than to a logical stage point.
+   *
+   * The one door past the fit, for the one check that is ABOUT the fit: every
+   * other check states a stage point and lets {@link Harness.pointerMove} put it
+   * where the stage was fitted. Under `none` the same event is delivered through
+   * Playwright's own mouse, which is what a window position means there.
+   */
+  windowPointerMove(cssX: number, cssY: number): Promise<void>;
+
   /** The canvas the engine drew the screen layer on, which {@link capture} encodes. */
   readonly screen: Canvas;
+  /**
+   * Every operation the frame the build last drew made on the screen layer, in
+   * order — what `window.__tcabRec.last()` answers under `none`.
+   *
+   * Call it after the frame that draws the thing under test. A frame that has
+   * only been posed has drawn nothing, so a check advances one frame and then
+   * reads, exactly as it does there.
+   */
+  screenOps(): Promise<RecordedOp[]>;
   /** The ticks this harness has driven, 1-based, as `engine.frame().count` reports. */
   tick(): number;
   /**
@@ -653,6 +831,24 @@ export async function createHarness(
     Math.round(cssWidth * dpr),
     Math.round(cssHeight * dpr),
   );
+
+  // THE SEAM `rendering.ts` STATES, taken exactly as it states it: the engine
+  // hands the game "the screen layer's 2D context, exactly as the screen canvas
+  // returned it", so overriding `getContext` here is what puts the recorder
+  // between the build's readouts and the canvas they land on. The frame the
+  // engine has reached is read lazily, because the engine does not exist yet.
+  const drawLog: { frame: number; ops: RecordedOp[] } = { frame: -1, ops: [] };
+  let frameOf = (): number => 0;
+  const screenContext = recordingContext(
+    screen.getContext("2d") as unknown as CanvasRenderingContext2D,
+    () => frameOf(),
+    drawLog,
+  );
+  Object.defineProperty(screen, "getContext", {
+    configurable: true,
+    value: (kind: string): unknown => (kind === "2d" ? screenContext : null),
+  });
+
   const events = new EventTarget();
   const surface: SurfaceMetrics = {
     cssWidth: () => cssWidth,
@@ -676,6 +872,8 @@ export async function createHarness(
     surface,
   });
 
+  frameOf = (): number => engine.frame().count;
+
   // Subscribed BEFORE `initialize`, which is what makes the game's own loading
   // and its opening cues observable: construction runs no game code, so nothing
   // has happened yet.
@@ -698,6 +896,17 @@ export async function createHarness(
   engine.events.on("cue:stopped", ({ cue }) => {
     looping.delete(cue);
   });
+
+  // Where this harness's own traffic starts in the process-wide log. Taken
+  // before `initialize`, which is where a build loads what it draws with.
+  const assetsFrom = assetLog.length;
+
+  // In force from here until this harness is disposed, so a build that loads its
+  // models on `initialize` gets the substituted bytes.
+  const swaps: ActiveSubstitution[] = (options.substituteAssets ?? []).map(
+    (one) => ({ from: one.from, to: one.to, count: 0 }),
+  );
+  activeSubstitutions.push(...swaps);
 
   await engine.initialize();
 
@@ -743,20 +952,94 @@ export async function createHarness(
     }
   };
 
+  /* ---- The camera as it stands ------------------------------------------ */
+  //
+  // `h.project` has to answer "through the camera as it stands"
+  // (`specs/instrumentation.md`), and the engine's `view()` answers through the
+  // camera as it stood at the most recent RENDER (`camera.md`). Between a pose
+  // and the frame that draws it the two are different cameras, and every check
+  // that projects a node and then clicks it is taken in that gap: `openSite`
+  // puts the camera back at its start pose, `setCamera` moves it outright, and
+  // neither has drawn anything yet.
+  //
+  // So the camera is posed the only way anything but the build can pose it: by
+  // asking the build. `render` is handed the state READ-ONLY and returns
+  // nothing, so calling it changes no state, plays no cue, consumes no input and
+  // moves no clock — the whole of what it does that outlives the call is write
+  // the scene and the camera the next frame would have written anyway, and draw
+  // the readouts, which go to a canvas of this harness's own rather than to the
+  // one `capture` keeps.
+
+  const probeCanvas = createCanvas(
+    Math.round(cssWidth * dpr),
+    Math.round(cssHeight * dpr),
+  );
+  const probeScreen = probeCanvas.getContext(
+    "2d",
+  ) as unknown as CanvasRenderingContext2D;
+  const probeApi: RenderApi = {
+    scene: engine.scene,
+    camera: engine.camera,
+    screen: probeScreen,
+    frame: () => engine.frame(),
+    viewport: () => engine.viewport(),
+    view: () => engine.view(),
+  };
+
+  /**
+   * Pose the engine's camera for the state the game is in now, by running the
+   * build's own `render` over it.
+   *
+   * The screen layer is cleared and given the viewport transform first, exactly
+   * as step 4 of the engine's own frame does, so the build draws its readouts
+   * into the same coordinates it always draws them in.
+   */
+  const poseCameraNow = (): void => {
+    probeScreen.setTransform(1, 0, 0, 1, 0, 0);
+    probeScreen.clearRect(0, 0, probeCanvas.width, probeCanvas.height);
+    applyViewport(probeScreen, engine.viewport());
+    game.render(engine.state, probeApi);
+  };
+
+  /** Scratch, never handed out: one point and its two matrices per projection. */
+  const probePoint = new THREE.Vector3();
+  const probeFrustum = new THREE.Frustum();
+  const probeViewProjection = new THREE.Matrix4();
+
+  // A LOGICAL STAGE POINT IS DELIVERED AT THE WINDOW POSITION IT IS DRAWN AT.
+  // `specs/instrumentation.md` gives the pointer operations in logical stage
+  // units, and the engine reads a real event's `clientX`/`clientY` and maps it
+  // "through the same fit the game draws under". So the harness performs the
+  // inverse: the letterbox bar, then the scale, both in CSS pixels, which is what
+  // an event carries. At this harness's default shape — the stage's own size at
+  // one device pixel per CSS pixel — that map is the identity.
   let pointerX = 0;
   let pointerY = 0;
+  const onWindow = (x: number, y: number): { x: number; y: number } => {
+    const view = engine.viewport();
+    const cssScale = view.scale / dpr;
+    return {
+      x: view.offsetX / dpr + x * cssScale,
+      y: view.offsetY / dpr + y * cssScale,
+    };
+  };
   const pointer = (
     type: "pointerdown" | "pointermove" | "pointerup",
     x: number,
     y: number,
   ): void => {
-    pointerX = x;
-    pointerY = y;
-    dispatchPointer(events, type, x, y);
+    const at = onWindow(x, y);
+    pointerX = at.x;
+    pointerY = at.y;
+    dispatchPointer(events, type, at.x, at.y);
   };
 
   const harness: Harness = {
     async dispose() {
+      for (const swap of swaps) {
+        const at = activeSubstitutions.indexOf(swap);
+        if (at >= 0) activeSubstitutions.splice(at, 1);
+      }
       engine.destroy();
     },
     debug,
@@ -808,16 +1091,44 @@ export async function createHarness(
       // time this returns.
       pointer("pointerdown", x, y);
       await step(1);
-      dispatchPointer(events, "pointerup", x, y);
+      pointer("pointerup", x, y);
       await step(1);
     },
 
     async project(x, y, z) {
-      const at = engine.view().project({ x, y, z });
-      // The engine answers a fourth field, the normalized device depth. The
-      // case's contract carries three, and a check that could read a depth here
-      // would not compile against `none`, so it is dropped rather than passed on.
-      return { x: at.x, y: at.y, visible: at.visible };
+      poseCameraNow();
+      const camera = engine.camera;
+      // Both refreshes fold in what `render` just wrote — a position or a
+      // `lookAt` into the world matrix, a `fov` or a set of extents into the
+      // projection — which is what makes the reading agree with the picture the
+      // renderer would draw. The engine's own `View` does the same two before
+      // every reading it takes.
+      camera.updateMatrixWorld();
+      camera.updateProjectionMatrix();
+
+      // `visible` is read from the WORLD point, against the frustum derived from
+      // the combined matrix rather than from the divided coordinates: dividing by
+      // a negative `w` folds a point behind the camera back inside the `-1..1`
+      // box, and a node behind the camera is not drawn. That is the engine's own
+      // test, and it is "in front of the camera and inside the stage" — what
+      // `specs/instrumentation.md` asks `visible` for.
+      probePoint.set(x, y, z);
+      probeViewProjection.multiplyMatrices(
+        camera.projectionMatrix,
+        camera.matrixWorldInverse,
+      );
+      probeFrustum.setFromProjectionMatrix(probeViewProjection);
+      const visible = probeFrustum.containsPoint(probePoint);
+
+      // World to clip, then clip to the logical field. NDC runs `-1..1` with
+      // `+Y` up and the stage runs `0..STAGE_W` by `0..STAGE_H` with `y` down, so
+      // this is the flip as well as the scale — the mapping `camera.md` states.
+      probePoint.project(camera);
+      return {
+        x: ((probePoint.x + 1) / 2) * STAGE_W,
+        y: ((1 - probePoint.y) / 2) * STAGE_H,
+        visible,
+      };
     },
 
     async cues() {
@@ -835,6 +1146,16 @@ export async function createHarness(
       console.log(`gantry: captured ${id} — ${name}`);
     },
 
+    async draw() {
+      poseCameraNow();
+    },
+
+    async windowPointerMove(cssX, cssY) {
+      pointerX = cssX;
+      pointerY = cssY;
+      dispatchPointer(events, "pointermove", cssX, cssY);
+    },
+
     engine,
     get state() {
       return engine.state;
@@ -843,7 +1164,13 @@ export async function createHarness(
     openingSnapshot,
     playedCues,
     assetFailures,
+    assetRequests: () => assetLog.slice(assetsFrom).map((one) => ({ ...one })),
+    substitutedAssets: () =>
+      swaps.reduce((total, swap) => total + swap.count, 0),
     screen,
+    async screenOps() {
+      return [...drawLog.ops];
+    },
     tick: () => engine.frame().count,
 
     probe(names) {
@@ -1809,6 +2136,51 @@ const ASSET_SEARCH_PATH: readonly string[] = ["", "public", "dist"];
 let assetFetchInstalled = false;
 
 /**
+ * Every relative URL anything in this process has fetched, oldest first.
+ *
+ * THE ONE PLACE A BUILD'S ASSET TRAFFIC IS OBSERVABLE HERE. Under `none` the same
+ * reading is taken off the page — `page.on("requestfailed")`, `performance
+ * .getEntriesByType("resource")` — and under this engine the fetch below is the
+ * whole of it: the engine's asset loader resolves a path under `ASSET_ROOT` and
+ * fetches it, and nothing else in a conforming build fetches anything at all
+ * ("No part of the build decodes glTF itself, and nothing else fetches an
+ * asset", `specs/assets.md`).
+ *
+ * It is process-wide and never drained, because the shim is installed once and a
+ * check reads what one harness's build asked for while it was the only one
+ * running. A harness records where in the list it started, so what it answers is
+ * its own build's traffic.
+ */
+const assetLog: { path: string; found: boolean }[] = [];
+
+/** One live byte-for-byte substitution, and how often it has answered. */
+interface ActiveSubstitution {
+  from: Uint8Array;
+  to: Uint8Array;
+  count: number;
+}
+
+/**
+ * The substitutions in force right now, one entry per {@link HarnessOptions}
+ * `substituteAssets` of every harness that is still open.
+ *
+ * Module-level because the fetch shim is installed once on the process, and
+ * emptied of a harness's own entries when it is disposed, so a check that opens
+ * two harnesses gets the substituted bytes in one and the committed bytes in the
+ * other.
+ */
+const activeSubstitutions: ActiveSubstitution[] = [];
+
+/** Whether two byte strings are the same file. */
+function sameBytes(one: Uint8Array, two: Uint8Array): boolean {
+  if (one.length !== two.length) return false;
+  for (let at = 0; at < one.length; at += 1) {
+    if (one[at] !== two[at]) return false;
+  }
+  return true;
+}
+
+/**
  * Serve the produced files off the workspace, the way the page serves them.
  *
  * The engine's asset loader resolves a path to a URL relative to the page —
@@ -1847,12 +2219,19 @@ function installAssetFetch(): void {
     for (const under of ASSET_SEARCH_PATH) {
       const at = join(WORKSPACE_ROOT, under, url);
       try {
-        const bytes = readFileSync(at);
-        return new Response(new Uint8Array(bytes), { status: 200 });
+        const bytes = new Uint8Array(readFileSync(at));
+        assetLog.push({ path: url, found: true });
+        for (const swap of activeSubstitutions) {
+          if (!sameBytes(bytes, swap.from)) continue;
+          swap.count += 1;
+          return new Response(swap.to, { status: 200 });
+        }
+        return new Response(bytes, { status: 200 });
       } catch {
         // The next root, or the 404 below.
       }
     }
+    assetLog.push({ path: url, found: false });
     return new Response(null, {
       status: 404,
       statusText: `no file under the workspace for ${url}`,
