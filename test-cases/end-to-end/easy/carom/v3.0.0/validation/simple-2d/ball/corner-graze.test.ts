@@ -14,6 +14,13 @@
 // returns down the path it arrived on instead of banking off the face. Only the
 // component normal to the struck face may reverse, so `vy` KEEPING ITS SIGN
 // through the contact is the property under test.
+//
+// Each graze is posed on its own field: the world is cleared and ONE obstacle —
+// the one that graze is at — is spawned back, so the corner the ball meets is
+// the corner the entry names. The three grazes between them cover both
+// obstacles, and only one of the two ever stands on the field at a time. The
+// paddles cannot be removed, so both are driven clear of the shot and held
+// still.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -25,11 +32,16 @@ import {
 } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
+  aimBall,
   ball0,
   captureReplay,
-  clearPaddles,
   createHarness,
-  startPlaying,
+  enterPlaying,
+  parkPaddles,
+  pinObstaclesUpright,
+  placeBall,
+  poseWorld,
+  spinBall,
   type Harness,
 } from "../harness";
 
@@ -75,6 +87,8 @@ const DEPARTURE_TICKS = 30; // 0.25 s
 
 interface Graze {
   label: string;
+  /** Which obstacle stands on the field for this graze. */
+  obstacle: number;
   faceX: number;
   endY: number;
   fromLeft: boolean;
@@ -91,6 +105,7 @@ interface Graze {
 const GRAZES: Graze[] = [
   {
     label: "obstacle A, top-left corner",
+    obstacle: 0,
     faceX: OBSTACLES[0].x0,
     endY: OBSTACLE_CENTERS[0].y - OBSTACLE_HH,
     fromLeft: true,
@@ -98,6 +113,7 @@ const GRAZES: Graze[] = [
   },
   {
     label: "obstacle A, bottom-left corner",
+    obstacle: 0,
     faceX: OBSTACLES[0].x0,
     endY: OBSTACLE_CENTERS[0].y + OBSTACLE_HH,
     fromLeft: true,
@@ -105,6 +121,7 @@ const GRAZES: Graze[] = [
   },
   {
     label: "obstacle B, top-right corner",
+    obstacle: 1,
     faceX: OBSTACLES[1].x1,
     endY: OBSTACLE_CENTERS[1].y - OBSTACLE_HH,
     fromLeft: false,
@@ -144,7 +161,7 @@ afterEach(() => {
 });
 
 it("reverses only the component normal to the face it grazed", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   // The corner zone is one ball radius deep, which is what makes the inset above
   // land inside it; stated here so a change to either is read against the other.
   assertLessThan(INSET, BALL_R);
@@ -154,8 +171,15 @@ it("reverses only the component normal to the face it grazed", async () => {
   await captureReplay(harness, "graze", async () => {
     for (const graze of GRAZES) {
       const shot = shotFor(graze);
-      clearPaddles(harness);
-      harness.debug.setBall(0, { ...shot, spin: 0 });
+      poseWorld(harness, { obstacles: [graze.obstacle] });
+      parkPaddles(harness);
+      // The shot's geometry is computed from the upright figures, so gyre's
+      // obstacle is held at the pose those figures describe. This poses the
+      // SUBJECT of the check; a bystander would be removed, not held.
+      pinObstaclesUpright(harness);
+      placeBall(harness, shot.x, shot.y);
+      aimBall(harness, shot.vx, shot.vy);
+      spinBall(harness, 0);
 
       const banked = await harness.until(
         (s) => Math.sign(ball0(s).vx) !== Math.sign(shot.vx),

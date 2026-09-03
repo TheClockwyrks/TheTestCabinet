@@ -1,7 +1,12 @@
 // gameplay/scoring-p2 — a ball crossing the LEFT goal edge scores for player two.
 //
-// The mirror of `scoring-p1`: the ball is aimed at the left goal down the lane
-// that clears both obstacles, and the build's own scoring code decides the point.
+// The mirror of `scoring-p1`: the ball is aimed at the left goal down the
+// mid-field lane, and the build's own scoring code decides the point.
+//
+// The point runs down an isolated lane. `arrangeGoal` empties the field and
+// spawns back the one ball it fires, so both obstacles are gone rather than
+// dodged, and it drives both paddles out of the mid-field lane — the paddles are
+// the one thing on the field a check cannot remove.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -10,8 +15,8 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
+  enterPlaying,
   receiver0,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -40,7 +45,7 @@ afterEach(() => {
 });
 
 it("gives player two the point when the ball leaves the left goal", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   harness.debug.setScore(0, 0);
   arrangeGoal(harness, "left");
 

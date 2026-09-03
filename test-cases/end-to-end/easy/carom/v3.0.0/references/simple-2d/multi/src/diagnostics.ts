@@ -11,18 +11,29 @@
 // the game is running. No source closes over a state: the one `initialize`
 // built is the title screen, and a source holding it would report the title
 // screen forever.
+//
+// Which balls are present is state, so every ball source looks its ball up by
+// index and says so plainly when that ball is not in the field.
 
 import { BALL_COUNT } from "./constants";
 import { ballSpeed } from "./entities";
-import type { CaromState } from "./game";
+import type { BallState, CaromState } from "./game";
 import type { InitApi } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
 
 type State = DeepReadonly<CaromState>;
 
+/** What a ball source reports while that ball is not in the field. */
+const ABSENT = "—";
+
 /** One decimal place: enough to see motion, short enough to fit on a line. */
 function fixed(value: number): string {
   return value.toFixed(1);
+}
+
+/** The ball in play order under `index`, or null while it is absent. */
+function ballAt(state: State, index: number): DeepReadonly<BallState> | null {
+  return state.balls.find((ball) => ball.index === index) ?? null;
 }
 
 /** Register every diagnostic source, each a read of the state it is handed. */
@@ -37,16 +48,19 @@ export function registerDiagnostics(api: InitApi<CaromState>): void {
   // (specs/instrumentation.md) and each line stays short enough to read.
   for (let i = 0; i < BALL_COUNT; i++) {
     api.diagnostics.register(`ball ${i} pos`, (state: State) => {
-      const ball = state.balls[i];
+      const ball = ballAt(state, i);
+      if (ball === null) return ABSENT;
       return `${fixed(ball.x)}, ${fixed(ball.y)}${ball.held ? " held" : ""}`;
     });
     api.diagnostics.register(`ball ${i} vel`, (state: State) => {
-      const ball = state.balls[i];
+      const ball = ballAt(state, i);
+      if (ball === null) return ABSENT;
       return `${fixed(ball.vx)}, ${fixed(ball.vy)} (${fixed(ballSpeed(ball))})`;
     });
-    api.diagnostics.register(`ball ${i} spin`, (state: State) =>
-      fixed(state.balls[i].spin),
-    );
+    api.diagnostics.register(`ball ${i} spin`, (state: State) => {
+      const ball = ballAt(state, i);
+      return ball === null ? ABSENT : fixed(ball.spin);
+    });
   }
   api.diagnostics.register(
     "paddle L",

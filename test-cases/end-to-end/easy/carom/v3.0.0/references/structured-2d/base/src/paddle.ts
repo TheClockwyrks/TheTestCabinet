@@ -1,23 +1,29 @@
-// Carom — the paddle: a pawn any controller can drive.
+// Carom — the paddle: a pawn any driver can move.
 //
 // The pawn exposes one interface, `drive(vy)`, and every driver — the player
-// controller reading held actions, the AI computing an intercept, and the
-// debug driver holding a posed velocity — finishes with that same call. The
-// pawn's own tick then integrates the request through the one integrator
-// specs/playfield.md fixes, so every mover gets the same speed, the same
-// clamp, and the same reported velocity. `vy` afterwards is the paddle's
-// ACTUAL vertical velocity for the frame, which is what the spin mechanic
-// reads at contact: a paddle pinned against a bound reports zero even while a
+// controller reading held actions, the AI rule computing an intercept, and the
+// debug surface's `drivenVy` for a side it has taken — finishes with that same
+// call. The pawn's own tick then integrates the request through the one
+// integrator specs/playfield.md fixes, so every mover gets the same speed, the
+// same clamp, and the same reported velocity. `vy` afterwards is the paddle's
+// ACTUAL vertical velocity for the frame, which is what the spin mechanic reads
+// at contact: a paddle pinned against a bound reports zero even while a
 // movement action is held into it.
+//
+// `vy` and `drivenVy` are deliberately two different things
+// (specs/instrumentation.md). `drivenVy` is the velocity `setPaddleVy` last
+// asked for, held across frames on the game instance whether or not that side
+// is driven; `vy` is what the frame's integration actually produced, whoever
+// moved the paddle. So a `drivenVy` set while the paddle stands still reaches
+// `vy` on the first frame advanced with that side driven, and not before.
 //
 // The paddle simulates only on the live screens (`countdown` and `playing`,
 // specs/ui.md); on the menus and the pause screen it stands exactly where it
-// was. The title level places two unpossessed paddles as furniture, and the
-// match mode spawns one per participant through possession.
+// was.
 
 import { DrawComponent, Pawn } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
-import { PADDLE_HALF, PADDLE_W } from "./constants";
+import type { DrawApi, World } from "@test-cabinet/structured-2d";
+import { PADDLE_HALF, PADDLE_W, TAGS } from "./constants";
 import { glowRect, type Ctx } from "./draw";
 import { integratePaddle, paddleBounds, type Side } from "./sim";
 import { isLiveScreen, screenOf } from "./state";
@@ -30,7 +36,7 @@ const BODY = {
 } as const;
 
 export class Paddle extends Pawn {
-  /** Which goal this paddle defends. Set where the paddle is placed. */
+  /** Which goal this paddle defends. Set where the paddle is possessed. */
   side: Side = "left";
 
   /**
@@ -65,6 +71,24 @@ export class Paddle extends Pawn {
     this.transform.y = next.cy;
     this.vy = next.vy;
   }
+}
+
+/** The tag a side's paddle carries, so `world.byTag` finds it. */
+export function paddleTag(side: Side): string {
+  return side === "left" ? TAGS.paddleLeft : TAGS.paddleRight;
+}
+
+/**
+ * The side's paddle. Both paddles are always present (specs/state.md), so a
+ * missing one is a broken world rather than an absence to be handled.
+ */
+export function paddleOf(world: World, side: Side): Paddle {
+  const tag = paddleTag(side);
+  const found = world.byTag(tag)[0];
+  if (!(found instanceof Paddle)) {
+    throw new Error(`Carom: no ${side} paddle carries the "${tag}" tag`);
+  }
+  return found;
 }
 
 /** The rounded, glowing bar, dimmed with the rest of the field on a menu. */

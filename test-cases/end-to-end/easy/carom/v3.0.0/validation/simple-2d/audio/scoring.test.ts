@@ -1,14 +1,19 @@
 // Carom — audio/scoring: the `score` cue plays on the frame a point is scored.
 //
-// A real ball is driven out of the right goal, down the mid-field lane that
-// clears both obstacles, so the point is scored by the build's own scoring code
-// rather than posed. The frame player one's score goes up is the frame the cue
-// must carry.
+// A real ball is driven out of the right goal, so the point is scored by the
+// build's own scoring code rather than posed. The frame player one's score goes
+// up is the frame the cue must carry.
 //
-// Nothing else may sound on the way. The drive crosses an empty lane, so the
-// cues this collects are the point's alone — which is what tells a build that
-// announces the point apart from one that plays a bounce blip as the ball leaves
-// the field.
+// Nothing else may sound on the way, and that is the field's doing rather than
+// the aim's: both obstacles are REMOVED and the field holds this ball alone, so
+// the mid-field lane the shot crosses is genuinely empty and the paddles are
+// driven clear of it. The cues this collects are therefore the point's alone,
+// which is what tells a build that announces the point apart from one that plays
+// a bounce blip as the ball leaves the field.
+//
+// Live play is posed rather than served into: a cue on a scored point is no part
+// of the countdown or the serve, so `enterPlaying` reaches the playing screen
+// without running either.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CUES } from "../constants";
@@ -17,7 +22,7 @@ import {
   arrangeGoal,
   captureReplay,
   createHarness,
-  startPlaying,
+  enterPlaying,
   watchCues,
   type Harness,
 } from "../harness";
@@ -44,7 +49,7 @@ afterEach(() => {
 });
 
 it("plays the score cue on the frame the point lands", async () => {
-  await startPlaying(h, "versus");
+  enterPlaying(h, "versus");
   arrangeGoal(h, "right");
 
   const played = watchCues(h);

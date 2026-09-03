@@ -4,7 +4,7 @@
 // statistics of the draw.
 
 import { describe, expect, it } from "vitest";
-import { nextRandom, nextSign } from "./rng";
+import { nextRandom, nextSign, seedState } from "./rng";
 
 function draws(seed: number, count: number): number[] {
   const values: number[] = [];
@@ -64,5 +64,18 @@ describe("nextSign", () => {
       state = next;
     }
     expect(signs).toEqual(new Set([-1, 1]));
+  });
+});
+
+describe("seedState", () => {
+  it("takes a seed to the generator's starting state, as one 32-bit word", () => {
+    expect(seedState(1)).toBe(1);
+    expect(seedState(4242)).toBe(4242);
+    expect(seedState(2 ** 32 + 5)).toBe(5);
+    expect(Number.isInteger(seedState(1.5))).toBe(true);
+  });
+
+  it("is what makes two runs of the same seed draw the same sign", () => {
+    expect(nextSign(seedState(4242))).toEqual(nextSign(seedState(4242)));
   });
 });

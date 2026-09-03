@@ -16,16 +16,13 @@ import {
   FIELD_H,
   FIELD_W,
   HOLD_TIME,
-  MATCHOVER_ITEMS,
   NET_X,
-  OBSTACLES,
   PADDLE_HALF,
   PADDLE_W,
-  PAUSE_ITEMS,
-  TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
-import { paddleBounds } from "./entities";
+import { obstacleRect, paddleBounds } from "./entities";
+import { itemCenterY, menuFor, type MenuLayout } from "./menu";
 import type { BallState, CaromState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 import {
@@ -154,8 +151,10 @@ function drawNet(ctx: Ctx): void {
   ctx.restore();
 }
 
-function drawObstacles(ctx: Ctx): void {
-  for (const o of OBSTACLES) {
+/** Every obstacle PRESENT in the field, at its own center. */
+function drawObstacles(ctx: Ctx, state: State): void {
+  for (const obstacle of state.obstacles) {
+    const o = obstacleRect(obstacle);
     glowRect(
       ctx,
       o.x0,
@@ -273,8 +272,16 @@ function drawField(ctx: Ctx, state: State, alpha = 1): void {
   ctx.save();
   ctx.globalAlpha = alpha;
   drawNet(ctx);
-  drawObstacles(ctx);
+  drawObstacles(ctx, state);
   drawPaddles(ctx, state);
+  ctx.restore();
+}
+
+/** Every ball PRESENT in the field, at its own position. */
+function drawBalls(ctx: Ctx, state: State, alpha = 1): void {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  for (const ball of state.balls) drawBall(ctx, ball.x, ball.y);
   ctx.restore();
 }
 
@@ -304,36 +311,33 @@ function drawHud(ctx: Ctx, state: State): void {
 // ---- Menus --------------------------------------------------------------
 
 /**
- * A vertical menu with a highlighted selection. The selected item is bright and
- * flanked by triangle markers in the accent color; the others are dim. Markers are
- * drawn beside the measured text so they never overlap it.
+ * A vertical menu with a highlighted selection, drawn from the SAME layout the
+ * pointer hit-tests against and `menuItemRect` reports (`src/menu.ts`). The
+ * selected item is bright and flanked by triangle markers in the accent color;
+ * the others are dim. Markers are drawn beside the measured text so they never
+ * overlap it.
  */
 function drawMenu(
   ctx: Ctx,
-  items: readonly string[],
+  layout: MenuLayout,
   selected: number,
-  centerX: number,
-  startY: number,
-  spacing: number,
-  itemSize: number,
-  letterSpacing: number,
   accent: string,
 ): void {
-  for (let i = 0; i < items.length; i++) {
-    const y = startY + i * spacing;
+  for (let i = 0; i < layout.items.length; i++) {
+    const y = itemCenterY(layout, i);
     const isSel = i === selected;
     const opts: TextOpts = {
-      size: itemSize,
+      size: layout.itemSize,
       color: isSel ? COLOR.text : COLOR.textDim,
-      spacing: letterSpacing,
+      spacing: layout.letterSpacing,
       align: "center",
       baseline: "middle",
     };
-    drawText(ctx, items[i], centerX, y, opts);
+    drawText(ctx, layout.items[i], layout.centerX, y, opts);
     if (!isSel) continue;
-    const w = measure(ctx, items[i], opts) - centerShift(opts);
+    const w = measure(ctx, layout.items[i], opts) - centerShift(opts);
     const markerOpts: TextOpts = {
-      size: itemSize,
+      size: layout.itemSize,
       color: accent,
       align: "center",
       baseline: "middle",
@@ -341,18 +345,25 @@ function drawMenu(
       glowBlur: 12,
     };
     const gap = 26;
-    drawText(ctx, "▸", centerX - w / 2 - gap, y, markerOpts);
-    drawText(ctx, "◂", centerX + w / 2 + gap, y, markerOpts);
+    drawText(ctx, "▸", layout.centerX - w / 2 - gap, y, markerOpts);
+    drawText(ctx, "◂", layout.centerX + w / 2 + gap, y, markerOpts);
   }
+}
+
+/** The menu the screen shows, drawn with its accent. `null` on the live screens. */
+function drawScreenMenu(ctx: Ctx, state: State, accent: string): void {
+  const layout = menuFor(state.screen);
+  if (layout === null) return;
+  drawMenu(ctx, layout, state.menuIndex, accent);
 }
 
 // ---- Screens ------------------------------------------------------------
 
 function drawTitle(ctx: Ctx, state: State): void {
+  // The field furniture and the balls show dimmed behind the menu, exactly where
+  // the state has them (specs/ui.md).
   drawField(ctx, state, 0.28);
-  // A posed decorative ball, off in the open field to the lower right so it clears
-  // the title, the tagline, and the menu text.
-  drawBall(ctx, 968, 470);
+  drawBalls(ctx, state, 0.28);
 
   drawText(ctx, TITLE_TEXT, FIELD_CX, 246, {
     size: 132,
@@ -367,17 +378,7 @@ function drawTitle(ctx: Ctx, state: State): void {
     color: COLOR.textDim,
     spacing: 14,
   });
-  drawMenu(
-    ctx,
-    TITLE_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    430,
-    52,
-    30,
-    10,
-    COLOR.p1,
-  );
+  drawScreenMenu(ctx, state, COLOR.p1);
 
   const hint = state.muted
     ? "▲ ▼ MOVE    ENTER SELECT    M UNMUTE"
@@ -391,6 +392,7 @@ function drawTitle(ctx: Ctx, state: State): void {
 
 function drawHowTo(ctx: Ctx, state: State): void {
   drawField(ctx, state, 0.16);
+  drawBalls(ctx, state, 0.16);
 
   drawText(ctx, "HOW TO PLAY", FIELD_CX, 96, {
     size: 46,
@@ -438,11 +440,14 @@ function drawHowTo(ctx: Ctx, state: State): void {
     y += label ? 58 : 40;
   }
 
-  drawText(ctx, "ESC / ENTER  —  BACK", FIELD_CX, FIELD_H - 44, {
-    size: 18,
+  drawText(ctx, "ESC  /  ENTER", FIELD_CX, FIELD_H - 96, {
+    size: 16,
     color: COLOR.textFaint,
     spacing: 8,
   });
+  // The how-to screen shows one menu item, index 0, drawn as the other menus
+  // draw the item at `menuIndex` (specs/ui.md).
+  drawScreenMenu(ctx, state, COLOR.p1);
 }
 
 function drawMatchScene(ctx: Ctx, state: State): void {
@@ -553,21 +558,12 @@ function drawPause(ctx: Ctx, state: State): void {
     glowBlur: 16,
     baseline: "middle",
   });
-  drawMenu(
-    ctx,
-    PAUSE_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    y + 200,
-    52,
-    26,
-    6,
-    COLOR.p1,
-  );
+  drawScreenMenu(ctx, state, COLOR.p1);
 }
 
 function drawMatchOver(ctx: Ctx, state: State): void {
   drawField(ctx, state, 0.32);
+  drawBalls(ctx, state, 0.32);
   drawOverlay(ctx, 0.72);
 
   const { y } = drawPanel(ctx, 560, 420);
@@ -605,17 +601,7 @@ function drawMatchOver(ctx: Ctx, state: State): void {
     spacing: 10,
     baseline: "middle",
   });
-  drawMenu(
-    ctx,
-    MATCHOVER_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    y + 268,
-    52,
-    26,
-    6,
-    winColor,
-  );
+  drawScreenMenu(ctx, state, winColor);
 }
 
 // ---- Entry point --------------------------------------------------------

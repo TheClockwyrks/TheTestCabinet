@@ -1,30 +1,28 @@
 // Carom — one of the three balls.
 //
-// The actor carries everything that is that ball's own (specs/balls.md): its
-// motion (`vx`, `vy`, `spin`; the position is its transform), its hold
-// (`held`, `holdTimer`), its play-order `index` — which fixes its home point,
-// `BALL_HOMES[index]` — and its trail. The three balls are spawned in play
-// order under the one `TAGS.ball` tag, so `world.byTag` lists them by index,
-// which is the order `setBall` and `snapshot.balls` address them in.
+// The actor carries everything that is that ball's own (specs/state.md): its
+// motion (`vx`, `vy`, `spin`; the position is its transform), its hold (`held`,
+// `holdTimer`), its play-order `index` — which fixes its home point,
+// `BALL_HOMES[index]` — and its trail. Every ball carries the one `TAGS.ball`
+// tag, and `src/field.ts` reads them back in PLAY ORDER, by `index` rather than
+// by spawn order, because `spawnBall` can put a ball back on a field the balls
+// were cleared from and the order they were spawned in then says nothing.
 //
-// What the ball's own tick runs is its HOLD alone: on every live frame a
-// waiting ball counts its own timer down, and on the first frame the timer has
-// elapsed it launches itself — at SERVE_SPEED, along a fresh angle drawn from
-// the game's seeded generator. The flight itself is collective: the balls
-// advance in lock step and bounce off one another, so the frame's physics runs
-// in the `Rally` actor (`src/rally.ts`), which the mode spawns after them. A
-// ball launched on a frame is therefore advanced on that same frame, exactly
-// as specs/balls.md asks.
+// The ball itself does not tick. Its hold, its launch, and its flight are all
+// the rally's (`src/rally.ts`), which runs them for every ball in one place:
+// the balls advance in lock step and bounce off one another, and a ball whose
+// hold elapses must be advanced on the same frame it launched on — neither is
+// a computation one ball can do alone, and doing it here would tie the outcome
+// to the order the balls happened to be spawned in.
 
 import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
 import type { DrawApi } from "@test-cabinet/structured-2d";
-import { BALL_R, SERVE_SPEED, TAGS } from "./constants";
+import { BALL_R } from "./constants";
 import { glowCircle, type Ctx } from "./draw";
 import { parkedBall, type BallSim, type RallyBall } from "./sim";
-import { isLiveScreen, MatchState, screenOf } from "./state";
+import { screenOf } from "./state";
 import { COLOR, LAYER } from "./theme";
 import { recordSample, ribbon, type TrailSample } from "./trail";
-import type { World } from "@test-cabinet/structured-2d";
 
 export class Ball extends Actor {
   /** This ball's place in play order: its home is `BALL_HOMES[index]`. */
@@ -40,11 +38,7 @@ export class Ball extends Actor {
    * and it launches when its own hold timer elapses and at no other moment.
    */
   held = false;
-  /**
-   * Seconds remaining of that wait. HOLD_TIME when the ball takes its home
-   * point, counting down to 0, at which point it launches; 0 while it is in
-   * flight — and on the title level, where the parked balls are furniture.
-   */
+  /** Seconds remaining of that wait. */
   holdTimer = 0;
   /** Recent positions, oldest first, for this ball's own motion trail. */
   trail: readonly TrailSample[] = [];
@@ -73,10 +67,9 @@ export class Ball extends Actor {
 
   /**
    * Park at this ball's own home point, motionless and spinless, with no
-   * trail. `hold` is the wait it starts there: a positive hold leaves the
-   * ball waiting and solid until that many seconds have passed, and `0`
-   * leaves it parked and unheld — the title screen's pose, no part of a live
-   * match.
+   * trail. `hold` is the wait it starts there: a positive hold leaves the ball
+   * waiting and solid until that many seconds have passed, and `0` leaves it
+   * parked and unheld.
    */
   park(hold: number): void {
     this.pose(parkedBall(this.index));
@@ -94,72 +87,18 @@ export class Ball extends Actor {
     this.spin = sim.spin;
   }
 
-  /** Take the ball into live play, as `setBall` on the debug surface does. */
-  release(): void {
-    this.held = false;
-    this.holdTimer = 0;
-  }
-
-  /**
-   * This ball's own hold, and nothing else: every live frame subtracts `dt`,
-   * and on the first frame the result is `<= 0` the ball launches — timer
-   * spent, spin zero, trail cleared, off at SERVE_SPEED along a fresh angle
-   * from the seeded generator. The flight that follows is the `Rally` actor's,
-   * which ticks after every ball, so the launch is advanced this same frame.
-   */
-  tick(dt: number): void {
-    if (!this.held) return;
-    if (!isLiveScreen(screenOf(this.world))) return;
-
-    this.holdTimer -= dt;
-    if (this.holdTimer > 0) return;
-    this.holdTimer = 0;
-
-    const state = this.world.state;
-    if (!(state instanceof MatchState)) return;
-    const angle = state.game.drawLaunchAngle();
-    this.held = false;
-    this.trail = [];
-    this.spin = 0;
-    this.vx = SERVE_SPEED * Math.cos(angle);
-    this.vy = SERVE_SPEED * Math.sin(angle);
-  }
-
   /**
    * Append this frame's position to the trail and prune the window
-   * (specs/state.md). Called by the `Rally` actor after the balls have been
-   * advanced; parked at home, the trail collapses to nothing within
-   * TRAIL_TIME.
+   * (specs/state.md). The rally calls it after the balls have been advanced,
+   * with the game's own accumulated simulation time.
    */
-  record(): void {
+  record(simTime: number): void {
     this.trail = recordSample(this.trail, {
       x: this.transform.x,
       y: this.transform.y,
-      t: this.world.frame().timeMs / 1000,
+      t: simTime,
     });
   }
-}
-
-/** The three tagged balls, in play order — the order they were spawned in. */
-export function ballsOf(world: World): Ball[] {
-  const found = world.byTag(TAGS.ball);
-  const balls: Ball[] = [];
-  for (const actor of found) {
-    if (!(actor instanceof Ball)) {
-      throw new Error(`Carom: a non-ball actor carries the "${TAGS.ball}" tag`);
-    }
-    balls.push(actor);
-  }
-  return balls;
-}
-
-/** The ball at `index` in play order. */
-export function ballAt(world: World, index: number): Ball {
-  const ball = ballsOf(world)[index];
-  if (ball === undefined) {
-    throw new Error(`Carom: no ball carries play-order index ${index}`);
-  }
-  return ball;
 }
 
 /** True on the screens the balls themselves are part of the picture. */

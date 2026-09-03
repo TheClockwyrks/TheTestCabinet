@@ -1,10 +1,14 @@
 // Carom — audio/obstacle-bounce: a cue sounds on the frame the ball bounces off a
 // mid-field obstacle.
 //
-// The ball is fired level with obstacle A, straight at its left face, from far
-// enough out that nothing else is in the lane. The real collision reverses its
-// horizontal velocity, and the frame that happens on is the frame the cue must
-// sound on.
+// The field is emptied and spawned back holding one ball and obstacle A alone,
+// and the ball is fired level with that obstacle, straight at its left face. The
+// second obstacle is REMOVED rather than reasoned around, so nothing but the body
+// under test can produce a sound; the paddles cannot be removed — they are
+// furniture the game always has — so they are stood out of the lane, and neither
+// is taken from the player, because this requirement needs no driven paddle. The
+// real collision reverses the ball's horizontal velocity, and the frame that
+// happens on is the frame the cue must sound on.
 //
 // WHAT IS OBSERVED. The sound itself, not the synthesis: `audio-init.js` watches a
 // Web Audio source being started or an `<audio>` element being played, so a build
@@ -46,6 +50,9 @@ import {
  */
 const DEPARTURE_TICKS = 60; // 0.5 s
 
+/** The obstacle the shot strikes: A, the first in the order of `OBSTACLE_CENTERS`. */
+const OBSTACLE = 0;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -60,8 +67,9 @@ it("sounds a cue on the frame of the bounce, and not before it", async () => {
   await startPlaying(h, "versus");
   await h.armAudio();
   await arrangeObstacleBounce(h, {
-    faceX: OBSTACLES[0].x0,
-    y: OBSTACLE_CENTERS[0].y,
+    obstacle: OBSTACLE,
+    faceX: OBSTACLES[OBSTACLE].x0,
+    y: OBSTACLE_CENTERS[OBSTACLE].y,
     from: "left",
   });
 
@@ -78,8 +86,8 @@ it("sounds a cue on the frame of the bounce, and not before it", async () => {
 
   assertEqual(bounce.bounced.hit, true);
   assertGreaterThan(bounce.cues.length, 0);
-  // The 180 px approach crosses an empty lane, so every sound emitted belongs to
-  // the collision itself.
+  // The 180 px approach crosses a field holding nothing but this ball and the
+  // obstacle it is aimed at, so every sound emitted belongs to the collision.
   assertDeepEqual(
     bounce.cues.map((cue) => cue.frame),
     bounce.cues.map(() => bounce.frame),

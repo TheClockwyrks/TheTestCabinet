@@ -1,15 +1,31 @@
 // gameplay/serve-speed — a served ball leaves at the base serve speed.
 //
-// A fresh match is started and its pre-serve hold expired; the LAUNCH itself is
-// the build's own, on the frame after, and the speed is read the instant it
-// happens — before a bounce or a paddle could change it. Nothing about the serve
-// is posed: `startMatch` opens the countdown and `serve` ends it, and what leaves
-// is whatever the build's own serve produced.
+// A fresh match is opened on its countdown and its pre-serve hold cut to nothing;
+// the LAUNCH itself is the build's own, on the frame after, and the speed is read
+// the instant it happens — before a bounce or a paddle could change it. Nothing
+// about the serve is posed: opening the countdown says which screen the game is
+// on, cutting the hold says when, and what LEAVES is whatever the build's own
+// serve rule produced.
+//
+// The field holds the one ball whose serve is the subject, spawned back HELD at
+// its home with a full hold timer: both obstacles are removed, so the recorded
+// flight after the reading crosses an empty court. Nothing is taken from the
+// player — no paddle is driven, and neither of them can reach the ball inside the
+// three quarters of a second recorded.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SERVE_SPEED } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
-import { ball0, captureReplay, createHarness, type Harness } from "../harness";
+import {
+  ball0,
+  captureReplay,
+  createHarness,
+  driveServe,
+  openCountdown,
+  poseWorld,
+  stageServe,
+  type Harness,
+} from "../harness";
 
 /**
  * The review item's margin: one percent of SERVE_SPEED. The serve leaves at
@@ -23,10 +39,10 @@ const SPEED_TOLERANCE = SERVE_SPEED * 0.01;
  *
  * A recording that opened on the launch frame would drop a reviewer into a ball
  * already in flight; opening on the held ball is what makes the launch something
- * they watch HAPPEN. It cannot move what is measured: `serve()` only expires the
- * hold, the launch is still the build's own on the frame after it, and what
- * leaves a countdown is not a function of how long the countdown had been
- * running when it was cut short.
+ * they watch HAPPEN. It cannot move what is measured: cutting the hold to zero
+ * sets one field, the launch is still the build's own on the frame after it,
+ * and what leaves a countdown is not a function of how long the countdown had
+ * been running when it was cut short.
  */
 const HELD_TICKS = 24; // 0.2 s
 
@@ -51,18 +67,13 @@ afterEach(() => {
 });
 
 it("serves the ball at the base serve speed", async () => {
-  const { debug } = harness;
-  debug.reset();
-  debug.startMatch("versus");
+  openCountdown(harness, "versus");
+  poseWorld(harness, { live: false });
 
   const launched = await captureReplay(harness, "serve", async () => {
     await harness.advance(HELD_TICKS);
-    debug.serve();
-
-    const swept = await harness.until((s) => s.screen === "playing", {
-      maxFrames: 60,
-      poll: 1,
-    });
+    stageServe(harness);
+    const swept = await driveServe(harness);
     await harness.advance(FLIGHT_TICKS);
     return swept;
   });

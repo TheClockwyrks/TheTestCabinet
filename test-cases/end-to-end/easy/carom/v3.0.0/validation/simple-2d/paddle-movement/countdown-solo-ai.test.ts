@@ -8,11 +8,17 @@
 // `deadzone = AI_HOME_DEADZONE`, so a paddle posed far from home during the
 // countdown moves toward home at `AI_SPEED` and stops within the deadzone. The
 // match is opened on its countdown through the debug surface so the build's own
-// countdown is what runs; the AI paddle is then posed near the bottom bound and
-// handed back to the real AI, and half a second later — with the hold still
-// running — it is read: back within the deadzone of home, and the screen still
-// the countdown with the ball still held. A build that leaves the AI idle until
-// the serve reads the posed height instead.
+// countdown is what runs; the AI paddle is then PLACED near the bottom bound and
+// left the AI's — `setPaddleCy` sets a center and takes the paddle from nobody,
+// so the opponent goes on playing from its own rule — and half a second later,
+// with the hold still running, it is read: back within the deadzone of home, and
+// the screen still the countdown with the ball still held. A build that leaves
+// the AI idle until the serve reads the posed height instead.
+//
+// The field is posed down to the held ball the countdown is about: both obstacles
+// are removed, and the ball is spawned back at its home with a full hold timer,
+// which re-arms the countdown at its start. The human paddle is left alone too —
+// nothing on this field is driven, because the AI's own rule is what is measured.
 //
 // From `PADDLE_MAX_CY - 20` (645) the trip home is 285 units, 0.51 s at
 // `AI_SPEED`; a quarter of a second more sees it stop, and the whole window
@@ -31,6 +37,8 @@ import {
   captureReplay,
   createHarness,
   openCountdown,
+  placePaddle,
+  poseWorld,
   TICK_HZ,
   type Harness,
 } from "../harness";
@@ -52,13 +60,13 @@ afterEach(() => {
 });
 
 it("returns the AI paddle home while the countdown runs (Solo)", async () => {
-  await openCountdown(harness, "solo");
+  openCountdown(harness, "solo");
+  poseWorld(harness, { live: false });
   const opened = harness.snapshot();
   assertEqual(opened.screen, "countdown");
   assertEqual(ball0(opened).held, true);
 
-  harness.debug.setPaddle("right", { cy: START_CY, vy: 0 });
-  harness.debug.setAiControl(true);
+  placePaddle(harness, "right", START_CY);
   assertCloseTo(harness.snapshot().paddles.right.cy, START_CY, 6);
 
   const settled = await captureReplay(harness, "home", async () => {

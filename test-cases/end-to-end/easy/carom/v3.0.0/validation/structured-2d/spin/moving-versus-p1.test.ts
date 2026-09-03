@@ -9,6 +9,10 @@
 // full-speed paddle covers 360 px, and it starts that far DOWNstream to arrive as
 // the ball does. Aimed at mid-field that start would fall below the field edge,
 // where the clamp would pin it still.
+//
+// The contact runs over a field holding one ball and neither obstacle, with the
+// far paddle held off the lane, so the struck paddle is the only body the ball
+// meets between the pose and the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
@@ -19,7 +23,6 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -61,8 +64,8 @@ afterEach(() => {
 });
 
 it("curves the ball the other way off an upward swing", async () => {
-  await startPlaying(harness, "versus");
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
+    mode: "versus",
     cy: CONTACT_CY,
     vy: -PADDLE_SPEED,
     ballY: CONTACT_BALL_Y,

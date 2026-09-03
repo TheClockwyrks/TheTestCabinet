@@ -2,50 +2,16 @@
 
 Versus is one of the two ways to play Carom, reached from `VERSUS` on the main
 menu. It is two local players sharing the keyboard, player one on the left and
-player two on the right. Versus and Solo differ in who controls the right paddle:
-a second human here, the AI there.
-
-Every figure below carries the name this specification gives it.
+player two on the right.
 
 ## Controls
 
-Keyboard only. The controls are registered actions on the `LAYOUT`
-(`dual-vertical`) touch layout. Register exactly the eight names in `ACTIONS`, in
-that order, each bound to the keys `BINDINGS` gives it:
+`specs/ui.md` states the eight actions the game reads, the keys each one is bound
+to, and which screens read them. Each movement action moves its own player's
+paddle alone.
 
-| Action | Keys | Does |
-| --- | --- | --- |
-| `p1-up` | `KeyW` | Moves player one's (left) paddle up. |
-| `p1-down` | `KeyS` | Moves player one's (left) paddle down. |
-| `p2-up` | `ArrowUp` | Moves player two's (right) paddle up. |
-| `p2-down` | `ArrowDown` | Moves player two's (right) paddle down. |
-| `confirm` | `Enter`, `Space` | Accepts the selected menu item. |
-| `back` | `Escape` | Goes back a screen. |
-| `pause` | `KeyP`, `Escape` | Pauses at any time. |
-| `mute` | `KeyM` | Toggles mute. |
-
-- Both paddles move at `PADDLE_SPEED` while a movement action is held, and are
-  otherwise stationary.
-- Each movement action moves its own player's paddle alone.
-- `back` and `pause` share the `Escape` key. Read `pause` while a match is live
-  and `back` on the menus, so `Escape` pauses in a match and goes back on a menu.
-
-## HUD
-
-During a match the two scores are drawn near the top of the field, player one's
-left of center and player two's right of center, and a label naming Versus is
-drawn on the field. The label's copy, and the placement and type of all three,
-are yours.
-
-## Input
-
-- With `up` being `1` while `p1-up` is held and `0` otherwise, and `down` being
-  `1` while `p1-down` is held and `0` otherwise, player one's paddle takes
-  `vy = (down - up) * PADDLE_SPEED`. Player two's paddle takes the same from
-  `p2-up` and `p2-down`.
-- Each paddle is then integrated and clamped as the playfield specification
-  states.
-- Both paddles move on every `countdown` and `playing` frame. The pre-serve
-  countdown is not an exception: a movement action held while the ball waits
-  moves that player's paddle at `PADDLE_SPEED`, for either player. A build whose
-  paddles cannot be moved until the ball is served breaks this rule.
+- `up` is `1` while `p1-up` is held and `0` otherwise, and `down` is `1` while
+  `p1-down` is held and `0` otherwise. Those two values drive player one's
+  (left) paddle through the movement, integration, and clamp
+  `specs/playfield.md` states.
+- Player two's (right) paddle takes the same from `p2-up` and `p2-down`.

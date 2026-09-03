@@ -6,6 +6,12 @@
 // per-hit ratio must be the specified multiplier while the ball is below the
 // ceiling, and the sequence must never decrease. The plateau AT the ceiling is
 // the sibling `rally-caps` check.
+//
+// The field holds that ball alone. Both obstacles are REMOVED rather than
+// avoided: the rally is about the speed the ball gains hit after hit, and an
+// obstacle standing in the lane would end the rally early on a build whose
+// obstacles are perfectly correct. Both paddles are taken, because a rally of
+// plain centre contacts is exactly what this point measures the ratio across.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SPEED_CAP, SPEED_MULT } from "../constants";
@@ -36,7 +42,7 @@ afterEach(() => {
 });
 
 it("multiplies the ball's speed on every hit below the ceiling", async () => {
-  await arrangeRally(harness);
+  arrangeRally(harness);
 
   const speeds = await captureReplay(harness, "acceleration", () =>
     driveRallySpeeds(harness),

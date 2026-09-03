@@ -10,10 +10,10 @@ build installs the finished surface on `window.__carom` as soon as the game has
 initialized. Every scenario driven from code reaches the game through it, so it
 is present and exactly as specified here.
 
-Each operation is a read or a pose of the game's state. It arranges the world,
-and the game's own update runs the real collision, the real serve, and the real
-AI from there on the next frame, so a scenario driven from code behaves exactly
-like one played by hand.
+Each operation is a reading or a pose. A pose sets one field, places one entity,
+or clears the field, and the game's own update runs the real collisions and the
+real AI from there on the next frame, so a scenario driven from code behaves
+exactly like one played by hand.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{else if (eq engine.slug "simple-2d")}}
@@ -29,15 +29,15 @@ present and exactly as specified here.
 
 Each operation is a reading or a pose of `CaromState`, written in the shape of
 `update`, because the engine holds the state by value and nothing holds a
-writable one. A pose takes the current state, as `DeepReadonly<CaromState>`,
-and returns the next `CaromState`; a reading takes the state the same way and
-returns what it read. A caller drives a pose through the engine's `apply`, as
-`engine.apply((s) => debug.serve(s))`, and a reading against the engine's
-current state, as `debug.snapshot(engine.state)`. A pose arranges the world, and
-the game's own `update` runs the real collision, the real serve, and the real AI
-from there on the next frame, so a scenario driven from code behaves exactly like
-one played by hand. `src/game.ts` declares and exports its type,
-`CaromDebugApi`.
+writable one. A pose takes the current state, as `DeepReadonly<CaromState>`, and
+returns the next `CaromState`; a reading takes the state the same way and returns
+what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setScreen(s, "countdown"))`, and a reading against the
+engine's current state, as `debug.snapshot(engine.state)`. A pose sets one field,
+places one entity, or clears the field, and the game's own `update` runs the real
+collisions and the real AI from there on the next frame, so a scenario driven from
+code behaves exactly like one played by hand. `src/game.ts` declares and exports
+its type, `CaromDebugApi`.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{else}}
@@ -51,20 +51,23 @@ way alone: nothing is installed on the page. Every scenario driven from code
 reaches the game through it, so it is present and exactly as specified here.
 
 Each operation is a method that acts on the running game. A pose takes only the
-arguments its heading names, returns nothing, and arranges the live world
-through the same systems play uses: it drives the game mode, spawns or moves the
-actors, and leaves the outcome to the frames that follow, so the game's own
-collision, the real serve, and the real AI produce the result and a scenario
-driven from code behaves exactly like one played by hand. A reading takes no
-arguments and returns plain data, read off the world at the instant of the call.
+arguments its heading names, returns nothing, and arranges the live world through
+the same systems play uses. It sets one field, places one actor, or clears the
+field, and the frames that follow run the real collisions and the real AI, so a
+scenario driven from code behaves exactly like one played by hand. A reading takes
+only the arguments its heading names and returns plain data, read off the world at
+the instant of the call.
+
 A pose that changes the screen takes effect no later than the end of the next
 advanced frame. It may land at the call or ride a level transition the engine
 honors as the frame ends, and `reset` may rebuild its screen the same way even
-when called on the title. A caller advances one frame after such a pose before
-it poses, presses a key, or reads further, and each operation acts on the
-screen that is current at its own call. Where the surface's implementation
-lives under `src/` is yours to decide; the type your instance declares for it,
-the `D` of its `GameInstance<D>`, is the surface this file specifies.
+when called on the title. A caller advances one frame after such a pose before it
+poses, presses a key, or reads further, and each operation acts on the screen that
+is current at its own call.
+
+Where the surface's implementation lives under `src/` is yours to decide. The type
+your instance declares for it, the `D` of its `GameInstance<D>`, is the surface
+this file specifies.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
@@ -80,22 +83,10 @@ driveable from code:
   independent of a canvas, of the frame loop that measured it, and of wall-clock
   time. The dependency runs one way: the simulation reads nothing from the
   renderer.
-{{#if (eq engine.slug "none")}}
-- Seeded randomness. Any randomness the game uses runs off a generator seeded from
-  `state.rngState`, and it keeps its whole generator state in that field, so
-  reseeding and replaying the same calls reproduces the same result exactly. A
-  build that uses no randomness simply never reads it.
-{{else if (eq engine.slug "simple-2d")}}
-- Seeded randomness. Any randomness the game uses runs off a generator seeded from
-  `state.rngState`, and it keeps its whole generator state in that field, so
-  reseeding and replaying the same calls reproduces the same result exactly. A
-  build that uses no randomness simply never reads it.
-{{else}}
-- Seeded randomness. Any randomness the game uses runs off a generator the
-  surface's `reset` seeds, and the game keeps that generator's whole state, so
-  reseeding and replaying the same calls reproduces the same result exactly. A
-  build that uses no randomness simply never draws from it.
-{{/if}}
+- Seeded randomness. Any randomness the game uses runs off a generator seeded by
+  `setSeed`, and the game keeps that generator's whole state, so reseeding and
+  replaying the same calls reproduces the same result exactly. A build that uses
+  no randomness never draws from it.
 
 Given the same seed and the same sequence of calls and elapsed game time, the game
 reaches the same state every time.
@@ -108,9 +99,8 @@ the surface carries no operation for either. That layer delivers the actions the
 game registers from the key bindings this specification fixes, and it draws and
 toggles the debug overlay.
 
-The clock is the exception, because nothing outside this build owns it. The
-surface is what takes the game off real time and advances it, through
-`setAutoStep` and `advance` below.
+The clock is the exception. The surface is what takes the game off real time and
+advances it, through `setAutoStep` and `advance` below.
 {{else if (eq engine.slug "simple-2d")}}
 The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
 which documents them in the `engine/` directory, and the surface carries no
@@ -127,361 +117,242 @@ and it draws and toggles the debug overlay.
 
 What the overlay shows is Carom's, under Diagnostics below.
 
-## The driver
+## Driving the paddles
 
-{{#if (eq engine.slug "none")}}
-`state.driver` is how the surface takes the paddles from the player, and honoring
-it is the one behavior the whole surface depends on.
+The surface takes each paddle from the player on its own side.
 
-- While `driver.paddles` is `false`, the game plays normally: the registered
-  actions move the human paddles and, in Solo, the AI moves the right one.
-- Every operation that poses the game sets `driver.paddles` to `true`. From then
-  on both paddles move at the held velocities `driver.vy.left` and
-  `driver.vy.right`, in units per second, integrated against the frame's delta
-  time and clamped to `[PADDLE_MIN_CY, PADDLE_MAX_CY]` exactly as a played paddle
-  is. The input actions and the AI leave the paddles alone while it is `true`.
-- `snapshot` and `reset` leave the driver as they found it.
-- `setAutoStep` and `advance` leave it alone as well: moving the clock is not
-  posing the world.
-- The exception is `driver.ai`. In Solo, while `driver.paddles` and `driver.ai`
-  are both `true`, the right paddle is driven by the real AI opponent while the
-  left paddle stays on its held velocity.
-- `reset` sets `driver.paddles` and `driver.ai` back to `false` and both held
-  velocities to `0`, handing the paddles back.
-{{else if (eq engine.slug "simple-2d")}}
-`state.driver` is how the surface takes the paddles from the player, and honoring
-it is the one behavior the whole surface depends on.
+- While a paddle is not driven it plays normally: the registered actions move the
+  human paddles and, in Solo, the AI moves the right one.
+- `setPaddleDriven(side, driven)` is the only pose that changes whether a paddle
+  is driven, and driving one side leaves the other as it was. Every other pose
+  leaves both paddles' driven flags as it found them. `reset` releases both,
+  along with every other declared field it restores.
+- While a paddle is driven it moves at that side's `drivenVy`, integrated and
+  clamped exactly as `specs/playfield.md` states. The input actions and the AI
+  leave that paddle alone.
 
-- While `driver.paddles` is `false`, the game plays normally: the registered
-  actions move the human paddles and, in Solo, the AI moves the right one.
-- Every operation that poses the game sets `driver.paddles` to `true`. From then
-  on both paddles move at the held velocities `driver.vy.left` and
-  `driver.vy.right`, in units per second, integrated against the frame's delta
-  time and clamped to `[PADDLE_MIN_CY, PADDLE_MAX_CY]` exactly as a played paddle
-  is. The input actions and the AI leave the paddles alone while it is `true`.
-- `snapshot` and `reset` leave the driver as they found it.
-- The exception is `driver.ai`. In Solo, while `driver.paddles` and `driver.ai`
-  are both `true`, the right paddle is driven by the real AI opponent while the
-  left paddle stays on its held velocity.
-- `reset` sets `driver.paddles` and `driver.ai` back to `false` and both held
-  velocities to `0`, handing the paddles back.
-{{else}}
-The driver is the hold the surface takes on the paddles, and honoring it is the
-one behavior the whole surface depends on. How the build carries it is its own,
-and its behavior is fixed:
-
-- While the driver holds nothing, the game plays normally: the registered
-  actions move the human paddles and, in Solo, the AI moves the right one.
-- Every operation that poses the game takes both paddles into the driver's hold.
-  From then on each paddle moves at the velocity the driver holds for its side,
-  in units per second, integrated against the frame's delta time and clamped to
-  `[PADDLE_MIN_CY, PADDLE_MAX_CY]` exactly as a played paddle is. The input
-  actions and the AI leave the paddles alone while the hold lasts.
-- `snapshot` leaves the driver as it found it.
-- The exception is the AI switch `setAiControl` flips. In Solo, while the driver
-  holds the paddles with that switch on, the right paddle is driven by the real
-  AI opponent while the left paddle stays on its held velocity.
-- `reset` releases the hold, sets both held velocities to `0`, and turns the AI
-  switch off, handing the paddles back.
-{{/if}}
-
-A paddle's `vy` field reports its actual vertical velocity for the frame, whoever
-moved it, because that is what the spin mechanic reads at contact. A paddle pinned
-against a bound therefore reports `0` while a movement action is held or a driver
-velocity is set.
+Each paddle carries `drivenVy` and `vy` as two separate fields, both of which
+`specs/state.md` declares and the snapshot below reports. `setPaddleVy` is the only pose that sets
+`drivenVy`, which `reset` returns to `0` with every other declared field.
+`drivenVy` holds its value across frames whether or not that paddle is driven. A paddle's `vy` is the integrated velocity
+for the frame that `specs/playfield.md` fixes, whoever moved the paddle, so a
+`drivenVy` set while the paddle stands still reaches `vy` on the first frame
+advanced with that side driven.
 
 ## The operations
 
 The surface carries `version` (`CAROM_DEBUG_VERSION`, `1`), a plain number, and
-the operations below. Values are plain numbers, strings, and booleans;
+the operations below. Values are plain numbers, strings, and booleans, and
 coordinates and velocities are in the field's logical units.
 {{#if (eq engine.slug "none")}}
-{{else if (eq engine.slug "simple-2d")}}
-
-Each operation's first parameter is the current state, `DeepReadonly<CaromState>`.
-A pose returns the next `CaromState`, built from the one it was handed, which it
-leaves as it was; a reading returns what it read. The headings below name the
-parameters that follow the state.
+Each operation sets one field or one fixed pair of fields, places or removes one
+entity, reads the state, or moves the clock. `reset` is the exception: it
+restores every declared field at once.
 {{else}}
+Each operation sets one field or one fixed pair of fields, places or removes one
+entity, or reads the state. `reset` is the exception: it restores every declared
+field at once.
+{{/if}}
+{{#if (eq engine.slug "simple-2d")}}
 
-A pose takes only the parameters its heading names and returns nothing; a
-reading takes none and returns what it read. Each operation acts on the live
-game at the moment of the call.
+Each operation's first parameter is the current state, `DeepReadonly<CaromState>`,
+and the tables below name the parameters that follow it. A pose returns the next
+`CaromState`, built from the one it was handed, which it leaves as it was; a
+reading returns what it read. `setScore(p1, p2)` below is therefore
+`setScore(state, p1, p2)`.
 {{/if}}
 
 {{#if (eq engine.slug "none")}}
-### `setAutoStep(enabled)`
+### The clock
 
-Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
-frame loop advancing the simulation from the wall clock, so the game changes only
-when `advance` says so. `setAutoStep(true)` returns it to running itself, which is
-how a build starts and how it is played.
+| Operation | Effect |
+| --- | --- |
+| `setAutoStep(enabled)` | Takes the game off real time, and gives it back. |
+| `advance(seconds, frames)` | Runs `frames` whole frames covering `seconds` of game time. |
 
-Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
-the state the most recent frame left.
+`setAutoStep(false)` stops the frame loop advancing the simulation from the wall
+clock, so the game changes only when `advance` says so. `setAutoStep(true)`
+returns it to running itself, which is how a build starts and how it is played.
+`snapshot` reports the current setting as `autoStep`. Drawing is unaffected
+either way: the loop keeps rendering, so the canvas shows the state the most
+recent frame left.
 
-### `advance(seconds, frames)`
-
-Runs `frames` whole frames covering `seconds` of game time, each worth
-`seconds / frames`, immediately and in order. `frames` defaults to `1`. Each is a
-real frame — the same update the loop runs, then a render — so the game's own
-collision, serve and AI produce the result and the canvas reflects it.
-
-Every rate in this game is per second and integrated against the frame's delta
-time, so `advance(1, 1)` and `advance(1, 60)` cover the same second of game time
-and must reach the same outcome, beyond the drift a change in step size explains.
-
-Advancing while the game is still stepping automatically adds to what the wall
-clock is already doing, so a scenario that must be reproducible calls
-`setAutoStep(false)` first.
+`advance` runs its frames immediately and in order, each worth `seconds / frames`,
+and `frames` defaults to `1`. Each is a real frame, the same update the loop runs
+followed by a render, so the game's own collisions and AI produce the result and
+the canvas reflects it. `advance(1, 1)` and `advance(1, 60)` cover the same second
+of game time and reach the same outcome, beyond the drift a change in step size
+explains. Advancing while the game is still stepping
+automatically adds to what the wall clock is already doing.
 
 {{/if}}
-{{#if (eq engine.slug "none")}}
-### `reset(options)`
-{{else if (eq engine.slug "simple-2d")}}
-### `reset(state, options)`
-{{else}}
-### `reset(options)`
-{{/if}}
-
-{{#if (eq engine.slug "structured-2d")}}
-{{#if (eq variant.slug "multi")}}
-Returns the game to its title-screen state: the title screen with `menuIndex` at
-`0`, both scores `0`, no winner, both paddles centered at `FIELD_CY`, each ball
-parked motionless and spinless at its own home point, not held, with its hold
-timer at `0` and an empty trail, and the driver released.
-`options.seed` seeds the game's random generator, defaulting to `DEFAULT_SEED`
-(`1`).
-{{else}}
-Returns the game to its title-screen state: the title screen with `menuIndex` at
-`0`, both scores `0`, no winner, the receiver back to left, the hold timer at
-`0`, both paddles centered at `FIELD_CY`, the ball parked motionless and
-spinless at `(FIELD_CX, FIELD_CY)`, an empty trail, and the driver released.
-`options.seed` seeds the game's random generator, defaulting to `DEFAULT_SEED`
-(`1`).
-{{/if}}
-
-`muted` is deliberately untouched: muting is a player preference the runtime owns.
-
-A reset leaves the game indistinguishable from one freshly started, so anything
-else the build keeps across frames is derived from what a reset restores.
-{{else}}
-{{#if (eq variant.slug "multi")}}
-Restores every declared field of the game's state to its title-screen value: the title
-screen with `menuIndex` at `0`, both scores `0`, no winner, both paddles centered
-at `FIELD_CY`, each ball parked motionless and spinless at its own home point, not
-held, with its hold timer at `0` and an empty trail, `simTime` at `0`, and the
-driver cleared.
-`options.seed` seeds `rngState`, defaulting to `DEFAULT_SEED` (`1`).
-{{else}}
-Restores every declared field of the game's state to its title-screen value: the title
-screen with `menuIndex` at `0`, both scores `0`, no winner, `receiver` back to
-`"left"`, `holdTimer` at `0`, both paddles centered at `FIELD_CY`, the ball parked
-motionless and spinless at `(FIELD_CX, FIELD_CY)`, an empty trail, `simTime` at
-`0`, and the driver cleared. `options.seed` seeds `rngState`, defaulting to
-`DEFAULT_SEED` (`1`).
-{{/if}}
-
-`muted` is deliberately untouched: muting is a player preference the runtime owns.
-
-Because it restores exactly the declared fields, any state of your own that a
-frame depends on is derivable from them.
-{{/if}}
-
-{{#if (eq engine.slug "none")}}
-### `snapshot()`
-
-A pure read of the state, returned as the plain object under Snapshot shape
-below. It changes nothing.
-
-### `startMatch(mode)`
-{{else if (eq engine.slug "simple-2d")}}
-### `snapshot(state)`
-
-A pure reading of `state`, returned as the plain object under Snapshot shape
-below. It returns no state, because it poses nothing.
-
-### `startMatch(state, mode)`
-{{else}}
-### `snapshot()`
-
-A pure reading of the running game, returned as the plain object under Snapshot
-shape below. It changes nothing.
-
-### `startMatch(mode)`
-{{/if}}
+### The world
 
 {{#if (eq variant.slug "multi")}}
-Poses the opening of a real match, with `mode` being `"solo"` or `"versus"`,
-exactly as choosing it from the menu would: `screen` becomes `"countdown"`, both
-scores `0`, `winner` `null`, both paddles centered, and all three balls held at
-their home points with a full `HOLD_TIME` hold timer. It leaves `simTime` as it
-is.
-
-The game runs from there: the hold timers tick down against the delta time and the
-launch happens through the game's own code.
+Ball indices run from `0` to `BALL_COUNT - 1` in play order, and obstacle indices
+are `0` and `1`, in the order of `OBSTACLE_CENTERS`.
 {{else}}
-{{#if (eq engine.slug "structured-2d")}}
-Poses the opening of a real match, with `mode` being `"solo"` or `"versus"`,
-exactly as choosing it from the menu would: `screen` becomes `"countdown"`, the
-hold timer becomes `HOLD_TIME`, both scores `0`, `winner` `null`, the receiver
-left, both paddles centered, and the ball parked. It leaves `simTime` as it is.
-{{else}}
-Poses the opening of a real match, with `mode` being `"solo"` or `"versus"`,
-exactly as choosing it from the menu would: `screen` becomes `"countdown"`,
-`holdTimer` becomes `HOLD_TIME`, both scores `0`, `winner` `null`, `receiver`
-`"left"`, both paddles centered, and the ball parked. It leaves `simTime` as it
-is.
+The game has one ball, which every operation below acts on. Obstacle indices are
+`0` and `1`, in the order of `OBSTACLE_CENTERS`.
 {{/if}}
 
-The game runs from there: the countdown ticks down against the delta time and the
-serve happens through the game's own code.
-{{/if}}
-
-{{#if (eq engine.slug "none")}}
-### `serve()`
-{{else if (eq engine.slug "simple-2d")}}
-### `serve(state)`
-{{else}}
-### `serve()`
-{{/if}}
-
+| Operation | Effect |
+| --- | --- |
+| `clearWorld()` | Removes every ball and every obstacle from the field, leaving it empty. The paddles stay. |
 {{#if (eq variant.slug "multi")}}
-Ends the hold of every waiting ball immediately instead of waiting it out, by
-setting the hold timer of every ball whose `held` is `true` to `0`. A ball already
-in flight is left as it is. It applies on the `"countdown"` and `"playing"` screens
-alone.
-
-The launch itself is yours: on the next frame the game advances, an elapsed hold
-timer launches that ball at `SERVE_SPEED` along a fresh random angle.
+| `spawnBall(index)` | Places ball `index` at its home point, held, with `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, and an empty trail. |
 {{else}}
-{{#if (eq engine.slug "structured-2d")}}
-Ends the pre-serve hold immediately instead of waiting it out, by setting the
-hold timer to `0`. From a live rally it re-parks the ball, clears the trail, and
-returns `screen` to `"countdown"` first, so a re-serve and a first serve behave
-identically. It applies on the `"countdown"` and `"playing"` screens alone.
-
-The launch itself is yours: on the next frame the game advances, an elapsed
-hold launches the ball at `SERVE_SPEED` toward the receiver.
-{{else}}
-Ends the pre-serve hold immediately instead of waiting it out, by setting
-`holdTimer` to `0`. From a live rally it re-parks the ball, clears the trail, and
-returns `screen` to `"countdown"` first, so a re-serve and a first serve behave
-identically. It applies on the `"countdown"` and `"playing"` screens alone.
-
-The launch itself is yours: on the next frame the game advances, an elapsed
-`holdTimer` launches the ball at `SERVE_SPEED` toward `state.receiver`.
-{{/if}}
-{{/if}}
-
-{{#if (eq engine.slug "none")}}
-### `setScore(p1, p2)`
-{{else if (eq engine.slug "simple-2d")}}
-### `setScore(state, p1, p2)`
-{{else}}
-### `setScore(p1, p2)`
-{{/if}}
-
-Sets the two scores directly, as a precondition. The win and deuce rules still
-resolve through real play, so a match ends when a real point is driven.
-
-{{#if (eq engine.slug "none")}}
-### `setPaddle(side, patch)`
-{{else if (eq engine.slug "simple-2d")}}
-### `setPaddle(state, side, patch)`
-{{else}}
-### `setPaddle(side, patch)`
-{{/if}}
-
-{{#if (eq engine.slug "structured-2d")}}
-Poses or moves a paddle. `side` is `"left"` or `"right"`; `patch` may set `cy`
-(center y) and `vy` (vertical velocity in units per second). A `vy` set here is
-written to the paddle and held by the driver for that side, so it persists across
-frames and the paddle is still moving when it strikes the ball, which is what
-drives the spin mechanic.
-{{else}}
-Poses or moves a paddle. `side` is `"left"` or `"right"`; `patch` may set `cy`
-(center y) and `vy` (vertical velocity in units per second). A `vy` set here is
-written to both the paddle and `driver.vy[side]`, so it persists across frames and
-the paddle is still moving when it strikes the ball, which is what drives the spin
-mechanic.
-{{/if}}
-
-{{#if (eq engine.slug "none")}}
-### `setBall(index, patch)`
-{{else if (eq engine.slug "simple-2d")}}
-### `setBall(state, index, patch)`
-{{else}}
-### `setBall(index, patch)`
-{{/if}}
-
-{{#if (eq variant.slug "multi")}}
-Places and aims a ball. `index` selects one of the three balls, numbered in play
-order from `0`. `patch` may set any of `x`, `y`, `vx`, `vy`, and `spin`. Posing a
-ball takes it into live play, clearing `held` and its hold timer, so a scenario
-can drive one ball while parking the others out of the way.
-{{else}}
-Places and aims a ball. `index` is `0`, selecting the single ball in play. `patch`
-may set any of `x`, `y`, `vx`, `vy`, and `spin`.
-{{/if}}
-
-{{#if (eq engine.slug "none")}}
-### `setAiControl(enabled)`
-{{else if (eq engine.slug "simple-2d")}}
-### `setAiControl(state, enabled)`
-{{else}}
-### `setAiControl(enabled)`
-{{/if}}
-
-{{#if (eq engine.slug "structured-2d")}}
-Flips the driver's AI switch, handing the right paddle back to the computer
-opponent for the rest of the driven scenario, so advancing the game runs the real
-AI against the posed ball while the left paddle and the ball stay on their posed
-values. It applies in Solo; `false` is the default, and `reset` clears it.
-{{else}}
-Sets `driver.ai`, handing the right paddle back to the computer opponent for the
-rest of the driven scenario, so advancing the game runs the real AI against the
-posed ball while the left paddle and the ball stay on their posed values. It
-applies in Solo; `false` is the default, and `reset` clears it.
+| `spawnBall()` | Places the ball at its home point, held, with `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, and an empty trail. |
 {{/if}}
 {{#if (eq variant.slug "gyre")}}
+| `spawnObstacle(index)` | Places obstacle `index` in the pose `specs/playfield.md`'s formulas give at the current `obstacleClock`. |
+{{else}}
+| `spawnObstacle(index)` | Places obstacle `index` at `OBSTACLE_CENTERS[index]`. |
+{{/if}}
+| `reset()` | Returns the game to its title-screen state. |
+| `setSeed(seed)` | Seeds the game's random generator. `seed` becomes the value given and `rngState` becomes that generator's starting state. |
+
+An absent ball takes no part in a frame: it is not advanced, it is not drawn, it
+collides with nothing, and it scores no point. An absent obstacle is not drawn and
+has no collision. Spawning an entity that is already present returns it to the
+arrangement its row states.
+
+`reset` sets every declared field to the title-screen value `specs/state.md`
+gives it, with the world placed exactly as `spawnBall` and `spawnObstacle` place
+it.
 
 {{#if (eq engine.slug "none")}}
-### `setObstacleClock(t)`
-{{else if (eq engine.slug "simple-2d")}}
-### `setObstacleClock(state, t)`
+`reset` leaves the mute bit and the auto-step setting alone, so `muted` and
+`autoStep` are unchanged. Every value the build keeps across frames is rebuilt
+from what a reset restores.
 {{else}}
-### `setObstacleClock(t)`
+`reset` leaves the mute bit alone, so `muted` is unchanged. Every value the build
+keeps across frames is rebuilt from what a reset restores.
 {{/if}}
 
-{{#if (eq engine.slug "structured-2d")}}
-Poses the obstacles by setting the obstacle clock to `t` seconds and holding them
-there. `t = 0` is upright at the base centers; a larger `t` sways and rotates them
-exactly as normal play would at that moment. While the driver holds the paddles
-the obstacle clock is held still rather than advancing with the frame, so a
-scenario faces a chosen, known obstacle orientation. `reset` returns to normal,
-moving obstacles.
+### Screens and menus
+
+| Operation | Effect |
+| --- | --- |
+| `setScreen(screen)` | Sets the current screen to one of the six `specs/ui.md` names. |
+| `setMode(mode)` | Sets the mode to `"solo"` or `"versus"`. |
+| `setMenuIndex(index)` | Sets the highlighted item on whichever menu the current screen shows. |
+| `setTitleIndex(index)` | Sets the title menu's remembered selection. |
+| `setResumeScreen(screen)` | Sets the screen a pause resumes to, `countdown` or `playing`. |
+
+Each sets its own field alone. `setScreen` leaves the scores, the world, and the
+menu indices as they are, and the screen it sets then behaves exactly as
+`specs/ui.md` states for that screen.
+
+### Match state
+
+| Operation | Effect |
+| --- | --- |
+| `setScore(p1, p2)` | Sets both scores. |
+| `setWinner(side)` | Sets the winning side to `"left"` or `"right"`, or clears it with `null`. |
+{{#if (eq variant.slug "multi")}}
 {{else}}
-Poses the obstacles by setting the obstacle clock to `t` seconds and holding them
-there. `t = 0` is upright at the base centers; a larger `t` sways and rotates them
-exactly as normal play would at that moment. While `driver.paddles` is `true` the
-obstacle clock is held still rather than advancing with the frame, so a scenario
-faces a chosen, known obstacle orientation. `reset` returns to normal, moving
-obstacles.
-{{/if}}
+| `setReceiver(side)` | Sets the side the next serve travels toward. |
 {{/if}}
 
-{{#if (eq engine.slug "none")}}
+The win rule `specs/balls.md` states still resolves through real play, so a
+match ends when a real point is driven.
+
+### Paddles
+
+`side` is `"left"` or `"right"`.
+
+| Operation | Effect |
+| --- | --- |
+| `setPaddleCy(side, cy)` | Sets that paddle's center y. |
+| `setPaddleVy(side, vy)` | Sets that paddle's `drivenVy`, in units per second, and leaves its `vy` as it is. |
+| `setPaddleDriven(side, driven)` | Takes that paddle from the player, or hands it back. |
+
+Each sets its own field alone. Driving the paddles above states how `drivenVy` and
+`vy` differ and what a driven paddle does.
+
+### Balls
+
+| Operation | Effect |
+| --- | --- |
+{{#if (eq variant.slug "multi")}}
+| `setBallPosition(index, x, y)` | Places ball `index`. |
+| `setBallVelocity(index, vx, vy)` | Sets ball `index`'s velocity, in units per second. |
+| `setBallSpin(index, spin)` | Sets ball `index`'s spin, in units per second squared. |
+| `setBallHeld(index, held)` | Sets whether ball `index` waits at its home point rather than flying. |
+| `setBallHoldTimer(index, seconds)` | Sets the seconds remaining of ball `index`'s hold. |
+{{else}}
+| `setBallPosition(x, y)` | Places the ball. |
+| `setBallVelocity(vx, vy)` | Sets the ball's velocity, in units per second. |
+| `setBallSpin(spin)` | Sets the ball's spin, in units per second squared. |
+| `setBallHeld(held)` | Sets whether the ball waits at its home point rather than flying. |
+| `setBallHoldTimer(seconds)` | Sets the seconds remaining of the ball's hold. |
+{{/if}}
+
+{{#if (eq variant.slug "multi")}}
+Each sets its own field alone, and an operation naming an absent ball has no
+effect. Setting a hold timer to `0` ends that hold.
+{{else}}
+Each sets its own field alone, and every one of them has no effect while the ball
+is absent. Setting the hold timer to `0` ends the hold.
+{{/if}}
+{{#if (eq variant.slug "multi")}}
+That ball launches on the next advanced frame through the game's own rule, as
+`specs/balls.md` states.
+{{else}}
+The ball is served on the next advanced frame through the game's own rule, as
+`specs/balls.md` states.
+{{/if}}
+
+### The AI opponent
+
+The AI's two faculties are gated on their own. Both start `true`, and `reset`
+returns both to `true`.
+
+| Operation | Effect |
+| --- | --- |
+| `setAiTracking(enabled)` | Whether the AI senses{{#if (eq variant.slug "multi")}} the balls{{else}} the ball{{/if}} and chooses a target. |
+| `setAiMovement(enabled)` | Whether the AI's paddle travels toward its target. |
+
+They act on the rule `specs/modes/single-player.md` states, on every frame that
+rule runs. With tracking `false` the AI's target is `AI_HOME_Y` with
+`AI_HOME_DEADZONE`, whatever the ball is doing. With movement `false` the AI
+leaves its paddle where it is, with `vy` of `0`.
+{{#if (eq variant.slug "gyre")}}
+
+### Obstacles
+
+| Operation | Effect |
+| --- | --- |
+| `setObstacleClock(t)` | Sets the obstacle clock to `t` seconds. Both obstacles take the pose that value gives them. |
+| `setObstacleClockRunning(running)` | Whether the obstacle clock advances with the frame. |
+
+Both obstacles take the poses `specs/playfield.md`'s formulas give at the clock's
+current value, on the frame the clock is set as on every other frame. While the
+clock is not running it keeps its value across frames and both obstacles hold
+their poses.
+{{/if}}
+
+### Readings
+
+| Operation | Returns |
+| --- | --- |
+| `snapshot()` | The whole declared state, as the shape below. |
+| `menuItemRect(index)` | The hit region of item `index` on the menu the current screen shows. |
+
+Both leave the game as they found it.
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
+region's top-left corner and `w` and `h` its size: the region a pointer selects
+that item from, as `specs/ui.md` states. It returns `null` on `countdown` and
+`playing`, which show no menu, and when `index` names no item of the menu the
+current screen shows.
+
 ## Snapshot shape
 
-`snapshot()` returns:
-{{else if (eq engine.slug "simple-2d")}}
-## Snapshot shape
-
+{{#if (eq engine.slug "simple-2d")}}
 `snapshot` returns:
 {{else}}
-## Snapshot shape
-
 `snapshot()` returns:
 {{/if}}
 
@@ -490,77 +361,92 @@ obstacles.
   version: 1,
   screen: "title" | "howto" | "countdown" | "playing" | "paused" | "matchover",
   mode: "solo" | "versus",
+  menuIndex: <number>,       // the highlighted item on the current menu
+  titleIndex: <number>,      // the title menu's remembered selection
+  resumeScreen: "countdown" | "playing",
   score: { p1: <number>, p2: <number> },
   winner: "left" | "right" | null,   // the winning side once the match is over
   muted: <boolean>,                  // whether the mute toggle is currently on
+  seed: <number>,                    // the seed the generator was last seeded from
+  rngState: <number>,                // that generator's current state
   paddles: {
-    left:  { cy: <number>, vy: <number> },
-    right: { cy: <number>, vy: <number> },
+    // `vy` is the velocity the last frame integrated; `drivenVy` is the velocity
+    // `setPaddleVy` last set for that side.
+    left:  { cy: <number>, vy: <number>, drivenVy: <number>, driven: <boolean> },
+    right: { cy: <number>, vy: <number>, drivenVy: <number>, driven: <boolean> },
   },
+  ai: { tracking: <boolean>, movement: <boolean> },
 
 {{#if (eq variant.slug "multi")}}
-  // All three balls, in play order.
+  // Every ball present, in play order. Each `trail` carries that ball's samples,
+  // oldest first, as `specs/state.md` declares them.
   balls: [
-    { x: <number>, y: <number>, vx: <number>, vy: <number>,
-      speed: <number>, spin: <number>, held: <boolean> },
+    { index: <number>, x: <number>, y: <number>, vx: <number>, vy: <number>,
+      speed: <number>, spin: <number>, held: <boolean>, holdTimer: <number>,
+      trail: [{ x: <number>, y: <number>, t: <number> }] },
   ],
 {{else}}
-  // The single ball in play.
+  receiver: "left" | "right",
+  // The ball, or null while no ball is present. Its `trail` carries the ball's
+  // samples, oldest first, as `specs/state.md` declares them.
   ball: { x: <number>, y: <number>, vx: <number>, vy: <number>,
-          speed: <number>, spin: <number>, held: <boolean> },
+          speed: <number>, spin: <number>, held: <boolean>,
+          holdTimer: <number>,
+          trail: [{ x: <number>, y: <number>, t: <number> }] } | null,
 {{/if}}
 
 {{#if (eq variant.slug "gyre")}}
-  // Each obstacle's live pose: its center and its rotation in radians, the same
+  // Every obstacle present: its center and its rotation in radians, the same
   // values that drive its oriented collision.
   obstacles: [
-    { cx: <number>, cy: <number>, theta: <number> },
+    { index: <number>, cx: <number>, cy: <number>, theta: <number> },
   ],
+  obstacleClock: <number>,           // the obstacle clock, in seconds
+  obstacleClockRunning: <boolean>,
+{{else}}
+  // Every obstacle present, at its fixed center.
+  obstacles: [
+    { index: <number>, cx: <number>, cy: <number> },
+  ],
+{{/if}}
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,               // false while the clock is scripted
 {{/if}}
   simTime: <number>,   // accumulated simulation time, in seconds
 }
 ```
 
+Every field an operation of this surface sets appears here, so every operation is
+verified by setting a value and reading it back.
+
+Five fields are read rather than posed. `version` is the constant above, `speed`
+is `hypot(vx, vy)`, a paddle's `vy` is the integrated value
+`specs/playfield.md` fixes rather than the value `setPaddleVy` writes, `muted`
+follows the mute bit the `mute` action drives as `specs/audio.md` states, and
+`simTime` is the accumulator every update adds its delta time to, which `reset`
+returns to `0` and no other operation writes.{{#if (eq engine.slug "none")}} `autoStep` is the clock's setting rather
+than a value the game holds, so it is reported here and `reset` leaves it as it
+is.{{/if}}
+
 {{#if (eq variant.slug "multi")}}
-Every field is read straight off the game's state, so what the snapshot reports is
-what the game holds. One is derived rather than stored: `speed` is
-`hypot(vx, vy)`. `held` is the ball's own flag, true while it waits at its home
-point. A pause leaves it true: a waiting ball is still waiting while the game is
-paused, so a paused countdown reports every waiting ball as held.
+The `balls` and `obstacles` arrays carry only what is present, each entry under
+its own `index`, so a cleared field reports both as empty.
 {{else}}
-Every field is read straight off the game's state, so what the snapshot reports is
-what the game holds. Two are derived rather than stored: `speed` is
-`hypot(vx, vy)`, and `held` is true while a ball's pre-serve countdown is still
-running. A pause leaves it true: an interrupted countdown has not run out, so a
-paused countdown reports the ball as held.
+The `obstacles` array carries only the obstacles present, each entry under its own
+`index`, and `ball` is `null` while no ball is present, so a cleared field reports
+an empty array and a `null` ball.
 {{/if}}
 
-{{#if (eq engine.slug "structured-2d")}}
-Two of the snapshot's figures are live reads rather than kept copies: `muted` is
-the engine's own mute bit, read from the audio bus at the call, and `simTime` is
-the frame clock's accumulated simulated time, which runs whatever the screen and
-carries across level transitions.
 {{#if (eq variant.slug "multi")}}
-Each ball's hold timer counts down from `HOLD_TIME` to `0` while that ball is
-`held`, and sits at `0` once it is in flight.
+Each ball's `holdTimer` is posed by `setBallHoldTimer` and then counted down by
+the game on every frame, by the rule `specs/balls.md` states. A ball's `trail`
+is emptied by `spawnBall` and written by the game alone, by the rule
+`specs/state.md` states.
 {{else}}
-The hold timer counts down from `HOLD_TIME` to `0` and sits at `0` during a live
-rally.
-{{/if}}
-{{else}}
-The game refreshes the following every frame:
-
-- `muted` mirrors the runtime's mute bit. Refresh it from the runtime in every
-  update, since the runtime owns muting and this is the game's readable copy of
-  it.
-- `simTime` accumulates the delta time of every update, whatever the screen.
-{{#if (eq variant.slug "multi")}}
-- each ball's `holdTimer` counts down from `HOLD_TIME` to `0` while that ball is
-  `held`, and sits at `0` once it is in flight.
-{{else}}
-- `holdTimer` counts down from `HOLD_TIME` to `0` and sits at `0` during a live
-  rally.
-{{/if}}
+The ball's `holdTimer` is posed by `setBallHoldTimer` and then counted down by
+the game on every frame, by the rule `specs/balls.md` states. The ball's `trail`
+is emptied by `spawnBall` and written by the game alone, by the rule
+`specs/state.md` states.
 {{/if}}
 
 ## Diagnostics

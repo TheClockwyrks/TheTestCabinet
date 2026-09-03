@@ -8,9 +8,10 @@
 //
 // The decay is measured on a ball IN FLIGHT, the only state real play ever has.
 // To read the decaying spin without the strongly curving shot leaving the field,
-// the paddles are cleared and the ball's POSITION is re-centred between chunks
-// while its velocity and spin carry through untouched; only the elapsed
-// simulation time acts on the spin.
+// the ball's POSITION is re-centred between chunks while its velocity and spin
+// carry through untouched; only the elapsed simulation time acts on the spin.
+// The field holds that one ball and neither obstacle, and both paddles are held
+// off the lane, so nothing the ball curves into can change the spin either.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CX, FIELD_CY, SPIN_HALFLIFE } from "../constants";
@@ -23,6 +24,7 @@ import {
 import {
   arrangeLiveBall,
   ball0,
+  ballOps,
   captureReplay,
   createHarness,
   TICK_HZ,
@@ -57,15 +59,16 @@ afterEach(() => {
  * alone, so only the elapsed time acts on the spin.
  */
 async function flyFor(h: Harness, ticks: number): Promise<void> {
+  const ops = ballOps(h);
   for (let done = 0; done < ticks; done += RECENTER_CHUNK) {
     await h.advance(Math.min(RECENTER_CHUNK, ticks - done));
-    h.debug.setBall(0, { x: FIELD_CX, y: FIELD_CY });
+    ops.setBallPosition(FIELD_CX, FIELD_CY);
   }
 }
 
 it("halves the spin every half-life without changing its sign", async () => {
   await arrangeLiveBall(harness, { x: FIELD_CX, y: FIELD_CY, vx: 400 });
-  harness.debug.setBall(0, { spin: POSED_SPIN });
+  ballOps(harness).setBallSpin(POSED_SPIN);
   assertCloseTo(ball0(harness.snapshot()).spin, POSED_SPIN, 6);
 
   await captureReplay(harness, "decay", async () => {

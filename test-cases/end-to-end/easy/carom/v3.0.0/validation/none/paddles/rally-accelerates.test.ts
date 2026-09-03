@@ -1,11 +1,16 @@
 // paddles/rally-accelerates — each paddle hit speeds the ball up a little.
 //
-// A REAL straight rally is played out — two still, centred paddles and a ball
-// launched level down the middle, so every hit is a plain, spin-free centre
-// contact — and the ball's speed after each successive hit is collected. The
-// per-hit ratio must be the specified multiplier while the ball is below the
-// ceiling, and the sequence must never decrease. The plateau AT the ceiling is
-// the sibling `rally-caps` check.
+// A REAL straight rally is played out — an emptied field, two still, centred
+// paddles and a ball launched level down the middle, so every hit is a plain,
+// spin-free centre contact and nothing between the paddles can turn the ball —
+// and the ball's speed after each successive hit is collected. The per-hit
+// ratio must be the specified multiplier while the ball is below the ceiling,
+// and the sequence must never decrease. The plateau AT the ceiling is the
+// sibling `rally-caps` check.
+//
+// The paddles are left with the player, and in a Versus match with no key held
+// they stand where they were put, so the only thing changing the ball's speed
+// is the paddle-hit rule under measurement.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";

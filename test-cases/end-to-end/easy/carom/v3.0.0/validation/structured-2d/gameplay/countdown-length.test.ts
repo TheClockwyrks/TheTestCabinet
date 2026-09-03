@@ -1,9 +1,17 @@
 // gameplay/countdown-length — the pre-serve countdown lasts the specified hold.
 //
-// The match is started FROM THE TITLE with menu keys, not through the debug
-// API's `startMatch`: that operation sets the hold itself, so a check that used
-// it would be measuring the case's own code rather than the build's. Confirming
-// the entry the player takes is what makes the duration the build's.
+// The match is started FROM THE TITLE with menu keys, and the hold is never
+// touched: `setBallHoldTimer` and `spawnBall` both write the very number this
+// check is timing, so a scenario that posed either would be measuring the case's
+// own figure rather than the build's. Confirming the entry the player takes is
+// what leaves the whole hold — its length and its running out — to the build.
+//
+// AND IT IS WHY THE FIELD IS NOT ISOLATED HERE. Clearing the field and spawning
+// the ball back is how every other scenario in this category poses its world, but
+// `spawnBall` restarts the hold, and the frames counted below run from the menu
+// confirm. So the match keeps the world the build's own match start put on it;
+// nothing on that field can reach the reading, which is a count of frames to the
+// launch.
 //
 // From there the real simulation is stepped ONE FRAME at a time until the ball
 // serves. At the harness's 120 Hz clock the hold is a whole number of frames, so

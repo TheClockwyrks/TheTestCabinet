@@ -18,14 +18,32 @@
 // TWO INDEPENDENT WITNESSES. The game's own accumulated `simTime`, which says the
 // build integrated the elapsed seconds it measured, and the distance the ball
 // covered, which says the SIMULATION ran rather than a counter ticking up.
+//
+// THE FIELD HOLDS ONE BALL AND NOTHING ELSE. What the second of real time must
+// show is a body moving under the build's own clock, so the obstacles come off
+// the field and the paddles are moved out of the lane: the ball is posed
+// travelling level down an empty field with a clear second of flight ahead of it,
+// and neither a bank nor a contact nor a scored point can shorten the straight
+// line the travel below is measured across.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
-import { SERVE_SPEED } from "../constants";
-import { ball0, captureStill, createHarness, type Harness } from "../harness";
+import { FIELD_CY, SERVE_SPEED } from "../constants";
+import {
+  arrangeLiveBall,
+  ball0,
+  captureStill,
+  createHarness,
+  type Harness,
+} from "../harness";
 
 /** The real-time window the loop is left to run for. */
 const RUN_MS = 1000;
+/**
+ * The posed flight: level, at the serve speed, starting far enough down the
+ * field that a whole second of it stays clear of the left goal.
+ */
+const BALL = { x: 1150, y: FIELD_CY, vx: -SERVE_SPEED, vy: 0 };
 /**
  * The floor the game clock must clear, in seconds. Half the window, deliberately
  * generous: the claim is that the game advances ITSELF, not that it keeps perfect
@@ -35,8 +53,8 @@ const RUN_MS = 1000;
  */
 const MIN_ADVANCE = RUN_MS / 1000 / 2;
 /**
- * The floor the ball must travel, in logical px. It leaves at the serve speed, so
- * even a loop managing a fifth of real time carries it this far.
+ * The floor the ball must travel, in logical px. It is posed at the serve speed,
+ * so even a loop managing a fifth of real time carries it this far.
  */
 const MIN_TRAVEL = (SERVE_SPEED * (RUN_MS / 1000)) / 5;
 
@@ -51,12 +69,7 @@ afterEach(async () => {
 });
 
 it("advances on its own frame loop with nothing stepping it", async () => {
-  const { debug } = harness;
-  await debug.startMatch("solo");
-  await debug.serve();
-  // One frame to let the build's own serve launch the ball, so the travel below
-  // is measured on a ball already in flight.
-  await harness.advance(1);
+  await arrangeLiveBall(harness, BALL, "solo");
 
   const before = await harness.snapshot();
   await captureStill(harness, "before");

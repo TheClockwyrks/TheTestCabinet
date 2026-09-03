@@ -6,9 +6,15 @@
 // horizontal velocity, and the frame that happens on is the frame the cue must
 // carry.
 //
-// An obstacle bounce and a paddle hit are different events with different cues,
-// and this is the check that says so: the name asserted here is the obstacle's,
-// and a build that reuses one blip for every bounce fails it.
+// An obstacle bounce and a paddle hit are different events with different cues
+// (specs/audio.md), and this is the check that says so: the name asserted here is
+// the obstacle's, and a build that reuses one blip for every bounce fails it.
+//
+// THE FIELD HOLDS OBSTACLE A ALONE. `arrangeObstacleBounce` clears the field and
+// spawns back one ball and the one obstacle the shot is aimed at, so obstacle B
+// is ABSENT rather than standing quietly out of the lane: a shot that missed the
+// struck face cannot bank off it instead and sound this point's cue. Both
+// paddles are held still off the lane, because paddles cannot be removed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CUES, OBSTACLES, OBSTACLE_CENTERS } from "../constants";
@@ -18,10 +24,12 @@ import {
   captureReplay,
   createHarness,
   driveObstacleBounce,
-  startPlaying,
   watchCues,
   type Harness,
 } from "../harness";
+
+/** The obstacle this point's shot is aimed at, in the order of `OBSTACLES`. */
+const OBSTACLE = 0;
 
 /**
  * Frames of the departing flight recorded after the bounce.
@@ -49,10 +57,10 @@ afterEach(() => {
 });
 
 it("plays the obstacle-bounce cue on the frame of the bounce", async () => {
-  await startPlaying(h, "versus");
-  arrangeObstacleBounce(h, {
-    faceX: OBSTACLES[0].x0,
-    y: OBSTACLE_CENTERS[0].y,
+  await arrangeObstacleBounce(h, {
+    obstacle: OBSTACLE,
+    faceX: OBSTACLES[OBSTACLE].x0,
+    y: OBSTACLE_CENTERS[OBSTACLE].y,
     from: "left",
   });
 

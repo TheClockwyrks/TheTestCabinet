@@ -1,44 +1,18 @@
 # Carom — Game state
 
 {{#if (eq engine.slug "none")}}
-The build owns the shape of the game's state entirely.
-
-The one contract fixed over the state is the debugging and automation surface
-specified for this build. Every operation that surface carries is a read or a
-pose of the running game, so the state holds what those operations read, honors
-what they write, and returns to its title-screen values when the surface's
-`reset` is called. Beyond satisfying that surface, how the state is organized is
-yours to decide.
-
-Whatever its shape, the state carries the following, because the rest of this
-specification is written against them:
-
-- The simulation time, in seconds, which every update adds its `dt` to whatever
-  the screen, the paused screen and the menus included. The snapshot reports it
-  as `simTime`.
-- Each paddle's center `cy` and its integrated vertical velocity `vy` for the
-  frame, the velocity after the clamp to `[PADDLE_MIN_CY, PADDLE_MAX_CY]`.
-{{#if (eq variant.slug "multi")}}
-- For each ball: `x`, `y`, `vx`, `vy`, `spin`, whether it is held, its hold
-  timer, and its trail samples. On every `countdown` or `playing` frame, after
-  the balls have been advanced, each ball's `(x, y)` and the simulation time are
-  appended as a sample and every sample older than `TRAIL_TIME` is dropped.
-  Parking a ball clears its trail.
-{{else}}
-- The ball's `x`, `y`, `vx`, `vy`, and `spin`, the receiver, the hold timer,
-  and the trail samples. On every `countdown` or `playing` frame, after the
-  ball has been advanced, the ball's `(x, y)` and the simulation time are
-  appended as a sample and every sample older than `TRAIL_TIME` is dropped.
-  Parking the ball clears the trail.
-{{/if}}
-- The state of the seeded random generator, if the build draws from it.
+The build owns the shape of the game's state entirely. The one contract fixed
+over it is the surface `specs/instrumentation.md` specifies: every operation
+there is a reading or a pose of the running game, so the state holds what the
+readings report and honors what the poses arrange. Beyond satisfying that
+surface, how the state is organized is yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands
 here. The state is a value the engine holds and every frame replaces, so every
-field and every array is declared `readonly`: a frame builds the next state
-from the current one rather than writing into it, and every reader is handed
-the state as `DeepReadonly<CaromState>` in any case.
+field and every array is declared `readonly`: a frame builds the next state from
+the current one rather than writing into it, and every reader is handed the state
+as `DeepReadonly<CaromState>`.
 
 ```ts
 export type Screen =
@@ -51,10 +25,25 @@ export type Side = "left" | "right";
 export interface PaddleState {
   readonly cy: number;
   readonly vy: number;
+  readonly driven: boolean;
+  readonly drivenVy: number;
 }
 
-{{#if (eq variant.slug "multi")}}
+export interface AiState {
+  readonly tracking: boolean;
+  readonly movement: boolean;
+}
+
+export interface TrailSample {
+  readonly x: number;
+  readonly y: number;
+  readonly t: number;
+}
+
 export interface BallState {
+{{#if (eq variant.slug "multi")}}
+  readonly index: number;
+{{/if}}
   readonly x: number;
   readonly y: number;
   readonly vx: number;
@@ -64,236 +53,66 @@ export interface BallState {
   readonly holdTimer: number;
   readonly trail: readonly TrailSample[];
 }
-{{else}}
-export interface BallState {
-  readonly x: number;
-  readonly y: number;
-  readonly vx: number;
-  readonly vy: number;
-  readonly spin: number;
-}
-{{/if}}
 
-export interface TrailSample {
-  readonly x: number;
-  readonly y: number;
-  readonly t: number;
-}
-
-export interface DriverState {
-  readonly paddles: boolean;
-  readonly ai: boolean;
-  readonly vy: { readonly left: number; readonly right: number };
-}
-
-{{#if (eq variant.slug "gyre")}}
 export interface ObstacleState {
+  readonly index: number;
   readonly cx: number;
   readonly cy: number;
+{{#if (eq variant.slug "gyre")}}
   readonly theta: number;
+{{/if}}
 }
 
-{{/if}}
 export interface CaromState {
   readonly screen: Screen;
   readonly mode: Mode;
   readonly menuIndex: number;
-  readonly resumeScreen: Screen;
+  readonly titleIndex: number;
+  readonly resumeScreen: "countdown" | "playing";
 
   readonly score: { readonly p1: number; readonly p2: number };
   readonly winner: Side | null;
 
-{{#if (eq variant.slug "multi")}}
   readonly paddles: { readonly left: PaddleState; readonly right: PaddleState };
+  readonly ai: AiState;
+
+{{#if (eq variant.slug "multi")}}
   readonly balls: readonly BallState[];
 {{else}}
   readonly receiver: Side;
-  readonly holdTimer: number;
-
-  readonly paddles: { readonly left: PaddleState; readonly right: PaddleState };
-  readonly ball: BallState;
-  readonly trail: readonly TrailSample[];
+  readonly ball: BallState | null;
 {{/if}}
-
+  readonly obstacles: readonly ObstacleState[];
 {{#if (eq variant.slug "gyre")}}
   readonly obstacleClock: number;
-  readonly obstacles: readonly ObstacleState[];
-
+  readonly obstacleClockRunning: boolean;
 {{/if}}
+
   readonly simTime: number;
   readonly muted: boolean;
+  readonly seed: number;
   readonly rngState: number;
-
-  readonly driver: DriverState;
 }
 ```
-
-## The type aliases
-
-`Screen` is the top-level state machine. `countdown` and `playing` both render
-the live field, and the rest are menu or overlay screens. `Mode` is the way a
-match is played. `Side` names a side of the field, and player one is the left.
-
-## `PaddleState`
-
-One paddle. Its `x` is fixed by the side it is on, so only the vertical axis is
-state.
-
-- `cy` — center y, in logical units, clamped to
-  `[PADDLE_MIN_CY, PADDLE_MAX_CY]`.
-- `vy` — the paddle's integrated vertical velocity for the frame, in units per
-  second: the velocity after the clamp to `[PADDLE_MIN_CY, PADDLE_MAX_CY]` has
-  been applied. This is what the spin mechanic reads at contact, so a paddle
-  pinned against a bound holds `0` while a movement action is held into the
-  bound.
-
-{{#if (eq variant.slug "multi")}}
-## `BallState`
-
-One ball. Every field is that ball's own, so the three balls share nothing.
-
-- `x`, `y` — the ball's center, in logical units.
-- `vx`, `vy` — the ball's velocity, in units per second.
-- `spin` — the signed spin scalar, with a magnitude in units per second
-  squared. Positive spin turns the direction of travel clockwise on screen and
-  negative spin counterclockwise; it decays by half every `SPIN_HALFLIFE`
-  seconds and changes otherwise only on a paddle hit.
-- `held` — `true` while the ball waits at its home point rather than flying. A
-  waiting ball is motionless and solid, and it launches when its hold timer
-  elapses.
-- `holdTimer` — seconds remaining of that wait. It is `HOLD_TIME` when the ball
-  takes its home point, counts down to `0`, at which point the ball launches, and
-  sits at `0` while the ball is in flight.
-- `trail` — this ball's trail samples, oldest first. On every `countdown` or
-  `playing` frame, after the balls have been advanced, the ball's `(x, y)` and
-  `simTime` are appended as a sample and every sample older than `TRAIL_TIME`
-  is dropped. Parking the ball clears its trail.
-
-Speed is `hypot(vx, vy)`, derived rather than stored.
-{{else}}
-## `BallState`
-
-- `x`, `y` — the ball's center, in logical units.
-- `vx`, `vy` — the ball's velocity, in units per second.
-- `spin` — the signed spin scalar, with a magnitude in units per second
-  squared. Positive spin turns the direction of travel clockwise on screen and
-  negative spin counterclockwise; it decays by half every `SPIN_HALFLIFE`
-  seconds and changes otherwise only on a paddle hit.
-
-Speed is `hypot(vx, vy)`, derived rather than stored.
-{{/if}}
-
-## `TrailSample`
-
-One recorded ball position, used to draw the motion trail: `x` and `y` in
-logical units, and `t`, the simulation time in seconds at which the sample was
-recorded.
-
-## `DriverState`
-
-Who is driving the paddles. It is inert during normal play, with `paddles`
-`false`, the registered actions moving the human paddles and, in Solo, the AI
-moving the right one.
-
-- `paddles` — `true` once a control operation on the debug surface has taken the
-  paddles from the player. Both paddles then follow `vy`, and the input actions
-  and the AI leave them alone until a `reset`. That is what lets a scenario be
-  posed and replayed exactly.
-- `ai` — Solo only. While `paddles` and `ai` are both `true`, the real AI
-  opponent plays the right paddle against the posed ball while the left paddle
-  stays on its held velocity.
-- `vy` — the vertical velocity each paddle holds while `paddles` is `true`, in
-  units per second.
-{{#if (eq variant.slug "gyre")}}
-
-## `ObstacleState`
-
-One obstacle's live pose: where it actually is this frame, and how far it has
-turned.
-
-- `cx` — live center x, in logical units. It stays on the base center's x.
-- `cy` — live center y, in logical units: the base center swayed by the obstacle
-  clock.
-- `theta` — live rotation about the center, in radians. `0` is upright.
-
-Both are derived from `obstacleClock` by the sway and rotation formulas this
-specification fixes, and both are declared state because the oriented collision
-resolves against them and the debug surface reports them. Both equal those
-formulas evaluated at the current `obstacleClock`, on every frame and after the
-clock is posed.
-{{/if}}
-
-## `CaromState`
-
-The whole of Carom's state. Every field is present from the moment `initialize`
-returns, and every one is plain data: numbers, strings, booleans, and containers
-of them, so a scenario is posed by building a state that differs in the fields
-posed and read back by reading them.
-
-- `screen` — the screen currently shown.
-- `mode` — the mode the current or most recent match is played in.
-- `menuIndex` — the highlighted item on whichever menu `screen` is showing.
-- `resumeScreen` — the screen the pause menu resumes to, `countdown` or
-  `playing`.
-- `score` — the two scores. First to `WIN_SCORE`, winning by at least
-  `WIN_LEAD`.
-- `winner` — the winning side once the match is over, and `null` until then.
-{{#if (eq variant.slug "multi")}}
-- `paddles` — the two paddles.
-- `balls` — the three balls in play, in play order, each carrying its own
-  velocity, spin, hold timer, and trail.
-{{else}}
-- `receiver` — the side the next serve travels toward, which is the player who
-  was just scored on. The first serve of a match travels toward player one.
-- `holdTimer` — seconds remaining of the pre-serve hold. It is `HOLD_TIME` at
-  the start of a match and after each point, counts down to `0`, at which point
-  the ball is served, and sits at `0` during a live rally.
-- `paddles` — the two paddles.
-- `ball` — the single ball in play.
-- `trail` — the ball's trail samples, oldest first. On every `countdown` or
-  `playing` frame, after the ball has been advanced, the ball's `(x, y)` and
-  `simTime` are appended as a sample and every sample older than `TRAIL_TIME`
-  is dropped. Parking the ball clears the trail.
-{{/if}}
-{{#if (eq variant.slug "gyre")}}
-- `obstacleClock` — the obstacle clock, in seconds, and the sole input to both
-  obstacle poses. It advances by the frame's delta time on every frame of a live
-  match, the pre-serve countdown included, is frozen while the game is paused,
-  and returns to `0` at the start of each match, so every match opens upright.
-  It is held still while `driver.paddles` is `true`, which is what lets a
-  scenario face a chosen, known orientation.
-- `obstacles` — both obstacles' live poses, in the order of `OBSTACLE_CENTERS`.
-{{/if}}
-- `simTime` — accumulated simulation time, in seconds. Every `update` adds its
-  `dt`, whatever the screen, the paused screen and the menus included.
-- `muted` — the game's readable copy of the engine's mute bit, which every
-  `update` carries into the state it returns. The engine owns muting, and this
-  field is what the debug surface reports.
-- `rngState` — the state of the game's seeded random generator. A `reset` with a
-  seed sets it, so reseeding and replaying the same calls reproduces the same
-  result. A build that uses no randomness never reads it.
-- `driver` — the debug driver's hold on the paddles.
 
 ## The contract
 
 The declaration above is what the debug surface reads and poses.
 
 - Keep every field under its declared name, type, and meaning.
-- `initialize` builds the whole state in one go, so every field is present by
-  the time a frame can observe it, and none of them is optional.
-- Fields you add hold derived data you can rebuild from the declared ones. A
-  `reset` restores the declared fields to their title-screen values, so those
-  fields are the whole of the authoritative state.
+- `initialize` builds the whole state in one go, so every field is present by the
+  time a frame can observe it, and none of them is optional.
+- The declared fields are the whole of the authoritative state. Fields you add
+  hold derived data you can rebuild from them.
 - The state handed to `update` is the whole of the game, and the state `update`
   returns is the whole of the next frame. Every value the game carries from one
-  frame to the next lives in it; nothing is kept in a module-level variable or a
+  frame to the next lives in it, and none of them in a module-level variable or a
   closure.
-- The state is handed over read-only, as `DeepReadonly<CaromState>`, to
-  `update`, to `render`, to every diagnostic source, and to every operation of
-  the debug surface. `update` and the surface's poses return a new `CaromState`
-  built from the one they received; `render`, the sources, and `snapshot`
-  return no state. The type is what guarantees that rendering changes nothing
-  and that nothing but a transition advances the game.
+- The state is handed over read-only, as `DeepReadonly<CaromState>`, to `update`,
+  to `render`, to every diagnostic source, and to every operation of the debug
+  surface. `update` and the surface's poses return a new `CaromState` built from
+  the one they received; `render` and the diagnostic sources return no state, and
+  the surface's readings return what they read.
 {{else}}
 The game's state lives in the framework objects the engine owns: the game
 instance you write, the world that is open, that world's game mode and game
@@ -303,37 +122,170 @@ its actors, which are rebuilt with their world, and a value that must survive a
 level transition lives on the instance. Nothing lives in a module-level variable
 or a closure outside them.
 
-Two contracts are fixed over that state. The first is the debugging and
-automation surface specified for this build. Every operation that surface
-carries is a reading or a pose of the running game, so the state holds what the
-readings report, honors what the poses arrange, and returns to its title-screen
-values when the surface's `reset` is called. The second is the vocabulary
-`src/constants.ts` fixes: every level is registered under its name in `LEVELS`,
-and every paddle, ball, and obstacle actor carries its tag from `TAGS`, so the
-field's bodies can be found with `world.byTag` under the names this
-specification uses.
+Two contracts are fixed over that state. The first is the surface
+`specs/instrumentation.md` specifies: every operation there is a reading or a
+pose of the running game, so the state holds what the readings report and honors
+what the poses arrange. The second is the vocabulary `src/constants.ts` fixes:
+every level is registered under its name in `LEVELS`, and every paddle, ball, and
+obstacle actor carries its tag from `TAGS`, so the field's bodies can be found
+with `world.byTag` under the names this specification uses.
+{{/if}}
 
-Whatever its arrangement, the state carries the following, because the rest of
-this specification is written against them:
+## What the state carries
 
-- The simulation time the snapshot reports as `simTime`, in seconds. The
-  engine's frame clock accumulates it across every frame, whatever the screen,
-  the paused screen and the menus included, so read it back from the engine
-  rather than keeping a copy.
-- Each paddle's center `cy` and its integrated vertical velocity `vy` for the
-  frame, the velocity after the clamp to `[PADDLE_MIN_CY, PADDLE_MAX_CY]`.
+The state carries the following, and the rest of this specification refers to
+each by the name used here.
+
+### Screens and menus
+
+| Field | Holds |
+| --- | --- |
+| `screen` | The screen currently shown, one of the six `specs/ui.md` names. |
+| `mode` | The mode the current or most recent match is played in. |
+| `menuIndex` | The highlighted item on whichever menu `screen` is showing. |
+| `titleIndex` | The title menu's remembered selection. `specs/ui.md` states what sets it and what restores `menuIndex` from it. |
+| `resumeScreen` | The screen the pause menu resumes to, `countdown` or `playing`. |
+
+### The match
+
+| Field | Holds |
+| --- | --- |
+| `score` | The two scores, `p1` the left player's and `p2` the right player's. |
+| `winner` | The winning side once the match is over, and `null` until then. |
 {{#if (eq variant.slug "multi")}}
-- For each ball: `x`, `y`, `vx`, `vy`, `spin`, whether it is held, its hold
-  timer, and its trail samples. On every `countdown` or `playing` frame, after
-  the balls have been advanced, each ball's `(x, y)` and the simulation time are
-  appended as a sample and every sample older than `TRAIL_TIME` is dropped.
-  Parking a ball clears its trail.
 {{else}}
-- The ball's `x`, `y`, `vx`, `vy`, and `spin`, the receiver, the hold timer,
-  and the trail samples. On every `countdown` or `playing` frame, after the
-  ball has been advanced, the ball's `(x, y)` and the simulation time are
-  appended as a sample and every sample older than `TRAIL_TIME` is dropped.
-  Parking the ball clears the trail.
+| `receiver` | The side the next serve travels toward, as `specs/balls.md` states. |
 {{/if}}
-- The state of the seeded random generator, if the build draws from it.
+
+### The paddles
+
+There are two paddles, left and right, and both are always present. A paddle's
+`x` is fixed by the side it is on, so only the vertical axis is state. Each
+paddle carries:
+
+| Field | Holds |
+| --- | --- |
+| `cy` | Center y, in logical units, clamped as `specs/playfield.md` states. |
+| `vy` | That paddle's vertical velocity for the frame, in units per second, after the integration `specs/playfield.md` fixes. The spin mechanic reads it at contact. |
+| `driven` | Whether the debug surface is moving that paddle rather than the player or the AI. `specs/instrumentation.md` states what a driven paddle does. |
+| `drivenVy` | The velocity a driven paddle moves at, in units per second. `specs/instrumentation.md` states what sets it and how it differs from `vy`. |
+
+### The AI opponent
+
+The AI's two faculties are each declared state, and both gate the rule
+`specs/modes/single-player.md` states.
+
+| Field | Holds |
+| --- | --- |
+| `tracking` | Whether the AI senses the ball and chooses a target. |
+| `movement` | Whether the AI's paddle travels toward that target. |
+
+{{#if (eq variant.slug "multi")}}
+### The balls
+
+Which balls are present is state. The balls in play are carried in play order,
+each under its own `index`, running from `0` to `BALL_COUNT - 1`.
+`specs/instrumentation.md` states what places a ball and what removes it. Each
+ball carries:
+
+| Field | Holds |
+| --- | --- |
+| `x`, `y` | That ball's center, in logical units. |
+| `vx`, `vy` | That ball's velocity, in units per second. |
+| `spin` | The signed spin scalar, in units per second squared, as `specs/balls.md` states. |
+| `held` | Whether that ball waits at its home point rather than flying. It is the ball's own flag, and a pause leaves it as it was. |
+| `holdTimer` | Seconds remaining of that wait. |
+| `trail` | That ball's trail samples, oldest first, each a position in logical units and the simulation time it was recorded at. |
+
+On every `countdown` or `playing` frame, after the balls have been advanced, each
+ball's `(x, y)` and the simulation time are appended to its own trail as a
+sample, and every sample older than `TRAIL_TIME` is dropped.
+{{else}}
+### The ball
+
+Whether the ball is present is state. `specs/instrumentation.md` states what
+places it and what removes it. The ball carries:
+
+| Field | Holds |
+| --- | --- |
+| `x`, `y` | The ball's center, in logical units. |
+| `vx`, `vy` | The ball's velocity, in units per second. |
+| `spin` | The signed spin scalar, in units per second squared, as `specs/balls.md` states. |
+| `held` | Whether the ball waits at its home point rather than flying. It is the ball's own flag, and a pause leaves it as it was. |
+| `holdTimer` | Seconds remaining of that wait. |
+| `trail` | The ball's trail samples, oldest first, each a position in logical units and the simulation time it was recorded at. |
+
+On every `countdown` or `playing` frame, after the ball has been advanced, the
+ball's `(x, y)` and the simulation time are appended as a sample, and every
+sample older than `TRAIL_TIME` is dropped.
 {{/if}}
+
+### The obstacles
+
+Which obstacles are present is state. The obstacles in the field are carried in
+the order of `OBSTACLE_CENTERS`, each under its own `index`, `0` or `1`.
+`specs/instrumentation.md` states what places an obstacle and what removes it.
+{{#if (eq variant.slug "gyre")}}
+Each obstacle carries its live pose:
+
+| Field | Holds |
+| --- | --- |
+| `cx`, `cy` | That obstacle's center, in logical units. |
+| `theta` | Its rotation about that center, in radians. |
+
+All three equal the sway and rotation formulas `specs/playfield.md` fixes,
+evaluated at the current `obstacleClock`, on every frame and after the clock is
+posed. The oriented collision resolves against them.
+
+The clock itself is two more fields:
+
+| Field | Holds |
+| --- | --- |
+| `obstacleClock` | The obstacle clock, in seconds, and the sole input to both obstacle poses. |
+| `obstacleClockRunning` | Whether the clock advances with the frame. |
+{{else}}
+Each obstacle carries `cx` and `cy`, its fixed center in logical units, which is
+`OBSTACLE_CENTERS[index]`.
+{{/if}}
+
+### Time, sound, and randomness
+
+| Field | Holds |
+| --- | --- |
+| `simTime` | Accumulated simulation time, in seconds. The game adds every update's delta time to it, whatever the screen, the paused screen and the menus included.{{#if (eq engine.slug "structured-2d")}} It is the game's own accumulator, carried across level transitions with the rest of the state that outlives a world.{{/if}} |
+| `muted` | The game's readable copy of the runtime's mute bit, which `specs/audio.md` states the game mirrors. |
+| `seed` | The seed the game's random generator was last seeded from. |
+| `rngState` | The whole state of that generator, as a single number. |
+
+## The state at the title screen
+
+The game opens on the title screen holding the values below.
+
+| Field | Value |
+| --- | --- |
+| `screen` | `title` |
+| `mode` | `solo` |
+| `menuIndex`, `titleIndex` | `0` |
+| `resumeScreen` | `playing` |
+| `score` | `0` and `0` |
+| `winner` | `null` |
+{{#if (eq variant.slug "multi")}}
+{{else}}
+| `receiver` | `left` |
+{{/if}}
+| Each paddle | `cy` at `FIELD_CY`, `vy` and `drivenVy` `0`, not driven |
+| The AI | `tracking` and `movement` both `true` |
+{{#if (eq variant.slug "multi")}}
+| The balls | all `BALL_COUNT` present, each at its own home point, held, `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, empty trail |
+{{else}}
+| The ball | present at its home point, held, `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, empty trail |
+{{/if}}
+{{#if (eq variant.slug "gyre")}}
+| The obstacles | both present, upright at `OBSTACLE_CENTERS` |
+| `obstacleClock` | `0`, and running |
+{{else}}
+| The obstacles | both present at `OBSTACLE_CENTERS` |
+{{/if}}
+| `simTime` | `0` |
+| `muted` | the runtime's mute bit |
+| `seed`, `rngState` | `DEFAULT_SEED` (`1`), and the generator seeded from it |

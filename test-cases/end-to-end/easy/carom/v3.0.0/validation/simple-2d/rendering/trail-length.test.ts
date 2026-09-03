@@ -4,11 +4,13 @@
 // The trail draws the ball's path over the last TRAIL_TIME seconds
 // (specs/overview.md), so behind a ball at a steady speed it is a streak of
 // about `speed * TRAIL_TIME` units. What lands on the canvas is read directly:
-// the ball is driven down an empty lane near the bottom of the field, clear of
-// the paddles, both obstacles, the net and the HUD, so everything lit in that
-// lane behind the ball is the trail and nothing else, and the lit run is
-// measured pixel by pixel against the same lane read bare before the flight,
-// so a mode label or texture the build puts there is never mistaken for trail.
+// the field is emptied down to this one ball — both obstacles REMOVED rather than
+// dodged, both paddles driven out of the lane, since a paddle cannot be removed —
+// and the ball is flown down a lane near the bottom of the field, clear of the
+// net and the HUD. So everything lit in that lane behind the ball is the trail
+// and nothing else, and the lit run is measured pixel by pixel against the same
+// lane read bare before the flight, so a mode label or texture the build puts
+// there is never mistaken for trail.
 //
 // The bounds are the review item's: between half and one and a half times the
 // length TRAIL_TIME gives it, plus up to two ball radii for however the build

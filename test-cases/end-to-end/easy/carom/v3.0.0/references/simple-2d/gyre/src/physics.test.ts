@@ -16,10 +16,10 @@ import {
   SPIN_FROM_PADDLE,
   SPIN_HALFLIFE,
 } from "./constants";
-import { ballSpeed } from "./entities";
+import { ballSpeed, type Kinematics, type PaddleMotion } from "./entities";
 import { obstaclePose } from "./obstacles";
 import { step, type StepEvents } from "./physics";
-import type { BallState, ObstacleState, PaddleState } from "./game";
+import type { ObstacleState } from "./game";
 
 const FRAME = 1 / 60;
 
@@ -35,19 +35,19 @@ function obstacles(t = 0): ObstacleState[] {
 
 const UPRIGHT = obstacles(0);
 
-function ball(patch: Partial<BallState> = {}): BallState {
+function ball(patch: Partial<Kinematics> = {}): Kinematics {
   return { x: 640, y: 360, vx: 0, vy: 0, spin: 0, ...patch };
 }
 
 /** `step` over `frames` equal slices of `dt`, carrying the ball forward. */
 function stepped(
-  start: BallState,
-  left: PaddleState,
-  right: PaddleState,
+  start: Kinematics,
+  left: PaddleMotion,
+  right: PaddleMotion,
   poses: readonly ObstacleState[],
   dt: number,
   frames = 1,
-): { ball: BallState; hit: StepEvents } {
+): { ball: Kinematics; hit: StepEvents } {
   let b = start;
   const hit: StepEvents = { paddle: false, wall: false, obstacle: false };
   for (let i = 0; i < frames; i++) {
@@ -60,7 +60,7 @@ function stepped(
   return { ball: b, hit };
 }
 
-function paddles(leftCy = 360, rightCy = 360): [PaddleState, PaddleState] {
+function paddles(leftCy = 360, rightCy = 360): [PaddleMotion, PaddleMotion] {
   return [
     { cy: leftCy, vy: 0 },
     { cy: rightCy, vy: 0 },
@@ -96,7 +96,7 @@ describe("free flight", () => {
   });
 
   it("curves to within a pixel of the same place at 30, 60 and 240 Hz", () => {
-    const at = (hz: number): BallState => {
+    const at = (hz: number): Kinematics => {
       const [left, right] = paddles();
       return stepped(
         ball({ x: 300, vx: 400, vy: 120, spin: 300 }),
@@ -206,7 +206,7 @@ describe("the paddle bounce", () => {
 
   it("imparts spin from the paddle's motion at contact", () => {
     const [, right] = paddles();
-    const left: PaddleState = { cy: 360, vy: 300 };
+    const left: PaddleMotion = { cy: 360, vy: 300 };
     const { ball: b } = step(
       ball({ x: 76, vx: -400 }),
       left,
@@ -234,7 +234,7 @@ describe("the paddle bounce", () => {
 
   it("clamps the spin it can accumulate", () => {
     const [, right] = paddles();
-    const left: PaddleState = { cy: 360, vy: 900 };
+    const left: PaddleMotion = { cy: 360, vy: 900 };
     const { ball: b } = step(
       ball({ x: 76, vx: -400, spin: SPIN_CLAMP }),
       left,
@@ -337,18 +337,18 @@ describe("oriented obstacles", () => {
   /** A pose for obstacle A alone, with B moved far out of the way. */
   function only(theta: number, cy = A.y): ObstacleState[] {
     return [
-      { cx: A.x, cy, theta },
-      { cx: -10_000, cy: -10_000, theta: 0 },
+      { index: 0, cx: A.x, cy, theta },
+      { index: 1, cx: -10_000, cy: -10_000, theta: 0 },
     ];
   }
 
   /** The level shot from just in front of A's upright face. */
-  function level(): BallState {
+  function level(): Kinematics {
     return ball({ x: A.x - OBSTACLE_HW - BALL_R - 2, y: A.y, vx: 300 });
   }
 
   /** The ball's clearance from A's rectangle, measured in A's own frame. */
-  function clearance(b: BallState, theta: number): number {
+  function clearance(b: Kinematics, theta: number): number {
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);
     const dx = b.x - A.x;
@@ -388,7 +388,7 @@ describe("oriented obstacles", () => {
   });
 
   it("turns the deflection the other way when the tilt is the other way", () => {
-    const shot = (theta: number): BallState => {
+    const shot = (theta: number): Kinematics => {
       const [left, right] = paddles();
       return step(level(), left, right, only(theta), FRAME).ball;
     };

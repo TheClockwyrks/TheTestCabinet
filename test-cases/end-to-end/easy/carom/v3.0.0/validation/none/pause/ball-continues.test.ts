@@ -2,17 +2,23 @@
 // where it was suspended.
 //
 // specs/ui.md: on `paused`, `back` resumes to `resumeScreen`, and each update
-// reads input first, then advances the screen the input left it on. So the
-// frame that delivers the resume is itself a `playing` frame, and it moves the
-// ball from its paused position by its preserved velocity times `dt`. The
-// fault this catches is a build that treats resuming as a fresh start: a
-// re-serve, or a jump back to the center.
+// reads input first, then advances the screen the input left it on. So the frame
+// that delivers the resume is itself a `playing` frame, and it moves the ball
+// from its paused position by its preserved velocity times `dt`. The fault this
+// catches is a build that treats resuming as a fresh start: a re-serve, or a jump
+// back to the center.
 //
-// The ball is posed in mid-flight, clear of the obstacles so its path is a
-// straight line, frozen, confirmed still, and resumed with one real Escape
-// press; where it is after that one frame is read against the paused position
-// plus `v * dt`, within `MAX_SUBSTEP`, the most a sub-step moves the ball. A
-// teleport is a hundred units out and misses that by any measure.
+// THE RESUME IS THE ONE THING PRESSED. It has to be a real `Escape`, because the
+// frame that delivers it is the frame this point measures — a posed screen change
+// would run no frame and there would be nothing to count. The PAUSE, by contrast,
+// is posed with `setScreen`: reaching the pause menu is this point's ground, and
+// the key that opens it is graded by `navigation/pause-escape`.
+//
+// The ball is posed in mid-flight on an emptied field (`arrangeLiveBall`), so its
+// path is a straight line with nothing on the field to meet, frozen, confirmed
+// still, and resumed; where it is after that one frame is read against the paused
+// position plus `v * dt`, within `MAX_SUBSTEP`, the most a sub-step moves the
+// ball. A teleport is a hundred units out and misses that by any measure.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
@@ -48,9 +54,10 @@ it("resumes the ball from its paused position at its preserved velocity", async 
   await arrangeLiveBall(h, { x: 500, y: 360, vx: 400, vy: -120 });
 
   await h.advance(FLIGHT_TICKS);
-  await h.tap("Escape");
+  await h.debug.setScreen("paused");
   const paused = await h.snapshot();
   assertEqual(paused.screen, "paused");
+  assertEqual(paused.resumeScreen, "playing");
 
   await h.advance(FROZEN_TICKS - HANGING_TICKS);
 

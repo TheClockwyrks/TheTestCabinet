@@ -4,6 +4,12 @@
 // The mirror of `serve-after-p1`, driven out the RIGHT goal so player one
 // scores. Kept as its own check so a build that always serves one way fails the
 // side it gets wrong rather than averaging out across the two.
+//
+// The point runs down an isolated lane. `arrangeGoal` empties the field and
+// spawns back the one ball it fires, so both obstacles are gone rather than
+// dodged, and it drives both paddles out of the mid-field lane. The serve that
+// answers the point leaves the same field: nothing respawns what was cleared, so
+// the launch that is read is the ball on an otherwise empty court.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
@@ -13,7 +19,9 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
-  startPlaying,
+  driveServe,
+  enterPlaying,
+  stageServe,
   type Harness,
 } from "../harness";
 
@@ -39,7 +47,7 @@ afterEach(() => {
 });
 
 it("serves toward player two after player one scores", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   harness.debug.setScore(0, 0);
   arrangeGoal(harness, "right");
 
@@ -51,11 +59,10 @@ it("serves toward player two after player one scores", async () => {
     assertEqual(point.snapshot.score.p1, 1);
     assertEqual(point.snapshot.screen, "countdown");
 
-    harness.debug.serve();
-    const launched = await harness.until((s) => s.screen === "playing", {
-      maxFrames: 60,
-      poll: 1,
-    });
+    // The hold is cut to nothing; the LAUNCH is the build's own, on the frame
+    // after, and `receiver` is not touched by either pose.
+    stageServe(harness);
+    const launched = await driveServe(harness);
     await harness.advance(FLIGHT_TICKS);
 
     assertEqual(launched.hit, true);

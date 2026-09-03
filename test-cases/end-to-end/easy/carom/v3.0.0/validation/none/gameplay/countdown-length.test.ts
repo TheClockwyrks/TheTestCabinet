@@ -1,10 +1,13 @@
 // gameplay/countdown-length — the pre-serve countdown lasts the specified hold.
 //
-// The match is started FROM THE TITLE with menu keys, not through the surface's
-// `startMatch`: the specification has that operation set the hold itself, so a
-// check that used it would be reading a pose the surface had just made rather
-// than the duration the build's own match start runs. Confirming the entry the
-// player takes is what makes the duration the build's.
+// The match is started FROM THE TITLE with menu keys, and that route is this
+// point's SUBJECT rather than a way in: what the item promises is the hold a
+// build's own match start sets running. Every posed route to a countdown reaches
+// it through `reset`, whose title-screen state puts `holdTimer` at `HOLD_TIME`
+// (specs/state.md) — so a check taking one would be timing a value the surface
+// had just posed rather than the one the build's match start chose. Confirming
+// the entry the player takes is what makes the duration the build's, and it is
+// why this is the one check in the category that presses a menu key.
 //
 // From there the real simulation is stepped ONE FRAME at a time until the ball
 // serves. specs/balls.md: every countdown frame subtracts `dt` from

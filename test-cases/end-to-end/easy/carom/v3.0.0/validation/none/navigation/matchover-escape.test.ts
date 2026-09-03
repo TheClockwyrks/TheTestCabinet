@@ -1,11 +1,17 @@
 // navigation/matchover-escape — Escape on the match-over screen returns to the
 // title.
 //
-// specs/ui.md: on `matchover`, `back` returns to the title with `menuIndex = 0`.
-// `Escape` drives both `pause` and `back`, and on a menu screen the build must
-// read it as `back`. The snapshot does not report `menuIndex`, so the index is
-// read by confirming once on the title: index 0 is `SOLO`, so the match that
-// opens is Solo, not the Versus match that ended.
+// specs/ui.md: on `matchover`, `back` returns to the title, restoring every
+// declared field to its title value — `screen = title`, both scores 0, `winner`
+// null — and restoring `menuIndex` from `titleIndex`. `Escape` raises both
+// `pause` and `back` on one frame, and `matchover` reads `back` alone, so one
+// press must land the game on the title.
+//
+// The finished match is posed rather than played out: what is graded here is the
+// key, and driving eleven real points to reach the screen would fail this point
+// whenever the scoring was broken. No title item was ever confirmed on the way,
+// so `titleIndex` is still the `0` a fresh title carries and the `menuIndex` read
+// back is `0` — the figure the review item names.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNull } from "../assert";
@@ -32,9 +38,6 @@ it("returns to the title on Escape", async () => {
   assertEqual(title.screen, "title");
   assertDeepEqual(title.score, { p1: 0, p2: 0 });
   assertNull(title.winner);
-
-  await h.tap("Enter");
-  const opened = await h.snapshot();
-  assertEqual(opened.screen, "countdown");
-  assertEqual(opened.mode, "solo");
+  assertEqual(title.menuIndex, title.titleIndex);
+  assertEqual(title.menuIndex, 0);
 });

@@ -12,15 +12,16 @@
 // sub-step of travel while the left and right depths are the half-span plus
 // `BALL_R`. Placement is read at the end of the contact frame, within one frame
 // of travel of `cy + PADDLE_HALF + BALL_R`, on the field side of it.
+//
+// The field holds that ball alone: both obstacles are removed rather than
+// dodged, so the only body on the line the ball travels is the paddle whose cap
+// this point is about. Nothing here TAKES a paddle. `setPaddleCy` places the
+// struck one at the field centre and leaves it the player's, which is where an
+// idle player's paddle stays, and the far paddle is left entirely alone — the
+// ball travels straight up its own x span, twelve hundred units from it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BALL_R,
-  FIELD_CY,
-  P1_X0,
-  P1_X1,
-  PADDLE_HALF,
-} from "../constants";
+import { BALL_R, FIELD_CY, P1_X0, P1_X1, PADDLE_HALF } from "../constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -28,11 +29,15 @@ import {
   assertLessThanOrEqual,
 } from "../assert";
 import {
+  aimBall,
   ball0,
   captureReplay,
-  clearPaddles,
   createHarness,
-  startPlaying,
+  enterPlaying,
+  placeBall,
+  placePaddle,
+  poseWorld,
+  spinBall,
   TICK_HZ,
   type Harness,
 } from "../harness";
@@ -61,10 +66,12 @@ afterEach(() => {
 });
 
 it("reflects a ball climbing into the paddle's bottom cap", async () => {
-  await startPlaying(h);
-  clearPaddles(h);
-  h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  h.debug.setBall(0, { x: CAP_X, y: START_Y, vx: 0, vy: -SPEED, spin: 0 });
+  enterPlaying(h);
+  poseWorld(h);
+  placePaddle(h, "left", FIELD_CY);
+  placeBall(h, CAP_X, START_Y);
+  aimBall(h, 0, -SPEED);
+  spinBall(h, 0);
   const before = ball0(h.snapshot());
 
   const bounce = await captureReplay(h, "bounce", async () => {

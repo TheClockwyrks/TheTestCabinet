@@ -2,7 +2,7 @@
 // strikes a paddle.
 //
 // Cues are the engine's to announce. The game defines the four names
-// `specs/ui.md` fixes in its `initialize` and asks for one by name; the engine
+// `specs/audio.md` fixes in its `initialize` and asks for one by name; the engine
 // announces every play as a `cue:played` event, synchronously, from inside the
 // call. So a check subscribes and reads what arrived — there is no log to poll,
 // no audio device to own, and no unlock gesture to fake, because a cue is
@@ -11,6 +11,15 @@
 // The event carries the cue's NAME, so a build that fired its scoring blip on
 // every bounce is told apart from one that plays `paddle-hit` on a paddle hit:
 // the name and the frame are both read, and the frame is the collision's own.
+//
+// THE FIELD HOLDS THE CONTACT AND NOTHING ELSE. `arrangePaddleHit` opens live
+// play over one ball and no obstacles at all, so nothing the ball could bank off
+// is on the field to be missed, contained, or heard: the only body it meets on
+// its way in is the paddle this point is about, and the cue list it collects is
+// that contact's alone. The far paddle is the one thing that cannot be removed —
+// it is furniture the game always has — so it is taken from the player and held
+// off the lane, which is the one containment specs/instrumentation.md provides
+// an operation for.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CUES, FIELD_CY } from "../constants";
@@ -21,7 +30,6 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
   watchCues,
   type Harness,
 } from "../harness";
@@ -49,13 +57,11 @@ afterEach(() => {
 });
 
 it("plays the paddle-hit cue on the frame of the contact", async () => {
-  await startPlaying(h, "versus");
   // Posed with the standard run-up rather than on the paddle's face, so the clip
   // opens on a ball approaching. The contact is the same one either way: the
   // struck paddle is still (`vy` defaults to zero, so the lead does not move it),
-  // the lane is clear of both obstacles and of the far paddle, and the ball
-  // arrives at the same point of the same face at the same speed.
-  arrangePaddleHit(h, "left", {
+  // and the ball arrives at the same point of the same face at the same speed.
+  await arrangePaddleHit(h, "left", {
     cy: FIELD_CY,
     ballY: FIELD_CY,
     leadTicks: LEAD_TICKS,

@@ -7,321 +7,544 @@
 // it. It reaches nothing global, and it is inert during normal play: nothing
 // below runs until something calls it.
 //
+// EVERY OPERATION IS ATOMIC. Each one sets ONE field, or one fixed pair of
+// fields, or places or removes ONE entity, or reads the state. There is no
+// operation that takes a partial object and merges it, and none that arranges
+// several unrelated things at once — so a check that wants a driven left paddle
+// and a live AI on the right can have exactly that, and a check about the real
+// controls is a check about controls nothing took away. `reset` is the sole
+// exception, and it is a lifecycle verb rather than a pose: it restores every
+// declared field at once, which is how a check gets back to a known start.
+//
 // Every operation is written in the shape of `update`, because nothing in this
 // build may hold a writable state. A POSE takes the current state and returns
-// the next — `serve(state)`, `setBall(state, 0, patch)` — and a caller drives it
-// through `engine.apply((s) => engine.debug.serve(s))`, which is what makes the
-// next frame's `update` receive what the pose left. A READING takes the state
-// and returns what it read — `snapshot(engine.state)`. The surface is therefore
-// built over no state at all: `createDebugApi()` takes nothing, and the one
-// value it carries is `version`.
+// the next — `setScreen(state, "playing")` — and a caller drives it through
+// `engine.apply((s) => engine.debug.setScreen(s, "playing"))`, which is what
+// makes the next frame's `update` receive what the pose left. A READING takes the
+// state and returns what it read — `snapshot(engine.state)`,
+// `menuItemRect(engine.state, 1)`. The surface is therefore built over no state
+// at all: `createDebugApi()` takes nothing, and the one value it carries is
+// `version`.
 //
 // These calls ARRANGE THE WORLD and never fabricate an outcome: they put the
 // game into a situation, and the game's own `update` — the real collision, the
 // real serve, the real AI — is what runs from there when the runtime advances a
-// frame. So a scenario driven from code behaves exactly like one played by hand,
-// and the only thing the surface needs from the rest of the game is that the
-// game honours the state it is handed.
+// frame. So a scenario driven from code behaves exactly like one played by hand.
 //
 // Everything about DRIVING A BROWSER GAME rather than about Carom belongs to the
-// runtime and is deliberately absent: there is no `step` or `setAutoStep` (the
+// runtime and is deliberately absent: there is no `advance` or `setAutoStep` (the
 // runtime owns the clock and runs exact frames), no `keyDown`, `keyUp` or `press`
-// (the runtime's registered actions are driven directly), and no overlay drawing
-// or toggle (the runtime draws the panel and owns the backtick key).
+// (the runtime's registered actions and pointer are driven directly), and no
+// overlay drawing or toggle (the runtime draws the panel and owns the backtick
+// key).
 
-import { CAROM_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
-import { parkedBall } from "./entities";
-import type { CaromState, Mode, Screen, Side } from "./game";
-import { startMatch, toTitle } from "./match";
+import { CAROM_DEBUG_VERSION } from "./constants";
+import { ballSpeed, parkedBall } from "./entities";
+import type {
+  BallState,
+  CaromState,
+  Mode,
+  ObstacleState,
+  PaddleState,
+  Screen,
+  Side,
+  TrailSample,
+} from "./game";
+import { menuItemRect as rectOf, type MenuRect } from "./menus";
+import { withObstacle } from "./obstacles";
+import { resetToTitle, withObstacleClock } from "./screens";
 import type { DeepReadonly } from "ts-essentials";
 
 /** The current state as every operation below reads it. */
 type State = DeepReadonly<CaromState>;
 
-/** The fields `setPaddle` may set. Anything omitted is left as it is. */
-export interface PaddlePatch {
-  /** Center y, in logical pixels. */
-  cy?: number;
-  /** Vertical velocity in units per second. It PERSISTS across frames, so the paddle is
-   * still moving when it strikes the ball, which is what drives the spin
-   * mechanic. */
-  vy?: number;
-}
+/** The two screens a pause can resume to, which `resumeScreen` holds. */
+export type ResumeScreen = "countdown" | "playing";
 
-/** The fields `setBall` may set. Anything omitted is left as it is. */
-export interface BallPatch {
-  x?: number;
-  y?: number;
-  vx?: number;
-  vy?: number;
-  spin?: number;
-}
+export type { MenuRect };
 
-/** The plain, JSON-serializable view `snapshot()` returns. */
+/** One ball, as a snapshot reports it. */
 export interface BallSnapshot {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  /** The magnitude of the velocity. */
+  /** The magnitude of the velocity: `hypot(vx, vy)`. */
   speed: number;
   spin: number;
-  /** True while the ball is parked for its pre-serve countdown. */
+  /** True while the ball waits at its home point rather than flying. */
   held: boolean;
+  /** Seconds remaining of that wait. */
+  holdTimer: number;
+  /** The ball's trail samples, oldest first. */
+  trail: TrailSample[];
 }
 
 /** One obstacle's live pose, exactly as the oriented collision sees it. */
 export interface ObstacleSnapshot {
-  /** Live center x, in logical pixels. */
+  /** Its index in the order of OBSTACLE_CENTERS. */
+  index: number;
+  /** Live center x, in logical units. */
   cx: number;
-  /** Live center y, in logical pixels: the base center swayed by the clock. */
+  /** Live center y, in logical units: the base center swayed by the clock. */
   cy: number;
   /** Live rotation about the center, in RADIANS. 0 is upright. */
   theta: number;
 }
 
+/** One paddle, as a snapshot reports it. */
+export interface PaddleSnapshot {
+  cy: number;
+  /** The velocity the last frame integrated, in units per second. */
+  vy: number;
+  /** The velocity `setPaddleVy` last set for that side, held across frames. */
+  drivenVy: number;
+  /** Whether the surface is moving that paddle rather than a player or the AI. */
+  driven: boolean;
+}
+
+/**
+ * The plain, JSON-serializable view `snapshot()` returns.
+ *
+ * Every field an operation of this surface sets appears here, so every operation
+ * is verified by setting a value and reading it back. Five figures are READ
+ * rather than posed: `version`, a ball's `speed`, a paddle's `vy`, `muted`, and
+ * `simTime`.
+ */
 export interface CaromSnapshot {
   version: number;
   screen: Screen;
   mode: Mode;
+  menuIndex: number;
+  titleIndex: number;
+  resumeScreen: ResumeScreen;
   score: { p1: number; p2: number };
   winner: Side | null;
   muted: boolean;
-  paddles: {
-    left: { cy: number; vy: number };
-    right: { cy: number; vy: number };
-  };
-  ball: BallSnapshot;
-  /**
-   * Both obstacles' live poses, in the order of OBSTACLE_CENTERS. Read straight
-   * off `state.obstacles`, which the game recomputes from the obstacle clock
-   * every frame — so this reports the pose of the LAST frame that ran, and a
-   * scenario that has just posed the clock should advance one frame before
-   * reading it.
-   */
+  seed: number;
+  rngState: number;
+  paddles: { left: PaddleSnapshot; right: PaddleSnapshot };
+  ai: { tracking: boolean; movement: boolean };
+  receiver: Side;
+  /** The ball, or `null` while no ball is present. */
+  ball: BallSnapshot | null;
+  /** Every obstacle present, each entry under its own index. */
   obstacles: ObstacleSnapshot[];
-  /** Accumulated simulation time, in seconds. */
+  obstacleClock: number;
+  obstacleClockRunning: boolean;
   simTime: number;
 }
 
 /**
- * The surface. Every member but `version` is a transition (state in, next state
- * out) or a reading (state in, value out) over `CaromState`.
+ * The surface a build returns beside its state from `initialize`.
+ *
+ * Each pose is a transition — the current state in, the next state out — and the
+ * two readings read the current state. None of them touches the state it was
+ * handed: `DeepReadonly<CaromState>` is the view the engine hands out, and the
+ * compiler is what says a pose returns a new value rather than mutating.
  */
 export interface CaromDebugApi {
   version: number;
-  reset(state: State, options?: { seed?: number }): CaromState;
-  snapshot(state: State): CaromSnapshot;
-  startMatch(state: State, mode: Mode): CaromState;
-  serve(state: State): CaromState;
+
+  /* The world. */
+
+  clearWorld(state: State): CaromState;
+  spawnBall(state: State): CaromState;
+  spawnObstacle(state: State, index: number): CaromState;
+  reset(state: State): CaromState;
+  setSeed(state: State, seed: number): CaromState;
+
+  /* Screens and menus. */
+
+  setScreen(state: State, screen: Screen): CaromState;
+  setMode(state: State, mode: Mode): CaromState;
+  setMenuIndex(state: State, index: number): CaromState;
+  setTitleIndex(state: State, index: number): CaromState;
+  setResumeScreen(state: State, screen: ResumeScreen): CaromState;
+
+  /* Match state. */
+
   setScore(state: State, p1: number, p2: number): CaromState;
-  setPaddle(state: State, side: Side, patch?: PaddlePatch): CaromState;
-  setBall(state: State, index: number, patch?: BallPatch): CaromState;
-  setAiControl(state: State, enabled: boolean): CaromState;
+  setWinner(state: State, side: Side | null): CaromState;
+  setReceiver(state: State, side: Side): CaromState;
+
+  /* Paddles. */
+
+  setPaddleCy(state: State, side: Side, cy: number): CaromState;
+  setPaddleVy(state: State, side: Side, vy: number): CaromState;
+  setPaddleDriven(state: State, side: Side, driven: boolean): CaromState;
+
+  /* The ball. Gyre plays with one, so none of these takes an index. */
+
+  setBallPosition(state: State, x: number, y: number): CaromState;
+  setBallVelocity(state: State, vx: number, vy: number): CaromState;
+  setBallSpin(state: State, spin: number): CaromState;
+  setBallHeld(state: State, held: boolean): CaromState;
+  setBallHoldTimer(state: State, seconds: number): CaromState;
+
+  /* The AI opponent: one operation per faculty. */
+
+  setAiTracking(state: State, enabled: boolean): CaromState;
+  setAiMovement(state: State, enabled: boolean): CaromState;
+
+  /* The obstacle clock: gyre's alone. */
+
   setObstacleClock(state: State, t: number): CaromState;
+  setObstacleClockRunning(state: State, running: boolean): CaromState;
+
+  /* Readings. */
+
+  snapshot(state: State): CaromSnapshot;
+  menuItemRect(state: State, index: number): MenuRect | null;
+}
+
+// ---- The world ----------------------------------------------------------
+
+/**
+ * The field emptied: no ball, no obstacles. The paddles stay, because a paddle is
+ * field furniture the game always has.
+ *
+ * This is the isolation a check leans on: an entity a check is not about is
+ * REMOVED rather than parked somewhere harmless, so an escaped bystander cannot
+ * make one check report another check's defect.
+ */
+export function clearWorld(state: State): CaromState {
+  return { ...state, ball: null, obstacles: [] };
 }
 
 /**
- * The state with the paddles taken from the player and the AI.
- *
- * Every control operation goes through this, because posing part of a scenario
- * while the keyboard or the opponent still moves a paddle would make the
- * scenario unreproducible. `reset()` gives them back.
+ * The ball placed at its home point, held, with a full hold timer, zero velocity,
+ * zero spin, and an empty trail. Spawning one that is already there returns it to
+ * exactly that arrangement.
  */
-function takeControl(state: State): CaromState {
-  return { ...state, driver: { ...state.driver, paddles: true } };
+export function spawnBall(state: State): CaromState {
+  return { ...state, ball: parkedBall() };
 }
 
 /**
- * Every declared field of the state at its title-screen value.
- *
- * `muted` is deliberately untouched: muting is a player preference the runtime
- * owns, and a reset is not a reason to start making noise again.
+ * Obstacle `index` placed in the pose specs/playfield.md's formulas give it at the
+ * CURRENT obstacle clock, so it stands exactly where the obstacles already on the
+ * field stand. An index naming no obstacle leaves the field as it is.
  */
-function poseTitle(state: State, seed: number): CaromState {
+export function spawnObstacle(state: State, index: number): CaromState {
   return {
-    ...toTitle(state),
-    simTime: 0,
-    rngState: seed,
-    driver: { paddles: false, ai: false, vy: { left: 0, right: 0 } },
+    ...state,
+    obstacles: withObstacle(state.obstacles, index, state.obstacleClock),
   };
 }
 
 /**
- * Return to the title screen, handing the paddles back to the player and (in
- * Solo) the AI, and reseed the game's randomness.
+ * The game returned to its title-screen state: every declared field at the value
+ * specs/state.md gives it, with the world placed exactly as `spawnBall` and
+ * `spawnObstacle` place it.
  *
- * It does not touch the clock: who advances time is the runtime's business, and
- * a driver that wants the game off real time says so to the runtime rather than
- * to the game.
+ * `muted` alone is left as it is, and the clock is untouched: who advances time
+ * is the runtime's business, and a caller that wants the game off real time says
+ * so to the runtime rather than to the game.
  */
-export function reset(state: State, options?: { seed?: number }): CaromState {
-  return poseTitle(state, options?.seed ?? DEFAULT_SEED);
+export function reset(state: State): CaromState {
+  return resetToTitle(state);
 }
 
-/** A pure read. It never changes anything. */
+/**
+ * The game's random generator seeded: `seed` becomes the value given, and
+ * `rngState` becomes that generator's starting state.
+ *
+ * mulberry32 is seeded by its state word, so the two are the same number here —
+ * they are reported separately because `rngState` moves with every draw and
+ * `seed` does not.
+ */
+export function setSeed(state: State, seed: number): CaromState {
+  return { ...state, seed, rngState: seed };
+}
+
+// ---- Screens and menus --------------------------------------------------
+
+/**
+ * The current screen, and NOTHING else: the scores, the world and the menu
+ * indices are left as they are, and the screen set then behaves exactly as
+ * specs/ui.md states for that screen.
+ */
+export function setScreen(state: State, screen: Screen): CaromState {
+  return { ...state, screen };
+}
+
+export function setMode(state: State, mode: Mode): CaromState {
+  return { ...state, mode };
+}
+
+export function setMenuIndex(state: State, index: number): CaromState {
+  return { ...state, menuIndex: index };
+}
+
+export function setTitleIndex(state: State, index: number): CaromState {
+  return { ...state, titleIndex: index };
+}
+
+export function setResumeScreen(
+  state: State,
+  screen: ResumeScreen,
+): CaromState {
+  return { ...state, resumeScreen: screen };
+}
+
+// ---- Match state --------------------------------------------------------
+
+/**
+ * Both scores, as a precondition. The win and deuce rules still resolve through
+ * real play, so a match ends when a real point is driven.
+ */
+export function setScore(state: State, p1: number, p2: number): CaromState {
+  return { ...state, score: { p1, p2 } };
+}
+
+export function setWinner(state: State, side: Side | null): CaromState {
+  return { ...state, winner: side };
+}
+
+export function setReceiver(state: State, side: Side): CaromState {
+  return { ...state, receiver: side };
+}
+
+// ---- Paddles ------------------------------------------------------------
+
+/** One side's paddle with `patch` applied, leaving the other side alone. */
+function withPaddle(
+  state: State,
+  side: Side,
+  patch: Partial<PaddleState>,
+): CaromState {
+  return {
+    ...state,
+    paddles: { ...state.paddles, [side]: { ...state.paddles[side], ...patch } },
+  };
+}
+
+/**
+ * That paddle's center y. It is set as given rather than clamped, so a caller
+ * reads back what it wrote; the next frame that moves the paddle clamps it by the
+ * one rule specs/playfield.md fixes.
+ */
+export function setPaddleCy(state: State, side: Side, cy: number): CaromState {
+  return withPaddle(state, side, { cy });
+}
+
+/**
+ * That paddle's `drivenVy` — the velocity it travels at while it is DRIVEN — and
+ * nothing else. Its `vy` is left as it is, because `vy` is the velocity the last
+ * frame actually integrated, which a pose cannot fabricate: a `drivenVy` set
+ * while the paddle stands still reaches `vy` on the first frame advanced with
+ * that side driven.
+ *
+ * `drivenVy` is held across frames whether or not the paddle is driven, so a
+ * paddle posed with a velocity is still swinging when a ball reaches it.
+ */
+export function setPaddleVy(state: State, side: Side, vy: number): CaromState {
+  return withPaddle(state, side, { drivenVy: vy });
+}
+
+/**
+ * That paddle taken from the player, or handed back — ONE side, leaving the other
+ * exactly as it was. It is the only pose that changes whose paddle a paddle is.
+ */
+export function setPaddleDriven(
+  state: State,
+  side: Side,
+  driven: boolean,
+): CaromState {
+  return withPaddle(state, side, { driven });
+}
+
+// ---- The ball -----------------------------------------------------------
+
+/**
+ * The ball with `patch` applied, or the state as it was while no ball is present:
+ * every ball operation has no effect on an empty field
+ * (specs/instrumentation.md).
+ */
+function withBall(state: State, patch: Partial<BallState>): CaromState {
+  if (!state.ball) return state;
+  return { ...state, ball: { ...state.ball, ...patch } };
+}
+
+export function setBallPosition(
+  state: State,
+  x: number,
+  y: number,
+): CaromState {
+  return withBall(state, { x, y });
+}
+
+export function setBallVelocity(
+  state: State,
+  vx: number,
+  vy: number,
+): CaromState {
+  return withBall(state, { vx, vy });
+}
+
+export function setBallSpin(state: State, spin: number): CaromState {
+  return withBall(state, { spin });
+}
+
+export function setBallHeld(state: State, held: boolean): CaromState {
+  return withBall(state, { held });
+}
+
+/**
+ * The seconds remaining of the ball's hold. `0` ends it, and the ball is served
+ * on the next advanced frame through the game's own rule (specs/balls.md) rather
+ * than by this operation.
+ */
+export function setBallHoldTimer(state: State, seconds: number): CaromState {
+  return withBall(state, { holdTimer: seconds });
+}
+
+// ---- The AI opponent ----------------------------------------------------
+
+/** Whether the AI senses the ball and chooses a target. */
+export function setAiTracking(state: State, enabled: boolean): CaromState {
+  return { ...state, ai: { ...state.ai, tracking: enabled } };
+}
+
+/** Whether the AI's paddle travels toward that target. */
+export function setAiMovement(state: State, enabled: boolean): CaromState {
+  return { ...state, ai: { ...state.ai, movement: enabled } };
+}
+
+// ---- The obstacle clock -------------------------------------------------
+
+/**
+ * The obstacle clock at `t` seconds, with both obstacles taking the pose that
+ * value gives them on this very frame — the clock is the sole input to the poses,
+ * so the two can never be read apart.
+ */
+export function setObstacleClock(state: State, t: number): CaromState {
+  return withObstacleClock(state, t);
+}
+
+/**
+ * Whether the clock advances with the frame. While it does not, it keeps its
+ * value across frames and both obstacles hold their poses, which is how a
+ * scenario faces one chosen, known orientation instead of obstacles sweeping
+ * through the shot. The freeze is its own gate: it takes nothing else away.
+ */
+export function setObstacleClockRunning(
+  state: State,
+  running: boolean,
+): CaromState {
+  return { ...state, obstacleClockRunning: running };
+}
+
+// ---- Readings -----------------------------------------------------------
+
+function ballView(ball: DeepReadonly<BallState>): BallSnapshot {
+  return {
+    x: ball.x,
+    y: ball.y,
+    vx: ball.vx,
+    vy: ball.vy,
+    speed: ballSpeed(ball),
+    spin: ball.spin,
+    held: ball.held,
+    holdTimer: ball.holdTimer,
+    trail: ball.trail.map((sample) => ({
+      x: sample.x,
+      y: sample.y,
+      t: sample.t,
+    })),
+  };
+}
+
+function obstacleView(obstacle: DeepReadonly<ObstacleState>): ObstacleSnapshot {
+  return {
+    index: obstacle.index,
+    cx: obstacle.cx,
+    cy: obstacle.cy,
+    theta: obstacle.theta,
+  };
+}
+
+function paddleView(paddle: DeepReadonly<PaddleState>): PaddleSnapshot {
+  return {
+    cy: paddle.cy,
+    vy: paddle.vy,
+    drivenVy: paddle.drivenVy,
+    driven: paddle.driven,
+  };
+}
+
+/** A pure read of the whole declared state. It never changes anything. */
 export function snapshot(state: State): CaromSnapshot {
   return {
     version: CAROM_DEBUG_VERSION,
     screen: state.screen,
     mode: state.mode,
+    menuIndex: state.menuIndex,
+    titleIndex: state.titleIndex,
+    resumeScreen: state.resumeScreen,
     score: { p1: state.score.p1, p2: state.score.p2 },
     winner: state.winner,
     muted: state.muted,
+    seed: state.seed,
+    rngState: state.rngState,
     paddles: {
-      left: {
-        cy: state.paddles.left.cy,
-        vy: state.paddles.left.vy,
-      },
-      right: {
-        cy: state.paddles.right.cy,
-        vy: state.paddles.right.vy,
-      },
+      left: paddleView(state.paddles.left),
+      right: paddleView(state.paddles.right),
     },
-    ball: {
-      x: state.ball.x,
-      y: state.ball.y,
-      vx: state.ball.vx,
-      vy: state.ball.vy,
-      speed: Math.hypot(state.ball.vx, state.ball.vy),
-      spin: state.ball.spin,
-      held: state.holdTimer > 0,
-    },
-    obstacles: state.obstacles.map((o) => ({
-      cx: o.cx,
-      cy: o.cy,
-      theta: o.theta,
-    })),
+    ai: { tracking: state.ai.tracking, movement: state.ai.movement },
+    receiver: state.receiver,
+    ball: state.ball ? ballView(state.ball) : null,
+    obstacles: state.obstacles.map(obstacleView),
+    obstacleClock: state.obstacleClock,
+    obstacleClockRunning: state.obstacleClockRunning,
     simTime: state.simTime,
   };
 }
 
 /**
- * A real match, started exactly as choosing it from the menu would. The match
- * opens on the pre-serve countdown, with the first serve aimed at player one.
- */
-export function startMatchOp(state: State, mode: Mode): CaromState {
-  return startMatch(takeControl(state), mode);
-}
-
-/**
- * The ball launched now, ending the pre-serve countdown immediately instead of
- * waiting it out. On a live rally it re-serves: the ball is returned to its
- * spawn point and handed back to a countdown that has already elapsed.
+ * The hit region of item `index` on the menu the current screen shows, in logical
+ * units, or `null` on `countdown` and `playing`, which show no menu, and when
+ * `index` names no item of that menu.
  *
- * The launch itself is the game's. Expiring the countdown is what this does, so
- * the ball leaves on the next frame the runtime advances, through the build's
- * own serve — at SERVE_SPEED, toward `state.receiver`. On any other screen the
- * state is returned as it was.
+ * This is the BUILD's own layout reported, not a layout the specification fixed:
+ * `src/menus.ts` declares it once and `src/render.ts` draws from the same table,
+ * so the region a pointer selects from is the region the item was drawn in.
  */
-export function serve(state: State): CaromState {
-  if (state.screen !== "countdown" && state.screen !== "playing") return state;
-  const held = takeControl(state);
-  const parked: CaromState =
-    held.screen === "playing"
-      ? { ...held, ball: parkedBall(), trail: [], screen: "countdown" }
-      : held;
-  return { ...parked, holdTimer: 0 };
-}
-
-/**
- * The two scores set directly, as a precondition. The win and deuce rules
- * still resolve through real play, so drive a real point to end a match.
- */
-export function setScore(state: State, p1: number, p2: number): CaromState {
-  return { ...takeControl(state), score: { p1, p2 } };
-}
-
-/**
- * A paddle posed or moved. A `vy` set here persists across frames, because it
- * is the driver's held velocity rather than a one-frame nudge.
- */
-export function setPaddle(
-  state: State,
-  side: Side,
-  patch?: PaddlePatch,
-): CaromState {
-  const held = takeControl(state);
-  const paddle = held.paddles[side];
-  const cy = patch?.cy !== undefined ? patch.cy : paddle.cy;
-  const vy = patch?.vy !== undefined ? patch.vy : paddle.vy;
-  const driverVy =
-    patch?.vy !== undefined
-      ? { ...held.driver.vy, [side]: patch.vy }
-      : held.driver.vy;
-  return {
-    ...held,
-    paddles: { ...held.paddles, [side]: { cy, vy } },
-    driver: { ...held.driver, vy: driverVy },
-  };
-}
-
-/** A ball placed and aimed. `index` is `0`, selecting the single ball in play. */
-export function setBall(
-  state: State,
-  index: number,
-  patch?: BallPatch,
-): CaromState {
-  if (index !== 0) {
-    throw new RangeError(
-      `Carom: setBall index ${index} — this variant has one ball, index 0`,
-    );
-  }
-  const held = takeControl(state);
-  const ball = held.ball;
-  return {
-    ...held,
-    ball: {
-      x: patch?.x !== undefined ? patch.x : ball.x,
-      y: patch?.y !== undefined ? patch.y : ball.y,
-      vx: patch?.vx !== undefined ? patch.vx : ball.vx,
-      vy: patch?.vy !== undefined ? patch.vy : ball.vy,
-      spin: patch?.spin !== undefined ? patch.spin : ball.spin,
-    },
-  };
-}
-
-/**
- * The AI-controlled (right) paddle handed back to the computer opponent for the
- * rest of the driven scenario, so advancing the game runs the real AI against
- * the posed ball while the left paddle and the ball stay under the caller's
- * control. Solo only; `false` is the default, and `reset()` clears it.
- */
-export function setAiControl(state: State, enabled: boolean): CaromState {
-  const held = takeControl(state);
-  return { ...held, driver: { ...held.driver, ai: Boolean(enabled) } };
-}
-
-/**
- * The obstacles posed by setting the obstacle clock and holding them there.
- *
- * `t = 0` is upright at the base centers; a larger `t` sways and rotates them
- * exactly as normal play would at that moment. Because this is a control
- * operation it takes the paddles, and while `driver.paddles` is true the game
- * holds the obstacle clock still rather than advancing it with the frame — so a
- * scenario faces one chosen, known orientation instead of obstacles sweeping
- * through the shot. `reset()` returns to normal, moving obstacles.
- *
- * Only the CLOCK is set here. The poses themselves are the game's, recomputed
- * from this clock on its next frame, which is why a scenario advances a frame
- * before reading `snapshot().obstacles` back.
- */
-export function setObstacleClock(state: State, t: number): CaromState {
-  return { ...takeControl(state), obstacleClock: t };
+export function menuItemRect(state: State, index: number): MenuRect | null {
+  return rectOf(state.screen, index);
 }
 
 /** The surface, as `initialize` returns it beside the opening state. */
 export function createDebugApi(): CaromDebugApi {
   return {
     version: CAROM_DEBUG_VERSION,
+    clearWorld,
+    spawnBall,
+    spawnObstacle,
     reset,
-    snapshot,
-    startMatch: startMatchOp,
-    serve,
+    setSeed,
+    setScreen,
+    setMode,
+    setMenuIndex,
+    setTitleIndex,
+    setResumeScreen,
     setScore,
-    setPaddle,
-    setBall,
-    setAiControl,
+    setWinner,
+    setReceiver,
+    setPaddleCy,
+    setPaddleVy,
+    setPaddleDriven,
+    setBallPosition,
+    setBallVelocity,
+    setBallSpin,
+    setBallHeld,
+    setBallHoldTimer,
+    setAiTracking,
+    setAiMovement,
     setObstacleClock,
+    setObstacleClockRunning,
+    snapshot,
+    menuItemRect,
   };
 }

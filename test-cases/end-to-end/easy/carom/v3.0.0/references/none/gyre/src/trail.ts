@@ -1,14 +1,15 @@
 // Carom — the ball's motion trail.
 //
-// The trail is `CaromState.trail`: ball positions stamped with the simulation time
-// they were recorded at, OLDEST FIRST, one sample per frame at whatever rate the
-// runtime is delivering frames. Everything older than TRAIL_TIME is dropped, so the
-// trail is a fixed slice of TIME rather than a fixed number of samples — which is
-// what makes the comet `src/render.ts` draws from it stretch as the ball speeds up
-// and collapse to nothing while the ball is held before a serve.
+// The trail is the ball's own `trail` (specs/state.md): ball positions stamped
+// with the simulation time they were recorded at, OLDEST FIRST, one sample per
+// frame at whatever rate the runtime is delivering frames. Everything older than
+// TRAIL_TIME is dropped, so the trail is a fixed slice of TIME rather than a fixed
+// number of samples — which is what makes the comet `src/render.ts` draws from it
+// stretch as the ball speeds up and collapse to nothing while the ball is held
+// before a serve.
 
 import { TRAIL_TIME } from "./constants";
-import type { CaromState, TrailSample } from "./game";
+import type { BallState, TrailSample } from "./game";
 
 /**
  * A cap on retained history, not on the trail's length.
@@ -20,9 +21,9 @@ import type { CaromState, TrailSample } from "./game";
 const MAX_SAMPLES = 256;
 
 /** Record the ball's current position and drop everything outside the window. */
-export function recordTrail(state: CaromState): void {
-  state.trail.push({ x: state.ball.x, y: state.ball.y, t: state.simTime });
-  pruneTrail(state.trail, state.simTime);
+export function recordTrail(ball: BallState, now: number): void {
+  ball.trail.push({ x: ball.x, y: ball.y, t: now });
+  pruneTrail(ball.trail, now);
 }
 
 /** Drop the samples older than TRAIL_TIME, and any beyond the retention cap. */

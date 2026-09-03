@@ -14,6 +14,13 @@
 // bus really is silenced: a cue played while muted is still announced, at a gain
 // of zero, so a build that flipped a boolean of its own and left the bus running
 // is told apart from one that muted the runtime.
+//
+// THE FIELD THE SECOND CHECK DRIVES HOLDS ONE BALL AND NOTHING ELSE.
+// `arrangeLiveBall` clears it and spawns that ball back, aimed straight up into
+// the top wall with both paddles held out of the way, so every cue the record
+// below carries belongs to the one bounce this check staged — an obstacle left
+// standing could sound a cue of its own, and a cue at full gain is what the
+// assertion is looking for.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

@@ -16,27 +16,34 @@
 // build that never sub-steps. The coarse step below is an ordinary bad moment
 // on a real machine (twenty frames a second), where one frame at the ceiling
 // is forty-nine units, more than twice the width of what it strikes.
+//
+// The field holds the probe ball alone: both obstacles are removed rather than
+// dodged, so the only body the ball can meet on its way down the lane is the
+// paddle the point is about. The struck paddle is PLACED at the field centre
+// and left the player's — `setPaddleCy` sets the centre and takes nothing —
+// because what is under test is the collision, not who is moving the paddle,
+// and an idle player's paddle stands exactly where it was put. The far paddle
+// is left alone for the same reason: the probe travels away from it and never
+// comes within six hundred units of its face.
 
 import { afterEach, it } from "vitest";
 import { ConstantClock } from "@test-cabinet/simple-2d";
-import {
-  BALL_R,
-  FIELD_CY,
-  MAX_SUBSTEP,
-  P1_X1,
-  SPEED_CAP,
-} from "../constants";
+import { BALL_R, FIELD_CY, MAX_SUBSTEP, P1_X1, SPEED_CAP } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
 import {
+  aimBall,
   ball0,
   captureReplay,
   createHarness,
-  PARKED_CY,
-  startPlaying,
+  enterPlaying,
+  placeBall,
+  placePaddle,
+  poseWorld,
+  spinBall,
   TICK_MS,
   type Harness,
 } from "../harness";
@@ -44,7 +51,11 @@ import {
 /** The suite's own cadence, and a frame that carries the ball past a paddle. */
 const STEPS_MS = [TICK_MS, 50];
 
-/** Where the probe starts, down the mid-field lane that clears both obstacles. */
+/**
+ * Where the probe starts, level with the struck paddle: far enough back that
+ * even the coarse frame below spends whole frames approaching rather than
+ * landing already overlapping the paddle.
+ */
 const START_X = 760;
 
 /** The sweep cap for a probe, at the given step size. */
@@ -64,7 +75,7 @@ afterEach(() => {
 async function harnessAt(stepMs: number): Promise<Harness> {
   const harness = await createHarness({ clock: new ConstantClock(stepMs) });
   live.push(harness);
-  await startPlaying(harness);
+  enterPlaying(harness);
   return harness;
 }
 
@@ -73,16 +84,11 @@ it("rebounds off a paddle at the ceiling speed rather than scoring through it", 
 
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
-    // The far paddle is parked out of the lane so it cannot interfere.
-    harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-    harness.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
-    harness.debug.setBall(0, {
-      x: START_X,
-      y: FIELD_CY,
-      vx: -SPEED_CAP,
-      vy: 0,
-      spin: 0,
-    });
+    poseWorld(harness);
+    placePaddle(harness, "left", FIELD_CY);
+    placeBall(harness, START_X, FIELD_CY);
+    aimBall(harness, -SPEED_CAP, 0);
+    spinBall(harness, 0);
 
     const rebound = await captureReplay(harness, "fast", async () => {
       const swept = await harness.until((s) => ball0(s).vx > 0, {

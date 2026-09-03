@@ -1,10 +1,9 @@
-// Carom — canonical constants. CASE-PROVIDED. Do not edit.
+// Carom — canonical constants. Supplied with the project. Do not edit.
 //
 // Every figure the specification fixes is named here exactly once, so no number
-// in this build is a guess and no spec value is left to interpretation. The
-// game's own code, and the checks run against it, read the same names.
+// in this build is a guess and no spec value is left to interpretation.
 //
-// Every value is in the fixed 1280x720 logical-pixel coordinate space defined by
+// Every value is in the fixed 1280x720 logical coordinate space defined by
 // `specs/overview.md` (origin top-left, x right, y down). That space is the
 // runtime's logical design size: the runtime scales and letterboxes it onto the
 // canvas, so no value here is ever expressed in real pixels and gameplay never
@@ -22,7 +21,7 @@ import type { ActionBinding } from "@test-cabinet/structured-2d";
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
 
-/** The field center — the ball's spawn point and the AI's rest position. */
+/** The field center — the ball's home point and the AI's rest position. */
 export const FIELD_CX = 640;
 export const FIELD_CY = 360;
 
@@ -112,7 +111,7 @@ export const TRAIL_TIME = 0.13; // seconds of recent travel the motion trail dra
 
 // ---- AI ------------------------------------------------------------------
 
-export const AI_SPEED = 560; // deliberately slower than the human's 720
+export const AI_SPEED = 560; // top speed, in units per second
 export const AI_REACT = 0.12; // reaction lag time constant, in seconds
 export const AI_DEADZONE = 10; // stop within this of the target while defending
 export const AI_HOME_Y = FIELD_CY; // returned to while there is nothing to defend
@@ -159,7 +158,7 @@ export const TAGS = {
 
 export type TagName = (typeof TAGS)[keyof typeof TAGS];
 
-// ---- Input actions (specs/modes/*.md) ------------------------------------
+// ---- Input actions (specs/ui.md) -----------------------------------------
 
 /** Carom is two paddles facing each other: one vertical slider per side. */
 export const LAYOUT = "dual-vertical";
@@ -188,9 +187,8 @@ export type ActionName = (typeof ACTIONS)[number];
  * physical key rather than a layout-dependent character; every action is
  * digital, so no binding names a kind.
  *
- * `Escape` deliberately drives TWO actions, `pause` and `back` — one key meaning
- * "get me out of here", which is a pause during a match and a step back on a
- * menu. The game reads whichever of the two the current screen calls for.
+ * `Escape` is bound to both `pause` and `back`; `specs/ui.md` states how each
+ * screen resolves the two.
  */
 export const BINDINGS: Readonly<Record<ActionName, ActionBinding>> = {
   "p1-up": { keys: ["KeyW"] },
@@ -203,9 +201,9 @@ export const BINDINGS: Readonly<Record<ActionName, ActionBinding>> = {
   mute: { keys: ["KeyM"] },
 };
 
-// ---- Audio cues (specs/ui.md) --------------------------------------------
+// ---- Audio cues (specs/audio.md) -----------------------------------------
 
-/** The four cue names, one per event. Define and play exactly these. */
+/** The cue names, one per event. `specs/audio.md` states when each plays. */
 export const CUES = {
   paddleHit: "paddle-hit",
   wallBounce: "wall-bounce",
@@ -220,5 +218,5 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 /** The version the debug surface reports as `version`. */
 export const CAROM_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
+/** The seed the game's generator starts a fresh title screen from. */
 export const DEFAULT_SEED = 1;

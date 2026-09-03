@@ -1,9 +1,14 @@
 // gameplay/countdown-length — the pre-serve countdown lasts the specified hold.
 //
-// The match is started FROM THE TITLE with menu keys, not through the debug
-// API's `startMatch`: that operation sets the hold itself, so a check that used
-// it would be measuring the case's own code rather than the build's. Confirming
-// the entry the player takes is what makes the duration the build's.
+// The match is started FROM THE TITLE with menu keys, and this is the one point
+// in the category where that route is load-bearing. Every way of POSING a match
+// open arrives through `reset` and `spawnBall`, which arm the hold themselves, so
+// a check that posed one would be measuring the hold it had just written rather
+// than the hold the build's own "Starting a match" set. Confirming the entry the
+// player takes is what makes the duration the build's, and it is also why the
+// field is left exactly as that match start arranged it: reposing it would restart
+// the very countdown being measured. Nothing on that field can reach the reading
+// anyway — the ball is held and the obstacles never move.
 //
 // From there the real simulation is stepped ONE FRAME at a time until the ball
 // serves. At the harness's 120 Hz clock the hold is a whole number of frames, so

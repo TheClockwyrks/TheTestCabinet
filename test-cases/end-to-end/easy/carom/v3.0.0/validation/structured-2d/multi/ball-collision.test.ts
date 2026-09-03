@@ -6,7 +6,11 @@
 // same speed. The line of centers is horizontal, so an elastic exchange between
 // equal masses swaps the two horizontal velocities exactly — each ball leaves the
 // way the other arrived, at the speed it arrived with, and neither gains any.
-// The third ball is parked in the goal channel and takes no part.
+//
+// The third ball is not on the field at all and neither obstacle is: the world
+// holds the pair this point is about and nothing else, so nothing can reach the
+// lane and be mistaken for the exchange. The paddles cannot be removed, so both
+// are held out of it.
 //
 // The real resolution is what produces that: nothing here writes a post-contact
 // velocity, and the two balls are posed far enough apart that the approach is a
@@ -21,12 +25,15 @@ import {
 } from "../assert";
 import {
   captureReplay,
-  clearPaddles,
   createHarness,
-  startPlaying,
+  openIsolatedPlay,
+  parkPaddles,
   type Harness,
 } from "../harness";
-import { readBalls } from "./harness";
+import { ballAt, multiOps } from "./harness";
+
+/** How many balls the pair this point is about needs on the field. */
+const PAIR = 2;
 
 /** The closing speed each ball carries into the contact, in units per second. */
 const APPROACH = 400;
@@ -52,37 +59,31 @@ afterEach(() => {
 });
 
 it("exchanges the two velocities head-on and separates the pair", async () => {
-  await startPlaying(h);
-  clearPaddles(h);
-  h.debug.setBall(0, {
-    x: LEFT_X,
-    y: FIELD_CY,
-    vx: APPROACH,
-    vy: 0,
-    spin: 0,
-  });
-  h.debug.setBall(1, {
-    x: RIGHT_X,
-    y: FIELD_CY,
-    vx: -APPROACH,
-    vy: 0,
-    spin: 0,
-  });
+  await openIsolatedPlay(h, { contents: { balls: PAIR } });
+  parkPaddles(h);
+
+  const ops = multiOps(h);
+  ops.setBallPosition(0, LEFT_X, FIELD_CY);
+  ops.setBallVelocity(0, APPROACH, 0);
+  ops.setBallSpin(0, 0);
+  ops.setBallPosition(1, RIGHT_X, FIELD_CY);
+  ops.setBallVelocity(1, -APPROACH, 0);
+  ops.setBallSpin(1, 0);
 
   const meeting = await captureReplay(h, "collision", async () => {
-    const met = await h.until((s) => readBalls(s)[0].vx < 0, {
+    const met = await h.until((s) => ballAt(s, 0).vx < 0, {
       maxFrames: 120,
       poll: 1,
     });
     // Read HERE, on the frame the pair came apart: the exchange is what is being
     // graded, and spin-free flight afterwards would only carry it further.
-    const balls = readBalls(met.snapshot);
+    const pair = [ballAt(met.snapshot, 0), ballAt(met.snapshot, 1)];
     await h.advance(DEPARTURE_TICKS);
-    return { met, balls };
+    return { met, pair };
   });
 
   assertEqual(meeting.met.hit, true);
-  const [first, second] = meeting.balls;
+  const [first, second] = meeting.pair;
 
   // Each leaves the way the other arrived.
   assertLessThanOrEqual(Math.abs(first.vx + APPROACH), VELOCITY_TOLERANCE);

@@ -71,11 +71,7 @@ describe("registerDiagnostics", () => {
       mode: "versus",
       score: { p1: 4, p2: 7 },
       balls: title.balls.map((ball, i) =>
-        i === 1
-          ? { ...ball, x: 123.456, spin: -250 }
-          : i === 2
-            ? { ...ball, held: true }
-            : ball,
+        i === 1 ? { ...ball, x: 123.456, spin: -250, held: false } : ball,
       ),
     };
 
@@ -88,6 +84,19 @@ describe("registerDiagnostics", () => {
     expect(values["ball 2 pos"]).toBe("640.0, 540.0 held");
     // And the opening state still reads as the opening state: nothing was kept.
     expect(read(title)["screen"]).toBe("title");
+  });
+
+  it("says so plainly for a ball that is not in the field", () => {
+    const { api, read } = collector();
+    registerDiagnostics(api);
+
+    const title = createInitialState();
+    const emptied: CaromState = { ...title, balls: [title.balls[0]] };
+    const values = read(emptied);
+    expect(values["ball 0 pos"]).toBe("640.0, 180.0 held");
+    expect(values["ball 1 pos"]).toBe("—");
+    expect(values["ball 1 vel"]).toBe("—");
+    expect(values["ball 2 spin"]).toBe("—");
   });
 
   it("changes nothing it reads", () => {

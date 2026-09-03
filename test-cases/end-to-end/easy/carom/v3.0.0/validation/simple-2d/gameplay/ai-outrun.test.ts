@@ -7,6 +7,10 @@
 // about 427 units from PADDLE_MAX_CY, which at AI_SPEED takes 0.76 s. A paddle
 // moving at the rule's speed is about 135 units short when the ball passes, so
 // player one scores. An AI that moves faster than it should blocks it.
+//
+// The field holds that one ball: both obstacles are removed, so nothing can slow
+// or turn the shot on its way in, and the human paddle is driven out of the
+// lane. Both of the AI's faculties are on, and its paddle is left the AI's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_MAX_CY, SPEED_CAP } from "../constants";
@@ -47,7 +51,7 @@ afterEach(() => {
 });
 
 it("lets a fast shot placed out of reach get past it", async () => {
-  await arrangeAiScenario(harness, SCENARIO);
+  arrangeAiScenario(harness, SCENARIO);
 
   const { result } = await captureReplay(harness, "scored", async () => {
     const outcome = await driveAiScenario(harness);

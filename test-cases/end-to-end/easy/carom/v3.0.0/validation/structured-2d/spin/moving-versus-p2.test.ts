@@ -4,6 +4,10 @@
 // real bounce imparts spin from that motion, curving the ball's flight. The
 // contact sits below mid-field for the same reason as its player-one sibling: the
 // swing needs room upstream to be travelling when it strikes.
+//
+// The contact runs over a field holding one ball and neither obstacle, with the
+// far paddle held off the lane, so the struck paddle is the only body the ball
+// meets between the pose and the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
@@ -14,7 +18,6 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -56,8 +59,8 @@ afterEach(() => {
 });
 
 it("curves the ball off a downward swing of player two's paddle", async () => {
-  await startPlaying(harness, "versus");
-  arrangePaddleHit(harness, "right", {
+  await arrangePaddleHit(harness, "right", {
+    mode: "versus",
     cy: CONTACT_CY,
     vy: PADDLE_SPEED,
     ballY: CONTACT_BALL_Y,

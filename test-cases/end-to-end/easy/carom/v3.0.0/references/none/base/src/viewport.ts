@@ -31,19 +31,30 @@ export interface Viewport {
 }
 
 /**
- * Where the runtime reads the drawing surface's size and pixel density, and what
- * it listens for keys on. Every measurement the runtime would otherwise take from
- * the DOM passes through here.
+ * Where the runtime reads the drawing surface's size, position and pixel density,
+ * and what it listens for input on. Every measurement the runtime would otherwise
+ * take from the DOM passes through here.
  */
 export interface Surface {
   /** The canvas element's laid-out width, in CSS pixels. */
   cssWidth(): number;
   /** The canvas element's laid-out height, in CSS pixels. */
   cssHeight(): number;
+  /**
+   * The canvas element's top-left corner, in CSS pixels, in the coordinates a
+   * pointer event reports its position in.
+   */
+  origin(): Point;
   /** Device pixels per CSS pixel. */
   dpr(): number;
-  /** The target key events are listened for on. */
+  /** The target key and pointer events are listened for on. */
   events(): EventTarget;
+}
+
+/** A position, in whichever space its reader is working in. */
+export interface Point {
+  x: number;
+  y: number;
 }
 
 /** A device pixel ratio worth multiplying by; anything else collapses to `1`. */
@@ -98,6 +109,32 @@ export function fitViewport(
   };
 }
 
+/**
+ * Where a point on the canvas, in CSS pixels from the canvas's own top-left,
+ * falls in the logical field.
+ *
+ * The inverse of the fit above, which is what a pointer position has to be taken
+ * through so that a position the game reads and a region the game reports lie in
+ * one coordinate space (specs/overview.md). A degenerate fit — a canvas the page
+ * has not laid out yet — maps nothing, because there is no field on screen to map
+ * onto. A point outside the field maps to a position outside it, so a press on a
+ * letterbox bar is a press on nothing rather than on the nearest edge.
+ */
+export function logicalPoint(
+  view: Viewport,
+  dpr: number,
+  cssX: number,
+  cssY: number,
+): Point | null {
+  const ratio = normalizeDpr(dpr);
+  const cssScale = view.scale / ratio;
+  if (!(cssScale > 0)) return null;
+  return {
+    x: (cssX - view.offsetX / ratio) / cssScale,
+    y: (cssY - view.offsetY / ratio) / cssScale,
+  };
+}
+
 /** The backing-store size, in whole device pixels, of a CSS dimension. */
 export function deviceSize(cssSize: number, dpr: number): number {
   return Math.round(normalizeSize(cssSize) * normalizeDpr(dpr));
@@ -113,6 +150,10 @@ export function domSurface(canvas: HTMLCanvasElement): Surface {
   return {
     cssWidth: () => canvas.clientWidth,
     cssHeight: () => canvas.clientHeight,
+    origin: () => {
+      const box = canvas.getBoundingClientRect();
+      return { x: box.left, y: box.top };
+    },
     dpr: () => window.devicePixelRatio,
     events: () => document,
   };

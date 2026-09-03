@@ -3,6 +3,11 @@
 // Spin comes from the paddle's vertical velocity at contact, so a still paddle
 // adds none and the return flies straight. The paddle pose is the precondition;
 // the bounce, and the spin it does or does not add, are the build's own physics.
+//
+// The field holds that ball alone: both obstacles are removed, so nothing on
+// the approach can turn the ball before it reaches the paddle. Only the struck
+// paddle is taken from the player — `setPaddleDriven` changes one side — and
+// the far one, which cannot be removed, is driven out of the lane.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY } from "../constants";
@@ -13,7 +18,7 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
+  enterPlaying,
   type Harness,
 } from "../harness";
 
@@ -50,7 +55,7 @@ afterEach(() => {
 });
 
 it("imparts no spin from a still paddle", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,

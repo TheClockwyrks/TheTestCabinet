@@ -14,6 +14,11 @@
 // bus really is silenced: a cue played while muted is still announced, at a gain
 // of zero, so a build that flipped a boolean of its own and left the bus running
 // is told apart from one that muted the runtime.
+//
+// The bounce that carries the second half runs on a field holding one ball and
+// nothing else: both obstacles are removed and both paddles are driven out of the
+// lane, so the ball fired straight up into the top wall meets the wall and only
+// the wall. Nothing about mute is posed — the bit is flipped by the real key.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -58,7 +63,7 @@ it("silences the runtime's cue bus while it is on", async () => {
   // Straight up into the top wall, which is the shortest real event that plays a
   // cue. Muting survives a `reset`, so the drive below is still muted.
   const played = watchCues(h);
-  await arrangeLiveBall(h, { x: FIELD_CX, y: 80, vx: 0, vy: -500 });
+  arrangeLiveBall(h, { x: FIELD_CX, y: 80, vx: 0, vy: -500 });
   const bounced = await h.until((s) => ball0(s).vy > 0, { maxFrames: 120 });
 
   assertEqual(bounced.hit, true);

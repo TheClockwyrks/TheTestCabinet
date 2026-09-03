@@ -1,8 +1,11 @@
 // ball/wall-bounce-top — the ball reflects off the top wall.
 //
-// The ball is fired straight up the field's center line, clear of both
-// obstacles and both paddles, into the top wall. specs/balls.md fixes the
-// result exactly: if `y - BALL_R < 0` and `vy < 0`, then `y = BALL_R` and `vy = -vy`. Speed is unchanged, so the bounce is a pure reflection.
+// The ball is fired straight up the field's center line into the top wall,
+// over a field holding one ball and nothing else: neither obstacle is on it
+// and both paddles are held off the lane, so the wall is the only thing the
+// flight can meet. specs/balls.md fixes the result exactly: if
+// `y - BALL_R < 0` and `vy < 0`, then `y = BALL_R` and `vy = -vy`. Speed is
+// unchanged, so the bounce is a pure reflection.
 //
 // Placement is read at the end of the frame of the contact. The frame is cut
 // into sub-steps, and a sub-step that follows the one that struck carries the

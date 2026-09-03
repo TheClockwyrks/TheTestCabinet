@@ -1,4 +1,4 @@
-// CASE-PROVIDED. Do not edit.
+// Supplied with the project. Do not edit.
 //
 // This config names the BUILD'S OWN tests: the `*.test.ts` files written beside
 // the sources under `src/`. They run in process, in Node, with no browser and no

@@ -8,8 +8,13 @@
 // carry.
 //
 // The cue's NAME is asserted as well as its arrival: the four cues exist so the
-// four events are told apart by ear (specs/ui.md), and a build that plays the
+// four events are told apart by ear (specs/audio.md), and a build that plays the
 // wrong one on a wall bounce has broken exactly that.
+//
+// THE FIELD HOLDS THE CLIMBING BALL ALONE. `arrangeLiveBall` opens live play over
+// one ball and no obstacles, so nothing but the wall is there to be struck and
+// the cues collected are the reflection's own. Both paddles are held still out of
+// the column, because paddles cannot be removed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CUES, FIELD_CX } from "../constants";
@@ -28,9 +33,9 @@ import {
  *
  * Far enough below the top wall for half a second of approach, so the clip opens
  * on a ball climbing rather than on one already touching what it reflects off.
- * The column it rises up is clear of both obstacles and of both paddles, so the
- * flight is a straight line and the reflection is the same one a shorter run-up
- * produces — only later, and with something to watch first.
+ * The field is empty but for the ball itself, so the flight is a straight line
+ * and the reflection is the same one a shorter run-up produces — only later, and
+ * with something to watch first.
  */
 const START_Y = 280;
 

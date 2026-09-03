@@ -2,34 +2,35 @@
 // and the field keeps running.
 //
 // The mirror of `multi/scoring-p1`, so a build that scores on only one edge fails
-// the side it gets wrong rather than passing on an average. The two balls this
-// check is not about are re-parked in the RIGHT goal channel first: the shared
-// park is the left one, which is exactly where this scenario sends its ball.
+// the side it gets wrong rather than passing on an average. The field is cleared
+// back to the one ball this point is about, which is what makes the two checks
+// exact mirrors: with nothing else on the field there is no corner for the other
+// balls to be tucked into, and so no side of the field that a park would have
+// made special.
 //
 // What differs from a single-ball build is what does NOT happen: nothing freezes.
-// The screen is still `playing` on the frame the score turns over, because the
-// other balls are still in play and there is no post-point countdown to return
-// to.
+// The screen is still `playing` on the frame the score turns over, because a
+// point takes one ball out of play rather than stopping the field, and there is
+// no post-point countdown to return to.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
-  createHarness,
-  parkSpares,
+  createMultiHarness,
   startPlaying,
-  type Harness,
+  type MultiHarness,
 } from "../harness";
-import { RIGHT_PARKS, readBalls } from "./harness";
+import { ballAt } from "./harness";
 
 /** Frames recorded after the point resolves, so the clip shows a point SCORED. */
 const AFTERMATH_TICKS = 60; // 0.5 s
 
-let h: Harness;
+let h: MultiHarness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createMultiHarness();
 });
 
 afterEach(async () => {
@@ -38,7 +39,6 @@ afterEach(async () => {
 
 it("gives player two the point when a ball leaves the left goal", async () => {
   await startPlaying(h);
-  await parkSpares(h, RIGHT_PARKS);
   await h.debug.setScore(0, 0);
   await arrangeGoal(h, "left");
 
@@ -57,5 +57,5 @@ it("gives player two the point when a ball leaves the left goal", async () => {
   // The field carries on: the ball that crossed is the only thing the point
   // changed.
   assertEqual(point.snapshot.screen, "playing");
-  assertEqual(readBalls(point.snapshot)[0].held, true);
+  assertEqual(ballAt(point.snapshot, 0).held, true);
 });

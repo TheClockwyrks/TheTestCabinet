@@ -13,17 +13,24 @@
 // countdown, which is the `gameplay/pause-during-countdown` item's separate
 // point. The menus are the navigation checks' surface, not this item's: a build
 // with a broken menu and a working pause must fail those checks, not this one.
-// The posed opening hands only the PADDLES to the debug driver, so the pause
-// key still reaches the build. The key event is dispatched at the target the
-// runtime listens on, so the action is raised by the binding the case declares
-// rather than by anything this check reaches into.
+// The posed opening takes NOTHING from the player — not a paddle, not a key — so
+// the pause key reaches the build over the same path it reaches it over for a
+// player. The key event is dispatched at the target the runtime listens on, so
+// the action is raised by the binding the case declares rather than by anything
+// this check reaches into.
+//
+// THE FIELD HOLDS THE ONE BALL AND NOTHING ELSE. What is paused is a match in
+// motion, and the ball in flight is what the motion is; the obstacles come off,
+// since a frozen obstacle is no part of what a pause key does. Both paddles stay
+// with whoever plays them, which in a match nobody is playing means standing
+// still where the match start put them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  startPlaying,
+  openIsolatedPlay,
   type Harness,
 } from "../harness";
 
@@ -50,7 +57,7 @@ afterEach(() => {
 });
 
 it("pauses a live Versus match when Escape is pressed", async () => {
-  await startPlaying(h, "versus");
+  await openIsolatedPlay(h, { mode: "versus" });
 
   await captureReplay(h, "pause", async () => {
     await h.advance(LIVE_TICKS);

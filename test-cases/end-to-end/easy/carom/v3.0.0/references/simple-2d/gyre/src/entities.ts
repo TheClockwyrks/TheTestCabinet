@@ -8,6 +8,7 @@
 import {
   FIELD_CX,
   FIELD_CY,
+  HOLD_TIME,
   P1_X0,
   P1_X1,
   P2_X0,
@@ -17,8 +18,30 @@ import {
   PADDLE_MIN_CY,
   type Rect,
 } from "./constants";
-import type { BallState, PaddleState, Side } from "./game";
+import type { BallState, Side } from "./game";
 import type { DeepReadonly } from "ts-essentials";
+
+/**
+ * The part of a ball the physics moves: where it is, where it is going, and how
+ * hard it is curving.
+ *
+ * `BallState` carries this plus the pre-serve hold and the trail, neither of
+ * which a collision touches, so `src/physics.ts` is written against this narrower
+ * shape and the caller merges the result back into the ball it came from.
+ */
+export interface Kinematics {
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly spin: number;
+}
+
+/** The part of a paddle a collision and the integrator read. */
+export interface PaddleMotion {
+  readonly cy: number;
+  readonly vy: number;
+}
 
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
@@ -49,13 +72,18 @@ export function paddleRect(side: Side, cy: number): Rect {
  * while a movement action is held. `PaddleState.vy` is documented as exactly that,
  * and the spin mechanic in `src/physics.ts` reads it.
  *
+ * This is the ONE integrator every mover of a paddle goes through — the player's
+ * actions, the AI, and the debug surface's driven velocity alike
+ * (specs/playfield.md) — so a driven paddle is clamped by exactly the rule a
+ * played one is.
+ *
  * A zero-length frame is guarded: a zero step moves nothing and can clamp nothing,
  * and dividing by it would put a NaN into the velocity that drives spin.
  */
 export function integratePaddle(
-  paddle: DeepReadonly<PaddleState>,
+  paddle: DeepReadonly<PaddleMotion>,
   dt: number,
-): PaddleState {
+): PaddleMotion {
   const target = paddle.cy + paddle.vy * dt;
   const clamped = clamp(target, PADDLE_MIN_CY, PADDLE_MAX_CY);
   const vy =
@@ -64,11 +92,24 @@ export function integratePaddle(
 }
 
 /** The ball's current speed: the magnitude of its velocity. Never stored. */
-export function ballSpeed(ball: DeepReadonly<BallState>): number {
+export function ballSpeed(ball: DeepReadonly<Kinematics>): number {
   return Math.hypot(ball.vx, ball.vy);
 }
 
-/** The ball at its spawn point, motionless and with no spin. */
+/**
+ * The ball as `spawnBall` and every respawn place it: at its home point, held
+ * for a full `HOLD_TIME`, motionless, with no spin and no trail
+ * (specs/instrumentation.md).
+ */
 export function parkedBall(): BallState {
-  return { x: FIELD_CX, y: FIELD_CY, vx: 0, vy: 0, spin: 0 };
+  return {
+    x: FIELD_CX,
+    y: FIELD_CY,
+    vx: 0,
+    vy: 0,
+    spin: 0,
+    held: true,
+    holdTimer: HOLD_TIME,
+    trail: [],
+  };
 }

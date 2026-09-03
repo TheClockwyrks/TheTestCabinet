@@ -10,6 +10,10 @@
 // really does move, imparts `PADDLE_SPEED * SPIN_FROM_PADDLE` (612) within five
 // percent, so passing proves the build reads real motion rather than never
 // adding spin at all.
+//
+// The field is emptied to this ball alone, and both paddles are taken from the
+// player: the paddles are the instrument of the contact being measured, so a
+// paddle the AI or a stray key could still move would make the reading theirs.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";

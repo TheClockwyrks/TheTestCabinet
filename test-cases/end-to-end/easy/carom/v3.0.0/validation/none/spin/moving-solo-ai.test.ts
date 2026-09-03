@@ -13,6 +13,11 @@
 // 500 units per second, two sub-steps a frame, so the contact may resolve in
 // the first sub-step and the second decays the spin a fraction of a percent;
 // and the AI's own per-frame integration decides where in the frame it stands.
+//
+// The field is emptied to this ball alone, and NEITHER paddle is taken: the AI
+// moves its paddle only while that paddle is the AI's, so a check about the
+// AI's own swing must leave it alone. The human paddle is merely parked off
+// the lane, and in Solo with no key held nothing moves it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

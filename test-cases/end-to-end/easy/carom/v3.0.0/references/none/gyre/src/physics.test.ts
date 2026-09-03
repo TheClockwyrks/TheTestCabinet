@@ -16,7 +16,7 @@ import {
   SPIN_FROM_PADDLE,
   SPIN_HALFLIFE,
 } from "./constants";
-import { ballSpeed } from "./entities";
+import { ballSpeed, createBall, createPaddle } from "./entities";
 import { obstaclePose } from "./obstacles";
 import { step } from "./physics";
 import type { BallState, ObstacleState, PaddleState } from "./game";
@@ -36,13 +36,20 @@ function obstacles(t = 0): ObstacleState[] {
 const UPRIGHT = obstacles(0);
 
 function ball(patch: Partial<BallState> = {}): BallState {
-  return { x: 640, y: 360, vx: 0, vy: 0, spin: 0, ...patch };
+  return {
+    ...createBall(),
+    x: 640,
+    y: 360,
+    held: false,
+    holdTimer: 0,
+    ...patch,
+  };
 }
 
 function paddles(leftCy = 360, rightCy = 360): [PaddleState, PaddleState] {
   return [
-    { cy: leftCy, vy: 0 },
-    { cy: rightCy, vy: 0 },
+    { ...createPaddle(), cy: leftCy },
+    { ...createPaddle(), cy: rightCy },
   ];
 }
 
@@ -234,8 +241,8 @@ describe("oriented obstacles", () => {
   /** A pose for obstacle A alone, with B moved far out of the way. */
   function only(theta: number, cy = A.y): ObstacleState[] {
     return [
-      { cx: A.x, cy, theta },
-      { cx: -10_000, cy: -10_000, theta: 0 },
+      { index: 0, cx: A.x, cy, theta },
+      { index: 1, cx: -10_000, cy: -10_000, theta: 0 },
     ];
   }
 

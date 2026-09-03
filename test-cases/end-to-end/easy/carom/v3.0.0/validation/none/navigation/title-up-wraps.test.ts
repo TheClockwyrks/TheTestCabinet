@@ -2,13 +2,16 @@
 // last.
 //
 // specs/ui.md: on the title, `p1-up` or `p2-up` moves `menuIndex` up one,
-// wrapping from 0 to the last item. The snapshot does not report `menuIndex`,
-// so the selection is read by confirming: from the wrapped index 2 the entry
-// taken is `HOW TO PLAY`.
+// wrapping from 0 to the last item. The selection is posed on the first item —
+// where `reset` leaves it — and one real `ArrowUp` is pressed from there.
+//
+// The snapshot reports `menuIndex`, so the wrapped selection is read straight off
+// it rather than inferred by confirming, which would also grade the confirm.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
+import { TITLE_HOWTO, TITLE_SOLO, selectTitle } from "./screens";
 
 let h: Harness;
 
@@ -21,10 +24,12 @@ afterEach(async () => {
 });
 
 it("wraps the selection from SOLO to HOW TO PLAY on an up press", async () => {
-  await h.debug.reset();
+  await selectTitle(h, TITLE_SOLO);
+
   await h.tap("ArrowUp");
   await captureStill(h, "menu");
-  await h.tap("Enter");
 
-  assertEqual((await h.snapshot()).screen, "howto");
+  const wrapped = await h.snapshot();
+  assertEqual(wrapped.screen, "title");
+  assertEqual(wrapped.menuIndex, TITLE_HOWTO);
 });

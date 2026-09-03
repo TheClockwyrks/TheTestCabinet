@@ -42,7 +42,13 @@ export interface Surface {
   cssHeight(): number;
   /** Device pixels per CSS pixel. */
   dpr(): number;
-  /** The target key events are listened for on. */
+  /**
+   * The canvas element's top-left corner in the client's coordinates, in CSS
+   * pixels — what a pointer position has to be measured from before it can be
+   * taken through the fit.
+   */
+  origin(): { x: number; y: number };
+  /** The target key, pointer, and touch events are listened for on. */
   events(): EventTarget;
 }
 
@@ -98,6 +104,31 @@ export function fitViewport(
   };
 }
 
+/**
+ * A client position (CSS pixels, measured from the canvas's top-left corner)
+ * taken back through the fit into the field's logical units.
+ *
+ * The exact inverse of the map {@link Viewport} documents, so a logical point
+ * drawn at `(x, y)` and a pointer landing on that pixel resolve to the same
+ * place — which is what `specs/overview.md` requires of a position the game reads
+ * and a region the game reports. A degenerate fit (`scale` of `0`, which is what
+ * a canvas reports before the page has laid out) has no inverse, so it answers
+ * `NaN` rather than a position that would be a lie.
+ */
+export function toLogical(
+  viewport: Viewport,
+  cssX: number,
+  cssY: number,
+  dpr: number,
+): { x: number; y: number } {
+  if (!(viewport.scale > 0)) return { x: Number.NaN, y: Number.NaN };
+  const ratio = normalizeDpr(dpr);
+  return {
+    x: (cssX * ratio - viewport.offsetX) / viewport.scale,
+    y: (cssY * ratio - viewport.offsetY) / viewport.scale,
+  };
+}
+
 /** The backing-store size, in whole device pixels, of a CSS dimension. */
 export function deviceSize(cssSize: number, dpr: number): number {
   return Math.round(normalizeSize(cssSize) * normalizeDpr(dpr));
@@ -114,6 +145,10 @@ export function domSurface(canvas: HTMLCanvasElement): Surface {
     cssWidth: () => canvas.clientWidth,
     cssHeight: () => canvas.clientHeight,
     dpr: () => window.devicePixelRatio,
+    origin: () => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: rect.left, y: rect.top };
+    },
     events: () => document,
   };
 }

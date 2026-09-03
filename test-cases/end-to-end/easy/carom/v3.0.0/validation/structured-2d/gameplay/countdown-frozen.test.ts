@@ -4,9 +4,9 @@
 // what this check decides, so the menus are not its to drive — then advanced
 // partway and paused; far more than the whole hold is then let pass. A countdown
 // that kept running while paused would elapse and the ball would serve — so the
-// game must stay paused with the ball still held at centre, resume back INTO the
-// countdown rather than into a live rally, and then finish the remaining hold
-// and actually launch.
+// game must stay paused with the ball still held at its home point, resume back
+// INTO the countdown rather than into a live rally, and then finish the remaining
+// hold and actually launch.
 //
 // HOW THE FROZEN TIMER IS READ. The hold's remaining seconds have no one
 // spec-fixed home in every variant — the one-ball matches count `state.holdTimer`
@@ -29,6 +29,7 @@ import {
   ball0,
   captureReplay,
   createHarness,
+  isolateField,
   openCountdown,
   TICK_HZ,
   type Harness,
@@ -61,6 +62,9 @@ afterEach(() => {
 
 it("freezes the countdown while paused and resumes it where it stopped", async () => {
   await openCountdown(harness, "solo");
+  // One ball, no obstacles. `isolateField` respawns the ball with a full hold, so
+  // the countdown the frames below are counted against starts here.
+  isolateField(harness);
 
   // The whole bracket is one recorded section: a countdown part-run, the press
   // that pauses it, the long stretch in which it does NOT run, the press that

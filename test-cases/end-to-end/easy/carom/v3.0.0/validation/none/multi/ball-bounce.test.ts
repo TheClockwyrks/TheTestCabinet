@@ -1,10 +1,12 @@
 // multi/ball-bounce — a cue sounds on the frame two balls meet.
 //
 // Two balls are posed level with each other on the mid-field lane, closing head
-// on across an empty stretch of field, and the third is parked in the goal
-// channel. Nothing else in the scenario can make a sound: no wall, no paddle and
-// no obstacle is touched between the pose and the contact, so a sound emitted on
-// the frame the pair comes apart belongs to the pair meeting.
+// on across an empty stretch of field. THE FIELD HOLDS THOSE TWO AND NOTHING
+// ELSE: the third ball is off it rather than tucked into a goal channel, and both
+// obstacles come off with it, so nothing in the scenario can make a sound but the
+// pair. No wall, no paddle and no obstacle is touched between the pose and the
+// contact, so a sound emitted on the frame the pair comes apart belongs to the
+// pair meeting.
 //
 // WHAT IS OBSERVED. The sound itself, not the synthesis: `audio-init.js` watches
 // a Web Audio source being started or an `<audio>` element being played, so a
@@ -24,13 +26,16 @@ import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import { FIELD_CY } from "../constants";
 import {
   captureReplay,
-  clearPaddles,
-  createHarness,
+  createMultiHarness,
+  placeBall,
   startPlaying,
   watchCues,
-  type Harness,
+  type MultiHarness,
 } from "../harness";
-import { readBalls } from "./harness";
+import { ballAt, isolateBalls } from "./harness";
+
+/** The two balls the contact is between, in play order. */
+const PAIR = [0, 1];
 
 /** The closing speed each ball carries into the contact, in units per second. */
 const APPROACH = 400;
@@ -42,10 +47,10 @@ const RIGHT_X = 760;
 /** Frames of the departure recorded after the contact. */
 const DEPARTURE_TICKS = 45; // 0.375 s
 
-let h: Harness;
+let h: MultiHarness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createMultiHarness();
 });
 
 afterEach(async () => {
@@ -55,25 +60,13 @@ afterEach(async () => {
 it("sounds a cue on the frame the pair meets, and not before it", async () => {
   await startPlaying(h);
   await h.armAudio();
-  await clearPaddles(h);
-  await h.debug.setBall(0, {
-    x: LEFT_X,
-    y: FIELD_CY,
-    vx: APPROACH,
-    vy: 0,
-    spin: 0,
-  });
-  await h.debug.setBall(1, {
-    x: RIGHT_X,
-    y: FIELD_CY,
-    vx: -APPROACH,
-    vy: 0,
-    spin: 0,
-  });
+  await isolateBalls(h, PAIR);
+  await placeBall(h, { x: LEFT_X, y: FIELD_CY, vx: APPROACH }, PAIR[0]);
+  await placeBall(h, { x: RIGHT_X, y: FIELD_CY, vx: -APPROACH }, PAIR[1]);
 
   const played = watchCues(h);
   const meeting = await captureReplay(h, "bounce", async () => {
-    const met = await h.until((s) => readBalls(s)[0].vx < 0, {
+    const met = await h.until((s) => ballAt(s, PAIR[0]).vx < 0, {
       maxFrames: 120,
       poll: 1,
     });

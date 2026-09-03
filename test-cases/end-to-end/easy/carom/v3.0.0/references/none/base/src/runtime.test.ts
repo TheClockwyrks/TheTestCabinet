@@ -10,6 +10,7 @@
 
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { PointerFrame } from "./pointer";
 import {
   MAX_FRAME_SECONDS,
   createRuntime,
@@ -31,6 +32,8 @@ interface ToyState {
   /** Whether `p1-up` was held on each frame, and whether it edged. */
   held: number[];
   pressed: boolean[];
+  /** What the pointer did on each frame, in logical units. */
+  pointers: PointerFrame[];
   cues: string[];
 }
 
@@ -45,6 +48,7 @@ const toy: Game<ToyState> = {
       transforms: [],
       held: [],
       pressed: [],
+      pointers: [],
       cues: [],
     };
     api.diagnostics.register("frames", () => state.deltas.length);
@@ -54,6 +58,7 @@ const toy: Game<ToyState> = {
     state.deltas.push(dt);
     state.held.push(api.input.value("p1-up"));
     state.pressed.push(api.input.pressed("p1-up"));
+    state.pointers.push(api.pointer.frame());
   },
   render(state, api) {
     state.renders += 1;
@@ -64,6 +69,20 @@ const toy: Game<ToyState> = {
     api.ctx.fillRect(0, 0, 40, 40);
   },
 };
+
+/** A `PointerEvent`-shaped event: the runtime reads the id and the position. */
+class PointerEventLike extends Event {
+  readonly pointerId: number;
+  readonly clientX: number;
+  readonly clientY: number;
+
+  constructor(type: string, x: number, y: number, pointerId = 1) {
+    super(type);
+    this.clientX = x;
+    this.clientY = y;
+    this.pointerId = pointerId;
+  }
+}
 
 /** A `KeyboardEvent`-shaped event: the runtime reads `code` and `repeat`. */
 class KeyEvent extends Event {
@@ -99,7 +118,13 @@ interface Harness {
   ctx: SKRSContext2D;
   events: EventTarget;
   /** The element's laid-out size, which a test may change mid-run. */
-  size: { cssWidth: number; cssHeight: number; dpr: number };
+  size: {
+    cssWidth: number;
+    cssHeight: number;
+    dpr: number;
+    left: number;
+    top: number;
+  };
   canvas: { width: number; height: number };
   pixel(x: number, y: number): [number, number, number, number];
   dispose(): void;
@@ -112,11 +137,18 @@ function harness(): Harness {
     getContext: () => ctx,
   }) as unknown as HTMLCanvasElement;
 
-  const size = { cssWidth: FIELD_W, cssHeight: FIELD_H, dpr: 1 };
+  const size = {
+    cssWidth: FIELD_W,
+    cssHeight: FIELD_H,
+    dpr: 1,
+    left: 0,
+    top: 0,
+  };
   const events = new EventTarget();
   const surface: Surface = {
     cssWidth: () => size.cssWidth,
     cssHeight: () => size.cssHeight,
+    origin: () => ({ x: size.left, y: size.top }),
     dpr: () => size.dpr,
     events: () => events,
   };
@@ -182,6 +214,7 @@ describe("initializing", () => {
       surface: {
         cssWidth: () => FIELD_W,
         cssHeight: () => FIELD_H,
+        origin: () => ({ x: 0, y: 0 }),
         dpr: () => 1,
         events: () => new EventTarget(),
       },
@@ -432,6 +465,7 @@ describe("wiring", () => {
       surface: {
         cssWidth: () => FIELD_W,
         cssHeight: () => FIELD_H,
+        origin: () => ({ x: 0, y: 0 }),
         dpr: () => 1,
         events: () => h.events,
       },
@@ -470,6 +504,104 @@ describe("wiring", () => {
     h.events.dispatchEvent(new Event("keydown"));
     h.runtime.advance(1 / 60);
     expect(h.state.held).toEqual([0]);
+  });
+});
+
+// ---- The pointer --------------------------------------------------------
+
+describe("the pointer", () => {
+  /** The report the frame at `index` was handed. */
+  function report(index: number): PointerFrame {
+    return h.state.pointers[index];
+  }
+
+  it("hands the game positions in logical units, through the frame's fit", () => {
+    // Half size and offset down the page: a point at the element's own center is
+    // the field's center whatever the fit, which is the property a menu's hit
+    // regions depend on.
+    h.size.cssWidth = FIELD_W / 2;
+    h.size.cssHeight = FIELD_H / 2;
+    h.size.left = 40;
+    h.size.top = 24;
+
+    h.events.dispatchEvent(
+      new PointerEventLike("pointermove", 40 + FIELD_W / 4, 24 + FIELD_H / 4),
+    );
+    h.runtime.advance(1 / 60);
+
+    expect(report(0).moved?.x).toBeCloseTo(FIELD_W / 2, 6);
+    expect(report(0).moved?.y).toBeCloseTo(FIELD_H / 2, 6);
+  });
+
+  it("reports a press and, on a later frame, the release that completes it", () => {
+    h.events.dispatchEvent(new PointerEventLike("pointerdown", 100, 200));
+    h.runtime.advance(1 / 60);
+    expect(report(0).pressed).toEqual({ x: 100, y: 200 });
+    expect(report(0).released).toBeNull();
+
+    h.events.dispatchEvent(new PointerEventLike("pointermove", 140, 200));
+    h.events.dispatchEvent(new PointerEventLike("pointerup", 140, 200));
+    h.runtime.advance(1 / 60);
+    expect(report(1).released).toEqual({
+      from: { x: 100, y: 200 },
+      to: { x: 140, y: 200 },
+    });
+  });
+
+  it("discards an edge at the end of the frame it arrived in", () => {
+    h.events.dispatchEvent(new PointerEventLike("pointermove", 100, 200));
+    h.runtime.advance(1 / 60, 2);
+    expect(report(0).moved).toEqual({ x: 100, y: 200 });
+    expect(report(1).moved).toBeNull();
+  });
+
+  it("keeps an edge between advances while the game is off the clock", () => {
+    h.runtime.setAutoStep(false);
+    h.runtime.start();
+    h.events.dispatchEvent(new PointerEventLike("pointermove", 100, 200));
+    repaint(0);
+    repaint(16); // repaints present the last frame; they must not eat the move
+    h.runtime.advance(1 / 60);
+    expect(report(0).moved).toEqual({ x: 100, y: 200 });
+  });
+
+  it("forgets a press on request, so a gesture cannot span two screens", () => {
+    const forgetful: Game<ToyState> = {
+      ...toy,
+      update(state, api, dt) {
+        toy.update(state, api, dt);
+        if (state.deltas.length === 1) api.pointer.forget();
+      },
+    };
+    const other = createRuntime<ToyState>({
+      canvas: h.canvas as unknown as HTMLCanvasElement,
+      width: FIELD_W,
+      height: FIELD_H,
+      game: forgetful,
+      background: "#000",
+      surface: {
+        cssWidth: () => FIELD_W,
+        cssHeight: () => FIELD_H,
+        origin: () => ({ x: 0, y: 0 }),
+        dpr: () => 1,
+        events: () => h.events,
+      },
+    });
+    const state = other.initialize();
+
+    h.events.dispatchEvent(new PointerEventLike("pointerdown", 100, 200));
+    other.advance(1 / 60);
+    h.events.dispatchEvent(new PointerEventLike("pointerup", 100, 200));
+    other.advance(1 / 60);
+
+    expect(state.pointers[1].released).toBeNull();
+    other.destroy();
+  });
+
+  it("ignores a pointer event carrying no position", () => {
+    h.events.dispatchEvent(new Event("pointerdown"));
+    h.runtime.advance(1 / 60);
+    expect(report(0)).toEqual({ moved: null, pressed: null, released: null });
   });
 });
 

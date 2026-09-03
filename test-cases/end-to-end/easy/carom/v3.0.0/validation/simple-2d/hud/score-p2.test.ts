@@ -8,6 +8,17 @@
 // The score must be drawn as a run whose digits read as that score — a label
 // around it and zero padding (`07`) are fine, the other score's digit in the
 // same run is not — with the run's midpoint on its side of the field's center.
+//
+// The match is posed straight onto `playing` with `enterPlaying`, which serves
+// nothing and takes no paddle: this point is about a drawn figure, so it needs a
+// live match and nothing that happens inside one.
+//
+// The field is emptied. The requirement concerns a run of text, which no ball and
+// no obstacle draws, and a ball left standing on a `playing` screen is a body the
+// build's own physics is free to move — one that scored would replace the very
+// figures this frame is read for. `clearWorld` removes them outright rather than
+// parking them somewhere harmless. The paddles are the field furniture no
+// operation removes, and neither is touched: nothing here reads one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CX } from "../constants";
@@ -16,7 +27,8 @@ import {
   captureStill,
   createHarness,
   drawnTextSpans,
-  startPlaying,
+  enterPlaying,
+  poseWorld,
   type Harness,
 } from "../harness";
 
@@ -34,12 +46,14 @@ afterEach(() => {
 });
 
 it("draws player two's score right of the field's center", async () => {
-  await startPlaying(h, "versus");
+  enterPlaying(h, "versus");
+  poseWorld(h, { balls: [], obstacles: [] });
   h.debug.setScore(P1_SCORE, P2_SCORE);
   h.calls.length = 0;
   await h.advance(1);
   captureStill(h, "hud");
 
+  assertEqual(h.snapshot().screen, "playing");
   assertDeepEqual(h.snapshot().score, { p1: P1_SCORE, p2: P2_SCORE });
   const runs = drawnTextSpans(h).filter(
     (span) => Number.parseInt(span.text.replace(/\D/g, ""), 10) === P2_SCORE,

@@ -63,6 +63,15 @@ the menus answer to `W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions 
 so it pauses in a match and steps back on a menu: it resumes from the pause
 menu, and returns to the title from the how-to and match-over screens.
 
+The menus also take a **mouse** and a **finger**. Moving the pointer onto an item
+selects it, and pressing and releasing inside one item confirms it; a press that
+begins on one item and ends on another confirms nothing, so sliding off a control
+cancels it. A touch contact has no hover, so the item it lands on is selected as
+it lands and confirmed when the finger lifts there. The pointer is read once per
+frame, after that frame's keys, and the regions the items occupy are the ones the
+debug surface reports (below), so what a player aims at and what a driven check
+aims at are the same rectangles.
+
 The **backtick** key (`` ` ``) toggles the diagnostics overlay. That key belongs
 to the runtime (`src/overlay.ts`), not to the game.
 
@@ -76,7 +85,7 @@ top or bottom edge sends it off at up to ~55°.
 
 Carom runs on no engine, so the layer every browser game needs is part of the
 build. It is sized for this game rather than for every 2D game — there is no
-asset loader, because Carom loads nothing — and it is five files:
+asset loader, because Carom loads nothing — and it is six files:
 
 - **`src/runtime.ts`** — the frame loop and the wiring. It measures each frame's
   delta in **seconds** (clamping the gap a backgrounded tab resumes with), clears
@@ -92,6 +101,11 @@ asset loader, because Carom loads nothing — and it is five files:
 - **`src/keyboard.ts`** — named actions over `KeyboardEvent.code` bindings, with
   edge detection: an edge is armed when an action leaves rest, consumed by the
   first reader, and discarded at the end of its frame.
+- **`src/pointer.ts`** — the mouse and the finger as one per-frame report: what
+  moved, what was pressed, and which press came up where, in logical units
+  through the same fit the frame is drawn under. It listens to pointer events
+  alone, which is the one stream both devices arrive on, and it holds a press
+  across frames because a confirm takes both of its edges.
 - **`src/audio-bus.ts`** — cues declared by name and synthesized as one
   oscillator through one gain envelope, over a Web Audio context opened on the
   first user gesture. Nothing about audio can fail a frame.
@@ -114,22 +128,43 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   either way, so the canvas always shows the state the last frame left. Because
   every rate is integrated against the frame's delta, `advance(1, 1)` and
   `advance(1, 60)` reach the same outcome.
-- `reset(options?)` and `snapshot()` — return to the title screen (seedable) and
-  read a JSON-serializable view of the full state.
-- `startMatch(mode)`, `serve()`, `setScore(p1, p2)`, `setPaddle(side, state)`,
-  and `setBall(index, state)` — set up a scenario through the game's own state;
-  calling any of them hands paddle control to the caller until `reset()`.
-- `setAiControl(enabled)` — in Solo, hand the AI's paddle back to the computer
-  opponent for the rest of a driven scenario, so a check can exercise the real AI
-  against a posed shot.
+- `clearWorld()`, `spawnBall()`, `spawnObstacle(index)` — the **world**. A
+  scenario empties the field and spawns back exactly the bodies its requirement
+  is about; an absent ball takes no part in a frame and an absent obstacle has no
+  collision.
+- `reset()` and `setSeed(seed)` — return every declared field to its title-screen
+  value, and seed the generator. A reset leaves the mute bit and the clock alone,
+  because neither is a field of the state.
+- `setScreen`, `setMode`, `setMenuIndex`, `setTitleIndex`, `setResumeScreen`,
+  `setScore(p1, p2)`, `setWinner`, `setReceiver` — the screens, the menus and the
+  match, one field each.
+- `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side,
+  driven)` — the paddles, one side at a time. A driven paddle moves at that
+  side's `drivenVy` and neither the keys nor the AI touch it; the other side goes
+  on playing normally.
+- `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`,
+  `setBallHoldTimer` — the ball. This variant plays with one, so none of them
+  takes an index. Ending the hold does not launch the ball: the game's own rule
+  serves it on the next frame.
+- `setAiTracking(enabled)` and `setAiMovement(enabled)` — the AI's two faculties,
+  gated separately, so a check can watch what it senses while its body is still.
+- `snapshot()` and `menuItemRect(index)` — the **readings**. The snapshot is a
+  JSON-serializable view of every declared field, and `menuItemRect` reports the
+  region an item of the menu on screen occupies, in logical units — this build's
+  own layout, reported, and `null` on the two screens that show no menu.
 
-Every operation but the two clock calls is a read or a pose of `CaromState`: they
-arrange the world, and the game's own `update` is what runs from there on the
-next frame. The two clock calls take nothing from the player — a scenario that
-takes the game off real time to watch the **keyboard** move a paddle is exactly
-what the control checks are — so there is deliberately no `keyDown`, `keyUp` or
-`press` on the surface either, and no overlay toggle: the runtime owns the
-backtick key and the panel.
+Every operation is **atomic**: it sets one field or one fixed pair, places or
+removes one entity, reads the state, or moves the clock. `reset` is the one
+exception, and it is a lifecycle verb. Starting a match, staging a serve or
+posing a contact are therefore sequences of these, and a sequence belongs to
+whoever is driving the game. Every operation but the two clock calls is a read or
+a pose of `CaromState`: they arrange the world, and the game's own `update` is
+what runs from there on the next frame. The clock calls take nothing from the
+player — a scenario that takes the game off real time to watch the **keyboard**
+move a paddle is exactly what the control checks are — so there is deliberately
+no `keyDown`, `keyUp` or `press` on the surface, no pointer pose, and no overlay
+toggle: a real key, a real mouse and a real finger are driven at the page, and
+the runtime owns the backtick key and the panel.
 
 The surface is inert during normal play.
 
@@ -196,12 +231,15 @@ src/
   runtime.ts          The frame loop, the manual clock, and the wiring
   viewport.ts         The canvas fit: uniform scale, letterbox, pixel ratio
   keyboard.ts         Named actions over key codes, with edge detection
+  pointer.ts          The mouse and the finger, as one per-frame report
   audio-bus.ts        Web Audio cues and the first-gesture unlock
   overlay.ts          The diagnostics panel and the backtick key
   constants.ts        Every figure the specs fix (logical 1280x720)
-  theme.ts            This build's own look: palette, type, HUD layout, tagline
+  theme.ts            This build's own look: palette, type, HUD layout, menus
+  menus.ts            Each menu's items and the regions they occupy
   debug.ts            The window.__carom surface over CaromState
-  game.ts             The state contract, the state machine, and the three
+  state.ts            The state contract and the transitions that pose it
+  game.ts             The state machine, the per-frame update, and the three
                       functions the runtime drives
   rng.ts              The seeded generator, over CaromState.rngState
   entities.ts         Paddle and ball arithmetic and geometry

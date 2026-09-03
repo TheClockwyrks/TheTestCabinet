@@ -1,28 +1,38 @@
 // multi/deuce — a tie at the win score keeps playing until someone leads by two.
 //
-// The score is posed at the deuce tie, then real points are driven through the
-// goal: the first takes it one clear, which must NOT end the match, and the
-// second takes it two clear, which must. Both outcomes resolve through the
-// build's own win rule, never a fabricated end state.
+// The scenario is one ball on an empty field aimed down the clear lane at the
+// right goal — the other two balls and both obstacles are off the field, so the
+// only points that land are the ones this check drives. The score is then posed
+// at the deuce tie and real points are driven through the goal: the first takes
+// it one clear, which must NOT end the match, and the second takes it two clear,
+// which must. Both outcomes resolve through the build's own win rule, never a
+// fabricated end state.
 //
-// Between the two points the scored ball is holding on its home rather than
-// waiting behind a countdown, so the second point is set up by cutting that hold
-// short and re-aiming the ball once it is in flight again.
+// The score is posed AFTER the arrangement, because reaching a live field runs
+// through the title and a `reset` puts both scores back to zero.
+//
+// Between the two points the scored ball is holding on its own home rather than
+// waiting behind a countdown — multi's field never stops for a point — so the
+// second point is set up by cutting that hold short and re-aiming the ball once
+// the build's own launch has put it back in flight.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../constants";
+import { FIELD_CX, WIN_LEAD, WIN_SCORE } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
+  CLEAR_LANE_Y,
   arrangeGoal,
   captureReplay,
   createHarness,
-  startPlaying,
   type Harness,
 } from "../harness";
-import { readBalls } from "./harness";
+import { driveLaunch, multiOps } from "./harness";
 
 /** 10-10: the tie one point below the win score, where the deuce rule applies. */
 const TIED_AT = WIN_SCORE - 1;
+
+/** How fast each point is driven down the clear lane, in units per second. */
+const GOAL_SPEED = 600;
 
 /** Frames recorded after the deciding point resolves. */
 const AFTERMATH_TICKS = 60; // 0.5 s
@@ -38,11 +48,10 @@ afterEach(() => {
 });
 
 it("plays on at a one-point lead and ends at two", async () => {
-  await startPlaying(h);
+  await arrangeGoal(h, "right", { speed: GOAL_SPEED });
   h.debug.setScore(TIED_AT, TIED_AT);
 
   // First real point: 11-10, a one-point lead, so play continues.
-  arrangeGoal(h, "right");
   const oneClear = await h.until((s) => s.score.p1 > TIED_AT, {
     maxFrames: 360,
     poll: 1,
@@ -54,17 +63,18 @@ it("plays on at a one-point lead and ends at two", async () => {
   assertEqual(oneClear.snapshot.score.p1, TIED_AT + 1);
   assertEqual(oneClear.snapshot.score.p2, TIED_AT);
 
-  // Second real point: 12-10, now the required lead, so the match ends. `serve`
-  // ends the scored ball's hold; the launch is the build's own, so the scenario
-  // is re-aimed once that ball is flying again.
-  h.debug.serve();
-  const live = await h.until((s) => readBalls(s)[0].held === false, {
-    maxFrames: 60,
-    poll: 1,
-  });
+  // Second real point: 12-10, now the required lead, so the match ends. Ending
+  // the hold is what launches the ball, through the game's own rule on the frame
+  // after — so the scenario is re-aimed once that launch has happened.
+  const ops = multiOps(h);
+  ops.setBallHoldTimer(0, 0);
+  const live = await driveLaunch(h, 0, 60);
   assertEqual(live.hit, true);
 
-  arrangeGoal(h, "right");
+  ops.setBallPosition(0, FIELD_CX, CLEAR_LANE_Y);
+  ops.setBallVelocity(0, GOAL_SPEED, 0);
+  ops.setBallSpin(0, 0);
+
   // The deciding point, and only it: the one before it is the arrangement that
   // put the match at a one-point lead.
   const twoClear = await captureReplay(h, "deuce", async () => {

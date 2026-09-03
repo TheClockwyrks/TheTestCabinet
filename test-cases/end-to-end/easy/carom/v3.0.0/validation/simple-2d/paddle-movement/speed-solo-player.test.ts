@@ -1,12 +1,14 @@
 // paddle-movement/speed-solo-player — the human paddle's speed in Solo.
 //
-// The match is started from the title with menu keys, so the game stays under
-// normal player control — no control op is ever called and the paddles respond to
-// held input exactly as they do for a player. A movement key is then held for a
-// known span and the displacement is measured back into a speed. The menu
-// route is load-bearing: every posing operation (`startMatch` included) hands
-// both paddles to the debug driver, and only `reset` gives them back — a match
-// posed open would leave the held key dead.
+// A match is opened on its countdown through the debug surface, which sets the
+// mode and the screen and takes NOTHING from the player, so the paddles respond
+// to held input exactly as they do for a player and no control operation is ever
+// called. The field is then emptied outright — no ball, no obstacles — because
+// the rate a held key moves a paddle at is the whole of what this decides; with
+// no ball to serve, the countdown runs on for the whole of the measured span.
+//
+// A movement key is then held for a known span and the displacement is measured
+// back into a speed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED } from "../constants";
@@ -15,8 +17,9 @@ import {
   captureReplay,
   createHarness,
   holdMove,
+  openCountdown,
+  poseWorld,
   speedOverTicks,
-  startWithKeys,
   type Harness,
 } from "../harness";
 
@@ -38,9 +41,10 @@ const TICKS = 36; // 0.3 s
  * before the key goes down and a paddle at rest after it comes up is what makes
  * the span between them read as the key's doing rather than as a jump cut.
  *
- * Both stretches fall inside the pre-serve countdown, so nothing else on the
- * field is moving while they run and nothing they do can reach an assertion —
- * `holdMove` takes its own before-and-after readings across the hold alone.
+ * Both stretches fall inside the countdown, on a field holding nothing but the
+ * two paddles, so nothing else is moving while they run and nothing they do can
+ * reach an assertion — `holdMove` takes its own before-and-after readings across
+ * the hold alone.
  */
 const REST_TICKS = 12; // 0.1 s at rest before the hold
 const SETTLED_TICKS = 24; // 0.2 s at rest after the release
@@ -56,7 +60,8 @@ afterEach(() => {
 });
 
 it("moves the human paddle at the paddle speed while a key is held", async () => {
-  await startWithKeys(harness, "solo");
+  openCountdown(harness, "solo");
+  poseWorld(harness, { balls: [] });
 
   const moved = await captureReplay(harness, "move", async () => {
     await harness.advance(REST_TICKS);

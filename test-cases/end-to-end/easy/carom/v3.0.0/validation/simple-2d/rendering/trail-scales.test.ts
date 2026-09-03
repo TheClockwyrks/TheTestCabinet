@@ -2,10 +2,12 @@
 //
 // The trail is a fixed DURATION of travel, TRAIL_TIME seconds
 // (specs/overview.md), so its length is proportional to speed. The same drive
-// is run twice down the same empty lane, slow and then fast, and the lit run
-// behind the ball is read off the canvas each time; the fast streak must be the
-// longer. This is the reading a single drive cannot give: a build drawing a
-// fixed-length tail passes every absolute bound and fails here.
+// is run twice down the same lane, slow and then fast, and the lit run behind the
+// ball is read off the canvas each time; the fast streak must be the longer. Each
+// drive empties the field down to its one ball, so the two readings differ in the
+// speed alone and in nothing that was standing on the field. This is the reading
+// a single drive cannot give: a build drawing a fixed-length tail passes every
+// absolute bound and fails here.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";

@@ -4,6 +4,12 @@
 // goal: the first takes it one clear, which must NOT end the match, and the
 // second takes it two clear, which must. Both outcomes resolve through the
 // build's own win rule, never a fabricated end state.
+//
+// EACH POINT IS PLAYED DOWN AN EMPTY FIELD. `arrangeGoal` clears the world and
+// spawns back the one ball the shot is made of, so nothing stands between it and
+// the goal edge that decides the point — and between the two points the hold is
+// simply ended and the build's own launch waited on, which is what returns the
+// match to live play with the score it has just reached.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual, assertNull } from "../assert";
@@ -13,6 +19,7 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
+  endHolds,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -55,10 +62,10 @@ it("plays on at a one-point lead and ends at two", async () => {
   assertEqual(oneClear.snapshot.score.p1, TIED_AT + 1);
   assertEqual(oneClear.snapshot.score.p2, TIED_AT);
 
-  // Second real point: 12-10, now the required lead, so the match ends. `serve`
-  // leaves the post-point countdown; the launch is the build's own, so the
-  // scenario is re-aimed once play is live again.
-  await harness.debug.serve();
+  // Second real point: 12-10, now the required lead, so the match ends. Ending
+  // the hold leaves the post-point countdown; the launch is the build's own, so
+  // the scenario is re-aimed once play is live again.
+  await endHolds(harness);
   const live = await harness.until((s) => s.screen === "playing", {
     maxFrames: 60,
     poll: 1,

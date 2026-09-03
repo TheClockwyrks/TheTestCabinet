@@ -1,9 +1,14 @@
 // paddle-movement/speed-solo-ai — the AI paddle's chase speed.
 //
-// The REAL AI is handed control of its paddle and given a ball far down the field
-// to chase, and the distance it covers over a short window while chasing at full
-// speed is measured back into a speed. Nothing poses the AI's motion: its own
-// tracking, at its own pace, is what is measured.
+// The AI's paddle is left the AI's — `setPaddleCy` places it without taking it
+// from anyone — and given a ball far down the field to chase; the distance it
+// covers over a short window while chasing at full speed is measured back into a
+// speed. Nothing poses the AI's motion: its own tracking, at its own pace, is
+// what is measured, with both of its faculties on.
+//
+// The field holds that one ball: both obstacles are removed, so nothing can turn
+// the chased shot aside mid-window, and the human paddle is driven out of the
+// lane, since a paddle cannot be removed.
 //
 // The rate follows from the AI rule (specs/modes/single-player.md): with the
 // ball far from the paddle, `|diff|` is far past AI_DEADZONE and `|diff| / dt`
@@ -48,7 +53,7 @@ afterEach(() => {
 });
 
 it("chases the ball at AI_SPEED", async () => {
-  await arrangeAiChase(harness);
+  arrangeAiChase(harness);
 
   const chase = await captureReplay(harness, "move", async () => {
     const measured = await driveAiChaseSpeed(harness);

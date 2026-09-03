@@ -17,7 +17,7 @@ import {
   PADDLE_MIN_CY,
   PADDLE_SPEED,
 } from "./constants";
-import { aiVelocity } from "./ai";
+import { aiVelocity, type AiFaculties } from "./ai";
 import { integratePaddle, type BallSim, type PaddleSim } from "./sim";
 
 const FRAME = 1 / 60;
@@ -26,10 +26,18 @@ function ball(patch: Partial<BallSim> = {}): BallSim {
   return { x: 800, y: 360, vx: 300, vy: 0, spin: 0, ...patch };
 }
 
+/** Both faculties on, which is how the AI plays until something gates one. */
+const WHOLE: AiFaculties = { tracking: true, movement: true };
+
 /** One frame of the AI playing: compute the drive, then integrate it. */
-function drive(paddle: PaddleSim, b: BallSim, active: boolean): PaddleSim {
+function drive(
+  paddle: PaddleSim,
+  b: BallSim | null,
+  active: boolean,
+  faculties: AiFaculties = WHOLE,
+): PaddleSim {
   return integratePaddle(
-    { cy: paddle.cy, vy: aiVelocity(paddle.cy, b, active, FRAME) },
+    { cy: paddle.cy, vy: aiVelocity(paddle.cy, b, active, FRAME, faculties) },
     FRAME,
   );
 }
@@ -37,14 +45,15 @@ function drive(paddle: PaddleSim, b: BallSim, active: boolean): PaddleSim {
 /** The paddle after `frames` frames of the AI playing against one fixed ball. */
 function play(
   paddle: PaddleSim,
-  b: BallSim,
+  b: BallSim | null,
   active: boolean,
   frames: number,
   each?: (paddle: PaddleSim) => void,
+  faculties: AiFaculties = WHOLE,
 ): PaddleSim {
   let current = paddle;
   for (let i = 0; i < frames; i++) {
-    current = drive(current, b, active);
+    current = drive(current, b, active, faculties);
     each?.(current);
   }
   return current;
@@ -109,4 +118,49 @@ it("keeps its paddle fully on the field", () => {
 
   const low = play({ cy: 600, vy: 0 }, ball({ y: 1200 }), true, 120);
   expect(low.cy).toBe(PADDLE_MAX_CY);
+});
+
+// ---- The two faculties (specs/state.md, specs/instrumentation.md) ---------
+
+it("senses no ball with tracking off, and eases home instead", () => {
+  const blind: AiFaculties = { tracking: false, movement: true };
+  // The same incoming ball the tracking check above is caught by.
+  const paddle = drive({ cy: 360, vy: 0 }, ball({ y: 200 }), true, blind);
+  expect(paddle.vy).toBe(0); // already home, and home is where it aims
+  expect(paddle.cy).toBe(360);
+
+  // Posed away from home it travels there rather than toward the ball, and
+  // stops inside the WIDER home deadzone.
+  const settled = play(
+    { cy: 600, vy: 0 },
+    ball({ y: 660 }),
+    true,
+    120,
+    undefined,
+    blind,
+  );
+  expect(Math.abs(settled.cy - AI_HOME_Y)).toBeLessThanOrEqual(
+    AI_HOME_DEADZONE,
+  );
+});
+
+it("stays exactly where it is with movement off", () => {
+  const still: AiFaculties = { tracking: true, movement: false };
+  const paddle = play(
+    { cy: 600, vy: 0 },
+    ball({ y: 200 }),
+    true,
+    120,
+    (frame) => {
+      expect(frame.vy).toBe(0);
+    },
+    still,
+  );
+  expect(paddle.cy).toBe(600);
+});
+
+it("eases home when there is no ball on the field at all", () => {
+  const paddle = play({ cy: 600, vy: 0 }, null, true, 120);
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
+  expect(paddle.vy).toBe(0);
 });

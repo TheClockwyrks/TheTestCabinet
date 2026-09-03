@@ -1,11 +1,18 @@
 // gameplay/ai-homes — with nothing to defend, the AI returns to its home height.
 //
-// The REAL AI is handed its paddle, posed well below its home height, with the
-// ball travelling AWAY from it. The rule (specs/modes/single-player.md) then has
-// `target = AI_HOME_Y` and `deadzone = AI_HOME_DEADZONE`: the paddle moves
-// toward AI_HOME_Y at AI_SPEED and stops, with `vy = 0`, on the first frame its
-// center is within AI_HOME_DEADZONE of it. Long enough is allowed for that trip
-// and more, and the paddle is then read where it settled.
+// The AI's paddle stays the AI's — `setPaddleCy` places it without taking it from
+// anyone — posed well below its home height, with the ball travelling AWAY from
+// it. The rule (specs/modes/single-player.md) then has `target = AI_HOME_Y` and
+// `deadzone = AI_HOME_DEADZONE`: the paddle moves toward AI_HOME_Y at AI_SPEED
+// and stops, with `vy = 0`, on the first frame its center is within
+// AI_HOME_DEADZONE of it. Long enough is allowed for that trip and more, and the
+// paddle is then read where it settled.
+//
+// The field holds that one ball and nothing else: both obstacles are removed and
+// the human paddle is driven out of the way, so the ball drifting off to the left
+// meets nothing that could send it back and give the AI something to defend.
+// Both of the AI's faculties are on, because the homing rule is the two of them
+// running with no ball to track.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -44,7 +51,7 @@ afterEach(() => {
 });
 
 it("returns toward AI_HOME_Y and stops within AI_HOME_DEADZONE of it", async () => {
-  await arrangeAiHome(harness, { paddleCy: START_CY });
+  arrangeAiHome(harness, { paddleCy: START_CY });
   assertCloseTo(harness.snapshot().paddles.right.cy, START_CY, 6);
 
   const settled = await captureReplay(harness, "home", async () => {

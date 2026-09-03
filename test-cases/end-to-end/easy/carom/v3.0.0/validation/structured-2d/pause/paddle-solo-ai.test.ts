@@ -4,15 +4,22 @@
 // The AI is part of the simulation, so pausing must stop it exactly as it stops a
 // held key and the ball. This poses the one situation in which a frozen AI and a
 // running one look different — a ball crossing the field toward it, far from
-// where its paddle is — and hands the right paddle back to the real opponent with
-// `setAiControl`, so what is frozen is the build's own AI rather than a driver's
-// held velocity.
+// where its paddle is — over a field holding that ball and nothing else: both
+// obstacles are off it, so nothing can deflect the chase into something the AI
+// was not chasing.
+//
+// WHAT IS FROZEN IS THE BUILD'S OWN OPPONENT. The right paddle is handed back
+// with `setPaddleDriven("right", false)` and both of the AI's faculties are left
+// where `reset` put them — `tracking` and `movement` both on — so the paddle is
+// moved by the rule specs/modes/single-player.md states rather than by a
+// `drivenVy` the surface set. The left paddle is the one piece of furniture no
+// operation removes, so it is held out of the way at PARKED_CY.
 //
 // The chase is watched running first. Without that, a build whose AI never moved
 // at all would pass the freeze for the wrong reason.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeAiChase,
   captureReplay,
@@ -49,6 +56,8 @@ afterEach(() => {
 
 it("holds the AI paddle still while paused", async () => {
   await arrangeAiChase(h, { paddleCy: 200, ballY: 620 });
+  assertEqual(h.snapshot().paddles.right.driven, false);
+  assertDeepEqual(h.snapshot().ai, { tracking: true, movement: true });
 
   // The precondition: the real opponent is chasing, so a still paddle later is
   // the pause's doing.

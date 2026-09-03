@@ -13,24 +13,52 @@
 //
 // Both shots are the build's own physics: the ball is posed and then flown, and
 // the outgoing velocity is read at the instant the bounce resolves.
+//
+// The field holds ONE BALL AND OBSTACLE A. Obstacle B is removed rather than
+// dodged, so the shot cannot reach anything but the face it is aimed at, and the
+// deflected flight afterwards cannot end against a body this point is not about.
+// No paddle is taken: the shot is fired from mid-field at a mid-field obstacle
+// and reaches neither end of the lane, so there is nothing to keep out of the
+// way. The obstacle clock IS held still — that poses the subject, since the
+// collision resolves against the pose the clock gives, and a face that turned
+// while the ball crossed the run-up would be a different face by the time it
+// arrived.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
+  aimBall,
   ball0,
   captureReplay,
   createHarness,
-  startPlaying,
+  enterPlaying,
+  placeBall,
+  poseWorld,
+  spinBall,
   type Harness,
 } from "../harness";
-import { poseObstacles, type ObstaclePose } from "./harness";
+import {
+  obstaclePose,
+  poseObstacles,
+  thetaOf,
+  type ObstaclePose,
+} from "./harness";
+
+/** The obstacle this check is about, in the order of `OBSTACLE_CENTERS`. */
+const OBSTACLE = 0;
 
 /** The clock time that presents a face turned a quarter turn from upright. */
 const TILT_T = Math.PI / 4 / OBSTACLE_SPIN_RATE;
 
+/** How far short of the obstacle's center the shot is posed, in units. */
+const RUN_UP = 220;
+
 /** The review item's margin on the outgoing direction, in degrees. */
 const ANGLE_TOLERANCE_DEG = 3;
+
+/** A float margin on the posed quarter turn, in radians. */
+const TILT_TOLERANCE = 0.01;
 
 /** The specified outgoing direction of a level shot off a face turned `theta`. */
 function reflectedHeading(theta: number): { x: number; y: number } {
@@ -58,13 +86,9 @@ async function shootLevelAt(
   h: Harness,
   obstacle: ObstaclePose,
 ): Promise<{ hit: boolean; vx: number; vy: number }> {
-  h.debug.setBall(0, {
-    x: obstacle.cx - 220,
-    y: obstacle.cy,
-    vx: SERVE_SPEED,
-    vy: 0,
-    spin: 0,
-  });
+  placeBall(h, obstacle.cx - RUN_UP, obstacle.cy);
+  aimBall(h, SERVE_SPEED, 0);
+  spinBall(h, 0);
   const r = await h.until((s) => ball0(s).vx < SERVE_SPEED * 0.6, {
     maxFrames: 120,
     poll: 1,
@@ -95,10 +119,11 @@ afterEach(() => {
 });
 
 it("reflects a level shot about the face's normal, upright and tilted", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
+  poseWorld(harness, { obstacles: [OBSTACLE] });
 
   // 1. Upright: a vertical face returns the level shot level.
-  const upright = (await poseObstacles(harness, 0))[0]!;
+  const upright = obstaclePose(await poseObstacles(harness, 0), OBSTACLE);
   const straight = await shootLevelAt(harness, upright);
   assertEqual(straight.hit, true, "the upright shot should reach the obstacle");
   assertLessThanOrEqual(
@@ -108,8 +133,11 @@ it("reflects a level shot about the face's normal, upright and tilted", async ()
   );
 
   // 2. The same shot against the face turned a quarter turn.
-  const tilted = (await poseObstacles(harness, TILT_T))[0]!;
-  assertLessThanOrEqual(Math.abs(tilted.theta - Math.PI / 4), 0.01);
+  const tilted = obstaclePose(await poseObstacles(harness, TILT_T), OBSTACLE);
+  assertLessThanOrEqual(
+    Math.abs(thetaOf(tilted) - Math.PI / 4),
+    TILT_TOLERANCE,
+  );
   const deflected = await captureReplay(harness, "oriented", async () => {
     const shot = await shootLevelAt(harness, tilted);
     await harness.advance(DEPARTURE_TICKS);

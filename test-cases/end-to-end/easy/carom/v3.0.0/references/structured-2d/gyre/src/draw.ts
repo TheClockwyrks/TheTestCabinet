@@ -10,6 +10,7 @@
 // full picture, `wireframe` outlines alone, `unlit` and `silhouette` flat).
 
 import type { RenderMode } from "@test-cabinet/structured-2d";
+import type { MenuLayout } from "./menus";
 import { COLOR, MONO } from "./theme";
 
 /**
@@ -163,37 +164,36 @@ export function glowCircle(
 }
 
 /**
- * A vertical menu with a highlighted selection. The selected item is bright
- * and flanked by triangle markers in the accent color; the others are dim.
- * Markers are drawn beside the measured text so they never overlap it.
+ * A vertical menu with a highlighted selection, drawn from the layout
+ * `src/menus.ts` fixes — the same layout `menuItemRect` reports, so what a
+ * player sees is where the game listens.
+ *
+ * The selected item is bright and flanked by triangle markers in the accent
+ * color; the others are dim. Markers are drawn beside the measured text so they
+ * never overlap it.
  */
 export function drawMenu(
   ctx: Ctx,
   mode: RenderMode,
-  items: readonly string[],
+  layout: MenuLayout,
   selected: number,
-  centerX: number,
-  startY: number,
-  spacing: number,
-  itemSize: number,
-  letterSpacing: number,
   accent: string,
 ): void {
-  for (let i = 0; i < items.length; i++) {
-    const y = startY + i * spacing;
+  for (let i = 0; i < layout.items.length; i++) {
+    const y = layout.firstY + i * layout.spacing;
     const isSel = i === selected;
     const opts: TextOpts = {
-      size: itemSize,
+      size: layout.textSize,
       color: isSel ? COLOR.text : COLOR.textDim,
-      spacing: letterSpacing,
+      spacing: layout.letterSpacing,
       align: "center",
       baseline: "middle",
     };
-    drawText(ctx, mode, items[i], centerX, y, opts);
+    drawText(ctx, mode, layout.items[i], layout.centerX, y, opts);
     if (!isSel) continue;
-    const w = measure(ctx, items[i], opts);
+    const w = measure(ctx, layout.items[i], opts);
     const markerOpts: TextOpts = {
-      size: itemSize,
+      size: layout.textSize,
       color: accent,
       align: "center",
       baseline: "middle",
@@ -201,8 +201,8 @@ export function drawMenu(
       glowBlur: 12,
     };
     const gap = 26;
-    drawText(ctx, mode, "▸", centerX - w / 2 - gap, y, markerOpts);
-    drawText(ctx, mode, "◂", centerX + w / 2 + gap, y, markerOpts);
+    drawText(ctx, mode, "\u25b8", layout.centerX - w / 2 - gap, y, markerOpts);
+    drawText(ctx, mode, "\u25c2", layout.centerX + w / 2 + gap, y, markerOpts);
   }
 }
 

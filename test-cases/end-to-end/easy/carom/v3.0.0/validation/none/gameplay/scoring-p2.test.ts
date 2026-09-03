@@ -1,7 +1,7 @@
 // gameplay/scoring-p2 — a ball crossing the LEFT goal edge scores for player two.
 //
-// The mirror of `scoring-p1`: the ball is aimed at the left goal down the lane
-// that clears both obstacles, and the build's own scoring code decides the point.
+// The mirror of `scoring-p1`: the field is emptied to the one ball, that ball is
+// aimed at the left goal, and the build's own scoring code decides the point.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

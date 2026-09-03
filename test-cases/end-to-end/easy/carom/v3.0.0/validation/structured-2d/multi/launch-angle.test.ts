@@ -12,15 +12,28 @@
 // field, most of them are nowhere near horizontal, and each is drawn afresh. The
 // bounds below are generous against a uniform draw and unreachable by a build
 // that aims its launches.
+//
+// Each match runs over the three balls and nothing else: the obstacles are off
+// the field, because a launch angle is read on the frame the ball leaves and
+// there is nothing on the field for it to have met by then.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { BALL_COUNT } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { launchAngleDeg, readBalls } from "./harness";
+import {
+  captureReplay,
+  createHarness,
+  isolateField,
+  openTitle,
+  reachPlay,
+  stageMatchStart,
+  type Harness,
+} from "../harness";
+import { launchAngleDeg, readEveryBall } from "./harness";
 
 /** The seeds the sample is drawn under, one match each. */
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -66,26 +79,27 @@ afterEach(() => {
 });
 
 /**
- * Open a match under `seed`, cut the hold short, and read all three launches.
+ * Open a match under `seed` over the three balls alone, cut the holds short, and
+ * read all three launches.
  *
- * `reset` away from a finished sweep's live match and `startMatch` are each
- * level transitions, honored at the end of the next advanced frame, so each is
- * followed by the one frame that lands it before the next call poses anything.
+ * The seed is set on the title, after the `reset` that gets there: `reset`
+ * restores `seed` to `DEFAULT_SEED` with every other declared field, so a seed
+ * posed before it would not survive the trip.
  */
+async function openMatchUnder(seed: number): Promise<void> {
+  await openTitle(h);
+  h.debug.setSeed(seed);
+  await stageMatchStart(h, "versus");
+  isolateField(h, { balls: BALL_COUNT });
+}
+
 async function launchesUnder(
   seed: number,
 ): Promise<{ speed: number; vx: number; angle: number }[]> {
-  h.debug.reset({ seed });
-  await h.advance(1);
-  h.debug.startMatch("versus");
-  await h.advance(1);
-  h.debug.serve();
-  const launched = await h.until((s) => readBalls(s).every((b) => !b.held), {
-    maxFrames: 20,
-    poll: 1,
-  });
+  await openMatchUnder(seed);
+  const launched = await reachPlay(h, { maxFrames: 20 });
   assertEqual(launched.hit, true);
-  return readBalls(launched.snapshot).map((ball) => ({
+  return readEveryBall(launched.snapshot).map((ball) => ({
     speed: ball.speed,
     vx: ball.vx,
     angle: launchAngleDeg(ball),
@@ -128,12 +142,9 @@ it("draws every launch over the whole circle rather than aiming it", async () =>
 
   // One opening, kept for the reviewer: three balls leaving their home points on
   // three unrelated headings.
-  h.debug.reset({ seed: SEEDS[0] });
-  await h.advance(1);
-  h.debug.startMatch("versus");
-  await h.advance(1);
+  await openMatchUnder(SEEDS[0]);
   await captureReplay(h, "launch", async () => {
-    h.debug.serve();
+    await reachPlay(h, { maxFrames: 20 });
     await h.advance(FLIGHT_TICKS);
   });
 });

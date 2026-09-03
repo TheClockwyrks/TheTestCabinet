@@ -11,10 +11,12 @@
 // shaped surfaces — wider than the field, taller than it, portrait, and at raised
 // and fractional device pixel ratios — before a single frame has run, because the
 // requirement includes the state on load, before any input. The second poses a
-// known scene in an off-aspect window and confirms the pixels really are where
-// the map says: the paddle under its own logical coordinate, and nothing but the
-// background out in the letterbox bar (specs/overview.md: "the letterbox bars
-// around the field are the field's background color").
+// known scene in an off-aspect window — the field cleared and spawned back
+// holding one still ball, both obstacles and the two centred paddles, so every
+// point sampled below is a body that is really there — and confirms the pixels
+// are where the map says: the paddle under its own logical coordinate, and
+// nothing but the background out in the letterbox bar (specs/overview.md: "the
+// letterbox bars around the field are the field's background color").
 
 import { afterEach, it } from "vitest";
 import { FIELD_H, FIELD_W } from "../constants";

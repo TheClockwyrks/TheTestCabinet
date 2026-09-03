@@ -11,27 +11,25 @@
 // than closing over a world read at initialization, which would report the
 // title screen forever. Watching the overlay never changes what the simulation
 // does, and each line is short enough to read at a glance while the game runs.
+//
+// The ball is not always there: `clearWorld` removes it and `spawnBall` puts it
+// back (specs/state.md), so each ball line answers with a dash rather than
+// inventing a figure for a ball that is not on the field.
 
 import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
-import { TAGS } from "./constants";
-import { Ball } from "./ball";
+import { ballOf } from "./ball";
 import type { CaromGame } from "./game";
-import { Paddle } from "./paddle";
-import { MatchState, screenOf } from "./state";
+import { paddleOf } from "./paddle";
+import { caromState } from "./state";
+import type { Side } from "./sim";
 
 /** One decimal place: enough to see motion, short enough to fit on a line. */
 function fixed(value: number): string {
   return value.toFixed(1);
 }
 
-function ballOf(world: World): Ball | null {
-  const found = world.byTag(TAGS.ball)[0];
-  return found instanceof Ball ? found : null;
-}
-
-function paddleLine(world: World, tag: string): string {
-  const paddle = world.byTag(tag)[0];
-  if (!(paddle instanceof Paddle)) return "—";
+function paddleLine(world: World, side: Side): string {
+  const paddle = paddleOf(world, side);
   return `cy ${fixed(paddle.transform.y)} vy ${fixed(paddle.vy)}`;
 }
 
@@ -43,17 +41,12 @@ export function diagnosticSources(
   game: CaromGame,
 ): Record<string, () => DiagnosticValue> {
   const world = (): World => game.engine.world;
-  const match = (): MatchState | null => {
-    const state = world().state;
-    return state instanceof MatchState ? state : null;
-  };
   return {
-    screen: () => screenOf(world()),
-    mode: () => game.mode,
+    screen: () => caromState(world()).screen,
+    mode: () => caromState(world()).mode,
     score: () => {
-      const state = match();
-      if (state === null) return "0 - 0";
-      return `${state.players[0]?.score ?? 0} - ${state.players[1]?.score ?? 0}`;
+      const [p1, p2] = caromState(world()).players;
+      return `${p1?.score ?? 0} - ${p2?.score ?? 0}`;
     },
     "ball pos": () => {
       const ball = ballOf(world());
@@ -71,7 +64,7 @@ export function diagnosticSources(
       const ball = ballOf(world());
       return ball ? fixed(ball.spin) : "—";
     },
-    "paddle L": () => paddleLine(world(), TAGS.paddleLeft),
-    "paddle R": () => paddleLine(world(), TAGS.paddleRight),
+    "paddle L": () => paddleLine(world(), "left"),
+    "paddle R": () => paddleLine(world(), "right"),
   };
 }

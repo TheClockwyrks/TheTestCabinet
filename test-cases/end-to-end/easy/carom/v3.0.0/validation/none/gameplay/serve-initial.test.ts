@@ -1,15 +1,18 @@
 // gameplay/serve-initial — the very first serve of a match travels toward player one.
 //
-// The match is opened the way a player opens one — menu keys at the title, never
-// `debug.startMatch` — because the specification has that operation set
-// `receiver` itself, so a check that used it would be reading a pose the surface
-// had just made rather than the build's own answer. Entering through the menu
-// leaves the build's own match-start code to decide who receives.
+// The match is opened the way a player opens one — menu keys at the title —
+// because that route is this point's SUBJECT rather than a way in. Every posed
+// route to a countdown reaches it through `reset`, whose title-screen state sets
+// `receiver` to `left` (specs/state.md), so a check taking one would be reading
+// a value the surface had just posed rather than the one the build's own
+// match-start code chose. Entering through the menu is what leaves that decision
+// to the build.
 //
-// The pre-serve hold is then expired with `serve()`, which does not touch
-// `receiver`; the LAUNCH is the build's own, on the frame after, and the
-// direction is read the instant it happens — before a wall or a paddle could
-// have turned the ball around.
+// The field is then emptied to the one held ball — a serve is about the ball and
+// its aim, and nothing else takes any part in it — and the pre-serve hold is run
+// out with `endHolds`, which touches nothing but the timer. The LAUNCH is the
+// build's own, on the frame after, and the direction is read the instant it
+// happens: before a wall or a paddle could have turned the ball around.
 //
 // Both modes are checked: the serve direction is a rule of the match, not of the
 // opponent, so a build that gets it right only in Versus fails here rather than
@@ -21,6 +24,8 @@ import {
   ball0,
   captureReplay,
   createHarness,
+  endHolds,
+  isolateBall,
   startWithKeys,
   type Harness,
   type Mode,
@@ -31,7 +36,7 @@ import {
  *
  * A recording that opened on the launch frame would drop a reviewer into a ball
  * already in flight; opening on the held ball is what makes the launch something
- * they watch HAPPEN. It cannot move what is measured: `serve()` only expires the
+ * they watch HAPPEN. It cannot move what is measured: `endHolds` only expires the
  * hold, the launch is still the build's own on the frame after it, and what
  * leaves a countdown is not a function of how long the countdown had been
  * running when it was cut short.
@@ -64,18 +69,23 @@ it("serves toward player one to open a match", async () => {
       await startWithKeys(harness, mode);
       // The menu keys really did open a match, so the launch below belongs to a
       // match this check started rather than to a title screen that never left.
-      const opened = await harness.debug.snapshot();
+      const opened = await harness.snapshot();
       assertEqual(opened.screen, "countdown");
       assertEqual(opened.mode, mode);
 
+      // The world is cut down to the ball the serve is made of. The hold comes
+      // back full, which is what a match start left it at anyway, and this check
+      // measures the direction rather than the duration.
+      await isolateBall(harness);
+
       await harness.advance(HELD_TICKS);
-      await harness.debug.serve();
+      await endHolds(harness);
       const launched = await harness.until((s) => s.screen === "playing", {
         maxFrames: 60,
         poll: 1,
       });
       // `launched` froze the launch frame, so the flight recorded here reaches
-      // no assertion; the next mode opens with `debug.reset()` either way.
+      // no assertion; the next mode opens from the title either way.
       await harness.advance(FLIGHT_TICKS);
 
       assertEqual(launched.hit, true);

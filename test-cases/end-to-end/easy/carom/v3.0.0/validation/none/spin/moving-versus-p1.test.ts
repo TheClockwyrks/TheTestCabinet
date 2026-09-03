@@ -13,6 +13,10 @@
 //
 // The contact sits above mid-field so the swing has room: over the run-up a
 // full-speed paddle covers 360 units, and it starts that far downstream.
+//
+// The field is emptied to this ball alone, and both paddles are taken from the
+// player: the paddles are the instrument of the contact being measured, so a
+// paddle the AI or a stray key could still move would make the reading theirs.
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";

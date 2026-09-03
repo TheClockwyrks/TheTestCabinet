@@ -16,7 +16,6 @@ import {
   FIELD_H,
   MAX_BOUNCE_ANGLE,
   MAX_SUBSTEP,
-  OBSTACLES,
   PADDLE_HALF,
   SPEED_CAP,
   SPEED_MULT,
@@ -26,7 +25,7 @@ import {
   type Rect,
 } from "./constants";
 import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
-import type { BallState, PaddleState, Side } from "./game";
+import type { BallState, PaddleState, Side } from "./state";
 
 /** What one step's collisions did, so the caller can play a cue per event. */
 export interface StepEvents {
@@ -150,11 +149,18 @@ function resolveWalls(ball: BallState, events: StepEvents): void {
   }
 }
 
-/** Advance the ball by `dt` seconds and resolve every collision it makes. */
+/**
+ * Advance the ball by `dt` seconds and resolve every collision it makes.
+ *
+ * `obstacles` is the obstacles ON THE FIELD, which is state (specs/state.md): an
+ * obstacle that has been taken off it is not drawn and has no collision, so it is
+ * simply not in the list.
+ */
 export function step(
   ball: BallState,
   left: PaddleState,
   right: PaddleState,
+  obstacles: readonly Rect[],
   dt: number,
 ): StepEvents {
   const events: StepEvents = { paddle: false, wall: false, obstacle: false };
@@ -196,7 +202,7 @@ export function step(
     resolveWalls(ball, events);
     resolvePaddle(ball, left, "left", events);
     resolvePaddle(ball, right, "right", events);
-    for (const obstacle of OBSTACLES) resolveObstacle(ball, obstacle, events);
+    for (const obstacle of obstacles) resolveObstacle(ball, obstacle, events);
   }
 
   return events;

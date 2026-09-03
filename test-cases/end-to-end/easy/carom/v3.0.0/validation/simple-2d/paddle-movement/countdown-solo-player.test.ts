@@ -4,10 +4,12 @@
 // specs/modes/single-player.md: the pre-serve hold locks the ball, never the paddles. On
 // every `countdown` frame a movement action held moves the human-controlled
 // paddle at `PADDLE_SPEED` (720 units per second) exactly as it does in a
-// rally. So the match is entered from the title with the menu keys — the one
-// route to a countdown the player still controls, since every posing
-// operation (`startMatch` included) hands both paddles to the debug driver
-// and only `reset` gives them back — the screen is confirmed to be the
+// rally. So the match is opened on its countdown through the debug surface, which
+// sets the mode and the screen and takes NOTHING from the player — that is what
+// leaves the paddles under the players, which is the whole precondition here. The
+// field is posed down to the held ball the countdown is about: both obstacles are
+// removed, and the ball is spawned back at its home with a full hold timer, which
+// re-arms the countdown at its start. The screen is confirmed to be the
 // countdown with the ball still held, and a movement key is pressed through
 // the real input pipeline and held for a window that ends well inside
 // `HOLD_TIME`. The paddle's displacement over that window is
@@ -28,8 +30,9 @@ import {
   captureReplay,
   createHarness,
   holdMove,
+  openCountdown,
+  poseWorld,
   speedOverTicks,
-  startWithKeys,
   type Harness,
 } from "../harness";
 
@@ -56,7 +59,8 @@ afterEach(() => {
 });
 
 it("moves the human paddle while the countdown runs (Solo)", async () => {
-  await startWithKeys(harness, "solo");
+  openCountdown(harness, "solo");
+  poseWorld(harness, { live: false });
   const opened = harness.snapshot();
   assertEqual(opened.screen, "countdown");
   assertEqual(ball0(opened).held, true);

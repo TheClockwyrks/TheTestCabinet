@@ -1,3 +1,40 @@
+## The debug surface is atomic, and the menus take a pointer
+
+Every operation of the debug and automation surface now sets one field or one
+fixed pair, places or removes one entity, reads the state, or moves the clock.
+The two operations that took a partial object are gone, replaced by the scalar
+operations they hid: a paddle's centre and its held velocity are set separately,
+and a ball's position, velocity, spin, hold and hold timer each have their own
+operation. `startMatch` and `serve` are gone as well; the sequences they
+performed are assembled from atomic operations where a scenario needs them.
+
+A paddle is taken from the player one side at a time, so a scenario that needs
+the paddles under player control simply does not take them. The computer
+opponent's sensing and its travel are separate, so it can be given its senses
+while its body is held still. The obstacle clock's freeze is its own control
+rather than a side effect of holding a paddle.
+
+The world can be emptied and repopulated. A scenario clears the field and places
+back only the ball and the obstacles it concerns, rather than leaving the rest
+parked somewhere harmless.
+
+A ball index belongs to the three-ball variant alone. Under the others the ball
+operations take no index and the state reports none.
+
+MENUS TAKE A MOUSE AND TOUCH as well as the keyboard. Moving a pointer onto an
+item selects it, pressing and releasing inside one confirms it, and a press that
+begins on one item and ends on another confirms nothing. A touch contact selects
+where it lands and confirms where it lifts. The build reports each menu item's
+hit region, so the layout stays the build's own.
+
+Escape and `P` both open the pause menu, and either resumes it.
+
+Returning to the title selects the entry that led away from it: leaving the
+how-to screen lands on HOW TO PLAY, and quitting a match lands on the entry that
+started it.
+
+The game ships a showcase, and the checklist grades that it is there.
+
 ## Carom is a TypeScript project, on either of two engines
 
 This version stops asking a model for a self-contained HTML page and asks it for

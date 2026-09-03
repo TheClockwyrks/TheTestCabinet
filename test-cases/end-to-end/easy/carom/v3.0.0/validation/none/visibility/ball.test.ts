@@ -7,10 +7,15 @@
 // threshold is the case's figure for "clearly apart": more than 50 of the 441
 // the RGB cube spans.
 //
-// The ball is parked still at a clean mid-field spot for longer than its trail
-// lives, so the sample is the ball rather than its wake, and the sample is a
-// small cluster inside the disc, because its edge is anti-aliased toward whatever
-// is behind it.
+// The scene is posed still and isolated first: the field is emptied and spawned
+// back holding this one ball and one obstacle, both paddles are centered, and the
+// ball is parked still at a clean mid-field spot for longer than its trail lives,
+// so the sample is the ball rather than its wake and nothing the requirement is
+// not about sits under it. Neither paddle is taken from the player — this
+// requirement is about the colour the build DREW, and in a Versus match with no
+// key held nothing moves them. The ball is sampled where the snapshot says it is,
+// as a small cluster inside the disc, because its edge is anti-aliased toward
+// whatever is behind it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";

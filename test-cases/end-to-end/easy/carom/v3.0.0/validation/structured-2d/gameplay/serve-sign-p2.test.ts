@@ -6,12 +6,19 @@
 // is drawn from the seeded generator on every serve with `+1` and `-1` each
 // equally likely. One serve cannot show a draw — any one serve has some sign —
 // so a run of them is read: a real point is driven out the right goal, so the
-// receiver is player two;
-// the hold is cut short, the launch frame is read, and `serve()` is called
-// again from the live rally, which re-parks the ball and reopens the countdown
-// without touching `receiver`, so every serve of the run is toward the same
-// player. Each launch is held to the serve itself (toward player two,
-// at the serve angle), and the run as a whole to the draw: both signs appear.
+// build's own scoring makes player two the receiver, and each serve is then
+// staged by returning the ball to its home point held, reopening the countdown,
+// and cutting the hold to zero. Not one of those three touches `receiver`, so
+// every serve of the run is toward the player the point named, and not one of
+// them touches the velocity, so each launch is entirely the build's own. Each
+// launch is held to the serve itself (toward player two, at the serve angle), and
+// the run as a whole to the draw: both signs appear.
+//
+// THE FIELD HOLDS THE ONE BALL AND NOTHING ELSE. `arrangeGoal` clears it before
+// the point, with both paddles held out of the lane, so the flight that decides
+// the receiver is a straight line and the short flight recorded after each launch
+// is the serve travelling rather than a bank; the readings themselves are taken
+// on the launch frame, on which the ball has not been advanced at all.
 //
 // The bar is deliberately the one a fixed sign cannot clear and a draw cannot
 // miss: sixteen serves all of one sign come up one time in 32,768 from a fair
@@ -34,7 +41,8 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
-  startPlaying,
+  reachPlay,
+  stageServe,
   type Harness,
 } from "../harness";
 
@@ -58,20 +66,22 @@ afterEach(() => {
   harness?.dispose();
 });
 
-/** Cut the hold short, read the launch frame, and let the ball fly a little. */
+/**
+ * Stage one serve, read the launch frame, and let the ball fly a little.
+ *
+ * The ball is returned to its home point BEFORE the countdown is reopened, so the
+ * hold the reopened screen counts down is a full one whichever frame the screen
+ * change lands on — a countdown reopened over a spent hold would serve on the
+ * frame it opened, and the launch swept for below would be that stray one.
+ */
 async function nextServe(): Promise<{ vx: number; vy: number }> {
-  harness.debug.serve();
-  // A serve from a live rally re-parks the ball and reopens the countdown first,
-  // so what the sweep below finds is a fresh launch and never the old flight.
-  // (`held` is not read here: it reports a countdown still RUNNING, and this
-  // one has just been cut to zero.)
-  const reopened = harness.snapshot();
-  assertEqual(reopened.screen, "countdown");
+  stageServe(harness);
+  harness.debug.setScreen("countdown");
+  await harness.advance(1);
+  assertEqual(harness.snapshot().screen, "countdown");
 
-  const launched = await harness.until((s) => s.screen === "playing", {
-    maxFrames: 60,
-    poll: 1,
-  });
+  // The hold is cut to zero; the LAUNCH is the build's own, on the frame after.
+  const launched = await reachPlay(harness);
   assertEqual(launched.hit, true);
   await harness.advance(FLIGHT_TICKS);
   const ball = ball0(launched.snapshot);
@@ -79,9 +89,9 @@ async function nextServe(): Promise<{ vx: number; vy: number }> {
 }
 
 it("draws the serve's vertical sign afresh on every serve toward player two", async () => {
-  await startPlaying(harness);
-  harness.debug.setScore(0, 0);
-  arrangeGoal(harness, "right");
+  // Opening a match sets both scores to zero (specs/ui.md), so the point below
+  // is the first of the match.
+  await arrangeGoal(harness, "right");
 
   const serves = await captureReplay(harness, "serves", async () => {
     // The point that decides the receiver, and then the serves that answer it.

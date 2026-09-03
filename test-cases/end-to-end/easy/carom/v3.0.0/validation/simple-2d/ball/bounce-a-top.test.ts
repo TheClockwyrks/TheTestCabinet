@@ -7,6 +7,13 @@
 // three faces are the sibling checks, so a build that resolves only some of them
 // fails exactly the ones it gets wrong.
 //
+// The field holds that ball and that one obstacle and nothing else. The world
+// is cleared and only the struck obstacle is spawned back, so the bank the
+// assertions read is a bank off the face the point names: the other obstacle is
+// not standing somewhere the flight might reach it, it is gone. The paddles are
+// field furniture the game always has, so both are driven out of the lane
+// instead.
+//
 // Placement is read at the end of the frame of the contact. The frame is cut
 // into sub-steps (specs/balls.md), and a sub-step that follows the one that
 // struck carries the ball on from the face, so the center is read within one
@@ -26,12 +33,14 @@ import {
   captureReplay,
   createHarness,
   driveFaceShot,
-  startPlaying,
+  enterPlaying,
   TICK_HZ,
   type Harness,
 } from "../harness";
 
-const RECT = OBSTACLES[0];
+/** Which obstacle the shot is at, in the order of `OBSTACLE_CENTERS`. */
+const OBSTACLE = 0;
+const RECT = OBSTACLES[OBSTACLE];
 /** Where the center lands off the struck face. */
 const PLACED = RECT.y0 - BALL_R;
 /** The approach, in units per second; one frame of it bounds the placement. */
@@ -58,8 +67,8 @@ afterEach(() => {
 });
 
 it("banks the ball off obstacle A's top face", async () => {
-  await startPlaying(harness);
-  const shot = arrangeFaceShot(harness, RECT, "top", {
+  enterPlaying(harness);
+  const shot = arrangeFaceShot(harness, OBSTACLE, "top", {
     speed: SPEED,
     runUp: RUN_UP,
   });

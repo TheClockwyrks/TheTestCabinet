@@ -6,9 +6,13 @@
 // narrowest score that satisfies it.
 //
 // A point in multi does not stop the field, so what ends the match here is the
-// win rule alone — the balls are still in play right up to the frame the
-// match-over screen replaces them. The two balls this check is not about are
-// parked, so the score that reaches the win is the one this check drove.
+// win rule alone — the ball is still in play right up to the frame the
+// match-over screen replaces it. The two balls this check is not about are off
+// the field entirely, along with both obstacles, so the score that reaches the
+// win is the one this check drove.
+//
+// The score is posed AFTER the arrangement, because reaching a live field runs
+// through the title and a `reset` puts both scores back to zero.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { WIN_LEAD, WIN_SCORE } from "../constants";
@@ -17,7 +21,6 @@ import {
   arrangeGoal,
   captureStill,
   createHarness,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -36,9 +39,8 @@ afterEach(() => {
 });
 
 it("ends the match on the winning point and names the winner", async () => {
-  await startPlaying(h);
+  await arrangeGoal(h, "right");
   h.debug.setScore(P1_BEFORE, P2_BEFORE);
-  arrangeGoal(h, "right");
 
   const end = await h.until((s) => s.screen === "matchover", {
     maxFrames: 360,

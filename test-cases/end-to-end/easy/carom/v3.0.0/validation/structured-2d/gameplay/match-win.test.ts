@@ -4,6 +4,12 @@
 // REAL point is driven across the goal: the win rule resolves through the build's
 // own scoring code rather than a fabricated end state, taking the match to the
 // narrowest score that satisfies it.
+//
+// THE FIELD HOLDS ONE BALL AND NOTHING ELSE. `arrangeGoal` opens live play over
+// an isolated field and aims that ball straight down the middle lane at the right
+// goal edge, with both paddles held out of it: with the obstacles off the field
+// the flight is a straight line and nothing but the goal can end it, so the point
+// that decides the match is the one this check aimed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { WIN_LEAD, WIN_SCORE } from "../constants";
@@ -13,7 +19,6 @@ import {
   captureStill,
   createHarness,
   driveGoal,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -32,9 +37,11 @@ afterEach(() => {
 });
 
 it("ends the match on the winning point and names the winner", async () => {
-  await startPlaying(harness);
+  await arrangeGoal(harness, "right");
+  // Posed after the arrangement: opening a match sets both scores to zero
+  // (specs/ui.md), so the standing is posed onto the live match it is played out
+  // from.
   harness.debug.setScore(P1_BEFORE, P2_BEFORE);
-  arrangeGoal(harness, "right");
 
   const end = await driveGoal(harness);
   // One frame past the winning point, so what is kept is the match-over screen

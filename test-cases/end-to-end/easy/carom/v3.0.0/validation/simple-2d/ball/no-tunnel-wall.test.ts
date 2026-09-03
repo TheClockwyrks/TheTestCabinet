@@ -16,6 +16,11 @@
 // build that never sub-steps. The coarse step below is an ordinary bad moment
 // on a real machine (twenty frames a second), where one frame at the ceiling
 // is forty-nine units, more than twice the width of what it strikes.
+//
+// The field holds the probe ball alone: both obstacles are removed rather than
+// climbed past, so nothing between the start and the wall can turn the ball
+// back and be mistaken for the wall doing it. The paddles cannot be removed,
+// so both are driven clear of the centre line the probe climbs.
 
 import { afterEach, it } from "vitest";
 import { ConstantClock } from "@test-cabinet/simple-2d";
@@ -33,11 +38,15 @@ import {
   assertLessThanOrEqual,
 } from "../assert";
 import {
+  aimBall,
   ball0,
   captureReplay,
-  clearPaddles,
   createHarness,
-  startPlaying,
+  enterPlaying,
+  parkPaddles,
+  placeBall,
+  poseWorld,
+  spinBall,
   TICK_MS,
   type Harness,
 } from "../harness";
@@ -45,7 +54,7 @@ import {
 /** The suite's own cadence, and a frame that carries the ball past a wall. */
 const STEPS_MS = [TICK_MS, 50];
 
-/** Where the probe starts, straight up the center line, clear of both obstacles. */
+/** Where the probe starts, straight up the field's center line. */
 const START_Y = 600;
 
 /** The sweep cap for a probe, at the given step size. */
@@ -65,7 +74,7 @@ afterEach(() => {
 async function harnessAt(stepMs: number): Promise<Harness> {
   const harness = await createHarness({ clock: new ConstantClock(stepMs) });
   live.push(harness);
-  await startPlaying(harness);
+  enterPlaying(harness);
   return harness;
 }
 
@@ -74,14 +83,11 @@ it("rebounds off a wall at the ceiling speed and stays on the field", async () =
 
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
-    clearPaddles(harness);
-    harness.debug.setBall(0, {
-      x: FIELD_CX,
-      y: START_Y,
-      vx: 0,
-      vy: -SPEED_CAP,
-      spin: 0,
-    });
+    poseWorld(harness);
+    parkPaddles(harness);
+    placeBall(harness, FIELD_CX, START_Y);
+    aimBall(harness, 0, -SPEED_CAP);
+    spinBall(harness, 0);
 
     const rebound = await captureReplay(harness, "fast", async () => {
       const swept = await harness.until((s) => ball0(s).vy > 0, {

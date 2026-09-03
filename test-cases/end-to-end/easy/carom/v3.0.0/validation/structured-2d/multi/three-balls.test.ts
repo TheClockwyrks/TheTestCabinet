@@ -2,18 +2,27 @@
 //
 // The count and the homes are the whole of this point, read at the two moments
 // the specification fixes them: the title screen a `reset` restores, where all
-// three sit parked and unheld, and the opening of a real match, where all three
-// wait on those same points with a hold of their own.
+// three sit on their home points, and the opening of a real match, where all
+// three wait on those same points with a hold of their own.
 //
-// Nothing here poses a ball. `reset` and `startMatch` are the build's own, so
-// what is read back is where the build put its balls rather than where a check
-// put them.
+// Nothing here poses a ball, and nothing here clears the field. `reset` and the
+// build's own match start — reached the way a player reaches it, with the menu
+// keys — are what put the balls where they are, so what is read back is where the
+// BUILD put them rather than where a check put them. That is also why the world
+// is left whole: `clearWorld` and `spawnBall` are exactly the operations that
+// would answer this question with the check's own arrangement.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BALL_COUNT, BALL_HOMES } from "../constants";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { readBalls, waitingAtHomes } from "./harness";
+import {
+  captureStill,
+  createHarness,
+  openTitle,
+  startWithKeys,
+  type Harness,
+} from "../harness";
+import { readEveryBall, waitingAtHomes } from "./harness";
 
 let h: Harness;
 
@@ -26,22 +35,19 @@ afterEach(() => {
 });
 
 it("parks three balls on their own home points and holds them at match start", async () => {
-  h.debug.reset();
-  await h.advance(1);
+  await openTitle(h);
 
-  const title = readBalls(h.snapshot());
+  const title = readEveryBall(h.snapshot());
   assertLength(title, BALL_COUNT);
   assertEqual(waitingAtHomes(title), true);
-  for (const ball of title) assertEqual(ball.held, false);
 
-  h.debug.startMatch("versus");
-  await h.advance(1);
+  await startWithKeys(h, "versus");
   // The frame the match opens on, with all three balls waiting: the picture this
   // point is about, kept before the assertions so a failing build still shows
   // where it put them.
   captureStill(h, "field");
 
-  const opened = readBalls(h.snapshot());
+  const opened = readEveryBall(h.snapshot());
   assertLength(opened, BALL_COUNT);
   assertEqual(waitingAtHomes(opened), true);
   for (const ball of opened) assertEqual(ball.held, true);

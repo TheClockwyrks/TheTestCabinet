@@ -8,11 +8,24 @@
 // the ball is never behind the paddle; a build that integrates a whole coarse
 // frame at once puts it there, or out of the goal. Every frame is sampled, so
 // the earliest frame the ball was travelling back is the one read.
+//
+// The field is emptied to this ball alone, so the struck paddle is the only
+// body the shot can meet. Neither paddle is taken from the player: what this
+// check needs of the left one is that it STAND there, and in a Versus match
+// with no key held it stands exactly where it was put. The right one is parked
+// off the lane, since a paddle cannot be removed.
 
 import { afterEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { FIELD_CY, P1_X1, SPEED_CAP } from "../constants";
-import { ball0, captureReplay, PARKED_CY, type Harness } from "../harness";
+import {
+  ball0,
+  captureReplay,
+  isolateBall,
+  PARKED_CY,
+  placeBall,
+  type Harness,
+} from "../harness";
 import { DEPARTURE_MS, framesFor, harnessAt, STEPS_MS } from "./no-tunnel";
 
 const START_X = 760;
@@ -26,16 +39,11 @@ afterEach(async () => {
 it("rebounds off a paddle at the ceiling speed rather than scoring through it", async () => {
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs, live);
-    // The far paddle is parked out of the lane so it cannot interfere.
-    await harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-    await harness.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
-    await harness.debug.setBall(0, {
-      x: START_X,
-      y: FIELD_CY,
-      vx: -SPEED_CAP,
-      vy: 0,
-      spin: 0,
-    });
+    await isolateBall(harness);
+    // The struck paddle stands in the lane; the far one is parked out of it.
+    await harness.debug.setPaddleCy("left", FIELD_CY);
+    await harness.debug.setPaddleCy("right", PARKED_CY);
+    await placeBall(harness, { x: START_X, y: FIELD_CY, vx: -SPEED_CAP });
 
     const rebound = await captureReplay(harness, "fast", async () => {
       const swept = await harness.until((s) => ball0(s).vx > 0, {

@@ -4,18 +4,23 @@
 // specs/modes/versus.md: the pre-serve hold locks the ball, never the paddles. On
 // every `countdown` frame a movement action held moves the human-controlled
 // paddle at `PADDLE_SPEED` (720 units per second) exactly as it does in a
-// rally. So the match is entered from the title with the menu keys — the one
-// route to a countdown the player still controls, since every posing
-// operation (`startMatch` included) hands both paddles to the debug driver
-// and only `reset` gives them back — the screen is confirmed to be the
-// countdown with the ball still held, and a movement key is pressed through
-// the real input pipeline and held for a window that ends well inside
-// `HOLD_TIME`. The paddle's displacement over that window is
-// measured back into a speed, and the screen is read again on the frame the
-// window closes: still the countdown, the ball still waiting. A build that
-// freezes its paddles until the serve moves it nowhere here, and one that only
-// moves them once the ball is in flight has left the countdown by the time it
-// does, which the second reading catches.
+// rally. So the countdown is opened through the debug surface — the menus are the
+// navigation checks' surface, not this one's — and NOTHING takes a paddle from
+// the player: opening a countdown poses the screen and the match state and leaves
+// both paddles answering the keyboard, which is what lets this check press a real
+// movement key on a posed screen. The screen is confirmed to be the countdown
+// with the ball still held, and a movement key is pressed through the real input
+// pipeline and held for a window that ends well inside `HOLD_TIME`. The paddle's
+// displacement over that window is measured back into a speed, and the screen is
+// read again on the frame the window closes: still the countdown, the ball still
+// waiting. A build that freezes its paddles until the serve moves it nowhere
+// here, and one that only moves them once the ball is in flight has left the
+// countdown by the time it does, which the second reading catches.
+//
+// THE FIELD HOLDS THE HELD BALL AND NOTHING ELSE. The ball is half of what is
+// read — it is what the countdown is holding — so it stays, respawned with a full
+// hold so the window below runs against a countdown starting from the top. The
+// obstacles are taken off: an obstacle is no part of a paddle answering a key.
 //
 // The speed checks under this category happen to run inside the same hold, but
 // they are about the rate; this point is about the countdown, and says so.
@@ -28,8 +33,9 @@ import {
   captureReplay,
   createHarness,
   holdMove,
+  isolateField,
+  openCountdown,
   speedOverTicks,
-  startWithKeys,
   type Harness,
 } from "../harness";
 
@@ -58,7 +64,9 @@ afterEach(() => {
 });
 
 it("moves player one's paddle while the countdown runs (Versus)", async () => {
-  await startWithKeys(harness, "versus");
+  await openCountdown(harness, "versus");
+  isolateField(harness);
+
   const opened = harness.snapshot();
   assertEqual(opened.screen, "countdown");
   assertEqual(ball0(opened).held, true);

@@ -13,25 +13,19 @@
 // does, and each line is short enough to read at a glance while the game runs.
 
 import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
-import { TAGS } from "./constants";
-import { Ball } from "./ball";
+import { ballOf, paddleOf } from "./field";
 import type { CaromGame } from "./game";
-import { Paddle } from "./paddle";
-import { MatchState, screenOf } from "./state";
+import type { Side } from "./sim";
+import { caromState } from "./state";
 
 /** One decimal place: enough to see motion, short enough to fit on a line. */
 function fixed(value: number): string {
   return value.toFixed(1);
 }
 
-function ballOf(world: World): Ball | null {
-  const found = world.byTag(TAGS.ball)[0];
-  return found instanceof Ball ? found : null;
-}
-
-function paddleLine(world: World, tag: string): string {
-  const paddle = world.byTag(tag)[0];
-  if (!(paddle instanceof Paddle)) return "—";
+function paddleLine(world: World, side: Side): string {
+  const paddle = paddleOf(world, side);
+  if (paddle === null) return "—";
   return `cy ${fixed(paddle.transform.y)} vy ${fixed(paddle.vy)}`;
 }
 
@@ -43,17 +37,12 @@ export function diagnosticSources(
   game: CaromGame,
 ): Record<string, () => DiagnosticValue> {
   const world = (): World => game.engine.world;
-  const match = (): MatchState | null => {
-    const state = world().state;
-    return state instanceof MatchState ? state : null;
-  };
   return {
-    screen: () => screenOf(world()),
+    screen: () => caromState(world()).screen,
     mode: () => game.mode,
     score: () => {
-      const state = match();
-      if (state === null) return "0 - 0";
-      return `${state.players[0]?.score ?? 0} - ${state.players[1]?.score ?? 0}`;
+      const { score } = caromState(world());
+      return `${score.p1} - ${score.p2}`;
     },
     "ball pos": () => {
       const ball = ballOf(world());
@@ -71,7 +60,13 @@ export function diagnosticSources(
       const ball = ballOf(world());
       return ball ? fixed(ball.spin) : "—";
     },
-    "paddle L": () => paddleLine(world(), TAGS.paddleLeft),
-    "paddle R": () => paddleLine(world(), TAGS.paddleRight),
+    "paddle L": () => paddleLine(world(), "left"),
+    "paddle R": () => paddleLine(world(), "right"),
+    obstacles: () => {
+      const state = caromState(world());
+      return `t ${fixed(state.obstacleClock)}${
+        state.obstacleClockRunning ? "" : " (held)"
+      }`;
+    },
   };
 }

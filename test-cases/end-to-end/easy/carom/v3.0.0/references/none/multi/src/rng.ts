@@ -2,16 +2,32 @@
 //
 // The only randomness Carom uses is the angle a ball launches on, and
 // `specs/instrumentation.md` requires that it run off a SEEDABLE generator so a
-// scenario reseeded with `reset({ seed })` and replayed reaches the same state.
+// scenario reseeded with `setSeed` and replayed reaches the same state.
 //
 // The generator's whole state is the one 32-bit integer `CaromState.rngState`,
-// which is why it is a declared field rather than a module-level variable: the
-// debug API's `reset()` restores the declared fields, and a generator hidden in a
-// closure would survive that reset and desynchronize the replay.
+// and the seed it was last seeded from is `CaromState.seed`. Both are declared
+// fields rather than module-level variables: the debug surface's `reset()`
+// restores the declared fields, and a generator hidden in a closure would survive
+// that reset and desynchronize the replay.
 
 /** The mutable slice of the state this module reads and writes. */
 export interface RandomSource {
+  /** The seed the generator was last seeded from. */
+  seed: number;
+  /** The whole state of the generator, as a single number. */
   rngState: number;
+}
+
+/**
+ * Seed the generator, as `setSeed` does.
+ *
+ * mulberry32's whole state IS one word, so a seed and the generator's starting
+ * state are the same number — which is what `specs/instrumentation.md` means by
+ * `rngState` becoming "that generator's starting state".
+ */
+export function seedRandom(source: RandomSource, seed: number): void {
+  source.seed = seed;
+  source.rngState = seed;
 }
 
 /**

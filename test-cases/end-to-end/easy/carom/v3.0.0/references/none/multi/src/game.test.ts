@@ -17,16 +17,21 @@ import {
   BALL_HOMES,
   BALL_R,
   CUES,
+  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
   FIELD_W,
   HOLD_TIME,
+  MATCHOVER_ITEMS,
+  OBSTACLE_CENTERS,
   P1_X0,
   PADDLE_SPEED,
   PADDLE_W,
+  PAUSE_ITEMS,
   SERVE_SPEED,
   SPIN_FROM_PADDLE,
+  TITLE_ITEMS,
   WIN_SCORE,
 } from "./constants";
 import {
@@ -36,7 +41,7 @@ import {
   type CaromDebugApi,
   type CaromSnapshot,
 } from "./debug";
-import { game, type CaromState } from "./game";
+import { game, type CaromState, type Mode, type Side } from "./game";
 import { createRuntime, type Game, type Runtime } from "./runtime";
 import type { Surface, Viewport } from "./viewport";
 
@@ -61,6 +66,13 @@ interface Harness {
   hold(code: string): void;
   release(code: string): void;
   tap(code: string): void;
+  /** Move the mouse to a logical point. No frame runs; `run` does that. */
+  pointerMove(x: number, y: number): void;
+  pointerDown(x: number, y: number): void;
+  pointerUp(x: number, y: number): void;
+  touchStart(x: number, y: number): void;
+  touchMove(x: number, y: number): void;
+  touchEnd(x: number, y: number): void;
   pixel(x: number, y: number): [number, number, number, number];
   dispose(): void;
 }
@@ -73,6 +85,36 @@ class KeyEvent extends Event {
     super(type);
     this.code = code;
     this.repeat = repeat;
+  }
+}
+
+/** A `PointerEvent`-shaped event: the runtime reads `clientX/Y` and the type. */
+class PointerEventLike extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly pointerType = "mouse";
+
+  constructor(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+  ) {
+    super(type);
+    this.clientX = x;
+    this.clientY = y;
+  }
+}
+
+/** A `TouchEvent`-shaped event: the runtime reads the first changed contact. */
+class TouchEventLike extends Event {
+  readonly changedTouches: readonly { clientX: number; clientY: number }[];
+
+  constructor(
+    type: "touchstart" | "touchmove" | "touchend",
+    points: readonly { clientX: number; clientY: number }[],
+  ) {
+    super(type);
+    this.changedTouches = points;
   }
 }
 
@@ -126,6 +168,9 @@ function createHarness(): Harness {
     cssWidth: () => FIELD_W,
     cssHeight: () => FIELD_H,
     dpr: () => 1,
+    // The canvas fills the page and the fit is 1:1, so a logical point and a
+    // client point are the same number here.
+    origin: () => ({ x: 0, y: 0 }),
     events: () => events,
   };
 
@@ -148,6 +193,7 @@ function createHarness(): Harness {
             setMuted: (muted) => api.audio.setMuted(muted),
             muted: () => api.audio.muted(),
           },
+          pointer: api.pointer,
         },
         dt,
       ),
@@ -184,6 +230,24 @@ function createHarness(): Harness {
       dispatch("keydown", code);
       dispatch("keyup", code);
     },
+    pointerMove: (x, y) =>
+      events.dispatchEvent(new PointerEventLike("pointermove", x, y)),
+    pointerDown: (x, y) =>
+      events.dispatchEvent(new PointerEventLike("pointerdown", x, y)),
+    pointerUp: (x, y) =>
+      events.dispatchEvent(new PointerEventLike("pointerup", x, y)),
+    touchStart: (x, y) =>
+      events.dispatchEvent(
+        new TouchEventLike("touchstart", [{ clientX: x, clientY: y }]),
+      ),
+    touchMove: (x, y) =>
+      events.dispatchEvent(
+        new TouchEventLike("touchmove", [{ clientX: x, clientY: y }]),
+      ),
+    touchEnd: (x, y) =>
+      events.dispatchEvent(
+        new TouchEventLike("touchend", [{ clientX: x, clientY: y }]),
+      ),
     pixel: (x, y) => {
       const [dx, dy] = toDevice(runtime.viewport(), x, y);
       const { data } = ctx.getImageData(dx, dy, 1, 1);
@@ -214,26 +278,101 @@ const IDLE = [
   { x: 1130, y: 60, vx: 0, vy: 0, spin: 0 },
 ];
 
+/* -------------------------------------------------------------------------- */
+/* Sequences over the atomic surface                                          */
+/* -------------------------------------------------------------------------- */
+//
+// Every operation `specs/instrumentation.md` puts on the surface sets ONE field,
+// places or removes ONE entity, or moves the clock, so reaching a screen or
+// staging a rally is a SEQUENCE of them. The sequences live here, once, so no
+// check below spells one out.
+
+/** Where a scenario puts a ball, and how fast. Anything omitted is zero. */
+interface BallPose {
+  x: number;
+  y: number;
+  vx?: number;
+  vy?: number;
+  spin?: number;
+}
+
+/**
+ * Open a match on its pre-serve countdown through the surface alone.
+ *
+ * `reset` puts every declared field at its title value — which is, field for
+ * field, what `specs/ui.md` says starting a match sets — so a match opens in two
+ * more operations: the mode, and the screen. Neither paddle is taken from the
+ * player.
+ */
+function openMatch(h: Harness, mode: Mode): void {
+  h.debug.reset();
+  h.debug.setMode(mode);
+  h.debug.setScreen("countdown");
+}
+
+/**
+ * End every present ball's hold.
+ *
+ * Setting a hold timer to `0` does not itself launch the ball: the build launches
+ * it on the next frame whose subtraction leaves the timer at or below zero,
+ * through its own rule (specs/balls.md).
+ */
+function endHolds(h: Harness): void {
+  for (const ball of h.debug.snapshot().balls) {
+    h.debug.setBallHoldTimer(ball.index, 0);
+  }
+}
+
+/**
+ * Put one ball into flight at a posed place and aim: five atomic operations, in
+ * the order that leaves nothing for the next frame to undo.
+ *
+ * The hold is ended FIRST, because a held ball sits parked at its home point with
+ * zero velocity and a position posed while it is still held is one the game is
+ * entitled to overwrite on the frame after.
+ */
+function place(h: Harness, index: number, pose: BallPose): void {
+  h.debug.setBallHeld(index, false);
+  h.debug.setBallHoldTimer(index, 0);
+  h.debug.setBallPosition(index, pose.x, pose.y);
+  h.debug.setBallVelocity(index, pose.vx ?? 0, pose.vy ?? 0);
+  h.debug.setBallSpin(index, pose.spin ?? 0);
+}
+
+/** Take one paddle from the player, put it somewhere, and give it a velocity. */
+function drive(
+  h: Harness,
+  side: Side,
+  pose: { cy?: number; vy?: number } = {},
+): void {
+  if (pose.cy !== undefined) h.debug.setPaddleCy(side, pose.cy);
+  h.debug.setPaddleVy(side, pose.vy ?? 0);
+  h.debug.setPaddleDriven(side, true);
+}
+
 /**
  * Take the match to a live rally with ball 0 posed exactly as asked, and the
  * other two parked out of the way so the scenario is about the one ball.
  */
-function rally(
-  h: Harness,
-  mode: "solo" | "versus",
-  ball: { x: number; y: number; vx: number; vy: number; spin?: number },
-): void {
-  h.debug.startMatch(mode);
-  h.debug.serve();
+function rally(h: Harness, mode: Mode, ball: BallPose): void {
+  openMatch(h, mode);
+  endHolds(h);
   h.run(1); // the launch, through the build's own code
-  h.debug.setBall(0, ball);
-  h.debug.setBall(1, IDLE[0]);
-  h.debug.setBall(2, IDLE[1]);
+  place(h, 0, ball);
+  place(h, 1, IDLE[0]);
+  place(h, 2, IDLE[1]);
 }
 
 /** The one ball a `rally` scenario is driving. */
 function driven(h: Harness): CaromSnapshot["balls"][number] {
   return h.debug.snapshot().balls[0];
+}
+
+/** The middle of item `index`'s hit region on the current screen's menu. */
+function itemCenter(h: Harness, index: number): { x: number; y: number } {
+  const rect = h.debug.menuItemRect(index);
+  if (rect === null) throw new Error(`no hit region for item ${index}`);
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
 }
 
 // ---- Boot ---------------------------------------------------------------
@@ -244,26 +383,49 @@ describe("initialization", () => {
     expect(state.screen).toBe("title");
     expect(state.mode).toBe("solo");
     expect(state.menuIndex).toBe(0);
+    expect(state.titleIndex).toBe(0);
+    expect(state.resumeScreen).toBe("playing");
     expect(state.score).toEqual({ p1: 0, p2: 0 });
     expect(state.winner).toBeNull();
+    expect(state.ai).toEqual({ tracking: true, movement: true });
+    expect(state.seed).toBe(DEFAULT_SEED);
+    expect(state.rngState).toBe(DEFAULT_SEED);
+    expect(state.simTime).toBe(0);
+
+    for (const side of ["left", "right"] as const) {
+      expect(state.paddles[side]).toEqual({
+        cy: FIELD_CY,
+        vy: 0,
+        drivenVy: 0,
+        driven: false,
+      });
+    }
+
+    // Every ball is present, held at its own home with a full timer
+    // (specs/state.md).
     expect(state.balls).toHaveLength(BALL_COUNT);
     state.balls.forEach((ball, index) => {
       expect(ball).toEqual({
+        index,
         x: BALL_HOMES[index].x,
         y: BALL_HOMES[index].y,
         vx: 0,
         vy: 0,
         spin: 0,
-        held: false,
-        holdTimer: 0,
+        held: true,
+        holdTimer: HOLD_TIME,
         trail: [],
       });
     });
-    expect(state.driver).toEqual({
-      paddles: false,
-      ai: false,
-      vy: { left: 0, right: 0 },
-    });
+
+    // Both obstacles are present, at their fixed centers.
+    expect(state.obstacles).toEqual(
+      OBSTACLE_CENTERS.map((center, index) => ({
+        index,
+        cx: center.x,
+        cy: center.y,
+      })),
+    );
   });
 
   it("accumulates simulation time from the deltas it is handed", () => {
@@ -396,7 +558,7 @@ describe("the paddles", () => {
 
 describe("launching", () => {
   it("holds all three for HOLD_TIME and then launches them together", () => {
-    harness.debug.startMatch("versus");
+    openMatch(harness, "versus");
     harness.run(frames(HOLD_TIME) - 1);
     expect(harness.state.screen).toBe("countdown");
     expect(harness.debug.snapshot().balls.map((b) => b.held)).toEqual([
@@ -415,7 +577,7 @@ describe("launching", () => {
   });
 
   it("starts each ball on its own home point", () => {
-    harness.debug.startMatch("versus");
+    openMatch(harness, "versus");
     harness.run(1);
     harness.debug.snapshot().balls.forEach((ball, index) => {
       expect(ball.x).toBe(BALL_HOMES[index].x);
@@ -424,8 +586,8 @@ describe("launching", () => {
   });
 
   it("launches every ball at SERVE_SPEED", () => {
-    harness.debug.startMatch("versus");
-    harness.debug.serve();
+    openMatch(harness, "versus");
+    endHolds(harness);
     harness.run(1);
     for (const ball of harness.debug.snapshot().balls) {
       expect(ball.speed).toBeCloseTo(SERVE_SPEED, 6);
@@ -435,9 +597,9 @@ describe("launching", () => {
   it("draws a fresh angle for every launch, over the whole circle", () => {
     const quadrants = new Set<number>();
     for (let seed = 1; seed <= 40; seed++) {
-      harness.debug.reset({ seed });
-      harness.debug.startMatch("versus");
-      harness.debug.serve();
+      openMatch(harness, "versus");
+      harness.debug.setSeed(seed);
+      endHolds(harness);
       harness.run(1);
       for (const ball of harness.debug.snapshot().balls) {
         const angle = Math.atan2(ball.vy, ball.vx) + Math.PI;
@@ -451,9 +613,10 @@ describe("launching", () => {
     const other = createHarness();
     try {
       for (const h of [harness, other]) {
-        h.debug.reset({ seed: 4242 });
-        h.debug.startMatch("versus");
-        h.debug.serve();
+        h.debug.reset();
+        h.debug.setSeed(4242);
+        openMatch(h, "versus");
+        endHolds(h);
         h.run(1);
       }
       expect(other.debug.snapshot().balls).toEqual(
@@ -470,7 +633,7 @@ describe("launching", () => {
 describe("the rally", () => {
   it("returns the ball off a paddle and plays the paddle cue", () => {
     rally(harness, "versus", { x: 120, y: FIELD_CY, vx: -600, vy: 0 });
-    harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 200 });
+    drive(harness, "left", { cy: FIELD_CY, vy: 200 });
     harness.cues.length = 0;
 
     harness.run(6);
@@ -664,22 +827,44 @@ describe("mute", () => {
 // ---- The debug surface --------------------------------------------------
 
 describe("window.__carom", () => {
-  it("holds the paddles once a control operation has taken them", () => {
-    harness.debug.startMatch("versus");
-    harness.debug.setPaddle("left", { vy: 300 });
-    expect(harness.state.driver.paddles).toBe(true);
+  it("takes one paddle from the player and leaves the other alone", () => {
+    openMatch(harness, "versus");
+    drive(harness, "left", { vy: 300 });
+    expect(harness.debug.snapshot().paddles.left.driven).toBe(true);
+    expect(harness.debug.snapshot().paddles.right.driven).toBe(false);
 
-    harness.hold("KeyW"); // ignored: the driver has the paddles
+    harness.hold("KeyW"); // ignored: the surface has this paddle
+    harness.hold("ArrowDown"); // and the other one is still the player's
     harness.run(frames(0.1));
 
     expect(harness.state.paddles.left.cy).toBeCloseTo(FIELD_CY + 30, 6);
+    expect(harness.state.paddles.right.cy).toBeCloseTo(
+      FIELD_CY + PADDLE_SPEED * 0.1,
+      6,
+    );
+  });
+
+  it("keeps drivenVy and vy as two separate fields", () => {
+    openMatch(harness, "versus");
+    // A velocity set while the paddle is still the player's is remembered and
+    // does not move it (specs/instrumentation.md).
+    harness.debug.setPaddleVy("left", 300);
+    harness.run(frames(0.1));
+    expect(harness.debug.snapshot().paddles.left.drivenVy).toBe(300);
+    expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
+
+    // It reaches `vy` on the first frame advanced with that side driven.
+    harness.debug.setPaddleDriven("left", true);
+    harness.run(1);
+    expect(harness.debug.snapshot().paddles.left.vy).toBe(300);
   });
 
   it("hands the paddles back on reset", () => {
-    harness.debug.startMatch("versus");
-    harness.debug.setPaddle("left", { vy: 300 });
+    openMatch(harness, "versus");
+    drive(harness, "left", { vy: 300 });
     harness.debug.reset();
-    expect(harness.state.driver.paddles).toBe(false);
+    expect(harness.debug.snapshot().paddles.left.driven).toBe(false);
+    expect(harness.debug.snapshot().paddles.left.drivenVy).toBe(0);
     expect(harness.state.screen).toBe("title");
 
     harness.tap("Enter");
@@ -692,28 +877,39 @@ describe("window.__carom", () => {
     );
   });
 
-  it("runs the real AI against a posed shot when handed its paddle back", () => {
+  it("runs the real AI on the paddle it has not taken", () => {
     rally(harness, "solo", { x: 900, y: 180, vx: 400, vy: 0 });
-    harness.debug.setPaddle("right", { cy: 600, vy: 0 });
-    harness.debug.setAiControl(true);
+    // The left paddle is the scenario's; the right one is left with the AI.
+    drive(harness, "left", { cy: FIELD_CY, vy: 0 });
+    harness.debug.setPaddleCy("right", 600);
 
     harness.run(30);
 
     const { paddles } = harness.debug.snapshot();
     expect(paddles.right.cy).toBeLessThan(600);
-    expect(paddles.left.cy).toBe(FIELD_CY); // still the driver's
+    expect(paddles.left.cy).toBe(FIELD_CY); // still the surface's
   });
 
-  it("refuses a ball index this variant does not have", () => {
-    expect(() => harness.debug.setBall(BALL_COUNT, { x: 0 })).toThrow(
-      RangeError,
-    );
-    expect(() => harness.debug.setBall(-1, { x: 0 })).toThrow(RangeError);
+  it("has no effect from an operation naming a ball that is not there", () => {
+    openMatch(harness, "versus");
+    harness.debug.clearWorld();
+    // Every one of the six, against a field with no balls on it at all.
+    harness.debug.setBallPosition(0, 10, 10);
+    harness.debug.setBallVelocity(0, 10, 10);
+    harness.debug.setBallSpin(0, 10);
+    harness.debug.setBallHeld(0, false);
+    harness.debug.setBallHoldTimer(0, 10);
+    expect(harness.debug.snapshot().balls).toEqual([]);
+
+    // And an index this variant simply does not have.
+    harness.debug.spawnBall(BALL_COUNT);
+    harness.debug.spawnBall(-1);
+    expect(harness.debug.snapshot().balls).toEqual([]);
   });
 
   it("takes a posed ball into live play", () => {
-    harness.debug.startMatch("versus");
-    harness.debug.setBall(2, { x: 400, y: 300, vx: 200, vy: 0 });
+    openMatch(harness, "versus");
+    place(harness, 2, { x: 400, y: 300, vx: 200, vy: 0 });
     expect(harness.debug.snapshot().balls[2].held).toBe(false);
 
     harness.run(6);
@@ -745,8 +941,8 @@ describe("the manual clock", () => {
     harness.debug.setAutoStep(false);
     expect(harness.runtime.autoStep()).toBe(false);
 
-    harness.debug.startMatch("versus");
-    harness.debug.serve();
+    openMatch(harness, "versus");
+    endHolds(harness);
     const before = harness.debug.snapshot().simTime;
 
     harness.debug.advance(1, 60);
@@ -768,7 +964,7 @@ describe("the manual clock", () => {
     harness.tap("Enter"); // a real Solo match, played from the keyboard
     harness.debug.setAutoStep(false);
     harness.debug.advance(TICK);
-    expect(harness.state.driver.paddles).toBe(false);
+    expect(harness.debug.snapshot().paddles.left.driven).toBe(false);
 
     harness.hold("KeyW");
     harness.debug.advance(0.1, 6);
@@ -788,11 +984,11 @@ describe("the manual clock", () => {
     try {
       for (const h of [coarse, fine]) {
         h.debug.setAutoStep(false);
-        h.debug.reset({ seed: 7 });
-        h.debug.startMatch("versus");
-        h.debug.serve();
+        openMatch(h, "versus");
+        h.debug.setSeed(7);
+        endHolds(h);
         h.debug.advance(TICK);
-        h.debug.setBall(0, pose);
+        place(h, 0, pose);
       }
       coarse.debug.advance(0.5, 1);
       fine.debug.advance(0.5, 60);
@@ -815,7 +1011,7 @@ describe("the manual clock", () => {
 
 describe("rendering", () => {
   it("fills each paddle in its own color", () => {
-    harness.debug.startMatch("versus");
+    openMatch(harness, "versus");
     harness.run(1);
 
     expect(harness.pixel(P1_X0 + PADDLE_W / 2, FIELD_CY)).toEqual([
@@ -843,7 +1039,7 @@ describe("rendering", () => {
   });
 
   it("draws each score as its own number, player one's left of center", () => {
-    harness.debug.startMatch("versus");
+    openMatch(harness, "versus");
     harness.debug.setScore(7, 9);
     harness.calls.length = 0;
     harness.run(1);
@@ -858,7 +1054,7 @@ describe("rendering", () => {
   });
 
   it("draws in logical coordinates whatever size the surface is", () => {
-    harness.debug.startMatch("versus");
+    openMatch(harness, "versus");
     harness.run(1);
     const view = harness.runtime.viewport();
     expect(view.width).toBe(FIELD_W);
@@ -882,7 +1078,7 @@ describe("rendering", () => {
 describe("three independent balls", () => {
   it("keeps the other two running while one respawns", () => {
     rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
-    harness.debug.setBall(1, { x: 300, y: 300, vx: 300, vy: 0 });
+    place(harness, 1, { x: 300, y: 300, vx: 300, vy: 0 });
 
     harness.run(4);
 
@@ -893,11 +1089,11 @@ describe("three independent balls", () => {
   });
 
   it("runs each ball's hold on its own clock", () => {
-    harness.debug.startMatch("versus");
-    harness.debug.serve();
+    openMatch(harness, "versus");
+    endHolds(harness);
     harness.run(1);
     // Send ball 0 home mid-rally by scoring with it; the others stay in flight.
-    harness.debug.setBall(0, { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
+    place(harness, 0, { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
     harness.run(4);
 
     const holds = harness.state.balls.map((ball) => ball.holdTimer);
@@ -908,7 +1104,7 @@ describe("three independent balls", () => {
 
   it("bounces two balls off each other without changing either's spin", () => {
     rally(harness, "versus", { x: 600, y: 400, vx: 300, vy: 0, spin: 0 });
-    harness.debug.setBall(1, { x: 700, y: 400, vx: -300, vy: 0, spin: 0 });
+    place(harness, 1, { x: 700, y: 400, vx: -300, vy: 0, spin: 0 });
 
     harness.run(30);
 
@@ -921,7 +1117,7 @@ describe("three independent balls", () => {
 
   it("plays the ball cue when two balls bounce off each other", () => {
     rally(harness, "versus", { x: 600, y: 400, vx: 300, vy: 0, spin: 0 });
-    harness.debug.setBall(1, { x: 700, y: 400, vx: -300, vy: 0, spin: 0 });
+    place(harness, 1, { x: 700, y: 400, vx: -300, vy: 0, spin: 0 });
     harness.cues.length = 0;
 
     harness.run(30);
@@ -931,7 +1127,7 @@ describe("three independent balls", () => {
 
   it("plays the ball cue once for the pair, not once for each ball", () => {
     rally(harness, "versus", { x: 600, y: 400, vx: 300, vy: 0, spin: 0 });
-    harness.debug.setBall(1, { x: 700, y: 400, vx: -300, vy: 0, spin: 0 });
+    place(harness, 1, { x: 700, y: 400, vx: -300, vy: 0, spin: 0 });
     harness.cues.length = 0;
 
     harness.run(30);
@@ -943,9 +1139,9 @@ describe("three independent balls", () => {
   });
 
   it("bounces a moving ball off one waiting at its home point", () => {
-    harness.debug.startMatch("versus");
+    openMatch(harness, "versus");
     // Ball 1 is still waiting on the field center; drive ball 0 into it.
-    harness.debug.setBall(0, {
+    place(harness, 0, {
       x: BALL_HOMES[1].x - 120,
       y: BALL_HOMES[1].y,
       vx: 400,
@@ -962,8 +1158,8 @@ describe("three independent balls", () => {
   });
 
   it("never lets two balls occupy the same place", () => {
-    harness.debug.startMatch("versus");
-    harness.debug.serve();
+    openMatch(harness, "versus");
+    endHolds(harness);
     harness.run(600);
 
     const balls = harness.debug.snapshot().balls;
@@ -981,13 +1177,615 @@ describe("three independent balls", () => {
   it("defends the ball arriving at its goal soonest in Solo", () => {
     rally(harness, "solo", { x: 900, y: 180, vx: 400, vy: 0 });
     // A second ball threatens the same goal, but from much further away.
-    harness.debug.setBall(1, { x: 200, y: 620, vx: 400, vy: 0 });
-    harness.debug.setPaddle("right", { cy: FIELD_CY, vy: 0 });
-    harness.debug.setAiControl(true);
+    place(harness, 1, { x: 200, y: 620, vx: 400, vy: 0 });
+    harness.debug.setPaddleCy("right", FIELD_CY);
 
     harness.run(20);
 
     // It tracks the near ball at y 180, not the far one at y 620.
     expect(harness.debug.snapshot().paddles.right.cy).toBeLessThan(FIELD_CY);
+  });
+});
+
+// ---- The world the surface poses ----------------------------------------
+
+describe("the world", () => {
+  it("empties the field and leaves the paddles standing", () => {
+    openMatch(harness, "versus");
+    harness.debug.clearWorld();
+
+    const cleared = harness.debug.snapshot();
+    expect(cleared.balls).toEqual([]);
+    expect(cleared.obstacles).toEqual([]);
+    expect(cleared.paddles.left.cy).toBe(FIELD_CY);
+    expect(cleared.paddles.right.cy).toBe(FIELD_CY);
+  });
+
+  it("spawns one ball back at its own home, held with a full timer", () => {
+    openMatch(harness, "versus");
+    harness.debug.clearWorld();
+    harness.debug.spawnBall(1);
+
+    const balls = harness.debug.snapshot().balls;
+    expect(balls).toHaveLength(1);
+    expect(balls[0]).toMatchObject({
+      index: 1,
+      x: BALL_HOMES[1].x,
+      y: BALL_HOMES[1].y,
+      vx: 0,
+      vy: 0,
+      spin: 0,
+      held: true,
+      holdTimer: HOLD_TIME,
+      trail: [],
+    });
+  });
+
+  it("keeps the balls it spawns back in play order", () => {
+    harness.debug.clearWorld();
+    harness.debug.spawnBall(2);
+    harness.debug.spawnBall(0);
+    expect(harness.debug.snapshot().balls.map((b) => b.index)).toEqual([0, 2]);
+  });
+
+  it("returns a ball already on the field to a fresh arrangement", () => {
+    rally(harness, "versus", { x: 400, y: 300, vx: 300, vy: 0, spin: 50 });
+    harness.run(4);
+    harness.debug.spawnBall(0);
+
+    expect(driven(harness)).toMatchObject({
+      x: BALL_HOMES[0].x,
+      y: BALL_HOMES[0].y,
+      vx: 0,
+      vy: 0,
+      spin: 0,
+      held: true,
+      holdTimer: HOLD_TIME,
+      trail: [],
+    });
+  });
+
+  it("takes an absent ball out of the frame entirely", () => {
+    rally(harness, "versus", { x: FIELD_CX, y: FIELD_CY, vx: 600, vy: 0 });
+    harness.debug.clearWorld();
+    harness.cues.length = 0;
+
+    harness.run(120);
+
+    // Nothing to advance, nothing to collide, nothing to score.
+    expect(harness.debug.snapshot().balls).toEqual([]);
+    expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
+    expect(harness.cues).toEqual([]);
+  });
+
+  it("spawns one obstacle back at its fixed center", () => {
+    harness.debug.clearWorld();
+    harness.debug.spawnObstacle(1);
+    expect(harness.debug.snapshot().obstacles).toEqual([
+      { index: 1, cx: OBSTACLE_CENTERS[1].x, cy: OBSTACLE_CENTERS[1].y },
+    ]);
+  });
+
+  it("flies straight through the place an absent obstacle stood", () => {
+    // The obstacle-bounce scenario, with obstacle A taken off the field.
+    rally(harness, "versus", { x: 450, y: 220, vx: 600, vy: 0 });
+    harness.debug.clearWorld();
+    harness.debug.spawnBall(0);
+    place(harness, 0, { x: 300, y: 220, vx: 600 });
+    harness.cues.length = 0;
+
+    harness.run(6);
+
+    expect(harness.cues).toEqual([]);
+    expect(driven(harness).vx).toBe(600);
+  });
+
+  it("restores the whole world on reset", () => {
+    harness.debug.clearWorld();
+    harness.debug.reset();
+    const restored = harness.debug.snapshot();
+    expect(restored.balls).toHaveLength(BALL_COUNT);
+    expect(restored.obstacles).toHaveLength(OBSTACLE_CENTERS.length);
+  });
+});
+
+// ---- The snapshot, field by field ---------------------------------------
+
+describe("the snapshot", () => {
+  it("reports every field an operation of the surface sets", () => {
+    harness.debug.setScreen("paused");
+    harness.debug.setMode("solo");
+    harness.debug.setMenuIndex(2);
+    harness.debug.setTitleIndex(1);
+    harness.debug.setResumeScreen("countdown");
+    harness.debug.setScore(4, 7);
+    harness.debug.setWinner("right");
+    harness.debug.setSeed(99);
+    harness.debug.setPaddleCy("left", 210);
+    harness.debug.setPaddleVy("left", -120);
+    harness.debug.setPaddleDriven("left", true);
+    harness.debug.setAiTracking(false);
+    harness.debug.setAiMovement(false);
+    harness.debug.setBallPosition(1, 300, 400);
+    harness.debug.setBallVelocity(1, 30, 40);
+    harness.debug.setBallSpin(1, 55);
+    harness.debug.setBallHeld(1, false);
+    harness.debug.setBallHoldTimer(1, 0.25);
+
+    const snap = harness.debug.snapshot();
+    expect(snap.version).toBe(1);
+    expect(snap.screen).toBe("paused");
+    expect(snap.mode).toBe("solo");
+    expect(snap.menuIndex).toBe(2);
+    expect(snap.titleIndex).toBe(1);
+    expect(snap.resumeScreen).toBe("countdown");
+    expect(snap.score).toEqual({ p1: 4, p2: 7 });
+    expect(snap.winner).toBe("right");
+    expect(snap.seed).toBe(99);
+    expect(snap.rngState).toBe(99);
+    expect(snap.muted).toBe(false);
+    expect(snap.paddles.left).toEqual({
+      cy: 210,
+      vy: 0,
+      drivenVy: -120,
+      driven: true,
+    });
+    expect(snap.ai).toEqual({ tracking: false, movement: false });
+    expect(snap.balls[1]).toMatchObject({
+      index: 1,
+      x: 300,
+      y: 400,
+      vx: 30,
+      vy: 40,
+      speed: 50,
+      spin: 55,
+      held: false,
+      holdTimer: 0.25,
+    });
+    expect(snap.obstacles).toHaveLength(OBSTACLE_CENTERS.length);
+    expect(snap.autoStep).toBe(true);
+    expect(snap.simTime).toBe(0);
+  });
+
+  it("reports the clock's own setting rather than a field of the state", () => {
+    harness.debug.setAutoStep(false);
+    expect(harness.debug.snapshot().autoStep).toBe(false);
+    // A reset restores the declared fields and leaves the clock as it is.
+    harness.debug.reset();
+    expect(harness.debug.snapshot().autoStep).toBe(false);
+    harness.debug.setAutoStep(true);
+    expect(harness.debug.snapshot().autoStep).toBe(true);
+  });
+
+  it("hands out a copy: reading it cannot move the game", () => {
+    rally(harness, "versus", { x: 400, y: 300, vx: 300, vy: 0 });
+    harness.run(4);
+    const snap = harness.debug.snapshot();
+    snap.balls[0].x = -1;
+    snap.balls[0].trail.length = 0;
+    expect(harness.state.balls[0].x).not.toBe(-1);
+    expect(harness.state.balls[0].trail.length).toBeGreaterThan(0);
+  });
+
+  it("returns each seed's generator to its starting state", () => {
+    harness.debug.setSeed(1234);
+    expect(harness.debug.snapshot().rngState).toBe(1234);
+    openMatch(harness, "versus");
+    // `reset` inside `openMatch` returns both to the default.
+    expect(harness.debug.snapshot().seed).toBe(DEFAULT_SEED);
+    expect(harness.debug.snapshot().rngState).toBe(DEFAULT_SEED);
+  });
+});
+
+// ---- The AI's two faculties ---------------------------------------------
+
+describe("the AI's faculties", () => {
+  it("senses the ball with tracking on", () => {
+    rally(harness, "solo", { x: 900, y: 180, vx: 400, vy: 0 });
+    harness.debug.setPaddleCy("right", FIELD_CY);
+    harness.run(20);
+    expect(harness.debug.snapshot().paddles.right.cy).toBeLessThan(FIELD_CY);
+  });
+
+  it("targets home rather than the ball with tracking off", () => {
+    rally(harness, "solo", { x: 900, y: 180, vx: 400, vy: 0 });
+    harness.debug.setPaddleCy("right", FIELD_CY);
+    harness.debug.setAiTracking(false);
+
+    harness.run(20);
+
+    // Already home, so a blind opponent stands exactly still.
+    expect(harness.debug.snapshot().paddles.right.cy).toBe(FIELD_CY);
+    expect(harness.debug.snapshot().paddles.right.vy).toBe(0);
+  });
+
+  it("stands still with movement off, sensing or not", () => {
+    rally(harness, "solo", { x: 900, y: 180, vx: 400, vy: 0 });
+    harness.debug.setPaddleCy("right", 600);
+    harness.debug.setAiMovement(false);
+
+    harness.run(20);
+
+    expect(harness.debug.snapshot().paddles.right.cy).toBe(600);
+    expect(harness.debug.snapshot().paddles.right.vy).toBe(0);
+  });
+
+  it("gates the two faculties one at a time", () => {
+    rally(harness, "solo", { x: 900, y: 180, vx: 400, vy: 0 });
+    harness.debug.setPaddleCy("right", 600);
+    // Sensing but not travelling.
+    harness.debug.setAiMovement(false);
+    harness.run(10);
+    expect(harness.debug.snapshot().ai).toEqual({
+      tracking: true,
+      movement: false,
+    });
+    expect(harness.debug.snapshot().paddles.right.cy).toBe(600);
+
+    // Travelling again: it chases the ball it was sensing all along.
+    harness.debug.setAiMovement(true);
+    harness.run(10);
+    expect(harness.debug.snapshot().paddles.right.cy).toBeLessThan(600);
+  });
+
+  it("returns both faculties on reset", () => {
+    harness.debug.setAiTracking(false);
+    harness.debug.setAiMovement(false);
+    harness.debug.reset();
+    expect(harness.debug.snapshot().ai).toEqual({
+      tracking: true,
+      movement: true,
+    });
+  });
+});
+
+// ---- The pause keys -----------------------------------------------------
+
+describe("the pause keys", () => {
+  it("opens the pause menu with either key, from either live screen", () => {
+    openMatch(harness, "versus");
+    harness.tap("KeyP");
+    harness.run(1);
+    expect(harness.state.screen).toBe("paused");
+    expect(harness.state.resumeScreen).toBe("countdown");
+    expect(harness.state.menuIndex).toBe(0);
+
+    rally(harness, "versus", { x: 400, y: 300, vx: 300, vy: 0 });
+    harness.tap("Escape");
+    harness.run(1);
+    expect(harness.state.screen).toBe("paused");
+    expect(harness.state.resumeScreen).toBe("playing");
+  });
+
+  it("leaves the pause menu open on the Escape that opened it", () => {
+    // One Escape raises `pause` AND `back`, but `back` is not read on a live
+    // screen — so the menu opens and stays (specs/ui.md).
+    rally(harness, "versus", { x: 400, y: 300, vx: 300, vy: 0 });
+    harness.tap("Escape");
+    harness.run(4);
+    expect(harness.state.screen).toBe("paused");
+  });
+
+  it("resumes on Escape, exactly once", () => {
+    rally(harness, "versus", { x: 400, y: 300, vx: 300, vy: 0 });
+    harness.debug.setScreen("paused");
+    harness.debug.setResumeScreen("playing");
+    harness.debug.setMenuIndex(1); // RESTART, which a double-read would trigger
+
+    harness.tap("Escape");
+    harness.run(1);
+
+    expect(harness.state.screen).toBe("playing");
+    expect(harness.state.menuIndex).toBe(1); // nothing else was acted on
+  });
+
+  it("resumes on P as well", () => {
+    rally(harness, "versus", { x: 400, y: 300, vx: 300, vy: 0 });
+    harness.debug.setScreen("paused");
+    harness.debug.setResumeScreen("playing");
+    harness.tap("KeyP");
+    harness.run(1);
+    expect(harness.state.screen).toBe("playing");
+  });
+
+  it("resumes to the countdown a countdown was paused from", () => {
+    openMatch(harness, "versus");
+    harness.tap("KeyP");
+    harness.run(1);
+    harness.tap("KeyP");
+    harness.run(1);
+    expect(harness.state.screen).toBe("countdown");
+  });
+
+  it("does nothing else on the frame it resumes", () => {
+    // A movement edge on the same frame as the resume is not applied: the
+    // frame resumes and stops (specs/ui.md).
+    rally(harness, "versus", { x: 400, y: 300, vx: 300, vy: 0 });
+    harness.debug.setScreen("paused");
+    harness.debug.setMenuIndex(0);
+    harness.tap("Escape");
+    harness.tap("ArrowDown");
+    harness.run(1);
+    expect(harness.state.screen).toBe("playing");
+    expect(harness.state.menuIndex).toBe(0);
+  });
+});
+
+// ---- The remembered title selection -------------------------------------
+
+describe("the remembered title selection", () => {
+  it("remembers the item that led away from the title", () => {
+    harness.tap("ArrowDown");
+    harness.run(1);
+    harness.tap("ArrowDown");
+    harness.run(1);
+    harness.tap("Enter"); // HOW TO PLAY
+    harness.run(1);
+
+    expect(harness.state.titleIndex).toBe(2);
+    expect(harness.state.menuIndex).toBe(0);
+
+    harness.tap("Escape");
+    harness.run(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(2);
+  });
+
+  it("restores it after quitting a match to the menu", () => {
+    harness.tap("ArrowDown");
+    harness.run(1);
+    harness.tap("Enter"); // VERSUS
+    harness.run(1);
+    expect(harness.state.titleIndex).toBe(1);
+
+    harness.tap("KeyP");
+    harness.run(1);
+    harness.tap("ArrowDown");
+    harness.run(1);
+    harness.tap("ArrowDown");
+    harness.run(1);
+    harness.tap("Enter"); // QUIT TO MENU
+    harness.run(1);
+
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(1);
+    expect(harness.state.titleIndex).toBe(1);
+  });
+
+  it("restores it from the match-over screen", () => {
+    harness.debug.setTitleIndex(2);
+    harness.debug.setMenuIndex(MATCHOVER_ITEMS.length - 1); // MENU
+    harness.debug.setScreen("matchover");
+
+    harness.tap("Enter");
+    harness.run(1);
+
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(2);
+  });
+
+  it("keeps its value across starting a match", () => {
+    harness.debug.setTitleIndex(1);
+    harness.debug.setScreen("matchover");
+    harness.debug.setMenuIndex(0); // PLAY AGAIN
+    harness.tap("Enter");
+    harness.run(1);
+    expect(harness.state.screen).toBe("countdown");
+    expect(harness.state.titleIndex).toBe(1);
+    expect(harness.state.menuIndex).toBe(0);
+  });
+
+  it("returns to zero on reset", () => {
+    harness.debug.setTitleIndex(2);
+    harness.debug.reset();
+    expect(harness.state.titleIndex).toBe(0);
+    expect(harness.state.menuIndex).toBe(0);
+  });
+});
+
+// ---- The menus' hit regions ---------------------------------------------
+
+describe("menuItemRect", () => {
+  it("reports one region per item of the menu on screen", () => {
+    for (const [screen, items] of [
+      ["title", TITLE_ITEMS],
+      ["paused", PAUSE_ITEMS],
+      ["matchover", MATCHOVER_ITEMS],
+    ] as const) {
+      harness.debug.setScreen(screen);
+      for (let i = 0; i < items.length; i++) {
+        const rect = harness.debug.menuItemRect(i);
+        expect(rect).not.toBeNull();
+        expect(rect?.w).toBeGreaterThan(0);
+        expect(rect?.h).toBeGreaterThan(0);
+      }
+      expect(harness.debug.menuItemRect(items.length)).toBeNull();
+      expect(harness.debug.menuItemRect(-1)).toBeNull();
+    }
+  });
+
+  it("reports the how-to screen's single item", () => {
+    harness.debug.setScreen("howto");
+    expect(harness.debug.menuItemRect(0)).not.toBeNull();
+    expect(harness.debug.menuItemRect(1)).toBeNull();
+  });
+
+  it("reports nothing on the two screens that show no menu", () => {
+    for (const screen of ["countdown", "playing"] as const) {
+      harness.debug.setScreen(screen);
+      expect(harness.debug.menuItemRect(0)).toBeNull();
+    }
+  });
+
+  it("keeps the regions apart, so a point is over at most one item", () => {
+    harness.debug.setScreen("title");
+    for (let i = 1; i < TITLE_ITEMS.length; i++) {
+      const above = harness.debug.menuItemRect(i - 1);
+      const below = harness.debug.menuItemRect(i);
+      expect(above && below).toBeTruthy();
+      expect(above!.y + above!.h).toBeLessThan(below!.y);
+    }
+  });
+
+  it("draws each item inside the region it reports", () => {
+    harness.debug.setScreen("title");
+    harness.calls.length = 0;
+    harness.run(1);
+
+    const texts = callsTo(harness.calls, "fillText");
+    TITLE_ITEMS.forEach((item, index) => {
+      const rect = harness.debug.menuItemRect(index);
+      const drawn = texts.find((args) => args[0] === item);
+      expect(drawn).toBeDefined();
+      expect(drawn?.[2]).toBeGreaterThanOrEqual(rect!.y);
+      expect(drawn?.[2]).toBeLessThanOrEqual(rect!.y + rect!.h);
+    });
+  });
+});
+
+// ---- The menus under a mouse and a finger -------------------------------
+
+describe("the menus under a pointer", () => {
+  it("selects the item the pointer moves onto", () => {
+    const at = itemCenter(harness, 1);
+    harness.pointerMove(at.x, at.y);
+    harness.run(1);
+    expect(harness.state.menuIndex).toBe(1);
+  });
+
+  it("leaves the selection alone for a point outside every region", () => {
+    harness.debug.setMenuIndex(1);
+    harness.pointerMove(20, 20);
+    harness.run(1);
+    expect(harness.state.menuIndex).toBe(1);
+  });
+
+  it("confirms a press and a release inside one item", () => {
+    const at = itemCenter(harness, 2); // HOW TO PLAY
+    harness.pointerDown(at.x, at.y);
+    harness.run(1);
+    expect(harness.state.menuIndex).toBe(2);
+    expect(harness.state.screen).toBe("title"); // the press alone confirms nothing
+
+    harness.pointerUp(at.x, at.y);
+    harness.run(1);
+    expect(harness.state.screen).toBe("howto");
+    expect(harness.state.titleIndex).toBe(2);
+  });
+
+  it("confirms when the press and the release arrive on one frame", () => {
+    const at = itemCenter(harness, 1); // VERSUS
+    harness.pointerDown(at.x, at.y);
+    harness.pointerUp(at.x, at.y);
+    harness.run(1);
+    expect(harness.state.screen).toBe("countdown");
+    expect(harness.state.mode).toBe("versus");
+    expect(harness.state.titleIndex).toBe(1);
+  });
+
+  it("confirms nothing when the press and the release fall in different items", () => {
+    const from = itemCenter(harness, 0);
+    const to = itemCenter(harness, 2);
+    harness.pointerDown(from.x, from.y);
+    harness.run(1);
+    harness.pointerMove(to.x, to.y);
+    harness.run(1);
+    harness.pointerUp(to.x, to.y);
+    harness.run(1);
+
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(2); // the travel still selected
+  });
+
+  it("confirms nothing for a gesture outside every region", () => {
+    harness.pointerDown(20, 20);
+    harness.run(1);
+    harness.pointerUp(20, 20);
+    harness.run(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(0);
+  });
+
+  it("drives the pause menu as well as the title", () => {
+    rally(harness, "versus", { x: 400, y: 300, vx: 300, vy: 0 });
+    harness.tap("KeyP");
+    harness.run(1);
+
+    const at = itemCenter(harness, 0); // RESUME
+    harness.pointerDown(at.x, at.y);
+    harness.pointerUp(at.x, at.y);
+    harness.run(1);
+    expect(harness.state.screen).toBe("playing");
+  });
+
+  it("leaves the selection where the pointer put it, over a keyboard move", () => {
+    const at = itemCenter(harness, 2);
+    harness.tap("ArrowDown"); // would move to 1
+    harness.pointerMove(at.x, at.y); // but the pointer named 2
+    harness.run(1);
+    expect(harness.state.menuIndex).toBe(2);
+  });
+
+  it("confirms the keyboard's item alone when both confirm on one frame", () => {
+    const at = itemCenter(harness, 2); // HOW TO PLAY, under the pointer
+    harness.tap("Enter"); // SOLO, at menuIndex 0
+    harness.pointerDown(at.x, at.y);
+    harness.pointerUp(at.x, at.y);
+    harness.run(1);
+
+    expect(harness.state.screen).toBe("countdown");
+    expect(harness.state.mode).toBe("solo");
+    expect(harness.state.titleIndex).toBe(0);
+  });
+});
+
+describe("the menus under a finger", () => {
+  it("selects on the landing, because a finger does not hover", () => {
+    const at = itemCenter(harness, 1);
+    harness.touchStart(at.x, at.y);
+    harness.run(1);
+    expect(harness.state.menuIndex).toBe(1);
+    expect(harness.state.screen).toBe("title");
+  });
+
+  it("confirms a contact that lands and lifts inside one item", () => {
+    const at = itemCenter(harness, 1); // VERSUS
+    harness.touchStart(at.x, at.y);
+    harness.run(1);
+    harness.touchEnd(at.x, at.y);
+    harness.run(1);
+    expect(harness.state.screen).toBe("countdown");
+    expect(harness.state.mode).toBe("versus");
+    expect(harness.state.titleIndex).toBe(1);
+  });
+
+  it("selects an item the contact travels onto", () => {
+    const from = itemCenter(harness, 0);
+    const to = itemCenter(harness, 2);
+    harness.touchStart(from.x, from.y);
+    harness.run(1);
+    harness.touchMove(to.x, to.y);
+    harness.run(1);
+    expect(harness.state.menuIndex).toBe(2);
+  });
+
+  it("confirms nothing when the landing and the lift are different items", () => {
+    const from = itemCenter(harness, 0);
+    const to = itemCenter(harness, 2);
+    harness.touchStart(from.x, from.y);
+    harness.run(1);
+    harness.touchMove(to.x, to.y);
+    harness.run(1);
+    harness.touchEnd(to.x, to.y);
+    harness.run(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(2);
+  });
+
+  it("confirms nothing for a lift with no landing behind it", () => {
+    const at = itemCenter(harness, 1);
+    harness.touchEnd(at.x, at.y);
+    harness.run(1);
+    expect(harness.state.screen).toBe("title");
   });
 });

@@ -1,8 +1,9 @@
 // paddles/rally-caps — the per-hit speed-up stops at the ceiling.
 //
-// The same REAL rally as `rally-accelerates`, run long enough to climb to the
-// ceiling: however many hits it runs, the ball plateaus at the cap and never
-// exceeds it.
+// The same REAL rally as `rally-accelerates` — an emptied field, two still,
+// centred paddles left with the player, and a ball launched level down the
+// middle — run long enough to climb to the ceiling: however many hits it runs,
+// the ball plateaus at the cap and never exceeds it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";

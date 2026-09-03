@@ -4,6 +4,13 @@
 // goal: the first takes it one clear, which must NOT end the match, and the
 // second takes it two clear, which must. Both outcomes resolve through the
 // build's own win rule, never a fabricated end state.
+//
+// Each point runs down an isolated lane. `arrangeGoal` empties the field and
+// spawns back the one ball it fires, so both obstacles are gone rather than
+// dodged, and it drives both paddles out of the mid-field lane — the paddles are
+// the one thing on the field a check cannot remove. Between the two points the
+// build's own serve rule is what reopens play: the hold is cut to nothing and the
+// launch is the build's, and the lane is re-aimed once the rally is live again.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { WIN_LEAD, WIN_SCORE } from "../constants";
@@ -13,7 +20,9 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
-  startPlaying,
+  driveServe,
+  enterPlaying,
+  stageServe,
   type Harness,
 } from "../harness";
 
@@ -42,7 +51,7 @@ afterEach(() => {
 });
 
 it("plays on at a one-point lead and ends at two", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   harness.debug.setScore(TIED_AT, TIED_AT);
 
   // First real point: 11-10, a one-point lead, so play continues.
@@ -55,14 +64,11 @@ it("plays on at a one-point lead and ends at two", async () => {
   assertEqual(oneClear.snapshot.score.p1, TIED_AT + 1);
   assertEqual(oneClear.snapshot.score.p2, TIED_AT);
 
-  // Second real point: 12-10, now the required lead, so the match ends. `serve`
-  // leaves the post-point countdown; the launch is the build's own, so the
-  // scenario is re-aimed once play is live again.
-  harness.debug.serve();
-  const live = await harness.until((s) => s.screen === "playing", {
-    maxFrames: 60,
-    poll: 1,
-  });
+  // Second real point: 12-10, now the required lead, so the match ends. Cutting
+  // the post-point hold to nothing leaves the countdown; the launch is the
+  // build's own, so the scenario is re-aimed once play is live again.
+  stageServe(harness);
+  const live = await driveServe(harness);
   assertEqual(live.hit, true);
 
   arrangeGoal(harness, "right");

@@ -78,9 +78,12 @@ export const TAGLINE_TEXT = "NEON PADDLE DUEL";
 /** The label naming the mode, drawn on the field during a match. */
 export const MODE_LABEL = { solo: "SOLO", versus: "VERSUS" } as const;
 
-/** The participant names on the player states, per side and mode. */
-export const PLAYER_NAME = {
-  left: "PLAYER ONE",
-  rightHuman: "PLAYER TWO",
-  rightAi: "COMPUTER",
-} as const;
+/**
+ * The participant names on the player states, one per side.
+ *
+ * They name the SEAT rather than who is in it: which of the two ways to play a
+ * match is being played is read from the instance every frame, so the right
+ * seat is a person in Versus and the computer in Solo without the world being
+ * rebuilt (src/match-mode.ts).
+ */
+export const PLAYER_NAME = { left: "PLAYER ONE", right: "PLAYER TWO" } as const;

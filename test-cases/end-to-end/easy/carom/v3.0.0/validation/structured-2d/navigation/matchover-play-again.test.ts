@@ -1,11 +1,18 @@
 // Carom — navigation/matchover-play-again: confirming PLAY AGAIN starts a new match in the same mode.
 //
 // One transition of the menu state machine specs/ui.md fixes. The match is
-// ended for real: the score is posed one short of the win and a ball is driven
-// out of the right goal, so the match-over screen is the build's own. Every key
-// is a real key event dispatched at the target the engine listens on, so the
-// action is raised by the binding the case declares, and the result is read
-// back off the game's own state. The still is the frame the press left.
+// ended for real: the ball is lined up down the middle lane over a field holding
+// nothing but that ball, the score is posed one short of the win, and the shot
+// is driven out of the right goal — so the match-over screen is the build's own
+// win rule resolving. Every key is a real key event dispatched at the target the
+// engine listens on, so the action is raised by the binding the case declares,
+// and the result is read back off the game's own state. The still is the frame
+// the press left.
+//
+// Both obstacles are off the field, so nothing can deflect the shot out of the
+// lane, and the two paddles — the one furniture no operation removes — are held
+// at PARKED_CY clear of it. The score is posed AFTER the arrangement, because
+// opening the match is itself what sets both scores to 0.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../constants";
@@ -15,8 +22,6 @@ import {
   captureStill,
   createHarness,
   driveGoal,
-  menuIndex0,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -31,14 +36,14 @@ afterEach(() => {
 });
 
 it("starts a new match from the first match-over item", async () => {
-  await startPlaying(h, "versus");
+  await arrangeGoal(h, "right");
   h.debug.setScore(WIN_SCORE - 1, 0);
-  arrangeGoal(h, "right");
+
   const ended = await driveGoal(h);
   assertEqual(ended.hit, true);
   assertEqual(h.snapshot().screen, "matchover");
   assertEqual(h.snapshot().winner, "left");
-  assertEqual(menuIndex0(h), 0);
+  assertEqual(h.snapshot().menuIndex, 0);
   assertEqual(MATCHOVER_ITEMS[0], "PLAY AGAIN");
 
   await h.tap("Enter");

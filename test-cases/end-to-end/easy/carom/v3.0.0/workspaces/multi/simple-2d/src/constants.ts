@@ -86,7 +86,9 @@ export const SPEED_CAP = 980;
 
 /**
  * The most units a ball's center travels in one physics sub-step. A frame is cut
- * into `max(1, ceil(speed * dt / MAX_SUBSTEP))` sub-steps (specs/balls.md).
+ * into `max(1, ceil(fastest * dt / MAX_SUBSTEP))` sub-steps, with `fastest` the
+ * highest speed among the balls in flight, and every ball takes the same number
+ * of sub-steps (specs/balls.md).
  */
 export const MAX_SUBSTEP = 4;
 
@@ -121,7 +123,7 @@ export const SPIN_HALFLIFE = 0.8; // spin loses half its magnitude every 0.8 s
 
 // ---- Timing --------------------------------------------------------------
 
-export const HOLD_TIME = 1.0; // pre-serve hold, at match start and after a point
+export const HOLD_TIME = 1.0; // each ball's own hold, before its own launch
 export const TRAIL_TIME = 0.13; // seconds of recent travel the motion trail draws
 
 // ---- AI ------------------------------------------------------------------
@@ -144,7 +146,7 @@ export const TITLE_ITEMS = ["SOLO", "VERSUS", "HOW TO PLAY"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const MATCHOVER_ITEMS = ["PLAY AGAIN", "MENU"] as const;
 
-// ---- Input actions (specs/modes/*.md) ------------------------------------
+// ---- Input actions (specs/ui.md) -----------------------------------------
 
 /** Carom is two paddles facing each other: one vertical slider per side. */
 export const LAYOUT = "dual-vertical";
@@ -171,9 +173,8 @@ export type ActionName = (typeof ACTIONS)[number];
  * The keys each action is bound to, as `KeyboardEvent.code` values so a binding
  * is a physical key rather than a layout-dependent character.
  *
- * `Escape` deliberately drives TWO actions, `pause` and `back` — one key meaning
- * "get me out of here", which is a pause during a match and a step back on a
- * menu. The game reads whichever of the two the current screen calls for.
+ * `Escape` is bound to both `pause` and `back`; `specs/ui.md` states how each
+ * screen resolves the two.
  */
 export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   "p1-up": ["KeyW"],
@@ -186,9 +187,9 @@ export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   mute: ["KeyM"],
 };
 
-// ---- Audio cues (specs/ui.md) --------------------------------------------
+// ---- Audio cues (specs/audio.md) -----------------------------------------
 
-/** The five cue names, one per event. Define and play exactly these. */
+/** The cue names, one per event. `specs/audio.md` states when each plays. */
 export const CUES = {
   paddleHit: "paddle-hit",
   wallBounce: "wall-bounce",
@@ -204,5 +205,5 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 /** The version the debug surface reports as `version`. */
 export const CAROM_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
+/** The seed the game's generator starts a fresh title screen from. */
 export const DEFAULT_SEED = 1;

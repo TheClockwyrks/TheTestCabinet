@@ -5,7 +5,8 @@
 // screen", with speed unchanged (specs/balls.md). So a ball posed level and
 // rightward with positive spin is, a short flight later, heading clockwise: `vy > 0`,
 // at the speed it was posed at. The flight is short and far from every body, so
-// nothing but the spin acts on the velocity.
+// nothing but the spin acts on the velocity: the field holds one ball and
+// neither obstacle, and both paddles are held off the lane.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { SPIN_HALFLIFE } from "../constants";
@@ -14,6 +15,7 @@ import {
   angleDeg,
   arrangeLiveBall,
   ball0,
+  ballOps,
   captureReplay,
   createHarness,
   seconds,
@@ -55,7 +57,7 @@ afterEach(() => {
 
 it("turns a level rightward flight clockwise under positive spin", async () => {
   await arrangeLiveBall(harness, { x: 300, y: 360, vx: SPEED, vy: 0 });
-  harness.debug.setBall(0, { spin: POSED_SPIN });
+  ballOps(harness).setBallSpin(POSED_SPIN);
 
   const ball = await captureReplay(harness, "curve", async () => {
     await harness.advance(FLIGHT_TICKS);

@@ -51,10 +51,17 @@ Every control is a **named action** bound to physical keys
 | `mute`              | `M`                | Toggles mute, on any screen.                                              |
 
 Either side's up/down action moves a menu selection, so the menus answer to
-`W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
-and the game reads whichever the current screen calls for, so it pauses in a
-match and steps back on a menu: it resumes from the pause menu and returns to
-the title from the match-over screen.
+`W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` — so
+one press opens the pause menu during a match and one press closes it again; `P`
+does both too, and on a menu `Esc` steps back.
+
+**The menus also take a mouse and a finger.** Every menu item occupies a hit
+region: moving the pointer onto one highlights it, and pressing and releasing
+inside the same region chooses it. A touch contact highlights an item the moment
+it lands, since a finger cannot hover, and chooses it when it lifts inside the
+same region — so sliding off before letting go cancels, with either device.
+Whichever input chose it, returning to the title selects the entry that led away
+from it again.
 
 The **backtick** key (`` ` ``) toggles the diagnostics overlay. That key belongs
 to the runtime (`src/overlay.ts`), not to the game.
@@ -75,7 +82,7 @@ the latter, kept apart so the two are never confused.
 
 Carom runs on no engine, so the layer every browser game needs is part of the
 build. It is sized for this game rather than for every 2D game — there is no
-asset loader, because Carom loads nothing — and it is five files:
+asset loader, because Carom loads nothing — and it is six files:
 
 - **`src/runtime.ts`** — the frame loop and the wiring. It measures each frame's
   delta in **seconds** (clamping the gap a backgrounded tab resumes with), clears
@@ -91,12 +98,21 @@ asset loader, because Carom loads nothing — and it is five files:
 - **`src/keyboard.ts`** — named actions over `KeyboardEvent.code` bindings, with
   edge detection: an edge is armed when an action leaves rest, consumed by the
   first reader, and discarded at the end of its frame.
+- **`src/pointer.ts`** — the mouse and the finger, mapped through the same fit
+  the game draws under and buffered per frame. Both arrive as pointer events, and
+  `pointerType` is what tells a hovering mouse from a contact that only exists
+  between its landing and its lift.
 - **`src/audio-bus.ts`** — cues declared by name and synthesized as one
   oscillator through one gain envelope, over a Web Audio context opened on the
   first user gesture. Nothing about audio can fail a frame.
 - **`src/overlay.ts`** — the diagnostics panel: the backtick key, the drawing in
   device space over the finished frame, and its read-only-ness. The game only
   names the values it shows.
+
+`src/menu.ts` sits above that layer rather than in it: it is the one place a
+menu's items and their hit regions are laid out, so what the renderer draws, what
+a pointer is tested against, and what `menuItemRect` reports are one fact rather
+than three that agree by hand.
 
 `src/main.ts` is the whole of the wiring between that layer and the game.
 
@@ -113,32 +129,46 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   either way, so the canvas always shows the state the last frame left. Because
   every rate is integrated against the frame's delta, `advance(1, 1)` and
   `advance(1, 60)` reach the same outcome.
-- `reset(options?)` and `snapshot()` — return to the title screen (seedable) and
-  read a JSON-serializable view of the full state.
-- `startMatch(mode)`, `serve()`, `setScore(p1, p2)`, `setPaddle(side, state)`,
-  and `setBall(index, state)` — set up a scenario through the game's own state;
-  calling any of them hands paddle control to the caller until `reset()`.
-- `setAiControl(enabled)` — in Solo, hand the AI's paddle back to the computer
-  opponent for the rest of a driven scenario, so a check can exercise the real AI
-  against a posed shot.
-- `setObstacleClock(t)` — set the obstacle clock to `t` seconds and hold the
-  obstacles there. `t = 0` is upright at the base centers; a larger `t` sways and
-  rotates them exactly as normal play would at that moment. While a scenario has
-  the paddles the clock is held still rather than advancing with the frame, so
-  the shot meets one chosen, known orientation instead of obstacles sweeping
-  through it. `reset()` returns them to moving.
+- `clearWorld()`, `spawnBall()`, `spawnObstacle(index)` and `reset()` — the
+  **world**. A scenario empties the field and spawns back exactly the bodies its
+  requirement concerns; an absent body is not advanced, not drawn, and collides
+  with nothing. `reset()` restores every declared field at once, and is the only
+  operation that does more than one thing.
+- `setSeed(seed)` — seed the generator the serve's direction is drawn from.
+- `setScreen`, `setMode`, `setMenuIndex`, `setTitleIndex`, `setResumeScreen`,
+  `setScore`, `setWinner`, `setReceiver` — the screens, the menus, and the match.
+- `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)` and
+  `setPaddleDriven(side, driven)` — the paddles, **one side at a time**. Driving
+  one side leaves the other with the player and, in Solo, with the AI.
+  `setPaddleVy` sets that side's `drivenVy`, which is the velocity a driven
+  paddle moves at; a paddle's `vy` is the velocity the last frame actually
+  integrated, and the two are separate fields.
+- `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld` and
+  `setBallHoldTimer` — the ball. Setting the hold timer to `0` ends the hold, and
+  the build's own rule serves the ball on the next frame.
+- `setAiTracking(enabled)` and `setAiMovement(enabled)` — the AI's two faculties,
+  gated on their own: sensing the ball, and travelling toward what it senses.
+- `setObstacleClock(t)` and `setObstacleClockRunning(running)` — the obstacle
+  clock. `t = 0` is upright at the base centers; a larger `t` sways and rotates
+  them exactly as normal play would at that moment, and stopping the clock holds
+  both poses so a shot meets one chosen orientation instead of obstacles sweeping
+  through it.
+- `snapshot()` and `menuItemRect(index)` — the two **readings**. A snapshot
+  reports every field an operation above sets, so each is verified by setting a
+  value and reading it back; `menuItemRect` reports the hit region of an item of
+  the current menu, in logical units, so the layout the build chose is the layout
+  a pointer is tested against.
 
-`snapshot()` reports both obstacles' live poses — center and rotation, the same
-values the oriented collision resolves against — alongside the ball and the
-paddles.
-
-Every operation but the two clock calls is a read or a pose of `CaromState`: they
-arrange the world, and the game's own `update` is what runs from there on the
-next frame. The two clock calls take nothing from the player — a scenario that
+Every operation but the two clock calls is a read or a pose of `CaromState`: each
+sets **one** field, places or removes **one** entity, or reads. They arrange the
+world, and the game's own `update` is what runs from there on the next frame. So
+starting a match or staging a rally is a *sequence* of these rather than a verb
+of its own. The two clock calls take nothing from the player — a scenario that
 takes the game off real time to watch the **keyboard** move a paddle is exactly
 what the control checks are — so there is deliberately no `keyDown`, `keyUp` or
-`press` on the surface either, and no overlay toggle: the runtime owns the
-backtick key and the panel.
+`press` on the surface either, no pointer pose (a real mouse and a real finger
+drive the menus), and no overlay toggle: the runtime owns the backtick key and
+the panel.
 
 The surface is inert during normal play.
 
@@ -205,6 +235,7 @@ src/
   runtime.ts          The frame loop, the manual clock, and the wiring
   viewport.ts         The canvas fit: uniform scale, letterbox, pixel ratio
   keyboard.ts         Named actions over key codes, with edge detection
+  pointer.ts          The mouse and the finger, in logical units, per frame
   audio-bus.ts        Web Audio cues and the first-gesture unlock
   overlay.ts          The diagnostics panel and the backtick key
   constants.ts        Every figure the specification fixes (logical 1280x720)
@@ -218,6 +249,7 @@ src/
   physics.ts          Delta-time integration, collision, the spin mechanic
   ai.ts               The beatable AI opponent
   obstacles.ts        The obstacle poses, as pure functions of the clock
+  menu.ts             The menu items and their hit regions, laid out once
   render.ts           All canvas drawing, in logical space
   diagnostics.ts      The values the overlay shows
   audio.ts            The four audio cues

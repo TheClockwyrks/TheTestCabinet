@@ -1,15 +1,19 @@
 // Carom — audio/scoring: a cue sounds on the frame a point is scored.
 //
-// A real ball is driven out of the right goal, down the mid-field lane that
-// clears both obstacles, so the point is scored by the build's own scoring code
-// rather than posed. The frame player one's score goes up is the frame the cue
-// must sound on.
+// A scored point is about a ball and a goal edge, so the field is emptied and one
+// ball is spawned back onto it: both obstacles are REMOVED rather than shot
+// around, and the paddles — which cannot be removed, being furniture the game
+// always has — are stood out of the lane with neither taken from the player,
+// because this requirement needs no driven paddle. A real ball is then driven out
+// of the right goal down that empty field, so the point is scored by the build's
+// own scoring code rather than posed, and the frame player one's score goes up is
+// the frame the cue must sound on.
 //
 // WHAT IS OBSERVED. The sound itself, not the synthesis: `audio-init.js` watches a
 // Web Audio source being started or an `<audio>` element being played, so a build
 // that makes its blips any way at all is read the same. `specs/ui.md` requires one
 // cue per event, on the frame of the event, which is what the two assertions below
-// say. Nothing else may sound on the way — the drive crosses an empty lane — so a
+// say. Nothing else may sound on the way — the drive crosses an empty field — so a
 // build that blips as the ball leaves the field is caught even though the cue's
 // NAME is not observable from outside an engineless build.
 

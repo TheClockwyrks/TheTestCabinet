@@ -5,9 +5,11 @@
 // second takes it two clear, which must. Both outcomes resolve through the
 // build's own win rule, never a fabricated end state.
 //
-// Between the two points the scored ball is holding on its home rather than
-// waiting behind a countdown, so the second point is set up by cutting that hold
-// short and re-aiming the ball once it is in flight again.
+// Each point is posed the same way, on a field cleared back to the one ball the
+// point is about. That is also what makes the second point simple: multi does not
+// return to a countdown after a point, so there is no hold to cut short between
+// the two — the field is cleared again and a second ball is put down the same
+// lane.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual, assertNull } from "../assert";
@@ -15,11 +17,10 @@ import { WIN_LEAD, WIN_SCORE } from "../constants";
 import {
   arrangeGoal,
   captureReplay,
-  createHarness,
+  createMultiHarness,
   startPlaying,
-  type Harness,
+  type MultiHarness,
 } from "../harness";
-import { readBalls } from "./harness";
 
 /** 10-10: the tie one point below the win score, where the deuce rule applies. */
 const TIED_AT = WIN_SCORE - 1;
@@ -27,10 +28,10 @@ const TIED_AT = WIN_SCORE - 1;
 /** Frames recorded after the deciding point resolves. */
 const AFTERMATH_TICKS = 60; // 0.5 s
 
-let h: Harness;
+let h: MultiHarness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createMultiHarness();
 });
 
 afterEach(async () => {
@@ -54,16 +55,7 @@ it("plays on at a one-point lead and ends at two", async () => {
   assertEqual(oneClear.snapshot.score.p1, TIED_AT + 1);
   assertEqual(oneClear.snapshot.score.p2, TIED_AT);
 
-  // Second real point: 12-10, now the required lead, so the match ends. `serve`
-  // ends the scored ball's hold; the launch is the build's own, so the scenario
-  // is re-aimed once that ball is flying again.
-  await h.debug.serve();
-  const live = await h.until((s) => readBalls(s)[0].held === false, {
-    maxFrames: 60,
-    poll: 1,
-  });
-  assertEqual(live.hit, true);
-
+  // Second real point: 12-10, now the required lead, so the match ends.
   await arrangeGoal(h, "right");
   // The deciding point, and only it: the one before it is the arrangement that
   // put the match at a one-point lead.

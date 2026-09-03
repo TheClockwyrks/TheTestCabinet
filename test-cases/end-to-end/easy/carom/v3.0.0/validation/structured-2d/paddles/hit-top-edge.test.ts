@@ -8,6 +8,10 @@
 // paddle. The contact is a paddle hit rather than an end-cap bounce because the
 // ball arrives level at the face: its penetration through the front face is at
 // most one sub-step, far less than the `BALL_R` it sits short of the cap.
+//
+// The contact runs over a field holding one ball and neither obstacle, with the
+// far paddle held off the lane, so the struck paddle is the only body the ball
+// meets between the pose and the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY, MAX_BOUNCE_ANGLE, PADDLE_HALF } from "../constants";
@@ -24,7 +28,6 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -52,8 +55,7 @@ afterEach(() => {
 });
 
 it("deflects the ball upward off the top edge of a still paddle", async () => {
-  await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,
     ballY: FIELD_CY - PADDLE_HALF,

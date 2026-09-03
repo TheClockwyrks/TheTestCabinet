@@ -16,11 +16,17 @@
 // and knows nothing about a filter, so a remembered perception would survive a
 // reset and stop a scenario replaying identically.
 //
+// ITS TWO FACULTIES ARE GATED SEPARATELY (specs/instrumentation.md), and the
+// split falls out of this shape rather than being bolted onto it: SENSING is
+// the ball this module is handed, so an opponent with `tracking` off is simply
+// handed none and eases home; TRAVEL is the velocity it answers with, so an
+// opponent with `movement` off never reaches `aiVelocity` at all. The gate
+// itself lives at the one call site, in `src/match-mode.ts`.
+//
 // `aiVelocity` answers with the VELOCITY the AI asks its paddle for; the paddle
 // pawn then integrates it through the same `integratePaddle` a human-driven
 // paddle goes through, so every mover of a paddle shares one integrator
-// (specs/playfield.md). `AiPaddleController` in `src/match-mode.ts` is the
-// caller.
+// (specs/playfield.md).
 
 import {
   AI_DEADZONE,

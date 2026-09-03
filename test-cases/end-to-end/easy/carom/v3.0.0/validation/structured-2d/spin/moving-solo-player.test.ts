@@ -9,6 +9,10 @@
 // run-up a full-speed paddle covers 360 px, and it starts that far upstream to
 // arrive as the ball does. Aimed at mid-field that start would fall above the
 // field edge and the clamp would pin it still, imparting no spin at all.
+//
+// The contact runs over a field holding one ball and neither obstacle, with the
+// far paddle held off the lane, so the struck paddle is the only body the ball
+// meets between the pose and the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
@@ -19,7 +23,6 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -61,8 +64,8 @@ afterEach(() => {
 });
 
 it("curves the ball off a downward swing of the human paddle", async () => {
-  await startPlaying(harness, "solo");
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
+    mode: "solo",
     cy: CONTACT_CY,
     vy: PADDLE_SPEED,
     ballY: CONTACT_BALL_Y,

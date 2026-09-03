@@ -29,11 +29,13 @@
 // The engine returns the surface from `engine.debug`, exactly as `initialize`
 // handed it over, which is how the game is driven from code
 // (`specs/instrumentation.md`). Because no one holds a writable state, the
-// surface is written in the shape of `update`: a pose takes the current state and
-// returns the next (`serve(state)`), a reading takes the state and returns what
-// it read (`snapshot(state)`), and a caller drives them through `engine.apply`
-// and `engine.state`. Where its implementation lives under `src/` is your call;
-// the only fixed point is that `initialize` returns it.
+// surface is written in the shape of `update`: every operation takes the current
+// state first, then the arguments its heading names. A pose returns the next
+// state (`setScreen(state, screen)`); a reading returns what it read
+// (`snapshot(state)`, `menuItemRect(state, index)`). A caller drives them
+// through `engine.apply` and `engine.state`. Where its implementation lives
+// under `src/` is your call; the only fixed point is that `initialize` returns
+// it.
 
 import type {
   Game,
@@ -63,11 +65,12 @@ export const game: Game<CaromState, CaromDebugApi> = {
   /**
    * Runs once, before any frame.
    *
-   * Register every action in ACTIONS against its BINDINGS, define the four CUES,
-   * register the diagnostic sources specs/instrumentation.md lists — each is
-   * handed the state current at the read, so none closes over the state built
-   * here — and build the complete initial state: the title screen, with every
-   * field of CaromState set. Return it beside the debug surface.
+   * Register every action in ACTIONS against its BINDINGS, define every cue in
+   * CUES, register the diagnostic sources specs/instrumentation.md lists, and
+   * build the complete initial state: the title screen, with every field of
+   * CaromState set. Return it beside the debug surface. Each diagnostic source
+   * is handed the state current at the read, so none closes over the state
+   * built here.
    */
   initialize(_api: InitApi<CaromState>): [CaromState, CaromDebugApi] {
     throw new Error(NOT_IMPLEMENTED);
