@@ -452,9 +452,11 @@ description = "What the game looks and sounds like: the screens and their menus,
 # Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
 # `[[review.categories]]` is a CATEGORY — a bare name grouping the points — and
 # each item entry under it is one graded review item, worth one point (the default
-# weight), so a category is worth the number of items it holds. No item declares a
-# `weight`: every observable behavior on this checklist counts the same, and the
-# relative importance of a failure is carried by `failure_cap`, not by arithmetic.
+# weight), so a category is worth the number of items it holds. Every observable
+# behavior on this checklist counts the same, and the relative importance of a
+# failure is carried by `failure_cap` rather than by arithmetic, so only ONE item
+# declares a `weight` — `showcase.exists`, which grades a deliverable of its own
+# rather than a behavior of the game, and says so where it is declared.
 #
 # A category carries no prose of its own; each item states in `description` the
 # claim its validator checks. The checklist is common to every run: there is one
@@ -2670,4 +2672,61 @@ domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "audio/mute-silences.test.ts", outputs = [
   { id = "muted", name = "The muted board the events were driven on", kind = "image" },
+] }
+
+# --- Showcase (read off the produced tree, not off the running game) ----------
+# The showcase is the store-page presentation of the finished game: a
+# player-facing description and an ordered carousel of captured media, shipped in
+# a `showcase/` directory at the root of the produced repository, which
+# `specs/showcase.md` defines and `specs/overview.md` lists among the hard
+# requirements beside the runtime and the debug surface.
+#
+# It is the ONE point on this checklist that declares a `weight`, and it is worth
+# THREE. Every other point is one observable behavior of the game, and those are
+# all worth the same; the showcase is not a behavior of the game at all but a
+# deliverable of its own — a whole file of the specification, and the one piece of
+# a run a person meets before they meet the game.
+#
+# Its cap is `great` all the same: a build that shipped no showcase plays exactly
+# as well as one that did, so the miss costs the presentation and leaves the
+# standard flow of play untouched. The weight and the cap say different things on
+# purpose — how much of the score the point carries, and how far a failure may
+# drag the ratings down.
+#
+# It lowers `presentation` alone. This case's domains are cut by CONCERN rather
+# than by mode, and a build with no showcase has said nothing either way about its
+# charge model, its worm or its run; what it failed to do is present itself, which
+# is what that domain is for.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel leads on the
+# strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC half of `presentation` rather
+# than to an assertion. The validator's whole verdict is that the two files are
+# there and that the carousel points at a file that is there with them: not a
+# dimension, not a byte of a picture, not a word of the prose. No other point on
+# this checklist asserts anything about the showcase.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }
