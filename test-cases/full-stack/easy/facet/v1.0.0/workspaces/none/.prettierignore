@@ -1,10 +1,12 @@
 # Everything that is not authored source: installed packages, build output,
-# coverage reports, and the vendored packages.
+# the reports the project's commands write, and the vendored packages.
 node_modules/
 /dist/
 /build/
 /out/
 coverage/
+test-results/
+playwright-report/
 .tcab/
 package-lock.json
 
