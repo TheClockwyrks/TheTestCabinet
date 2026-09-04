@@ -12,7 +12,7 @@
 // the overlay never changes what the game does. Each line is short enough to read
 // at a glance while the game runs.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 import { DEAL_MODE, TURN_COUNT } from "./constants";
 import { cascadeState, type CascadeState } from "./game";
 import { wasteVisibleCount } from "./piles";
@@ -24,7 +24,7 @@ import { wasteVisibleCount } from "./piles";
  */
 export function diagnosticSources(
   read: () => CascadeState,
-): [string, () => unknown][] {
+): [string, () => DiagnosticValue][] {
   return [
     ["screen", () => read().screen],
     ["deal", () => `${DEAL_MODE} / ${TURN_COUNT}`],

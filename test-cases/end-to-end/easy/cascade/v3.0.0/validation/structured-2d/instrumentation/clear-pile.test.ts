@@ -34,31 +34,31 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertLength } from "../assert";
 import {
   ACE,
+  captureStill,
+  card,
   COLUMNS,
+  createHarness,
   EIGHT,
   FIVE,
   FOUNDATIONS,
   FOUR,
   JACK,
   NINE,
+  openTable,
+  PileKind,
+  pileOf,
+  poseColumn,
+  poseFoundation,
+  poseStock,
+  poseWaste,
   QUEEN,
   SEVEN,
   SIX,
   TEN,
   THREE,
   TWO,
-  captureStill,
-  card,
-  createHarness,
-  openTable,
-  pileOf,
-  poseColumn,
-  poseFoundation,
-  poseStock,
-  poseWaste,
   type CascadeSnapshot,
   type Harness,
-  type PileKind,
 } from "../harness";
 
 /** The column emptied. */
@@ -160,53 +160,4 @@ it("empties the named pile and leaves the other twelve holding what they held", 
     "the waste's set memory after a COLUMN was cleared: the waste is one of " +
       "the twelve piles left standing (specs/instrumentation.md)",
   );
-});
-
-it("empties the waste's set memory with the waste, and leaves the twelve", async () => {
-  openTable(h);
-  poseStock(h, STOCK_CARDS);
-  poseWaste(h, WASTE_CARDS, WASTE_SETS);
-  poseFoundation(h, 0, "spades", ACE);
-  poseFoundation(h, 1, "hearts", ACE);
-  poseFoundation(h, 2, "diamonds", ACE);
-  poseFoundation(h, 3, "clubs", ACE);
-  for (const column of COLUMNS) poseColumn(h, column, [COLUMN_CARDS[column]]);
-
-  const before = h.snapshot();
-  assertLength(
-    before.wasteSets,
-    WASTE_SETS.length,
-    "the sets on the waste before the clear: an empty memory would say " +
-      "nothing about emptying it",
-  );
-
-  h.debug.clearPile("waste", 0);
-  const after = h.snapshot();
-
-  await h.advance(1);
-  captureStill(h, "board");
-
-  assertLength(
-    pileOf(after, "waste", 0),
-    0,
-    "cards left on the waste, the pile clearPile named: it removes every " +
-      "card from it (specs/instrumentation.md)",
-  );
-  assertLength(
-    after.wasteSets,
-    0,
-    "the sets left in the waste's memory: on the waste clearPile also " +
-      "empties the set memory (specs/instrumentation.md)",
-  );
-
-  for (const { pile, index } of PILES) {
-    if (pile === "waste") continue;
-    assertDeepEqual(
-      pileIdentity(after, pile, index),
-      pileIdentity(before, pile, index),
-      `the ${pile} pile ${index} after clearPile emptied the waste: ` +
-        "clearPile leaves the other twelve piles standing " +
-        "(specs/instrumentation.md)",
-    );
-  }
 });

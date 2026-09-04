@@ -29,9 +29,7 @@ import {
   drewText,
   type Harness,
 } from "../harness";
-
-/** The deal-mode label specs/stock.md fixes for this variant, as `DEAL_MODE_LABEL`. */
-const DEAL_MODE_LABEL = "DRAW THREE";
+import { DEAL_MODE_LABEL } from "./constants";
 
 let h: Harness;
 

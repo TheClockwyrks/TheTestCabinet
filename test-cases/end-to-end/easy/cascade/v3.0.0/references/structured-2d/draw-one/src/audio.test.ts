@@ -2,7 +2,8 @@
 // (specs/audio.md).
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CUES, HUD_SOUND, type CueName } from "./constants";
+import { CUES, type CueName } from "./constants";
+import { HUD_SOUND } from "./menus";
 import { CUE_SPECS } from "./audio";
 import {
   createHarness,

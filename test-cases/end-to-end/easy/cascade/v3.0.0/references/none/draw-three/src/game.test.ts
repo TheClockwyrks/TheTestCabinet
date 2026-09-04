@@ -129,6 +129,7 @@ function createHarness(): Harness {
       game.update(
         state,
         {
+          keys: api.keys,
           audio: {
             play: (cue) => {
               cues.push(cue);
@@ -149,6 +150,12 @@ function createHarness(): Harness {
     width: STAGE_W,
     height: STAGE_H,
     game: observed,
+    menuBindings: {
+      "menu-up": ["ArrowUp"],
+      "menu-down": ["ArrowDown"],
+      "menu-confirm": ["Enter"],
+      "menu-back": ["Escape"],
+    },
     background: COLOR.table,
     surface,
     // Node has no Web Audio. The bus stays silent; the cues above still record.

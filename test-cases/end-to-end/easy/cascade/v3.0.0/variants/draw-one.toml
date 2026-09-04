@@ -99,6 +99,13 @@ none = "workspaces/none"
 # point asserts it by identity as well as by count so a build cannot pass it with a
 # counter that only remembers the last turn.
 #
+# THE POINTS THAT ASSERT SOMETHING DRAWN NAME `presentation` BESIDE `rules`. A
+# waste drawn in the wrong place and a deal-mode label that is never drawn are
+# failures of the table's presentation as much as of the deal mode, and their
+# common counterparts in `table` and `screens` name `presentation` for exactly
+# that reason; a variant point that reads the canvas should lower the same domain
+# a common point reading the same canvas does.
+#
 # The deal-mode LABEL is graded in two places by two points. A build correct on the
 # title screen and wrong in the HUD misses one requirement, not both. The common
 # items `screens.title-shows-mode-label` and `screens.hud-shows-mode-label` hold
@@ -129,7 +136,7 @@ validation = { script = "draw-one/deal-mode-reported.test.ts", outputs = [
 id = "waste-shows-one"
 title = "The waste shows a single card"
 description = "After three turns wasteVisibleCount is 1 and the two earlier cards are drawn squared beneath the top card at the waste anchor."
-domains = ["rules"]
+domains = ["rules", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "draw-one/waste-shows-one.test.ts", outputs = [
   { id = "waste", name = "The waste showing one card over the squared pair", kind = "image" },
@@ -147,7 +154,7 @@ validation = { script = "draw-one/set-falls-back.test.ts", outputs = [
 id = "mode-label-title"
 title = "The title screen's label reads DRAW ONE"
 description = "The title screen draws the literal DRAW ONE, this variant's DEAL_MODE_LABEL."
-domains = ["rules"]
+domains = ["rules", "presentation"]
 failure_cap = "passable"
 validation = { script = "draw-one/mode-label-title.test.ts", outputs = [
   { id = "title", name = "The title screen's DRAW ONE label", kind = "image" },
@@ -156,7 +163,7 @@ validation = { script = "draw-one/mode-label-title.test.ts", outputs = [
 id = "mode-label-hud"
 title = "The HUD's label reads DRAW ONE"
 description = "The HUD draws the literal DRAW ONE during play."
-domains = ["rules"]
+domains = ["rules", "presentation"]
 failure_cap = "passable"
 validation = { script = "draw-one/mode-label-hud.test.ts", outputs = [
   { id = "hud", name = "The HUD's DRAW ONE label", kind = "image" },

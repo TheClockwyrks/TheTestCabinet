@@ -35,18 +35,19 @@ import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import { CARD_H, CARD_W, TOP_ROW_Y, WASTE_X } from "../constants";
 import {
   ACE,
-  FIVE,
-  NINE,
-  QUEEN,
   captureStill,
   card,
   createHarness,
+  DrawnShape,
   drawnShapes,
+  FIVE,
+  NINE,
   openTable,
   poseWaste,
-  type DrawnShape,
+  QUEEN,
   type Harness,
 } from "../harness";
+import { WASTE_FAN } from "./constants";
 
 /**
  * The pitch specs/table.md fans the shown set at, and the three corners it puts
@@ -55,7 +56,6 @@ import {
  * Stated as the anchor plus the pitch, which is how the specification states it,
  * so the three literals it names are reproduced rather than restated.
  */
-const WASTE_FAN = 26;
 const FAN_X = [0, 1, 2].map((position) => WASTE_X + position * WASTE_FAN);
 
 /**

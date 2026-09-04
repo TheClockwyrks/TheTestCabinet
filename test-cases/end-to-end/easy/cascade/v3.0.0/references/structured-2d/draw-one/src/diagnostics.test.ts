@@ -2,6 +2,7 @@
 // Diagnostics): that each one is registered, reads the live game, and changes
 // nothing.
 
+import type { DiagnosticValue } from "@test-cabinet/structured-2d";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEAL_MODE, DEAL_MODE_LABEL } from "./constants";
 import { diagnosticSources } from "./diagnostics";
@@ -95,12 +96,15 @@ describe("the sources", () => {
     const registered: string[] = [];
     const world = h.engine.world;
     const original = world.diagnostics.register.bind(world.diagnostics);
-    world.diagnostics.register = (name: string, source: () => unknown) => {
+    world.diagnostics.register = (
+      name: string,
+      source: () => DiagnosticValue,
+    ) => {
       registered.push(name);
       original(name, source);
     };
     for (const [name] of diagnosticSources(() => cascadeState(world))) {
-      world.diagnostics.register(name, () => null);
+      world.diagnostics.register(name, () => "");
     }
     expect(registered).toContain("screen");
     expect(registered).toContain("cascade");

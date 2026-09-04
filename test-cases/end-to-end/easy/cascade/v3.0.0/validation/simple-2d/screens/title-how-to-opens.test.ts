@@ -20,19 +20,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { TITLE_HOW_TO } from "../constants";
+import { TITLE_HOW_TO_ITEM } from "../constants";
 import {
   captureStill,
   createHarness,
+  menuPoint,
   tapPointer,
   type Harness,
 } from "../harness";
-
-/** A point inside `TITLE_HOW_TO`: its center (specs/controls.md). */
-const PRESS = {
-  x: TITLE_HOW_TO.x + TITLE_HOW_TO.w / 2,
-  y: TITLE_HOW_TO.y + TITLE_HOW_TO.h / 2,
-};
 
 let h: Harness;
 
@@ -50,16 +45,18 @@ it("reaches the how-to screen when HOW TO PLAY is clicked", async () => {
   assertEqual(
     h.snapshot().screen,
     "title",
-    "posing: the game is on the title screen, where TITLE_HOW_TO answers " +
+    "posing: the game is on the title screen, where that item answers " +
       "(specs/controls.md: a control answers only on the screen it belongs to)",
   );
 
-  await tapPointer(h, PRESS.x, PRESS.y);
+  // The middle of the region the build reports for the title's HOW TO PLAY item.
+  const press = menuPoint(h, TITLE_HOW_TO_ITEM);
+  await tapPointer(h, press.x, press.y);
   captureStill(h, "howto");
 
   assertEqual(
     h.snapshot().screen,
     "howto",
-    "the screen after a click inside TITLE_HOW_TO (specs/screens.md)",
+    "the screen after a click inside the region the build reports for it (specs/screens.md)",
   );
 });

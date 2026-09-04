@@ -10,7 +10,8 @@
 // THE GESTURE IS A DROP AND NOT A CLICK. specs/controls.md separates the two by the
 // release point's distance from the press point, `DRAG_THRESHOLD` (`5`); the sweep
 // below runs the width of three column pitches, hundreds of units, so it is a drop
-// by any reading. `handling/drag-threshold` is the item that grades the boundary
+// by any reading. `handling/short-gesture-is-a-click` and `handling/long-gesture-is-a-drop` are the
+// items that grade the boundary
 // itself.
 //
 // THE TARGET ACCEPTS BY THE TABLEAU RULE. specs/tableau.md has a column whose lowest

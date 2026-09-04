@@ -18,12 +18,6 @@ import {
   DOUBLE_CLICK_SLOP,
   DOUBLE_CLICK_WINDOW,
   DRAG_THRESHOLD,
-  HOWTO_BACK,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
-  TITLE_HOW_TO,
-  TITLE_NEW_GAME,
 } from "./constants";
 import {
   cardAt,
@@ -44,6 +38,7 @@ import {
 } from "./table";
 import { pileOf, raise, visibleCount, type Sim } from "./sim";
 import type { PileKind } from "./game";
+import { menuItemAt, wrapMenuIndex } from "./menus";
 
 /** A pile a gesture can act on. */
 interface PlayablePile {
@@ -106,24 +101,54 @@ function grabAt(sim: Sim, x: number, y: number): void {
   refreshDropTarget(sim);
 }
 
-/** Activate the control whose rectangle holds `(x, y)` on the current screen. */
-function activateControl(sim: Sim, x: number, y: number): void {
+/**
+ * Activate the item at `menuIndex` on the current screen (specs/screens.md).
+ *
+ * specs/controls.md: "The item every activation acts on is the item at
+ * `menuIndex`, whichever input raised it, and the effect is the one the keyboard
+ * table gives `menu-confirm` on that screen." So a key, a mouse click and a
+ * finger tap all end here.
+ *
+ * The title's two entries also record what they were: specs/screens.md has
+ * `titleIndex` follow the entry last activated there, and both returns to the
+ * title restore `menuIndex` from it.
+ */
+export function activateMenuItem(sim: Sim): void {
+  const index = sim.menuIndex;
   switch (sim.screen) {
     case "title":
-      if (rectContains(TITLE_NEW_GAME, x, y)) newGame(sim);
-      else if (rectContains(TITLE_HOW_TO, x, y)) sim.screen = "howto";
+      if (index === 0) {
+        sim.titleIndex = 0;
+        newGame(sim);
+      } else if (index === 1) {
+        sim.titleIndex = 1;
+        sim.screen = "howto";
+        sim.menuIndex = 0;
+      }
       return;
     case "howto":
-      if (rectContains(HOWTO_BACK, x, y)) sim.screen = "title";
+      returnToTitle(sim);
       return;
     case "playing":
-      if (rectContains(HUD_NEW_GAME, x, y)) newGame(sim);
-      else if (rectContains(HUD_MENU, x, y)) sim.screen = "title";
-      else if (rectContains(HUD_SOUND, x, y)) sim.muted = !sim.muted;
+      if (index === 0) newGame(sim);
+      else if (index === 1) returnToTitle(sim);
+      else if (index === 2) sim.muted = !sim.muted;
       return;
     case "won":
       return;
   }
+}
+
+/** Leave for the title, with the entry that led away from it selected. */
+function returnToTitle(sim: Sim): void {
+  sim.screen = "title";
+  sim.menuIndex = wrapMenuIndex("title", sim.titleIndex);
+}
+
+/** Select the item whose region holds a point, where one does. */
+function selectItemUnder(sim: Sim, x: number, y: number): void {
+  const index = menuItemAt(sim.screen, x, y);
+  if (index !== null) sim.menuIndex = index;
 }
 
 /** Land or return the held run, by where its leading card's centre lies. */
@@ -160,6 +185,10 @@ export function pressAt(sim: Sim, x: number, y: number): void {
   // so no gesture can leave cards stranded outside every pile.
   if (sim.drag !== null) returnHeldRun(sim);
   sim.pointer = { x, y, down: true };
+  // A finger never hovers, so the LANDING is what selects it; a mouse pressed
+  // inside a region has moved onto it already, and selecting again changes
+  // nothing (specs/controls.md).
+  selectItemUnder(sim, x, y);
 
   if (sim.screen === "won") {
     newGame(sim);
@@ -187,6 +216,10 @@ export function moveTo(sim: Sim, x: number, y: number): void {
   const dx = x - sim.pointer.x;
   const dy = y - sim.pointer.y;
   sim.pointer = { x, y, down: sim.pointer.down };
+  // "A mouse moves onto an item's region, its button up or down" and "a finger
+  // ... travels onto one while down" are the same sample here, and both select
+  // (specs/controls.md).
+  selectItemUnder(sim, x, y);
   if (sim.drag === null) return;
   // The run keeps the offset it was lifted with, so it travels exactly as far as
   // the pointer does.
@@ -206,6 +239,17 @@ export function releaseAt(sim: Sim, x: number, y: number): void {
     return;
   }
 
+  // The menu first, and whatever KIND of gesture this was: specs/controls.md has
+  // either kind activate a control "when one control's hit region holds both the
+  // press point and the release point".
+  const pressed = menuItemAt(sim.screen, press.x, press.y);
+  if (pressed !== null && pressed === menuItemAt(sim.screen, x, y)) {
+    if (sim.drag !== null) returnHeldRun(sim);
+    sim.menuIndex = pressed;
+    activateMenuItem(sim);
+    return;
+  }
+
   const click = Math.hypot(x - press.x, y - press.y) <= DRAG_THRESHOLD;
   if (!click) {
     resolveDrop(sim);
@@ -213,7 +257,6 @@ export function releaseAt(sim: Sim, x: number, y: number): void {
   }
 
   if (sim.drag !== null) returnHeldRun(sim);
-  activateControl(sim, press.x, press.y);
   if (
     sim.screen === "playing" &&
     rectContains(dropRect(sim, "stock", 0), press.x, press.y)

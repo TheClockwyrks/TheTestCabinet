@@ -12,7 +12,7 @@
 // drawn, and drawn inside its own rectangle. Not whether it can be READ against
 // what it sits on, which is `presentation/text-legible`; not what a click on it
 // DOES, which is `screens.hud-new-game-deals`, `screens.hud-menu-returns` and
-// `screens.hud-sound-toggles`; and not the deal-mode label the strip also
+// `screens.hud-sound-mutes`; and not the deal-mode label the strip also
 // carries, which is `screens.hud-shows-mode-label` and which specs/screens.md
 // gives no rectangle of its own.
 //
@@ -28,45 +28,50 @@
 // THE WORLD IT POSES. `openTable` and nothing else: an empty table in play, which
 // is the screen specs/screens.md draws the HUD on. Nothing is posed onto the
 // table, so every run of text the frame drew belongs to the HUD.
+// THE REGION IS THE BUILD'S OWN AND IS ASKED FOR. specs/controls.md leaves each
+// item's hit region to the build — "Each control occupies a rectangular hit
+// region the build lays out, and its label is drawn inside that region" — and
+// specs/instrumentation.md has the build report it through `menuItemRect`, so
+// this point reads the three regions back and holds each label against the one
+// its own item reported. Any layout passes; a build that draws its label away
+// from the region it answers on fails.
+//
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
-import {
-  HUD_ITEMS,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
-  type Rect,
-} from "../constants";
+import { HUD_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
   drawFrame,
   drawnTextSpans,
+  menuRect,
   openTable,
   pointIn,
   type Harness,
 } from "../harness";
 
-/** The three controls specs/screens.md puts in the strip, label and rectangle. */
-const CONTROLS: readonly { label: string; rect: Rect }[] = [
-  { label: HUD_ITEMS[0], rect: HUD_NEW_GAME },
-  { label: HUD_ITEMS[1], rect: HUD_MENU },
-  { label: HUD_ITEMS[2], rect: HUD_SOUND },
-];
-
 /**
  * How far a run's glyphs may reach beyond its control's rectangle and still be
- * read as inside it, in logical units.
+ * read as inside it, as a share of that rectangle.
  *
  * Not a layout tolerance: it is the difference between the advance width a font
  * reports for a run, which is what places the run here, and the ink the glyphs
  * actually lay down, which is a little narrower and can sit a fraction either
- * side of it. `4` is a fraction of the narrowest of the three rectangles
- * (`120` units); a label drawn in the wrong control, or outside the strip
- * altogether, misses by tens of units.
+ * side of it. `specs/controls.md` leaves the rectangle to the build — "Each
+ * control occupies a rectangular hit region the build lays out" — so the
+ * allowance is taken from the region the build itself reported rather than from
+ * a width the specification no longer fixes. A twentieth of it, never less than
+ * one unit, leaves a label drawn in a different control or outside the strip
+ * altogether missing by the width of a control.
  */
-const OVERHANG = 4;
+const OVERHANG_SHARE = 0.05;
+const OVERHANG_FLOOR = 1;
+
+/** That allowance for one reported region. */
+function overhang(w: number): number {
+  return Math.max(OVERHANG_FLOOR, w * OVERHANG_SHARE);
+}
 
 let h: Harness;
 
@@ -83,19 +88,20 @@ it("draws each of the three HUD labels inside its own rectangle", async () => {
   const spans = drawnTextSpans(h, await drawFrame(h));
   captureStill(h, "hud");
 
-  for (const { label, rect } of CONTROLS) {
+  for (const [index, label] of HUD_ITEMS.entries()) {
+    const rect = menuRect(h, index);
     const inside = spans.filter(
       (span) =>
         span.text.toLowerCase().includes(label.toLowerCase()) &&
         pointIn(rect, (span.left + span.right) / 2, span.y) &&
-        span.left >= rect.x - OVERHANG &&
-        span.right <= rect.x + rect.w + OVERHANG,
+        span.left >= rect.x - overhang(rect.w) &&
+        span.right <= rect.x + rect.w + overhang(rect.w),
     );
     assertTrue(
       inside.length > 0,
       `the label ${JSON.stringify(label)} drawn inside its own rectangle, ` +
         `{ x: ${String(rect.x)}, y: ${String(rect.y)}, w: ${String(rect.w)}, ` +
-        `h: ${String(rect.h)} } (specs/screens.md: each label is drawn inside ` +
+        `h: ${String(rect.h)} } (specs/controls.md: each label is drawn inside ` +
         "its own rectangle) — the frame drew " +
         (spans
           .map(

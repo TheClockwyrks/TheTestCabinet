@@ -9,7 +9,7 @@
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. The CONTRAST of every run of text
 // the title screen draws and of every run the HUD strip draws. WHICH strings are
 // drawn is the `screens` group's question — `screens.title-shows-title`,
-// `screens.title-shows-tagline`, `screens.title-shows-items` and
+// `screens.title-shows-tagline`, `screens.title-shows-new-game` and
 // `screens.hud-shows-mode-label` — and the three HUD labels are
 // `presentation/hud-labels-drawn`. Deciding the same fact in two groups would
 // dock one defect twice, so this point reads every run of text the build drew,

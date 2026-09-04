@@ -9,7 +9,14 @@
 // `src/runtime.ts` and the five modules under it, the game in `src/game.ts`,
 // the surface in `src/debug.ts`.
 
-import { STAGE_H, STAGE_W } from "./constants";
+import {
+  MENU_BACK_KEYS,
+  MENU_CONFIRM_KEYS,
+  MENU_DOWN_KEYS,
+  MENU_UP_KEYS,
+  STAGE_H,
+  STAGE_W,
+} from "./constants";
 import { installDebugApi } from "./debug";
 import { BACKGROUND, game, type CascadeState } from "./game";
 import { createRuntime } from "./runtime";
@@ -30,6 +37,15 @@ const runtime = createRuntime<CascadeState>({
   // The table's own colour, which the runtime also clears the letterbox bars
   // to, so the bars carry the stage's background.
   background: BACKGROUND,
+  // The four menu actions specs/controls.md names, each with the keys it binds.
+  // The runtime reads the keyboard by `KeyboardEvent.code`, so they hold on any
+  // layout.
+  menuBindings: {
+    "menu-up": MENU_UP_KEYS,
+    "menu-down": MENU_DOWN_KEYS,
+    "menu-confirm": MENU_CONFIRM_KEYS,
+    "menu-back": MENU_BACK_KEYS,
+  },
 });
 
 // The state is complete before anything can observe it: `initialize` builds it

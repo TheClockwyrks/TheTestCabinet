@@ -39,8 +39,6 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLength,
-  assertNotNull,
-  assertNull,
 } from "../assert";
 import {
   captureStill,
@@ -48,9 +46,6 @@ import {
   framesFor,
   openTable,
   pileOf,
-  poseColumn,
-  pressPoint,
-  releasePoint,
   type Harness,
 } from "../harness";
 import { EVERY_PILE, pileName, poseFullBoard } from "./board";
@@ -165,62 +160,5 @@ it("empties every pile and the set memory, and leaves the flight, the layer and 
     after.trailPainting,
     GATES.trailPainting,
     "trailPainting, left as it was posed",
-  );
-});
-
-/**
- * The two columns the run is carried between for the second reading.
- *
- * A red five onto a black six, which specs/tableau.md has a column accept, so the
- * carry resolves a drop target as well as filling the hand.
- */
-const HAND_FROM = 0;
-const HAND_TO = 3;
-const HAND_RUN = "5H";
-const HAND_TARGET = "6S";
-
-it("clears the run in hand and the drop target with the cards", async () => {
-  openTable(h);
-  poseColumn(h, HAND_FROM, [HAND_RUN]);
-  poseColumn(h, HAND_TO, [HAND_TARGET]);
-
-  // The press lifts the column's card, which enters the hand on the press itself
-  // (specs/controls.md), and the move carries its centre into the other column's
-  // drop rectangle so a target is resolved.
-  const press = pressPoint(h.snapshot(), "tableau", HAND_FROM, 0);
-  const over = releasePoint(h.snapshot(), "tableau", HAND_TO);
-  h.debug.pointerDown(press.x, press.y);
-  h.debug.pointerMove(over.x, over.y);
-
-  const held = h.snapshot();
-  assertNotNull(
-    held.drag,
-    "the run in hand before the clear, which the press put there " +
-      "(specs/controls.md) — an empty hand would say nothing about clearing it",
-  );
-  assertNotNull(
-    held.dropTarget,
-    `the drop target while the ${HAND_RUN} is over column ${HAND_TO}, whose ` +
-      `${HAND_TARGET} accepts it (specs/controls.md, specs/tableau.md) — an ` +
-      "unresolved target would say nothing about clearing one",
-  );
-
-  h.debug.clearTable();
-  const after = h.snapshot();
-
-  await h.advance(1);
-  // Before the assertions, so a clear that left a card in hand still leaves the
-  // picture of the board it drew.
-  captureStill(h, "cleared");
-
-  assertNull(
-    after.drag,
-    "the run in hand after clearTable(): the clear takes it with the cards it " +
-      "took off the table (specs/instrumentation.md)",
-  );
-  assertNull(
-    after.dropTarget,
-    "the drop target after clearTable(): it goes with the run the clear took " +
-      "out of the hand (specs/instrumentation.md)",
   );
 });

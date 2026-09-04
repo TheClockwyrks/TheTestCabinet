@@ -9,6 +9,7 @@ import type { FrameEvents } from "./audio";
 import { DEFAULT_SEED, TABLEAU_COLUMNS } from "./constants";
 import { clearTrail, dealGame } from "./deal";
 import type { CascadeState } from "./game";
+import { wrapMenuIndex } from "./menus";
 
 /**
  * Restore every declared field to its title-screen value (`reset`,
@@ -17,6 +18,8 @@ import type { CascadeState } from "./game";
  */
 export function resetState(state: CascadeState, seed: number): void {
   state.screen = "title";
+  state.menuIndex = 0;
+  state.titleIndex = 0;
 
   state.stock = [];
   state.waste = [];
@@ -63,9 +66,15 @@ export function newGame(state: CascadeState, events: FrameEvents): void {
   clearCascade(state);
   dealGame(state, events);
   state.screen = "playing";
+  // "Every deal that begins play selects the first of them, so `menuIndex` is
+  // `0` when a fresh game starts" (specs/screens.md).
+  state.menuIndex = 0;
 }
 
 /** Back to the title screen, leaving the table exactly as it stands. */
 export function toTitle(state: CascadeState): void {
   state.screen = "title";
+  // "Both return to `title` with `menuIndex` set to `titleIndex`, the title
+  // entry last activated" (specs/screens.md).
+  state.menuIndex = wrapMenuIndex("title", state.titleIndex);
 }

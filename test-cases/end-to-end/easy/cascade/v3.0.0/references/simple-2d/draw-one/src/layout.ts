@@ -14,21 +14,38 @@ import {
   FACE_UP_OFFSET,
   FACE_UP_OFFSET_MIN,
   FOUNDATION_X,
-  HOWTO_BACK,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   STOCK_X,
   TABLEAU_Y,
-  TITLE_HOW_TO,
-  TITLE_NEW_GAME,
   TOP_ROW_Y,
   WASTE_X,
-  type Rect,
 } from "./constants";
 import { pileCards, shownWasteCount } from "./piles";
 import type { CardRef, PileRef } from "./piles";
 import type { CardState, CascadeState, PileKind, Screen } from "./game";
+
+/**
+ * Where this build puts each control. `specs/controls.md` fixes no position —
+ * "Each control occupies a rectangular hit region the build lays out" — so these
+ * six are this build's own layout, and `menuItemRect` reports them.
+ */
+export const TITLE_NEW_GAME: Rect = { x: 480, y: 448, w: 320, h: 52 };
+export const TITLE_HOW_TO: Rect = { x: 480, y: 516, w: 320, h: 52 };
+export const HOWTO_BACK: Rect = { x: 480, y: 600, w: 320, h: 52 };
+export const HUD_NEW_GAME: Rect = { x: 224, y: 680, w: 180, h: 36 };
+export const HUD_MENU: Rect = { x: 420, y: 680, w: 120, h: 36 };
+export const HUD_SOUND: Rect = { x: 556, y: 680, w: 120, h: 36 };
+
+/**
+ * An axis-aligned rectangle in the stage's logical units. `specs/table.md` fixes
+ * the thirteen drop rectangles in this shape, and `specs/controls.md` leaves each
+ * control's hit region to this build in it.
+ */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** A point on the stage, in logical units. */
 export interface Point {
@@ -237,6 +254,54 @@ const CONTROLS: readonly {
   { id: "hud-menu", screen: "playing", rect: HUD_MENU },
   { id: "hud-sound", screen: "playing", rect: HUD_SOUND },
 ];
+
+/**
+ * The controls of one screen's menu, in the order specs/controls.md gives them.
+ *
+ * specs/controls.md makes "the controls a screen carries" that screen's menu,
+ * and leaves WHERE each one sits to this build, so this list is both the layout
+ * and the order `menuIndex` counts along. `won` shows no menu, so it has none.
+ */
+export function menuItems(screen: Screen): readonly Rect[] {
+  return CONTROLS.filter((control) => control.screen === screen).map(
+    (control) => control.rect,
+  );
+}
+
+/** The control id at `index` of that menu, or `null` when there is none. */
+export function menuControl(screen: Screen, index: number): ControlId | null {
+  const items = CONTROLS.filter((control) => control.screen === screen);
+  return index >= 0 && index < items.length ? items[index].id : null;
+}
+
+/** The region of item `index` of that menu, or `null` when there is none. */
+export function menuItemRect(screen: Screen, index: number): Rect | null {
+  const items = menuItems(screen);
+  if (!Number.isInteger(index) || index < 0 || index >= items.length) {
+    return null;
+  }
+  return { ...items[index] };
+}
+
+/** The index of the item whose region holds a point on that screen, or `null`. */
+export function menuItemAt(
+  screen: Screen,
+  x: number,
+  y: number,
+): number | null {
+  const items = menuItems(screen);
+  for (let index = 0; index < items.length; index += 1) {
+    if (pointIn(items[index], x, y)) return index;
+  }
+  return null;
+}
+
+/** Wrap a selection over the menu the screen shows. */
+export function wrapMenuIndex(screen: Screen, index: number): number {
+  const length = menuItems(screen).length;
+  if (length === 0) return 0;
+  return ((index % length) + length) % length;
+}
 
 /** The control whose rectangle holds the point on that screen, or `null`. */
 export function controlAtPoint(

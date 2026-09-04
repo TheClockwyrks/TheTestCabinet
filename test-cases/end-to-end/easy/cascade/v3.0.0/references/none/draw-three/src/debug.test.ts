@@ -55,6 +55,12 @@ function stand(): void {
     width: STAGE_W,
     height: STAGE_H,
     game,
+    menuBindings: {
+      "menu-up": ["ArrowUp"],
+      "menu-down": ["ArrowDown"],
+      "menu-confirm": ["Enter"],
+      "menu-back": ["Escape"],
+    },
     background: COLOR.table,
     surface,
     audioContext: () => null,

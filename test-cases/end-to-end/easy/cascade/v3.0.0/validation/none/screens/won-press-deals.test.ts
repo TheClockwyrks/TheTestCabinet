@@ -32,9 +32,9 @@ import {
   captureStill,
   createHarness,
   everyCard,
+  openWon,
   type Harness,
 } from "../harness";
-import { openWon } from "./screens";
 
 /** The middle of the stage: in no control's rectangle and on no pile's. */
 const PRESS = { x: STAGE_W / 2, y: STAGE_H / 2 };

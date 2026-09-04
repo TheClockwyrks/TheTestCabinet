@@ -21,29 +21,22 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
+  captureStill,
+  card,
+  createHarness,
   EIGHT,
   FIVE,
   FOUR,
   NINE,
+  openTable,
+  poseStock,
   SEVEN,
   SIX,
   THREE,
   TWO,
-  captureStill,
-  card,
-  createHarness,
-  openTable,
-  poseStock,
   type Harness,
 } from "../harness";
-
-/**
- * The turn count specs/stock.md fixes for this variant.
- *
- * Stated here as the literal rather than read from the snapshot, because the
- * literal is exactly what this item exists to decide.
- */
-const TURN_COUNT = 3;
+import { TURN_COUNT } from "./constants";
 
 /**
  * The stock this check poses, bottom card first.

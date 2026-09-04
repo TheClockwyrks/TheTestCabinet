@@ -82,10 +82,10 @@ export function render(
   drawFelt(ctx);
   switch (state.screen) {
     case "title":
-      drawTitle(ctx);
+      drawTitle(state, ctx);
       return;
     case "howto":
-      drawHowTo(ctx);
+      drawHowTo(state, ctx);
       return;
     case "playing":
       drawTable(state, ctx);
@@ -106,7 +106,7 @@ function drawTable(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   drawTopRow(state, ctx);
   drawColumns(state, ctx);
   drawDropTarget(state, ctx);
-  drawHud(ctx);
+  drawHud(state, ctx);
   drawHeldRun(state, ctx);
 }
 
@@ -191,16 +191,16 @@ function drawHeldRun(state: CascadeState, ctx: CanvasRenderingContext2D): void {
 
 /* ---- The HUD ------------------------------------------------------------- */
 
-function drawHud(ctx: CanvasRenderingContext2D): void {
+function drawHud(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   const strip = hudStrip();
   ctx.save();
   ctx.fillStyle = "rgba(6, 44, 27, 0.72)";
   ctx.fillRect(strip.x, strip.y, strip.w, strip.h);
   ctx.restore();
 
-  drawButton(ctx, HUD_NEW_GAME, HUD_ITEMS[0]);
-  drawButton(ctx, HUD_MENU, HUD_ITEMS[1]);
-  drawButton(ctx, HUD_SOUND, HUD_ITEMS[2]);
+  drawButton(ctx, HUD_NEW_GAME, HUD_ITEMS[0], state.menuIndex === 0);
+  drawButton(ctx, HUD_MENU, HUD_ITEMS[1], state.menuIndex === 1);
+  drawButton(ctx, HUD_SOUND, HUD_ITEMS[2], state.menuIndex === 2);
 
   // The deal-mode label lives in the strip too, so which deal is being played
   // is visible throughout play (`specs/screens.md`).
@@ -216,20 +216,31 @@ function drawHud(ctx: CanvasRenderingContext2D): void {
   ctx.restore();
 }
 
-/** A control: a dark plate, a light border, and its label inside its own rect. */
+/**
+ * A control: a dark plate, a border, and its label inside its own rect.
+ *
+ * THE SELECTED ITEM IS DRAWN DISTINCTLY, which `specs/controls.md` requires of
+ * every menu: "the selected item is drawn distinctly from the others".
+ * Here that is a brighter border and a brighter label, which reads at the stage
+ * size and costs the layout nothing.
+ */
 function drawButton(
   ctx: CanvasRenderingContext2D,
   rect: Rect,
   label: string,
+  selected = false,
 ): void {
   ctx.save();
   ctx.fillStyle = COLOR.panel;
   ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  // The border and the label carry the selection. Its WIDTH is left alone, so
+  // the plate's own ground stays readable right up to the edge and a label read
+  // against it is read against the plate rather than against the marker.
   ctx.lineWidth = 2;
-  ctx.strokeStyle = COLOR.panelEdge;
+  ctx.strokeStyle = selected ? COLOR.highlight : COLOR.panelEdge;
   roundRectPath(ctx, rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, 6);
   ctx.stroke();
-  ctx.fillStyle = COLOR.text;
+  ctx.fillStyle = selected ? COLOR.highlight : COLOR.text;
   ctx.font = `700 ${Math.min(20, Math.round(rect.h * 0.46))}px ${UI_FONT}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -239,7 +250,7 @@ function drawButton(
 
 /* ---- The title ----------------------------------------------------------- */
 
-function drawTitle(ctx: CanvasRenderingContext2D): void {
+function drawTitle(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   quietTable(ctx);
 
   ctx.save();
@@ -263,8 +274,8 @@ function drawTitle(ctx: CanvasRenderingContext2D): void {
   ctx.fillText(DEAL_MODE_LABEL, badge.x + badge.w / 2, badge.y + badge.h / 2);
   ctx.restore();
 
-  drawButton(ctx, TITLE_NEW_GAME, TITLE_ITEMS[0]);
-  drawButton(ctx, TITLE_HOW_TO, TITLE_ITEMS[1]);
+  drawButton(ctx, TITLE_NEW_GAME, TITLE_ITEMS[0], state.menuIndex === 0);
+  drawButton(ctx, TITLE_HOW_TO, TITLE_ITEMS[1], state.menuIndex === 1);
 }
 
 /** Quiet whatever the table shows, so the words over it read cleanly. */
@@ -277,7 +288,7 @@ function quietTable(ctx: CanvasRenderingContext2D): void {
 
 /* ---- How to play --------------------------------------------------------- */
 
-function drawHowTo(ctx: CanvasRenderingContext2D): void {
+function drawHowTo(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   quietTable(ctx);
 
   ctx.save();
@@ -296,7 +307,8 @@ function drawHowTo(ctx: CanvasRenderingContext2D): void {
   }
   ctx.restore();
 
-  drawButton(ctx, HOWTO_BACK, HOWTO_BACK_LABEL);
+  // The screen's only item, so it is always the selected one.
+  drawButton(ctx, HOWTO_BACK, HOWTO_BACK_LABEL, state.menuIndex === 0);
 }
 
 /* ---- The won screen and the cascade -------------------------------------- */

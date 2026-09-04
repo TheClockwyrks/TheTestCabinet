@@ -8,6 +8,7 @@ import type { FrameCues } from "./audio";
 import { DEFAULT_SEED, FOUNDATION_COUNT, TABLEAU_COLUMNS } from "./constants";
 import { dealGame } from "./deal";
 import type { CardState, CascadeState } from "./game";
+import { wrapMenuIndex } from "./menus";
 
 /** An empty pile per slot, freshly built so nothing is shared between them. */
 function emptyPiles(count: number): CardState[][] {
@@ -21,6 +22,8 @@ function emptyPiles(count: number): CardState[][] {
  */
 export function resetState(state: CascadeState, seed = DEFAULT_SEED): void {
   state.screen = "title";
+  state.menuIndex = 0;
+  state.titleIndex = 0;
 
   state.stock = [];
   state.waste = [];
@@ -63,6 +66,9 @@ export function newGame(state: CascadeState, cues: FrameCues): void {
   state.cascadeDone = false;
   dealGame(state, cues);
   state.screen = "playing";
+  // "Every deal that begins play selects the first of them, so `menuIndex` is
+  // `0` when a fresh game starts" (specs/screens.md).
+  state.menuIndex = 0;
 }
 
 /** Leave the table for the title screen, which the HUD's `MENU` control does. */
@@ -70,4 +76,7 @@ export function toTitle(state: CascadeState): void {
   state.drag = null;
   state.dropTarget = null;
   state.screen = "title";
+  // "Both return to `title` with `menuIndex` set to `titleIndex`, the title
+  // entry last activated" (specs/screens.md).
+  state.menuIndex = wrapMenuIndex("title", state.titleIndex);
 }

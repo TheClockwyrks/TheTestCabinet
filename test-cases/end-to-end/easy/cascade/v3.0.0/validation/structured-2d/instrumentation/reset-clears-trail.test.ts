@@ -13,7 +13,7 @@
 // anyway passes the first reading and fails the second. That split is what
 // makes this an instrumentation point rather than a drawing one: a build that
 // paints correctly and never clears fails here and at
-// `instrumentation/clear-trail`, `instrumentation/trail-painting-gate` and
+// `instrumentation/clear-trail`, `instrumentation/trail-painting-gate-off` and
 // `deal.deal-clears-trail`, and nowhere else.
 //
 // THE LAYER IS READ AS PIXELS, AGAINST THE SAME TABLE DRAWN BEFORE ANY PAINTING.

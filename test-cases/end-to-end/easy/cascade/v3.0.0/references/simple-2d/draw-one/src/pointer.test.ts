@@ -8,16 +8,18 @@ import {
   DOUBLE_CLICK_WINDOW,
   DRAG_THRESHOLD,
   FOUNDATION_X,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   STOCK_X,
   TABLEAU_Y,
-  TITLE_HOW_TO,
-  TITLE_NEW_GAME,
   TOP_ROW_Y,
   WASTE_X,
 } from "./constants";
+import {
+  HUD_MENU,
+  HUD_NEW_GAME,
+  HUD_SOUND,
+  TITLE_HOW_TO,
+  TITLE_NEW_GAME,
+} from "./layout";
 import { makeCard } from "./deck";
 import { openingState } from "./flow";
 import { columnCardTops } from "./layout";

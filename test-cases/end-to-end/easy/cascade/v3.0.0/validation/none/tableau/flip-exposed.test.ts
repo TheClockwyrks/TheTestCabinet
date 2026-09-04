@@ -20,7 +20,7 @@
 // would fail this point for a reason that has nothing to do with turning a card.
 //
 // `autoFlip` is left ON, at its reset default, because it is the faculty this
-// point is about. `instrumentation/auto-flip-gate` is the point that decides the
+// point is about. `instrumentation/auto-flip-gate-off` is the point that decides the
 // gate; this one decides the turn.
 
 import { afterEach, beforeEach, it } from "vitest";

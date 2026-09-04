@@ -26,6 +26,8 @@ export function openingState(
   trail?.clear();
   return {
     screen: "title",
+    menuIndex: 0,
+    titleIndex: 0,
 
     stock: [],
     waste: [],

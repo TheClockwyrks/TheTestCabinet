@@ -28,7 +28,7 @@
 //
 // WHAT IT DOES NOT DECIDE. That the painted PIXELS go with `trailStamps` is
 // `instrumentation/reset-clears-trail`, and that the four gates start on is
-// `instrumentation/gates-default-on`. This point reads the declared fields.
+// `instrumentation/auto-flip-defaults-on`. This point reads the declared fields.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

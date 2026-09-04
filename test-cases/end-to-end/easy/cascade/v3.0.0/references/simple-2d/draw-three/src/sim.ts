@@ -63,6 +63,8 @@ export interface MutFlyer {
 /** The whole of `CascadeState`, writable, for the length of one transition. */
 export interface Sim {
   screen: Screen;
+  menuIndex: number;
+  titleIndex: number;
 
   stock: MutCard[];
   waste: MutCard[];
@@ -109,6 +111,8 @@ function copyPile(pile: DeepReadonly<readonly CardState[]>): MutCard[] {
 export function toSim(state: DeepReadonly<CascadeState>): Sim {
   return {
     screen: state.screen,
+    menuIndex: state.menuIndex,
+    titleIndex: state.titleIndex,
 
     stock: copyPile(state.stock),
     waste: copyPile(state.waste),

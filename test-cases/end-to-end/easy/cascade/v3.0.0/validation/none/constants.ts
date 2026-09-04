@@ -116,19 +116,13 @@ export const HUD_H = 36;
 /* The controls (specs/controls.md)                                           */
 /* -------------------------------------------------------------------------- */
 
-export const TITLE_NEW_GAME: Rect = { x: 480, y: 448, w: 320, h: 52 };
-export const TITLE_HOW_TO: Rect = { x: 480, y: 516, w: 320, h: 52 };
-export const HOWTO_BACK: Rect = { x: 480, y: 600, w: 320, h: 52 };
-export const HUD_NEW_GAME: Rect = { x: 224, y: 680, w: 180, h: 36 };
-export const HUD_MENU: Rect = { x: 420, y: 680, w: 120, h: 36 };
-export const HUD_SOUND: Rect = { x: 556, y: 680, w: 120, h: 36 };
-
 /**
  * A release within this of its press is a click rather than a drop
  * (`specs/controls.md`).
  *
- * It is a figure, not a tolerance: `handling/drag-threshold` is the one check
- * that grades it, and it states both sides of the rule itself.
+ * It is a figure, not a tolerance: `handling/short-gesture-is-a-click` and
+ * `handling/long-gesture-is-a-drop` are the two checks that grade it, and each
+ * states its own side of the rule.
  */
 export const DRAG_THRESHOLD = 5;
 
@@ -151,6 +145,43 @@ export const OVERLAY_KEY = "Backquote";
  * what `Harness.armAudio` is for.
  */
 export const UNBOUND_KEY = "KeyZ";
+
+/* -------------------------------------------------------------------------- */
+/* The menus (specs/controls.md, specs/screens.md)                            */
+/* -------------------------------------------------------------------------- */
+//
+// WHERE the items sit is NOT here, and must not be. `specs/controls.md` leaves
+// each control's hit region to the build — "Each control occupies a rectangular
+// hit region the build lays out" — and has the build report it through
+// `menuItemRect`. So a check aims at the region the build answered with, and the
+// only thing this file fixes about a menu is its ORDER, which the specification
+// does fix: the controls of a screen are that screen's menu "in the order the
+// table above gives them".
+
+/** The two items of the title menu, in `TITLE_ITEMS` order. */
+export const TITLE_NEW_GAME_ITEM = 0;
+export const TITLE_HOW_TO_ITEM = 1;
+
+/** The how-to screen's one item, labelled `HOWTO_BACK_LABEL`. */
+export const HOWTO_BACK_ITEM = 0;
+
+/** The three items of the HUD's menu, in `HUD_ITEMS` order. */
+export const HUD_NEW_GAME_ITEM = 0;
+export const HUD_MENU_ITEM = 1;
+export const HUD_SOUND_ITEM = 2;
+
+/**
+ * The keys `specs/controls.md` binds each of the four menu actions to, as
+ * `KeyboardEvent.code` values.
+ *
+ * An action bound to two codes is one requirement: both raise the same action and
+ * exercise the same rule the same way, so a point drives both and a build that
+ * bound only one of a pair fails it.
+ */
+export const MENU_UP_KEYS = ["ArrowUp", "KeyW"] as const;
+export const MENU_DOWN_KEYS = ["ArrowDown", "KeyS"] as const;
+export const MENU_CONFIRM_KEYS = ["Enter", "Space"] as const;
+export const MENU_BACK_KEY = "Escape";
 
 /* -------------------------------------------------------------------------- */
 /* The deck (specs/deal.md)                                                   */

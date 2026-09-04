@@ -106,6 +106,13 @@ none = "workspaces/none"
 # fan. `fan-shrinks` carries the other half: the fan counting 3 to 2 to 1 within
 # one set and never refilling from the cards buried under it.
 #
+# THE POINTS THAT ASSERT SOMETHING DRAWN NAME `presentation` BESIDE `rules`. A
+# waste drawn in the wrong place and a deal-mode label that is never drawn are
+# failures of the table's presentation as much as of the deal mode, and their
+# common counterparts in `table` and `screens` name `presentation` for exactly
+# that reason; a variant point that reads the canvas should lower the same domain
+# a common point reading the same canvas does.
+#
 # The deal-mode LABEL is graded in two places by two points. A build correct on the
 # title screen and wrong in the HUD misses one requirement, not both. The common
 # items `screens.title-shows-mode-label` and `screens.hud-shows-mode-label` hold
@@ -145,7 +152,7 @@ validation = { script = "draw-three/turn-remainder.test.ts", outputs = [
 id = "waste-fans-shown-set"
 title = "The shown set fans to the right"
 description = "With three cards on the shown set, they are drawn at 346, 372 and 398, the last of them the playable top card."
-domains = ["rules"]
+domains = ["rules", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "draw-three/waste-fans-shown-set.test.ts", outputs = [
   { id = "fan", name = "The three fanned cards of the shown set", kind = "image" },
@@ -154,7 +161,7 @@ validation = { script = "draw-three/waste-fans-shown-set.test.ts", outputs = [
 id = "fan-shrinks"
 title = "The fan counts down within its set"
 description = "Playing the top card leaves two fanned, then one, and never four or a card pulled up from beneath."
-domains = ["rules"]
+domains = ["rules", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "draw-three/fan-shrinks.test.ts", outputs = [
   { id = "fan", name = "The fan counting down within its set", kind = "replay" },
@@ -181,7 +188,7 @@ validation = { script = "draw-three/only-frontmost-playable.test.ts", outputs = 
 id = "fan-clear-of-neighbours"
 title = "The fan clears the stock and the foundations"
 description = "The fan's leftmost edge is at or right of 346 and its rightmost edge is left of 590."
-domains = ["rules"]
+domains = ["rules", "presentation"]
 failure_cap = "passable"
 validation = { script = "draw-three/fan-clear-of-neighbours.test.ts", outputs = [
   { id = "fan", name = "The fan between the waste anchor and the first foundation", kind = "image" },
@@ -190,7 +197,7 @@ validation = { script = "draw-three/fan-clear-of-neighbours.test.ts", outputs = 
 id = "mode-label-title"
 title = "The title screen's label reads DRAW THREE"
 description = "The title screen draws the literal DRAW THREE, this variant's DEAL_MODE_LABEL."
-domains = ["rules"]
+domains = ["rules", "presentation"]
 failure_cap = "passable"
 validation = { script = "draw-three/mode-label-title.test.ts", outputs = [
   { id = "title", name = "The title screen's DRAW THREE label", kind = "image" },
@@ -199,7 +206,7 @@ validation = { script = "draw-three/mode-label-title.test.ts", outputs = [
 id = "mode-label-hud"
 title = "The HUD's label reads DRAW THREE"
 description = "The HUD draws the literal DRAW THREE during play."
-domains = ["rules"]
+domains = ["rules", "presentation"]
 failure_cap = "passable"
 validation = { script = "draw-three/mode-label-hud.test.ts", outputs = [
   { id = "hud", name = "The HUD's DRAW THREE label", kind = "image" },

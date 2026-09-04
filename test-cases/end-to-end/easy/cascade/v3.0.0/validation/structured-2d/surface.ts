@@ -29,11 +29,21 @@
 // any engine — `muted` is the runtime's bit, reached the way a player reaches
 // it, through the HUD's `SOUND` control, and reported by the snapshot.
 
-/** The surface's version, reported as `version`. */
-export const CASCADE_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
+/**
+ * One menu item's hit region, as `menuItemRect` reports it.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size, all in
+ * logical stage units (specs/instrumentation.md). WHERE a build puts its items is
+ * the build's own — specs/controls.md: "Each control occupies a rectangular hit
+ * region the build lays out" — so a check drives the pointer at what this reports
+ * and never at a rectangle of its own.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** The four screens the game moves between. */
 export type Screen = "title" | "howto" | "playing" | "won";
@@ -125,6 +135,10 @@ export interface SnapshotFlyer {
 export interface CascadeSnapshot {
   version: number;
   screen: Screen;
+  /** The selected item on the menu the current screen shows. */
+  menuIndex: number;
+  /** The title menu's remembered selection: the entry last activated there. */
+  titleIndex: number;
   /** This build's `DEAL_MODE`. */
   dealMode: string;
   /** This build's `TURN_COUNT`: how many cards one turn of the stock moves. */
@@ -190,8 +204,20 @@ export interface CascadeDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): CascadeSnapshot;
+  /**
+   * The hit region of item `index` on the menu the current screen shows, or
+   * `null` on `won` and for an index naming no item of that menu.
+   *
+   * A reading like `snapshot`: it changes nothing, and it is the build's answer
+   * to a question specs/controls.md leaves to the build.
+   */
+  menuItemRect(index: number): MenuRect | null;
 
   setScreen(screen: Screen): void;
+  /** Sets the selected item on the menu the current screen shows. */
+  setMenuIndex(index: number): void;
+  /** Sets the title entry a return to the title restores. */
+  setTitleIndex(index: number): void;
 
   addCard(
     pile: PileKind,
@@ -274,8 +300,11 @@ export const VERDICT_OPS = ["move", "autoMove"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
 
   "setScreen",
+  "setMenuIndex",
+  "setTitleIndex",
 
   "addCard",
   "removeCard",
@@ -313,6 +342,8 @@ export const REQUIRED_OPS = [
 export const SNAPSHOT_FIELDS = [
   "version",
   "screen",
+  "menuIndex",
+  "titleIndex",
   "dealMode",
   "turnCount",
   "dealModeLabel",

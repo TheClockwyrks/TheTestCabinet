@@ -34,9 +34,7 @@ import {
   poseStock,
   type Harness,
 } from "../harness";
-
-/** The turn count specs/stock.md fixes for this variant, as `TURN_COUNT`. */
-const TURN_COUNT = 3;
+import { TURN_COUNT } from "./constants";
 
 /**
  * The stock the turn is taken from, bottom card first.

@@ -124,8 +124,8 @@ class Screens extends TableLayer {
     state: CascadeState,
     ctx: CanvasRenderingContext2D,
   ): void {
-    if (state.screen === "title") renderTitle(ctx);
-    else if (state.screen === "howto") renderHowto(ctx);
+    if (state.screen === "title") renderTitle(ctx, state.menuIndex);
+    else if (state.screen === "howto") renderHowto(ctx, state.menuIndex);
     else if (state.screen === "won") renderWon(state, ctx);
   }
 }
@@ -168,7 +168,7 @@ class HudStrip extends TableLayer {
     ctx: CanvasRenderingContext2D,
   ): void {
     if (state.screen !== "playing") return;
-    renderHud(ctx);
+    renderHud(ctx, state.menuIndex);
   }
 }
 

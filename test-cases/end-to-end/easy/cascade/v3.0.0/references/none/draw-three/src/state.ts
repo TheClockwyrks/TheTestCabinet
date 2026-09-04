@@ -86,6 +86,10 @@ export interface PressRecord {
 /** Everything the game is. */
 export interface CascadeState {
   screen: Screen;
+  /** The selected item on the menu the current screen shows. */
+  menuIndex: number;
+  /** The title menu's remembered selection: the entry last activated there. */
+  titleIndex: number;
 
   // The thirteen piles, each ordered from its bottom card to its top card.
   stock: Card[];
@@ -152,6 +156,8 @@ function emptyPiles(count: number): Card[][] {
 export function createState(make?: LayerFactory): CascadeState {
   return {
     screen: "title",
+    menuIndex: 0,
+    titleIndex: 0,
     stock: [],
     waste: [],
     wasteSets: [],
@@ -190,6 +196,8 @@ export function createState(make?: LayerFactory): CascadeState {
  */
 export function resetState(state: CascadeState, seed: number): void {
   state.screen = "title";
+  state.menuIndex = 0;
+  state.titleIndex = 0;
   clearTable(state);
   state.drag = null;
   state.dropTarget = null;

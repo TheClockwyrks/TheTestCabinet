@@ -45,18 +45,16 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   ACE,
-  SEVEN,
   captureStill,
   card,
   createHarness,
   openTable,
   poseStock,
+  SEVEN,
   topOf,
   type Harness,
 } from "../harness";
-
-/** specs/stock.md: this variant's `TURN_COUNT`, the cards one turn moves. */
-const TURN_COUNT = 1;
+import { TURN_COUNT } from "./constants";
 
 /** The card the FIRST turn moves, which the waste must fall back to. */
 const EARLIER = card("hearts", SEVEN);

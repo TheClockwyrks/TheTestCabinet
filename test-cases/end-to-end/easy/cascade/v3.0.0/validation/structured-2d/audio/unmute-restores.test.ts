@@ -32,18 +32,19 @@
 //
 // WHAT THIS DOES NOT DECIDE. That the `SOUND` control is drawn and labelled, and
 // that clicking it flips the reported bit, are `screens/hud-labels-drawn`'s and
-// `screens/hud-sound-toggles`'s requirements. This point reads what the unmute
+// `screens/hud-sound-mutes`'s requirements. This point reads what the unmute
 // gave back to the sound.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
-import { CUES, DOUBLE_CLICK_WINDOW, HUD_SOUND } from "../constants";
+import { CUES, DOUBLE_CLICK_WINDOW, HUD_SOUND_ITEM } from "../constants";
 import {
   captureStill,
   card,
-  clickControl,
+  clickAt,
   createHarness,
   framesFor,
+  menuPoint,
   openTable,
   poseStock,
   watchCues,
@@ -91,7 +92,7 @@ it("plays CUES.turn at an audible gain on a turn made after the SOUND control un
   poseStock(h, STOCK);
   const cues = watchCues(h);
 
-  clickControl(h, HUD_SOUND);
+  clickAt(h, menuPoint(h, HUD_SOUND_ITEM).x, menuPoint(h, HUD_SOUND_ITEM).y);
   await h.advance(1);
   assertEqual(
     h.snapshot().muted,
@@ -114,7 +115,7 @@ it("plays CUES.turn at an audible gain on a turn made after the SOUND control un
   );
   await h.advance(GAP);
 
-  clickControl(h, HUD_SOUND);
+  clickAt(h, menuPoint(h, HUD_SOUND_ITEM).x, menuPoint(h, HUD_SOUND_ITEM).y);
   await h.advance(1);
   assertEqual(
     h.snapshot().muted,

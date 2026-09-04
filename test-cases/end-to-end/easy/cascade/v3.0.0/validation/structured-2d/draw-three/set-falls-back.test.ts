@@ -38,22 +38,20 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   ACE,
-  EIGHT,
-  FIVE,
-  QUEEN,
-  SEVEN,
-  SIX,
   captureReplay,
   card,
   createHarness,
+  EIGHT,
+  FIVE,
   openTable,
   poseStock,
+  QUEEN,
+  SEVEN,
+  SIX,
   wasteShown,
   type Harness,
 } from "../harness";
-
-/** specs/stock.md: this variant's `TURN_COUNT`. */
-const TURN_COUNT = 3;
+import { TURN_COUNT } from "./constants";
 
 /**
  * The nine cards the three turns take, in the order they are turned.

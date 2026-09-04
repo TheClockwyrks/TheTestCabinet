@@ -31,10 +31,21 @@ import {
   TURN_COUNT,
   WASTE_FAN,
   WASTE_X,
-  type Rect,
 } from "./constants";
 import type { CardState, CascadeState, PileKind } from "./game";
 import { pileOf, validPile, wasteShown, wasteVisibleCount } from "./piles";
+
+/**
+ * An axis-aligned rectangle in the stage's logical units. `specs/table.md` fixes
+ * the thirteen drop rectangles in this shape, and `specs/controls.md` leaves each
+ * control's hit region to this build in it.
+ */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** Whether a point lies inside a rectangle, each rectangle half-open at its far edges. */
 export function rectContains(rect: Rect, x: number, y: number): boolean {

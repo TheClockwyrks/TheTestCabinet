@@ -457,18 +457,27 @@ function drawFlyers(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   }
 }
 
-/** A control's plate and its label, drawn inside its own rectangle. */
+/**
+ * A control's plate and its label, drawn inside its own rectangle.
+ *
+ * THE SELECTED ITEM IS DRAWN DISTINCTLY, which specs/controls.md requires of
+ * every menu: "the selected item is drawn distinctly from the others".
+ * Here that is the border and the label, which reads at the stage size; the
+ * plate's fill and its size are left alone, so a label is still read against the
+ * same ground whichever item is selected.
+ */
 function drawControl(
   ctx: CanvasRenderingContext2D,
   rect: Rect,
   label: string,
   px: number,
+  selected = false,
 ): void {
   roundedPath(ctx, rect.x, rect.y, rect.w, rect.h, 8);
   ctx.fillStyle = COLOR.plateFill;
   ctx.fill();
   ctx.lineWidth = 2;
-  ctx.strokeStyle = COLOR.plateEdge;
+  ctx.strokeStyle = selected ? COLOR.highlight : COLOR.plateEdge;
   ctx.stroke();
   centeredText(
     ctx,
@@ -476,7 +485,7 @@ function drawControl(
     rect.x + rect.w / 2,
     rect.y + rect.h / 2,
     px,
-    COLOR.text,
+    selected ? COLOR.highlight : COLOR.text,
   );
 }
 
@@ -487,9 +496,9 @@ function drawHud(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = COLOR.hudEdge;
   ctx.fillRect(0, HUD_Y, STAGE_W, 2);
 
-  drawControl(ctx, HUD_NEW_GAME, HUD_ITEMS[0], 17);
-  drawControl(ctx, HUD_MENU, HUD_ITEMS[1], 17);
-  drawControl(ctx, HUD_SOUND, HUD_ITEMS[2], 17);
+  drawControl(ctx, HUD_NEW_GAME, HUD_ITEMS[0], 17, state.menuIndex === 0);
+  drawControl(ctx, HUD_MENU, HUD_ITEMS[1], 17, state.menuIndex === 1);
+  drawControl(ctx, HUD_SOUND, HUD_ITEMS[2], 17, state.menuIndex === 2);
 
   ctx.font = `600 16px ${FONT}`;
   ctx.textAlign = "right";
@@ -530,8 +539,8 @@ function drawTitle(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   centeredText(ctx, TITLE_TEXT, STAGE_W / 2, 210, 108, COLOR.text, "800");
   centeredText(ctx, TAGLINE_TEXT, STAGE_W / 2, 296, 30, COLOR.textDim, "600");
   centeredText(ctx, DEAL_MODE_LABEL, STAGE_W / 2, 366, 22, COLOR.highlight);
-  drawControl(ctx, TITLE_NEW_GAME, TITLE_ITEMS[0], 24);
-  drawControl(ctx, TITLE_HOW_TO, TITLE_ITEMS[1], 24);
+  drawControl(ctx, TITLE_NEW_GAME, TITLE_ITEMS[0], 24, state.menuIndex === 0);
+  drawControl(ctx, TITLE_HOW_TO, TITLE_ITEMS[1], 24, state.menuIndex === 1);
   centeredText(
     ctx,
     state.muted ? "SOUND OFF" : "",
@@ -543,7 +552,7 @@ function drawTitle(state: CascadeState, ctx: CanvasRenderingContext2D): void {
 }
 
 /** The how-to screen. */
-function drawHowTo(ctx: CanvasRenderingContext2D): void {
+function drawHowTo(state: CascadeState, ctx: CanvasRenderingContext2D): void {
   centeredText(ctx, "HOW TO PLAY", STAGE_W / 2, 92, 44, COLOR.text, "800");
   ctx.font = `500 21px ${FONT}`;
   ctx.textAlign = "center";
@@ -552,7 +561,8 @@ function drawHowTo(ctx: CanvasRenderingContext2D): void {
   HOWTO_LINES.forEach((line, index) => {
     if (line !== "") ctx.fillText(line, STAGE_W / 2, 168 + index * 30);
   });
-  drawControl(ctx, HOWTO_BACK, HOWTO_BACK_LABEL, 24);
+  // The screen's only item, so it is always the selected one.
+  drawControl(ctx, HOWTO_BACK, HOWTO_BACK_LABEL, 24, state.menuIndex === 0);
 }
 
 /** The live table, which the `playing` and `won` screens both draw. */
@@ -583,7 +593,7 @@ export function render(
       drawTitle(state, ctx);
       return;
     case "howto":
-      drawHowTo(ctx);
+      drawHowTo(state, ctx);
       return;
     case "playing":
       drawPlayfield(state, ctx);

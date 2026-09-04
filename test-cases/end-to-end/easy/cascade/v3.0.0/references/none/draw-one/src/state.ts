@@ -39,6 +39,10 @@ import type {
 export interface CascadeState {
   /** The screen the game is showing. */
   screen: Screen;
+  /** The selected item on the menu the current screen shows. */
+  menuIndex: number;
+  /** The title menu's remembered selection: the entry last activated there. */
+  titleIndex: number;
 
   /** The thirteen piles, each ordered from its bottom card to its top card. */
   stock: Card[];
@@ -108,6 +112,8 @@ export function createState(options: StateOptions = {}): CascadeState {
   const factory = options.trail ?? platformTrail;
   return {
     screen: "title",
+    menuIndex: 0,
+    titleIndex: 0,
     stock: [],
     waste: [],
     foundations: emptyPiles(FOUNDATION_COUNT),
@@ -161,6 +167,8 @@ export function clearTrail(state: CascadeState): void {
  */
 export function resetState(state: CascadeState, seed: number): void {
   state.screen = "title";
+  state.menuIndex = 0;
+  state.titleIndex = 0;
   clearTable(state);
   state.drag = null;
   state.dropTarget = null;

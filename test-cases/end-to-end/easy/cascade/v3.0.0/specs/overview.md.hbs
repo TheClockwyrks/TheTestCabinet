@@ -14,16 +14,16 @@ turn, arcs under gravity, bounces along the floor, and paints itself onto the
 table as it goes, until the felt is buried under overlapping cards and the last
 flyer has drifted off a side edge.
 
-Cascade is played with a pointer, and a mouse and a touchscreen stand on the same
-footing. Cascade has its own name, look, and rules, and its branding and design
-are original to it.
+The table is played with a pointer, and a mouse and a touchscreen stand on the
+same footing; the menus over the screens take the keyboard as well. Cascade has
+its own name, look, and rules, and its branding and design are original to it.
 
 The specification spans several files under `specs/`. `specs/table.md` gives the
 geometry of the table and every pile on it; `specs/deal.md` the deck and the
 deal; `specs/foundations.md` what a foundation accepts; `specs/tableau.md` what a
 column accepts and how a run of cards moves; `specs/stock.md` the stock, the
-waste, and this build's deal mode; `specs/controls.md` the pointer and every
-control it answers; `specs/victory.md` the win and the victory cascade;
+waste, and this build's deal mode; `specs/controls.md` the pointer, the controls,
+and the menus; `specs/victory.md` the win and the victory cascade;
 `specs/screens.md` the four screens and the HUD; `specs/audio.md` the cues;
 `specs/state.md` what the game's state carries; `specs/instrumentation.md` the
 debug and automation surface; and `specs/showcase.md` the showcase the finished
@@ -110,9 +110,7 @@ yours to decide.
 
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured over
-`src/`. A test drives the game over its own clock for a counted number of frames,
-so it needs no browser, and `@napi-rs/canvas` is installed for a test that wants
-a real 2D context.
+`src/`. `@napi-rs/canvas` is installed for a test that wants a real 2D context.
 {{else if (eq engine.slug "simple-2d")}}
 ### What you implement
 
@@ -167,9 +165,8 @@ does not name is yours to decide.
 
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured over
-`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
-clock of its own, then advances the game a counted number of frames with
-`engine.advance`, so it needs no browser.
+the code you write under `src/`. `@napi-rs/canvas` is installed for a test that
+wants a real 2D context.
 {{else}}
 ### What you implement
 
@@ -225,9 +222,8 @@ does not name is yours to decide.
 
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured over
-`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
-surface and clock of its own, then advances the game a counted number of frames
-with `engine.advance`, so it needs no browser.
+the code you write under `src/`. `@napi-rs/canvas` is installed for a test that
+wants a real 2D context.
 {{/if}}
 
 ### The checks the repository passes
@@ -239,7 +235,7 @@ Four commands run over the finished repository before it is reviewed:
 | `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
 | `npx eslint .` | The code is lint-clean. |
 | `npx prettier --check .` | The code is formatted. |
-| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+| `npx vitest run --coverage` | Your tests pass. |
 
 They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
 `npm run format`, and `npm test` run the same four locally.
@@ -279,16 +275,13 @@ cues, and the victory cascade. Every other spec file states one part of it.
   every card back, the table, and every screen is drawn in code.
 - Draw everything in code. The build ships no art or audio files and fetches
   nothing at runtime.
-- Play with a pointer, with a mouse and a touchscreen on the same footing, as
-  `specs/controls.md` states.
+- Play with a pointer, with a mouse and a touchscreen on the same footing, and
+  drive every menu with the keyboard as well, as `specs/controls.md` states.
 - Run in the browser with no backend. Everything needed to play is
   self-contained, and no API key or credential is needed to build, run, or play.
-{{#if (eq engine.slug "none")}}
-- Hold the game's whole state in one value, the one the frame loop advances and
-  the debug surface reads.
-{{else if (eq engine.slug "simple-2d")}}
+{{#if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `CascadeState`, as `specs/state.md` declares it.
-{{else}}
+{{else if (eq engine.slug "structured-2d")}}
 - Hold the game's whole authoritative state in `CascadeState`, the world's game
   state, as `specs/state.md` declares it.
 {{/if}}
@@ -300,6 +293,13 @@ cues, and the victory cascade. Every other spec file states one part of it.
 - Replace the starter `README.md` with one explaining what the game is, how to
   install dependencies, how to run it in development, how to produce the static
   production build, and the controls.
+
+### Out of scope
+
+- Other patience games. This build is the Klondike this specification describes.
+- A score, a timer, statistics, hints, an auto-solver, and undo.
+- Persistence of a game or a setting between sessions. Each session starts fresh.
+- Network, online, or multiplayer play, and gamepad input.
 
 ## Code quality
 

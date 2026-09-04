@@ -33,18 +33,19 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertDeepEqual, assertNotNull } from "../assert";
 import { CARD_W, FOUNDATION_X, TOP_ROW_Y, WASTE_X } from "../constants";
 import {
-  CARD_BOX_TOLERANCE,
   boxAt,
-  cardBoxes,
   captureStill,
+  CARD_BOX_TOLERANCE,
+  cardBoxes,
   createHarness,
   drawFrame,
+  DrawnBox,
   drawnBoxes,
   openTable,
   poseWaste,
-  type DrawnBox,
   type Harness,
 } from "../harness";
+import { WASTE_FAN } from "./constants";
 
 /** The three cards of the shown set, bottom first, so the last is the top card. */
 const SHOWN = ["3S", "7H", "KD"];
@@ -57,12 +58,11 @@ const SETS = [SHOWN.length];
  * are drawn: the waste anchor, and the pitch again twice, which is `346`, `372`
  * and `398`.
  *
- * The pitch is Draw Three's own figure, so it is stated in this variant's
- * directory rather than in the project's `constants.ts`, which is common to both
- * deal modes. Stated as the anchor plus the pitch, which is how the specification
+ * The pitch is Draw Three's own figure, so it lives in this variant's own
+ * `constants.ts` rather than in the project's, which is common to both deal
+ * modes. Stated as the anchor plus the pitch, which is how the specification
  * states it, so the three literals it names are reproduced rather than restated.
  */
-const WASTE_FAN = 26;
 const FAN_X = SHOWN.map((_card, index) => WASTE_X + index * WASTE_FAN);
 
 /**

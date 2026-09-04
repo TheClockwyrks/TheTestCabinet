@@ -13,7 +13,7 @@
 // the run are the build's.
 //
 // The title and the menu items are `screens/title-shows-title` and
-// `screens/title-shows-items`, so each literal is graded on its own.
+// `screens/title-shows-new-game`, so each literal is graded on its own.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

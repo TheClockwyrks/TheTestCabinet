@@ -59,6 +59,8 @@ import {
 } from "./sim";
 import type { CascadeState, CardState, PileKind, Screen, Suit } from "./game";
 import type { DeepReadonly } from "ts-essentials";
+import { menuItemRect } from "./menus";
+import type { Rect } from "./layout";
 
 /** One card, as the snapshot reports it. */
 export interface SnapshotCard {
@@ -73,6 +75,8 @@ export interface SnapshotCard {
 export interface CascadeSnapshot {
   version: number;
   screen: Screen;
+  menuIndex: number;
+  titleIndex: number;
   dealMode: string;
   turnCount: number;
   dealModeLabel: string;
@@ -128,7 +132,19 @@ export interface CascadeDebugApi {
   ): CascadeState;
   snapshot(state: DeepReadonly<CascadeState>): CascadeSnapshot;
 
+  /**
+   * The hit region of item `index` on the menu the current screen shows.
+   *
+   * A READING like `snapshot`: it changes nothing, and it is how this build
+   * reports the layout specs/controls.md leaves to it. `null` on `won`, which
+   * shows no menu, and for an index naming no item of the current screen's menu.
+   */
+  menuItemRect(state: DeepReadonly<CascadeState>, index: number): Rect | null;
+
   setScreen(state: DeepReadonly<CascadeState>, screen: Screen): CascadeState;
+  /** Set the selected item on the menu the current screen shows. */
+  setMenuIndex(state: DeepReadonly<CascadeState>, index: number): CascadeState;
+  setTitleIndex(state: DeepReadonly<CascadeState>, index: number): CascadeState;
 
   addCard(
     state: DeepReadonly<CascadeState>,
@@ -286,6 +302,8 @@ export function createDebugApi(): CascadeDebugApi {
     snapshot: (state) => ({
       version: CASCADE_DEBUG_VERSION,
       screen: state.screen,
+      menuIndex: state.menuIndex,
+      titleIndex: state.titleIndex,
       dealMode: DEAL_MODE,
       turnCount: TURN_COUNT,
       dealModeLabel: DEAL_MODE_LABEL,
@@ -350,9 +368,21 @@ export function createDebugApi(): CascadeDebugApi {
 
     // ---- The screen -------------------------------------------------------
 
+    menuItemRect: (state, index) => menuItemRect(state.screen, index),
+
     setScreen: (state, screen) =>
       pose(state, (sim) => {
         sim.screen = screen;
+      }),
+
+    setMenuIndex: (state, index) =>
+      pose(state, (sim) => {
+        sim.menuIndex = index;
+      }),
+
+    setTitleIndex: (state, index) =>
+      pose(state, (sim) => {
+        sim.titleIndex = index;
       }),
 
     // ---- The cards --------------------------------------------------------

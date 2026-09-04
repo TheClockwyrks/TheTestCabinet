@@ -45,11 +45,21 @@
 
 import type { DeepReadonly } from "ts-essentials";
 
-/** The surface's version, reported as `version` (`CASCADE_DEBUG_VERSION`). */
-export const CASCADE_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
+/**
+ * One menu item's hit region, as `menuItemRect` reports it.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size, all in
+ * logical stage units (specs/instrumentation.md). WHERE a build puts its items is
+ * the build's own — specs/controls.md: "Each control occupies a rectangular hit
+ * region the build lays out" — so a check drives the pointer at what this reports
+ * and never at a rectangle of its own.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** The four screens the game moves between. */
 export type Screen = "title" | "howto" | "playing" | "won";
@@ -134,6 +144,10 @@ export interface PressSnapshot {
 export interface CascadeSnapshot {
   version: number;
   screen: Screen;
+  /** The selected item on the menu the current screen shows. */
+  menuIndex: number;
+  /** The title menu's remembered selection: the entry last activated there. */
+  titleIndex: number;
   /** This build's `DEAL_MODE`. */
   dealMode: string;
   /** This build's `TURN_COUNT`: how many cards one turn of the stock moves. */
@@ -205,11 +219,23 @@ export interface CascadeDebugApi<S = unknown> {
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): CascadeSnapshot;
+  /**
+   * The hit region of item `index` on the menu the current screen shows, or
+   * `null` on `won` and for an index naming no item of that menu.
+   *
+   * A reading like `snapshot`: it changes nothing, and it is the build's answer
+   * to a question specs/controls.md leaves to the build.
+   */
+  menuItemRect(state: DeepReadonly<S>, index: number): MenuRect | null;
 
-  // ---- The screen --------------------------------------------------------
+  // ---- The screen and the menus ------------------------------------------
 
   /** Sets the current screen, leaving the table exactly as it stands. */
   setScreen(state: DeepReadonly<S>, screen: Screen): S;
+  /** Sets the selected item on the menu the current screen shows. */
+  setMenuIndex(state: DeepReadonly<S>, index: number): S;
+  /** Sets the title entry a return to the title restores. */
+  setTitleIndex(state: DeepReadonly<S>, index: number): S;
 
   // ---- The cards ---------------------------------------------------------
 
@@ -307,7 +333,7 @@ export interface CascadeDebugApi<S = unknown> {
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /**
  * The operations that both pose and report, returning `[nextState, verdict]`.
@@ -329,8 +355,11 @@ export const VERDICTS = ["move", "autoMove"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
 
   "setScreen",
+  "setMenuIndex",
+  "setTitleIndex",
 
   "addCard",
   "removeCard",

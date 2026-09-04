@@ -95,6 +95,7 @@ import {
   type World,
 } from "@test-cabinet/structured-2d";
 import {
+  BACKGROUND,
   CARD_H,
   CARD_W,
   COLUMN_BOTTOM_LIMIT,
@@ -113,12 +114,13 @@ import {
   WASTE_X,
   type Rect,
 } from "./constants";
-import { BACKGROUND, game as build } from "../src/game";
+import { game as build } from "../src/game";
 import { fail } from "./assert";
 import { ALL_SUITS, type CardSpec } from "./fixtures";
 import type {
   CascadeDebugApi,
   CascadeSnapshot,
+  MenuRect,
   PileKind,
   Screen,
   SnapshotCard,
@@ -134,6 +136,7 @@ import type {
 
 export type {
   CascadeSnapshot,
+  MenuRect,
   PileKind,
   Screen,
   SnapshotCard,
@@ -1459,6 +1462,46 @@ export function openTable(h: Harness, seed?: number): void {
 }
 
 /**
+ * Pose one of the other three screens, over an empty table.
+ *
+ * {@link openTable}'s siblings, built out of the same three atomic operations in
+ * the same order: `reset()`, `setScreen(...)`, `clearTable()`
+ * (specs/instrumentation.md).
+ *
+ * WHY `setScreen` RATHER THAN THE ROUTE A PLAYER TAKES. A check about what the
+ * how-to screen draws, or about the key that leaves it, must not fail because the
+ * title's `HOW TO PLAY` control is broken — `screens/title-how-to-opens` is the
+ * item that grades that control. So a check poses the screen it is about
+ * directly, and only a check whose subject IS a control presses one.
+ *
+ * WHY THE TABLE IS CLEARED. specs/screens.md lets the table show behind the title
+ * and how-to screens, "dimmed or otherwise quieted", so what sits behind the copy
+ * is the build's. Clearing it is the isolation rule: the world holds only what
+ * the requirement concerns.
+ *
+ * They pose and return; they run no frame.
+ */
+export function openTitle(h: Harness): void {
+  resetTo(h);
+  h.debug.setScreen("title");
+  h.debug.clearTable();
+}
+
+/** The how-to screen, over an empty table. */
+export function openHowto(h: Harness): void {
+  resetTo(h);
+  h.debug.setScreen("howto");
+  h.debug.clearTable();
+}
+
+/** The `won` screen, over an empty table, with nothing in flight. */
+export function openWon(h: Harness): void {
+  resetTo(h);
+  h.debug.setScreen("won");
+  h.debug.clearTable();
+}
+
+/**
  * A fresh game in play: `reset`, the `playing` screen, and the game's own
  * `deal`.
  *
@@ -2553,4 +2596,184 @@ export async function toggleOverlay(h: Harness): Promise<DrawCall[]> {
   h.events.dispatchEvent(new KeyEvent("keydown", "Backquote"));
   h.events.dispatchEvent(new KeyEvent("keyup", "Backquote"));
   return h.drawFrame();
+}
+
+/* -------------------------------------------------------------------------- */
+/* The menus                                                                  */
+/* -------------------------------------------------------------------------- */
+//
+// WHERE AN ITEM SITS IS THE BUILD'S, AND IS ASKED FOR RATHER THAN ASSUMED.
+// specs/controls.md leaves each control's hit region to the build — "Each control
+// occupies a rectangular hit region the build lays out" — and
+// specs/instrumentation.md has the build report it through `menuItemRect`. So
+// every gesture below is aimed at the middle of what the build answered with,
+// which is what lets any layout pass and fails only a build that reports a region
+// it does not answer on. NOTHING HERE IMPORTS A CONTROL RECTANGLE, and nothing
+// may: `./constants.ts` fixes the ORDER of a screen's items and no position.
+//
+// EVERY GESTURE GOES THROUGH THE ENGINE'S OWN INPUT, never through the surface's
+// pointer poses. specs/controls.md gives the mouse and the finger DIFFERENT menu
+// rules — a mouse selects the item it moves onto, and a finger, which never
+// hovers, selects the item it lands on — and both of those are about what a FRAME
+// did with a player's samples. The engine is what delivers them, so the engine's
+// path is what the menu points drive.
+
+/**
+ * The region the build reports for item `index` of the menu the current screen
+ * shows.
+ *
+ * Fails the running check when the build answers `null`, because a scenario that
+ * has to drive an item has nothing to say when the build will not say where the
+ * item is. `navigation/menu-item-rect-reported` is the point that grades the read
+ * itself, including the two answers that are legitimately `null`.
+ */
+export function menuRect(h: Harness, index: number): MenuRect {
+  const rect = h.debug.menuItemRect(index);
+  if (rect === null || rect === undefined) {
+    fail(
+      `menuItemRect(${index}) to report a region for item ${index} of the ` +
+        `menu the ${h.snapshot().screen} screen shows ` +
+        "(specs/instrumentation.md)",
+      rect === undefined
+        ? "the surface carries no menuItemRect at all"
+        : "null, so the build reports no region for it",
+    );
+  }
+  return rect;
+}
+
+/** The middle of that region: where a check aims its pointer or its finger. */
+export function menuPoint(h: Harness, index: number): Point {
+  return rectCenter(menuRect(h, index));
+}
+
+/**
+ * Press a key, run the one frame that delivers it, and release it.
+ *
+ * The frame between the down and the up is what makes this a press the game can
+ * see: the two conformant ways to read an action — latching the edge as it
+ * arrives, and comparing held state at the top of each frame — agree only if the
+ * key is genuinely held while a frame runs, and a down and an up delivered back
+ * to back would be invisible to the second.
+ */
+export async function pressKey(h: Harness, code: string): Promise<void> {
+  h.events.dispatchEvent(new KeyEvent("keydown", code));
+  await h.advance(1);
+  h.events.dispatchEvent(new KeyEvent("keyup", code));
+}
+
+/**
+ * Put a key down and leave it down, as a player holding it would.
+ *
+ * The pair to {@link releaseKey}, and the two ends {@link pressKey} joins with
+ * one frame between them. What a check needs them apart for is
+ * `specs/controls.md`'s "Holding a key moves the selection one step rather than
+ * repeating it": the only way to read that is to run several frames with the key
+ * genuinely down and see whether the selection moved again.
+ */
+export function holdKey(h: Harness, code: string): void {
+  h.events.dispatchEvent(new KeyEvent("keydown", code));
+}
+
+/** Release a key {@link holdKey} left down. */
+export function releaseKey(h: Harness, code: string): void {
+  h.events.dispatchEvent(new KeyEvent("keyup", code));
+}
+
+/**
+ * Press several keys so that all of their edges land on ONE frame, then run it.
+ *
+ * What the two ordering rules at the end of specs/controls.md's keyboard section
+ * are about: "When several edges arrive on one frame, `menu-up` is applied before
+ * `menu-down`, and movement before `menu-confirm`."
+ */
+export async function pressKeysInOneFrame(
+  h: Harness,
+  codes: readonly string[],
+): Promise<void> {
+  for (const code of codes) {
+    h.events.dispatchEvent(new KeyEvent("keydown", code));
+  }
+  await h.advance(1);
+  for (const code of codes) h.events.dispatchEvent(new KeyEvent("keyup", code));
+}
+
+/** Move the pointer onto item `index`, and run the frame that reads it. */
+export async function hoverItem(h: Harness, index: number): Promise<void> {
+  const at = menuPoint(h, index);
+  h.pointer("pointermove", at.x, at.y);
+  await h.advance(1);
+}
+
+/**
+ * Press and release inside item `index`, and run the frame that delivers both.
+ *
+ * Both edges land in one region, which is the gesture specs/controls.md says
+ * activates that item. No move precedes the press, so a build that only ever
+ * selects on a move cannot pass this by hovering first.
+ */
+export async function clickItem(h: Harness, index: number): Promise<void> {
+  const at = menuPoint(h, index);
+  h.pointer("pointerdown", at.x, at.y);
+  h.pointer("pointerup", at.x, at.y);
+  await h.advance(1);
+}
+
+/**
+ * Press inside item `from`, carry the pointer into item `to`, and release it
+ * there.
+ *
+ * The two edges land in different regions, which specs/controls.md says activates
+ * nothing.
+ */
+export async function dragBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = menuPoint(h, from);
+  const end = menuPoint(h, to);
+  h.pointer("pointerdown", start.x, start.y);
+  h.pointer("pointermove", end.x, end.y);
+  h.pointer("pointerup", end.x, end.y);
+  await h.advance(1);
+}
+
+/**
+ * Land a contact inside item `index` and leave it down, with no move before it.
+ *
+ * The finger's shape, as far as this engine exposes one: the engine resolves a
+ * touch contact into the same press, move and release a mouse raises, so what a
+ * check can drive here is the LANDING with nothing before it — which is the half
+ * of the rule specs/controls.md gives the finger that the mouse does not share.
+ */
+export async function landOnItem(h: Harness, index: number): Promise<void> {
+  const at = menuPoint(h, index);
+  h.pointer("pointerdown", at.x, at.y);
+  await h.advance(1);
+}
+
+/** Land a contact inside item `index` and lift it there. */
+export async function tapItem(h: Harness, index: number): Promise<void> {
+  const at = menuPoint(h, index);
+  h.pointer("pointerdown", at.x, at.y);
+  await h.advance(1);
+  h.pointer("pointerup", at.x, at.y);
+  await h.advance(1);
+}
+
+/** Land a contact inside item `from`, travel it onto item `to`, and lift it. */
+export async function touchBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = menuPoint(h, from);
+  h.pointer("pointerdown", start.x, start.y);
+  await h.advance(1);
+  const end = menuPoint(h, to);
+  h.pointer("pointermove", end.x, end.y);
+  await h.advance(1);
+  h.pointer("pointerup", end.x, end.y);
+  await h.advance(1);
 }

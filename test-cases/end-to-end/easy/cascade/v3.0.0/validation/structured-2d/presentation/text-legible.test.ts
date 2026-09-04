@@ -9,7 +9,7 @@
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. The CONTRAST of every run of text
 // the title screen draws and of every run the HUD strip draws. WHICH strings are
 // drawn is the `screens` group's question — `screens.title-shows-title`,
-// `title-shows-tagline`, `title-shows-items`, `hud-shows-mode-label` — and is
+// `title-shows-tagline`, `title-shows-new-game`, `hud-shows-mode-label` — and is
 // deliberately not decided again here, so a build that draws no text at all is
 // docked there and once. This point is the legibility table's Text row, which no
 // other item carries.

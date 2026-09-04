@@ -63,6 +63,18 @@ export interface Rect {
 }
 
 /** The title screen's `NEW GAME` item. */
+/**
+ * The keys specs/controls.md binds each of the four menu actions to, as
+ * `KeyboardEvent.code` values.
+ *
+ * The runtime layer reads the keyboard by `code`, so the bindings hold on any
+ * layout. An action bound to two codes is one action: either raises it.
+ */
+export const MENU_UP_KEYS: readonly string[] = ["ArrowUp", "KeyW"];
+export const MENU_DOWN_KEYS: readonly string[] = ["ArrowDown", "KeyS"];
+export const MENU_CONFIRM_KEYS: readonly string[] = ["Enter", "Space"];
+export const MENU_BACK_KEYS: readonly string[] = ["Escape"];
+
 export const TITLE_NEW_GAME: Rect = { x: 480, y: 448, w: 320, h: 52 };
 /** The title screen's `HOW TO PLAY` item. */
 export const TITLE_HOW_TO: Rect = { x: 480, y: 516, w: 320, h: 52 };

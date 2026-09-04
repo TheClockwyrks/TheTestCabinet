@@ -29,9 +29,9 @@ import {
   createHarness,
   drawnText,
   drewWord,
+  openHowto,
   type Harness,
 } from "../harness";
-import { openHowto } from "./screens";
 
 /** A screen that drew no text at all cannot carry the copy (`specs/screens.md`). */
 const MIN_RUNS = 1;

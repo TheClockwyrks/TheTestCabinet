@@ -175,6 +175,9 @@ export function startNewGame(state: CascadeState): void {
   state.nextFoundation = 0;
   dealCards(state);
   state.screen = "playing";
+  // "Every deal that begins play selects the first of them, so `menuIndex` is
+  // `0` when a fresh game starts" (`specs/screens.md`).
+  state.menuIndex = 0;
 }
 
 /* ---- The stock ----------------------------------------------------------- */

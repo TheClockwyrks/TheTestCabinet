@@ -19,7 +19,7 @@
 // that the set the turn appended holds exactly the cards that turn moved.
 //
 // WHAT IS NOT READ HERE. `wasteVisibleCount` following the newest entry is
-// `instrumentation.waste-sets-pose`; a set shrinking as its cards are played is
+// `instrumentation.waste-set-appends`; a set shrinking as its cards are played is
 // `stock/set-shrinks-on-play`; the fallback to an older set is the two variants'
 // `set-falls-back`.
 

@@ -9,9 +9,19 @@
 //
 // A gesture runs from a press to the release that follows it, and the RELEASE
 // decides which kind it was: within `DRAG_THRESHOLD` of the press it is a
-// click, which returns any held run, activates the control the press landed in,
-// and turns the stock; beyond it, it is a drop, resolved against the drop
-// rectangles `specs/table.md` fixes.
+// click, which returns any held run and turns the stock; beyond it, it is a
+// drop, resolved against the drop rectangles `specs/table.md` fixes.
+//
+// A CONTROL IS ACTIVATED BY EITHER KIND. `specs/controls.md`: "Either kind of
+// gesture activates a control when one control's hit region holds both the
+// press point and the release point." So the menu is answered before the
+// threshold is consulted at all, and a slow, wandering press inside one large
+// button still activates it.
+//
+// AND THE MENU FOLLOWS THE POINTER. A mouse moved onto an item's region selects
+// it, with its button up or down, and a finger touching down inside one selects
+// it too — both are the same `down`/`move` samples to this layer, so both are
+// answered here.
 
 import type { AudioPort } from "./audio-bus";
 import {
@@ -22,13 +32,7 @@ import {
   DOUBLE_CLICK_WINDOW,
   DRAG_THRESHOLD,
   FOUNDATION_COUNT,
-  HOWTO_BACK,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   TABLEAU_COLUMNS,
-  TITLE_HOW_TO,
-  TITLE_NEW_GAME,
 } from "./constants";
 import {
   accepts,
@@ -40,6 +44,7 @@ import {
   turnStock,
   wasteTopCard,
 } from "./board";
+import { activateMenuItem, itemAt } from "./menus";
 import type { PointerSample } from "./pointer";
 import type { CascadeState } from "./state";
 import {
@@ -74,6 +79,11 @@ export function resolvePointer(
 
 function pressAt(state: CascadeState, x: number, y: number): void {
   state.pointer = { x, y, down: true };
+
+  // A finger never hovers, so the LANDING is what selects it; a mouse pressed
+  // inside a region has moved onto it already, and selecting again changes
+  // nothing (`specs/controls.md`).
+  selectItemUnder(state, x, y);
 
   // A press arriving while a run is somehow still in hand puts that run back
   // before anything else looks at the table, so no gesture ever starts from a
@@ -227,6 +237,10 @@ function grabTarget(
 
 function moveTo(state: CascadeState, x: number, y: number): void {
   state.pointer = { x, y, down: state.pointer.down };
+  // "A mouse moves onto an item's region, its button up or down" and "a finger
+  // ... travels onto one while down" are the same sample here, and both select
+  // (`specs/controls.md`).
+  selectItemUnder(state, x, y);
   const drag = state.drag;
   if (drag === null) return;
   // The run keeps the offset between the press point and the leading card's
@@ -283,12 +297,21 @@ function releaseAt(
   // click, both change nothing.
   if (gesture === null || gesture.spent) return;
 
+  // The menu first, and whatever kind of gesture this was: one region holding
+  // both edges activates its item (`specs/controls.md`). A held run goes back
+  // before it, since the gesture never reached the table.
+  const pressed = itemAt(state.screen, gesture.x, gesture.y);
+  if (pressed !== null && pressed === itemAt(state.screen, x, y)) {
+    if (state.drag !== null) returnHeldRun(state);
+    state.menuIndex = pressed;
+    activateMenuItem(state, audio);
+    return;
+  }
+
   const click = Math.hypot(x - gesture.x, y - gesture.y) <= DRAG_THRESHOLD;
   if (click) {
-    // In this order: the held run goes back, then the control the press landed
-    // in is activated, then the stock is turned.
+    // In this order: the held run goes back, then the stock is turned.
     if (state.drag !== null) returnHeldRun(state);
-    if (activateControl(state, gesture.x, gesture.y, audio)) return;
     if (
       state.screen === "playing" &&
       pointInRect(gesture.x, gesture.y, stockRect())
@@ -298,6 +321,12 @@ function releaseAt(
     return;
   }
   dropHeldRun(state);
+}
+
+/** Select the item whose region holds a point, where one does. */
+function selectItemUnder(state: CascadeState, x: number, y: number): void {
+  const index = itemAt(state.screen, x, y);
+  if (index !== null) state.menuIndex = index;
 }
 
 /** Resolve a drop against the drop rectangles, and apply or return the run. */
@@ -324,51 +353,4 @@ function returnHeldRun(state: CascadeState): void {
   returnRun(state, { pile: drag.fromPile, index: drag.fromIndex }, drag.cards);
   state.drag = null;
   state.dropTarget = null;
-}
-
-/**
- * Activate the control whose hit rectangle holds the press point, and report
- * whether one answered. A control answers only on the screen it belongs to.
- */
-function activateControl(
-  state: CascadeState,
-  x: number,
-  y: number,
-  audio: AudioPort,
-): boolean {
-  if (state.screen === "title") {
-    if (pointInRect(x, y, TITLE_NEW_GAME)) {
-      startNewGame(state);
-      return true;
-    }
-    if (pointInRect(x, y, TITLE_HOW_TO)) {
-      state.screen = "howto";
-      return true;
-    }
-    return false;
-  }
-  if (state.screen === "howto") {
-    if (pointInRect(x, y, HOWTO_BACK)) {
-      state.screen = "title";
-      return true;
-    }
-    return false;
-  }
-  if (state.screen !== "playing") return false;
-  if (pointInRect(x, y, HUD_NEW_GAME)) {
-    startNewGame(state);
-    return true;
-  }
-  if (pointInRect(x, y, HUD_MENU)) {
-    state.screen = "title";
-    return true;
-  }
-  if (pointInRect(x, y, HUD_SOUND)) {
-    audio.setMuted(!audio.muted());
-    // Mirrored at once as well as in every update, so the bit the snapshot
-    // reports is the bit the runtime holds the instant the control answered.
-    state.muted = audio.muted();
-    return true;
-  }
-  return false;
 }

@@ -1,4 +1,4 @@
-// Cascade — the shared validator harness. CASE-PROVIDED.
+// Cascade — the case's half of the validator harness. CASE-PROVIDED.
 //
 // Every check in this suite is an ordinary vitest test that drives the built site
 // IN A REAL BROWSER. There is nothing to import: an engineless run seeds no
@@ -15,6 +15,23 @@
 // the case name ONE script per review item and have it resolve under all three
 // engines — `validation/deal/full-deck.test.ts` is the same path whichever engine
 // the run selected — and what keeps `format = 2` resolution passing.
+//
+// THE MACHINERY THAT DRIVES THE PAGE IS NOT CASCADE'S. Serving the build,
+// connecting to the one browser, opening a page per harness, injecting the
+// draw-command recorder and the audio probe, bracketing each driven frame around
+// one step of the build's surface, driving the real mouse and the real finger,
+// reading pixels and draw calls back out, and writing the evidence a review point
+// declares — every engineless case needs exactly that, and it lives once, in
+// `@test-cabinet/case-harness`, staged beside this file as `./case-harness/`.
+// What is left here is what is genuinely Cascade's: the shape of its snapshot,
+// the operations its `specs/instrumentation.md` requires, the table its checks
+// are posed on, and the readings its own geometry answers.
+//
+// The seam is one call. `createCaseHarness` takes the case's TYPES as type
+// arguments and the case's VALUES as one object, and hands back the machinery
+// with Cascade's names and Cascade's types on it — so the suites next door go on
+// importing `createHarness`, `captureStill` and `watchCues` from `../harness`
+// exactly as they did, and none of them can tell the difference.
 //
 // WHAT A CHECK READS. The game's own state (through `window.__cascade`'s
 // `snapshot`), the frames the harness itself drove, the operations the build
@@ -69,20 +86,33 @@
 // rather than `h.snapshot()`, `await h.debug.setScreen(...)` rather than
 // `h.debug.setScreen(...)`. The scenarios, the tolerances, and the assertions are
 // the same ones, because they are the case's rather than the runtime's.
-//
-// ONE SERVER, ONE BROWSER, ONE PAGE PER HARNESS. `globalSetup.ts` starts the
-// server and the browser once for the whole project; this module connects to
-// them from inside each suite's worker and opens a page per harness, so every
-// check drives a build that has just started and no check can be affected by
-// what the one before it pressed, dealt or muted.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
-import { expect, inject } from "vitest";
-import type { Browser, BrowserContext, Page } from "playwright";
-import { connectChromium } from "./chromium";
+import {
+  ConstantClock,
+  IDENTITY,
+  apply,
+  createCaseHarness,
+  drawnText,
+  mouseGlide,
+  mousePress,
+  mouseRelease,
+  rectCenter,
+  sampleColor as sampleCluster,
+  touchGlide,
+  touchPress,
+  touchRelease,
+  transformed,
+  type DrawCall,
+  type Harness as BaseHarness,
+  type HarnessOptions,
+  type Matrix,
+  type Point,
+  type Rgb,
+  type TimedCue,
+  type UntilResult as BaseUntilResult,
+} from "./case-harness/index";
 import { fail } from "./assert";
 import {
   CARD_H,
@@ -110,16 +140,6 @@ import {
 } from "./constants";
 
 export type { CardColor, Rect, Suit } from "./constants";
-
-declare module "vitest" {
-  export interface ProvidedContext {
-    /** Where the built site is served, from `globalSetup.ts`. */
-    cascadeUrl: string;
-    /** The one Chromium every suite worker connects to. */
-    cascadeBrowserWs: string;
-  }
-}
-
 /* -------------------------------------------------------------------------- */
 /* The contract the build owes                                                */
 /* -------------------------------------------------------------------------- */
@@ -139,11 +159,16 @@ export const REQUIRED_OPS = [
   // The clock (this engine alone).
   "setAutoStep",
   "advance",
+  // Muting (this engine alone).
+  "setMuted",
   // The core.
   "reset",
   "snapshot",
-  // The screen.
+  "menuItemRect",
+  // The screen and the menus.
   "setScreen",
+  "setMenuIndex",
+  "setTitleIndex",
   // The cards.
   "addCard",
   "removeCard",
@@ -188,6 +213,22 @@ export type SourcePile = "waste" | "foundation" | "tableau";
 
 /** A pile a run may land on. */
 export type TargetPile = "foundation" | "tableau";
+
+/**
+ * One menu item's hit region, as `menuItemRect` reports it.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size, all in
+ * logical stage units (`specs/instrumentation.md`). WHERE a build puts its items
+ * is the build's own (`specs/controls.md`: "Each control occupies a rectangular
+ * hit region the build lays out"), so a check drives the pointer at what this
+ * reports and never at a rectangle of its own.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** One card, as a snapshot reports it. `rank` runs 1 (Ace) to 13 (King). */
 export interface CardView {
@@ -237,6 +278,10 @@ export interface FlyerView {
 export interface CascadeSnapshot {
   version: number;
   screen: Screen;
+  /** The selected item on the menu the current screen shows. */
+  menuIndex: number;
+  /** The title menu's remembered selection: the entry last activated there. */
+  titleIndex: number;
   /** This build's `DEAL_MODE`. */
   dealMode: string;
   /** This build's `TURN_COUNT`. A COMMON CHECK SIZES ITSELF TO THIS. */
@@ -293,11 +338,18 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   reset(options?: { seed?: number }): Promise<void>;
   snapshot(): Promise<CascadeSnapshot>;
+  /** The region of item `index` on the current screen's menu, or `null`. */
+  menuItemRect(index: number): Promise<MenuRect | null>;
 
   setAutoStep(enabled: boolean): Promise<void>;
   advance(seconds: number, frames?: number): Promise<void>;
 
+  /** The runtime's mute bit, which exists as an operation under this engine alone. */
+  setMuted(muted: boolean): Promise<void>;
+
   setScreen(screen: Screen): Promise<void>;
+  setMenuIndex(index: number): Promise<void>;
+  setTitleIndex(index: number): Promise<void>;
 
   addCard(
     pile: PileName,
@@ -353,11 +405,11 @@ export interface CascadeDebugApi {
 }
 
 /* -------------------------------------------------------------------------- */
-/* The step schedule                                                          */
+/* The harness, bound to this case                                            */
 /* -------------------------------------------------------------------------- */
 //
-// WHY 240 Hz IS THE DEFAULT FRAME. Cascade runs on no fixed timestep: every rate
-// is per second and integrated against the delta the frame supplies
+// WHY 240 Hz IS THE STEP. Cascade runs on no fixed timestep: every rate is per
+// second and integrated against the delta the frame supplies
 // (`specs/overview.md`, `specs/victory.md`), so there is no case-wide step size
 // and the manifest declares no `tick_hz`. What is left is the harness's own
 // choice of how finely to divide the game time a check asks for, and every figure
@@ -379,90 +431,74 @@ export interface CascadeDebugApi {
 // seconds and reads the count and the mean gap, and the launch clock carries its
 // remainder so the cadence does not drift.
 
-/** A source of frame deltas, in milliseconds. */
-export interface Clock {
-  /** The next frame's delta, in ms. */
-  delta(): number;
-}
-
-/** The frame the suite steps in, in milliseconds. */
-export const TICK_HZ = 240;
-export const TICK_MS = 1000 / TICK_HZ;
-
-/** Every frame the same length. */
-export class ConstantClock implements Clock {
-  constructor(private readonly ms: number) {}
-  delta(): number {
-    return this.ms;
-  }
-}
-
-/** A repeating pattern of steps: what an uneven but predictable display gives. */
-export class SequenceClock implements Clock {
-  private index = 0;
-  constructor(private readonly stepsMs: readonly number[]) {
-    if (stepsMs.length === 0) {
-      throw new RangeError("SequenceClock needs at least one step, got none");
-    }
-  }
-  delta(): number {
-    const step = this.stepsMs[this.index % this.stepsMs.length];
-    this.index += 1;
-    return step;
-  }
-}
-
 /**
- * A hash of the seed and the frame index, avalanched so that neighbouring
- * indices — which is all a frame counter ever produces — do not yield
- * neighbouring outputs. The constants and the order are the engine's
- * (`packages/simple-2d/src/clocks.ts`), so a seed means the same thing here as
- * it does in the two engine-backed projects next door.
+ * The shared harness, with Cascade's snapshot, Cascade's surface and Cascade's
+ * figures bound into it.
+ *
+ * `projectRoot` comes from THIS module and must never come from the package's:
+ * the package is staged one directory deeper than this file, and a produced
+ * replay or still is addressed by the running suite's path relative to the
+ * project root. Taken from the package it would address every output one level
+ * too deep — and silently, because a writer that raised on a failed write would
+ * be blaming the build for the host's problem, so neither of them raises.
  */
-function hash32(seed: number, index: number): number {
-  let h =
-    (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(index | 0, 0x85ebca6b)) >>> 0;
-  h = (h ^ (h >>> 16)) >>> 0;
-  h = Math.imul(h, 0x21f0aaad) >>> 0;
-  h = (h ^ (h >>> 15)) >>> 0;
-  h = Math.imul(h, 0x735a2d97) >>> 0;
-  h = (h ^ (h >>> 15)) >>> 0;
-  return h >>> 0;
-}
+const kit = createCaseHarness<CascadeSnapshot, CascadeDebugApi>({
+  slug: "cascade",
+  handle: HANDLE,
+  requiredOps: REQUIRED_OPS,
+  // `advance(seconds, frames)`: a span of simulated time divided into whole
+  // frames, so the suite's clock decides how long a frame is
+  // (`specs/instrumentation.md`, The clock).
+  step: { kind: "seconds-frames", op: "advance" },
+  stage: { width: STAGE_W, height: STAGE_H },
+  tickHz: 240,
+  // A GENUINE browser gesture, so the build's audio can open: a build is free to
+  // open its audio context from a real DOM event alone (both are conformant), so
+  // a gesture delivered any other way would leave a perfectly good build silent.
+  // `specs/controls.md` binds this key to nothing, so arming changes no game
+  // state, opens no overlay, and records no press for the double-click rule.
+  // Cascade's suites deliver it themselves, through {@link Harness.armAudio},
+  // because a cue point arms AFTER it has posed its board rather than before the
+  // harness's opening reset.
+  arm: { kind: "key", code: UNBOUND_KEY },
+  // Cascade's menus are driven by a finger as well as a mouse and the keyboard
+  // (`specs/controls.md`, Menu navigation), so the context reports a touchscreen:
+  // a contact arrives as `pointerType: "touch"` and `navigator.maxTouchPoints` is
+  // non-zero, which is the device a build offering touch controls has to believe
+  // it is on.
+  hasTouch: true,
+  // Every text call carries the width the page measured for it and the alignment
+  // in force, which is what {@link textDraws} turns into the run's span. Cascade
+  // reads WHERE a label landed — `screens/hud-shows-mode-label` and
+  // `presentation/hud-labels-drawn` hold a drawn run against a region — and an
+  // anchor alone cannot answer that.
+  measureText: true,
+  // The state the build stood the game up in, read once before this harness's
+  // opening `reset`. `specs/screens.md` says of the title screen that the game
+  // "opens on" it, and `specs/instrumentation.md` has `reset` restore `screen` to
+  // `"title"` as well — so without a reading taken first, a build that opened on
+  // its table and reset correctly would read as one that opened on the title.
+  // `screens/opens-on-title` is the point that needs it.
+  readOpeningSnapshot: true,
+  // A build installs its surface while its entry module runs, so a page that has
+  // fired `load` has either installed it already or is not going to, and the wait
+  // returns the instant the global appears — a conformant build pays none of this
+  // ceiling however high it is set. What it bounds is the cost of a build that
+  // installs its surface later than `load` and then never gets there, which every
+  // harness of that build pays once. Fifteen seconds rather than five, because
+  // five was set against a healthy machine and this is a deadline on the HOST.
+  surfaceTimeoutMs: 15_000,
+  projectRoot: dirname(fileURLToPath(import.meta.url)),
+});
 
-/**
- * A seeded draw from a range, indexed by frame: the clock that stands in for a
- * real machine under load. The seed is mandatory, because a claim that a build is
- * delta-time independent is worth making only when the failing case replays.
- */
-export class JitterClock implements Clock {
-  private index = 0;
-  private readonly spanMs: number;
-  constructor(
-    private readonly minMs: number,
-    maxMs: number,
-    private readonly seed: number,
-  ) {
-    if (maxMs < minMs) {
-      throw new RangeError(
-        `JitterClock needs maxMs >= minMs, got minMs ${minMs} and maxMs ${maxMs}`,
-      );
-    }
-    this.spanMs = maxMs - minMs;
-  }
-  delta(): number {
-    const index = this.index;
-    this.index += 1;
-    return (
-      this.minMs + (hash32(this.seed, index) / 0x1_0000_0000) * this.spanMs
-    );
-  }
-}
-
-/** Seconds of simulated time in `frames` frames of the default clock. */
-export function seconds(frames: number): number {
-  return frames / TICK_HZ;
-}
+export const {
+  fitViewport,
+  failSurface,
+  SURFACE_REQUIREMENT,
+  seconds,
+  TICK_HZ,
+  TICK_MS,
+} = kit;
 
 /** Frames of the default clock covering `duration` seconds. */
 export function framesFor(duration: number): number {
@@ -499,92 +535,17 @@ export function framesFor(duration: number): number {
 export const RUNOUT_HZ = 60;
 
 /**
- * How many frames a SWEEP drives per crossing into the page.
+ * How many frames one crossing of a SWEEP used to run, kept as the figure the
+ * `cascade` group states.
  *
- * A sweep runs frames until something happens and then reads the frame it
- * happened on. Driving one frame per crossing made the reading cost a round trip
- * per frame — tens of milliseconds on an idle host and hundreds on a loaded one —
- * so a sweep of a second of game time spent a minute of a busy machine's time
- * arriving at an answer that was decided in the first two hundred frames.
- *
- * IT CHANGES NO READING. {@link Harness.until} applies its predicate to every
- * frame of the batch it drives and reports the frame the predicate first held on
- * and the state that frame left, so a batched sweep answers exactly what a
- * frame-at-a-time one answers. What it changes is where the harness STANDS
- * afterwards: up to `chunk - 1` frames past the frame it reported. Fifty
- * milliseconds of game time is the size chosen for that — small against every
- * span these sweeps end on, and large enough that a sweep is a dozen crossings
- * rather than hundreds.
- *
- * So it belongs only to a sweep whose next act is not a reading of the moment it
- * stopped on. A sweep that has to leave the game exactly where it found the
- * event — every audio point, which counts what sounded on which frame — takes
- * the default of one instead and says so.
+ * The shared harness samples a sweep's predicate every frame, so a sweep is a
+ * crossing per frame and this no longer changes what a sweep costs. It stays
+ * because the checks that pass it are naming the granularity their reading is
+ * honest to — fifty milliseconds of game time, small against every span they end
+ * on — and because dropping it would silently change what those checks say they
+ * are doing. {@link UntilOptions.chunk} documents what became of it.
  */
 export const SWEEP_CHUNK_FRAMES = framesFor(0.05);
-
-/* -------------------------------------------------------------------------- */
-/* The harness                                                                */
-/* -------------------------------------------------------------------------- */
-
-/** One recorded operation on the 2D context, in the order the render made it. */
-export type DrawCall =
-  | {
-      kind: "call";
-      method: string;
-      args: unknown[];
-      /**
-       * For `fillText` and `strokeText`, the run's measured width in the
-       * context's own units and the alignment in force, both read off the
-       * context at the call. Only that context can say how wide a run is: the
-       * width follows from the font, the letter spacing and the direction, none
-       * of which the call itself carries. {@link textDraws} turns the pair into
-       * the run's span.
-       */
-      width?: number;
-      textAlign?: string;
-    }
-  | { kind: "set"; property: string; value: unknown };
-
-/** A sound the build emitted, and the frame of the drive it emitted it on. */
-export interface TimedCue {
-  /** The frame it sounded on, 1-based, as {@link Harness.frame} reports. */
-  frame: number;
-  /** The frame loop's simulated time at that frame, in milliseconds. */
-  t: number;
-}
-
-/** How the stage is mapped onto the canvas: one uniform scale and a letterbox. */
-export interface Viewport {
-  width: number;
-  height: number;
-  scale: number;
-  offsetX: number;
-  offsetY: number;
-}
-
-export interface HarnessOptions {
-  /** The clock each frame takes its delta from. Defaults to 240 Hz. */
-  clock?: Clock;
-  /** The window's CSS width. Defaults to the logical stage width. */
-  cssWidth?: number;
-  /** The window's CSS height. Defaults to the logical stage height. */
-  cssHeight?: number;
-  /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
-  dpr?: number;
-  /**
-   * Whether to call `reset()` on the way in. Defaults to `true`.
-   *
-   * A harness normally resets, so a check starts from the state
-   * `specs/instrumentation.md` fixes rather than from whatever the build chose to
-   * initialize with. Pass `false` only where the requirement IS what the build
-   * initialized with, since `reset` would overwrite the very reading — today that
-   * is `screens/opens-on-title` and nothing else. The clock is stopped either
-   * way, so a build handed over this way still changes only when the harness says
-   * so.
-   */
-  reset?: boolean;
-}
 
 /**
  * One operation on the build's surface: the name the specification gives it, and
@@ -600,44 +561,30 @@ export interface SurfaceCall {
   args: readonly unknown[];
 }
 
-/** How far a sweep may run, and how many frames it drives per crossing. */
+/** How far a sweep may run. */
 export interface UntilOptions {
   maxFrames?: number;
   /**
-   * How many frames one crossing into the page runs. Defaults to `1`.
+   * Kept for the checks that name it; it no longer changes what a sweep costs.
    *
-   * IT DOES NOT CHANGE WHAT IS READ. The predicate is applied to EVERY frame
-   * whatever this is, because the whole series comes back, so the frame reported
-   * and the state reported are the frame and the state the predicate first held
-   * on, exactly as they are at `1`. What it changes is the harness's own
-   * position: a sweep that batches has already run the rest of its last batch by
-   * the time it knows, so it stands up to `chunk - 1` frames past the frame it
-   * reports.
-   *
-   * So `1` is the default and is what a check whose NEXT act is a reading of the
-   * moment the sweep stopped on wants — every audio point, which counts what
-   * sounded on which frame. A check that only reads what the sweep hands back
-   * passes {@link SWEEP_CHUNK_FRAMES}, where the size and the reason for it are
-   * stated once.
+   * The shared harness's sweep applies the predicate to every frame it runs, so
+   * the frame a sweep reports is the frame the predicate first held on whatever
+   * this says — which is the reading `cascade/floor-bounce-*` and
+   * `cascade/no-side-bounce` are written against.
    */
   chunk?: number;
 }
 
 /** What a sweep found: whether the predicate ever held, and where it held. */
-export interface UntilResult {
-  hit: boolean;
-  /** Frames advanced before the sample the predicate first held on. */
-  frames: number;
+export interface UntilResult extends BaseUntilResult<CascadeSnapshot> {
   /**
    * That sample's frame, as {@link Harness.frame} counts them.
    *
-   * The frame the predicate held on, and NOT where the harness now stands: a
-   * batched sweep ({@link UntilOptions.chunk}) has run the rest of its last
-   * batch. A check that names the frame an event happened on reads this rather
-   * than `Harness.frame()`.
+   * The frame the predicate held on, which is where the harness now stands. A
+   * check that names the frame an event happened on reads this rather than
+   * `Harness.frame()`, so it goes on reading the same number it always did.
    */
   at: number;
-  snapshot: CascadeSnapshot;
 }
 
 /** How far a coarse sweep may run, and how much game time separates two samples. */
@@ -656,39 +603,34 @@ export interface SkipResult {
   snapshot: CascadeSnapshot;
 }
 
-export interface Harness {
-  /** The page the build is running in. For a check that needs Playwright itself. */
-  readonly page: Page;
-  /**
-   * The surface the BUILD installed, as operations that cross into the page.
-   *
-   * Read off `window.__cascade` and never constructed here — see
-   * {@link unexposedSurface}.
-   */
-  readonly debug: CascadeDebugApi;
-  /**
-   * Why the build's surface cannot be driven, or `null` when it can.
-   *
-   * A fault here is the build's: the surface is missing, or it is missing an
-   * operation the specification requires. It says what was found
-   * (`window.__cascade was still absent 10s after the page loaded`), and
-   * {@link failSurface} pairs it with what the specification requires. Every
-   * operation fails BY ASSERTION with that pair rather than throwing, so a
-   * missing surface lands as the verdict of every point that reaches for it —
-   * and, crucially, a harness built in a `beforeEach` still comes back, so the
-   * fault is reported by the check rather than buried in a hook.
-   */
-  readonly surfaceFault: string | null;
-  /** Everything the page logged to `console.error`, or threw, oldest first. */
-  readonly pageErrors: string[];
-
-  /** The frames this harness has driven, 1-based, as a recorded frame counts them. */
-  frame(): number;
-  /** The simulated time those frames covered, in milliseconds. */
-  timeMs(): number;
-
-  /** A fresh read of the game's state through the build's `snapshot`. */
-  snapshot(): Promise<CascadeSnapshot>;
+/**
+ * Everything a check reads off one page running this build.
+ *
+ * The shared harness's, with the four members Cascade's suites have their own
+ * vocabulary for. Each is a THIN thing over the shared machinery and none of them
+ * is a second frame-driving path:
+ *
+ *   - {@link Harness.pose} performs a run of surface calls in one crossing. It
+ *     runs no frames, so nothing it does can disagree with the harness's clock.
+ *   - {@link Harness.sample} and {@link Harness.until} are the shared harness's
+ *     `stepWatching` and `until` under the names this project's suites use.
+ *   - {@link Harness.skip} and {@link Harness.skipUntil} count in SECONDS of game
+ *     time rather than in frames, and take the rate to spend them at, which is
+ *     what {@link RUNOUT_HZ} exists for. They call the surface's own `advance`
+ *     directly, so they close no recorded frame and a capture running across one
+ *     keeps nothing of it.
+ *
+ * The members the shared harness carries for other cases — `step`, `stepUntil`,
+ * `stepWatching`, `hold`, `holdFor`, `clickPointer`, `movePointer`, `lastCalls`,
+ * `pixelRect`, `scanDevice`, `imagePixels`, `runUntil`, `loopingSounds` and
+ * `loopStarts` — are not part of Cascade's vocabulary and are not offered here.
+ * They still exist on the object; naming them in a check is the signal that the
+ * check has reached past the readings this case's specification supports.
+ */
+export interface Harness extends Omit<
+  BaseHarness<CascadeSnapshot, CascadeDebugApi>,
+  "skip" | "skipUntil" | "until"
+> {
   /**
    * Perform surface operations back to back, in one crossing, and hand back what
    * each of them returned.
@@ -700,748 +642,113 @@ export interface Harness {
    * throws stops the run there, exactly as an awaited one does.
    */
   pose(calls: readonly SurfaceCall[]): Promise<unknown[]>;
-  /** Run `frames` frames back to back, each the length the clock says. */
-  advance(frames: number): Promise<void>;
+  /**
+   * Run `frames` frames one at a time and hand back the state each one left.
+   *
+   * `samples[0]` is the state after the first frame. The frames are the frames
+   * {@link Harness.advance} runs, and the reading is the reading a per-frame
+   * `advance` then `snapshot` pair takes.
+   */
+  sample(frames: number): Promise<CascadeSnapshot[]>;
   /** Advance until `predicate` holds, reading the state every frame left. */
   until(
     predicate: (snapshot: CascadeSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
   /**
-   * Run `frames` frames one at a time and hand back the state each one left.
-   *
-   * `samples[0]` is the state after the first frame. The frames are the frames
-   * {@link advance} runs — one `advance(dt, 1)` inside one recorded frame
-   * boundary — and the reading is the reading a per-frame `advance` then
-   * `snapshot` pair takes; what it does not do is pay a round trip into the page
-   * for each of them.
-   */
-  sample(frames: number): Promise<CascadeSnapshot[]>;
-  /**
    * Run `duration` seconds of game time WITHOUT opening a recorded frame.
    *
    * The same real update the loop runs, `hz` frames per second of it, but off
    * camera: no frame boundary is closed, so a capture running across it keeps
    * nothing, and a section that has to sit through nine seconds of a cascade
-   * launching costs a replay nothing. Use it for the wait; use {@link advance}
-   * for the part a check is about.
+   * launching costs a replay nothing. Use it for the wait; use
+   * {@link Harness.advance} for the part a check is about.
+   *
+   * The frames it runs are the surface's own and the harness does not count them,
+   * so a check that reads {@link Harness.frame} reads the frames it DROVE. No cue
+   * a skip produced is stamped either, which is why every audio point advances
+   * rather than skips.
    */
   skip(duration: number, hz?: number): Promise<void>;
-  /** {@link skip} until `predicate` holds, sampling every `pollSeconds`. */
+  /** {@link Harness.skip} until `predicate` holds, sampling every `pollSeconds`. */
   skipUntil(
     predicate: (snapshot: CascadeSnapshot) => boolean,
     options?: SkipOptions,
   ): Promise<SkipResult>;
-  /**
-   * Hand the game back to its own frame loop for `ms` of real time, then take it
-   * back.
-   *
-   * No review item names this. It is here because `setAutoStep(true)` is
-   * otherwise unobservable — the flag is the loop's rather than the game's, and
-   * `snapshot()` deliberately reports no field for it — so this is the only way
-   * to confirm that the half of the clock operation a build starts up in still
-   * works. `harness.test.ts` uses it; a validator should not need to.
-   */
-  runFor(ms: number): Promise<void>;
-
-  /**
-   * Press a key, run the one frame that delivers it, and release it.
-   *
-   * Cascade fixes exactly one key binding, `OVERLAY_KEY` (`Backquote`), which
-   * `toggleOverlay` uses. The frame between the down and the up is what makes
-   * this a press a build can actually see: an engineless build wrote its own
-   * keyboard layer, and the two conformant ways to read a press — latching the
-   * edge in the event handler, or comparing held state at the top of each
-   * frame — agree only if the key is genuinely held while a frame runs.
-   */
-  tap(code: string): Promise<void>;
-
-  /** Run exactly one frame and hand back every operation its render issued. */
-  frameCalls(): Promise<DrawCall[]>;
-  /** Reflect the surface without invoking it: `typeof` for each name, and the version. */
-  probe(
-    names: readonly string[],
-  ): Promise<{ version: unknown; ops: Record<string, string> }>;
-
-  /** How the stage is mapped onto this harness's canvas. */
-  viewport(): Viewport;
-  /** Where a logical point lands in the canvas's backing store. */
-  device(x: number, y: number): { x: number; y: number };
-  /** Where a logical point lands in CSS pixels, for a real mouse. */
-  css(x: number, y: number): { x: number; y: number };
-  /** The device pixel under a logical point, as `[r, g, b, a]`. */
-  pixel(x: number, y: number): Promise<[number, number, number, number]>;
-  /** Many logical points at once, in one crossing into the page. */
-  pixels(
-    points: readonly { x: number; y: number }[],
-  ): Promise<[number, number, number, number][]>;
-  /** A pixel addressed in the canvas's own backing store, past the fit. */
-  devicePixel(x: number, y: number): Promise<[number, number, number, number]>;
-  /** The canvas's backing store size, as the build sized it. */
-  surface(): Promise<{ width: number; height: number; dpr: number }>;
-
   /** Give the build a real, browser-trusted gesture, so its audio can open. */
   armAudio(): Promise<void>;
-  /** How many sounds the build has emitted since the page loaded, in total. */
-  sounds(): Promise<number>;
-
-  /** Release anything held, and let the page go. */
-  dispose(): Promise<void>;
-}
-/* ---- The page ------------------------------------------------------------- */
-
-/** The init scripts injected before any of the build's own script runs. */
-const INIT_SCRIPTS = ["recorder-init.js", "audio-init.js"] as const;
-
-/** This module's directory: the validator project's root. */
-const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
-
-/**
- * How many of the PAGE'S OWN rendered frames the surface is waited for before the
- * build is called non-conformant.
- *
- * `specs/instrumentation.md` requires the surface "as soon as the game has
- * initialized", and the honest reading of that deadline is counted in the frames
- * the page renders, not in seconds of this machine's time. Cascade seeds no art
- * and declares no assets, so a conformant build installs its surface while its own
- * module evaluates — before `page.goto(waitUntil: "load")` has even returned — and
- * is found on the first poll. The grace below is for a build that finishes
- * initializing asynchronously, and three hundred frames is five seconds of one
- * that renders at an ordinary rate.
- *
- * WHY NOT A NUMBER OF SECONDS, WHICH IS WHAT THIS USED TO BE. A wall-clock
- * deadline here does not measure the build at all. Playwright polls this
- * predicate once per animation frame, so on a host with nothing left to give,
- * BOTH the build's script and the poll that looks for its surface are starved
- * together — and a ten-second ceiling then reported "this build installs no debug
- * surface" against a build whose surface was there all along, losing every point
- * in the checklist to how busy the machine was. Counted in frames, the deadline
- * stretches with the host exactly as the build does: a page given a tenth of a
- * core takes a tenth of the frames per second and gets the same three hundred
- * frames to install its surface in.
- */
-const SURFACE_GRACE_FRAMES = 300;
-
-/**
- * The wall-clock ceiling on any one crossing into the page.
- *
- * NOT A DEADLINE ANY READING RESTS ON. A ceiling exists because a page that has
- * wedged must cost a check this much and no more; it is drawn where no loaded
- * host reaches it, so that what ends a wait is the thing being waited for. Two
- * minutes: the navigation this harness makes is a static bundle off a local
- * server, and the surface wait under it reaches its {@link SURFACE_GRACE_FRAMES}
- * long inside two minutes however loaded the host is.
- *
- * WHAT IT REPLACES. Playwright's own default is thirty seconds on every crossing
- * — a navigation, a key press, a click, a `waitForFunction` — and thirty seconds
- * is generous on an idle host and crossed by a page load on one running many
- * times its own number of cores. What a crossed deadline costs is not a point but
- * a check: the harness throws inside `beforeEach`, and the verdict that reaches
- * the reviewer names nothing the build did.
- */
-const PAGE_CEILING_MS = 120_000;
-
-/**
- * What a frame-counted wait is waiting for: the two things a page installs that a
- * harness cannot begin without.
- *
- * `"surface"` is the build's own `window.__cascade`. `"recorder"` is the injected
- * recorder having a 2D context to record, which a build is free to ask for on the
- * frame it first draws rather than while it initializes.
- */
-type PageArrival = "surface" | "recorder";
-
-/**
- * Wait, in frames of the page's own rendering, for something a page installs.
- *
- * Playwright polls a `waitForFunction` predicate once per animation frame, so the
- * predicate counts its own polls and answers in the PAGE'S frames rather than in
- * the HOST'S seconds — which is the whole point (see
- * {@link SURFACE_GRACE_FRAMES}). It resolves `true` on the frame the thing is
- * first there, and `false` once {@link SURFACE_GRACE_FRAMES} frames have gone by
- * without it — or if the page renders nothing at all for
- * {@link PAGE_CEILING_MS}, which is the one case no frame count can end.
- *
- * The count is kept on the page under a key of the arrival's own name, so the two
- * waits a harness makes do not share a deadline.
- */
-async function waitInPageFrames(
-  page: Page,
-  arrival: PageArrival,
-  handleName: string,
-): Promise<boolean> {
-  try {
-    const found = await page.waitForFunction(
-      ([kind, handle, grace]) => {
-        const scope = window as unknown as Record<string, unknown>;
-        const there =
-          kind === "surface"
-            ? typeof scope[handle] === "object" && scope[handle] !== null
-            : (
-                scope.__cascadeRec as { ready(): boolean } | undefined
-              )?.ready() === true;
-        if (there) return "there";
-        const key = `__cascadeWaited_${kind}`;
-        const seen = ((scope[key] as number | undefined) ?? 0) + 1;
-        scope[key] = seen;
-        // Neither `null` nor `false` ends a `waitForFunction`, so a frame that
-        // has not answered yet returns one of them and the poll comes round
-        // again on the next frame; only the two strings end the wait.
-        return seen >= grace ? "never" : null;
-      },
-      [arrival, handleName, SURFACE_GRACE_FRAMES] as const,
-      { timeout: PAGE_CEILING_MS },
-    );
-    return (await found.jsonValue()) === "there";
-  } catch {
-    return false;
-  }
 }
 
 /**
- * The most frames one crossing carries a per-frame series back for.
+ * The shared harness as the package types it: what {@link captureReplay},
+ * {@link captureStill} and {@link watchCues} take.
  *
- * A series is a snapshot per frame, and a Cascade snapshot is a few hundred
- * bytes, so a thousand frames is well under a megabyte — small enough that the
- * crossing costs no more than an empty one and large enough that the sweeps this
- * project runs are one or two crossings rather than thousands. It bounds the
- * payload of a single crossing and nothing else: a longer run is simply several
- * crossings, and the frames it drives are identical either way.
+ * Cascade's {@link Harness} narrows three members and hides a dozen more, so it
+ * is not one of these by assignment even though it IS one at run time — the
+ * object below is the package's own, with Cascade's members laid over it. The
+ * cast is made HERE, once, so no check ever makes one.
  */
-const SERIES_CHUNK_FRAMES = 1_000;
+type PackageHarness = BaseHarness<CascadeSnapshot, CascadeDebugApi>;
 
 /**
- * The key a non-finite number is carried across in.
+ * Open a page on the build and take the game off its own clock.
  *
- * A series crosses back as ONE JSON string rather than as an array of objects,
- * because Playwright's own value protocol walks every property of everything it
- * returns and that walk costs tens of milliseconds per snapshot — a cost of the
- * transport, paid per frame read, that has nothing to do with the build. A string
- * crosses as a single value and is parsed here.
- *
- * The one thing plain JSON would lose is a number that is not finite, and a
- * validator must not lose it: `NaN` in a flyer's velocity is a build's defect and
- * has to reach the check that grades it rather than arriving as `null`. So a
- * non-finite number is written as `{ "__cascadeNumber": "NaN" }` on the way out
- * and read back as the number it names, which leaves every reading identical to
- * the one Playwright's protocol would have delivered.
- */
-const NON_FINITE_KEY = "__cascadeNumber";
-
-/** Read a crossing back, restoring the numbers plain JSON cannot carry. */
-function parseCrossing<T>(text: string): T {
-  return JSON.parse(text, (_key, value: unknown) => {
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value) &&
-      Object.keys(value).length === 1 &&
-      NON_FINITE_KEY in value
-    ) {
-      return Number((value as Record<string, string>)[NON_FINITE_KEY]);
-    }
-    return value;
-  }) as T;
-}
-
-let browserPromise: Promise<Browser> | null = null;
-
-async function sharedBrowser(): Promise<Browser> {
-  browserPromise ??= connectChromium(inject("cascadeBrowserWs"));
-  return browserPromise;
-}
-
-/**
- * One browser context per WINDOW SHAPE, shared by every harness of that shape in
- * this file, and one PAGE per harness inside it.
- *
- * The split is what the init scripts force and what correctness wants. The
- * recorder and the audio probe are installed on the CONTEXT, so every page it
- * opens is instrumented before a line of the build's script runs, and a context
- * is also where the viewport and the device pixel ratio are fixed — which is the
- * one thing `table/stage-fit` varies. Everything else about a harness is the
- * page: a fresh one opens on a build that has just started, with nothing held, no
- * audio context opened, and the mute preference back off, which is a stronger
- * guarantee than any reset the surface offers, since `reset()` deliberately
- * leaves muting alone.
- *
- * A page per harness rather than a page reused between them, because a check may
- * legitimately hold two harnesses at once — `instrumentation/advances-in-frames`
- * runs the same second under two frame divisions, and
- * `instrumentation/deterministic-cascade` replays one seed twice — and a harness
- * whose page had been taken over by a later one would read someone else's game
- * while looking exactly like it worked.
- */
-const contexts = new Map<string, BrowserContext>();
-
-/** Every page this worker opened, so none is left behind in the shared browser. */
-const openPages = new Set<Page>();
-
-function shapeKey(cssWidth: number, cssHeight: number, dpr: number): string {
-  return `${cssWidth}x${cssHeight}@${dpr}`;
-}
-
-/** The context for a window of this shape, opened and instrumented on demand. */
-async function contextFor(
-  cssWidth: number,
-  cssHeight: number,
-  dpr: number,
-): Promise<BrowserContext> {
-  const key = shapeKey(cssWidth, cssHeight, dpr);
-  const existing = contexts.get(key);
-  if (existing !== undefined) return existing;
-
-  const browser = await sharedBrowser();
-  const context = await browser.newContext({
-    viewport: { width: cssWidth, height: cssHeight },
-    deviceScaleFactor: dpr,
-  });
-  for (const name of INIT_SCRIPTS) {
-    await context.addInitScript(readFileSync(join(PROJECT_ROOT, name), "utf8"));
-  }
-  contexts.set(key, context);
-  return context;
-}
-
-/**
- * Shut everything this worker opened.
- *
- * Registered from `setup.ts` as an `afterAll`, so a suite file never has to think
- * about it and a worker cannot leave a page behind in the shared browser.
- */
-export async function closeWorkerBrowser(): Promise<void> {
-  for (const page of openPages) await page.close().catch(() => undefined);
-  openPages.clear();
-  for (const context of contexts.values()) {
-    await context.close().catch(() => undefined);
-  }
-  contexts.clear();
-  const browser = browserPromise;
-  browserPromise = null;
-  if (browser !== null) await (await browser).close().catch(() => undefined);
-}
-
-/* ---- The surface a build never installed ---------------------------------- */
-
-/**
- * A stand-in for a surface that is missing or incomplete: every operation on it
- * fails the check that reached for it, with the fault named.
- *
- * A proxy rather than a hand-written stub, so that an operation a build was
- * supposed to add but this file never listed still fails as the consequence of
- * the missing install rather than as an undefined that throws a `TypeError`
- * several frames later, in a place that names nothing.
- *
- * Keys that belong to the MACHINERY rather than to a check are answered with
- * `undefined` instead: awaiting a value probes `then`, and vitest's own error
- * formatting probes symbols and `constructor`. Failing those would replace the
- * verdict below with noise from the machinery that was trying to report it.
- */
-function unexposedSurface(reason: string): CascadeDebugApi {
-  return new Proxy({} as CascadeDebugApi, {
-    get: (_target, property): unknown => {
-      if (typeof property === "symbol") return undefined;
-      if (property === "then" || property === "constructor") return undefined;
-      return () => failSurface(reason);
-    },
-  });
-}
-
-/**
- * What `specs/instrumentation.md` requires of the surface: the `Expected:` line
- * of the failure a build with no usable surface lands on every check that
- * reaches for it, beside the {@link Harness.surfaceFault} that says what was
- * found.
- */
-export const SURFACE_REQUIREMENT =
-  `a usable debug and automation surface on window.${HANDLE} as soon as the ` +
-  `game has initialized, carrying every operation specs/instrumentation.md ` +
-  `requires`;
-
-/**
- * Fail the running check on `fault`, the harness's account of what is wrong
- * with the build's surface, paired with what the specification requires.
- */
-export function failSurface(fault: string): never {
-  return fail(SURFACE_REQUIREMENT, fault);
-}
-
-/**
- * What is wrong with the surface this page installed, or `null` when nothing
- * is: the surface never appeared, or it appeared without an operation the
- * specification requires.
- */
-async function readSurfaceFault(page: Page): Promise<string | null> {
-  if (!(await waitInPageFrames(page, "surface", HANDLE))) {
-    return `window.${HANDLE} was still absent ${SURFACE_GRACE_FRAMES} rendered frames after the page loaded`;
-  }
-  const missing = await page.evaluate(
-    ([handle, ops]) => {
-      const target = (
-        window as unknown as Record<string, Record<string, unknown>>
-      )[handle];
-      return ops.filter((op) => typeof target[op] !== "function");
-    },
-    [HANDLE, [...REQUIRED_OPS]] as const,
-  );
-  if (missing.length > 0) {
-    return `window.${HANDLE} is installed but carries no ${missing
-      .map((op) => `${op}()`)
-      .join(", ")}`;
-  }
-  return null;
-}
-
-/* ---- Building one --------------------------------------------------------- */
-
-/**
- * Load the built site in a browser, take the game off the wall clock, and hand
- * back everything a check reads.
- *
- * The default shape is the stage's own size at one device pixel per CSS pixel,
- * so a logical coordinate and a canvas pixel are the same thing and no check but
- * `table/stage-fit` has to think about the fit at all.
- *
- * IT NEVER THROWS FOR A BUILD'S FAULT. A missing or incomplete surface comes
- * back as {@link Harness.surfaceFault} over a surface whose every operation
- * fails by assertion, so a suite that builds its harness in a `beforeEach` gets
- * its real verdict from the check rather than a hook failure that names nothing.
+ * The clock is built here rather than left to the package so that this module and
+ * the package share ONE instance: a check that hands in a `SequenceClock` or a
+ * `JitterClock` is asking for a particular series of deltas, and two instances of
+ * it would deal that series out twice.
  */
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
-  const cssWidth = options.cssWidth ?? STAGE_W;
-  const cssHeight = options.cssHeight ?? STAGE_H;
-  const dpr = options.dpr ?? 1;
   const clock = options.clock ?? new ConstantClock(TICK_MS);
-  const context = await contextFor(cssWidth, cssHeight, dpr);
-  const page = await context.newPage();
-  openPages.add(page);
-  // Off Playwright's own thirty seconds and onto this project's ceiling, for
-  // every crossing the harness makes: the navigation below, a key press, a
-  // click, a frame driven inside the page. See `PAGE_CEILING_MS`; the waits whose
-  // deadline belongs in the page's own frames count those instead, and say so.
-  page.setDefaultTimeout(PAGE_CEILING_MS);
-  page.setDefaultNavigationTimeout(PAGE_CEILING_MS);
+  const base = await kit.createHarness({ ...options, clock });
 
-  // Whatever this page throws or logs as an error while THIS harness drives it.
-  // The page belongs to one harness, so the log cannot pick up what some other
-  // check provoked.
-  const pageErrors: string[] = [];
-  page.on("pageerror", (error) => {
-    pageErrors.push(String(error.message || error));
-  });
-  page.on("console", (message) => {
-    if (message.type() === "error") pageErrors.push(message.text());
-  });
-
-  await page.goto(inject("cascadeUrl"), { waitUntil: "load" });
-
-  const surfaceFault = await readSurfaceFault(page);
-  const refuse = (): never => failSurface(surfaceFault ?? "");
-
-  const call = async (operation: string, args: unknown[]): Promise<unknown> => {
-    if (surfaceFault !== null) refuse();
-    return page.evaluate(
-      ([handle, name, rest]) =>
-        (
-          window as unknown as Record<
-            string,
-            Record<string, (...a: unknown[]) => unknown>
-          >
-        )[handle][name](...rest),
-      [HANDLE, operation, args] as const,
-    );
-  };
-
-  const debug =
-    surfaceFault !== null
-      ? unexposedSurface(surfaceFault)
-      : (new Proxy({} as CascadeDebugApi, {
-          get: (_target, property): unknown => {
-            if (typeof property === "symbol") return undefined;
-            if (property === "then" || property === "constructor")
-              return undefined;
-            const name = String(property);
-            return (...args: unknown[]) => call(name, args);
-          },
-        }) as CascadeDebugApi);
-
-  if (surfaceFault === null) {
-    // Off the wall clock and back to the title before a check touches anything:
-    // from here the game changes only when this harness says so. The reset is
-    // skipped only for a check whose subject is the state the build initialized
-    // with, which a reset would erase (`HarnessOptions.reset`).
-    await call("setAutoStep", [false]);
-    if (options.reset ?? true) await call("reset", []);
-    // And a recorder over the surface before a check can arm one. A build is
-    // free to ask for its 2D context on the frame it first draws rather than
-    // while it initializes, so the surface can be installed and answering
-    // before any context exists to record — and a `captureReplay` armed in that
-    // window arms nothing and writes no evidence for a section that drew.
-    await waitInPageFrames(page, "recorder", HANDLE);
-  }
-
-  const view = fitViewport(cssWidth, cssHeight, dpr);
-  const cueSinks: TimedCue[][] = [];
-  let frameCount = 0;
-  let timeMs = 0;
-
-  /**
-   * Run `frames` frames and read what they left, in as few crossings as the
-   * series asked for allows.
-   *
-   * Each frame is opened and closed around a single `advance(dt, 1)`, all inside
-   * one synchronous evaluation, so nothing the page's own animation frame renders
-   * can land inside a recorded frame — and so a frame the recorder keeps is
-   * exactly one frame the game ran.
-   *
-   * `series` decides what comes back: `false` reads the state the LAST frame left
-   * and `true` reads the state EVERY frame left, which is the reading a check
-   * that has to catch the frame something happened on needs. The frames are the
-   * same either way — the flag changes what crosses back, never what ran.
-   *
-   * WHY THE LOOP IS INSIDE THE PAGE AND NOT OUT HERE. A crossing costs a round
-   * trip, and a round trip is a property of how busy the HOST is: tens of
-   * milliseconds on an idle machine and hundreds on a loaded one. A sweep that
-   * paid one per frame therefore took a length of time nothing about the build
-   * decided, and the vitest allowance it ran against is wall clock — so the same
-   * build passed on a quiet host and timed out on a busy one. Driving the frames
-   * inside the page removes the host from the reading: the check still steps one
-   * frame at a time and still reads every frame, and what it costs is now the
-   * build's own work.
-   */
-  const runFrames = async (
-    frames: number,
-    series: boolean,
-  ): Promise<CascadeSnapshot[]> => {
-    if (surfaceFault !== null) refuse();
-    const wanted = Math.max(0, Math.trunc(frames));
-    const collected: CascadeSnapshot[] = [];
-    let left = wanted;
-    while (left > 0) {
-      const step = series ? Math.min(left, SERIES_CHUNK_FRAMES) : left;
-      const deltas: number[] = [];
-      for (let i = 0; i < step; i += 1) deltas.push(clock.delta());
-      const raw = await page.evaluate(
-        ([handle, dts, all, nonFinite]) => {
-          const api = (
-            window as unknown as Record<
-              string,
-              Record<string, (...a: unknown[]) => unknown>
-            >
-          )[handle];
-          const rec = (
-            window as unknown as {
-              __cascadeRec: Record<string, (...a: unknown[]) => unknown>;
-            }
-          ).__cascadeRec;
-          const audio = (
-            window as unknown as { __cascadeAudio: { started(): number } }
-          ).__cascadeAudio;
-          const sounds: number[] = [];
-          const snapshots: unknown[] = [];
-          for (const dt of dts) {
-            const before = audio.started();
-            rec.begin();
-            api.advance(dt / 1000, 1);
-            rec.end(dt);
-            sounds.push(audio.started() - before);
-            if (all) snapshots.push(api.snapshot());
-          }
-          if (!all) snapshots.push(api.snapshot());
-          return JSON.stringify({ snapshots, sounds }, (_key, value: unknown) =>
-            typeof value === "number" && !Number.isFinite(value)
-              ? { [nonFinite]: String(value) }
-              : value,
-          );
-        },
-        [HANDLE, deltas, series, NON_FINITE_KEY] as const,
-      );
-      const result = parseCrossing<{
-        snapshots: CascadeSnapshot[];
-        sounds: number[];
-      }>(raw);
-
-      for (const [index, delta] of deltas.entries()) {
-        frameCount += 1;
-        timeMs += delta;
-        for (let n = 0; n < result.sounds[index]; n += 1) {
-          for (const sink of cueSinks)
-            sink.push({ frame: frameCount, t: timeMs });
-        }
-      }
-      if (series) collected.push(...result.snapshots);
-      else {
-        collected.length = 0;
-        collected.push(result.snapshots[0]);
-      }
-      left -= step;
-    }
-    return collected;
-  };
-
-  /** Run `frames` frames and read the state the last of them left. */
-  const drive = async (frames: number): Promise<CascadeSnapshot> => {
-    const [last] = await runFrames(frames, false);
-    return last ?? (await debug.snapshot());
-  };
-
-  /**
-   * Run `duration` seconds of game time in `frames` frames, off camera.
-   *
-   * The same real update, and the same one crossing, but with no frame boundary
-   * opened or closed: a capture running across a skip keeps nothing of it. Every
-   * sound the skip produced is attributed to the frame it ended on, which is the
-   * whole of what a skip can honestly say about when a sound happened.
-   */
+  /** Run `duration` seconds of game time in `frames` frames, off camera. */
   const coast = async (
     duration: number,
-    frames: number,
+    hz: number,
   ): Promise<CascadeSnapshot> => {
-    if (surfaceFault !== null) refuse();
-    const whole = Math.max(1, Math.round(frames));
-    const result = (await page.evaluate(
-      ([handle, sec, count]) => {
-        const api = (
-          window as unknown as Record<
-            string,
-            Record<string, (...a: unknown[]) => unknown>
-          >
-        )[handle];
-        const audio = (
-          window as unknown as { __cascadeAudio: { started(): number } }
-        ).__cascadeAudio;
-        const before = audio.started();
-        api.advance(sec, count);
-        return {
-          snapshot: api.snapshot(),
-          sounds: audio.started() - before,
-        };
-      },
-      [HANDLE, duration, whole] as const,
-    )) as { snapshot: CascadeSnapshot; sounds: number };
-
-    frameCount += whole;
-    timeMs += duration * 1000;
-    for (let n = 0; n < result.sounds; n += 1) {
-      for (const sink of cueSinks) sink.push({ frame: frameCount, t: timeMs });
-    }
-    return result.snapshot;
+    await base.debug.advance(duration, Math.max(1, Math.ceil(duration * hz)));
+    return base.snapshot();
   };
 
-  const readPixels = async (
-    devicePoints: readonly { x: number; y: number }[],
-  ): Promise<[number, number, number, number][]> =>
-    page.evaluate(
-      (points) => {
-        const canvases = Array.from(document.querySelectorAll("canvas"));
-        if (canvases.length === 0)
-          throw new Error("cascade: the page has no <canvas>");
-        let canvas = canvases[0];
-        for (const other of canvases) {
-          if (other.width * other.height > canvas.width * canvas.height)
-            canvas = other;
-        }
-        const ctx = canvas.getContext("2d");
-        if (ctx === null)
-          throw new Error("cascade: the canvas has no 2D context");
-        return points.map((point) => {
-          const x = Math.min(
-            Math.max(point.x, 0),
-            Math.max(canvas.width - 1, 0),
-          );
-          const y = Math.min(
-            Math.max(point.y, 0),
-            Math.max(canvas.height - 1, 0),
-          );
-          const { data } = ctx.getImageData(x, y, 1, 1);
-          return [data[0], data[1], data[2], data[3]] as [
-            number,
-            number,
-            number,
-            number,
-          ];
-        });
-      },
-      devicePoints as { x: number; y: number }[],
-    );
-
-  const harness: Harness = {
-    page,
-    debug,
-    surfaceFault,
-    pageErrors,
-
-    frame: () => frameCount,
-    timeMs: () => timeMs,
-
-    snapshot: () => debug.snapshot(),
-
-    advance: async (frames) => {
-      await drive(frames);
-    },
-
-    sample: (frames) => runFrames(frames, true),
+  return {
+    ...base,
 
     async pose(calls) {
-      if (surfaceFault !== null) refuse();
+      if (base.surfaceFault !== null) failSurface(base.surfaceFault);
       if (calls.length === 0) return [];
-      const raw = await page.evaluate(
-        ([handle, ops, nonFinite]) => {
+      return base.page.evaluate(
+        ([handle, ops]) => {
           const api = (
             window as unknown as Record<
               string,
               Record<string, (...a: unknown[]) => unknown>
             >
           )[handle];
-          const results = ops.map((call) => api[call.op](...call.args));
-          return JSON.stringify(results, (_key, value: unknown) =>
-            typeof value === "number" && !Number.isFinite(value)
-              ? { [nonFinite]: String(value) }
-              : value,
-          );
+          return ops.map((call) => api[call.op](...call.args));
         },
         [
           HANDLE,
           calls.map((call) => ({ op: call.op, args: [...call.args] })),
-          NON_FINITE_KEY,
         ] as const,
       );
-      return parseCrossing<unknown[]>(raw);
     },
 
+    sample: (frames) => base.stepWatching(frames),
+
     async until(predicate, untilOptions = {}) {
-      const maxFrames = untilOptions.maxFrames ?? framesFor(5);
-      const chunk = Math.max(1, untilOptions.chunk ?? 1);
-
-      let snapshot = await this.snapshot();
-      if (predicate(snapshot))
-        return { hit: true, frames: 0, at: frameCount, snapshot };
-
-      let frames = 0;
-      while (frames < maxFrames) {
-        const step = Math.min(chunk, maxFrames - frames);
-        const opened = frameCount;
-        const series = await runFrames(step, true);
-        for (const [index, sampled] of series.entries()) {
-          if (predicate(sampled)) {
-            return {
-              hit: true,
-              frames: frames + index + 1,
-              at: opened + index + 1,
-              snapshot: sampled,
-            };
-          }
-        }
-        frames += step;
-        snapshot = series[series.length - 1] ?? snapshot;
-      }
-      return { hit: false, frames, at: frameCount, snapshot };
+      const opened = base.frame();
+      const swept = await base.until(predicate, {
+        maxFrames: untilOptions.maxFrames ?? framesFor(5),
+        poll: 1,
+      });
+      return { ...swept, at: opened + swept.frames };
     },
 
     async skip(duration, hz = TICK_HZ) {
-      await coast(duration, Math.ceil(duration * hz));
+      await coast(duration, hz);
     },
 
     async skipUntil(predicate, skipOptions = {}) {
@@ -1449,790 +756,146 @@ export async function createHarness(
       const pollSeconds = Math.max(1e-3, skipOptions.pollSeconds ?? 0.5);
       const hz = skipOptions.hz ?? TICK_HZ;
 
-      let snapshot = await this.snapshot();
+      let snapshot = await base.snapshot();
       if (predicate(snapshot)) return { hit: true, elapsed: 0, snapshot };
 
       let elapsed = 0;
       while (elapsed < maxSeconds) {
         const step = Math.min(pollSeconds, maxSeconds - elapsed);
-        snapshot = await coast(step, Math.ceil(step * hz));
+        snapshot = await coast(step, hz);
         elapsed += step;
         if (predicate(snapshot)) return { hit: true, elapsed, snapshot };
       }
       return { hit: false, elapsed, snapshot };
     },
 
-    async runFor(ms) {
-      if (surfaceFault !== null) refuse();
-      // The one thing here that depends on real elapsed time, so the one thing a
-      // browser's own idea of which page matters can distort. The launch already
-      // turns the throttling off; bringing the page forward as well means this
-      // does not rest on a flag alone.
-      await page.bringToFront().catch(() => undefined);
-      await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as { __cascadeRec: { setMode(m: string): void } }
-          ).__cascadeRec.setMode("raf");
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[handle].setAutoStep(true);
-        },
-        [HANDLE] as const,
-      );
-      await page.waitForTimeout(ms);
-      await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[handle].setAutoStep(false);
-          (
-            window as unknown as { __cascadeRec: { setMode(m: string): void } }
-          ).__cascadeRec.setMode("manual");
-        },
-        [HANDLE] as const,
-      );
-    },
-
-    async tap(code) {
-      await page.keyboard.down(code);
-      await drive(1);
-      await page.keyboard.up(code);
-    },
-
-    async frameCalls() {
-      await drive(1);
-      const ops = (await page.evaluate(() =>
-        (
-          window as unknown as { __cascadeRec: { last(): unknown[] } }
-        ).__cascadeRec.last(),
-      )) as RecordedOp[];
-      return ops.map(toDrawCall);
-    },
-
-    probe: (names) =>
-      page.evaluate(
-        ([handle, wanted]) => {
-          const target =
-            (window as unknown as Record<string, Record<string, unknown>>)[
-              handle
-            ] ?? {};
-          const ops: Record<string, string> = {};
-          for (const name of wanted) ops[name] = typeof target[name];
-          return { version: target.version, ops };
-        },
-        [HANDLE, [...names]] as const,
-      ),
-
-    viewport: () => ({ ...view }),
-    device: (x, y) => toDevice(view, x, y),
-    css: (x, y) => {
-      const at = toDevice(view, x, y);
-      return { x: at.x / dpr, y: at.y / dpr };
-    },
-    pixel: async (x, y) => (await readPixels([toDevice(view, x, y)]))[0],
-    pixels: (points) => readPixels(points.map((p) => toDevice(view, p.x, p.y))),
-    devicePixel: async (x, y) => (await readPixels([{ x, y }]))[0],
-
-    surface: () =>
-      page.evaluate(() => {
-        const canvases = Array.from(document.querySelectorAll("canvas"));
-        if (canvases.length === 0) {
-          throw new Error(
-            "cascade: the page has no <canvas>, so the build drew nowhere — " +
-              "index.html supplies one and the build is asked not to edit it " +
-              "(specs/overview.md)",
-          );
-        }
-        let canvas = canvases[0];
-        for (const other of canvases) {
-          if (other.width * other.height > canvas.width * canvas.height)
-            canvas = other;
-        }
-        return {
-          width: canvas.width,
-          height: canvas.height,
-          dpr: window.devicePixelRatio,
-        };
-      }),
-
     async armAudio() {
       // A GENUINE browser gesture, not a posed one: a build is free to open its
       // audio context from a real DOM event alone (both are conformant), so a
       // gesture delivered any other way would leave a perfectly good build
-      // silent. `specs/controls.md` binds exactly one key, the overlay's
-      // Backquote, so a press of UNBOUND_KEY is inert — it changes no game
-      // state, opens no panel, and records no press for the double-click rule,
-      // which a real pointer press would.
-      await page.keyboard.press(UNBOUND_KEY);
-    },
-
-    sounds: () =>
-      page.evaluate(() =>
-        (
-          window as unknown as { __cascadeAudio: { started(): number } }
-        ).__cascadeAudio.started(),
-      ),
-
-    async dispose() {
-      // The context stays: it holds the init scripts and the window shape, and the
-      // next harness of this shape wants both. The page goes, so nothing this
-      // check pressed, dealt or muted can reach the next one.
-      openPages.delete(page);
-      await page.close().catch(() => undefined);
+      // silent. `specs/controls.md` gives this key no binding, so the press
+      // changes no game state, opens no overlay, and records no press for the
+      // double-click rule, which a real pointer press would.
+      await base.page.keyboard.press(UNBOUND_KEY);
     },
   };
-
-  harnessCues.set(harness, cueSinks);
-  return harness;
 }
 
-/** Where {@link watchCues} attaches, per harness. */
-const harnessCues = new WeakMap<Harness, TimedCue[][]>();
-/* ---- The fit -------------------------------------------------------------- */
-
-/**
- * How the stage maps onto a surface of this shape, as `specs/overview.md` fixes
- * it: one uniform scale, the whole stage inside, centred, with the leftover
- * split evenly into two letterbox bars.
- *
- * Computed rather than read from the build, deliberately. Under an engine the
- * fit is the engine's and a check can ask it what it derived; here the fit is
- * the build's own work, so asking it would be asking a build to grade itself.
- * Every check but `table/stage-fit` runs at the stage's own size, where this is
- * the identity and the question does not arise; that one check runs at other
- * shapes and reads the pixels against what the specification says should be
- * there.
- */
-export function fitViewport(
-  cssWidth: number,
-  cssHeight: number,
-  dpr: number,
-): Viewport {
-  const deviceWidth = Math.round(cssWidth * dpr);
-  const deviceHeight = Math.round(cssHeight * dpr);
-  const scale = Math.min(cssWidth / STAGE_W, cssHeight / STAGE_H) * dpr;
-  return {
-    width: STAGE_W,
-    height: STAGE_H,
-    scale,
-    offsetX: (deviceWidth - STAGE_W * scale) / 2,
-    offsetY: (deviceHeight - STAGE_H * scale) / 2,
-  };
-}
-
-function toDevice(
-  view: Viewport,
-  x: number,
-  y: number,
-): { x: number; y: number } {
-  return {
-    x: Math.round(view.offsetX + x * view.scale),
-    y: Math.round(view.offsetY + y * view.scale),
-  };
-}
-/* ---- Draw calls ----------------------------------------------------------- */
-
-/** One operation as the injected recorder writes it. */
-export type RecordedOp =
-  | {
-      op: "call";
-      method: string;
-      args: unknown[];
-      width?: number;
-      textAlign?: string;
-    }
-  | { op: "set"; property: string; value: unknown };
-
-function toDrawCall(op: RecordedOp): DrawCall {
-  return op.op === "call"
-    ? {
-        kind: "call",
-        method: op.method,
-        args: op.args,
-        width: op.width,
-        textAlign: op.textAlign,
-      }
-    : { kind: "set", property: op.property, value: op.value };
-}
-
-/** Every argument list `method` was called with, in order. */
-export function callsTo(
-  calls: readonly DrawCall[],
-  method: string,
-): unknown[][] {
-  return calls.flatMap((call) =>
-    call.kind === "call" && call.method === method ? [call.args] : [],
-  );
-}
-
-/** Every value `property` was set to, in order. */
-export function setsOf(
-  calls: readonly DrawCall[],
-  property: string,
-): unknown[] {
-  return calls.flatMap((call) =>
-    call.kind === "set" && call.property === property ? [call.value] : [],
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Evidence capture                                                           */
-/* -------------------------------------------------------------------------- */
-//
-// A review item may declare a `replay` OUTPUT beside its verdict: the frames the
-// build itself drew while a check drove it, kept as evidence a reviewer can
-// scrub and compare against the reference implementation's. `captureReplay` is
-// how a check produces one.
-//
-// Four properties are what make it usable, and each is deliberate:
-//
-// 1. IT RECORDS THE SECTION, NOT THE RUN. The recorder is armed around the
-//    caller's scenario and disarmed the moment that scenario returns, so what is
-//    kept is the part the check is ABOUT and never the setup that got there.
-//    Cascade gives that its sharpest form, and it is the reason ARMING NARROWLY
-//    IS A RULE HERE RATHER THAN AN ECONOMY. The victory cascade blits a
-//    full-screen painted layer once per frame, the recorder captures a source
-//    whose content can change at every use, and capture stops once a recording
-//    holds 16 MB of image bytes — after which a further new capture records an
-//    opaque marker instead of the picture. A cascade replay recorded with the
-//    trail painting on therefore degrades within a handful of frames. So arm
-//    around the section the point is about —
-//    `captureReplay(h, "id", () => h.advance(framesFor(1)))` — put the setup
-//    outside it, or off camera entirely with {@link Harness.skip}, which closes
-//    no frame at all, and TURN THE PAINTING OFF for every replay in the
-//    `cascade` group: `setTrailPainting(false)` leaves the flyers in the frames
-//    and takes the blit out of them. The three items whose requirement IS the
-//    trail declare `image` outputs and read the canvas pixels instead, and the
-//    three cascade replays in the `winning` group record with painting left on,
-//    because each covers only the win and the cascade's first frames.
-// 2. IT IS EVIDENCE, NEVER A VERDICT. The scenario's own value comes straight
-//    back, and a scenario that THROWS still writes what it had recorded before
-//    the failure travels on — a failing check is the one whose replay a reviewer
-//    most wants. A recording that cannot be written is reported as an output that
-//    never turned up, which is a fact about the host rather than about the build.
-// 3. IT WRITES ONLY WHAT THERE IS TO LOOK AT. A capture that closed no frames
-//    leaves no file, so the run reports the output absent instead of offering the
-//    reviewer a replay of nothing.
-// 4. IT COSTS NOTHING WHEN NOBODY IS COLLECTING. Outside a run the media
-//    directory is unset and the whole thing is a no-op that still runs the
-//    scenario, so a check cannot pass in one place and fail in the other.
-
-/** The environment variable the runner names the media directory in. */
-const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
-
-/**
- * The directory the runner stages this project to inside the build's tree.
- *
- * A recording is addressed by the STAGED path of the suite that produced it —
- * `validation/deal/full-deck.test.ts` — because that is the path the
- * review item's declared script resolves to, and so the only name the case's
- * manifest and the runner both already agree on. Stating the prefix here is what
- * keeps that address the same when this suite is run in place against a
- * reference implementation, where the project root is `validation/none/` instead.
- */
-const STAGED_PROJECT_DIR = "validation";
-
-/**
- * The most frames a written recording holds.
- *
- * The injected recorder already holds the page's side to twice this, decimating
- * as it fills, so what arrives here is at most a few hundred frames however long
- * the section ran. This is the same cap the engine-backed harnesses write under,
- * so a replay recorded under any of the three engines is the same size of thing.
- */
-const MAX_REPLAY_FRAMES = 300;
-
-/**
- * The ground the console's player paints behind a recorded frame.
- *
- * The specification fixes no board colour: the build paints its own background
- * each frame, and the recorded frames carry that paint. What the player needs is
- * a colour for the canvas under them, and the page the build is served on is
- * painted `#000` by the case's own `index.html`, so that is what a replay says.
- */
-export const REPLAY_BACKGROUND = "#000";
-
-/** One frame of a recording, as the console's player reads it. */
-export interface RecordedFrame {
-  count: number;
-  timeMs: number;
-  deltaMs: number;
-  surface: { width: number; height: number };
-  /** Index into the recording's `states` of the state this frame inherited. */
-  state: number;
-  /**
-   * Indices into the recording's `states` of the states saved under this frame,
-   * outermost first.
-   */
-  stack: number[];
-  /** Indices into the recording's `ops`, in the order the frame issued them. */
-  ops: number[];
-  /**
-   * Whether part of what this frame inherited was too large for the format to
-   * carry, and was cut down to the bound. Present only on a frame that was.
-   */
-  truncated?: boolean;
-}
-
-/** The context state a frame is drawn from, before its own operations. */
-export interface RecordedState {
-  properties: Record<string, unknown>;
-  /** The transform in force, as the canvas's `[a, b, c, d, e, f]`. */
-  transform: number[] | null;
-  lineDash: number[] | null;
-  /** The clip region in force, as the segments that built it, in order. */
-  clip: RecordedPathSegment[];
-  /** The current path, as the operations issued since the last `beginPath`. */
-  path: RecordedPathSegment[];
-}
-
-/**
- * One run of path operations, and the transform they were issued under.
- *
- * A path is given in user space, so both the clip and the current path are split
- * into one segment per transform and a player replays each under its own.
- */
-export interface RecordedPathSegment {
-  transform: number[] | null;
-  ops: RecordedOp[];
-}
-
-/** A value the context produced, as the recipe that rebuilds it. */
-export interface RecordedResource {
-  make: { method: string; args: unknown[] };
-  then: RecordedOp[];
-}
-
-/** One bitmap the recording captured, as the player reads it. */
-export interface RecordedImage {
-  width: number;
-  height: number;
-  /** A data URL of the bitmap's pixels, absent when the budget degraded it. */
-  src?: string;
-}
-
-/**
- * A recording, as the console's player reads it.
- *
- * A frame names its state and its operations by index, and the values those
- * operations draw with — the gradients, the captured images — live in tables the
- * whole recording shares. So every reference a frame makes resolves at whichever
- * frame a reviewer lands on, and each distinct thing is written once.
- */
-export interface Recording {
-  format: number;
-  width: number;
-  height: number;
-  background: string | null;
-  images: RecordedImage[];
-  resources: RecordedResource[];
-  ops: RecordedOp[];
-  states: RecordedState[];
-  frames: RecordedFrame[];
-}
-
-/**
- * Where the running suite's `outputId` output belongs, or `null` when nothing is
- * collecting media.
- *
- * The suite is the one vitest is currently running rather than one the caller
- * names, because the two must not be able to disagree: a check that named its own
- * path would be free to write its evidence under some other point's address.
- */
-function mediaDestination(outputId: string, extension: string): string | null {
-  const mediaDir = process.env[MEDIA_DIR_ENV];
-  if (mediaDir === undefined || mediaDir === "") return null;
-  const testPath = expect.getState().testPath;
-  if (testPath === undefined) return null;
-  const suite = relative(PROJECT_ROOT, testPath).split(sep).join("/");
-  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.${extension}`);
-}
-
-/**
- * A value's JSON with object keys in a fixed order, as the key a table
- * deduplicates on.
- */
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? "null";
-  }
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
-    .join(",")}}`;
-}
-
-/** Add `entry` to a table if it is new, and answer where it lives. */
-function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
-  const key = canonical(entry);
-  const found = at.get(key);
-  if (found !== undefined) return found;
-  const index = table.length;
-  table.push(entry);
-  at.set(key, index);
-  return index;
-}
-
-/**
- * `frames` re-expressed against tables holding only what those frames name.
- *
- * DROPPING A FRAME DROPS THE LAST REFERENCE TO WHATEVER ONLY THAT FRAME DREW
- * WITH. Tables carried over whole would put operations, gradients and images in
- * the file that no frame asks for — dead weight in a document whose whole point
- * is to say each thing once, and the bulk of it in a game that draws
- * procedurally and so repeats almost nothing between frames.
- *
- * Every entry here is reached from a kept frame, and every reference inside one
- * is rewritten as it is reached, transitively. What is deduplicated is the
- * rewritten entry, so an operation two hundred frames issue identically is
- * written once and named two hundred times.
- *
- * Exported for the suite beside this file, which drives it over a recording a
- * browser cannot deliver: Playwright's serializer drops an own field named
- * `__proto__` on the way out of the page, so handing one to this directly is the
- * only way to check that the rewrite carries it.
- */
-export function retable(
-  recording: Recording,
-  frames: RecordedFrame[],
-): Recording {
-  const images: RecordedImage[] = [];
-  const imageAt = new Map<number, number>();
-  const resources: RecordedResource[] = [];
-  const resourceAt = new Map<number, number>();
-  const ops: RecordedOp[] = [];
-  const opAt = new Map<string, number>();
-  const states: RecordedState[] = [];
-  const stateAt = new Map<string, number>();
-
-  const takeImage = (source: number): number => {
-    const found = imageAt.get(source);
-    if (found !== undefined) return found;
-    const index = images.length;
-    images.push(recording.images[source]);
-    imageAt.set(source, index);
-    return index;
-  };
-
-  const takeResource = (source: number): number => {
-    const found = resourceAt.get(source);
-    if (found !== undefined) return found;
-    const recipe = recording.resources[source];
-    // A recipe's own arguments can only name values made before it, so rewriting
-    // it terminates and cannot re-enter this resource.
-    const rebuilt: RecordedResource = {
-      make: { method: recipe.make.method, args: recipe.make.args.map(value) },
-      then: recipe.then.map(operation),
-    };
-    const index = resources.length;
-    resources.push(rebuilt);
-    resourceAt.set(source, index);
-    return index;
-  };
-
-  const value = (entry: unknown): unknown => {
-    if (Array.isArray(entry)) return entry.map(value);
-    if (entry === null || typeof entry !== "object") return entry;
-    const record = entry as Record<string, unknown>;
-    if (typeof record.$img === "number")
-      return { $img: takeImage(record.$img) };
-    if (typeof record.$res === "number")
-      return { $res: takeResource(record.$res) };
-    const rewritten: Record<string, unknown> = {};
-    for (const [key, held] of Object.entries(record)) {
-      // Defined rather than assigned: a build's own object may carry a field named
-      // `__proto__`, and assigning that name reaches the prototype setter instead
-      // of writing a field the document carries.
-      Object.defineProperty(rewritten, key, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return rewritten;
-  };
-
-  const operation = (op: RecordedOp): RecordedOp =>
-    op.op === "call"
-      ? { op: "call", method: op.method, args: op.args.map(value) }
-      : { op: "set", property: op.property, value: value(op.value) };
-
-  const segments = (list: RecordedPathSegment[]): RecordedPathSegment[] =>
-    list.map((segment) => ({
-      transform: segment.transform,
-      ops: segment.ops.map(operation),
-    }));
-
-  const stateOf = (state: RecordedState): RecordedState => {
-    const properties: Record<string, unknown> = {};
-    for (const [name, held] of Object.entries(state.properties)) {
-      Object.defineProperty(properties, name, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return {
-      properties,
-      transform: state.transform,
-      lineDash: state.lineDash,
-      clip: segments(state.clip),
-      path: segments(state.path),
-    };
-  };
-
-  const takeState = (source: number): number =>
-    intern(states, stateAt, stateOf(recording.states[source]));
-
-  return {
-    ...recording,
-    images,
-    resources,
-    ops,
-    states,
-    frames: frames.map((frame) => ({
-      ...frame,
-      state: takeState(frame.state),
-      stack: frame.stack.map(takeState),
-      ops: frame.ops.map((op) =>
-        intern(ops, opAt, operation(recording.ops[op])),
-      ),
-    })),
-  };
-}
-
-/**
- * A recording of at most {@link MAX_REPLAY_FRAMES} frames, covering the whole of
- * what was captured, with each kept frame's `deltaMs` restated as the time since
- * the frame kept before it.
- *
- * The restatement is what makes a decimated recording play at the speed the game
- * really ran at: the deltas still sum to the section's elapsed time. The frame
- * `count` is left as it was recorded, so a reader can see that frames were
- * skipped rather than being told a smooth lie. The last frame is always kept
- * whatever the stride lands on — it is the frame the check's sweep stopped at,
- * and the one a reviewer looks at first.
- *
- * Keeping it costs a frame rather than the cap. The stride rounds up, so a
- * section whose length is an exact multiple of the cap strides over exactly that
- * many frames and stops one stride short of the end: the last frame still has to
- * come in, and the cap is a ceiling rather than a target. It takes the place of
- * the final strided frame — the frame nearest it, so the swap opens the smallest
- * gap available anywhere in the section — and is measured from where that frame
- * was measured from, which is what keeps the kept deltas summing to the elapsed
- * time.
- *
- * Exported for the suite beside this file, which reaches it over frame counts a
- * driven section cannot hand it.
- */
-export function thinReplay(recording: Recording): Recording {
-  const { frames } = recording;
-  if (frames.length === 0) return recording;
-
-  const stride = Math.max(1, Math.ceil(frames.length / MAX_REPLAY_FRAMES));
-  const kept: RecordedFrame[] = [];
-  let previousMs = frames[0].timeMs - frames[0].deltaMs;
-  const keep = (frame: RecordedFrame): void => {
-    kept.push({ ...frame, deltaMs: frame.timeMs - previousMs });
-    previousMs = frame.timeMs;
-  };
-
-  for (let i = 0; i < frames.length; i += stride) keep(frames[i]);
-  const last = frames[frames.length - 1];
-  if (kept[kept.length - 1].count !== last.count) {
-    if (kept.length >= MAX_REPLAY_FRAMES) {
-      // The stride spent the whole budget on the way to a frame short of the end.
-      // Drop the frame it stopped on, and put the moment back to the one before
-      // it: a kept frame's restated delta is measured from exactly that moment, so
-      // subtracting it recovers it, and the last frame's own delta then spans the
-      // gap the two of them leave.
-      const displaced = kept[kept.length - 1];
-      kept.length -= 1;
-      previousMs = displaced.timeMs - displaced.deltaMs;
-    }
-    keep(last);
-  }
-
-  return retable(recording, kept);
-}
-
-/**
- * Write a recording out, reporting rather than raising anything that goes wrong.
- *
- * A capture that closed no frames writes nothing: a file holding an empty frame
- * list would be collected as an output that turned up, and the run would tell the
- * reviewer there is a replay to watch and then open the player on nothing.
- *
- * What lands on disk is gzip rather than raw JSON. A recording is text made
- * almost entirely of numbers and repeated field names, which gzip takes down to a
- * fraction of its size, and every host that serves one declares the encoding so
- * the browser inflates it before the player sees it.
- *
- * Never throws. A file that cannot be written says something about the machine
- * the validators ran on, and failing the point over it would blame the build for
- * the host's problem.
- */
-function writeReplay(destination: string, recording: Recording | null): void {
-  if (recording === null || recording.frames.length === 0) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, gzipSync(JSON.stringify(thinReplay(recording))));
-  } catch (error) {
-    console.warn(`cascade: could not write ${destination}: ${String(error)}`);
-  }
+/** The harness as the package's own writers take it. */
+function packaged(h: Harness): PackageHarness {
+  return h as unknown as PackageHarness;
 }
 
 /**
  * Record the frames `scenario` drives and keep them as the review item's
  * `outputId` output, handing back whatever the scenario returned.
  *
- * Wrap the drive, not the arrangement:
- *
- * ```ts
- * await h.debug.setTrailPainting(false);
- * await captureReplay(h, "bounce", () => h.advance(framesFor(1)));
- * ```
- *
- * The assertions stay exactly where they were and read exactly what they did.
+ * Wrap the drive, not the arrangement — the assertions stay where they were.
  */
-export async function captureReplay<T>(
+export function captureReplay<T>(
   h: Harness,
   outputId: string,
   scenario: () => T | Promise<T>,
 ): Promise<T> {
-  const destination = mediaDestination(outputId, "json.gz");
-  if (destination === null) return scenario();
-
-  await h.page.evaluate(
-    (design) =>
-      (
-        window as unknown as { __cascadeRec: { arm(d: unknown): boolean } }
-      ).__cascadeRec.arm(design),
-    { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
-  );
-  try {
-    return await scenario();
-  } finally {
-    // In a `finally`, so a scenario that failed still leaves its evidence behind.
-    const recording = (await h.page.evaluate(() =>
-      (
-        window as unknown as { __cascadeRec: { disarm(): unknown } }
-      ).__cascadeRec.disarm(),
-    )) as Recording | null;
-    writeReplay(destination, recording);
-  }
+  return kit.captureReplay(packaged(h), outputId, scenario);
 }
 
 /**
  * Keep the picture currently on the canvas as the review item's `outputId`
  * output.
  *
- * The companion to {@link captureReplay}, for a point whose evidence is one
- * PICTURE rather than a stretch of motion: which screen the game opened on, how
- * a build drew a red suit against a black one, where the letterbox bars fell.
- *
- * What is written is whatever the last frame that RAN left behind, so call it
- * after the frame that poses the thing under test and before the assertions, so
- * a check that fails still leaves the picture that shows why. Nothing here can
- * change a verdict: outside a run this is a no-op, and a still that cannot be
- * written is reported as an output that never turned up.
+ * What is written is whatever the last frame that RAN left behind, so drive a
+ * frame after the pose and call this BEFORE the assertions, so a check that fails
+ * still leaves the picture that shows why.
  */
-export async function captureStill(
-  h: Harness,
-  outputId: string,
-): Promise<void> {
-  const destination = mediaDestination(outputId, "png");
-  if (destination === null) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    await h.page.screenshot({ path: destination, type: "png" });
-  } catch (error) {
-    console.warn(`cascade: could not write ${destination}: ${String(error)}`);
-  }
+export function captureStill(h: Harness, outputId: string): Promise<void> {
+  return kit.captureStill(packaged(h), outputId);
 }
-
-/* -------------------------------------------------------------------------- */
-/* Cues                                                                       */
-/* -------------------------------------------------------------------------- */
 
 /**
- * Record every sound the build emits from now on, stamped with the frame of the
- * drive it sounded on.
+ * Collect every sound the build emits from now on, each stamped with the frame of
+ * the drive it sounded on.
  *
- * WHAT IS OBSERVED, AND WHY IT IS THE FAIR READING. `specs/audio.md` requires
- * one cue per event, played on the frame its event happens, and says nothing at
- * all about how a build makes a sound — under this engine the whole audio layer is
- * the build's. So `audio-init.js` watches the two doors a browser can emit sound
- * through (a Web Audio source being `start()`ed, whatever kind it is, and an
- * `<audio>` element being played) and counts what goes through them; the harness
- * brackets each driven frame around that count, so a sound is attributed to the
- * frame that produced it. A blip made of two oscillators counts as two, which is
- * why a check asserts that a frame sounded rather than how many times: the number
- * of sources is the build's business and the specification never fixed it.
- *
- * WHAT IS LOST HERE THAT AN ENGINE GIVES. The cue's NAME. Under an engine the
- * game asks the bus for `CUES.home` by name and the bus announces it, so a build
- * that plays its reject blip on every card sent home is caught. There is no bus here to ask,
+ * WHAT IS LOST HERE THAT AN ENGINE GIVES: the cue's NAME. There is no bus to ask,
  * so these checks confirm that a sound was emitted and on which frame, and a
- * reviewer decides by ear whether the ten are told apart. That is a real
- * reduction, and the alternative — inferring the cue from the waveform the
- * reference happens to use — would grade builds against an implementation rather
- * than against the specification. NO CHECK IN THIS PROJECT MAY ASSERT A CUE NAME.
+ * reviewer decides by ear whether the ten cues are told apart. NO CHECK IN THIS
+ * PROJECT MAY ASSERT A CUE NAME.
  *
- * A sound emitted inside {@link Harness.skip} is attributed to the frame the skip
- * ended on, since a skip closes no frames of its own: run the frames a cue check
- * reads with {@link Harness.advance}.
+ * A sound emitted inside {@link Harness.skip} is stamped by nothing, since a skip
+ * closes no frame of its own: run the frames a cue check reads with
+ * {@link Harness.advance}.
  */
 export function watchCues(h: Harness): TimedCue[] {
-  const played: TimedCue[] = [];
-  harnessCues.get(h)?.push(played);
-  return played;
+  return kit.watchCues(packaged(h));
 }
+
+export type {
+  Clock,
+  DrawCall,
+  HarnessOptions,
+  Point,
+  RecordedFrame,
+  RecordedPathSegment,
+  RecordedResource,
+  RecordedState,
+  Recording,
+  Rgb,
+  TextDraw,
+  TimedCue,
+  Viewport,
+} from "./case-harness/index";
+
+export {
+  ConstantClock,
+  JitterClock,
+  SequenceClock,
+  callsTo,
+  closeWorkerBrowser,
+  colorDistance,
+  drawnText,
+  drewText,
+  luminance,
+  mouseGlide,
+  mousePress,
+  mouseRelease,
+  rectCenter,
+  retable,
+  setsOf,
+  textDraws,
+  thinReplay,
+  touchGlide,
+  touchPress,
+  touchRelease,
+  touchTap,
+} from "./case-harness/index";
+
+/**
+ * The ground a replay of this case is composited over.
+ *
+ * The shared harness's default, under the name this project's own checks read it
+ * by: `index.html` paints the page black and the build draws over it, so a
+ * recording replayed on anything else shows a picture the build never made.
+ */
+export { DEFAULT_REPLAY_BACKGROUND as REPLAY_BACKGROUND } from "./case-harness/index";
 
 /* -------------------------------------------------------------------------- */
 /* Reading one frame's render                                                 */
 /* -------------------------------------------------------------------------- */
-
-/** Every string the frame drew, through `fillText` or `strokeText`. */
-export function drawnText(calls: readonly DrawCall[]): string[] {
-  return [
-    ...callsTo(calls, "fillText"),
-    ...callsTo(calls, "strokeText"),
-  ].flatMap((args) => (typeof args[0] === "string" ? [args[0]] : []));
-}
-
-/**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
-}
+//
+// What a frame drew is the shared harness's reading — `drawnText`, `drewText`,
+// `textDraws`, `callsTo` and `setsOf` are re-exported above and behave the same
+// in every engineless project. The two below are Cascade's own: one reads a
+// STANDALONE word rather than a substring, and the other reads the boxes of the
+// shapes a frame painted, which is how the `table` group finds the cards without
+// requiring the build to have drawn them as rectangles.
 
 /**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
  *
- * The stricter sibling of {@link drewText}, for the copy `specs/screens.md`
- * requires as a word rather than as a substring — the how-to screen's `ACE`,
- * `KING`, `STOCK` and `DOUBLE-CLICK`, which `HOWTO_TOKENS` holds. A screen
- * reading "restocking" contains `stock` and does not name the pile the
- * specification named.
+ * The stricter sibling of `drewText`, for the copy `specs/screens.md` requires as
+ * a word rather than as a substring — the how-to screen's `ACE`, `KING`, `STOCK`
+ * and `DOUBLE-CLICK`, which `HOWTO_TOKENS` holds. A screen reading "restocking"
+ * contains `stock` and does not name the pile the specification named.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
@@ -2242,76 +905,22 @@ export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   return drawnText(calls).some((drawn) => pattern.test(drawn));
 }
 
-/** One run of text a frame drew, and where it drew it in logical stage units. */
-export interface TextDraw {
-  text: string;
-  /** The anchor the run was drawn at, mapped through the transform in force. */
-  x: number;
-  y: number;
-  /**
-   * The horizontal extent of the run's glyphs, in logical stage units.
-   *
-   * The width the context measured at the call, scaled by the transform in force
-   * and laid out about the anchor as the alignment then in force places it. A
-   * run whose width the recorder could not read spans its anchor alone, so
-   * `left` and `right` are both `x`.
-   */
-  left: number;
-  right: number;
-}
-
-/** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */
-export type Matrix = [number, number, number, number, number, number];
-
-const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
-
-function multiply(m: Matrix, n: Matrix): Matrix {
-  return [
-    m[0] * n[0] + m[2] * n[1],
-    m[1] * n[0] + m[3] * n[1],
-    m[0] * n[2] + m[2] * n[3],
-    m[1] * n[2] + m[3] * n[3],
-    m[0] * n[4] + m[2] * n[5] + m[4],
-    m[1] * n[4] + m[3] * n[5] + m[5],
-  ];
-}
-
-function numbers(args: unknown[], count: number): number[] | null {
-  const taken = args.slice(0, count);
-  return taken.length === count && taken.every((v) => typeof v === "number")
-    ? (taken as number[])
-    : null;
-}
-
-/** Where a user-space point lands once `m` is applied. */
-export function applyMatrix(
-  m: Matrix,
-  x: number,
-  y: number,
-): { x: number; y: number } {
-  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
-}
-
 /**
  * Walk a frame's operations, handing `visit` each one with the transform in
  * force at it.
  *
- * A build is free to draw under a transform — to translate to a tile and draw at
- * the origin, or to flip a leftward worm with a negative x scale — so the
- * position and the orientation a call names are only what they mean once the
- * transform at that call is applied. This carries `save`/`restore`, `translate`,
- * `scale`, `rotate`, `transform`, `setTransform` and `resetTransform`, starting
- * from `start` (the state the frame inherited) over `stack` (the states saved
- * under it, outermost first).
+ * A build is free to draw under a transform — to translate to a pile and draw at
+ * the origin, say — so the position a call names is only what it means once the
+ * transform at that call is applied. The shared harness's own readings carry the
+ * same walk; this one is here because {@link paintedBoxes} needs the callback and
+ * the package's readings do not expose one.
  */
-export function walkTransforms(
+function walkTransforms(
   calls: readonly DrawCall[],
   visit: (call: DrawCall, m: Matrix) => void,
-  start: Matrix = IDENTITY,
-  stack: readonly Matrix[] = [],
 ): void {
-  const saved: Matrix[] = [...stack];
-  let current: Matrix = start;
+  const saved: Matrix[] = [];
+  let current: Matrix = IDENTITY;
   for (const call of calls) {
     if (call.kind !== "call") {
       visit(call, current);
@@ -2322,149 +931,11 @@ export function walkTransforms(
       saved.push(current);
     } else if (method === "restore") {
       current = saved.pop() ?? IDENTITY;
-    } else if (method === "translate") {
-      const v = numbers(args, 2);
-      if (v) current = multiply(current, [1, 0, 0, 1, v[0], v[1]]);
-    } else if (method === "scale") {
-      const v = numbers(args, 2);
-      if (v) current = multiply(current, [v[0], 0, 0, v[1], 0, 0]);
-    } else if (method === "rotate") {
-      const v = numbers(args, 1);
-      if (v) {
-        const c = Math.cos(v[0]);
-        const sn = Math.sin(v[0]);
-        current = multiply(current, [c, sn, -sn, c, 0, 0]);
-      }
-    } else if (method === "transform") {
-      const v = numbers(args, 6);
-      if (v) current = multiply(current, v as Matrix);
-    } else if (method === "setTransform") {
-      const v = numbers(args, 6);
-      if (v) current = v as Matrix;
-      else if (args.length === 0) current = IDENTITY;
-      else if (typeof args[0] === "object" && args[0] !== null) {
-        const m = args[0] as Record<string, unknown>;
-        const parts = [m.a, m.b, m.c, m.d, m.e, m.f];
-        if (parts.every((p) => typeof p === "number"))
-          current = parts as Matrix;
-      }
-    } else if (method === "resetTransform") {
-      current = IDENTITY;
+    } else {
+      current = transformed(current, method, args) ?? current;
     }
     visit(call, current);
   }
-}
-
-/**
- * Every run of text the frame drew, with its anchor in logical stage units.
- *
- * At the harness's default shape the canvas is the stage at one pixel per unit,
- * so what comes back is directly comparable with the figures `specs/table.md`
- * and `specs/controls.md` fix — which is how `screens/hud-shows-mode-label` reads
- * where a label landed and `presentation/hud-labels-drawn` reads whether each one
- * is inside its own rectangle.
- */
-export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
-  const draws: TextDraw[] = [];
-  walkTransforms(calls, (call, m) => {
-    if (call.kind !== "call") return;
-    if (call.method !== "fillText" && call.method !== "strokeText") return;
-    const [text] = call.args;
-    const at = numbers(call.args.slice(1), 2);
-    if (typeof text !== "string" || at === null) return;
-    const anchor = applyMatrix(m, at[0], at[1]);
-    // The run's width under the same horizontal scale the anchor took, laid out
-    // about the anchor the way the alignment in force places it.
-    const width =
-      typeof call.width === "number" && Number.isFinite(call.width)
-        ? call.width * Math.hypot(m[0], m[1])
-        : 0;
-    const before =
-      call.textAlign === "center"
-        ? width / 2
-        : call.textAlign === "right" || call.textAlign === "end"
-          ? width
-          : 0;
-    draws.push({
-      text,
-      ...anchor,
-      left: anchor.x - before,
-      right: anchor.x - before + width,
-    });
-  });
-  return draws;
-}
-
-/** The geometry calls a frame made, by name. */
-export const DRAW_METHODS: readonly string[] = [
-  "arc",
-  "ellipse",
-  "rect",
-  "roundRect",
-  "fillRect",
-  "strokeRect",
-  "moveTo",
-  "lineTo",
-  "quadraticCurveTo",
-  "bezierCurveTo",
-  "fill",
-  "stroke",
-  "drawImage",
-];
-
-/** How many drawing operations the frame issued. */
-export function drawOps(calls: readonly DrawCall[]): number {
-  return calls.filter(
-    (call) => call.kind === "call" && DRAW_METHODS.includes(call.method),
-  ).length;
-}
-
-/**
- * Every logical point a frame's drawing calls named, mapped through the
- * transform in force at each.
- *
- * The leading pair of arguments is the position for every method listed, except
- * the curve calls, whose control points come first and whose endpoint is the
- * last pair.
- */
-export function drawnPoints(
-  calls: readonly DrawCall[],
-): { x: number; y: number }[] {
-  const points: { x: number; y: number }[] = [];
-  walkTransforms(calls, (call, m) => {
-    if (call.kind !== "call") return;
-    const { method, args } = call;
-    const push = (x: unknown, y: unknown): void => {
-      if (typeof x === "number" && typeof y === "number") {
-        points.push(applyMatrix(m, x, y));
-      }
-    };
-    if (
-      method === "arc" ||
-      method === "ellipse" ||
-      method === "rect" ||
-      method === "roundRect" ||
-      method === "fillRect" ||
-      method === "strokeRect" ||
-      method === "moveTo" ||
-      method === "lineTo"
-    ) {
-      push(args[0], args[1]);
-    } else if (method === "drawImage") {
-      // The source comes first, so the destination is the pair after it — or,
-      // in the nine-argument form, the pair after the source sub-rect.
-      if (args.length >= 9) push(args[5], args[6]);
-      else push(args[1], args[2]);
-    } else if (method === "quadraticCurveTo") {
-      push(args[0], args[1]);
-      push(args[2], args[3]);
-    } else if (method === "bezierCurveTo") {
-      push(args[0], args[1]);
-      push(args[2], args[3]);
-      push(args[4], args[5]);
-    }
-  });
-  return points;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2481,60 +952,20 @@ export function drawnPoints(
 // hex value, and the DISTANCE it demands is the check's own figure, stated in the
 // check beside the figure `specs/` fixes for it. Nothing here fixes one.
 
-/** A sampled colour, each channel 0–255. */
-export interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-/** Euclidean distance between two colours, 0 to about 441. */
-export function colorDistance(a: Rgb, b: Rgb): number {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
-
-/** A colour's luminance: the reading a ramp brightens along. */
-export function luminance(c: Rgb): number {
-  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-}
-
 /**
- * The five offsets a colour sample is averaged over, in logical units.
+ * How far out the four neighbours of a colour sample sit, in logical units.
  *
- * The centre plus four neighbours six units out. A card is `100 x 140`, so a
- * cluster this size sits well inside one wherever it is sampled, and one stray
- * anti-aliased edge, rounded corner or drop shadow cannot swing the reading.
- * Sample a card away from its own rank and suit glyphs when the reading is meant
- * to be of the card's ground rather than of its marks.
+ * A card is `100 x 140`, so a cluster this size sits well inside one wherever it
+ * is sampled, and one stray anti-aliased edge, rounded corner or drop shadow
+ * cannot swing the reading. Sample a card away from its own rank and suit glyphs
+ * when the reading is meant to be of the card's ground rather than of its marks.
  */
-const SAMPLE_OFFSETS: readonly (readonly [number, number])[] = [
-  [0, 0],
-  [6, 0],
-  [-6, 0],
-  [0, 6],
-  [0, -6],
-];
+const SAMPLE_RADIUS = 6;
 
 /** The rendered colour at a logical point, averaged over that small cluster. */
-export async function sampleColor(
-  h: Harness,
-  x: number,
-  y: number,
-): Promise<Rgb> {
-  const read = await h.pixels(
-    SAMPLE_OFFSETS.map(([dx, dy]) => ({ x: x + dx, y: y + dy })),
-  );
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [pr, pg, pb] of read) {
-    r += pr;
-    g += pg;
-    b += pb;
-  }
-  return { r: r / read.length, g: g / read.length, b: b / read.length };
+export function sampleColor(h: Harness, x: number, y: number): Promise<Rgb> {
+  return sampleCluster(h, x, y, SAMPLE_RADIUS);
 }
-
 /* -------------------------------------------------------------------------- */
 /* Geometry                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -2547,12 +978,6 @@ export async function sampleColor(
 // Positions are TOP-LEFT corners in logical stage units, which is the convention
 // `specs/overview.md` fixes for the whole case and the one the debug surface
 // takes and reports. A centre is only ever produced by asking for one.
-
-/** A point in logical stage units. */
-export interface Point {
-  x: number;
-  y: number;
-}
 
 /**
  * The anchor of one of the thirteen piles: the top-left a squared pile's cards
@@ -2594,11 +1019,6 @@ function requireSlot(
 /** The centre of a card whose top-left is `(x, y)`. */
 export function cardCenter(x: number, y: number): Point {
   return { x: x + CARD_W / 2, y: y + CARD_H / 2 };
-}
-
-/** The centre of a rectangle. */
-export function rectCenter(r: Rect): Point {
-  return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
 }
 
 /** Whether a point lies inside a rectangle, half-open on the far edges. */
@@ -2776,7 +1196,7 @@ export function paintedBoxes(calls: readonly DrawCall[]): Rect[] {
     const trace = (i: number, j: number): void => {
       const x = num(i);
       const y = num(j);
-      if (x !== null && y !== null) points.push(applyMatrix(m, x, y));
+      if (x !== null && y !== null) points.push(apply(m, x, y));
     };
 
     if (method === "beginPath") {
@@ -2795,7 +1215,7 @@ export function paintedBoxes(calls: readonly DrawCall[]): Rect[] {
       const w = num(2);
       const height = num(3);
       if (x !== null && y !== null && w !== null && height !== null) {
-        points.push(applyMatrix(m, x, y), applyMatrix(m, x + w, y + height));
+        points.push(apply(m, x, y), apply(m, x + w, y + height));
       }
       return;
     }
@@ -2834,7 +1254,7 @@ function boxOfRect(
   h: number | null,
 ): Rect | null {
   if (x === null || y === null || w === null || h === null) return null;
-  const origin = applyMatrix(m, Math.min(x, x + w), Math.min(y, y + h));
+  const origin = apply(m, Math.min(x, x + w), Math.min(y, y + h));
   return {
     x: origin.x,
     y: origin.y,
@@ -2955,7 +1375,6 @@ export function columnRowTops(
   }
   return rows;
 }
-
 /* -------------------------------------------------------------------------- */
 /* Reading a snapshot                                                         */
 /* -------------------------------------------------------------------------- */
@@ -3396,6 +1815,57 @@ export async function openTable(h: Harness): Promise<void> {
 }
 
 /**
+ * Pose one of the other three screens, over an empty table.
+ *
+ * `openTable`'s siblings, built out of the same three atomic operations in the
+ * same order: `reset()`, `setScreen(...)`, `clearTable()`
+ * (`specs/instrumentation.md`).
+ *
+ * WHY `setScreen` RATHER THAN THE ROUTE A PLAYER TAKES. A check about what the
+ * how-to screen draws, or about the key that leaves it, must not fail because the
+ * title's `HOW TO PLAY` control is broken — `screens/title-how-to-opens` is the
+ * item that grades that control. So a check poses the screen it is about directly,
+ * and only a check whose subject IS a control presses one.
+ *
+ * WHY THE TABLE IS CLEARED. `specs/screens.md` lets the table show behind the
+ * title and how-to screens, "dimmed or otherwise quieted", so what sits behind
+ * the copy is the build's. Clearing it is the isolation rule: the world holds
+ * only what the requirement concerns. It also fixes what a captured frame shows,
+ * so two runs of the same check leave comparable evidence.
+ *
+ * NONE OF THEM ASSERTS A VERDICT. They arrange; the check decides.
+ */
+export async function openTitle(h: Harness): Promise<void> {
+  await h.debug.reset();
+  await h.debug.setScreen("title");
+  await h.debug.clearTable();
+}
+
+/** The how-to screen, over an empty table. */
+export async function openHowto(h: Harness): Promise<void> {
+  await h.debug.reset();
+  await h.debug.setScreen("howto");
+  await h.debug.clearTable();
+}
+
+/**
+ * The `won` screen, over an empty table, with nothing in flight and nothing
+ * painted.
+ *
+ * `reset` already leaves all three of those (`specs/instrumentation.md`), so this
+ * is {@link openTitle} with a different screen. It is the direct route to the one
+ * requirement `specs/victory.md` states about the screen rather than about the
+ * cascade: "A press anywhere, during the cascade or after it, deals a fresh game
+ * and moves to the `playing` screen." A check whose subject IS the cascade wins
+ * the game through {@link startCascade} instead.
+ */
+export async function openWon(h: Harness): Promise<void> {
+  await h.debug.reset();
+  await h.debug.setScreen("won");
+  await h.debug.clearTable();
+}
+
+/**
  * Add cards to the top of a pile, first given first, and hand back their ids in
  * the same order.
  *
@@ -3657,7 +2127,6 @@ export async function startCascade(
   }
 }
 
-/* -------------------------------------------------------------------------- */
 /* Gestures                                                                   */
 /* -------------------------------------------------------------------------- */
 //
@@ -3683,8 +2152,9 @@ export async function startCascade(
  *
  * Whether this is a CLICK or a DROP is the caller's to arrange: a release within
  * `DRAG_THRESHOLD` (`5`) of the press is a click (`specs/controls.md`), and
- * `handling/drag-threshold` is the item that grades the boundary. This helper
- * fixes neither side of it.
+ * `handling/short-gesture-is-a-click` and
+ * `handling/long-gesture-is-a-drop` are the items that grade the boundary. This
+ * helper fixes neither side of it.
  */
 export async function drag(
   h: Harness,
@@ -3786,36 +2256,19 @@ export async function toggleOverlay(h: Harness): Promise<void> {
   await h.tap(OVERLAY_KEY);
 }
 
-/* ---- The real pointer ------------------------------------------------------ */
-
-/** Press the real mouse at a logical stage point, and run the frame that reads it. */
-export async function mousePress(
-  h: Harness,
-  x: number,
-  y: number,
-): Promise<void> {
-  const at = h.css(x, y);
-  await h.page.mouse.move(at.x, at.y);
-  await h.page.mouse.down();
-  await h.advance(1);
-}
-
-/** Move the held mouse to a logical stage point, and run the frame that reads it. */
-export async function mouseGlide(
-  h: Harness,
-  x: number,
-  y: number,
-): Promise<void> {
-  const at = h.css(x, y);
-  await h.page.mouse.move(at.x, at.y);
-  await h.advance(1);
-}
-
-/** Release the real mouse, and run the frame that reads it. */
-export async function mouseRelease(h: Harness): Promise<void> {
-  await h.page.mouse.up();
-  await h.advance(1);
-}
+/* ---- The real mouse and the real finger ------------------------------------ */
+//
+// `mousePress`, `mouseGlide`, `mouseRelease`, `touchPress`, `touchGlide`,
+// `touchRelease` and `touchTap` are the shared harness's and are re-exported
+// above. Each drives one real Chromium event and then runs exactly one frame, so
+// a check that counts frames can add them up, and a build that reads its input
+// once per frame sees the press held while a frame runs. Use them where the
+// subject is what a FRAME did with a player's input — every audio cue, the menus'
+// pointer and touch points, and `handling/sweep-resolves-per-sample` — because a
+// posed pointer resolves between frames and a cue is played on the frame its
+// event happens (`specs/audio.md`).
+//
+// The one below is Cascade's, because no other case needs it.
 
 /**
  * Press, move and release the REAL mouse without a frame in between, then run one
@@ -3842,4 +2295,141 @@ export async function mouseSweepInOneFrame(
   for (const at of rest) await h.page.mouse.move(at.x, at.y);
   await h.page.mouse.up();
   await h.advance(1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The menus                                                                  */
+/* -------------------------------------------------------------------------- */
+//
+// WHERE AN ITEM SITS IS THE BUILD'S, AND IS ASKED FOR RATHER THAN ASSUMED.
+// `specs/controls.md` leaves each control's hit region to the build — "Each
+// control occupies a rectangular hit region the build lays out" — and
+// `specs/instrumentation.md` has the build report it through `menuItemRect`. So
+// every gesture below is aimed at the middle of what the build answered with,
+// which is what lets any layout pass and fails only a build that reports a region
+// it does not answer on. NOTHING HERE IMPORTS A CONTROL RECTANGLE, and nothing
+// may: `./constants.ts` fixes the ORDER of a screen's items and no position.
+//
+// EVERY GESTURE IS A REAL ONE. A mouse is a real Chromium mouse and a finger is a
+// real Chromium touch contact, because the two menu rules the specification gives
+// them are DIFFERENT — a mouse selects the item it moves onto, and a finger,
+// which never hovers, selects the item it lands on — and a posed `pointerMove`
+// through the surface is neither of them. The posed pointer stays what the table
+// gestures use, where a press is a press whatever raised it.
+
+/**
+ * Press several keys so that all of their edges land on ONE frame, then run it.
+ *
+ * What the two ordering rules at the end of `specs/controls.md`'s keyboard section
+ * are about: "When several edges arrive on one frame, `menu-up` is applied before
+ * `menu-down`, and movement before `menu-confirm`." Every key goes down before the
+ * frame runs and comes up after it, so a build reading press edges once a frame
+ * sees all of them on that frame, and one comparing held state between frames sees
+ * every one of them held across it.
+ */
+export async function pressKeysInOneFrame(
+  h: Harness,
+  codes: readonly string[],
+): Promise<void> {
+  for (const code of codes) await h.page.keyboard.down(code);
+  await h.advance(1);
+  for (const code of codes) await h.page.keyboard.up(code);
+}
+
+/**
+ * The region the build reports for item `index` of the menu the current screen
+ * shows.
+ *
+ * Fails the running check when the build answers `null`, because a scenario that
+ * has to drive an item has nothing to say when the build will not say where the
+ * item is. `navigation/menu-item-rect-reported` is the point that grades the read
+ * itself, including the two answers that are legitimately `null`.
+ */
+export async function menuRect(h: Harness, index: number): Promise<MenuRect> {
+  const screen = (await h.snapshot()).screen;
+  const rect = await h.debug.menuItemRect(index);
+  if (rect === null) {
+    fail(
+      `menuItemRect(${index}) to report a region for item ${index} of the ` +
+        `menu the ${screen} screen shows (specs/instrumentation.md)`,
+      "null, so the build reports no region for it",
+    );
+  }
+  return rect;
+}
+
+/** The middle of that region: where a check aims its pointer or its finger. */
+export async function menuPoint(h: Harness, index: number): Promise<Point> {
+  return rectCenter(await menuRect(h, index));
+}
+
+/** Move the real mouse onto item `index`, and run the frame that reads it. */
+export async function hoverItem(h: Harness, index: number): Promise<void> {
+  const at = await menuPoint(h, index);
+  await mouseGlide(h, at.x, at.y);
+}
+
+/**
+ * Press and release the real mouse inside item `index`.
+ *
+ * Both edges land in one region, which is the gesture `specs/controls.md` says
+ * activates that item.
+ */
+export async function clickItem(h: Harness, index: number): Promise<void> {
+  const at = await menuPoint(h, index);
+  await mousePress(h, at.x, at.y);
+  await mouseRelease(h);
+}
+
+/**
+ * Press the real mouse inside item `from`, carry it into item `to`, and release
+ * it there.
+ *
+ * The two edges land in different regions, which `specs/controls.md` says
+ * activates nothing.
+ */
+export async function dragBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = await menuPoint(h, from);
+  const end = await menuPoint(h, to);
+  await mousePress(h, start.x, start.y);
+  await mouseGlide(h, end.x, end.y);
+  await mouseRelease(h);
+}
+
+/** Land a real touch contact inside item `index`, and leave it down. */
+export async function touchItem(h: Harness, index: number): Promise<void> {
+  const at = await menuPoint(h, index);
+  await touchPress(h, at.x, at.y);
+}
+
+/** Land a real touch contact inside item `index` and lift it there. */
+export async function tapItem(h: Harness, index: number): Promise<void> {
+  await touchItem(h, index);
+  await touchRelease(h);
+}
+
+/**
+ * Land a real touch contact inside item `from`, travel it onto item `to`, and
+ * lift it there.
+ */
+export async function touchBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  // BOTH POINTS ARE READ BEFORE THE FIRST CONTACT, as {@link dragBetweenItems}
+  // reads them. The landing runs a frame, so a build that wrongly activated on
+  // it has changed screen by the time the second region would be read, and
+  // `menuItemRect` would then answer for a DIFFERENT screen's menu — the check
+  // would still fail, but its message would name a region the gesture never
+  // touched.
+  const start = await menuPoint(h, from);
+  const end = await menuPoint(h, to);
+  await touchPress(h, start.x, start.y);
+  await touchGlide(h, end.x, end.y);
+  await touchRelease(h);
 }

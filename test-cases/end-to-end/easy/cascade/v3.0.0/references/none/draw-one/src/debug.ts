@@ -17,11 +17,14 @@
 // Without it a scenario could only be driven by waiting, and a check that waits
 // measures the machine it ran on.
 //
-// WHAT IS DELIBERATELY ABSENT: there is no `setMuted` (mute is reached the way
-// a player reaches it, through the HUD's `SOUND` control, and the snapshot
-// reports the result), no menu operation (Cascade's menus carry no selection; a
-// validator presses a control's rectangle), and nothing about the overlay (the
-// runtime draws the panel and owns the backtick key).
+// MUTING REACHES PAST THE STATE TOO, for the same reason: the runtime layer
+// holds the mute bit, so `setMuted` sets it directly and the HUD's `SOUND`
+// control toggles that same bit (`specs/instrumentation.md`).
+//
+// WHAT IS DELIBERATELY ABSENT: nothing about the overlay, because the runtime
+// draws the panel and owns the backtick key; and no pose for `titleIndex`,
+// because the specification declares no operation for it — the field follows
+// the title entry a player activates.
 
 import { addFlyer as addFlyerTo } from "./cascade";
 import {
@@ -42,6 +45,7 @@ import {
   wasteVisibleCount,
 } from "./board";
 import { resolvePointer } from "./controls";
+import { menuItemRect } from "./menus";
 import {
   clearTable as clearWholeTable,
   clearTrail as clearPaintedLayer,
@@ -54,6 +58,7 @@ import type {
   CardColor,
   Flyer,
   PileName,
+  Rect,
   Screen,
   SourcePile,
   Suit,
@@ -117,6 +122,8 @@ export interface FlyerView {
 export interface CascadeSnapshot {
   version: number;
   screen: Screen;
+  menuIndex: number;
+  titleIndex: number;
   dealMode: string;
   turnCount: number;
   dealModeLabel: string;
@@ -154,11 +161,16 @@ export interface CascadeDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): CascadeSnapshot;
+  menuItemRect(index: number): Rect | null;
 
   setAutoStep(enabled: boolean): void;
   advance(seconds: number, frames?: number): void;
 
+  setMuted(muted: boolean): void;
+
   setScreen(screen: Screen): void;
+  setMenuIndex(index: number): void;
+  setTitleIndex(index: number): void;
 
   addCard(
     pile: PileName,
@@ -283,6 +295,8 @@ export function createDebugApi(
       return {
         version: CASCADE_DEBUG_VERSION,
         screen: state.screen,
+        menuIndex: state.menuIndex,
+        titleIndex: state.titleIndex,
         dealMode: DEAL_MODE,
         turnCount: TURN_COUNT,
         dealModeLabel: DEAL_MODE_LABEL,
@@ -353,9 +367,44 @@ export function createDebugApi(
       clock.advance(seconds, frames);
     },
 
+    /**
+     * The hit region of item `index` on the menu the current screen shows.
+     *
+     * `null` on `won`, which shows no menu, and for an index naming no item of
+     * the menu the current screen shows (`specs/instrumentation.md`). It is a
+     * READING: the layout is this build's, and this is how it reports it.
+     */
+    menuItemRect(index) {
+      return menuItemRect(state.screen, index);
+    },
+
+    /**
+     * Set the runtime's mute bit: the same bit the HUD's `SOUND` control
+     * toggles and the same bit `snapshot` reports as `muted`.
+     *
+     * It plays no cue and changes no other field
+     * (`specs/instrumentation.md`, Muting).
+     */
+    setMuted(muted) {
+      audio.setMuted(muted);
+      // Mirrored at once as well as in every update, so the bit the snapshot
+      // reports is the bit the runtime holds the instant the pose landed.
+      state.muted = audio.muted();
+    },
+
     /** Set the screen, leaving the table exactly as it stands. */
     setScreen(screen) {
       state.screen = screen;
+    },
+
+    /** Set the selected item on the menu the current screen shows. */
+    setMenuIndex(index) {
+      state.menuIndex = index;
+    },
+
+    /** Set the title entry a return to the title restores, and nothing else. */
+    setTitleIndex(index) {
+      state.titleIndex = index;
     },
 
     /**

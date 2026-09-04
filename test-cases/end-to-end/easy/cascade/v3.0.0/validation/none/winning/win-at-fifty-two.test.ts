@@ -16,7 +16,7 @@
 // fifty-second is carried home by the game's own move rules, so the build's own
 // win test is what moves the screen. `setWinDetect` is left ON at its reset
 // default and asserted so, because the gate itself is
-// `instrumentation/win-detect-gate`'s to grade and a check that quietly ran with
+// `instrumentation/win-detect-gate-off`'s to grade and a check that quietly ran with
 // it off would decide nothing.
 //
 // THE READING IS TAKEN BEFORE A FRAME RUNS. `specs/victory.md` starts the launch

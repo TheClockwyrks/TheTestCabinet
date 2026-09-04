@@ -25,10 +25,11 @@
 
 import { defineCues, playCues } from "./audio";
 import { stepCascade } from "./cascade";
-import type { CueName } from "./constants";
+import { MENU_BINDINGS, type CueName } from "./constants";
 import { createDebugApi, type CascadeDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { openingState } from "./flow";
+import { applyMenuActions } from "./navigation";
 import { pointerDown, pointerMove, pointerUp } from "./pointer";
 import { renderGame } from "./render";
 import { COLOR } from "./theme";
@@ -113,6 +114,10 @@ export interface FlyerState {
 /** The whole of Cascade's state. */
 export interface CascadeState {
   readonly screen: Screen;
+  /** The selected item on the menu the current screen shows. */
+  readonly menuIndex: number;
+  /** The title menu's remembered selection: the entry last activated there. */
+  readonly titleIndex: number;
 
   readonly stock: readonly CardState[];
   readonly waste: readonly CardState[];
@@ -196,6 +201,12 @@ export const game: Game<CascadeState, CascadeDebugApi> = {
   initialize(api: InitApi<CascadeState>): [CascadeState, CascadeDebugApi] {
     defineCues(api);
     registerDiagnostics(api);
+    // The four menu actions specs/controls.md names, each bound to the codes it
+    // fixes. The engine owns the keyboard, so the game registers names and reads
+    // press edges back through `api.input.pressed`.
+    for (const [name, keys] of Object.entries(MENU_BINDINGS)) {
+      api.input.register(name, { keys: [...keys] });
+    }
     return [
       openingState(undefined, false, createTrailLayer()),
       createDebugApi(),
@@ -220,16 +231,19 @@ export const game: Game<CascadeState, CascadeDebugApi> = {
     dt: number,
   ): CascadeState {
     const handled = handlePointer(state, api);
+    // The frame's menu-action edges, in the order specs/controls.md fixes for a
+    // frame carrying more than one.
+    const navigated = applyMenuActions(handled.state, api);
     const ticked: CascadeState = {
-      ...handled.state,
-      simTime: handled.state.simTime + dt,
+      ...navigated.state,
+      simTime: navigated.state.simTime + dt,
     };
     const cascaded = stepCascade(ticked, dt);
 
     if (cascaded.state.muted !== api.audio.muted()) {
       api.audio.setMuted(cascaded.state.muted);
     }
-    playCues(api, [...handled.cues, ...cascaded.cues]);
+    playCues(api, [...handled.cues, ...navigated.cues, ...cascaded.cues]);
 
     return { ...cascaded.state, muted: api.audio.muted() };
   },

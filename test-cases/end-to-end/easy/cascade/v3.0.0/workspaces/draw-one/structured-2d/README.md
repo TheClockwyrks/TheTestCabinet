@@ -52,23 +52,26 @@ Cascade draws every card, the table, the HUD and every screen in code. There are
 no image assets, and none are seeded.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test` runs
-them in process, with coverage over `src/`. A test stands the engine up over its
-own canvas, scripted clock, and surface, steps it with `engine.advance`, and reads
-the result back from the world and the debug surface. The engine's documentation
-carries a complete worked example of testing a game this way.
+them in process, with coverage over the code you write under `src/`. A test
+stands the engine up over its own canvas, scripted clock, and surface, steps it
+with `engine.advance`, and reads the result back from the world and the debug
+surface. The engine's documentation carries a complete worked example of testing
+a game this way.
 
 ## What you must not edit
 
 - **`src/main.ts`** — the fixed entry point. It creates the engine over the page's
   canvas, binds `game` to it, and runs.
 - **`src/constants.ts`** — every figure the specification fixes: the table's
-  geometry, the control rectangles, the deck, this build's deal mode, the
+  geometry, the key bindings, the deck, this build's deal mode, the
   cascade's figures, the screen copy, the cue names, the level name, the actor
   tags. Read from it.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
+  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+  and `.gitignore`.
 - **`.tcab/`** — the vendored engine.
+- **`engine/`** — the engine's own documentation.
 
 Add dependencies to `package.json` if you genuinely need them, and commit the
 `package-lock.json` — the build is installed with `npm ci`. Leave the existing

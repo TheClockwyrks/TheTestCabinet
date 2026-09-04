@@ -38,25 +38,27 @@ import {
   DECK_SIZE,
   FOUNDATION_X,
   HUD_ITEMS,
-  HUD_MENU,
-  HUD_NEW_GAME,
-  HUD_SOUND,
   STAGE_H,
   STAGE_W,
   STOCK_X,
   TABLEAU_Y,
   TAGLINE_TEXT,
-  TITLE_HOW_TO,
   TITLE_ITEMS,
-  TITLE_NEW_GAME,
   TITLE_TEXT,
   TOP_ROW_Y,
   TURN_COUNT,
   WASTE_X,
   WASTE_FAN,
   WIN_TEXT,
-  type Rect,
 } from "./constants";
+import {
+  HUD_MENU,
+  HUD_NEW_GAME,
+  HUD_SOUND,
+  TITLE_HOW_TO,
+  TITLE_NEW_GAME,
+} from "./menus";
+import type { Rect } from "./layout";
 import {
   BACKGROUND,
   game,

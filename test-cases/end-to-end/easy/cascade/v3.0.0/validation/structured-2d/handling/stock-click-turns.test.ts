@@ -31,7 +31,8 @@
 // and `TURN_COUNT` arrived.
 //
 // THE CLICK IS AT ZERO DISTANCE, which is inside `DRAG_THRESHOLD` by any reading;
-// `handling/drag-threshold` is the point that decides where the threshold lies.
+// `handling/short-gesture-is-a-click` and `handling/long-gesture-is-a-drop` are the
+// points that decide where the threshold lies.
 // The press lands on the centre of the stock's own drop rectangle, so nothing
 // here depends on where within it a build answers.
 //

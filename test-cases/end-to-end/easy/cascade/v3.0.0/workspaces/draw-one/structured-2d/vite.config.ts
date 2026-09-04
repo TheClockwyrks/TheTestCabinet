@@ -5,8 +5,8 @@
 // served at the root of a static host or from a sub-path.
 //
 // There is no asset-copying plugin here, and no `assets/` tree to copy: Cascade
-// draws every card, the table, the HUD and every screen in code, so the case
-// seeds no art at all.
+// draws every card, the table, the HUD and every screen in code, so this project
+// ships no art at all.
 
 import { defineConfig } from "vite";
 

@@ -3,10 +3,11 @@
 //
 // `specs/screens.md`, the `title` screen's item table: "`NEW GAME` — Deals a
 // fresh game, as `specs/deal.md` states, and moves to `playing`."
-// `specs/controls.md` fixes how the item is reached: a click, which is a press
-// and a release within `DRAG_THRESHOLD` of it, "activates the control whose hit
-// rectangle contains the press point", and `TITLE_NEW_GAME` is
-// `{ x: 480, y: 448, w: 320, h: 52 }`.
+// `specs/controls.md` fixes how the item is reached: "Either kind of gesture
+// activates a control when one control's hit region holds both the press point
+// and the release point." WHERE that region is is the build's own, so the press
+// is made at the middle of what `menuItemRect(TITLE_NEW_GAME_ITEM)` answered
+// with.
 //
 // THE POSE IS WHAT MAKES THE DEAL READABLE. The table is cleared before the
 // click, so the fifty-two cards afterwards are cards this control put there and
@@ -23,19 +24,16 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { DECK_SIZE, TITLE_NEW_GAME } from "../constants";
+import { DECK_SIZE, TITLE_NEW_GAME_ITEM } from "../constants";
 import {
   captureStill,
   clickAt,
   createHarness,
   everyCard,
-  rectCenter,
+  menuPoint,
+  openTitle,
   type Harness,
 } from "../harness";
-import { openTitle } from "./screens";
-
-/** The point pressed and released: the centre of the control's own rectangle. */
-const PRESS = rectCenter(TITLE_NEW_GAME);
 
 /** One frame, so the canvas carries the table the assertions read. */
 const SETTLE_FRAMES = 1;
@@ -58,7 +56,8 @@ it("deals a full deck and enters play", async () => {
     "the cards on the table before the click",
   );
 
-  await clickAt(h, PRESS.x, PRESS.y);
+  const press = await menuPoint(h, TITLE_NEW_GAME_ITEM);
+  await clickAt(h, press.x, press.y);
   await h.advance(SETTLE_FRAMES);
   await captureStill(h, "playing");
 

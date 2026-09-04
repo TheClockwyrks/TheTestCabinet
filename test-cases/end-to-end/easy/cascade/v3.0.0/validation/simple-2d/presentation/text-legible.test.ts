@@ -9,7 +9,7 @@
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. The CONTRAST of the strings a build
 // draws, and nothing about which strings those are: that the title screen shows
 // `TITLE_TEXT`, its tagline and its two items is `screens.title-shows-title`,
-// `screens.title-shows-tagline` and `screens.title-shows-items`, and the HUD's
+// `screens.title-shows-tagline` and `screens.title-shows-new-game`, and the HUD's
 // labels are `presentation/hud-labels-drawn`. Deciding the same fact in two
 // groups would dock one defect twice, so this point reads every run of text the
 // build drew, whichever it is, and asks only whether a player can read it.
@@ -36,7 +36,7 @@
 // A SCREEN THAT DRAWS NO TEXT AT ALL PASSES HERE, and that is the same division
 // again rather than a hole: there is nothing to be illegible, and the strings a
 // build owes are owed to `screens.title-shows-title`,
-// `screens.title-shows-tagline`, `screens.title-shows-items` and
+// `screens.title-shows-tagline`, `screens.title-shows-new-game` and
 // `presentation/hud-labels-drawn`, every one of which fails a build that drew
 // none of them. This point is the contrast those points do not read.
 //

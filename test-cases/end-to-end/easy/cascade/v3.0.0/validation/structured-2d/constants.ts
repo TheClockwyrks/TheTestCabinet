@@ -22,14 +22,17 @@
 // `specs/` instead, and the spec is authoritative: if a value here disagrees with
 // the spec file cited beside it, this file is wrong.
 //
-// NOTHING HERE IS READ FROM THE BUILD. This is the ONE file in the project
-// permitted to import `../src/constants`, and it does not need to: a value a
-// validator may read out of a build is one the specification leaves to the build
-// — which touch layout it registers, which key it bound where the specs name none
-// — and Cascade leaves none of that. The game is played entirely with the pointer
-// at fixed stage coordinates, and `specs/` fixes every figure these checks touch.
-// So the file imports no value at all, and the section a case with such a value
-// would carry is empty here on purpose.
+// NO FIGURE HERE IS READ FROM THE BUILD, and exactly one value is. Every figure
+// below — every position, every count, every threshold's subject — is
+// transcribed from `specs/` by hand, and the spec is authoritative: if a value
+// here disagrees with the spec file cited beside it, this file is wrong.
+//
+// The one value read from the build is `BACKGROUND`, and the last section of
+// this file says why: `specs/` fixes no palette, so the ground the build clears
+// its stage to is the build's own, and a reading that asks whether two things
+// the build drew stand apart has to know which colour is the ground. It grades
+// nothing. This is the ONE file in the project permitted to reach into `../src/`,
+// and it takes that one binding by name.
 //
 // WHAT IS DELIBERATELY ABSENT.
 //
@@ -77,6 +80,15 @@ export const STOCK_X = 224;
 export const WASTE_X = 346;
 export const FOUNDATION_X: readonly number[] = [590, 712, 834, 956];
 
+/**
+ * The third column position, which carries no pile in the top row.
+ *
+ * `specs/table.md` fixes that nothing card-sized is drawn there under Draw One,
+ * and that the only thing over any of it under Draw Three is the right end of
+ * the waste's fan. `table/foundation-anchors` reads it.
+ */
+export const TOP_ROW_GAP_X = 468;
+
 /** The top edge of every column's first card. */
 export const TABLEAU_Y = 180;
 
@@ -96,25 +108,56 @@ export const HUD_H = 36;
 /* The controls (specs/controls.md)                                           */
 /* -------------------------------------------------------------------------- */
 
-export const TITLE_NEW_GAME: Rect = { x: 480, y: 448, w: 320, h: 52 };
-export const TITLE_HOW_TO: Rect = { x: 480, y: 516, w: 320, h: 52 };
-export const HOWTO_BACK: Rect = { x: 480, y: 600, w: 320, h: 52 };
-export const HUD_NEW_GAME: Rect = { x: 224, y: 680, w: 180, h: 36 };
-export const HUD_MENU: Rect = { x: 420, y: 680, w: 120, h: 36 };
-export const HUD_SOUND: Rect = { x: 556, y: 680, w: 120, h: 36 };
-
 /**
  * A release within this of its press is a click rather than a drop
  * (`specs/controls.md`).
  *
- * It is a figure, not a tolerance: `handling/drag-threshold` is the one check
- * that grades it, and it states both sides of the rule itself.
+ * It is a figure, not a tolerance: `handling/short-gesture-is-a-click` and
+ * `handling/long-gesture-is-a-drop` are the two checks that grade it, and each
+ * states its own side of the rule.
  */
 export const DRAG_THRESHOLD = 5;
 
 /** The window and the slop the double-click rule is measured with. */
 export const DOUBLE_CLICK_WINDOW = 0.3;
 export const DOUBLE_CLICK_SLOP = 20;
+
+/* -------------------------------------------------------------------------- */
+/* The menus (specs/controls.md, specs/screens.md)                            */
+/* -------------------------------------------------------------------------- */
+//
+// WHERE the items sit is NOT here, and must not be. `specs/controls.md` leaves
+// each control's hit region to the build — "Each control occupies a rectangular
+// hit region the build lays out" — and has the build report it through
+// `menuItemRect`. So a check aims at the region the build answered with, and the
+// only thing this file fixes about a menu is its ORDER, which the specification
+// does fix: the controls of a screen are that screen's menu "in the order the
+// table above gives them".
+
+/** The two items of the title menu, in `TITLE_ITEMS` order. */
+export const TITLE_NEW_GAME_ITEM = 0;
+export const TITLE_HOW_TO_ITEM = 1;
+
+/** The how-to screen's one item, labelled `HOWTO_BACK_LABEL`. */
+export const HOWTO_BACK_ITEM = 0;
+
+/** The three items of the HUD's menu, in `HUD_ITEMS` order. */
+export const HUD_NEW_GAME_ITEM = 0;
+export const HUD_MENU_ITEM = 1;
+export const HUD_SOUND_ITEM = 2;
+
+/**
+ * The keys `specs/controls.md` binds each of the four menu actions to, as
+ * `KeyboardEvent.code` values.
+ *
+ * An action bound to two codes is one requirement: both raise the same action and
+ * exercise the same rule the same way, so a point drives both and a build that
+ * bound only one of a pair fails it.
+ */
+export const MENU_UP_KEYS = ["ArrowUp", "KeyW"] as const;
+export const MENU_DOWN_KEYS = ["ArrowDown", "KeyS"] as const;
+export const MENU_CONFIRM_KEYS = ["Enter", "Space"] as const;
+export const MENU_BACK_KEY = "Escape";
 
 /* -------------------------------------------------------------------------- */
 /* The deck (specs/deal.md)                                                   */
@@ -159,7 +202,15 @@ export const TITLE_TEXT = "CASCADE";
 export const TAGLINE_TEXT = "KLONDIKE SOLITAIRE";
 export const TITLE_ITEMS = ["NEW GAME", "HOW TO PLAY"] as const;
 export const HUD_ITEMS = ["NEW GAME", "MENU", "SOUND"] as const;
+export const HOWTO_BACK_LABEL = "BACK";
 export const WIN_TEXT = "YOU WIN";
+
+/**
+ * The four tokens `specs/screens.md` requires the how-to screen to carry as
+ * standalone words. `screens/howto-copy` matches each at word boundaries; the
+ * prose around them is what the captured frame is for.
+ */
+export const HOWTO_TOKENS = ["ACE", "KING", "STOCK", "DOUBLE-CLICK"] as const;
 
 /* -------------------------------------------------------------------------- */
 /* The audio cues (specs/audio.md)                                            */
@@ -188,10 +239,35 @@ export const CUES = {
   win: "win",
 } as const;
 
+/* -------------------------------------------------------------------------- */
+/* The debug surface (specs/instrumentation.md)                               */
+/* -------------------------------------------------------------------------- */
+
+/** The version the surface reports, as a plain number. */
+export const CASCADE_DEBUG_VERSION = 1;
+
+/** The seed `reset()` uses when the caller names none. */
+export const DEFAULT_SEED = 1;
+
 /* ---- What the specification leaves to the build --------------------------- */
 //
-// Nothing. A case with a value the specs leave open — a touch layout, a key bound
-// where the specs name none — re-exports it here from `../src/constants`, read to
-// drive the build and never compared against. Cascade has no such value: every
-// figure these checks touch is fixed above, from `specs/`. This file therefore
-// imports nothing from the build, and no other file in the project may.
+// ONE VALUE, AND IT GRADES NOTHING. `specs/screens.md` and `specs/table.md` fix
+// no palette: "The palette, the type, and the layout of each screen are yours."
+// So the colour the build clears its stage to is the build's own choice, and a
+// check that compared it against a figure would be failing a build for a
+// decision the specification handed it.
+//
+// What the checks need it for is the opposite of a comparison: it LOCATES what
+// the build drew. A reading that asks whether a card, a highlight or a string
+// stands apart from what sits behind it has to know which of the two colours it
+// is looking at is the ground, and the build is the only thing that can say. So
+// `harness.ts` takes it from here to clear its own offscreen surface to the same
+// ground the build draws over, and every distance a check then measures is
+// between two things the build itself painted.
+//
+// This is the ONE file in the project permitted to import from `../src/`, and
+// this is the one binding it takes. It is taken BY NAME rather than through a
+// namespace or a re-export of the whole module, so the list of what this project
+// reads off the build is one line long and stays that way.
+
+export { BACKGROUND } from "../src/game";
