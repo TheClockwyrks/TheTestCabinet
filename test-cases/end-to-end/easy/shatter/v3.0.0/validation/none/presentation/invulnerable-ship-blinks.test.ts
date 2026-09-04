@@ -44,9 +44,12 @@
 //   - AND IT SETTLES ONCE THE GRACE ENDS. Once the window has run out the ship reads
 //     as the steady ship again, within `MAX_SETTLED` samples.
 //
-// The window is sampled every `SAMPLE_EVERY` ticks, which is a twenty-fourth of a
+// The window is sampled every `SAMPLE_STRIDE` ticks, which is a fortieth of a
 // second: fine enough to land in both phases of any blink a player could see, and
-// coarse enough that the whole window is sixty readings rather than three hundred.
+// coarse enough that the whole window is a hundred readings rather than three
+// hundred. It is the cadence `simple-2d` and `structured-2d` read this item at, so
+// a build whose blink half-period happened to divide a coarser stride cannot read
+// as steady here and as blinking there.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
@@ -70,8 +73,8 @@ import { SHIP_SPOT } from "./scene";
  */
 const LOOK_R = HULL_LEN;
 
-/** Ticks between two readings of the grace window: a twenty-fourth of a second. */
-const SAMPLE_EVERY = 5;
+/** Ticks between two readings of the grace window: a fortieth of a second. */
+const SAMPLE_STRIDE = 3;
 
 /** Ticks the whole grace window is: `INVULN_TIME` of game time. */
 const WINDOW_TICKS = ticksFor(INVULN_TIME);
@@ -141,8 +144,8 @@ it("draws the ship differently somewhere inside its grace and as before once it 
   await harness.debug.setShipInvuln(INVULN_TIME);
   let mostChanged = 0;
   let keptStill = false;
-  for (let ticks = 0; ticks < WINDOW_TICKS; ticks += SAMPLE_EVERY) {
-    await harness.advance(Math.min(SAMPLE_EVERY, WINDOW_TICKS - ticks));
+  for (let ticks = 0; ticks < WINDOW_TICKS; ticks += SAMPLE_STRIDE) {
+    await harness.advance(Math.min(SAMPLE_STRIDE, WINDOW_TICKS - ticks));
     const inside = await readDisc(harness, SHIP_SPOT, LOOK_R);
     const changed = changedSamples(steady, inside, POINT_CHANGE);
     if (changed > mostChanged) {
