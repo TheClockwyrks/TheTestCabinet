@@ -27,6 +27,10 @@
 // this code. Istanbul's instrumentation is deterministic given the source and the
 // plugin version, and it emits the JSON format that is stored natively rather
 // than through a remap.
+//
+// `src/constants.ts` and `src/main.ts` are supplied with the project and must not
+// be edited, so they are excluded from coverage and the figure reports the code
+// written here.
 
 import { defineConfig } from "vitest/config";
 
@@ -48,7 +52,7 @@ export default defineConfig({
       // and vitest writes no coverage report on failure without this.
       reportOnFailure: true,
       include: ["src/**/*.ts"],
-      exclude: ["src/**/*.test.ts"],
+      exclude: ["src/**/*.test.ts", "src/constants.ts", "src/main.ts"],
     },
   },
 });
