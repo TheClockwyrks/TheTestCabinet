@@ -31,15 +31,37 @@
 // also running a model's build. The package's eight were measured against exactly
 // that, and against the one ceiling this project cannot move: the runner caps the
 // WHOLE suite run at forty-five minutes (`VITEST_TIMEOUT`,
-// `crates/core/src/vitest_validator.rs`). This project's own measurements sit
-// inside that cap at every worker count it has been run at — on this repository's
-// twenty-core machine its checks came to twenty minutes of wall clock at four
-// workers with the load average around two hundred, twenty minutes at twelve with
-// the load average at four hundred and fifty, and twenty-nine minutes at eight
-// with the load average at four hundred and twenty. An earlier version of this
-// file raised the count to twelve to fit a cap it recorded as TWENTY minutes;
-// that figure was wrong, and with it corrected nothing here argues against the
-// measured default.
+// `crates/core/src/vitest_validator.rs`).
+//
+// WHAT THE 376-POINT CHECKLIST ACTUALLY COSTS, MEASURED AGAINST THE CONFORMANT
+// REFERENCE. Every figure below is this project's own, taken on this
+// repository's twenty-core development machine, which is shared with the other
+// cases' checklists and is never idle — the load average is quoted with each
+// because it is half the reading:
+//
+//   * all twenty cores, load average about fifteen: 75 s of wall clock, and
+//     about eight and a half minutes of test time spread over the eight workers;
+//   * all twenty cores, load average about thirty: 130 s of wall clock;
+//   * PINNED TO TWO CORES with `taskset -c 0,1`, load average about thirty:
+//     890 s — fourteen and three quarter minutes — with all 376 points decided
+//     and passed;
+//   * pinned the same way with the load average nearer fifty: 1027 s, and four
+//     suites that could not open a page on the browser at all. Those came back
+//     as unmet host faults rather than as failed points, which is the path
+//     `case-harness/host.ts` exists for.
+//
+// The two engine-backed projects next door, pinned to the same two cores at the
+// same time, came to 136 s and 154 s. The browser is the whole of the difference.
+//
+// SO THE TWO-CORE BUDGET IS MET, AND THE MARGIN IS THIN.
+// `guides/authoring/writing-debug-apis-and-validators.md` asks a case to finish
+// in fifteen minutes on a two-core host, and the reading above is fourteen and
+// three quarter minutes — on two cores that were also carrying the rest of a
+// machine at a load average of thirty, so it is a PESSIMISTIC reading of a
+// two-core host rather than a reading of a quiet one. It is not a figure to
+// spend: a checklist that grows much past 376 points should be re-measured
+// before it lands, and the run-wide forty-five-minute cap is the only thing
+// underneath it.
 //
 // THE PER-CHECK ALLOWANCE IS RAISED, AND IT IS A CEILING ON THE HOST RATHER THAN
 // A TOLERANCE ON THE BUILD. No validator in this project asserts anything about

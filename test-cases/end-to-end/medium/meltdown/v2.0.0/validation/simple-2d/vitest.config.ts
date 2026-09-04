@@ -33,6 +33,16 @@ export default defineConfig({
     // spends a minute of game time costs milliseconds; the ceiling is for the
     // sweeps that release a whole wave against a maze.
     //
+    // WHAT THE WHOLE CHECKLIST COSTS HERE, MEASURED AGAINST THE CONFORMANT
+    // REFERENCE. `guides/authoring/writing-debug-apis-and-validators.md` asks a
+    // case to finish in fifteen minutes on a two-core host. On this repository's
+    // twenty-core development machine, which is shared and never idle, these 376
+    // points came to 15 s of wall clock across all its cores at a load average
+    // of about fifteen, and to 136 s pinned to two of them with `taskset` at a
+    // load average of about thirty. The engineless project is the one that comes
+    // close to the budget, because it drives a browser; this one runs the same
+    // scenarios in process and does not.
+    //
     // TEN MINUTES, AND IT IS A CEILING ON THE HOST RATHER THAN A TOLERANCE ON
     // THE BUILD. No validator in this project asserts anything about how long it
     // took, so this figure can only ever turn a slow machine into a failing point
