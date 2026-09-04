@@ -564,7 +564,8 @@ validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
 ] }
 # The six poses-read-back items are one group of state each, so a build whose
 # only broken pose is setUnitSlow loses one point rather than the whole group.
-# Mute is in none of them: there is no setMuted.
+# Mute is in none of them, because there is no setMuted -- that the surface carries
+# no such operation is its own reading, no-pose-for-muting below.
 [[review.categories.items]]
 id = "poses-read-back-the-run"
 title = "The run poses are reported by the snapshot"
@@ -618,6 +619,20 @@ domains = ["heat", "defense", "run", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/poses-read-back-the-pointer-and-the-gate.test.ts", outputs = [
   { id = "posed", name = "The pressed pointer the poses reported", kind = "image" },
+] }
+# What the surface must NOT carry. specs/instrumentation.md gives muting to the
+# runtime, so a build that added a pose for it would be silencing its own audio
+# through a path no player has. Capped `great`: an extra debug operation costs a
+# player nothing at the controls, and what a player's mute does is decided by
+# controls.mute-key, controls.mute-control, hud.mute-read and audio.mute-silences.
+[[review.categories.items]]
+id = "no-pose-for-muting"
+title = "The surface carries no operation that sets muting"
+description = "window.__meltdown carries no callable setMuted: muting is the runtime's, reached through the mute binding or the panel's control, and the snapshot only reports it."
+domains = ["run"]
+failure_cap = "great"
+validation = { script = "instrumentation/no-pose-for-muting.test.ts", outputs = [
+  { id = "surface", name = "The game the surface was reflected on", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "derived-fields-follow"
@@ -3345,17 +3360,17 @@ validation = { script = "screens/title-to-howto.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "mode-select-lists-five"
-title = "Mode select lists all five modes"
-description = "The five names appear on the screen."
+title = "Mode select lists every row of MODE_ITEMS"
+description = "The five mode names and the BACK row all appear on the screen."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "screens/mode-select-lists-five.test.ts", outputs = [
-  { id = "modes", name = "The five modes on the list", kind = "image" },
+  { id = "modes", name = "The mode list, every row drawn", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "mode-descriptions-before-choosing"
 title = "A mode's description is readable before it is chosen"
-description = "Moving the highlight across the five modes draws a different body of text for each, without starting anything."
+description = "Moving the highlight across the five mode rows draws a different body of text for each, without starting anything. BACK names no mode and is not read."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/mode-descriptions-before-choosing.test.ts", outputs = [
@@ -3381,12 +3396,12 @@ validation = { script = "screens/special-mode-starts-immediately.test.ts", outpu
 ] }
 [[review.categories.items]]
 id = "difficulty-lists-three"
-title = "Difficulty select lists Easy, Medium and Hard"
-description = "All three names appear."
+title = "Difficulty select lists every row of DIFFICULTY_ITEMS"
+description = "Easy, Medium, Hard and the BACK row all appear."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "screens/difficulty-lists-three.test.ts", outputs = [
-  { id = "difficulties", name = "Easy, Medium and Hard on the list", kind = "image" },
+  { id = "difficulties", name = "The difficulty list, every row drawn", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "difficulty-shows-its-figures"
