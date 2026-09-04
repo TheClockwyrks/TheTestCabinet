@@ -18,9 +18,36 @@
 // next frame and none can be consumed twice. That is what lets `Escape` drive both
 // `pause` and `back`: both edges are armed, both are read, and the screen decides
 // which one applies.
+//
+// THE POINTER IS READ HERE TOO, and it is the one part of the input that reaches
+// the game without a registered action: `specs/controls.md` has a pointer and a
+// touch contact drive the menus directly. The engine hands over every sample the
+// frame collected, already in the game's own logical units, and this turns them
+// into the two edges `specs/ui.md` decides a menu from — an AIM, which is a
+// position the player is indicating, and a RELEASE, which carries both the point
+// the press landed on and the point it lifted at, because a confirm is only a
+// confirm when the two fall in one item's region.
+//
+// A MOUSE AIMS WHILE IT HOVERS AND A FINGER ONLY WHILE IT IS DOWN, which is the
+// difference `specs/ui.md` draws between "a pointer moves onto an item's region"
+// and "a touch contact lands inside an item's region, or travels onto one".
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type {
+  InitApi,
+  PointerSample,
+  UpdateApi,
+} from "@test-cabinet/simple-2d";
+
+/** One thing a pointer or a touch contact did, in logical stage units. */
+export interface PointerEdge {
+  /** Whether the contact landed, moved, or lifted. */
+  readonly kind: "down" | "move" | "up";
+  readonly x: number;
+  readonly y: number;
+  /** Whether a finger drove it, which decides whether a move indicates at all. */
+  readonly touch: boolean;
+}
 
 /** Everything a frame's input amounts to, resolved once per update. */
 export interface FrameInput {
@@ -38,6 +65,11 @@ export interface FrameInput {
   readonly back: boolean;
   readonly pause: boolean;
   readonly mute: boolean;
+  /**
+   * The frame's pointer and touch edges, in the order the engine collected them
+   * (`specs/ui.md`).
+   */
+  readonly pointer: readonly PointerEdge[];
 }
 
 /** A frame with no input at all: what a tick outside an update is stepped with. */
@@ -54,6 +86,7 @@ export const NO_INPUT: FrameInput = {
   back: false,
   pause: false,
   mute: false,
+  pointer: [],
 };
 
 /**
@@ -84,6 +117,24 @@ function held(api: UpdateApi, action: ActionName): boolean {
   return api.input.value(action) > 0;
 }
 
+/**
+ * The frame's pointer samples, in the order the engine collected them.
+ *
+ * A straight translation: the engine has already mapped every sample into the
+ * game's own logical units, so all this drops is the fields `specs/ui.md` has
+ * nothing to say about. Which sample confirms is `src/screens.ts`'s to decide,
+ * because that needs the press it is paired with, which is carried across frames
+ * beside the rest of the gesture the player is part-way through.
+ */
+function pointerEdges(samples: readonly PointerSample[]): PointerEdge[] {
+  return samples.map((sample) => ({
+    kind: sample.type,
+    x: sample.x,
+    y: sample.y,
+    touch: sample.device === "touch",
+  }));
+}
+
 /** Read the whole of this frame's input, consuming every edge exactly once. */
 export function readInput(api: UpdateApi): FrameInput {
   const tapUp = api.input.pressed("up");
@@ -104,5 +155,6 @@ export function readInput(api: UpdateApi): FrameInput {
     back: api.input.pressed("back"),
     pause: api.input.pressed("pause"),
     mute: api.input.pressed("mute"),
+    pointer: pointerEdges(api.input.pointerSamples()),
   };
 }

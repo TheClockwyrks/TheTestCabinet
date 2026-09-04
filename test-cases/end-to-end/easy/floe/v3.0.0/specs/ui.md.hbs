@@ -33,10 +33,12 @@ the water band, and the crossing timer.
 | --- | --- | --- |
 | `title` | Up, down | Moves `menuIndex` over `TITLE_ITEMS`, wrapping both ways. |
 | `title` | Confirm | `CROSS` starts a run and opens `playing`; `HOW TO PLAY` opens `howto` with `menuIndex` at `0`. |
-| `howto` | Confirm, back | Returns to `title` with `menuIndex` at `0`. |
+| `title` | Back | Nothing; the title screen is the outermost screen. |
+| `howto` | Confirm, back | Returns to `title` with `HOW TO PLAY` selected, `TITLE_ITEMS` index `1`. |
 | `playing` | Pause | Opens `paused` with `menuIndex` at `0`. |
 | `paused` | Up, down | Moves `menuIndex` over `PAUSE_ITEMS`, wrapping both ways. |
 | `paused` | Back | Returns to `playing`, resuming the crossing as it stood. |
+| `paused` | Pause | Returns to `playing`, resuming the crossing as it stood. |
 | `paused` | Confirm | `RESUME` returns to `playing`; `RESTART` starts a fresh run and opens `playing`; `QUIT TO MENU` returns to `title`. |
 | `victory`, `gameover` | Up, down | Moves `menuIndex` over `ENDING_ITEMS`, wrapping both ways. |
 | `victory`, `gameover` | Confirm | `PLAY AGAIN` starts a fresh run and opens `playing`; `MENU` returns to `title`. |
@@ -48,9 +50,39 @@ score of `0`, five open bays, and a fresh crossing. Resuming from `paused`
 returns the crossing exactly as pausing left it, with the score, lives, level,
 timer, bays, critter, and bears untouched.
 
+Every route back to `title` selects the entry it left by. `QUIT TO MENU`, `MENU`,
+and Back from `victory` or `gameover` all return to `title` with `CROSS`
+selected, `TITLE_ITEMS` index `0`, `CROSS` being the entry that started the run.
+
 Where several of a menu's edges arrive on one tick, up is applied before down and
 movement before confirm, so a tick carrying both an up edge and a down edge moves
 up only, and a tick carrying a movement edge and a confirm edge moves only.
+
+### Pointer and touch
+
+Each menu item occupies a rectangular hit region the build lays out. Every region
+lies inside the `1280 x 720` stage, and no two items of one menu share a point, so
+a pointer is over at most one entry. `specs/instrumentation.md` states the reading
+through which the build reports an item's region in logical units, so the menus
+keep the layout the build chose.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an item's region | `menuIndex` becomes that item's index. |
+| A touch contact lands inside an item's region, or travels onto one | `menuIndex` becomes that item's index. |
+| A pointer is pressed and released inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+| A touch contact lands and lifts inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+
+A confirm takes both of its edges inside one item's region: the press and its
+release for a pointer, the landing and the lift for a touch contact. Two edges
+that fall in different regions, and an edge that falls outside every region,
+confirm no item. A press and the release that follows it may arrive on one tick,
+and that tick confirms.
+
+All four menus are driven this way: `TITLE_ITEMS` on `title`, `PAUSE_ITEMS` on
+`paused`, and `ENDING_ITEMS` on `victory` and on `gameover`. The item every
+confirm acts on is the item at `menuIndex`, whichever input raised it, and the
+effect is the one the transition table gives Confirm on that screen.
 
 ## The HUD
 
@@ -105,6 +137,6 @@ and it never fails to run or load when audio cannot start.
 ## Out of scope
 
 - Network play, and any progress saved between sessions.
-- Touch and gamepad input. The game is played on the keyboard.
+- Gamepad input.
 - Power-ups, weapons, alternate straits, and difficulty menus. The game is the
   one strait and the one eight-level run.

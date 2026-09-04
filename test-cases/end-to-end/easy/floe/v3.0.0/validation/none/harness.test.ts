@@ -295,7 +295,14 @@ it("advance runs exactly the ticks it is asked for, and skip covers time off cam
     3,
     "two seconds skipped off camera",
   );
-  assertEqual(h.frame(), 0, "a skip closes no recorded frame");
+  // The same real ticks the game runs either way, so the tick counter carries
+  // both: what a skip saves is the RECORDING, which the replay check below
+  // reads off a recording rather than off this counter.
+  assertEqual(
+    h.tick(),
+    ticksFor(1) + ticksFor(2),
+    "the ticks the harness counted across both",
+  );
 });
 
 it("a divided interval reaches the state one call reaches", async () => {
@@ -377,7 +384,6 @@ it("sweeps with until and skipUntil, and hands the clock back with runFor", asyn
     maxSeconds: 20,
   });
   assertTrue(arrived.hit, "a bonus catch arrived within its cadence");
-  assertEqual(h.frame(), 0, "a coarse sweep closes no recorded frame");
 
   // And the clock really goes back and forth: the loop advances the game on its
   // own while `runFor` holds it, and stops again the moment it is taken back.
@@ -566,40 +572,39 @@ it("observes the overlay through Backquote and the draw recorder", async () => {
   );
 });
 
-it("reads a render with the frame boundary on the animation frame too", async () => {
-  // The reference draws inside `advance`, so this is the mode the probe does not
-  // choose. Forcing it is what proves a build that draws only from its own loop
-  // is read at all — its render, its cues, and its evidence.
-  const looped = await createHarness({ frames: "raf" });
-  spares.push(looped);
-  assertEqual(looped.frameMode, "raf");
-  assertEqual(h.frameMode, "advance", "what the reference's own probe chose");
+it("reads a build that draws only from its own animation frame", async () => {
+  // Every pixel this project grades is read a frame LATE on purpose
+  // (`awaitFrameBeforeRead` in `harness.ts`): `specs/instrumentation.md` has
+  // `advance` leave the canvas showing what the last tick produced, and a build
+  // that draws inside `advance` has already painted it — but a build that draws
+  // only from its own loop is equally conformant and has not. Waiting the frame
+  // costs a conforming build one frame and is the difference between grading the
+  // picture a check made and grading the one before it.
+  //
+  // What is read here is that the wait is actually in force: a render, a sprite
+  // and a pair of pixel samples, all taken the way the ten points that read
+  // pixels take them.
+  await startCrossing(h);
+  await poseBear(h, 12, 15, { travel: false });
 
-  await startCrossing(looped);
-  await poseBear(looped, 12, 15, { travel: false });
-  const calls = await looped.frameCalls();
-  assertGreaterThan(calls.length, 0, "the loop's own frame was recorded");
+  const calls = await h.frameCalls();
+  assertGreaterThan(calls.length, 0, "the tick's own render was recorded");
 
-  const s = await looped.snapshot();
-  const blits = await blitsOfFrame(looped);
+  const s = await h.snapshot();
+  const blits = await blitsOfFrame(h);
   assertGreaterThanOrEqual(
     drawnFrom(blits, "crosser", { x: s.critter.x, y: s.critter.y }, TILE / 2)
       .length,
     1,
-    "the critter, read through an animation frame",
+    "the critter, read off the tick's own draws",
   );
 
-  // And its PIXELS, which is the other half of what a build that draws only from
-  // its loop is read through. A pixel read here waits for the loop's own paint
-  // before it samples — on the paint itself rather than on a stretch of the
-  // host's clock — so what a check grades is the frame it posed rather than
-  // whatever the canvas happened to be holding when the wait gave up.
-  const median = await sampleRow(looped, 10);
-  const water = await sampleTile(looped, 6, 6);
+  const median = await sampleRow(h, 10);
+  const water = await sampleTile(h, 6, 6);
   assertGreaterThan(
     colorDistance(median, water),
     0,
-    "the median band and the water read apart, sampled through the loop",
+    "the median band and the water read apart, sampled after the paint",
   );
 });
 
@@ -638,8 +643,10 @@ it("writes a still and a replay under the media directory", async () => {
     assertEqual(recording.height, 720);
     assertLength(
       recording.frames,
-      6,
-      "the driven ticks, four to a recorded frame, and nothing of the skip",
+      24,
+      "one recorded frame per driven tick, and nothing of the skip: a skip runs " +
+        "the game's own ticks without closing a frame, which is what lets an " +
+        "item record the moment rather than the wait before it",
     );
     assertGreaterThan(recording.ops.length, 0, "the frames carry operations");
     assertCloseTo(

@@ -35,6 +35,7 @@ import {
   BEAR_ICE_SPEED,
   BEAR_SECOND_DELAY,
   BEAR_SWIM_SPEED,
+  BINDINGS,
   BONUS_LIFE_EVERY,
   CLEAR_PAUSE,
   CUES,
@@ -64,12 +65,14 @@ import {
   TICK_HZ,
   TILE,
   TIMER_BASE,
+  TITLE_ITEMS,
   TOTAL_LEVELS,
   crossingTimer,
   laneSpeed,
   tileCX,
   tileCY,
 } from "./constants";
+import type { MenuRect } from "./menus";
 import {
   BACKGROUND,
   game,
@@ -100,6 +103,36 @@ class KeyEvent extends Event {
   }
 }
 
+/**
+ * A pointer-shaped event, as the engine reads one (engine/input.md).
+ *
+ * The surface below is the stage's own size at a ratio of `1` and names no
+ * origin, so a client position is a logical stage position directly.
+ */
+class PointerDriveEvent extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly pointerId = 1;
+  readonly pointerType: string;
+  readonly isPrimary = true;
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+    pointerType: "mouse" | "touch" = "mouse",
+  ) {
+    super(type);
+    this.clientX = x;
+    this.clientY = y;
+    this.pointerType = pointerType;
+    this.button = 0;
+    this.buttons = type === "pointerup" ? 0 : 1;
+  }
+}
+
 interface Harness {
   readonly engine: Engine<FloeState, FloeDebugApi>;
   readonly state: DeepReadonly<FloeState>;
@@ -110,6 +143,13 @@ interface Harness {
   hold(code: string): void;
   release(code: string): void;
   tap(code: string): void;
+  /** Drive one pointer or touch event at the surface, in logical stage units. */
+  point(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+    device?: "mouse" | "touch",
+  ): void;
   advance(seconds: number): Promise<void>;
   frames(count: number): Promise<void>;
   dispose(): void;
@@ -172,6 +212,9 @@ async function createHarness(): Promise<Harness> {
     tap: (code) => {
       dispatch("keydown", code);
       dispatch("keyup", code);
+    },
+    point: (type, x, y, device = "mouse") => {
+      events.dispatchEvent(new PointerDriveEvent(type, x, y, device));
     },
     advance: (seconds) => engine.advance(ticks(seconds)),
     frames: (count) => engine.advance(count),
@@ -1451,7 +1494,9 @@ describe("the screens", () => {
     await h.frames(1);
     const s = h.snapshot();
     expect(s.screen).toBe("title");
-    expect(s.menuIndex).toBe(0);
+    // Leaving a screen selects the entry that led to it (specs/ui.md), and
+    // `HOW TO PLAY` is `TITLE_ITEMS` index 1.
+    expect(s.menuIndex).toBe(1);
   });
 
   it("resumes, restarts and quits from the pause menu", async () => {
@@ -1883,5 +1928,135 @@ describe("the tick", () => {
     h.pose((s) => h.debug.setLaneDirection(s, ICE_TOP, 1));
     await h.frames(1);
     expect(h.snapshot().vehicles[0].x).toBeCloseTo(TILE * TICK_DT, 9);
+  });
+});
+
+// ---- The menus a pointer and a finger drive -----------------------------
+
+describe("the menu regions", () => {
+  it("reports one region per entry, inside the stage and apart from each other", () => {
+    for (const screen of ["title", "paused", "victory", "gameover"] as const) {
+      h.pose((s) => h.debug.setScreen(s, screen));
+      const rects: MenuRect[] = [];
+      for (let index = 0; ; index += 1) {
+        const rect = h.debug.menuItemRect(h.state, index);
+        if (rect === null) break;
+        expect(rect.x, screen).toBeGreaterThanOrEqual(0);
+        expect(rect.y, screen).toBeGreaterThanOrEqual(0);
+        expect(rect.x + rect.w, screen).toBeLessThanOrEqual(STAGE_W);
+        expect(rect.y + rect.h, screen).toBeLessThanOrEqual(STAGE_H);
+        rects.push(rect);
+      }
+      expect(rects.length, screen).toBeGreaterThan(1);
+      for (let a = 0; a < rects.length; a += 1) {
+        for (let b = a + 1; b < rects.length; b += 1) {
+          const apart =
+            rects[a].y + rects[a].h <= rects[b].y ||
+            rects[b].y + rects[b].h <= rects[a].y;
+          expect(apart, `${screen} ${String(a)} and ${String(b)} apart`).toBe(
+            true,
+          );
+        }
+      }
+    }
+  });
+
+  it("has no region on a screen with no menu, or for an index outside one", () => {
+    h.pose((s) => h.debug.setScreen(s, "howto"));
+    expect(h.debug.menuItemRect(h.state, 0)).toBeNull();
+    h.pose((s) => h.debug.setScreen(s, "playing"));
+    expect(h.debug.menuItemRect(h.state, 0)).toBeNull();
+    h.pose((s) => h.debug.setScreen(s, "title"));
+    expect(h.debug.menuItemRect(h.state, TITLE_ITEMS.length)).toBeNull();
+    expect(h.debug.menuItemRect(h.state, -1)).toBeNull();
+  });
+});
+
+describe("driving a menu with a pointer and a finger", () => {
+  /** The centre of an entry's reported region, which is where a gesture aims. */
+  function centre(index: number): { x: number; y: number } {
+    const rect = h.debug.menuItemRect(h.state, index);
+    expect(rect, `item ${String(index)} to have a region`).not.toBeNull();
+    const at = rect as MenuRect;
+    return { x: at.x + at.w / 2, y: at.y + at.h / 2 };
+  }
+
+  it("selects the entry a hovering pointer moves onto", async () => {
+    const at = centre(1);
+    h.point("pointermove", at.x, at.y);
+    await h.frames(1);
+    expect(h.snapshot().menuIndex).toBe(1);
+    expect(h.snapshot().screen).toBe("title");
+  });
+
+  it("confirms the entry a press and its release both fall in", async () => {
+    const at = centre(1);
+    h.point("pointerdown", at.x, at.y);
+    h.point("pointerup", at.x, at.y);
+    await h.frames(1);
+    expect(h.snapshot().screen).toBe("howto");
+  });
+
+  it("confirms nothing when the release lands outside the pressed entry", async () => {
+    const at = centre(0);
+    const off = { x: at.x, y: centre(1).y };
+    h.point("pointerdown", at.x, at.y);
+    h.point("pointermove", off.x, off.y);
+    h.point("pointerup", off.x, off.y);
+    await h.frames(1);
+    expect(h.snapshot().screen).toBe("title");
+  });
+
+  it("selects the entry a touch contact lands on, and confirms when it lifts there", async () => {
+    const at = centre(1);
+    h.point("pointerdown", at.x, at.y, "touch");
+    await h.frames(1);
+    expect(h.snapshot().menuIndex).toBe(1);
+    expect(h.snapshot().screen).toBe("title");
+    h.point("pointerup", at.x, at.y, "touch");
+    await h.frames(1);
+    expect(h.snapshot().screen).toBe("howto");
+  });
+});
+
+describe("the pause action on the pause menu", () => {
+  it("resumes the crossing, as back does", async () => {
+    startCrossing();
+    h.tap(BINDINGS.pause[0]);
+    await h.frames(1);
+    expect(h.snapshot().screen).toBe("paused");
+    h.tap(BINDINGS.pause[0]);
+    await h.frames(1);
+    expect(h.snapshot().screen).toBe("playing");
+  });
+
+  it("leaves the title screen alone on back, the outermost screen", async () => {
+    h.tap(BINDINGS.back[0]);
+    await h.frames(1);
+    expect(h.snapshot().screen).toBe("title");
+  });
+});
+
+describe("returning to the title", () => {
+  it("selects CROSS from every route back to it", async () => {
+    h.pose((s) => h.debug.setScreen(s, "gameover"));
+    h.pose((s) => h.debug.setMenuIndex(s, ENDING_ITEMS.indexOf("MENU")));
+    h.tap(BINDINGS.confirm[0]);
+    await h.frames(1);
+    expect(h.snapshot().screen).toBe("title");
+    expect(h.snapshot().menuIndex).toBe(TITLE_ITEMS.indexOf("CROSS"));
+
+    h.pose((s) => h.debug.setScreen(s, "victory"));
+    h.tap(BINDINGS.back[0]);
+    await h.frames(1);
+    expect(h.snapshot().screen).toBe("title");
+    expect(h.snapshot().menuIndex).toBe(TITLE_ITEMS.indexOf("CROSS"));
+
+    h.pose((s) => h.debug.setScreen(s, "paused"));
+    h.pose((s) => h.debug.setMenuIndex(s, PAUSE_ITEMS.indexOf("QUIT TO MENU")));
+    h.tap(BINDINGS.confirm[0]);
+    await h.frames(1);
+    expect(h.snapshot().screen).toBe("title");
+    expect(h.snapshot().menuIndex).toBe(TITLE_ITEMS.indexOf("CROSS"));
   });
 });

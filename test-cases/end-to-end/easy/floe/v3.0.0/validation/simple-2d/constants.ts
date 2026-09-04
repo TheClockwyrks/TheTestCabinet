@@ -10,12 +10,12 @@
 // the specification gives it, and a check asserts the CASE's figure against the
 // BUILD's behaviour.
 //
-// NOTHING HERE IS EVER READ FROM THE BUILD except the one clearly marked block
-// at the foot of the file, which re-exports what the specification leaves to the
-// build — read to drive the build, never compared against. This is the only file
-// in the project permitted to import `../src/constants`
-// (`guides/authoring/writing-debug-apis-and-validators.md`,
-// `scripts/ci/validator-constants.sh`).
+// NOTHING HERE IS EVER READ FROM THE BUILD. Every figure below is transcribed,
+// and the specification leaves this project nothing it has to ask the build for,
+// so the file carries no re-export block at all. The one reference this project
+// makes to the build is `harness.ts` taking its ENTRY, `../src/game`, which is
+// the game a check drives; no file here reaches for `../src/constants` or any
+// other module of it.
 //
 // NOTHING HERE IS A TOLERANCE. The figures are the specification's; the
 // tolerance a check allows around one is the check's own business and is stated
@@ -143,7 +143,7 @@ export type VehicleKind = "plow" | "dogsled" | "car";
 /** The three floe kinds the water band carries. */
 export type FloeKind = "pan" | "raft3" | "raft4";
 /** Either band's item kind. */
-export type ItemKind = VehicleKind | FloeKind;
+type ItemKind = VehicleKind | FloeKind;
 /** A lane's direction: `1` rightward, `-1` leftward. */
 export type LaneDir = 1 | -1;
 
@@ -158,7 +158,7 @@ export const ITEM_LEN: Readonly<Record<ItemKind, number>> = {
 };
 
 /** One row of a band table: what the lane carries, which way, how fast, how far apart. */
-export interface LaneSpec {
+interface LaneSpec {
   /** The strait row the lane occupies. */
   readonly row: number;
   /** The single kind every item in the lane is. */
@@ -200,7 +200,7 @@ export const LEVEL_SPEED_STEP = 1.06;
 export const LEVEL_GAP_EVERY = 3;
 
 /** The lane table entry for a strait row, or `null` where the row carries no lane. */
-export function laneSpecFor(row: number): LaneSpec | null {
+function laneSpecFor(row: number): LaneSpec | null {
   return (
     ICE_LANES.find((lane) => lane.row === row) ??
     WATER_LANES.find((lane) => lane.row === row) ??
@@ -308,9 +308,6 @@ export const SCORE_BONUS_CATCH = 200;
 /* The seeded sprite art (specs/assets.md)                                    */
 /* -------------------------------------------------------------------------- */
 
-/** A sprite frame's side, in source pixels, for the one-tile sheets. */
-export const SPRITE_TILE = 32;
-
 /** How many frames each folder holds. */
 export const CROSSER_FRAMES = 8;
 export const BEAR_FRAMES = 18;
@@ -373,6 +370,15 @@ export type ActionName = (typeof ACTIONS)[number];
  * and the game names its actions and the keys behind them. `Escape` deliberately
  * drives two of them — it pauses a live crossing, and it goes back out of
  * whatever screen is in front of the player.
+ *
+ * WHAT READS THIS TABLE, AND WHAT DOES NOT. A suite whose requirement is
+ * somewhere the key merely LEADS to — a screen a confirm opens, a silence a mute
+ * leaves behind — presses `BINDINGS.<action>[0]`, so the route is stated once
+ * here rather than transcribed at each site. The per-key `controls/*` suites do
+ * the opposite and name their key as a literal, because for those the key IS the
+ * requirement: `controls/key-w` decides `KeyW` and nothing else, and reading the
+ * key out of this table would turn "the build answers to this key" into "the
+ * build does what it says it does".
  */
 export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   up: ["ArrowUp", "KeyW"],
@@ -409,15 +415,17 @@ export const CUES = {
   menu: "menu",
 } as const;
 
-/* ---- What the specification leaves to the build --------------------------- */
-//
-// Read to drive the build, never compared against. `specs/controls.md` says only
-// that `LAYOUT` "is the control scheme the engine is built with" and names no
-// scheme, so which one the build registers is the build's own choice and the
-// harness has to ask for it in order to boot the game at all.
-//
-// THIS IS THE ONLY IMPORT OF THE BUILD'S MODULE IN THE PROJECT. Nothing else
-// here — and nothing in any other file of this project — may reach for
-// `../src/constants`.
-
-export { LAYOUT } from "../src/constants";
+/**
+ * The touch layout the engine is built with, whose vocabulary the game
+ * registers.
+ *
+ * TRANSCRIBED, NOT READ OFF THE BUILD. `specs/controls.md` names the layout
+ * outright — "`LAYOUT` (`dpad-4`) is the touch layout the engine is built with:
+ * a four-way pad whose own vocabulary is the four movement actions, to which the
+ * engine appends the four menu actions" — so it is a figure the specification
+ * fixes rather than a choice it leaves open, and this project states it here the
+ * way it states every other figure. Reading it out of the build would make "the
+ * build registers the vocabulary the specification names" into "the build
+ * registers the vocabulary the build names".
+ */
+export const LAYOUT = "dpad-4";

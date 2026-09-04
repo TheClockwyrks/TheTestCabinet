@@ -43,7 +43,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotEqual } from "../assert";
-import { PAUSE_ITEMS, START_LIVES } from "../constants";
+import { BINDINGS, PAUSE_ITEMS, START_LIVES } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -124,7 +124,7 @@ it("returns to the crossing with every field pausing left it", async () => {
   const { before, after } = await captureReplay(h, "resume", async () => {
     await h.advance(PAUSED_TICKS);
     const paused = await h.snapshot();
-    await h.tap("Enter");
+    await h.tap(BINDINGS.confirm[0]);
     const resumed = await h.snapshot();
     await h.advance(RESUMED_TICKS);
     return { before: paused, after: resumed };

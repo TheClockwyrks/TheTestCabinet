@@ -15,12 +15,10 @@
 
 import {
   BAY_COUNT,
-  ENDING_ITEMS,
   HUD_H,
   HUD_LEVEL_LABEL,
   ICE_BOTTOM,
   ICE_TOP,
-  PAUSE_ITEMS,
   ROW_BAYS,
   ROW_CAP,
   ROW_MEDIAN,
@@ -32,7 +30,6 @@ import {
   STRAIT_TOP,
   TAGLINE_TEXT,
   TILE,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TOTAL_LEVELS,
   WATER_BOTTOM,
@@ -50,6 +47,7 @@ import {
 } from "./assets";
 import { bayColumns, bayCenterX } from "./grid";
 import { laneAt } from "./lanes";
+import { menuBaseline, menuLayout } from "./menus";
 import { bearSwimming } from "./entities";
 import {
   BEAR_LUNGE_FPS,
@@ -61,7 +59,7 @@ import {
   MONO_FONT,
   UI_FONT,
 } from "./theme";
-import type { Bear, FloeState, LaneItem, VehicleKind } from "./types";
+import type { Bear, FloeState, LaneItem, Screen, VehicleKind } from "./types";
 
 /** Where a value that moved from `prev` to `now` stands `alpha` into the next tick. */
 function lerp(prev: number, now: number, alpha: number): number {
@@ -395,20 +393,26 @@ function line(
   ctx.textAlign = "left";
 }
 
-/** A vertical menu, the highlighted item drawn distinctly (specs/ui.md). */
+/**
+ * A vertical menu, the highlighted item drawn distinctly (specs/ui.md).
+ *
+ * The baselines come from `src/menus.ts`, which is also what `menuItemRect`
+ * reports its regions around, so a pointer aimed at a reported region lands on
+ * the entry a player sees there.
+ */
 function menu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
+  screen: Screen,
   selected: number,
-  top: number,
-  step: number,
 ): void {
-  items.forEach((item, index) => {
+  const layout = menuLayout(screen);
+  if (layout === null) return;
+  layout.items.forEach((item, index) => {
     const chosen = index === selected;
     line(
       ctx,
       chosen ? `> ${item} <` : item,
-      top + index * step,
+      menuBaseline(layout, index),
       chosen ? 32 : 26,
       chosen ? COLOR.highlight : COLOR.textDim,
     );
@@ -423,7 +427,7 @@ function drawScreen(state: FloeState, ctx: CanvasRenderingContext2D): void {
       card(ctx, 340, 150, 600, 400);
       line(ctx, TITLE_TEXT, 268, 104, COLOR.text);
       line(ctx, TAGLINE_TEXT, 316, 26, COLOR.textDim);
-      menu(ctx, TITLE_ITEMS, state.menuIndex, 410, 60);
+      menu(ctx, "title", state.menuIndex);
       return;
     case "howto":
       veil(ctx);
@@ -438,7 +442,7 @@ function drawScreen(state: FloeState, ctx: CanvasRenderingContext2D): void {
       veil(ctx);
       card(ctx, 420, 220, 440, 280);
       line(ctx, "PAUSED", 288, 46, COLOR.text);
-      menu(ctx, PAUSE_ITEMS, state.menuIndex, 356, 54);
+      menu(ctx, "paused", state.menuIndex);
       return;
     case "victory":
       veil(ctx);
@@ -461,7 +465,7 @@ function drawScreen(state: FloeState, ctx: CanvasRenderingContext2D): void {
         COLOR.textDim,
         MONO_FONT,
       );
-      menu(ctx, ENDING_ITEMS, state.menuIndex, 440, 54);
+      menu(ctx, "victory", state.menuIndex);
       return;
     case "gameover":
       veil(ctx);
@@ -476,7 +480,7 @@ function drawScreen(state: FloeState, ctx: CanvasRenderingContext2D): void {
         COLOR.textDim,
         MONO_FONT,
       );
-      menu(ctx, ENDING_ITEMS, state.menuIndex, 440, 54);
+      menu(ctx, "gameover", state.menuIndex);
       return;
     default:
       return;

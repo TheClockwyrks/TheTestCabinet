@@ -811,10 +811,18 @@ describe("what the build registers", () => {
       input: {
         value: (name: string) => (down.has(name) ? 1 : 0),
         pressed: (name: string) => edges.has(name),
-        pointer: () => ({ x: 0, y: 0, down: false }),
+        pointer: () => ({
+          x: 0,
+          y: 0,
+          down: false,
+          device: "mouse" as const,
+          buttons: [],
+        }),
         pointerPressed: () => false,
         pointerReleased: () => false,
         pointerSamples: () => [],
+        pointerContacts: () => [],
+        wheel: () => ({ x: 0, y: 0 }),
       },
       audio: {
         play: () => undefined,

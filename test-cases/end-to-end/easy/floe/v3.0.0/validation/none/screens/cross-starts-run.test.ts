@@ -40,6 +40,7 @@ import {
 } from "../assert";
 import {
   BAY_COUNT,
+  BINDINGS,
   ROW_NEAR,
   START_COL,
   START_LIVES,
@@ -93,7 +94,7 @@ it("opens a fresh level-1 crossing when CROSS is confirmed", async () => {
   assertEqual(posed.screen, "title", "the reset opened the title screen");
   assertEqual(posed.menuIndex, CROSS_INDEX, "the pose highlighted CROSS");
 
-  await h.tap("Enter");
+  await h.tap(BINDINGS.confirm[0]);
   await h.advance(SETTLE_TICKS);
   await captureStill(h, "game");
 

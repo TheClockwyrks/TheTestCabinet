@@ -51,7 +51,16 @@ bound to these keys:
 
 A held direction auto-repeats at the hop cooldown (`0.12` s), so holding a key
 walks the critter. `Esc` drives **two** actions — `pause` and `back` — and the
-game reads whichever the current screen calls for.
+game reads whichever the current screen calls for; `P` closes the pause menu as
+well as opening it.
+
+**The menus also take a mouse and a finger**, through the engine's pointer rather
+than through a registered action. Moving the pointer onto an entry selects it;
+pressing and releasing inside one entry confirms it; a touch contact selects the
+entry it lands on and confirms the entry it lifts on, provided the two are the
+same one. `src/menus.ts` is where each entry's region is laid out — the same
+place `src/screens.ts` takes its baselines from, so the region a pointer hits is
+the entry a player sees.
 
 The **backtick** key (`` ` ``) toggles the engine's debug overlay. That key
 belongs to the engine, not to this game.

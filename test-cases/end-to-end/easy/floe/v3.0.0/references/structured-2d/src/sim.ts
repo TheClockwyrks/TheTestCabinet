@@ -30,11 +30,9 @@ import {
   CUES,
   DEATH_PAUSE,
   DEFAULT_SEED,
-  ENDING_ITEMS,
   FISH_INTERVAL,
   FISH_LINGER,
   HOP_COOLDOWN,
-  PAUSE_ITEMS,
   ROW_BAYS,
   ROW_CAP,
   ROW_NEAR,
@@ -93,6 +91,7 @@ import {
   isSettled,
   travelBear,
 } from "./hunter";
+import { menuItemAt, menuItems } from "./menus";
 import { pick } from "./rng";
 import type { Death, Facing, FloeState } from "./game";
 
@@ -123,6 +122,26 @@ export interface Intents {
   back: boolean;
   pause: boolean;
   mute: boolean;
+  /**
+   * The frame's pointer and touch samples, in the order the engine collected
+   * them, in logical stage units (`specs/ui.md`).
+   *
+   * Accumulated by the controller for the same reason every edge is, and applied
+   * after the tick's keyboard edges: a tick carrying both a keyboard movement
+   * edge and a pointer selection leaves the highlight where the pointer put it,
+   * and a tick carrying a keyboard confirm confirms the keyboard's item alone.
+   */
+  pointer: PointerEdge[];
+}
+
+/** One thing a pointer or a touch contact did, in logical stage units. */
+export interface PointerEdge {
+  /** Whether the contact landed, moved, or lifted. */
+  readonly kind: "down" | "move" | "up";
+  readonly x: number;
+  readonly y: number;
+  /** Whether a finger drove it, which decides whether a move indicates at all. */
+  readonly touch: boolean;
 }
 
 /** No key at all: what a tick driven with nothing held is given. */
@@ -137,6 +156,7 @@ export function noIntents(): Intents {
     back: false,
     pause: false,
     mute: false,
+    pointer: [],
   };
 }
 
@@ -169,6 +189,7 @@ export function clearEdges(intents: Intents): void {
   intents.back = false;
   intents.pause = false;
   intents.mute = false;
+  intents.pointer = [];
 }
 
 // ---- Resetting and starting ---------------------------------------------
@@ -216,6 +237,7 @@ export function resetGame(
   state.accumulator = 0;
   clearEdges(state.intents);
   state.intents.held = null;
+  state.pointerDown = null;
 
   dropAllBears(world, state);
   layoutLevel(world, state, 1);
@@ -410,17 +432,7 @@ function fillBay(world: World, state: FloeState, bay: number, bus: Bus): void {
 
 /** How many items the current screen's menu carries. */
 function menuLength(state: FloeState): number {
-  switch (state.screen) {
-    case "title":
-      return TITLE_ITEMS.length;
-    case "paused":
-      return PAUSE_ITEMS.length;
-    case "victory":
-    case "gameover":
-      return ENDING_ITEMS.length;
-    default:
-      return 0;
-  }
+  return menuItems(state.screen).length;
 }
 
 /**
@@ -442,10 +454,29 @@ function moveMenu(state: FloeState, intents: Intents, bus: Bus): boolean {
   return true;
 }
 
-/** Return to the title screen, leaving the strait where it stands. */
-function toTitle(state: FloeState): void {
+/**
+ * The title entry that opens the how-to screen, which leaving it selects again
+ * (`specs/ui.md`).
+ */
+const HOWTO_ENTRY = TITLE_ITEMS.indexOf("HOW TO PLAY");
+
+/**
+ * The title entry that starts a run, which every route back from a run selects
+ * again (`specs/ui.md`).
+ */
+const CROSS_ENTRY = TITLE_ITEMS.indexOf("CROSS");
+
+/**
+ * Return to the title screen with `selected` highlighted, leaving the strait
+ * where it stands.
+ *
+ * Every route back selects the entry it left by (`specs/ui.md`): leaving the
+ * how-to screen selects `HOW TO PLAY`, and `QUIT TO MENU`, `MENU` and back from
+ * either ending screen all select `CROSS`.
+ */
+function toTitle(state: FloeState, selected: number): void {
   state.screen = "title";
-  state.menuIndex = 0;
+  state.menuIndex = selected;
 }
 
 /** Everything a screen does with the tick's edges. */
@@ -469,20 +500,31 @@ function stepScreen(
   const moved = moveMenu(state, intents, bus);
 
   if (state.screen === "howto") {
-    if (intents.back || intents.confirm) toTitle(state);
+    if (intents.back || intents.confirm) toTitle(state, HOWTO_ENTRY);
     return;
   }
-  if (intents.back) {
-    if (state.screen === "paused") {
-      state.screen = "playing";
-      state.menuIndex = 0;
-    } else if (state.screen !== "title") {
-      toTitle(state);
-    }
+  // Pause closes the pause menu exactly as back does, so `KeyP` resumes as well
+  // as `Escape` (specs/ui.md).
+  if (state.screen === "paused" && (intents.back || intents.pause)) {
+    state.screen = "playing";
+    state.menuIndex = 0;
     return;
   }
-  if (moved || !intents.confirm) return;
+  // The title screen is the outermost screen, so back does nothing there and the
+  // tick goes on to its pointer edges.
+  if (intents.back && state.screen !== "title") {
+    toTitle(state, CROSS_ENTRY);
+    return;
+  }
+  if (!moved && intents.confirm) {
+    confirmItem(world, state);
+    return;
+  }
+  stepPointer(world, state, intents, bus);
+}
 
+/** Act on the highlighted item of whatever menu the screen carries. */
+function confirmItem(world: World, state: FloeState): void {
   switch (state.screen) {
     case "title":
       if (state.menuIndex === 0) startRun(world, state);
@@ -496,15 +538,57 @@ function stepScreen(
         state.screen = "playing";
         state.menuIndex = 0;
       } else if (state.menuIndex === 1) startRun(world, state);
-      else toTitle(state);
+      else toTitle(state, CROSS_ENTRY);
       return;
     case "victory":
     case "gameover":
       if (state.menuIndex === 0) startRun(world, state);
-      else toTitle(state);
+      else toTitle(state, CROSS_ENTRY);
       return;
     default:
       return;
+  }
+}
+
+/**
+ * The tick's pointer and touch edges, applied to the menu in front of the player
+ * (`specs/ui.md`).
+ *
+ * An aim selects whatever item it is over. A gesture confirms only when both of
+ * its ends — the press and the lift, or the landing and the lift — fall in one
+ * item's region; a gesture that began outside every region, ended outside one, or
+ * crossed from one to another selects what it aimed at and confirms nothing.
+ *
+ * Read in the order the edges arrived, so a press and the release that follows it
+ * inside one tick confirm on that tick.
+ */
+function stepPointer(
+  world: World,
+  state: FloeState,
+  intents: Intents,
+  bus: Bus,
+): void {
+  for (const edge of intents.pointer) {
+    if (edge.kind === "down") state.pointerDown = { x: edge.x, y: edge.y };
+    if (menuLength(state) === 0) {
+      if (edge.kind === "up") state.pointerDown = null;
+      continue;
+    }
+    // A finger indicates nothing while it is off the glass; a mouse indicates
+    // wherever it hovers (specs/ui.md).
+    const indicates =
+      edge.kind !== "move" || !edge.touch || state.pointerDown !== null;
+    const at = indicates ? menuItemAt(state.screen, edge.x, edge.y) : null;
+    if (at !== null && at !== state.menuIndex) {
+      state.menuIndex = at;
+      bus.cue(CUES.menu);
+    }
+    if (edge.kind !== "up") continue;
+    const pressed = state.pointerDown;
+    state.pointerDown = null;
+    if (pressed === null || at === null) continue;
+    if (menuItemAt(state.screen, pressed.x, pressed.y) !== at) continue;
+    confirmItem(world, state);
   }
 }
 

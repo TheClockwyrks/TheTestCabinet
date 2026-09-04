@@ -30,6 +30,7 @@ import { TICK_DT } from "./constants";
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
+import { Pointer, type PointerEdge } from "./pointer";
 import {
   deviceSize,
   domSurface,
@@ -85,6 +86,15 @@ export interface UpdateApi {
     value(name: string): number;
     /** Whether the intent went down since the last tick. Consumes the edge. */
     pressed(name: string): boolean;
+    /**
+     * Every pointer and touch edge raised since the last tick, in the order the
+     * browser raised them, in logical stage units.
+     *
+     * A list rather than an edge, because a gesture can be a landing, a travel
+     * and a lift inside one tick and `specs/ui.md` decides a confirm from the
+     * pair rather than from the last of them.
+     */
+    pointer(): readonly PointerEdge[];
   };
   readonly audio: {
     /** Play a declared cue. */
@@ -169,6 +179,12 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   const { canvas, width, height, game, background } = options;
   const surface = options.surface ?? domSurface(canvas);
   const keyboard = new Keyboard(surface.events());
+  const pointer = new Pointer({
+    bounds: () => surface.bounds?.() ?? { left: 0, top: 0 },
+    dpr: () => surface.dpr(),
+    viewport: () => viewport,
+    events: () => surface.events(),
+  });
   const audio = new AudioBus(options.audioContext);
   const diagnostics = new Diagnostics();
 
@@ -246,6 +262,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     input: {
       value: (name) => keyboard.value(name),
       pressed: (name) => keyboard.pressed(name),
+      pointer: () => pointer.samples(),
     },
     audio: {
       play: (cue) => audio.play(cue),
@@ -271,8 +288,10 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       game.update(state.value, updateApi, TICK_DT);
     } finally {
       // An edge nothing consumed is discarded even when the tick threw, so one
-      // bad tick cannot leave a press to surface later, out of order.
+      // bad tick cannot leave a press to surface later, out of order. The
+      // pointer's queue goes the same way and for the same reason.
       keyboard.endTick();
+      pointer.endTick();
     }
   }
 
@@ -402,6 +421,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       stopLoop();
       surface.events().removeEventListener("keydown", onOverlayKey);
       keyboard.detach();
+      pointer.detach();
       audio.dispose();
       live = null;
     },

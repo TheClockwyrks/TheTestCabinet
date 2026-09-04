@@ -41,7 +41,17 @@ export interface Surface {
   cssHeight(): number;
   /** Device pixels per CSS pixel. */
   dpr(): number;
-  /** The target key events are listened for on. */
+  /**
+   * The drawing surface's top-left corner, in the CSS pixels a pointer event
+   * reports its position in.
+   *
+   * Optional, and the origin where it is absent: a pointer position is only
+   * meaningful relative to a laid-out box, and a surface standing in for the DOM
+   * has none. `specs/controls.md` puts the pointer in this layer, so this is the
+   * measurement it needs and the only one the keyboard never wanted.
+   */
+  bounds?(): { left: number; top: number };
+  /** The target key and pointer events are listened for on. */
   events(): EventTarget;
 }
 
@@ -113,6 +123,10 @@ export function domSurface(canvas: HTMLCanvasElement): Surface {
     cssWidth: () => canvas.clientWidth,
     cssHeight: () => canvas.clientHeight,
     dpr: () => window.devicePixelRatio,
+    bounds: () => {
+      const box = canvas.getBoundingClientRect();
+      return { left: box.left, top: box.top };
+    },
     events: () => document,
   };
 }

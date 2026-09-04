@@ -45,6 +45,7 @@ import {
   reconcileSlots,
 } from "./hunter";
 import { layOutStrait } from "./lanes";
+import { menuItemRect, type MenuRect } from "./menus";
 import { snapshotOf, type FloeSnapshot } from "./snapshot";
 import {
   bearById,
@@ -75,6 +76,7 @@ export interface FloeDebugApi {
 
   reset(state: DeepReadonly<FloeState>, options?: { seed?: number }): FloeState;
   snapshot(state: DeepReadonly<FloeState>): FloeSnapshot;
+  menuItemRect(state: DeepReadonly<FloeState>, index: number): MenuRect | null;
 
   setScreen(state: DeepReadonly<FloeState>, screen: Screen): FloeState;
   setPhase(state: DeepReadonly<FloeState>, phase: Phase): FloeState;
@@ -223,6 +225,17 @@ export function createDebugApi(): FloeDebugApi {
       })(state),
 
     snapshot: (state) => snapshotOf(state, FLOE_DEBUG_VERSION),
+
+    /**
+     * The region item `index` is picked from on the menu the state's screen
+     * shows, in logical units, or `null` where the screen shows no menu or the
+     * index names no entry.
+     *
+     * A reading of the layout this build itself draws, so the menus keep the
+     * arrangement it chose (`specs/instrumentation.md`). It is deliberately NOT
+     * part of `snapshot`: the regions are geometry rather than run state.
+     */
+    menuItemRect: (state, index) => menuItemRect(state.screen, index),
 
     // ---- The screen and the run -------------------------------------------
 

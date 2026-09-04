@@ -213,6 +213,21 @@ export interface FloeSnapshot {
  * the specification's own: a level IS its lane speeds and gaps, so setting it
  * lays the two rosters out.
  */
+/**
+ * One menu item's hit region, in logical units: `x`/`y` are its top-left corner
+ * and `w`/`h` its size (specs/instrumentation.md).
+ *
+ * NOT part of the snapshot, and deliberately so: the regions are geometry the
+ * build laid out rather than run state, and `menuItemRect` is the separate read
+ * that reports them.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface FloeDebugApi<S = unknown> {
   version: number;
 
@@ -222,6 +237,12 @@ export interface FloeDebugApi<S = unknown> {
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): FloeSnapshot;
+  /**
+   * A pure read of the hit region of item `index` on the menu the state's screen
+   * shows, or `null` where that screen shows no menu and where `index` names no
+   * entry of the one it does.
+   */
+  menuItemRect(state: DeepReadonly<S>, index: number): MenuRect | null;
 
   // ---- The screen and the run --------------------------------------------
 
@@ -326,7 +347,7 @@ export interface FloeDebugApi<S = unknown> {
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /**
  * Every operation the surface must carry, in the order
@@ -342,6 +363,7 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
 
   "setScreen",
   "setPhase",
