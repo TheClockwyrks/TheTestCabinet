@@ -5,7 +5,8 @@
 // `paused`, and `gameOver`, are driven by a mouse and by touch as well as by the
 // keyboard, over the items that screen shows", and "A pointer moves onto an item's
 // region" makes `menuIndex` that item's index. This point decides that on the
-// PAUSED screen; `pointer/title-hover-selects` decides it on the title.
+// PAUSED screen; `pointer/title-hover-selects` and
+// `pointer/game-over-hover-selects` decide it on the other two.
 //
 // HOW THE SCREEN IS REACHED. `posePausedMenu` opens a live wave and then PLACES the
 // screen and the highlight: `setScreen` and `setMenuIndex` are what

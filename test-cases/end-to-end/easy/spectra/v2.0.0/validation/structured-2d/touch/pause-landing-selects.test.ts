@@ -7,7 +7,8 @@
 // item's region, or travels onto one" makes `menuIndex` that item's index. A finger
 // is not a small mouse — it never hovers — so the first the build hears of it is the
 // LANDING, and the landing is what selects. This point decides that on the PAUSED
-// screen; `touch/title-landing-selects` decides it on the title.
+// screen; `touch/title-landing-selects` and `touch/game-over-landing-selects`
+// decide it on the other two.
 //
 // HOW THE SCREEN IS REACHED. `posePausedMenu` opens a live wave and then PLACES the
 // screen and the highlight: `setScreen` and `setMenuIndex` are what
