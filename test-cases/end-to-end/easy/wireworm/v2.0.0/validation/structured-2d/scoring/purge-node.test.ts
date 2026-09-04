@@ -23,7 +23,7 @@ import {
   BOLT_SPEED,
   CHARGE_MAX,
   SCORE_PURGE_NODE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

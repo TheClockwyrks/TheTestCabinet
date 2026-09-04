@@ -22,7 +22,7 @@
 // every row rule by laying no rows.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_TOP_ROW, ROWS } from "../../src/constants";
+import { BAND_TOP_ROW, ROWS } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

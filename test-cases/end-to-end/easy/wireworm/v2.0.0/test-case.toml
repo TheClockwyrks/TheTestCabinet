@@ -182,8 +182,9 @@ min_version = "1.0.0"
 #   - `simple-2d`     declares the engine in its `package.json`, which is vendored
 #                     in at seed time so the build imports it by its bare package
 #                     name, and seeds the case-owned modules around the game:
-#                     `src/constants.ts` (every figure this specification fixes,
-#                     which a validator imports; the look is NOT among them),
+#                     `src/constants.ts` (every figure this specification fixes;
+#                     the look is NOT among them, and no validator reads it —
+#                     each validator project transcribes those figures itself),
 #                     `src/main.ts` (the browser entry) and the `src/game.ts` stub
 #                     the build replaces.
 #   - `structured-2d` declares that engine in its `package.json` the same way and

@@ -24,7 +24,7 @@
 // of the head.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertEqual, assertGreaterThan, fail } from "../assert";
 import {
   captureStill,

@@ -31,7 +31,7 @@ import {
   GLITCH_H_SPEED,
   START_LIVES,
   tileCX,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

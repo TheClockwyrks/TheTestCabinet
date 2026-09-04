@@ -15,7 +15,7 @@
 // `nodes.shot-inert-cleared`'s requirement. This point reads the score alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, SCORE_INERT_NODE, TILE } from "../../src/constants";
+import { BOLT_SPEED, SCORE_INERT_NODE, TILE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

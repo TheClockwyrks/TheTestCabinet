@@ -15,7 +15,7 @@
 // it was placed on and no other tile in the scenario is touched.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SCATTER_BOTTOM_ROW, SCATTER_TOP_ROW } from "../../src/constants";
+import { SCATTER_BOTTOM_ROW, SCATTER_TOP_ROW } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

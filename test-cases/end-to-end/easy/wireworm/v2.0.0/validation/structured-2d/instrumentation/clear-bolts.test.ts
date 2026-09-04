@@ -32,7 +32,7 @@
 // that moved between the two readings would be reporting its own mechanic.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY } from "../../src/constants";
+import { tileCX, tileCY } from "../constants";
 import { assertDeepEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,

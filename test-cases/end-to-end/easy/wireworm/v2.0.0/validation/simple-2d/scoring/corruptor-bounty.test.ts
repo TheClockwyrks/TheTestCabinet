@@ -22,12 +22,7 @@
 // `foes.corruptor-takes-one`'s requirement. This point reads the score alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BOLT_SPEED,
-  FOE_HALF,
-  SCORE_CORRUPTOR,
-  TILE,
-} from "../../src/constants";
+import { BOLT_SPEED, FOE_HALF, SCORE_CORRUPTOR, TILE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

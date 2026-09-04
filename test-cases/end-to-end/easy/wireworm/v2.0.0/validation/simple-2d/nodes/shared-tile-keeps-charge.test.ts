@@ -28,7 +28,7 @@
 // CHARGE alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, TILE } from "../../src/constants";
+import { BOLT_SPEED, TILE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

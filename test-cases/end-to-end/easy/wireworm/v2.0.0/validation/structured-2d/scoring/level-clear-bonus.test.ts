@@ -23,7 +23,7 @@ import {
   BOLT_SPEED,
   SCORE_HEAD,
   SCORE_LEVEL_CLEAR,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

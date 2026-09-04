@@ -28,7 +28,7 @@
 // board is otherwise the empty, quiet one `startPlaying` opens.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE, tileCX, tileCY } from "../../src/constants";
+import { TILE, tileCX, tileCY } from "../constants";
 import { assertLength, assertTrue, fail } from "../assert";
 import {
   captureStill,

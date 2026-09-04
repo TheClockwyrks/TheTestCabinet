@@ -112,7 +112,7 @@ import {
   WORM_FRAMES,
   tileCX,
   tileCY,
-} from "../src/constants";
+} from "./constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
 import type {
@@ -178,7 +178,7 @@ const game = build as unknown as GameDefinition<WirewormSurface>;
 /**
  * The frame the suite steps in, in milliseconds.
  *
- * This is the SUITE's choice, not the game's: `src/constants.ts` deliberately
+ * This is the SUITE's choice, not the game's: the specification deliberately
  * fixes no timestep, because the engine hands the game whatever elapsed time a
  * frame really took. Fixing it here makes a duration a whole number of frames,
  * so a tolerance can be stated in ticks and mean the same thing on every
@@ -719,7 +719,7 @@ class KeyEvent extends Event {
 /**
  * A logical point's device pixel, through the world's camera and the engine's
  * fit. The camera opens at the defaults — world and logical coordinates
- * coincide, which is the space every figure in `src/constants.ts` is stated
+ * coincide, which is the space every figure the specs state is stated
  * in — so the projection is the identity unless the build moved it, and
  * mapping through it keeps the reading honest either way.
  */
@@ -1730,7 +1730,7 @@ export function poseBoltAtTile(h: Harness, c: number, r: number): number {
 
 /* ---- Driving the real input path ------------------------------------------ */
 
-/** An action the game registers, as `src/constants.ts` names them. */
+/** An action the game registers, as specs/controls.md names them. */
 export type Action = keyof typeof BINDINGS;
 
 /**

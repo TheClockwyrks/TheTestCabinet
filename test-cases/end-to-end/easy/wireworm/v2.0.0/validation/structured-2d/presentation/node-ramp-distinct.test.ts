@@ -28,7 +28,7 @@
 // scenario can remove — is nowhere near any sample.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX } from "../../src/constants";
+import { CHARGE_MAX } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

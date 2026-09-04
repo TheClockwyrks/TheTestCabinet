@@ -36,7 +36,7 @@
 // wrongly fails the point it decides.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, TILE, WORM_STEP_L1 } from "../../src/constants";
+import { BOLT_SPEED, TILE, WORM_STEP_L1 } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

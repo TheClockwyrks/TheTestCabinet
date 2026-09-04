@@ -22,7 +22,7 @@
 // leaves the roster left it at the top of the board.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_BOLTS } from "../../src/constants";
+import { MAX_BOLTS } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   BAND_CX,

@@ -35,7 +35,7 @@
 // due, so what is read is the arrangement it entered in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME, COLS } from "../../src/constants";
+import { BANNER_TIME, COLS } from "../constants";
 import { assertEqual, assertLength, assertTrue } from "../assert";
 import {
   captureStill,

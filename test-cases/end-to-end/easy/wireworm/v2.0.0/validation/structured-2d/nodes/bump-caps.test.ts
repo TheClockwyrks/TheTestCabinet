@@ -16,11 +16,7 @@
 // and the answer both rules give is that the charge is left alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  BAND_TOP_ROW,
-  CHARGE_MAX,
-  wormStepInterval,
-} from "../../src/constants";
+import { BAND_TOP_ROW, CHARGE_MAX, wormStepInterval } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import {
   captureStill,

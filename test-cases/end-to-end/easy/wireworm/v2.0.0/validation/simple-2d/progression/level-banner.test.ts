@@ -18,7 +18,7 @@
 // banner gives way to an empty board and the phase is the only thing that changes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME } from "../../src/constants";
+import { BANNER_TIME } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureStill,

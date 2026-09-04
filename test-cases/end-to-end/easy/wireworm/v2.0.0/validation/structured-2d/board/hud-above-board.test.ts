@@ -31,7 +31,7 @@
 // the moment a bolt drawn outside the board would show.
 
 import { afterEach, it } from "vitest";
-import { HUD_H, HUD_LEVEL_LABEL, STAGE_W } from "../../src/constants";
+import { HUD_H, HUD_LEVEL_LABEL, STAGE_W } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

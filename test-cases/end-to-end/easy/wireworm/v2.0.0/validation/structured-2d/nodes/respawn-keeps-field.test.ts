@@ -28,7 +28,7 @@
 // (specs/progression.md), which is `progression.game-over-at-zero-lives`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESPAWN_TIME, START_LIVES } from "../../src/constants";
+import { RESPAWN_TIME, START_LIVES } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   BAND_CX,

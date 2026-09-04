@@ -18,12 +18,12 @@
 // flown through LIVE_TICKS of real play before the pause lands.
 //
 // A LEAKED FRAME IS LOUD HERE. `BOLT_SPEED` is `900` units per second
-// (`src/constants.ts`), so a build that ran its simulation behind the menu flew
+// (specs/cursor.md), so a build that ran its simulation behind the menu flew
 // the bolt off the top of the board inside the paused stretch and reports no
 // bolt at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED } from "../../src/constants";
+import { BOLT_SPEED } from "../constants";
 import { assertEqual, assertGreaterThan, fail } from "../assert";
 import {
   boltById,

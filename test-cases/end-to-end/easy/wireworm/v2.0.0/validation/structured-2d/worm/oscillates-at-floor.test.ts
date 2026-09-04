@@ -22,7 +22,7 @@
 // test is off, so nothing about the band decides this.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROWS, WORM_STEP_L1 } from "../../src/constants";
+import { ROWS, WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

@@ -18,7 +18,7 @@
 // event at the target the engine listens on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ENDING_ITEMS, TOTAL_LEVELS } from "../../src/constants";
+import { ENDING_ITEMS, TOTAL_LEVELS } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 

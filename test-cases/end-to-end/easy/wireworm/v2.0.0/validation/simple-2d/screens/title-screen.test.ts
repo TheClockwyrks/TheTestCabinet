@@ -4,7 +4,7 @@
 // Two readings of the same screen.
 //
 // THE COPY. `specs/ui.md` fixes four runs of text for this screen — TITLE_TEXT,
-// TAGLINE_TEXT, and both entries of TITLE_ITEMS, all from `src/constants.ts` —
+// TAGLINE_TEXT, and both entries of TITLE_ITEMS, all from `../constants` —
 // and the frame's own draw calls say what the build actually put on the canvas.
 // The game's state is read beside them, so a build that reports a title it never
 // draws, or draws one it does not report, fails here rather than passing on
@@ -37,7 +37,7 @@ import {
   TAGLINE_TEXT,
   TITLE_ITEMS,
   TITLE_TEXT,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan, fail } from "../assert";
 import {
   captureStill,
@@ -56,7 +56,7 @@ import {
  * A baseline is the anchor a run of text is drawn about, so a band that stopped
  * at the baselines would hold no glyph at all. This case fixes no type size, so
  * the figure is taken from the stage: 32 units is one board tile
- * (`src/constants.ts`, TILE), which is comfortably taller than the type a menu
+ * (specs/board.md, TILE), which is comfortably taller than the type a menu
  * item is set in on a 720-unit stage and short of any second row of copy.
  */
 const BAND_PAD = 32;

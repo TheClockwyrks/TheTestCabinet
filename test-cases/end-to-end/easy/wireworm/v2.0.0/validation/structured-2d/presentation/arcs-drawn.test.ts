@@ -31,12 +31,7 @@
 // discharge that draws anything, and the one whose chord is unambiguous.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  ARC_LIFE,
-  CHARGE_MAX,
-  DISCHARGE_RADIUS,
-  TILE,
-} from "../../src/constants";
+import { ARC_LIFE, CHARGE_MAX, DISCHARGE_RADIUS, TILE } from "../constants";
 import { assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,

@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined, assertLessThanOrEqual } from "../assert";
-import { CORRUPTOR_SPEED } from "../../src/constants";
+import { CORRUPTOR_SPEED } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -27,7 +27,7 @@
 // get there and did not, rather than about one that simply ran out of window.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED } from "../../src/constants";
+import { BOLT_SPEED } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   boltOf,

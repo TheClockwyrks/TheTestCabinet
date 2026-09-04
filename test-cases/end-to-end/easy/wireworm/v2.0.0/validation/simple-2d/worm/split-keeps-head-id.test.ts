@@ -24,7 +24,7 @@
 // old head's tile is where the old head is.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, TILE } from "../../src/constants";
+import { BOLT_SPEED, TILE } from "../constants";
 import {
   assertEqual,
   assertLength,

@@ -31,7 +31,7 @@
 // menu holds is `screens.title-screen`'s. This point reads the cue alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, CUES, TITLE_ITEMS } from "../../src/constants";
+import { BINDINGS, CUES, TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

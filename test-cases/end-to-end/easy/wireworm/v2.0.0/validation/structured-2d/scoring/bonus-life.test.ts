@@ -24,7 +24,7 @@
 // the tile it was placed on and the shot is the only thing in the scenario.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_H, BOLT_SPEED, BONUS_LIFE_EVERY } from "../../src/constants";
+import { BOARD_H, BOLT_SPEED, BONUS_LIFE_EVERY } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

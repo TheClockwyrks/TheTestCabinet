@@ -18,7 +18,7 @@
 // invulnerability are each their own point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, TILE } from "../../src/constants";
+import { START_LIVES, TILE } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   BAND_CX,

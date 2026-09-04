@@ -26,7 +26,7 @@
 // on one row well clear of the player band, so each tile's draws are its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, TILE, tileCX, tileCY } from "../../src/constants";
+import { CHARGE_MAX, TILE, tileCX, tileCY } from "../constants";
 import { assertTrue } from "../assert";
 import {
   captureStill,

@@ -27,7 +27,7 @@ import {
   DISCHARGE_RADIUS,
   SCORE_FRY,
   SCORE_PURGE_NODE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

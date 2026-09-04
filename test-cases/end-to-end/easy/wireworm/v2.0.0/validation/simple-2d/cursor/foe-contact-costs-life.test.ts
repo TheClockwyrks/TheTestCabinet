@@ -39,7 +39,7 @@ import {
   TILE,
   tileCX,
   tileCY,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

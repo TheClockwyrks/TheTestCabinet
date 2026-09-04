@@ -45,7 +45,7 @@ import {
   CORRUPTOR_MAX_INTERVAL,
   DROPPER_CHECK_INTERVAL,
   GLITCH_MAX_INTERVAL,
-} from "../../src/constants";
+} from "../constants";
 import { assertLength, assertTrue } from "../assert";
 import {
   captureStill,

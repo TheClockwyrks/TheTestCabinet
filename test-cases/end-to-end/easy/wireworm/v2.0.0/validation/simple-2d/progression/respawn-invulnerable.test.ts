@@ -18,7 +18,7 @@
 // comes back and nothing can spend the grant before it is read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESPAWN_INVULN, RESPAWN_TIME, START_LIVES } from "../../src/constants";
+import { RESPAWN_INVULN, RESPAWN_TIME, START_LIVES } from "../constants";
 import { assertBetween } from "../assert";
 import {
   captureStill,

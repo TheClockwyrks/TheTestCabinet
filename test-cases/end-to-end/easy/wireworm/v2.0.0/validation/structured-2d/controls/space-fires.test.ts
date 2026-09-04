@@ -35,7 +35,7 @@
 // the cursor can resolve the one it fires.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL, tileCX } from "../../src/constants";
+import { FIRE_INTERVAL, tileCX } from "../constants";
 import { assertLength, assertLessThanOrEqual } from "../assert";
 import {
   BAND_CY,

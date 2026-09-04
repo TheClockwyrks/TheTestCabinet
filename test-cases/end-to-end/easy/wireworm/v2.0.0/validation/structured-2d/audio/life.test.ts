@@ -21,7 +21,7 @@
 // therefore named for the one it got wrong.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, START_LIVES } from "../../src/constants";
+import { CUES, START_LIVES } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   BAND_CX,

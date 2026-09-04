@@ -17,7 +17,7 @@
 // whichever way it entered from.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORRUPTOR_SPEED } from "../../src/constants";
+import { CORRUPTOR_SPEED } from "../constants";
 import { assertLessThanOrEqual, assertNotNull } from "../assert";
 import {
   captureStill,

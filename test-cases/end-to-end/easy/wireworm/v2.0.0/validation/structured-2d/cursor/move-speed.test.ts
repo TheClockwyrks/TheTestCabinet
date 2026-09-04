@@ -22,7 +22,7 @@
 // grades. The `none` and `simple-2d` suites take the same magnitude.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CURSOR_SPEED } from "../../src/constants";
+import { CURSOR_SPEED } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   BAND_CX,

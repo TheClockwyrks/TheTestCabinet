@@ -22,7 +22,7 @@
 // land the title's highlight off the end of `TITLE_ITEMS`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS, TITLE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS, TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

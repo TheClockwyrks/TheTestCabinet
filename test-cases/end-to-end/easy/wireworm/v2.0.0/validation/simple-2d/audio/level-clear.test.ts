@@ -34,7 +34,7 @@
 // alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, CUES, TILE, TOTAL_LEVELS } from "../../src/constants";
+import { BOLT_SPEED, CUES, TILE, TOTAL_LEVELS } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import {
   captureStill,

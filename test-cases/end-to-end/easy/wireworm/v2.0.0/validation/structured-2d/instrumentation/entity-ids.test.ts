@@ -40,7 +40,7 @@
 // `discharge/fry-split-keeps-head-id` decide.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORM_STEP_L1, tileCX, tileCY } from "../../src/constants";
+import { WORM_STEP_L1, tileCX, tileCY } from "../constants";
 import {
   assertEqual,
   assertLength,

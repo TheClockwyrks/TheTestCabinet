@@ -35,7 +35,7 @@
 // build whose winding is wrong fails that point and not this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { wormStepInterval } from "../../src/constants";
+import { wormStepInterval } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,

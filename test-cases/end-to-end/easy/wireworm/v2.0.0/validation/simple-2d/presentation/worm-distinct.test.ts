@@ -25,7 +25,7 @@
 // known place. The board is otherwise the empty, quiet one `startPlaying` opens.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX } from "../../src/constants";
+import { CHARGE_MAX } from "../constants";
 import { assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,

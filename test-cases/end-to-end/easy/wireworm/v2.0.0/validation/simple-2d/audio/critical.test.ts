@@ -32,7 +32,7 @@
 // `instrumentation.worm-stepping-gate`'s. This point reads the cue alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, CUES, wormStepInterval } from "../../src/constants";
+import { CHARGE_MAX, CUES, wormStepInterval } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

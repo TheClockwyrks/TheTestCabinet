@@ -21,7 +21,7 @@
 // faculties are left on, because the body's follow IS this requirement.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORM_STEP_L1 } from "../../src/constants";
+import { WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureReplay,

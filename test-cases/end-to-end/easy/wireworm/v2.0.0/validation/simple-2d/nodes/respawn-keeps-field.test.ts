@@ -36,7 +36,7 @@
 // is docked there rather than twice.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESPAWN_TIME, START_LIVES } from "../../src/constants";
+import { RESPAWN_TIME, START_LIVES } from "../constants";
 import { assertDeepEqual, assertLength } from "../assert";
 import {
   BAND_CX,

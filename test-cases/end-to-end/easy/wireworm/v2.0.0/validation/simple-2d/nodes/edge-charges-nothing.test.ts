@@ -21,7 +21,7 @@
 // the node charges, and reaches a verdict on that either way.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, wormStepInterval } from "../../src/constants";
+import { COLS, wormStepInterval } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

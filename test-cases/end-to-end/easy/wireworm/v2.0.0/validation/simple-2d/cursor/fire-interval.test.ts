@@ -27,7 +27,7 @@
 // model is named by the number it produces.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIRE_INTERVAL, MAX_BOLTS } from "../../src/constants";
+import { FIRE_INTERVAL, MAX_BOLTS } from "../constants";
 import { assertLength, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

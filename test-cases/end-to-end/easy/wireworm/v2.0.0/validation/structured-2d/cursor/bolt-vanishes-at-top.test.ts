@@ -19,7 +19,7 @@
 // that can happen to it is the departure this point is about.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOARD_Y, tileCX, tileCY } from "../../src/constants";
+import { BOARD_Y, tileCX, tileCY } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

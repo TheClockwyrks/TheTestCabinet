@@ -26,7 +26,7 @@
 // bolt, and the cursor rests in its band, which is nowhere near the tiles read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, TILE } from "../../src/constants";
+import { CHARGE_MAX, TILE } from "../constants";
 import { assertEqual, assertLength, fail } from "../assert";
 import {
   captureStill,

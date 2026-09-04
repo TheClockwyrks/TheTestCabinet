@@ -19,7 +19,7 @@
 // raised it reads `1`, and only a build that removed it reads absent.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, TILE } from "../../src/constants";
+import { BOLT_SPEED, TILE } from "../constants";
 import { assertNull } from "../assert";
 import {
   captureStill,

@@ -18,7 +18,7 @@
 // the frames of the flight change is what the bolt did.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, FOE_HALF, TILE } from "../../src/constants";
+import { BOLT_SPEED, FOE_HALF, TILE } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
 import {
   captureStill,

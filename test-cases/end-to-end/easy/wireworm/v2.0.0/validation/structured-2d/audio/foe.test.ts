@@ -20,7 +20,7 @@
 // stands on and put another event on the board.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, CUES, TILE } from "../../src/constants";
+import { BOLT_SPEED, CUES, TILE } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

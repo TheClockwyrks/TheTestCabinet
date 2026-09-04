@@ -14,7 +14,7 @@
 // as real key events at the target the engine listens on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

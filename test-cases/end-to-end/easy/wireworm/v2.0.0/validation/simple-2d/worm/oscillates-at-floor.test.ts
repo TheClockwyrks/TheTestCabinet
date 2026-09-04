@@ -22,7 +22,7 @@
 // graded by `worm.blocked-by-edge`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, ROWS, WORM_STEP_L1 } from "../../src/constants";
+import { COLS, ROWS, WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,

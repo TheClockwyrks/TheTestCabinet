@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { GLITCH_FROM_LEVEL, GLITCH_MAX_INTERVAL } from "../../src/constants";
+import { GLITCH_FROM_LEVEL, GLITCH_MAX_INTERVAL } from "../constants";
 import {
   captureStill,
   createHarness,

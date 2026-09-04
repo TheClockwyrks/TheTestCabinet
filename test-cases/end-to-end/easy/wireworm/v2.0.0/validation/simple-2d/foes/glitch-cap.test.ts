@@ -17,7 +17,7 @@
 // past: the reading counts glitches alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GLITCH_MAX_ON_BOARD } from "../../src/constants";
+import { GLITCH_MAX_ON_BOARD } from "../constants";
 import { assertLessThanOrEqual } from "../assert";
 import {
   captureStill,

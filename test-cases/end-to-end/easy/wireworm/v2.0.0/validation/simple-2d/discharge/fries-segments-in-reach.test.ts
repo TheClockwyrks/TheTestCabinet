@@ -33,7 +33,7 @@ import {
   BOLT_SPEED,
   CHARGE_MAX,
   DISCHARGE_RADIUS,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,

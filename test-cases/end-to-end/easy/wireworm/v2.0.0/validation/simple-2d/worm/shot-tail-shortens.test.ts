@@ -21,7 +21,7 @@
 // together separate a tail shot handled correctly from one handled at the head.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, TILE } from "../../src/constants";
+import { BOLT_SPEED, TILE } from "../constants";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureStill,

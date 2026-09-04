@@ -17,7 +17,7 @@
 // tile it was placed on and no other node in the scenario is touched.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX } from "../../src/constants";
+import { CHARGE_MAX } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

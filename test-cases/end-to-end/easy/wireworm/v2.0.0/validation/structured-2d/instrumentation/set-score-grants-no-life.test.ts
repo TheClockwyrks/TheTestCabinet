@@ -29,7 +29,7 @@
 // the boundary through REAL scoring does grant a life is `scoring/bonus-life`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BONUS_LIFE_EVERY, START_LIVES } from "../../src/constants";
+import { BONUS_LIFE_EVERY, START_LIVES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

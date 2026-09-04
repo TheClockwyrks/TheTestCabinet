@@ -23,7 +23,7 @@ import {
   DROPPER_CHECK_INTERVAL,
   DROPPER_FROM_LEVEL,
   DROPPER_SPARSE_THRESHOLD,
-} from "../../src/constants";
+} from "../constants";
 import {
   captureStill,
   createHarness,

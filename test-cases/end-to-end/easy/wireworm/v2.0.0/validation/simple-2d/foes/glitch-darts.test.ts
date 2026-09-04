@@ -22,7 +22,7 @@
 // takes part, and high enough that it does not leave through the bottom.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GLITCH_DART_INTERVAL, GLITCH_H_SPEED } from "../../src/constants";
+import { GLITCH_DART_INTERVAL, GLITCH_H_SPEED } from "../constants";
 import { assertLength, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

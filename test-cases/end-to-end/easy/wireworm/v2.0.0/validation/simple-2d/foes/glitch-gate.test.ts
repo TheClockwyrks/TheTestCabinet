@@ -11,7 +11,7 @@
 // on, and the reading is the most glitches the roster ever held.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GLITCH_FROM_LEVEL, GLITCH_MAX_INTERVAL } from "../../src/constants";
+import { GLITCH_FROM_LEVEL, GLITCH_MAX_INTERVAL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

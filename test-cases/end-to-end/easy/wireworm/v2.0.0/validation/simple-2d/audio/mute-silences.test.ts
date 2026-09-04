@@ -39,7 +39,7 @@ import {
   FIRE_INTERVAL,
   TILE,
   TITLE_ITEMS,
-} from "../../src/constants";
+} from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

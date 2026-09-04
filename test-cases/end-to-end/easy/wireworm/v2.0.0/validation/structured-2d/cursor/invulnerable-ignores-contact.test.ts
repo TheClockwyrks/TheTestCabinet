@@ -27,7 +27,7 @@ import {
   RESPAWN_INVULN,
   START_LIVES,
   tileCX,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

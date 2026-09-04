@@ -14,7 +14,7 @@
 // THE MOTION IS PROVED FIRST. A board where nothing was moving is frozen by
 // doing nothing at all, so the drive runs LIVE_TICKS of live play first and the
 // check asserts the worm really stepped over it. LIVE_TICKS covers 0.4 s, which
-// is nearly three of level 1's 0.14 s worm steps (`src/constants.ts`,
+// is nearly three of level 1's 0.14 s worm steps (specs/worm.md,
 // WORM_STEP_L1) — long enough that a worm stepping at anything near the stated
 // rate has stepped, and short enough to leave it clear of the walls.
 //

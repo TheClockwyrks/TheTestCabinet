@@ -20,7 +20,7 @@
 // invulnerable one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CURSOR_Y_MAX, CURSOR_Y_MIN } from "../../src/constants";
+import { CURSOR_Y_MAX, CURSOR_Y_MIN } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   BAND_CX,

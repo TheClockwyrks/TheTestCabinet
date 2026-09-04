@@ -17,10 +17,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import {
-  DROPPER_FROM_LEVEL,
-  DROPPER_SPARSE_THRESHOLD,
-} from "../../src/constants";
+import { DROPPER_FROM_LEVEL, DROPPER_SPARSE_THRESHOLD } from "../constants";
 import {
   captureStill,
   createHarness,

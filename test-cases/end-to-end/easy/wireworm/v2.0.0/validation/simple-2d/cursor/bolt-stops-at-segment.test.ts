@@ -35,7 +35,7 @@
 // the bolt climbed to is the one that is gone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED } from "../../src/constants";
+import { BOLT_SPEED } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   boltOf,

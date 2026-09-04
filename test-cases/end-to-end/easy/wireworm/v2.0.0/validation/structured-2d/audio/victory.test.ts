@@ -21,7 +21,7 @@
 // sounds, exactly once, on the frame the victory screen opens.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BOLT_SPEED, CUES, TILE, TOTAL_LEVELS } from "../../src/constants";
+import { BOLT_SPEED, CUES, TILE, TOTAL_LEVELS } from "../constants";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,

@@ -25,7 +25,7 @@
 // dive cannot end part-way through the drive (`worm.dive-ends-at-band`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_TOP_ROW, WORM_STEP_L1 } from "../../src/constants";
+import { BAND_TOP_ROW, WORM_STEP_L1 } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
 import {
   captureStill,

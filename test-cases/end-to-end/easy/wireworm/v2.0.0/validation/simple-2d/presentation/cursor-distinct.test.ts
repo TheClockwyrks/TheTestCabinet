@@ -25,7 +25,7 @@
 // else is in the band and nothing arrives into it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROWS } from "../../src/constants";
+import { ROWS } from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,

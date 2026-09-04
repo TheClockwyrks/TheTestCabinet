@@ -36,7 +36,7 @@
 // build that ignores the gate grade differently.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES, tileCX, tileCY } from "../../src/constants";
+import { START_LIVES, tileCX, tileCY } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,

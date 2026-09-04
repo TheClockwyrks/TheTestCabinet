@@ -26,7 +26,7 @@
 // and the tile read sits mid-board, far from the cursor resting in its band.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CHARGE_MAX, NODE_PULSE_FPS, TILE } from "../../src/constants";
+import { CHARGE_MAX, NODE_PULSE_FPS, TILE } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual, fail } from "../assert";
 import {
   captureStill,

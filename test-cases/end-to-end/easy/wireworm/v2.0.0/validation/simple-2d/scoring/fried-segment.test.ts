@@ -33,7 +33,7 @@ import {
   SCORE_FRY,
   SCORE_PURGE_NODE,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

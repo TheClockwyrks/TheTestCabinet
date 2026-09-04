@@ -13,7 +13,7 @@
 // a frame of it being played.
 //
 // THE PHASE POSED IS `banner`, the phase a level opens on and the one whose
-// timer is longest at `BANNER_TIME` (`1.3` s, `src/constants.ts`). It is posed
+// timer is longest at `BANNER_TIME` (`1.3` s, specs/progression.md). It is posed
 // with `setPhase` and `setPhaseTimer` rather than reached by clearing a level, so
 // what is graded is the freeze rather than the route.
 //
@@ -22,7 +22,7 @@
 // banner out and moved the phase on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME } from "../../src/constants";
+import { BANNER_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

@@ -24,7 +24,7 @@
 // not twice here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { COLS, wormStepInterval } from "../../src/constants";
+import { COLS, wormStepInterval } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
