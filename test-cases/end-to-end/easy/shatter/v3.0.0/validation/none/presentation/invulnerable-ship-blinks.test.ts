@@ -79,8 +79,15 @@ const SAMPLE_STRIDE = 3;
 /** Ticks the whole grace window is: `INVULN_TIME` of game time. */
 const WINDOW_TICKS = ticksFor(INVULN_TIME);
 
-/** Ticks driven past the end of the window before the settled reading is taken. */
-const AFTER_TICKS = ticksFor(0.25);
+/**
+ * Ticks driven past the end of the window before the settled reading is taken.
+ *
+ * A fifth of a second, the same wait `simple-2d` and `structured-2d` take before
+ * their settled reading — so a build that lets the grace's mark fade out over a
+ * fifth of a second is caught here as it is there, rather than reading as settled
+ * on one engine and as still marked on another.
+ */
+const AFTER_TICKS = ticksFor(0.2);
 
 /**
  * How far a sample's colour must move to count as changed, of the 441 an RGB
