@@ -1,15 +1,75 @@
-// Meltdown — building/sell-another-keeps-the-selection: NOT YET WRITTEN.
+// Meltdown — building/sell-another-keeps-the-selection — selling a tower that is not the
+// selected one leaves the selection where it was.
 //
-// This file is a placeholder so the case manifest resolves. The review item
-// `building.sell-another-keeps-the-selection` points at it, and the suite that belongs here has still to
-// be written against the rendered specs.
+// specs/building.md, Selling: "Selling a tower that was not selected leaves the
+// selection where it was." specs/building.md, Selecting, is where the field's
+// shape comes from: "Selecting is by tower: one tower is selected at a time, or
+// none."
 //
-// THE CLAIM IT MUST DECIDE.
-// Selling another tower leaves the selection alone:
-// Selling a tower that is not the selected one leaves selected on the tower it was on.
+// ONE DIRECTION, BECAUSE THE OTHER IS ITS OWN POINT. A build that never clears the
+// selection satisfies this one and is exactly as wrong as one that clears it on
+// every sale, so the other direction — selling the SELECTED tower clears it — is
+// `building.sell-clears-the-selection`'s, and the two verdicts between them name
+// which of the two wrong builds was written.
 //
-// Write it in the shape every other suite in this project uses: pose the world
-// through the debug surface, hold only what this requirement concerns, advance
-// the clock by the frames the requirement needs, and assert one thing in one
-// direction. Every figure it compares against comes from this project's own
-// `constants.ts`.
+// TWO TOWERS ARE POSED WITH `poseTower`, the atom, on quiet anchors six tiles
+// apart, so neither is on a corridor and neither touches the other: the
+// requirement here is what a sale of ANOTHER tower does to the selection, and
+// nothing about how either got onto the floor is being graded. The one that stays
+// is the selected one, so the reading afterwards is that the same id is still
+// selected rather than merely that something is.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { freeSite } from "../fixtures";
+import {
+  captureStill,
+  createHarness,
+  poseTower,
+  startRun,
+  type Harness,
+} from "../harness";
+
+/** The two towers, on quiet anchors six tiles apart. */
+const HELD = "arc";
+const SOLD = freeSite(0);
+const KEPT = freeSite(1);
+
+/** Enough money that nothing here is about affordability. */
+const PURSE = 200;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("leaves the selection alone on selling another tower", async () => {
+  await startRun(h);
+  await h.debug.setMoney(PURSE);
+  const sold = await poseTower(h, HELD, SOLD.col, SOLD.row);
+  const kept = await poseTower(h, HELD, KEPT.col, KEPT.row);
+
+  await h.debug.setSelected(kept);
+  assertEqual(
+    (await h.snapshot()).selected,
+    kept,
+    "the tower the scenario selected",
+  );
+
+  await h.debug.sellTower(sold);
+  const after = await h.snapshot();
+
+  await h.advance(1);
+  await captureStill(h, "kept");
+
+  assertEqual(
+    after.selected,
+    kept,
+    "the selection after selling the tower that was NOT selected",
+  );
+});

@@ -1,15 +1,162 @@
-// Meltdown — building/upgrade-extends-the-range: NOT YET WRITTEN.
+// Meltdown — building/upgrade-extends-the-range — a level adds 1.0 tile to the emitter's
+// range.
 //
-// This file is a placeholder so the case manifest resolves. The review item
-// `building.upgrade-extends-the-range` points at it, and the suite that belongs here has still to
-// be written against the rendered specs.
+// specs/towers.md, Levels: "Each level above the first applies the following to an
+// emitter, once per level" — range with `UPGRADE_RANGE` (1.0) tile added — "so a
+// level III emitter carries ... 2.0 tiles more range".
 //
-// THE CLAIM IT MUST DECIDE.
-// An upgrade extends the range:
-// Level II adds UPGRADE_RANGE (1.0) tile of range and level III adds it again, for 2.0 tiles over the level-I figure.
+// THE READING IS WHAT THE TOWER WILL TARGET, because the range is not in the
+// snapshot. specs/combat.md: "A surge unit is in range when the distance from that
+// centre to the unit's centre is at most `range * TILE` logical units", and
+// `targeting` reports "the id of the unit it is firing on". The Arc reaches 6.0,
+// 7.0 and 8.0 tiles at its three levels, so a target at 6.5 tiles is out of reach at
+// level I and inside it at II and III, and one at 7.5 is out at I and II and inside
+// at III. That pair of probes pins "+1.0 per level" exactly: a build that adds
+// nothing reads both probes out at every level, one that adds 2.0 reads the far
+// probe in at level II, and one that MULTIPLIES the range instead of adding to it
+// reads 6.5 in at level II (x1.15 gives 6.9) but never reaches 7.5 by level II —
+// every wrong model lands on a different row of the table.
 //
-// Write it in the shape every other suite in this project uses: pose the world
-// through the debug surface, hold only what this requirement concerns, advance
-// the clock by the frames the requirement needs, and assert one thing in one
-// direction. Every figure it compares against comes from this project's own
-// `constants.ts`.
+// THE TOWER IS AN ARC, and the choice does work. Its mass is 1.0, so the heat one
+// shot leaves is `heatPerShot` itself rather than a quotient; its range is a whole
+// number of tiles at every level, so a probe sits half a tile off a boundary rather
+// than near one; and its redline of 80 is above the pinned heat, so the damage
+// multiplier is on the curve rather than on its plateau.
+//
+// EVERY LEVEL IS REACHED BY PAYING FOR A REAL UPGRADE, because the requirement is
+// what an UPGRADE does. The purse is far above both costs, so affordability is never
+// what refuses one, and the level is read back at each step so a build that failed
+// to upgrade at all is named for that rather than for its stats.
+//
+// THE FLOOR HOLDS THE TOWER AND AT MOST ONE TARGET AND NOTHING ELSE. The anchor is a
+// quiet one with nothing within six tiles, so no conduction, no Forge and no Sink is
+// in any heat sum; a target's motion is held, so it cannot walk across a boundary
+// while a reading is taken; and its hp is far past anything a window can remove, so
+// no death interrupts a count.
+//
+// THE OTHER THREE ROWS OF THAT TABLE ARE THEIR OWN POINTS. Each is independently
+// breakable — a build that scales the damage and forgets the range has missed one
+// requirement, not four — so `building.upgrade-raises-the-damage`,
+// `building.upgrade-extends-the-range`, `building.upgrade-quickens-the-fire-rate`
+// and `building.upgrade-raises-the-heat-per-shot` grade one row each.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertNull, fail } from "../assert";
+import {
+  MAX_LEVEL,
+  TILE,
+  emitterStats,
+  footprintCentre,
+  type Level,
+} from "../constants";
+import { FREE_SITE } from "../fixtures";
+import {
+  captureStill,
+  createHarness,
+  lastUnit,
+  poseTower,
+  requireTower,
+  startRun,
+  type Harness,
+} from "../harness";
+import { emitterOf, sizeOf } from "./preview";
+
+/** The tower upgraded, on a quiet anchor with nothing within six tiles. */
+const HELD = "arc";
+const AT = FREE_SITE;
+
+/** The three levels, in the order the upgrades reach them. */
+const LEVELS: readonly Level[] = [1, 2, 3];
+
+/** Far above both upgrade costs, so affordability never refuses a step. */
+const PURSE = 1000;
+
+/** Where the two range probes sit, in tiles, against a level-I range of 6.0. */
+const NEAR_TILES = 6.5;
+const FAR_TILES = 7.5;
+
+/** The tower's footprint centre, which specs/combat.md measures range from. */
+const CENTRE = footprintCentre(AT.col, AT.row, sizeOf(HELD));
+
+/** Far past anything a window below can remove, so no death interrupts a count. */
+const TARGET_HP = 1e6;
+
+/**
+ * Put one stationary, effectively unkillable target `tiles` tiles due east of the
+ * tower's footprint centre, and hand back its id.
+ *
+ * Due east so the distance is the one thing that varies between probes, and
+ * stationary so it cannot walk across a range boundary while a reading is taken. The
+ * surge is emptied first, so exactly one unit is ever on the floor and `targeting`
+ * names it unambiguously.
+ */
+async function poseTargetAt(h: Harness, tiles: number): Promise<number> {
+  await h.debug.clearSurge();
+  await h.debug.addUnit("mote", "left");
+  const added = lastUnit(await h.snapshot());
+  if (added === undefined) {
+    fail(
+      "addUnit to append a unit to the roster (specs/instrumentation.md)",
+      "the surge roster was still empty after addUnit",
+    );
+  }
+  await h.debug.setUnitPosition(added.id, CENTRE.x + tiles * TILE, CENTRE.y);
+  await h.debug.setUnitMotion(added.id, false);
+  await h.debug.setUnitMaxHp(added.id, TARGET_HP);
+  await h.debug.setUnitHp(added.id, TARGET_HP);
+  return added.id;
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h?.dispose();
+});
+
+it("adds a tile of range once per level", async () => {
+  const def = emitterOf(HELD);
+
+  await startRun(h);
+  await h.debug.setMoney(PURSE);
+  const id = await poseTower(h, HELD, AT.col, AT.row);
+
+  for (const level of LEVELS) {
+    if (level > 1) await h.debug.upgradeTower(id);
+    const at = `level ${level}`;
+    const want = emitterStats(def, level);
+
+    // The thermal model is held off: the requirement is what the tower can
+    // REACH, and a tower that heated itself while the probes were read could
+    // trip and report no target for a reason that is not its range
+    // (specs/instrumentation.md, the thermal gate).
+    await h.debug.setTowerThermal(id, false);
+    await h.debug.setTowerHeat(id, 0);
+
+    const tower = requireTower(await h.snapshot(), id, at);
+    assertEqual(tower.level, level, `the level after ${level - 1} upgrade(s)`);
+
+    for (const tiles of [NEAR_TILES, FAR_TILES]) {
+      const unit = await poseTargetAt(h, tiles);
+      await h.advance(1);
+      const probed = requireTower(await h.snapshot(), id, at);
+      const reach = `${at}: a target ${tiles} tiles out, against a range of ${want.range}`;
+      if (tiles <= want.range) {
+        assertEqual(probed.targeting, unit, `${reach} — it is in reach`);
+      } else {
+        assertNull(probed.targeting, `${reach} — it is out of reach`);
+      }
+    }
+
+    if (level === MAX_LEVEL) {
+      // Selected, so the ring the widened range is drawn at is in the picture.
+      await h.debug.setSelected(id);
+      await h.advance(1);
+      await captureStill(h, "ring");
+      await h.debug.setSelected(null);
+    }
+  }
+});
