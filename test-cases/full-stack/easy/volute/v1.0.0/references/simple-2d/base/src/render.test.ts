@@ -224,7 +224,7 @@ describe("the produced art", () => {
 
   it("swings the barrel back through the produced recoil sheet after a shot", async () => {
     const h = await bare();
-    h.api.fire(270);
+    h.api.fireAt(270);
     const frames = new Set<unknown>();
     for (let i = 0; i < 12; i += 1) {
       h.calls.length = 0;
@@ -408,6 +408,9 @@ describe("the screens", () => {
               [head - 28, "halide", null],
             ],
             "halide",
+            () => {
+              h.api.setQuotaRemaining(0);
+            },
           );
           return h;
         },
@@ -433,6 +436,9 @@ describe("the screens", () => {
               [head - 28, "halide", null],
             ],
             "halide",
+            () => {
+              h.api.setQuotaRemaining(0);
+            },
           );
           return h;
         },
@@ -468,7 +474,7 @@ describe("the sightline ray", () => {
   it("ends at the field edge when it crosses no core", async () => {
     const h = await bare();
     h.api.clearTrain();
-    h.api.fire(0);
+    h.api.fireAt(0);
     const end = sightlineEnd(h.state);
     expect(end.x).toBeCloseTo(960, 6);
     expect(end.y).toBeCloseTo(INJECTOR_Y, 6);
@@ -483,7 +489,7 @@ describe("the sightline ray", () => {
       [270, INJECTOR_X, 0],
       [90, INJECTOR_X, 540],
     ] as const) {
-      h.api.fire(aim);
+      h.api.fireAt(aim);
       const end = sightlineEnd(h.state);
       expect(end.x).toBeCloseTo(x, 6);
       expect(end.y).toBeCloseTo(y, 6);
@@ -495,7 +501,7 @@ describe("the sightline ray", () => {
     const h = await bare();
     // A core directly above the injector, on the leg at y = 220.
     h.api.poseTrain([[topLegS(INJECTOR_X), "halide", null]]);
-    h.api.fire(270);
+    h.api.fireAt(270);
     const end = sightlineEnd(h.state);
     expect(end.x).toBeCloseTo(INJECTOR_X, 6);
     expect(end.y).toBeCloseTo(220 + CORE_RADIUS, 6);

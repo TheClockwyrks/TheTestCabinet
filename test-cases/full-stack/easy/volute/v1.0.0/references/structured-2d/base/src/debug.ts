@@ -27,6 +27,8 @@
 // engine draws the panel and owns the backtick key).
 
 import {
+  CELLS,
+  CHAIN_RESET,
   CHARGE_IDS,
   DEFAULT_SEED,
   LEVEL_COUNT,
@@ -34,12 +36,17 @@ import {
   PATH_LENGTH,
   PRESSURE_MAX,
   PRESSURE_MIN,
+  SCREENS,
   VOLUTE_DEBUG_VERSION,
 } from "./constants";
 import type { ChargeId, MachineryKind, ScreenName } from "./constants";
 import { pointAt } from "./channel";
 import type { VoluteGame } from "./game";
-import { inDanger } from "./hall-mode";
+import {
+  inDanger,
+  TIMED_MACHINERY_KINDS,
+  type TimedMachineryKind,
+} from "./hall-mode";
 import { clamp, normalizeAngle } from "./math";
 import { clearChannel, clearProjectiles, levelSpec } from "./level";
 import { resegment, spaced } from "./train";
@@ -101,6 +108,10 @@ export interface VoluteSnapshot {
   };
   projectiles: ProjectileSnapshot[];
   machinery: { kind: MachineryKind; remaining: number } | null;
+  /** Whether the inlet emits. */
+  emission: boolean;
+  /** Whether the train advances. */
+  feed: boolean;
   muted: boolean;
   simTime: number;
   rngState: number;
@@ -111,15 +122,22 @@ export interface VoluteDebug {
   version: number;
   reset(options?: { seed?: number }): void;
   snapshot(): VoluteSnapshot;
-  start(): void;
+  setScreen(name: string): void;
+  setLevel(level: number): void;
+  setScore(n: number): void;
+  setCells(n: number): void;
+  setChainStep(k: number): void;
   startLevel(level: number): void;
   poseTrain(cores: readonly PosedCore[]): void;
   clearTrain(): void;
   setLoaded(charge: string): void;
   setQueued(charge: string): void;
-  fire(angleDegrees: number): void;
+  setAim(angleDegrees: number): void;
+  fire(): void;
   setPressure(value: number): void;
   setQuotaRemaining(n: number): void;
+  setEmission(enabled: boolean): void;
+  setFeed(enabled: boolean): void;
   grantMachinery(kind: string): void;
   pause(): void;
   resume(): void;
@@ -137,6 +155,20 @@ function asMark(value: unknown): MachineryKind | null {
   return MACHINERY_KINDS.includes(value as MachineryKind)
     ? (value as MachineryKind)
     : null;
+}
+
+/** A screen name, or `title` when the argument names none of the seven. */
+function asScreen(value: unknown): ScreenName {
+  return SCREENS.includes(value as ScreenName)
+    ? (value as ScreenName)
+    : SCREENS[0];
+}
+
+/** One of the three timed kinds, or `choke` when the argument names none. */
+function asTimedKind(value: unknown): TimedMachineryKind {
+  return TIMED_MACHINERY_KINDS.includes(value as TimedMachineryKind)
+    ? (value as TimedMachineryKind)
+    : TIMED_MACHINERY_KINDS[0];
 }
 
 /** A finite number, or a stated fallback. */
@@ -166,14 +198,63 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
     },
 
     /**
-     * Pose exactly what the start control on the title does: the score `0`, the
-     * cells full, and level `1` opened as `startLevel` opens it.
+     * Set the screen, and change nothing else.
      *
-     * The generator's state and `simTime` stay as they are, so a run from a
-     * known seed is a `reset` followed by this.
+     * No level is opened, no channel is seeded, no timer is started and no
+     * interlude is set: the screen alone moves, and what it advances and what
+     * the controls read follow from it exactly as they do in play.
      */
-    start() {
-      game.startRun();
+    setScreen(name) {
+      game.pose((mode) => {
+        mode.state.screen = asScreen(name);
+      });
+    },
+
+    /**
+     * Set the level in play, and change nothing else.
+     *
+     * The level's feed speed and its charge set follow the new value at once,
+     * because both are read off the level rather than copied when it opens.
+     * Opening a level is `startLevel`.
+     */
+    setLevel(level) {
+      game.pose((mode) => {
+        mode.state.level = clamp(
+          Math.round(asNumber(level, 1)),
+          1,
+          LEVEL_COUNT,
+        );
+      });
+    },
+
+    /** Set the run's score. It ends nothing and opens nothing. */
+    setScore(n) {
+      game.pose((mode) => {
+        mode.state.score = Math.max(0, Math.round(asNumber(n, 0)));
+      });
+    },
+
+    /**
+     * Set the cells remaining.
+     *
+     * `setCells(0)` leaves the screen exactly as it stands: the ending a spent
+     * last cell reaches comes from the ticks run after the pose.
+     */
+    setCells(n) {
+      game.pose((mode) => {
+        mode.state.cells = clamp(Math.round(asNumber(n, CELLS)), 0, CELLS);
+      });
+    },
+
+    /**
+     * Set the chain step an extraction scores at, and restart the window that
+     * returns it to `1`, so the posed step holds for `CHAIN_RESET` of play.
+     */
+    setChainStep(k) {
+      game.pose((mode) => {
+        mode.state.chainStep = Math.max(1, Math.round(asNumber(k, 1)));
+        mode.state.chainTimer = CHAIN_RESET;
+      });
     },
 
     /** Open `level`, exactly as the interlude before it opens it. */
@@ -234,19 +315,28 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
     },
 
     /**
-     * Aim at `angleDegrees` and release the loaded core along it, through the
-     * same path the fire control takes.
+     * Set the aim, normalized into `[0, 360)`, and do nothing else: no core is
+     * released, the cooldown is untouched, and the two held charges stay.
+     */
+    setAim(angleDegrees) {
+      game.pose((mode) => {
+        const injector = mode.injector();
+        mode.aimAt(normalizeAngle(asNumber(angleDegrees, injector.aim)));
+      });
+    },
+
+    /**
+     * Release the loaded core along the CURRENT aim, through the same path the
+     * fire control takes.
      *
      * Any cooldown outstanding at the call is cleared first, so the call always
      * launches, and a call made while the injector holds no loaded core draws
      * one first. The flight, the strike, the insertion and any extraction the
      * insertion causes come from the ticks that follow.
      */
-    fire(angleDegrees) {
+    fire() {
       game.pose((mode) => {
-        const injector = mode.injector();
-        injector.setAim(normalizeAngle(asNumber(angleDegrees, injector.aim)));
-        injector.cooldown = 0;
+        mode.injector().cooldown = 0;
         mode.fire();
       });
     },
@@ -280,13 +370,33 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
     },
 
     /**
-     * Grant a kind exactly as extracting a run holding a mark of that kind
-     * grants it: the three timed kinds become the active machinery at their full
-     * duration, and `bore` resolves at once, centered on the head core.
+     * Hold the inlet, and let it go again.
+     *
+     * Independent of the quota: a hall whose quota is untouched and whose inlet
+     * is held emits nothing and is never cleared for an exhausted quota. It
+     * lives on the instance, so a `reset` and a `startLevel` both leave it where
+     * the caller put it.
+     */
+    setEmission(enabled) {
+      game.emission = enabled !== false;
+    },
+
+    /** Hold the train where it stands, and let it advance again. */
+    setFeed(enabled) {
+      game.feed = enabled !== false;
+    },
+
+    /**
+     * Grant one of the three timed kinds, exactly as extracting a run holding a
+     * mark of that kind grants it: it becomes the active machinery at its full
+     * duration, replacing whatever was active and restarting its timer.
+     *
+     * `bore` is not granted here — it removes cores and scores the moment it
+     * resolves, and no pose decides an outcome.
      */
     grantMachinery(kind) {
-      const named = asMark(kind) ?? MACHINERY_KINDS[0];
-      game.pose((mode) => mode.grantMachinery(named));
+      const named = asTimedKind(kind);
+      game.pose((mode) => mode.grantTimedMachinery(named));
     },
 
     /** Pose the pause control. */
@@ -362,6 +472,8 @@ export function snapshot(game: VoluteGame): VoluteSnapshot {
       state.machinery === null
         ? null
         : { kind: state.machinery.kind, remaining: state.machinery.remaining },
+    emission: game.emission,
+    feed: game.feed,
     muted: game.muted(),
     simTime: game.simTime(),
     rngState: game.rngState >>> 0,

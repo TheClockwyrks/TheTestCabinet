@@ -74,7 +74,8 @@ describe("boot", () => {
     const h = current();
     await isolate(h);
     poseTrain(h, run(1000, 3, "halide"));
-    h.debug.fire(90);
+    h.debug.setAim(90);
+    h.debug.fire();
     expect(h.engine.world.byTag(TAGS.core)).toHaveLength(3);
     expect(h.engine.world.ofType(Core)).toHaveLength(3);
     expect(h.engine.world.byTag(TAGS.projectile)).toHaveLength(1);

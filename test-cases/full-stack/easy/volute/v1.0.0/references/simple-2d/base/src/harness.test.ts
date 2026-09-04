@@ -39,6 +39,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIONS,
   BINDINGS,
+  CELLS,
   FIELD_H,
   FIELD_W,
   LAYOUT,
@@ -76,15 +77,32 @@ export interface CuePlay {
  */
 export interface Driver {
   reset(options?: { seed?: number }): void;
-  start(): void;
+  setScreen(name: string): void;
+  setLevel(level: number): void;
+  setScore(n: number): void;
+  setCells(n: number): void;
+  setChainStep(k: number): void;
   startLevel(level: number): void;
   poseTrain(cores: readonly PosedCore[]): void;
   clearTrain(): void;
   setLoaded(charge: string): void;
   setQueued(charge: string): void;
-  fire(angleDegrees: number): void;
+  setAim(angleDegrees: number): void;
+  fire(): void;
+  /**
+   * Point the injector and release, as `setAim` then `fire`.
+   *
+   * A convenience of this harness rather than an operation of the surface: the
+   * surface's poses are single-field, and a sequence over them belongs here
+   * (specs/instrumentation.md).
+   */
+  fireAt(angleDegrees: number): void;
+  /** Open a fresh run on level 1, as the start control on the title does. */
+  start(): void;
   setPressure(value: number): void;
   setQuotaRemaining(n: number): void;
+  setEmission(enabled: boolean): void;
+  setFeed(enabled: boolean): void;
   grantMachinery(kind: string): void;
   pause(): void;
   resume(): void;
@@ -296,17 +314,34 @@ export async function harness(options: HarnessOptions = {}): Promise<Harness> {
 
   const api: Driver = {
     reset: (options) => void engine.apply((s) => debug.reset(s, options)),
-    start: () => void engine.apply((s) => debug.start(s)),
+    setScreen: (name) => void engine.apply((s) => debug.setScreen(s, name)),
+    setLevel: (level) => void engine.apply((s) => debug.setLevel(s, level)),
+    setScore: (n) => void engine.apply((s) => debug.setScore(s, n)),
+    setCells: (n) => void engine.apply((s) => debug.setCells(s, n)),
+    setChainStep: (k) => void engine.apply((s) => debug.setChainStep(s, k)),
     startLevel: (level) => void engine.apply((s) => debug.startLevel(s, level)),
     poseTrain: (cores) => void engine.apply((s) => debug.poseTrain(s, cores)),
     clearTrain: () => void engine.apply((s) => debug.clearTrain(s)),
     setLoaded: (charge) => void engine.apply((s) => debug.setLoaded(s, charge)),
     setQueued: (charge) => void engine.apply((s) => debug.setQueued(s, charge)),
-    fire: (angle) => void engine.apply((s) => debug.fire(s, angle)),
+    setAim: (angle) => void engine.apply((s) => debug.setAim(s, angle)),
+    fire: () => void engine.apply((s) => debug.fire(s)),
+    fireAt: (angle) => {
+      engine.apply((s) => debug.setAim(s, angle));
+      engine.apply((s) => debug.fire(s));
+    },
+    start: () => {
+      engine.apply((s) => debug.setScore(s, 0));
+      engine.apply((s) => debug.setCells(s, CELLS));
+      engine.apply((s) => debug.startLevel(s, 1));
+    },
     setPressure: (value) =>
       void engine.apply((s) => debug.setPressure(s, value)),
     setQuotaRemaining: (n) =>
       void engine.apply((s) => debug.setQuotaRemaining(s, n)),
+    setEmission: (enabled) =>
+      void engine.apply((s) => debug.setEmission(s, enabled)),
+    setFeed: (enabled) => void engine.apply((s) => debug.setFeed(s, enabled)),
     grantMachinery: (kind) =>
       void engine.apply((s) => debug.grantMachinery(s, kind)),
     pause: () => void engine.apply((s) => debug.pause(s)),
@@ -375,9 +410,11 @@ export async function bare(level = 1): Promise<Harness> {
   const h = await harness();
   h.api.startLevel(level);
   h.api.setPressure(0);
-  h.api.setQuotaRemaining(0);
+  // The inlet is held rather than starved, so the level's quota stands and an
+  // emptied channel is never cleared for an exhausted one. Nothing arrives, and
+  // no bystander core has to stand in a corner keeping the hall in play.
+  h.api.setEmission(false);
   h.api.clearTrain();
-  h.api.poseTrain([[100, "olivine", null]]);
   return h;
 }
 
@@ -405,16 +442,20 @@ export async function seatShot(
   h: Harness,
   cores: readonly PosedCore[],
   charge = "cobalt",
+  posed?: () => void,
 ): Promise<void> {
   const step = 620 / 60;
   h.api.setLoaded(charge);
-  h.api.fire(270);
+  h.api.fireAt(270);
   for (let i = 0; i < 60; i += 1) {
     const shot = h.api.snapshot().projectiles[0];
     if (shot === undefined || shot.y - step <= 220) break;
     await h.step();
   }
   h.api.poseTrain(cores);
+  // Anything the caller wants standing on the LAST tick alone, such as an
+  // exhausted quota that would otherwise clear the level during the flight.
+  posed?.();
   await h.step();
 }
 
@@ -448,7 +489,9 @@ describe("the harness", () => {
     // declared it with, so a cue is never an undeclared name the engine throws
     // on. The fifteen failures here are exactly the fifteen cue files.
     expect(h.assetFailures).toHaveLength(15);
-    h.pose((s) => h.debug.start(s));
+    h.api.setScore(0);
+    h.api.setCells(CELLS);
+    h.api.startLevel(1);
     h.tap(BINDINGS.a[0]);
     await h.step(1);
     expect(h.cues.map((play) => play.cue)).toContain("fire");
@@ -467,7 +510,9 @@ describe("the harness", () => {
     const h = await harness();
     // The engine reports nothing about registrations, so the check is that each
     // binding actually drives its action: holding a bound key moves the aim.
-    h.pose((s) => h.debug.start(s));
+    h.api.setScore(0);
+    h.api.setCells(CELLS);
+    h.api.startLevel(1);
     const before = h.snapshot().injector.aim;
     h.hold(BINDINGS.right[0]);
     await h.step(30);
@@ -479,7 +524,9 @@ describe("the harness", () => {
 
   it("steps exactly one simulation tick per frame", async () => {
     const h = await harness();
-    h.pose((s) => h.debug.start(s));
+    h.api.setScore(0);
+    h.api.setCells(CELLS);
+    h.api.startLevel(1);
     await h.step(60);
     // `simTime` accumulates every update's elapsed time, so 60 frames of the
     // harness's clock are exactly one second.

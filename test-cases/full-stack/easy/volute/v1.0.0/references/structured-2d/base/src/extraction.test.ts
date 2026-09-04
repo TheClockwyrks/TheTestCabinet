@@ -88,7 +88,8 @@ describe("runs", () => {
     let before = h.snapshot();
     let after = before;
     h.debug.setLoaded("halide");
-    h.debug.fire(toward(380, 420));
+    h.debug.setAim(toward(380, 420));
+    h.debug.fire();
     for (let i = 0; i < 20; i += 1) {
       before = h.snapshot();
       await h.engine.advance(1);

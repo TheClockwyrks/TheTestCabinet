@@ -33,7 +33,7 @@ import { renderFrame, sightlineEnd } from "./render";
 import { createState, startLevel } from "./state";
 import { resegment } from "./train";
 import type { VoluteState } from "./types";
-import { harness, topLegS } from "./harness.test";
+import { harness, startRun, topLegS } from "./harness.test";
 
 const ROOT = join(__dirname, "..", "assets");
 
@@ -699,7 +699,7 @@ describe("the effects", () => {
 describe("a driven hall", () => {
   it("draws the frame a real drive leaves behind", () => {
     const hall = harness();
-    hall.api.start();
+    startRun(hall);
     hall.step(120);
     const ops: Op[] = [];
     const { ctx } = surface(ops);

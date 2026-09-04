@@ -42,7 +42,13 @@ specification is written against them.
   left unconsumed when the game stops advancing is discarded, so it is `0` on
   the screens that hold still.
 - Whether the simulation advances on its own each frame.
-- Whether audio is muted.
+- Whether the inlet emits, and whether the train advances. Both hold in play and
+  neither is restored by a `reset` or a level opening: they are what the
+  debugging surface's gates set, and they belong to the caller driving the game
+  rather than to the run being played.
+- Whether audio is muted. A fresh game starts with its audio unmuted, and the
+  mute bit then belongs to the player: neither a `reset` nor a level opening
+  moves it.
 - The state of the seeded generator every random draw comes from. A `reset` sets
   it from the seed it is given.
 
@@ -115,6 +121,8 @@ export interface VoluteState {
   readonly interlude: number;
   readonly simTime: number;
   readonly accumulator: number;
+  readonly emission: boolean;
+  readonly feed: boolean;
   readonly muted: boolean;
   readonly rngState: number;
 }
@@ -204,6 +212,9 @@ differs in the fields posed and read back by reading them.
   at least `0` and below `TICK_DT`. It grows on the screens that advance the
   simulation, and the delta time left unconsumed when the game stops advancing
   is discarded, so it is `0` on the screens that hold still.
+- `emission` — whether the inlet emits, and `feed` — whether the train advances.
+  Both are `true` in play. They are what the debug surface's `setEmission` and
+  `setFeed` set, so a `reset` and a level opening both leave them as they stand.
 - `muted` — the game's readable copy of the engine's mute bit, which every
   `update` carries into the state it returns. The engine owns muting, and this
   field is what the debug surface reports.
@@ -229,7 +240,8 @@ ended, since they report its score and level.
 | `loaded`, `queued` | `null` |
 | `aim` | `270` |
 | `fireCooldown`, `interlude`, `simTime`, `accumulator` | `0` |
-| `muted` | `false` |
+| `emission`, `feed` | unchanged |
+| `muted` | unchanged; `false` on a fresh game |
 | `rngState` | the seed |
 
 ## The contract
@@ -303,7 +315,13 @@ this specification is written against them.
 - The seconds left of the interlude the `cleared` and `setback` screens hold.
 - The simulation time the run has accumulated, in seconds, which every update
   adds its elapsed time to whatever the screen.
-- Whether audio is muted, which the engine owns and the debug surface reports.
+- Whether the inlet emits, and whether the train advances. Both hold in play and
+  neither is restored by a `reset` or a level opening: they are what the
+  debugging surface's gates set, and they belong to the caller driving the game
+  rather than to the run being played.
+- Whether audio is muted, which the engine owns and the debug surface reports. A
+  fresh game starts with its audio unmuted, and the mute bit then belongs to the
+  player: neither a `reset` nor a level opening moves it.
 - The state of the seeded generator every random draw comes from: an emitted
   core's charge, a seeded core's charge, and each charge the injector loads and
   queues. A `reset` sets it from the seed it is given.

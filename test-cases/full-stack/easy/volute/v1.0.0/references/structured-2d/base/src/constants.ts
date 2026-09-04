@@ -304,7 +304,7 @@ export const BINDINGS: Readonly<Record<ActionName, ActionBinding>> = {
   fire: { keys: ["Space"] },
   swap: { keys: ["KeyX"] },
   confirm: { keys: ["Enter", "Space"] },
-  pause: { keys: ["Escape"] },
+  pause: { keys: ["Escape", "KeyP"] },
   mute: { keys: ["KeyM"] },
 };
 

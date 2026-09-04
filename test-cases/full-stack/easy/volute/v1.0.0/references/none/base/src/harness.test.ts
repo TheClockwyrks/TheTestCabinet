@@ -7,7 +7,7 @@
 // validator does through `window.__volute`, one layer down.
 
 import { describe, expect, it } from "vitest";
-import { CHARGE_IDS, TICK_DT } from "./constants";
+import { CELLS, CHARGE_IDS, TICK_DT } from "./constants";
 import type { ChargeId, CueName, MachineryKind } from "./constants";
 import { newReport, type FxEvent } from "./events";
 import { createDebugApi, type DebugHost, type VoluteDebugApi } from "./debug";
@@ -163,7 +163,8 @@ export function seatShot(
 ): void {
   const step = 620 / 60;
   hall.api.setLoaded(charge);
-  hall.api.fire(270);
+  hall.api.setAim(270);
+  hall.api.fire();
   for (let i = 0; i < 60; i += 1) {
     const shot = hall.api.snapshot().projectiles[0];
     if (shot === undefined || shot.y - step <= 220) break;
@@ -198,3 +199,15 @@ describe("the harness", () => {
     expect(hall.state.segments).toEqual([{ count: 3, hold: 0 }]);
   });
 });
+
+/**
+ * What the start control on the title poses, assembled from single-field poses.
+ *
+ * The surface carries no compound `start`: a run opened from code is the score,
+ * the cells, and level 1 opened as an interlude opens it.
+ */
+export function startRun(hall: Harness): void {
+  hall.api.setScore(0);
+  hall.api.setCells(CELLS);
+  hall.api.startLevel(1);
+}

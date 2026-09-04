@@ -236,32 +236,41 @@ describe("bore", () => {
   it("never becomes the active machinery", () => {
     const hall = bare();
     hall.api.grantMachinery("sightline");
-    hall.api.poseTrain([[1000, "halide", null]]);
-    hall.api.grantMachinery("bore");
+    const head = topLegS(430);
+    seatShot(
+      hall,
+      [
+        [head, "halide", null],
+        [head - SPACING, "halide", "bore"],
+        [head - 300, "cobalt", null],
+      ],
+      "halide",
+    );
+    // The sightline is untouched: a bore takes no slot and stops no clock.
     expect(hall.api.snapshot().machinery?.kind).toBe("sightline");
-    expect(hall.api.snapshot().train).toHaveLength(0);
-  });
-
-  it("removes nothing and scores nothing on an empty channel", () => {
-    const hall = bare();
-    hall.api.clearTrain();
-    const before = hall.api.snapshot().score;
-    hall.api.grantMachinery("bore");
-    expect(hall.api.snapshot().score).toBe(before);
   });
 
   it("pays at the chain step in force, and carries the chain no further", () => {
     const hall = bare();
-    hall.api.poseTrain([
-      [1000, "halide", null],
-      [972, "halide", null],
-      [944, "halide", null],
-    ]);
+    const head = topLegS(430);
     const before = hall.api.snapshot();
-    hall.api.grantMachinery("bore");
+    seatShot(
+      hall,
+      [
+        [head, "halide", null],
+        [head - SPACING, "halide", "bore"],
+        // Standing one spacing behind the mark, so the bore reaches it.
+        [head - 2 * SPACING, "cobalt", null],
+        // 300 units of arc beyond it, so it does not.
+        [head - 300, "cobalt", null],
+      ],
+      "halide",
+    );
     const after = hall.api.snapshot();
-    expect(after.score - before.score).toBe(10 * 3 * 1);
+    // The run of three at chain step 1, and then the one core the bore reached,
+    // paid at the step the chain already stood at.
+    expect(after.score - before.score).toBe(10 * 3 * 1 + 10 * 1 * 1);
     expect(after.chainStep).toBe(1);
-    expect(after.chainTimer).toBe(before.chainTimer);
+    expect(after.train).toHaveLength(1);
   });
 });

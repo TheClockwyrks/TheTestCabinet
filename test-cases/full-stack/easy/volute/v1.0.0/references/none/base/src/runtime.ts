@@ -155,8 +155,11 @@ export function createRuntime(options: RuntimeOptions): Runtime {
   for (const [action, codes] of Object.entries(BINDINGS)) {
     controls.register(action, codes);
   }
-  // The two mouse buttons are two more sources on two existing actions.
+  // The two mouse buttons are two more sources on three existing actions. The
+  // primary raises `fire` and `confirm`, which never answer on the same screen,
+  // so a run starts and an ending dismisses under the pointer alone.
   controls.register("fire", [...BINDINGS.fire, MOUSE_PRIMARY]);
+  controls.register("confirm", [...BINDINGS.confirm, MOUSE_PRIMARY]);
   controls.register("swap", [...BINDINGS.swap, MOUSE_SECONDARY]);
 
   audio.load(assets.audio);

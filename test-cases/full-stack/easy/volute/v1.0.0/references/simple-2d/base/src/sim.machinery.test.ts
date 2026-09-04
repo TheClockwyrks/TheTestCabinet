@@ -115,16 +115,21 @@ describe("granting", () => {
 
   it("grants nothing for a marked core a bore removes", async () => {
     const h = await bare();
-    h.api.poseTrain([
-      [1000, "halide", null],
-      [972, "halide", null],
-      [944, "halide", null],
-      [916, "cobalt", "sightline"],
-    ]);
-    h.api.grantMachinery("bore");
-    // The bore took all four, the marked one included, and nothing is running.
-    expect(h.api.snapshot().train).toHaveLength(0);
-    expect(h.api.snapshot().machinery).toBeNull();
+    const head = topLegS(430);
+    // The run drawn out carries the `bore`; the sightline-marked core stands one
+    // spacing behind it, inside the radius, so the bore is what takes it.
+    await seatShot(
+      h,
+      [
+        [head, "halide", null],
+        [head - SPACING, "halide", "bore"],
+        [head - 2 * SPACING, "cobalt", "sightline"],
+      ],
+      "halide",
+    );
+    const after = h.api.snapshot();
+    expect(after.train).toHaveLength(0);
+    expect(after.machinery).toBeNull();
     h.dispose();
   });
 });
@@ -217,8 +222,8 @@ describe("backflow", () => {
 
   it("stops the inlet while it runs, and starts it again when it ends", async () => {
     const h = await bare();
-    h.api.startLevel(1);
-    h.api.clearTrain();
+    // This one IS about the inlet, so it runs by its own rule.
+    h.api.setEmission(true);
     h.api.poseTrain([[500, "halide", null]]);
     h.api.grantMachinery("backflow");
     await h.step(60);
@@ -288,35 +293,41 @@ describe("bore", () => {
   it("never becomes the active machinery", async () => {
     const h = await bare();
     h.api.grantMachinery("sightline");
-    h.api.poseTrain([[1000, "halide", null]]);
-    h.api.grantMachinery("bore");
-    expect(h.api.snapshot().machinery?.kind).toBe("sightline");
+    const head = topLegS(430);
+    await seatShot(
+      h,
+      [
+        [head, "halide", null],
+        [head - SPACING, "halide", "bore"],
+        [head - 2 * SPACING, "cobalt", null],
+      ],
+      "halide",
+    );
+    // The bore resolved — the cobalt inside its radius is gone — and the timed
+    // machinery in force is still the sightline the grant left running.
     expect(h.api.snapshot().train).toHaveLength(0);
-    h.dispose();
-  });
-
-  it("removes nothing and scores nothing on an empty channel", async () => {
-    const h = await bare();
-    h.api.clearTrain();
-    const before = h.api.snapshot().score;
-    h.api.grantMachinery("bore");
-    expect(h.api.snapshot().score).toBe(before);
+    expect(h.api.snapshot().machinery?.kind).toBe("sightline");
     h.dispose();
   });
 
   it("pays at the chain step in force, and carries the chain no further", async () => {
     const h = await bare();
-    h.api.poseTrain([
-      [1000, "halide", null],
-      [972, "halide", null],
-      [944, "halide", null],
-    ]);
+    const head = topLegS(430);
     const before = h.api.snapshot();
-    h.api.grantMachinery("bore");
+    await seatShot(
+      h,
+      [
+        [head, "halide", null],
+        [head - SPACING, "halide", "bore"],
+        [head - 2 * SPACING, "cobalt", null],
+      ],
+      "halide",
+    );
     const after = h.api.snapshot();
-    expect(after.score - before.score).toBe(10 * 3 * 1);
+    // The insertion extracted the three halide at step 1, and the bore took the
+    // one cobalt inside its radius at the same step: 10 x 3 x 1 + 10 x 1 x 1.
+    expect(after.score - before.score).toBe(10 * 3 * 1 + 10 * 1 * 1);
     expect(after.chainStep).toBe(1);
-    expect(after.chainTimer).toBe(before.chainTimer);
     h.dispose();
   });
 });

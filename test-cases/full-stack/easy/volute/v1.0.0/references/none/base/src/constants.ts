@@ -225,7 +225,7 @@ export const BINDINGS: Readonly<Record<string, readonly string[]>> = {
   fire: ["Space"],
   swap: ["KeyX"],
   confirm: ["Enter", "Space"],
-  pause: ["Escape"],
+  pause: ["Escape", "KeyP"],
   mute: ["KeyM"],
 };
 
