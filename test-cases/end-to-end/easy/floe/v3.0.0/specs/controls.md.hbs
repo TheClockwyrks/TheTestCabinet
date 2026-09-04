@@ -1,0 +1,86 @@
+# Floe — Controls
+
+This file fixes the keys the game answers to and what each one drives. What each
+screen does with an action is in `specs/ui.md`, and the hop cadence a held
+direction repeats at is in `specs/hopping.md`.
+
+{{#if (eq engine.slug "none")}}
+## How input reaches the game
+
+This game stands on no engine, so the keyboard belongs to the runtime layer you
+write. The game is driven by physical keys, read as `KeyboardEvent.code` values
+so a binding is the same key on every layout.
+
+| Key | Drives |
+| --- | --- |
+| `ArrowUp`, `KeyW` | Up |
+| `ArrowDown`, `KeyS` | Down |
+| `ArrowLeft`, `KeyA` | Left |
+| `ArrowRight`, `KeyD` | Right |
+| `Enter`, `Space` | Confirm |
+| `Escape` | Back |
+| `KeyP`, `Escape` | Pause |
+| `KeyM` | Mute |
+| `Backquote` | The debug overlay |
+
+The game answers to these keys and to no others.
+{{else}}
+## How input reaches the game
+
+The {{engine.name}} engine owns the keyboard and documents it in the `engine/`
+directory at the root of this repository. The game registers named actions with
+it and reads them back; it never reads a key event itself.
+
+`LAYOUT` is the control scheme the engine is built with, `ACTIONS` is the whole
+vocabulary the game registers, and `BINDINGS` maps each action to the
+`KeyboardEvent.code` values that fire it.
+
+| Action | Keys |
+| --- | --- |
+| `up` | `ArrowUp`, `KeyW` |
+| `down` | `ArrowDown`, `KeyS` |
+| `left` | `ArrowLeft`, `KeyA` |
+| `right` | `ArrowRight`, `KeyD` |
+| `confirm` | `Enter`, `Space` |
+| `back` | `Escape` |
+| `pause` | `KeyP`, `Escape` |
+| `mute` | `KeyM` |
+
+The game registers these eight actions and no others.
+{{/if}}
+
+## What each one does
+
+| Action | Effect |
+| --- | --- |
+| Up, down, left, right | On the `playing` screen, hop the critter one tile that way. On a screen with a menu, move the highlight one item that way, wrapping at both ends. |
+| Confirm | Accept the highlighted menu item. |
+| Back | Leave the screen in front of the player. |
+| Pause | Open the pause menu from the `playing` screen. |
+| Mute | Toggle sound, from any screen. |
+
+`Escape` drives both pause and back. On the `playing` screen it pauses; on every
+other screen it goes back.
+
+## How each one is read
+
+The four movement actions are read as held on the `playing` screen, so a held
+direction hops the critter repeatedly at the cadence `specs/hopping.md` fixes. On
+every other screen they are read as press edges, so one press moves the highlight
+one item.
+
+Confirm, back, pause, and mute are read as press edges everywhere, so each fires
+once per press however long the key is held.
+
+## The debug overlay
+
+{{#if (eq engine.slug "none")}}
+The backtick key (`Backquote`) shows and hides the debug overlay, which is part
+of the runtime layer you write. `specs/instrumentation.md` fixes what the overlay
+reports.
+{{else}}
+The backtick key (`Backquote`) shows and hides the engine's debug overlay. The
+engine handles that key itself rather than through a registered action, so it is
+outside `ACTIONS`. `specs/instrumentation.md` fixes what the game registers for
+the overlay to report.
+{{/if}}

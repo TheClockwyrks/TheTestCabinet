@@ -1,0 +1,372 @@
+# Floe — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Floe carries a small debugging and automation surface, `window.__floe`, so the
+game can be driven and inspected from code without touching the keyboard or
+waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__floe` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it
+is present and exactly as specified here.
+
+Each operation is a read of the game's state, a pose of one part of it, or a move
+of the clock. A pose arranges the strait, and the game's own hopping rules, lane
+motion, routing, catch test, and scoring run from there exactly as they do in
+play, so a scenario driven from code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Floe carries a small debugging and automation surface so the game can be driven
+and inspected from code without touching the keyboard or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `FloeState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<FloeState>`, and
+returns the next `FloeState`; a reading takes the state the same way and returns
+what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setLives(s, 1))`, and a reading against the engine's
+current state, as `debug.snapshot(engine.state)`. A pose arranges the strait, and
+the game's own hopping rules, lane motion, routing, catch test, and scoring run
+from there exactly as they do in play. `src/game.ts` declares and exports its
+type, `FloeDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Floe carries a small debugging and automation surface so the game can be driven
+and inspected from code without touching the keyboard or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it
+and returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes
+only the parameters its row names, arranges the running game through the same
+systems play uses, and returns nothing; a reading returns plain data built at the
+call and changes nothing. A pose arranges the strait, and the game's own hopping
+rules, lane motion, routing, catch test, and scoring run from there exactly as
+they do in play. `src/game.ts` declares and exports its type, `FloeDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic: every rate integrated in
+whole `TICK_DT` ticks, as `specs/overview.md` fixes, so an interval of game time
+reaches the same state however it was divided into frames. Two more properties
+make it driveable from code:
+
+- Render-free core. Game state advances from the elapsed time the game is handed,
+  independent of a canvas, of the frame loop that measured it, and of wall-clock
+  time. The dependency runs one way: the simulation reads nothing from the
+  renderer.
+- Seeded randomness. The randomness the game uses runs off a generator seeded by
+  `reset`, and the generator keeps its whole state in the game's own state, so
+  reseeding and replaying the same calls reproduces the same result exactly. The
+  lanes' phases and the bay each bonus catch appears in are drawn from it.
+
+Given the same seed and the same sequence of calls and elapsed game time, the
+game reaches the same state every time.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard and the overlay belong to the runtime layer beneath the game, and
+the surface carries no operation for a key or for the overlay. That layer
+delivers the keys `specs/controls.md` binds, and it draws and toggles the debug
+overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
+{{else}}
+The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
+which documents them in the `engine/` directory at the root of this repository,
+and the surface carries no operation for any of them. The engine advances the
+game frame by frame and can take it off real time, it drives the actions the game
+registers, and it draws and toggles the debug overlay.
+{{/if}}
+
+Muting is reached the same way a player reaches it, through the mute action
+`specs/controls.md` fixes, and the surface carries no operation for it. `muted`
+is reported by the snapshot.
+
+What the overlay shows is Floe's, under Diagnostics below.
+
+## The operations
+
+The surface carries `version` (`FLOE_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings, and booleans. `x` and
+`y` are in stage units, and `col` and `row` are tiles as `specs/strait.md`
+defines them.
+
+{{#if (eq engine.slug "none")}}
+Each operation is written below exactly as it is called.
+{{else if (eq engine.slug "simple-2d")}}
+Each operation is written below by the parameters that follow the state. Every
+one takes the current state, `DeepReadonly<FloeState>`, as its first parameter: a
+pose returns the next `FloeState`, built from the one it was handed, which it
+leaves as it was, and a reading returns what it read. The operation written
+`setLives(n)` is therefore
+`setLives(state: DeepReadonly<FloeState>, n: number): FloeState`, and `snapshot()`
+is `snapshot(state: DeepReadonly<FloeState>)`.
+{{else}}
+Each operation is written below exactly as it is called, and acts on the live
+game at that moment. A pose returns nothing; a reading returns what it read.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### The clock
+
+| Operation | Effect |
+| --- | --- |
+| `setAutoStep(enabled)` | Takes the game off real time and gives it back. `setAutoStep(false)` stops the frame loop advancing the simulation from the wall clock, so the game changes only when `advance` says so. `setAutoStep(true)` returns it to running itself, which is how a build starts and how it is played. Drawing is unaffected either way, so the canvas keeps showing the state the most recent frame left. It changes no game state. |
+| `advance(ticks)` | Runs `ticks` whole simulation ticks immediately and in order, each exactly `TICK_DT`. `ticks` is a non-negative whole number, so `advance(1)` runs one tick, `advance(120)` covers one second of game time, and `advance(0)` runs nothing. Advancing while the game is still stepping itself adds to what the wall clock is already doing. |
+
+{{/if}}
+### The core
+
+| Operation | Effect |
+| --- | --- |
+| `reset(options)` | Restores every field of the state to its title-screen value: `screen` `title`, `menuIndex` `0`, `phase` `crossing`, `phaseTimer` `0`, `score` `0`, `lives` `START_LIVES` (`3`), `level` `1`, `reachedLevel` `1`, `timer` at `crossingTimer(1)`, the sixteen lanes laid out as level `1` lays them out, no critter, no bears, five open bays, no bonus catch, `simTime` `0`, and the four world gates back on. `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's randomness. `muted` is left as it stands, because muting is a player preference the runtime owns. |
+| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+
+### The screen and the run
+
+| Operation | Effect |
+| --- | --- |
+| `setScreen(screen)` | Sets the current screen: `title`, `howto`, `playing`, `paused`, `victory`, `gameover`. |
+| `setPhase(phase)` | Sets the phase of the `playing` screen: `crossing`, `dying`, `clearing`. |
+| `setPhaseTimer(seconds)` | Sets the seconds left in the current hold. |
+| `setMenuIndex(n)` | Sets the highlighted item of whatever menu the current screen shows. |
+| `setScore(n)` | Sets the score. It grants no bonus life: a bonus life belongs to the scoring path, and a posed score is a precondition. |
+| `setLives(n)` | Sets the lives remaining, counting the critter currently crossing. It ends no run, so `setLives(0)` leaves the game playing and the next death ends it. |
+| `setLevel(n)` | Sets the current level, `1` to `8`, and lays the strait out for it. Every vehicle and every floe is replaced by the roster level `n` gives, each taking a fresh id, and the sixteen lanes take level `n`'s speeds and gaps. The critter, the bears, the bays, and the bonus catch are untouched, and so are the screen, the phase, the score, the lives, and the running `timer`. It creates no bear. |
+| `setReachedLevel(n)` | Sets the level the game-over screen reports. |
+| `setTimer(seconds)` | Sets the seconds left on the crossing timer. It kills nothing, so `setTimer(0)` is a precondition and the next tick of a running timer is what costs the life. |
+
+### The world gates
+
+Four faculties belong to the run itself rather than to any one entity, and each
+has a gate. Every gate is on at a fresh start, is restored to on by `reset`, and
+is reported by `snapshot`. Each gates one faculty and leaves the rest of the game
+running exactly as it does in play.
+
+| Operation | Gates |
+| --- | --- |
+| `setBearEmergence(enabled)` | The run's own emergence of bears: a slot filling when its conditions are met, the re-emergence after a bear is removed included. A bear already on the strait senses, routes, travels, is removed by traffic, and catches exactly as usual. |
+| `setCatchTest(enabled)` | Whether a bear reaching the critter costs a life. The bears still sense, route, travel, and draw. |
+| `setFishCadence(enabled)` | The bonus catch's own cadence: one appearing in an open bay, lingering, and moving on. A bonus catch posed through the surface still scores when its bay is filled. |
+| `setTimerRunning(enabled)` | The crossing timer's drain. `timer` holds the value it has however long a scenario runs. It still resets on a filled bay, and `timerMax` still follows the level. |
+
+### The critter
+
+There is exactly one critter, so it carries no id.
+
+| Operation | Effect |
+| --- | --- |
+| `addCritter(col, row)` | Puts a critter on tile `(col, row)`, present, facing `up`, with its hop cooldown at `0` and its `bestRow` equal to `row`. A critter already on the strait is replaced. |
+| `removeCritter()` | Takes the critter off the strait. `present` becomes `false` and nothing on the strait can reach it. |
+| `setCritterTile(col, row)` | Moves the critter to a tile, its center on that tile's center. Its facing, hop cooldown, and `bestRow` are untouched. |
+| `setCritterX(x)` | Sets the critter's center `x` alone, leaving its row as it stands, so its column follows by `colAt(x)`. This is the mid-drift pose. |
+| `setCritterFacing(dir)` | Sets the facing: `up`, `down`, `left`, `right`. |
+| `setHopCooldown(seconds)` | Sets the seconds until the critter may hop again. |
+| `setBestRow(r)` | Sets the topmost row this crossing has reached. |
+
+### The bears
+
+Every bear carries an `id`. A bear added through the surface is appended to
+`bears`, so it is the last entry and its id is read from there.
+
+| Operation | Effect |
+| --- | --- |
+| `addBear(col, row)` | Adds one bear settled on tile `(col, row)`: its center on that tile's center, the tile it is travelling into equal to the tile it is on, its target equal to its own tile, facing `up`, and its three faculties all on. It is appended to `bears` and takes a fresh id. It fills the first hunting slot standing empty, so the hunt's own emerging does not put a second bear behind the one that was placed; where the level's slots are all filled already it is simply an extra bear the hunt does not track. |
+| `removeBear(id)` | Removes the bear with that id. |
+| `clearBears()` | Removes every bear, leaving the lane items, the critter, the bays, and the bonus catch standing. |
+| `setBearTile(id, col, row)` | Settles the bear on tile `(col, row)`: its center becomes that tile's center and the tile it is travelling into becomes that tile, so it is no longer between tiles. Its target and its three faculties are untouched. |
+| `setBearPosition(id, x, y)` | Sets the bear's center to a stage position and leaves the two tiles it occupies exactly as they stand. This is the mid-glide pose. |
+| `setBearStep(id, direction)` | Commits the bear to travelling one tile in `direction` (`up`, `down`, `left`, `right`) from the tile it last settled on, at the speed its footing gives, and sets its facing to that direction. It consults no route, so a bear can be sent where its own routing would not go. A step into a tile closed to a bear is refused by the game's own rules, exactly as a routed step is. |
+| `setBearTarget(id, col, row)` | Sets the tile the bear is hunting. With its sense on the game overwrites this from the critter on the next tick; with its sense off the bear keeps hunting the posed tile. |
+| `setBearSense(id, enabled)` | Gates that bear's reading of the critter's tile alone. Off, it stops refreshing its target and keeps hunting the tile the target holds; its routing and its travel run untouched. |
+| `setBearRouting(id, enabled)` | Gates that bear's choice of the next step alone. Off, it takes no new step decision on settling: it finishes the step it is on and then holds that tile. Its sense still refreshes its target, and its travel still carries out a step `setBearStep` commits it to. |
+| `setBearTravel(id, enabled)` | Gates that bear's locomotion alone. Off, its center holds however long a scenario runs and the two tiles it occupies hold with it. Its sense and its routing run untouched, so it still reports the target it reads and the step its routing chose. |
+
+### The lanes
+
+The ice band and the water band are two rosters, `vehicles` and `floes`, and lane
+motion is a per-row property reported as `iceLanes` and `waterLanes`. Every item
+carries an `id`, and one added through the surface is appended to its roster.
+
+| Operation | Effect |
+| --- | --- |
+| `addVehicle(row, kind, x)` | Adds one vehicle of `kind` (`plow`, `dogsled`, `car`) on ice-band `row`, its left edge at stage `x`, its length the kind's own. Appended to `vehicles`, fresh id. |
+| `removeVehicle(id)` | Removes the vehicle with that id. |
+| `clearVehicles()` | Removes every vehicle from every ice lane, leaving the floes, the bears, the critter, the bays, and the bonus catch standing. |
+| `setVehicleX(id, x)` | Sets that vehicle's left edge to stage `x`. |
+| `addFloe(row, kind, x)` | Adds one floe of `kind` (`pan`, `raft3`, `raft4`) on water-band `row`, its left edge at stage `x`, its length the kind's own. Appended to `floes`, fresh id. |
+| `removeFloe(id)` | Removes the floe with that id. |
+| `clearFloes()` | Removes every floe from every water lane, leaving everything else standing. |
+| `setFloeX(id, x)` | Sets that floe's left edge to stage `x`. |
+| `setLaneSpeed(row, speed)` | Sets the speed of the lane at strait `row`, in tiles per second, a number at or above `0`. A speed of `0` holds the lane where it stands. Every item of the lane keeps its exact position. |
+| `setLaneDirection(row, dir)` | Sets the direction of the lane at strait `row`: `1` rightward, `-1` leftward. Every item of the lane keeps its exact position. |
+
+### The bays and the bonus catch
+
+| Operation | Effect |
+| --- | --- |
+| `setBay(index, filled)` | Sets whether bay `index` (`0` to `4`, left to right) is filled. It scores nothing and clears no level. |
+| `clearBays()` | Opens all five bays. It scores nothing and clears nothing. |
+| `setFishBay(index)` | Puts the bonus catch in bay `index`, its linger clock starting at the call. |
+| `clearFish()` | Takes the bonus catch off the strait, leaving the bays as they are. |
+
+## Identity
+
+Every bear, vehicle, and floe carries an `id`: a number, unique among the
+entities live at any moment, reported by `snapshot` and taken by every
+per-entity operation. An entity added through the surface is appended to its
+roster, so it is the last entry and its id is read from there. An entity keeps
+its id for as long as it is on the strait, its lane wrapping at an edge
+included. The critter and the bonus catch are singletons and carry no id.
+
+## Snapshot shape
+
+`snapshot` returns exactly this object. Every field an operation can set is
+present, so every operation is verifiable by setting it and reading it back.
+
+```js
+{
+  version: 1,                     // FLOE_DEBUG_VERSION
+  screen: "title" | "howto" | "playing" | "paused" | "victory" | "gameover",
+  phase: "crossing" | "dying" | "clearing",
+  phaseTimer: <number>,           // seconds left in the current hold, 0 outside one
+  menuIndex: <number>,            // the highlighted item of the current menu, from 0
+  level: <number>,                // 1..8
+  reachedLevel: <number>,         // the level the game-over screen reports
+  lives: <number>,                // counting the critter currently crossing
+  score: <number>,
+  timer: <number>,                // seconds left on the crossing timer
+  timerMax: <number>,             // crossingTimer(level), derived
+  muted: <boolean>,               // the runtime's mute bit
+  bearEmergence: <boolean>,       // the run's own emergence of bears is running
+  catchTest: <boolean>,           // a bear reaching the critter costs a life
+  fishCadence: <boolean>,         // the bonus catch's own cadence is running
+  timerRunning: <boolean>,        // the crossing timer is draining
+  bays: [<boolean>, ...],         // the five bays, true where filled, left to right
+  fishBay: <number> | null,       // the bay holding the bonus catch, or null
+  critter: {
+    present: <boolean>,           // false while the critter is out of play
+    col: <number>, row: <number>, // its tile
+    x: <number>, y: <number>,     // its CENTER, in stage units
+    facing: "up" | "down" | "left" | "right",
+    footing: "solid" | "floe" | "water",
+    hopCooldown: <number>,        // seconds until it may hop again
+    bestRow: <number>,            // the topmost row reached this crossing
+  },
+  // Every bear on the strait, in roster order.
+  bears: [
+    {
+      id: <number>,
+      col: <number>, row: <number>,          // the tile it last settled on
+      stepCol: <number>, stepRow: <number>,  // the tile it is travelling into
+      x: <number>, y: <number>,              // its CENTER, in stage units
+      facing: "up" | "down" | "left" | "right",
+      swimming: <boolean>,                   // it is over open water
+      target: { col: <number>, row: <number> },
+      sense: <boolean>,
+      routing: <boolean>,
+      travel: <boolean>,
+    },
+  ],
+  // The eight ice lanes, rows 11..18 ascending.
+  iceLanes: [ { row: <number>, dir: 1 | -1, speed: <number> } ],
+  // The eight water lanes, rows 2..9 ascending.
+  waterLanes: [ { row: <number>, dir: 1 | -1, speed: <number> } ],
+  // Every vehicle on the ice band, in roster order.
+  vehicles: [
+    { id: <number>, row: <number>,
+      kind: "plow" | "dogsled" | "car",
+      x: <number>,     // the LEFT EDGE, in stage units
+      len: <number> }, // its length in tiles
+  ],
+  // Every floe on the water band, in roster order.
+  floes: [
+    { id: <number>, row: <number>,
+      kind: "pan" | "raft3" | "raft4",
+      x: <number>, len: <number> },
+  ],
+  simTime: <number>,              // accumulated simulation time, in seconds
+}
+```
+
+The shape is fixed, and every field is present from the moment the game has
+initialized. Four facts among them are derived rather than stored:
+
+| Field | Derived from |
+| --- | --- |
+| `timerMax` | `crossingTimer(level)`, in `specs/progression.md`. |
+| The critter's `col`, `row` | Its center, through `colAt` and `rowAt`. |
+| `critter.footing` | Its row and the floes on it, as `specs/strait.md` fixes. |
+| A bear's `swimming` | The tile it is travelling into: a water-band tile no floe covers. |
+
+While the critter is out of play, `present` is `false` and its tile, center, and
+facing report the last values it held. Where it has held none, as on a fresh
+start, they report the pose a fresh crossing begins from: the near shore at
+`START_COL`, facing `up`, with `hopCooldown` `0` and `bestRow` `ROW_NEAR`.
+
+A bear settled on a tile reports `stepCol` and `stepRow` equal to `col` and
+`row`. A bear between tiles reports the tile it settled on as `col` and `row` and
+the tile it is entering as `stepCol` and `stepRow`, and it occupies both.
+
+`simTime` adds `TICK_DT` on every tick whatever the screen, and it is the one
+quantity that keeps accumulating while the screen is `paused`.
+
+{{#if (eq engine.slug "structured-2d")}}
+`muted` is a live read of the engine's own mute bit at the call. No operation
+sets it; the mute action does.
+{{else if (eq engine.slug "simple-2d")}}
+`muted` is the game's own copy of the engine's mute bit, refreshed from
+`api.audio.muted()` in every update, so the snapshot reports the bit the engine
+holds. No operation sets it; the mute action does.
+{{else}}
+`muted` is the game's own copy of the runtime's mute bit, refreshed from the
+runtime in every update, so the snapshot reports the bit the runtime holds. No
+operation sets it; the mute action does.
+{{/if}}
+
+## Diagnostics
+
+The debug overlay is read-only and shows the values the game registers with it as
+diagnostic sources. Register at least the current `screen` and `phase`, the
+level, the lives, the score and the timer, the critter's tile, center, facing and
+footing, each bear's id, tile, center, facing, swimming flag and target, how many
+vehicles and floes are on the strait, and which bays are filled, the same facts
+the snapshot reports. Keep each one short enough to read on a line, and keep
+every source a pure read, so watching the overlay leaves the game as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is hidden when the game starts, it is shown and hidden by the
+backtick key (`KeyboardEvent.code` `Backquote`), and it reads the game without
+changing it.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Floe's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<FloeState>`, and reads off that argument. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Floe's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function of
+no arguments, called at each read; read the live state at the call, through the
+world the mode holds, so the panel reports the frame being drawn. Drawing the
+panel and toggling it are the engine's.
+{{/if}}
