@@ -2447,6 +2447,18 @@ failure_cap = "passable"
 validation = { script = "screens/ending-menu.test.ts", outputs = [
   { id = "title", name = "The title MENU returned to", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "ending-menu-selects-descend"
+title = "Leaving an end screen for the menu selects DESCEND"
+description = "MENU returns to the title with the highlight on DESCEND, the entry a run is started from. The index is derived from TITLE_ITEMS rather than written as a literal, and ending-menu owns the transition itself."
+domains = ["arcade"]
+failure_cap = "passable"
+# The highlight rests on MENU's own index when the confirm runs, so a build that
+# carried `menuIndex` across the transition unchanged lands the title's highlight
+# on HOW TO PLAY. Nothing here is free.
+validation = { script = "screens/ending-menu-selects-descend.test.ts", outputs = [
+  { id = "title", name = "The title the return selects an entry of", kind = "image" },
+] }
 
 # --- Pointer ------------------------------------------------------------------
 # specs/ui.md drives every menu screen with a mouse as well as with the keyboard,

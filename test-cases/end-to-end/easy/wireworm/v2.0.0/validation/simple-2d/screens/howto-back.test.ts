@@ -35,7 +35,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("returns from the how-to screen to the title at its first item", async () => {
+it("returns to the title from the how-to screen", async () => {
   h.debug.reset();
   h.debug.setMenuIndex(TITLE_ITEMS.length - 1);
   h.debug.setScreen("howto");
