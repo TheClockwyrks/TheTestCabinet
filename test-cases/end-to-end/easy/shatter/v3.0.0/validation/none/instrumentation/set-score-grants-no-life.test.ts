@@ -62,7 +62,7 @@ it("carries the score across the boundary and leaves the ships alone", async () 
     await h.debug.setScore(score);
     // A real tick between the pose and the count, so a build that grants the ship
     // in its own update rather than inside the operation is caught.
-    const s = await h.advance(1);
+    const s = await h.step(1);
     assertEqual(s.score, score, `setScore(${score})`);
     assertEqual(
       s.lives,

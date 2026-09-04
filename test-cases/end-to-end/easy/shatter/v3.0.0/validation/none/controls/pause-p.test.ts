@@ -2,15 +2,16 @@
 // screen.
 //
 // THE RULE. `specs/controls.md` binds `KeyP` to "Pause" while the game is being
-// played and to nothing at all otherwise, and reads pausing as a press edge, "once
-// per press". `specs/ui.md` names the screen it reaches, `paused`, "reached by
-// pausing during live play".
+// played, and reads pausing as a press edge, "once per press". `specs/ui.md` names
+// the screen it reaches, `paused`, "reached by pausing during live play". The key's
+// other meaning, resuming a paused game, is `screens/resume-p`'s point and is not
+// reachable from the screen this check presses it on.
 //
 // WHY IT IS A SEPARATE ITEM FROM `controls/pause-escape`. Two keys pause, and they
-// are two listeners in a build. `KeyP` is also the unambiguous one — it carries no
-// second meaning anywhere in the key table, where `Escape` carries two — so a build
-// that wired only the ambiguous key, or only the plain one, loses exactly one point
-// rather than both or neither.
+// are two listeners in a build. `KeyP` is also the unambiguous one — it carries one
+// meaning per screen, where `Escape` carries two — so a build that wired only the
+// ambiguous key, or only the plain one, loses exactly one point rather than both or
+// neither.
 //
 // THE KEY IS A REAL ONE. `tap` presses the key, runs the one tick that delivers it,
 // and releases it, all through Chromium's own input pipeline, and delivers it by its

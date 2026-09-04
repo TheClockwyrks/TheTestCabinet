@@ -83,6 +83,7 @@ function stand(
     cssHeight: () => options.cssHeight ?? 720,
     dpr: () => options.dpr ?? 1,
     events: () => events,
+    clientOrigin: () => ({ x: 0, y: 0 }),
   };
   const runtime = createRuntime<ShatterState>({
     canvas,

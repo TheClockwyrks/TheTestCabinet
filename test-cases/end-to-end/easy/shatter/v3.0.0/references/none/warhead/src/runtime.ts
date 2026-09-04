@@ -27,9 +27,11 @@
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
+import { Pointer, type PointerSample } from "./pointer";
 import {
   deviceSize,
   domSurface,
+  fieldPoint,
   fitViewport,
   type Surface,
   type Viewport,
@@ -79,6 +81,11 @@ export interface UpdateApi {
     value(name: string): number;
     /** Whether the action went down since the last frame. Consumes the edge. */
     pressed(name: string): boolean;
+    /**
+     * Every mouse and touch sample this frame delivered, oldest first, in
+     * logical field units. The list empties at the end of every frame.
+     */
+    pointerSamples(): readonly PointerSample[];
   };
   readonly audio: {
     /** Play a declared one-shot cue, once. */
@@ -172,6 +179,17 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   const { canvas, width, height, game, background } = options;
   const surface = options.surface ?? domSurface(canvas);
   const keyboard = new Keyboard(surface.events());
+  // Mapped at the moment the event arrives, through the fit as it stands then,
+  // so a pointer read on a resized page is read against the picture it saw.
+  const pointer = new Pointer(surface.events(), (clientX, clientY) =>
+    fieldPoint(
+      viewport,
+      surface.clientOrigin(),
+      surface.dpr(),
+      clientX,
+      clientY,
+    ),
+  );
   const audio = new AudioBus(options.audioContext);
   const diagnostics = new Diagnostics();
 
@@ -250,6 +268,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     input: {
       value: (name) => keyboard.value(name),
       pressed: (name) => keyboard.pressed(name),
+      pointerSamples: () => pointer.samples(),
     },
     audio: {
       play: (cue) => audio.play(cue),
@@ -286,8 +305,10 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       draw(state.value);
     } finally {
       // An edge nothing consumed is discarded even when the frame threw, so one
-      // bad frame cannot leave a press to surface later, out of order.
+      // bad frame cannot leave a press to surface later, out of order. A pointer
+      // sample is news for exactly one frame on the same terms.
       keyboard.endFrame();
+      pointer.endFrame();
     }
   }
 
@@ -415,6 +436,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
         draw(state.value);
       } finally {
         keyboard.endFrame();
+        pointer.endFrame();
       }
     },
 
@@ -428,6 +450,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       stopLoop();
       surface.events().removeEventListener("keydown", onOverlayKey);
       keyboard.detach();
+      pointer.detach();
       audio.dispose();
       live = null;
     },

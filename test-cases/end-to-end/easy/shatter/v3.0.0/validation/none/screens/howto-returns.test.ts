@@ -1,6 +1,7 @@
 // Shatter — screens/howto-returns: leaving the how-to screen returns to the title.
 //
-// THE RULE. `specs/ui.md`, on `howto`: "Leaving the screen returns to `title`".
+// THE RULE. `specs/ui.md`, on `howto`: "Confirming leaves the screen as leaving it
+// does, and both return to `title`".
 // `specs/controls.md` binds `Escape` to "Leave the screen" on any screen that is not
 // live play, and reads it as a press edge, "once per press".
 //

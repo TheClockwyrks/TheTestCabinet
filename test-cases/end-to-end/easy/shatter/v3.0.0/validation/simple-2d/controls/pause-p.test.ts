@@ -1,9 +1,10 @@
 // controls/pause-p — `KeyP` pressed during live play gives the paused screen.
 //
 // THE RULE. `specs/controls.md` binds `KeyP` to the `pause` action, whose playing
-// column reads "Pause" and whose menu column is empty, and reads pausing as a press
-// edge, "once per press". `specs/ui.md` names the screen it reaches, `paused`, "the
-// pause menu, over the frozen field".
+// column reads "Pause", and reads pausing as a press edge, "once per press".
+// `specs/ui.md` names the screen it reaches, `paused`, "the pause menu, over the
+// frozen field". The action's other meaning, resuming a paused game, is
+// `screens/resume-p`'s point and is not reachable from `playing`.
 //
 // WHY IT IS A SEPARATE ITEM FROM `controls/pause-escape`. Two keys pause, and they
 // are two entries of the binding table. `KeyP` is also the unambiguous one — it

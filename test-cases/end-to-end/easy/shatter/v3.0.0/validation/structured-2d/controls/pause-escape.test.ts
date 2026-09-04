@@ -1,10 +1,11 @@
 // controls/pause-escape — `Escape` pauses a game in play.
 //
 // `specs/controls.md` binds `Escape` to the `pause` action AND to `back`, and
-// settles the ambiguity by the screen: "`Escape` drives both `back` and `pause`,
-// and the screen decides which one applies: it pauses while the game is being
-// played and leaves the screen otherwise." `specs/ui.md` names what pausing
-// reaches: the `paused` screen, "Reached by pausing during live play."
+// settles which screens read each: "`back` is read on `title`, `howto`, `paused`,
+// and `gameover`, and `pause` is read on `playing` and `paused`. `Escape` raises
+// both on one frame, so a single `Escape` press on `playing` pauses once and a
+// single `Escape` press on `paused` resumes once." `specs/ui.md` names what
+// pausing reaches: the `paused` screen, "Reached by pausing during live play."
 //
 // THE DOUBLE BINDING IS THE POINT. A real `Escape` key event raises BOTH actions
 // at once, so a build has to resolve them by the screen it is on rather than by

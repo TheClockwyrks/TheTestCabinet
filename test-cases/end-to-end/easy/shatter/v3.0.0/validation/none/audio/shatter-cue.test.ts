@@ -32,6 +32,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { MUZZLE_SPEED, ROCK_RADIUS } from "../constants";
 import {
+  armAudio,
   captureStill,
   createHarness,
   fireAt,
@@ -85,7 +86,7 @@ it("sounds on the tick the rock is destroyed, and not on the approach", async ()
   // A genuine, browser-trusted gesture: an engineless build's audio does not start
   // until the player has interacted with the page (`specs/audio.md`), and the key
   // is bound to nothing (`specs/controls.md`).
-  await h.armAudio();
+  await armAudio(h);
   const rock = await poseRock(h, "small", ROCK_X, ROCK_Y);
 
   const kill = await watchForEvent(

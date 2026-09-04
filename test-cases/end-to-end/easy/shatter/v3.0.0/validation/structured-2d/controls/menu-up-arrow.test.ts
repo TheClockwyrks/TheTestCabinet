@@ -30,7 +30,9 @@
 //
 // ONE MOVE, NOT A WRAP. The press is a single edge and the entry it lands on
 // is an interior one, so nothing here depends on what happens at the ends of
-// the menu: that is `screens/menu-selection-stays-in-range`'s.
+// the menu: where a move that crosses one lands is `screens/menu-wraps-up`'s
+// and `screens/menu-wraps-down`'s, and that the index never leaves the entries
+// at all is `screens/menu-selection-stays-in-range`'s.
 //
 // WHAT THIS DOES NOT DECIDE. That the highlight is DRAWN distinctly
 // (`screens/title-menu-highlight`), that it stays inside the entries

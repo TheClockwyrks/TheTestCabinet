@@ -36,6 +36,7 @@ import {
   SHATTER_DEBUG_VERSION,
   type RockSize,
 } from "./constants";
+import { menuItemRect, type Rect } from "./menus";
 import { addRock as addRockAt } from "./rocks";
 import { addSaucerAt } from "./saucer";
 import { titleState } from "./flow";
@@ -63,6 +64,8 @@ export interface ShatterSnapshot {
   muted: boolean;
   waveSpawning: boolean;
   saucerSpawning: boolean;
+  saucerClock: number;
+  saucerDue: number;
   ship: {
     x: number;
     y: number;
@@ -102,6 +105,9 @@ export interface ShatterSnapshot {
     mind: boolean;
     gun: boolean;
     travel: boolean;
+    fireClock: number;
+    weaveClock: number;
+    age: number;
   } | null;
   enemyBullets: {
     id: number;
@@ -135,6 +141,7 @@ export interface ShatterDebugApi {
     options?: { seed?: number },
   ): ShatterState;
   snapshot(state: DeepReadonly<ShatterState>): ShatterSnapshot;
+  menuItemRect(state: DeepReadonly<ShatterState>, index: number): Rect | null;
 
   setScreen(state: DeepReadonly<ShatterState>, screen: Screen): ShatterState;
   setMenuIndex(state: DeepReadonly<ShatterState>, n: number): ShatterState;
@@ -302,6 +309,10 @@ export function createDebugApi(): ShatterDebugApi {
     reset: (state, options) =>
       titleState(options?.seed ?? DEFAULT_SEED, state.muted),
 
+    // Where the build laid the entry out, which `specs/ui.md` leaves to the
+    // build and a pointer check has to be told (`specs/instrumentation.md`).
+    menuItemRect: (state, index) => menuItemRect(state.screen, index),
+
     snapshot: (state) => ({
       version: SHATTER_DEBUG_VERSION,
       screen: state.screen,
@@ -313,6 +324,8 @@ export function createDebugApi(): ShatterDebugApi {
       muted: state.muted,
       waveSpawning: state.waveSpawning,
       saucerSpawning: state.saucerSpawning,
+      saucerClock: state.saucerClock,
+      saucerDue: state.saucerDue,
       ship: {
         x: state.ship.x,
         y: state.ship.y,
@@ -355,6 +368,9 @@ export function createDebugApi(): ShatterDebugApi {
               mind: state.saucer.mind,
               gun: state.saucer.gun,
               travel: state.saucer.travel,
+              fireClock: state.saucer.fireClock,
+              weaveClock: state.saucer.weaveClock,
+              age: state.saucer.age,
             },
       enemyBullets: state.enemyBullets.map((b) => ({
         id: b.id,

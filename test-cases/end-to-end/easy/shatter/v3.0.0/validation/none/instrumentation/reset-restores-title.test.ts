@@ -10,7 +10,7 @@
 // body on every roster — and then the whole list is read back. A build that resets
 // four of the fields and forgets the fifth fails on the fifth.
 //
-// AND WHY MUTE IS THE ONE EXCEPTION. `specs/instrumentation.md` says `options.seed`
+// AND WHY MUTE AND THE CLOCK ARE THE EXCEPTIONS. `specs/instrumentation.md` says `options.seed`
 // seeds the randomness and that "`muted` is left exactly as it stands; muting is
 // the runtime's". So the sound is turned off through the key `specs/controls.md`
 // binds — the way a player turns it off — before the reset, and it is still off
@@ -18,6 +18,24 @@
 // snapshot's `muted` is the game's copy of the RUNTIME's bit, refreshed in every
 // update: a build that reset the runtime's own bit reports sound back on as soon as
 // the next tick refreshes the copy, and that is the fault this leg is looking for.
+//
+// WHAT THE VARIANT ADDS IS ITS OWN ITEM. `specs/instrumentation.md` has `reset` empty
+// the torpedo roster and fill the charge under `warhead`, and that is
+// `instrumentation/reset-clears-the-torpedoes`, an item of the warhead checklist
+// alone. It is not read here behind a probe of the build's own surface: a
+// requirement gated on whether the build installed `addTorpedo` is one a build can
+// shed by implementing less, and a `warhead` build that never wrote the torpedo
+// would then pass this point on the strength of its omission while one that wrote
+// the torpedo and forgot to clear it would fail.
+//
+// AND THE CLOCK IS THE OTHER. `specs/instrumentation.md` says of the auto-step
+// setting that "`reset` leaves this setting exactly as it stands: the clock is the
+// runtime's rather than a game value, so a reset taken under a held clock leaves
+// the clock held". Every check in this project opens with the clock held and resets
+// mid-scenario, so a build that re-armed the frame loop on `reset` would leave the
+// rest of the project drifting on the wall clock at whatever rate the machine
+// happened to render. The leg holds the clock, resets, and then reads the setting
+// back and gives the page a second of real time to prove nothing ran.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -42,7 +60,6 @@ import {
   poseRock,
   poseSaucer,
   startPlaying,
-  WARHEAD_OPS,
   type Harness,
 } from "../harness";
 
@@ -56,6 +73,10 @@ const POSED_WAVE = 9;
 const POSED_BANNER = 1.2;
 /** The menu entry the run is dressed in. */
 const POSED_MENU_INDEX = 2;
+/** The real milliseconds the game is left alone after the reset, clock held. */
+const RESET_WALL_MS = 1000;
+/** Where the moving rock the clock leg poses is put. */
+const ROCK = { x: 260, y: 620, vx: 120, vy: -80 } as const;
 /** Where the ship is put, well away from the safe point the title returns it to. */
 const POSED_SHIP = { x: 240, y: 180 } as const;
 /** The ship's posed velocity, so a reset has motion to take away. */
@@ -146,19 +167,6 @@ it("puts every declared field back to its title value", async () => {
   assertEqual(s.waveSpawning, true, "reset turns the wave gate back on");
   assertEqual(s.saucerSpawning, true, "reset turns the saucer gate back on");
   assertCloseTo(s.simTime, 0, TITLE_DIGITS, "reset returns the clock to zero");
-
-  // And the four fields the variant adds, demanded of a build whose surface
-  // carries the variant's operations.
-  const probed = await h.probe(WARHEAD_OPS);
-  if (probed.ops.addTorpedo === "function") {
-    assertLength(s.torpedoes ?? [], 0, "reset empties the torpedoes");
-    assertCloseTo(
-      s.torpedoCharge ?? -1,
-      1,
-      TITLE_DIGITS,
-      "reset fills the torpedo charge",
-    );
-  }
 });
 
 it("leaves the mute bit exactly as it stands", async () => {
@@ -188,5 +196,33 @@ it("leaves the mute bit exactly as it stands", async () => {
     (await h.snapshot()).muted,
     toggled,
     "and the runtime's own mute bit survived the reset",
+  );
+});
+
+it("leaves the clock held exactly as it stands", async () => {
+  // The harness opens with `setAutoStep(false)` already called, which is the state
+  // the sentence is about: a reset taken under a held clock.
+  await startPlaying(h);
+  await poseRock(h, "large", ROCK.x, ROCK.y, ROCK.vx, ROCK.vy);
+  await h.advance(1);
+
+  await h.debug.reset();
+
+  assertEqual(
+    (await h.snapshot()).autoStep,
+    false,
+    "reset left the clock held",
+  );
+
+  // And the setting is not the whole claim: a build could report the setting back
+  // and still have re-armed its own loop. A second of real time with the page in
+  // front is what settles it, since nothing may advance while the clock is held.
+  const held = await h.snapshot();
+  await h.page.bringToFront().catch(() => undefined);
+  await h.page.waitForTimeout(RESET_WALL_MS);
+  assertEqual(
+    (await h.snapshot()).simTime,
+    held.simTime,
+    `nothing ran in ${RESET_WALL_MS}ms of wall time after the reset`,
   );
 });

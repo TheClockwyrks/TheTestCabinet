@@ -44,19 +44,25 @@ none = "workspaces/none"
 "simple-2d" = "workspaces/warhead/simple-2d"
 "structured-2d" = "workspaces/warhead/structured-2d"
 
-# The warhead checklist: 50 points on top of the case's 207, so a warhead run is
-# rated on 257. The `format` is inherited from the case manifest
+# The warhead checklist: 54 points on top of the case's 236, so a warhead run is
+# rated on 290. The `format` is inherited from the case manifest
 # (`[review] format = 2`); a variant only adds `[[review.categories]]`. Every point
 # carries `domains` and `failure_cap` on the same scale the case manifest sets out
 # above its `[review]` table, and every point carries the validator that decides
 # it.
 #
-# FIVE categories are declared, and three of them REUSE a common category's id so
+# SIX categories are declared, and four of them REUSE a common category's id so
 # their points fold into it (see `merge_review_items` in the core):
-#   - `instrumentation` — the four torpedo operations of the debug surface, which
-#     belong beside the case's other per-operation instrumentation points. Their
-#     scripts live in the COMMON `instrumentation/` directory of each validator
-#     project; only a warhead checklist names them.
+#   - `instrumentation` — the four torpedo operations of the debug surface, plus
+#     the three points that carry what the variant ADDS to a common item's
+#     requirement: the four snapshot fields, what `reset` does to the torpedo, and
+#     the two rows the diagnostics overlay gains. All of them belong beside the
+#     case's other per-operation instrumentation points. Their scripts live in the
+#     COMMON `instrumentation/` directory of each validator project; only a warhead
+#     checklist names them.
+#   - `screens` — the one word the how-to screen gains, `F`, which belongs beside
+#     the case's other screen points. Its script lives in the COMMON `screens/`
+#     directory; only a warhead checklist names it.
 #   - `rocks` — the thirteen Armor points, which are rules about a rock and belong
 #     beside the case's other rock points. Their scripts live in a directory of
 #     their own, `armor/`, which never loads against a base build.
@@ -89,6 +95,21 @@ none = "workspaces/none"
 # broken instrumentation gate would lower the GRAVITY rating of a build whose well
 # is perfectly correct. Their scripts live in the common instrumentation
 # directory; only a warhead checklist names them.
+#
+# AND THE THREE THAT CARRY WHAT THE VARIANT ADDS TO A COMMON ITEM. `snapshot-shape`,
+# `reset-restores-title` and `overlay` are on BOTH checklists, and
+# `specs/instrumentation.md` states more of each under this variant: four more
+# snapshot fields, two more title values `reset` restores, and two more rows on the
+# diagnostics panel. A common script cannot ask for those
+# without deciding first whether it is running under this variant, and the only
+# thing it could decide that from is the BUILD — whether it installed `addTorpedo`,
+# or reports a torpedo roster. That makes the requirement a function of what the
+# build implemented rather than of what the variant requires, which is the one thing
+# a grade must never be: a warhead build that never wrote the torpedo would be asked
+# for nothing extra and pass all three, while one that wrote the whole torpedo and
+# mistyped a snapshot field would fail — the grade rewarding the less complete
+# build. So each addition is its own point on this checklist, asked
+# unconditionally, and every common script asks for the common requirement alone.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -127,6 +148,33 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "instrumentation/torpedo-homing-gate.test.ts", outputs = [
   { id = "held", name = "The torpedo holding its heading past an acquirable rock", kind = "image" },
+] }
+[[review.categories.items]]
+id = "warhead-snapshot-shape"
+title = "Snapshot reports the warhead fields"
+description = "Over a field carrying a rock and a torpedo, snapshot() reports torpedoes, torpedoCharge and torpedoReady with their documented types and a health on every rock, and torpedoReady is built at the call: true exactly when the charge is 1."
+domains = ["arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/warhead-snapshot-shape.test.ts", outputs = [
+  { id = "snapshot", name = "The field the reported warhead snapshot describes", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-clears-the-torpedoes"
+title = "reset empties the torpedoes and fills the charge"
+description = "After torpedoes have been put in flight and the charge run down, reset() leaves the torpedo roster empty and torpedoCharge at 1."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "instrumentation/reset-clears-the-torpedoes.test.ts", outputs = [
+  { id = "reset", name = "The title screen reset restored, with no torpedo left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay-reports-the-torpedo"
+title = "The overlay reports the torpedo"
+description = "Toggled on over a field carrying two torpedoes at a charge of 0.6, the overlay draws the charge and how many torpedoes are in flight."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-reports-the-torpedo.test.ts", outputs = [
+  { id = "overlay", name = "The debug overlay over the posed torpedoes", kind = "image" },
 ] }
 
 # --- The rocks ---------------------------------------------------------------
@@ -238,13 +286,13 @@ validation = { script = "armor/recycling-preserves-health.test.ts", outputs = [
   { id = "recycle", name = "The recycled Large still carrying its damage", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "recycling-resets-speed-not-health"
-title = "Recycling resets the speed and not the health"
-description = "The same recycled rock re-enters at a speed inside [60, 110] while still reporting health 1."
+id = "recycling-resets-speed-when-damaged"
+title = "A damaged rock still gets a fresh drift speed"
+description = "A Large chipped to health 1 and slung into the star at 150 units per second re-enters at a speed inside [60, 110], so the recycle path draws a fresh speed for a damaged rock as it does for a whole one. That the health survives is recycling-preserves-health's to decide, and the reset itself is rocks/recycle-resets-speed's; this item decides only that damage does not divert the recycle path."
 domains = ["arcade"]
 failure_cap = "passable"
-validation = { script = "armor/recycling-resets-speed-not-health.test.ts", outputs = [
-  { id = "recycle", name = "The recycled Large, fresh drift speed and old damage", kind = "image" },
+validation = { script = "armor/recycling-resets-speed-when-damaged.test.ts", outputs = [
+  { id = "recycle", name = "The recycled Large back at a Large's drift speed", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "set-rock-health-reads-back"
@@ -562,6 +610,30 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "detonation/harmless-to-the-ship.test.ts", outputs = [
   { id = "passthrough", name = "The torpedo passing through its own ship", kind = "image" },
+] }
+
+# --- Screens and menus -------------------------------------------------------
+# The one word the how-to screen gains under this variant, folded into the case's
+# common "Screens and menus" category by id-match. `specs/controls.md` binds `b` to
+# `KeyF` here and to `Space` under `base`, and `specs/ui.md` has the how-to screen
+# name every key the specification binds — so the common item
+# `screens/howto-shows-the-controls` grades the seven words both variants share and
+# this one grades the eighth. It is a point of its own for the reason the three
+# instrumentation additions above are: the common script would otherwise have to
+# decide from the BUILD whether to ask for `F`, and a warhead build that never wrote
+# the torpedo would then be asked for one word fewer and pass. Its script lives in
+# the COMMON `screens/` directory.
+[[review.categories]]
+id = "screens"
+title = "Screens and menus"
+[[review.categories.items]]
+id = "howto-names-the-torpedo-key"
+title = "The how-to screen names the torpedo key"
+description = "The how-to screen draws F as a standalone word, beside the keys every variant binds, so a player is told the key that launches the torpedo."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/howto-names-the-torpedo-key.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen naming the torpedo key", kind = "image" },
 ] }
 
 # --- Presentation ------------------------------------------------------------

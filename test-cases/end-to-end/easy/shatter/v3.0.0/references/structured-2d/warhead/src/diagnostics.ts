@@ -18,6 +18,11 @@ function figure(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/** A pair of figures as one short reading, since a source reports one value. */
+function pair(x: number, y: number): string {
+  return `${String(figure(x))}, ${String(figure(y))}`;
+}
+
 /** Register Shatter's diagnostic sources with the world's overlay registry. */
 export function registerDiagnostics(world: World): void {
   const read = () => shatterState(world);
@@ -29,11 +34,11 @@ export function registerDiagnostics(world: World): void {
 
   world.diagnostics.register("ship", () => {
     const { ship } = read();
-    return { x: figure(ship.x), y: figure(ship.y) };
+    return pair(ship.x, ship.y);
   });
   world.diagnostics.register("ship-velocity", () => {
     const { ship } = read();
-    return { vx: figure(ship.vx), vy: figure(ship.vy) };
+    return pair(ship.vx, ship.vy);
   });
   world.diagnostics.register("ship-speed", () => {
     const { ship } = read();
@@ -47,9 +52,7 @@ export function registerDiagnostics(world: World): void {
 
   world.diagnostics.register("saucer", () => {
     const { saucer } = read();
-    return saucer === null
-      ? "none"
-      : { x: figure(saucer.x), y: figure(saucer.y) };
+    return saucer === null ? "none" : pair(saucer.x, saucer.y);
   });
 
   world.diagnostics.register("torpedo-charge", () =>

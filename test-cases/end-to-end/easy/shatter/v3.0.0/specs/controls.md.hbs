@@ -1,9 +1,10 @@
 # Shatter — Controls
 
-Shatter is played on the keyboard alone. This file defines every action the game
-answers to and the keys bound to it. What the ship does when it turns, thrusts,
-and fires is in `specs/ship.md` and `specs/weapons.md`, and the screens the menu
-actions move between are in `specs/ui.md`.
+Shatter is flown from the keyboard, and its menus take a mouse and touch as well.
+This file defines every action the game answers to and the keys bound to it. What
+the ship does when it turns, thrusts, and fires is in `specs/ship.md` and
+`specs/weapons.md`, and the screens the menu actions move between are in
+`specs/ui.md`.
 
 {{#if (eq engine.slug "none")}}
 ## How input reaches the game
@@ -27,13 +28,16 @@ layout-dependent character.
 {{#if (eq variant.slug "warhead")}}
 | `KeyF` | Launch the torpedo | — |
 {{/if}}
-| `KeyP` | Pause | — |
+| `KeyP` | Pause | Resume the paused game |
 | `Escape` | Pause | Leave the screen |
 | `KeyM` | Toggle sound | Toggle sound |
 
-`Space` fires while the game is being played and confirms on a screen showing a
-menu, and `Escape` pauses while the game is being played and leaves the screen
-otherwise. The screen decides which meaning applies.
+`Escape` pauses on `playing` and leaves the screen on `title`, `howto`, `paused`,
+and `gameover`. `KeyP` is read on `playing` and on `paused` alone, pausing on the
+first and resuming on the second, and doing nothing on the other three screens. On
+`paused`, leaving the screen and pausing again are read before the menu edges, so a
+frame carrying either resumes and does nothing else. `Space` fires while the game is
+being played and confirms on a screen showing a menu.
 {{else}}
 ## How input reaches the game
 
@@ -61,8 +65,8 @@ The whole of `ACTIONS` is registered.
 | `b` | Fire the gun | — |
 {{/if}}
 | `confirm` | — | Confirm the selection |
-| `back` | Pause | Leave the screen |
-| `pause` | Pause | — |
+| `back` | — | Leave the screen |
+| `pause` | Pause | Resume the paused game |
 | `mute` | Toggle sound | Toggle sound |
 
 ## The bindings
@@ -84,10 +88,12 @@ The whole of `ACTIONS` is registered.
 | `pause` | `KeyP`, `Escape` |
 | `mute` | `KeyM` |
 
-`Escape` drives both `back` and `pause`, and the screen decides which one applies:
-it pauses while the game is being played and leaves the screen otherwise. `Space`
-likewise drives firing while the game is being played and confirms on a screen
-showing a menu.
+`back` is read on `title`, `howto`, `paused`, and `gameover`, and `pause` is read
+on `playing` and `paused`. `Escape` raises both on one frame, so a single `Escape`
+press on `playing` pauses once and a single `Escape` press on `paused` resumes
+once. On `paused`, `pause` and `back` are read before the menu edges, and a frame
+carrying either resumes and does nothing else. `Space` drives firing while the game
+is being played and confirms on a screen showing a menu.
 {{/if}}
 
 ## Holds and presses
@@ -112,6 +118,19 @@ wrap at both ends, so moving down from the last entry highlights the first and
 moving up from the first highlights the last. The highlight is therefore always on
 one of the menu's own entries. Confirming takes the highlighted entry, and
 `specs/ui.md` states each screen's entries and where each leads.
+
+{{#if (eq engine.slug "none")}}
+A mouse and a touch contact drive the menus too, through the same runtime layer
+that reports the keys. `specs/ui.md` states what a move, a press, a release, a
+landing and a lift each do, and `specs/instrumentation.md` states the reading
+through which the build reports an entry's hit region.
+{{else}}
+A mouse and a touch contact drive the menus too, directly rather than through a
+registered action, so no action of the table above is raised by either.
+`specs/ui.md` states what a move, a press, a release, a landing and a lift each do,
+and `specs/instrumentation.md` states the reading through which the build reports
+an entry's hit region.
+{{/if}}
 
 ## The debug overlay
 

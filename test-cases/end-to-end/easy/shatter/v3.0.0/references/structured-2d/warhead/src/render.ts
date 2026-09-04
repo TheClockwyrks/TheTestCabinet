@@ -19,8 +19,6 @@ import {
   CORE_R,
   FIELD_H,
   FIELD_W,
-  GAMEOVER_ITEMS,
-  PAUSE_ITEMS,
   ROCK_HEALTH,
   ROCK_RADIUS,
   SAUCER_BULLET_R,
@@ -30,7 +28,6 @@ import {
   STAR_Y,
   TAGLINE_TEXT,
   TICK_DT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   TORPEDO_R,
   TRAIL_TICKS,
@@ -38,11 +35,13 @@ import {
 import type {
   BulletState,
   RockState,
+  Screen,
   ShatterState,
   TorpedoState,
 } from "./game";
 import { TAU, wrapX, wrapY } from "./geometry";
 import { gravityAt } from "./gravity";
+import { menuLayout } from "./menus";
 import { COLOR, FONT } from "./theme";
 
 /**
@@ -617,20 +616,20 @@ export function renderHud(
 /** A vertical menu, its highlighted entry drawn distinctly from the others. */
 function menu(
   ctx: CanvasRenderingContext2D,
-  items: readonly string[],
+  screen: Screen,
   index: number,
-  top: number,
-  step: number,
 ): void {
-  const count = items.length;
+  const layout = menuLayout(screen);
+  if (layout === null) return;
+  const count = layout.entries.length;
   const selected = ((Math.round(index) % count) + count) % count;
-  items.forEach((item, at) => {
+  layout.entries.forEach((item, at) => {
     const chosen = at === selected;
     const text = chosen ? `> ${item} <` : item;
     centred(
       ctx,
       text,
-      top + at * step,
+      layout.top + at * layout.step,
       FONT.menu,
       chosen ? COLOR.accent : COLOR.textDim,
     );
@@ -674,7 +673,7 @@ export function renderScreens(
     case "title":
       centred(ctx, TITLE_TEXT, 110, FONT.title, COLOR.text);
       centred(ctx, TAGLINE_TEXT, 176, FONT.body, COLOR.textDim);
-      menu(ctx, TITLE_ITEMS, state.menuIndex, 596, 56);
+      menu(ctx, "title", state.menuIndex);
       break;
 
     case "howto": {
@@ -704,7 +703,7 @@ export function renderScreens(
       ctx.fillStyle = COLOR.scrim;
       ctx.fillRect(0, 0, FIELD_W, FIELD_H);
       centred(ctx, "PAUSED", 208, FONT.heading, COLOR.text);
-      menu(ctx, PAUSE_ITEMS, state.menuIndex, 336, 62);
+      menu(ctx, "paused", state.menuIndex);
       break;
 
     case "gameover":
@@ -717,7 +716,7 @@ export function renderScreens(
         COLOR.text,
       );
       centred(ctx, `WAVE   ${String(state.wave)}`, 336, FONT.menu, COLOR.text);
-      menu(ctx, GAMEOVER_ITEMS, state.menuIndex, 462, 58);
+      menu(ctx, "gameover", state.menuIndex);
       break;
 
     case "playing":

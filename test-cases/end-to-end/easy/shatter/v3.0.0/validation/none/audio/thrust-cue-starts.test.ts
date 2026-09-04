@@ -39,6 +39,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { KEYS_THRUST } from "../constants";
 import {
+  armAudio,
   captureStill,
   createHarness,
   startPlaying,
@@ -101,7 +102,7 @@ it("starts a sound on the burn's first tick and has not stopped it a second late
   // A genuine, browser-trusted gesture: an engineless build's audio does not start
   // until the player has interacted with the page (`specs/audio.md`), and the key
   // is bound to nothing (`specs/controls.md`).
-  await h.armAudio();
+  await armAudio(h);
   await h.debug.setShipAngle(ACROSS_THE_FIELD);
 
   const burn = await watchForEvent(

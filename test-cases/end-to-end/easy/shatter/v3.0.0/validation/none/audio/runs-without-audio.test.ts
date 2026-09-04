@@ -53,6 +53,7 @@ import {
   WAVE_BANNER_TIME,
 } from "../constants";
 import {
+  armAudio,
   captureStill,
   createHarness,
   drawOps,
@@ -310,7 +311,7 @@ afterEach(async () => {
 it("opens, flies, fires and scores identically with no audio available at all", async () => {
   // The audible run: a genuine, browser-trusted gesture opens the bus, and the
   // build plays whatever it plays.
-  await h.armAudio();
+  await armAudio(h);
   const audible = await playThrough(h);
 
   // The silent run: the same build, in a page where audio cannot start.
@@ -318,7 +319,7 @@ it("opens, flies, fires and scores identically with no audio available at all", 
   await shutAudioDown(silent);
   // A real gesture all the same, so a build that opens its context on the first
   // interaction meets the refusal where it would meet a browser without Web Audio.
-  await silent.armAudio();
+  await armAudio(silent);
   const readings = await playThrough(silent);
   await captureStill(silent, "silent");
 

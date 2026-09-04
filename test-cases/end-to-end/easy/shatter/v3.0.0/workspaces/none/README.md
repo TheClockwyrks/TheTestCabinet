@@ -18,8 +18,9 @@ yours as well as the game: the frame loop and the delta it measures, the
 fixed-step accumulator `specs/simulation.md` fixes the rate of, fitting the
 1280x720 logical field into the canvas (the uniform scale, the centred
 letterbox, the device pixel ratio, and the resync when any of them changes),
-reading the keyboard, synthesizing the audio, drawing the debug overlay, and
-installing the `window.__shatter` surface `specs/instrumentation.md` specifies.
+reading the keyboard and the pointer, synthesizing the audio, drawing the debug
+overlay, and installing the `window.__shatter` surface
+`specs/instrumentation.md` specifies.
 
 `specs/` fixes what Shatter needs from that layer and nothing else about it: how
 it is structured under `src/` is your call.

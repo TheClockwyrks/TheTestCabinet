@@ -1146,8 +1146,12 @@ describe("the screens", () => {
     h.tap("Escape");
     await h.ticks(1);
     expect(h.snapshot().screen).toBe("title");
-    expect(h.snapshot().menuIndex).toBe(0);
+    // The how-to leaves the title's highlight alone, so the return lands on the
+    // entry that opened it (`specs/ui.md`).
+    expect(h.snapshot().menuIndex).toBe(1);
 
+    h.tap("ArrowUp");
+    await h.ticks(1);
     h.tap("Enter");
     await h.ticks(1);
     const snap = h.snapshot();

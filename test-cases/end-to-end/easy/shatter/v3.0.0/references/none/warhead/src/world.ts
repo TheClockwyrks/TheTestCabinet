@@ -71,6 +71,7 @@ export function createState(seedValue: number): ShatterState {
     rockDestroyed: false,
     extraLifeShow: 0,
     cues: [],
+    pointerPresses: [],
   };
   seed(state, seedValue);
   return state;
@@ -110,6 +111,7 @@ export function toTitle(state: ShatterState): void {
   state.simTime = 0;
   state.rockDestroyed = false;
   state.cues = [];
+  state.pointerPresses = [];
 }
 
 /**

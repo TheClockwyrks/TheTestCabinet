@@ -853,7 +853,10 @@ describe("the screens", () => {
     expect(state.screen).toBe("howto");
     tap("back");
     expect(state.screen).toBe("title");
-    expect(state.menuIndex).toBe(0);
+    // The how-to leaves the title's highlight alone, so the return lands on the
+    // entry that opened it (`specs/ui.md`).
+    expect(state.menuIndex).toBe(1);
+    tap("menu-up");
     tap("confirm");
     expect(state.screen).toBe("playing");
     expect(state.wave).toBe(1);

@@ -39,6 +39,7 @@ import {
 } from "./constants";
 import { SEAM_OFFSETS } from "./field";
 import { gravityAt } from "./gravity";
+import { menuItemRect, menuLayout } from "./menus";
 import { BLINK_PERIOD, COLOR, HUD, font, withAlpha } from "./theme";
 import type {
   BulletState,
@@ -46,6 +47,7 @@ import type {
   SaucerState,
   ShatterState,
   ShipState,
+  Screen,
 } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
@@ -453,28 +455,35 @@ function drawExtraLifeNotice(ctx: Ctx): void {
   text(ctx, "EXTRA SHIP", FIELD_W / 2, 470, 40, COLOR.accent, "center", 700);
 }
 
-/** A vertical menu with the highlighted entry drawn distinctly. */
+/**
+ * A vertical menu with the highlighted entry drawn distinctly.
+ *
+ * The band under the highlight is the entry's own region, straight off
+ * `menus.ts`, so what a player aims at and what `menuItemRect` reports are the
+ * same rectangle.
+ */
 function drawMenu(
   ctx: Ctx,
+  screen: Screen,
   items: readonly string[],
   highlighted: number,
-  firstY: number,
-  gap: number,
-  size: number,
 ): void {
+  const layout = menuLayout(screen);
+  if (layout === null) return;
   items.forEach((item, index) => {
-    const y = firstY + index * gap;
+    const y = layout.firstY + index * layout.gap;
     const active = index === highlighted;
-    if (active) {
+    const band = menuItemRect(screen, index);
+    if (active && band !== null) {
       ctx.fillStyle = withAlpha(COLOR.accent, 0.16);
-      ctx.fillRect(FIELD_W / 2 - 220, y - size * 0.8, 440, size * 1.6);
+      ctx.fillRect(band.x, band.y, band.w, band.h);
     }
     text(
       ctx,
       item,
       FIELD_W / 2,
       y,
-      size,
+      layout.size,
       active ? COLOR.accent : COLOR.textDim,
       "center",
       active ? 700 : 600,
@@ -494,7 +503,7 @@ function drawTitle(ctx: Ctx, menuIndex: number): void {
   drawScrim(ctx, 0.55);
   text(ctx, TITLE_TEXT, FIELD_W / 2, 190, 110, COLOR.text, "center", 700);
   text(ctx, TAGLINE_TEXT, FIELD_W / 2, 268, 30, COLOR.accent);
-  drawMenu(ctx, TITLE_ITEMS, menuIndex, 420, 68, 36);
+  drawMenu(ctx, "title", TITLE_ITEMS, menuIndex);
   text(
     ctx,
     "ARROWS or WASD to fly   SPACE to fire   ENTER to choose",
@@ -533,7 +542,7 @@ function drawHowTo(ctx: Ctx): void {
 function drawPaused(ctx: Ctx, menuIndex: number): void {
   drawScrim(ctx, 0.45);
   text(ctx, "PAUSED", FIELD_W / 2, 190, 66, COLOR.text, "center", 700);
-  drawMenu(ctx, PAUSE_ITEMS, menuIndex, 330, 68, 36);
+  drawMenu(ctx, "paused", PAUSE_ITEMS, menuIndex);
 }
 
 function drawGameOver(
@@ -568,7 +577,7 @@ function drawGameOver(
     700,
   );
 
-  drawMenu(ctx, GAMEOVER_ITEMS, menuIndex, 440, 68, 36);
+  drawMenu(ctx, "gameover", GAMEOVER_ITEMS, menuIndex);
 }
 
 // ---- The whole frame ------------------------------------------------------

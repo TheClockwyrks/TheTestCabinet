@@ -34,6 +34,13 @@
 // Every other item in this suite drives this surface to pose its own scenario,
 // so a missing surface or an operation that does not act also shows up as those
 // items failing. This one names the fault plainly.
+//
+// WHAT IS NOT DEMANDED. `REQUIRED_OPS` is the list `specs/instrumentation.md`
+// states for EVERY variant. The torpedo operations and `setRockHealth` are stated
+// under `warhead` alone, so a `base` build is correct to carry none of them and
+// this point never asks for one; the four `warhead` instrumentation items and the
+// `armor` and `torpedo` groups are what decide those, and each of them names the
+// operation it could not reach.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

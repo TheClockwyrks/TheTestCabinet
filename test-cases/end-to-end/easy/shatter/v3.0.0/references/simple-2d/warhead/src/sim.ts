@@ -20,7 +20,7 @@
 
 import { nextInt, nextRandom, nextRange, nextSign } from "./rng";
 import type { CueName, RockSize } from "./constants";
-import type { BulletState, Screen, ShatterState } from "./game";
+import type { BulletState, PointerPress, Screen, ShatterState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /**
@@ -170,6 +170,7 @@ export interface Sim {
 
   trails: MutTrail[];
   extraLifeFlash: number;
+  pointerPresses: PointerPress[];
 }
 
 function copyBullet(b: DeepReadonly<BulletState>): MutBullet {
@@ -255,6 +256,11 @@ export function toSim(state: DeepReadonly<ShatterState>): Sim {
       points: t.points.map((p) => ({ dx: p.dx, dy: p.dy })),
     })),
     extraLifeFlash: state.extraLifeFlash,
+    pointerPresses: state.pointerPresses.map((press) => ({
+      id: press.id,
+      entry: press.entry,
+      screen: press.screen,
+    })),
   };
 }
 

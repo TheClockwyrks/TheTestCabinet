@@ -10,60 +10,48 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator addresses the
-// build's output by the same relative path the build itself produced it at. It is
-// derived from this file's own URL rather than from the working directory, so the
-// command above works from anywhere.
+// Everything but the dials below is the shared validator harness's, because
+// everything but the dials is what makes a staged validator project one shape the
+// runner can drive: the project's name, the suites it collects, the scaffolding
+// it loads, and the refusal to pass a run that collected nothing.
 //
-// WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONES DO NOT. An engineless
-// build is a static site with nothing to import, so every check drives it in a
-// real browser through `window.__shatter`. `globalSetup` starts the one server
-// and the one Chromium the whole project shares, before any suite runs;
-// `setupFiles` gives each suite worker the teardown that returns its page when
-// the file is done. The environment stays `node` — the suites drive a browser,
-// they do not run in one.
+// THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator addresses the
+// build's output by the same relative path the build itself produced it at. It is
+// computed HERE, from this file's own URL, rather than inside the package: the
+// package is staged one directory deeper than this file, so anything derived from
+// its own location would name the wrong tree.
+//
+// Imported from its own module rather than through the package's barrel, for the
+// reason `globalSetup.ts` gives.
+//
+// SHATTER NAMES NO DIAL, AND THAT IS THE DECISION RATHER THAN THE ABSENCE OF ONE.
+// The package's defaults — five minutes per check, five minutes per hook, eight
+// suite files in flight — were measured on a host running nine of these projects
+// at once, and this project is not costlier than what they were taken under: its
+// longest scenarios are a saucer flown out to its lifetime and a wave shot down a
+// round at a time, both of them thousands of driven ticks and all of them
+// crossings into a page rather than processor. Raising any of them here would
+// trade a measured number for a guessed one, and lowering one to make a fast case
+// look fast is how a correct build loses a point to the load average. What the
+// package's own figures are argued against is the one ceiling this project cannot
+// move: the runner caps the WHOLE suite run at forty-five minutes
+// (`VITEST_TIMEOUT`, `crates/core/src/vitest_validator.rs`).
+//
+// AND THE MEASUREMENT THAT SAYS SO, taken so a later author has an absolute rather
+// than a fraction to reason from. Against the `warhead` reference build, 291 suite
+// files and 324 checks finished in 45 s of wall clock at the package's eight
+// workers, with the slowest FILE at 8.0 s (`saucer/at-most-one-at-a-time`, which
+// flies a saucer out to its lifetime) and the next three at 5.3, 4.6 and 4.5 s
+// (`harness.test.ts`, `waves/speed-scales-per-wave`, `saucer/avoids-the-core`).
+// The reading was taken on a twenty-core box carrying four of these case
+// worktrees at load average ~13 — a loaded host rather than an idle one, so it is
+// an upper bound. Against that, the fifteen minutes
+// `guides/authoring/writing-debug-apis-and-validators.md` asks a case to finish
+// in is two orders of magnitude away, and no per-check allowance is anywhere near
+// its five minutes.
 
-import { defineConfig } from "vitest/config";
+import { defineValidationConfig } from "./case-harness/vitest-config";
 
-export default defineConfig({
+export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    globalSetup: ["validation/globalSetup.ts"],
-    setupFiles: ["validation/setup.ts"],
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // Each suite file holds a page of the shared browser while it runs, so the
-    // ceiling on files in flight is the ceiling on pages — and a suite spends
-    // almost all of its time waiting on a crossing into one, so overlapping them
-    // is most of what decides how long the whole run takes. Capped rather than
-    // left to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it.
-    //
-    // EIGHT RATHER THAN FOUR, because the binding limit is not this project's
-    // own budget but the runner's: `VITEST_TIMEOUT` in
-    // `crates/core/src/vitest_validator.rs` bounds the whole suite run at twenty
-    // minutes, and this project's work is dominated by waiting on a crossing
-    // into a page rather than by processor. On a host running at twenty-five
-    // times its core count, four workers put the whole run past that ceiling and
-    // eight bring it back inside it — and a run the ceiling kills reports no
-    // point at all, which is a far worse answer than a slow one.
-    maxWorkers: 8,
-    minWorkers: 1,
-    // A ceiling on a suite that never terminates, not a schedule any check is
-    // written to. Every scenario here is stepped in whole ticks through the debug
-    // surface and none of them measures the wall clock, so what a check costs is
-    // round trips into a page on a host this project does not own — and a check
-    // that a busy host pushes past its allowance is a check that failed a correct
-    // build for a fact about the machine. The figure is therefore many times the
-    // longest scenario rather than a snug fit around it: the longest here run in
-    // well under a minute on a quiet host, and five minutes is room for one
-    // twenty times oversubscribed.
-    testTimeout: 300_000,
-    hookTimeout: 300_000,
-  },
 });

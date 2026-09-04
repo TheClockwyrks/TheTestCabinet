@@ -124,7 +124,7 @@ it("has no rock at the core on the tick after one reached it", async () => {
   let closing = nearestRock(await h.snapshot());
   let after: ShatterSnapshot | null = null;
   for (let tick = 1; tick <= DROP_TICKS; tick += 1) {
-    const snapshot = await h.advance(1);
+    const snapshot = await h.step(1);
     const distance = nearestRock(snapshot);
     if (!(distance < closing)) {
       after = snapshot;

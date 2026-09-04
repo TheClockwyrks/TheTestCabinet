@@ -206,7 +206,7 @@ export async function driveTorpedo(
     );
   }
   for (let ticks = 1; ticks <= maxTicks; ticks += 1) {
-    const at = await h.advance(1);
+    const at = await h.step(1);
     if (torpedoById(at, id) === undefined) {
       return { hit: true, ticks, before, at };
     }

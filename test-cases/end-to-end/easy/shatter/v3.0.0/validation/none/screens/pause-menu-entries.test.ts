@@ -28,6 +28,7 @@ import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
+  presentCalls,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -57,7 +58,7 @@ it("draws RESUME above RESTART above QUIT TO MENU", async () => {
   await startPlaying(h);
   await reachPaused(h);
 
-  const calls = await h.presentCalls();
+  const calls = await presentCalls(h);
   await captureStill(h, "menu");
 
   const drawn = menuDraws(calls, PAUSE_ITEMS, "the pause menu");

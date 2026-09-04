@@ -43,7 +43,7 @@
 // remove — is parked in the far upper corner, `573` away, where no ring reaches it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_R, HALO_R } from "../constants";
+import { CORE_R, HALO_R, STAR_DRAW_R } from "../constants";
 import {
   assertGreaterThan,
   assertLessThan,
@@ -63,7 +63,7 @@ import {
   ringPoints,
   type Painted,
 } from "./ink";
-import { FAR_SHIP, sampleField, STAR, STAR_DRAW_R } from "./scene";
+import { FAR_SHIP, sampleField, STAR } from "./scene";
 
 /** Samples around each ring: enough that one textured patch cannot move the mean. */
 const SPOKES = 48;

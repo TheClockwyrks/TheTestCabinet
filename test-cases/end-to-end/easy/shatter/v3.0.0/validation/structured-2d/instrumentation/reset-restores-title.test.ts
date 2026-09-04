@@ -33,6 +33,15 @@
 // report (`specs/state.md` keeps `saucerClock` and `saucerDue` off the shape),
 // so it is not read here; what a game's cadence does from its start is
 // `saucer/first-arrives-at-18s`.
+//
+// WHAT THE VARIANT ADDS IS ITS OWN ITEM. `specs/instrumentation.md` has `reset`
+// empty the torpedo roster and set `torpedoCharge` to `1` under `warhead`, and that
+// is `instrumentation/reset-clears-the-torpedoes`, an item of the warhead checklist
+// alone. It is not read here behind a probe of the build's own surface, which is
+// what this script used to do: a requirement gated on whether the build installed
+// `addTorpedo` is one a build can shed by implementing less, so a `warhead` build
+// that never wrote the torpedo would pass this point on the strength of its
+// omission while one that wrote the torpedo and forgot to clear it would fail.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FACE_UP, SAFE_X, SAFE_Y, START_LIVES } from "../constants";
@@ -48,7 +57,6 @@ import {
   createHarness,
   tapAction,
   ticksFor,
-  torpedoesOf,
   type Harness,
 } from "../harness";
 import { posePopulatedField } from "./scene";
@@ -169,14 +177,6 @@ it("restores every declared field to its title value and leaves muted alone", as
 
   // Muting is the runtime's, and reset leaves it exactly as it stands.
   assertEqual(after.muted, muted, "reset leaves muted untouched");
-
-  // The variant's two restored fields, required of a surface that carries the
-  // torpedo operations: "It empties the torpedo roster and sets torpedoCharge
-  // to 1" (specs/instrumentation.md, under `warhead`).
-  if (typeof h.debug.addTorpedo === "function") {
-    assertLength(torpedoesOf(after), 0, "the torpedo roster emptied");
-    assertEqual(after.torpedoCharge, 1, "torpedoCharge restored to 1");
-  }
 
   // The title screen the reset restored.
   await h.advance(1);

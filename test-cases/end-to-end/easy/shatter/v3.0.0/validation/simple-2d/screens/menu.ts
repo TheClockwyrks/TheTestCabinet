@@ -263,38 +263,58 @@ const WORD_FOR_KEY: Readonly<Record<string, string>> = {
   KeyF: "F",
 };
 
+/** The standalone words `keys` spell, in order, with no repeats. */
+function wordsForKeys(keys: readonly string[], into: string[]): string[] {
+  for (const key of keys) {
+    const word = WORD_FOR_KEY[key];
+    if (word === undefined) {
+      fail(
+        `a key specs/controls.md names a standalone word for, one of ` +
+          `${Object.keys(WORD_FOR_KEY).join(", ")}`,
+        key,
+      );
+    }
+    if (!into.includes(word)) into.push(word);
+  }
+  return into;
+}
+
 /**
- * Every word the how-to screen must name, derived from the keys
- * `specs/controls.md` BINDS.
+ * Every word the how-to screen must name under EVERY variant, derived from the
+ * keys `specs/controls.md` BINDS.
  *
  * Read off `../constants`'s transcription of the binding table rather than
  * written out, so the mapping above is applied once and the list is the
  * specification's rather than a second, hand-kept copy of it.
  *
- * `carriesTorpedoes` is what makes the same list serve both checklists. The
+ * THE VARIANT'S OWN ROW IS NOT HERE, AND IT IS NOT READ OFF THE BUILD EITHER. The
  * binding table's one variant-dependent row is `b` — `KeyF` and the torpedo under
- * `warhead`, a second `Space` for the gun under `base` — so it is taken only from
- * a build that carries torpedoes, and `base` is graded on the seven words
- * `specs/ui.md` names it while `warhead` is graded on those seven plus `F`. Every
- * other row is the same under both.
+ * `warhead`, a second `Space` for the gun under `base`, whose word `a` already
+ * contributes. This list therefore always skips it, and {@link variantKeyWords} is
+ * what `screens/howto-names-the-torpedo-key` asks for on the warhead checklist
+ * alone. It used to be taken from whether the build reported a torpedo roster,
+ * which made the requirement a function of what the build implemented: a `warhead`
+ * build that never wrote the torpedo was asked for one word fewer and passed, while
+ * one that wrote the torpedo and forgot to name its key failed.
  */
-export function boundKeyWords(carriesTorpedoes: boolean): string[] {
+export function boundKeyWords(): string[] {
   const words: string[] = [];
   for (const action of ACTIONS) {
-    if (action === VARIANT_ACTION && !carriesTorpedoes) continue;
-    for (const key of BINDINGS[action].keys) {
-      const word = WORD_FOR_KEY[key];
-      if (word === undefined) {
-        fail(
-          `a key specs/controls.md names a standalone word for, one of ` +
-            `${Object.keys(WORD_FOR_KEY).join(", ")}`,
-          key,
-        );
-      }
-      if (!words.includes(word)) words.push(word);
-    }
+    if (action === VARIANT_ACTION) continue;
+    wordsForKeys(BINDINGS[action].keys, words);
   }
   return words;
+}
+
+/**
+ * The word (or words) the variant's own binding row spells: `F`, for the torpedo.
+ *
+ * `specs/controls.md` binds `b` to `KeyF` under `warhead`, and `../constants`
+ * carries that key unconditionally for the reason its own comment gives. Only the
+ * warhead checklist names the item that reads this.
+ */
+export function variantKeyWords(): string[] {
+  return wordsForKeys(BINDINGS[VARIANT_ACTION].keys, []);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -41,6 +41,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
+import { SAUCER_FIRE_INTERVAL, SAUCER_WEAVE_INTERVAL } from "../constants";
 import { QUIET_CORNER, QUIET_CORNER_OPPOSITE } from "../fixtures";
 import {
   captureStill,
@@ -221,6 +222,36 @@ it("reports back the saucer's posed velocity", () => {
     saucer.y,
     QUIET_CORNER_OPPOSITE.y,
     "setSaucerVelocity moves no position: y",
+  );
+});
+
+it("brings a saucer on with its three clocks at their arrival values", () => {
+  // `addSaucer` fixes all three (specs/instrumentation.md): the fire clock at
+  // `SAUCER_FIRE_INTERVAL`, the weave clock at `SAUCER_WEAVE_INTERVAL`, and the
+  // lifetime clock at zero. Every one of them moves once a tick runs, so the
+  // reading is taken before the game is stepped: a reading after an advance would
+  // grade the tick rather than the arrival. Without it a build that left the
+  // previous saucer's clocks in place would pass every instrumentation item and
+  // then fail `saucer/fire-interval`, `saucer/weave-interval` and
+  // `saucer/despawns-after-12s` for a reason none of them names.
+  startPlaying(h);
+  poseSaucer(h, QUIET_CORNER_OPPOSITE.x, QUIET_CORNER_OPPOSITE.y);
+
+  const saucer = requireSaucer(h.snapshot(), "the posed saucer");
+  assertEqual(
+    saucer.fireClock,
+    SAUCER_FIRE_INTERVAL,
+    "addSaucer brings it on with a full fire clock",
+  );
+  assertEqual(
+    saucer.weaveClock,
+    SAUCER_WEAVE_INTERVAL,
+    "addSaucer brings it on with a full weave clock",
+  );
+  assertEqual(
+    saucer.age,
+    0,
+    "addSaucer brings it on with its lifetime clock at zero",
   );
 });
 

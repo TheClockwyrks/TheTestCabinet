@@ -13,7 +13,7 @@
 // grade ONE press of ONE key from a posed entry. This grades the invariant they
 // leave open: an index that walked off the end. A build that clamps rather than
 // wraps still keeps every index in range and passes here, as it should — the wrap
-// itself is `controls/menu-up-arrow`'s and `controls/menu-down-arrow`'s to grade —
+// itself is `screens/menu-wraps-up`'s and `screens/menu-wraps-down`'s to grade —
 // while a build that let the index run to `2` on a two-entry menu, or to `-1` at
 // the top, hands its own confirm an entry that does not exist. `specs/ui.md`
 // fixes different entry counts for the three menus (two, three, two), so an index
@@ -33,9 +33,10 @@
 // quiet first, so nothing arrives mid-drive. Confirm is never pressed, so no drive
 // leaves the screen it is walking.
 //
-// WHAT THIS ITEM DOES NOT DECIDE. Which direction each key moves the highlight, or
-// that it wraps — the five `controls` items — nor which entry the highlighted one
-// is drawn as, which is `screens/title-menu-highlight`.
+// WHAT THIS ITEM DOES NOT DECIDE. Which direction each key moves the highlight —
+// the four `controls/menu-*` items — that a move crossing an end wraps rather than
+// clamps (`screens/menu-wraps-up`, `screens/menu-wraps-down`), nor which entry the
+// highlighted one is drawn as, which is `screens/title-menu-highlight`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { GAMEOVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "../constants";

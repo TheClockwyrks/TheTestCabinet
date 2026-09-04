@@ -49,7 +49,12 @@
 // drawn identically on every frame read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { EXTRA_LIFE_STEP, SCORE_SMALL, START_LIVES } from "../constants";
+import {
+  EXTRA_LIFE_SHOW_MIN,
+  EXTRA_LIFE_STEP,
+  SCORE_SMALL,
+  START_LIVES,
+} from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
@@ -106,7 +111,7 @@ const BLANK_R = 90;
 const MIN_ANNOUNCED = 40;
 
 /** How long after the award the announcement must still be drawn. */
-const HELD_TICKS = ticksFor(0.5);
+const HELD_TICKS = ticksFor(EXTRA_LIFE_SHOW_MIN);
 
 /** Whether a point is far enough from the kill to be read at all. */
 function clearOfTheKill(at: Point): boolean {
@@ -183,8 +188,8 @@ it("draws something on the field on the tick a kill earns a ship, and still draw
   assertGreaterThanOrEqual(
     announced(held),
     MIN_ANNOUNCED,
-    "the same count half a second of game time after the award, where the " +
-      "announcement must be drawn for at least half a second " +
+    `the same count ${String(EXTRA_LIFE_SHOW_MIN)} seconds of game time after ` +
+      "the award, where the announcement must be drawn for at least that long " +
       "(specs/scoring.md)",
   );
 });

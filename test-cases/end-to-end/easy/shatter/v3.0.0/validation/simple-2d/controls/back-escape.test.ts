@@ -3,11 +3,12 @@
 //
 // THE RULE. `specs/controls.md` binds `Escape` to the `back` action, whose menu
 // column reads "Leave the screen" and whose playing column reads "Pause", and
-// settles the ambiguity outright: "`Escape` drives both `back` and `pause`, and the
-// screen decides which one applies: it pauses while the game is being played and
-// leaves the screen otherwise." Leaving a screen is a press edge, "once per press".
-// `specs/ui.md` says where leaving the how-to screen goes: "Leaving the screen
-// returns to `title`".
+// settles the ambiguity outright: "`back` is read on `title`, `howto`, `paused`,
+// and `gameover`, and `pause` is read on `playing` and `paused`. `Escape` raises
+// both on one frame, so a single `Escape` press on `playing` pauses once and a
+// single `Escape` press on `paused` resumes once." Leaving a screen is a press
+// edge, "once per press". `specs/ui.md` says where leaving the how-to screen goes:
+// "Confirming leaves the screen as leaving it does, and both return to `title`".
 //
 // THIS IS THE OTHER HALF OF THE AMBIGUOUS KEY. `controls/pause-escape` presses
 // `Escape` on `playing` and requires a pause; this one presses it away from play

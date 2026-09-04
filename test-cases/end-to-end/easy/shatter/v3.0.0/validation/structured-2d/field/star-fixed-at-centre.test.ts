@@ -46,7 +46,7 @@
 // read where it ends up rather than where it started.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_R, HALO_R, STAR_X, STAR_Y } from "../constants";
+import { CORE_R, STAR_DRAW_R, STAR_X, STAR_Y } from "../constants";
 import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
@@ -64,14 +64,6 @@ import { coloursAlong, medianColour, readFrame, type Frame } from "./paint";
 
 /** Where the ship is parked, off both scanned lines. */
 const SHIP_AWAY = { x: 200, y: 620 };
-
-/**
- * The whole extent anything of the star may be drawn within, in units.
- *
- * `specs/field.md`: "nothing of the star is drawn beyond `1.5 x HALO_R`
- * (`HALO_R` is `120`, so nothing beyond `180`)".
- */
-const STAR_DRAW_R = 1.5 * HALO_R;
 
 /**
  * How far a pixel's colour must stand from the field's to be the star's, of the

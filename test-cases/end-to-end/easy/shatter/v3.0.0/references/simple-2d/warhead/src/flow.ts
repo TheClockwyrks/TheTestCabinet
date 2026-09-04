@@ -28,6 +28,7 @@ import {
   START_LIVES,
   TITLE_ITEMS,
 } from "./constants";
+import { resolvePointer } from "./pointer";
 import { spawnWave } from "./rocks";
 import type { ShatterState } from "./game";
 import type { FrameInput } from "./input";
@@ -75,6 +76,7 @@ export function titleState(seed: number, muted: boolean): Sim {
 
     trails: [],
     extraLifeFlash: 0,
+    pointerPresses: [],
   };
 }
 
@@ -132,25 +134,65 @@ function moveMenu(sim: Sim, input: FrameInput, entries: number): void {
   if (input.menuDown) sim.menuIndex = (sim.menuIndex + 1) % entries;
 }
 
+/**
+ * Take the highlighted entry of whatever menu the current screen shows.
+ *
+ * The one route a confirmed entry takes, whether the key edge raised it or a
+ * mouse or a contact did (`specs/ui.md`: "The entry every confirm acts on is the
+ * highlighted one, whichever input raised it").
+ */
+export function confirmEntry(sim: Sim): void {
+  switch (sim.screen) {
+    case "title":
+      if (sim.menuIndex === 0) startNewGame(sim);
+      // The highlight stays on `HOW TO PLAY` while the how-to screen shows
+      // (`specs/ui.md`), so this moves the screen and nothing else.
+      else sim.screen = "howto";
+      return;
+
+    case "paused":
+      if (sim.menuIndex === 0) {
+        sim.screen = "playing";
+        sim.menuIndex = 0;
+      } else if (sim.menuIndex === 1) {
+        startNewGame(sim);
+      } else {
+        sim.screen = "title";
+        sim.menuIndex = 0;
+      }
+      return;
+
+    case "gameover":
+      if (sim.menuIndex === 0) startNewGame(sim);
+      else {
+        sim.screen = "title";
+        sim.menuIndex = 0;
+      }
+      return;
+
+    default:
+      return;
+  }
+}
+
 /** Answer this tick's press edges on whichever screen is showing. */
 export function handleScreens(sim: Sim, input: FrameInput): void {
   switch (sim.screen) {
     case "title":
       moveMenu(sim, input, TITLE_ITEMS.length);
       if (input.confirm) {
-        if (sim.menuIndex === 0) startNewGame(sim);
-        else {
-          sim.screen = "howto";
-          sim.menuIndex = 0;
-        }
+        // A frame carrying a key confirm and a pointer confirm takes the key's
+        // entry alone (`specs/ui.md`), so the samples go unread.
+        confirmEntry(sim);
+        return;
       }
-      return;
+      break;
 
     case "howto":
-      if (input.back) {
-        sim.screen = "title";
-        sim.menuIndex = 0;
-      }
+      // Confirming leaves this screen as leaving it does, and neither touches the
+      // title's highlight, so the return lands on the entry that opened it
+      // (`specs/ui.md`).
+      if (input.back || input.confirm) sim.screen = "title";
       return;
 
     case "playing":
@@ -161,32 +203,39 @@ export function handleScreens(sim: Sim, input: FrameInput): void {
       return;
 
     case "paused":
-      moveMenu(sim, input, PAUSE_ITEMS.length);
-      if (input.confirm) {
-        if (sim.menuIndex === 0) {
-          sim.screen = "playing";
-          sim.menuIndex = 0;
-        } else if (sim.menuIndex === 1) {
-          startNewGame(sim);
-        } else {
-          sim.screen = "title";
-          sim.menuIndex = 0;
-        }
-      } else if (input.back) {
+      // `back` and `pause` are read before the menu's own edges, and a frame
+      // carrying either resumes and does nothing else (`specs/controls.md`).
+      // Leaving this screen and pausing again each do what RESUME does
+      // (`specs/ui.md`).
+      if (input.back || input.pause) {
         sim.screen = "playing";
         sim.menuIndex = 0;
+        return;
       }
-      return;
+      moveMenu(sim, input, PAUSE_ITEMS.length);
+      if (input.confirm) {
+        confirmEntry(sim);
+        return;
+      }
+      break;
 
     case "gameover":
+      // Leaving this screen does what MENU does (`specs/ui.md`).
+      if (input.back) {
+        sim.screen = "title";
+        sim.menuIndex = 0;
+        return;
+      }
       moveMenu(sim, input, GAMEOVER_ITEMS.length);
       if (input.confirm) {
-        if (sim.menuIndex === 0) startNewGame(sim);
-        else {
-          sim.screen = "title";
-          sim.menuIndex = 0;
-        }
+        confirmEntry(sim);
+        return;
       }
-      return;
+      break;
   }
+
+  // The mouse and the contacts are applied AFTER the frame's key edges
+  // (`specs/ui.md`), so a frame carrying a key move and a pointer selection ends
+  // on the entry the pointer named.
+  resolvePointer(sim, input.pointer, confirmEntry);
 }

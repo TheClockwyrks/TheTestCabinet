@@ -32,6 +32,7 @@ import {
   captureStill,
   createHarness,
   drewText,
+  presentCalls,
   type Harness,
 } from "../harness";
 import { reachTitle } from "./screens";
@@ -49,7 +50,7 @@ afterEach(async () => {
 it("draws the title and the tagline on the screen the game opens on", async () => {
   await reachTitle(h);
 
-  const calls = await h.presentCalls();
+  const calls = await presentCalls(h);
   await captureStill(h, "title");
 
   assertEqual(

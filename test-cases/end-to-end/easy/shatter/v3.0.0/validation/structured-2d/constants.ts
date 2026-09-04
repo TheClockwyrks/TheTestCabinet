@@ -53,6 +53,15 @@ export const STAR_Y = 360;
 export const CORE_R = 30;
 /** The radius the decorative halo fades out over. */
 export const HALO_R = 120;
+/**
+ * How far out the star may be drawn, in logical units.
+ *
+ * `specs/field.md`: "nothing of the star is drawn beyond `1.5 x HALO_R` (`HALO_R`
+ * is `120`, so nothing beyond `180`)". It is the only extent the specification
+ * fixes about the middle of the field, so it is also the figure the HUD's "clear
+ * of the field's centre" is read against.
+ */
+export const STAR_DRAW_R = 1.5 * HALO_R;
 
 /* ---- The simulation (specs/simulation.md) --------------------------------- */
 
@@ -157,6 +166,8 @@ export const TORPEDO_SPEED = 420;
 export const TORPEDO_TURN = 160 * DEG;
 /** The half-angle of the forward acquisition cone, in radians; the cone spans twice this. */
 export const TORPEDO_CONE = 15 * DEG;
+/** The same half-angle in degrees, as `specs/weapons.md` quotes it. */
+export const TORPEDO_CONE_DEG = 15;
 /** The seconds a torpedo lives before it is removed. */
 export const TORPEDO_LIFE = 3.5;
 /** The seconds a spent charge takes to rise linearly from `0` back to `1`. */
@@ -214,6 +225,8 @@ export const WAVE_MIN_STAR_DIST = 200;
 export const START_LIVES = 3;
 /** One extra ship is granted each time the score crosses a multiple of this. */
 export const EXTRA_LIFE_STEP = 10_000;
+/** The least time an extra ship must be announced on the field for. */
+export const EXTRA_LIFE_SHOW_MIN = 0.5;
 
 /** Destroying a Large. */
 export const SCORE_LARGE = 20;
@@ -281,7 +294,10 @@ export interface Binding {
  * layout-dependent character.
  *
  * `Escape` deliberately drives TWO actions, `back` and `pause`, and the screen
- * decides which applies; `Space` likewise drives `a` and `confirm`.
+ * decides which is read: `back` on `title`, `howto`, `paused` and `gameover`,
+ * `pause` on `playing` and `paused`. On `paused` both are read and either
+ * resumes, which is why one press there resumes once. `Space` likewise drives `a`
+ * and `confirm`.
  *
  * `b` IS THE ONE ROW THE TWO VARIANTS DIFFER ON, and the `warhead` key stands
  * here for the same reason the `warhead` figures above stand unconditionally: it
@@ -289,9 +305,12 @@ export interface Binding {
  * `warhead`, where it launches the torpedo and every `torpedo` script presses it,
  * and to `Space` under `base`, where it is a second way to fire a gun that `a`
  * already fires and that no check presses. The one place the whole table is read
- * rather than indexed — the how-to screen's word list — skips this row and takes
- * the torpedo's word from the build's own torpedo roster instead, so a `base`
- * build is never asked to name a key it was never given.
+ * rather than indexed — `screens/howto-shows-the-controls`'s word list — skips
+ * this row, because that script is on BOTH checklists; the torpedo's word is
+ * `screens/howto-names-the-torpedo-key`, which only the warhead checklist names
+ * and which indexes this row directly. So a `base` build is never asked to name a
+ * key it was never given, and a `warhead` build is asked for it whatever it
+ * happened to implement.
  */
 export const BINDINGS: Readonly<Record<ActionName, Binding>> = {
   up: { keys: ["ArrowUp", "KeyW"] },
