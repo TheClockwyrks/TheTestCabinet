@@ -396,7 +396,9 @@ source = "specs/showcase.md.hbs"
 # of media a reviewer sees beside a verdict is captured by this case's own
 # validation suites, from scenarios the case controls. The showcase spec above does
 # ask for media, but as the game's own store-page presentation rather than as
-# evidence any point is judged on. The automated load check still runs.
+# evidence any point is judged on: the `showcase` category below carries one
+# weighted point for its EXISTENCE and nothing on this checklist reads what is in
+# it. The automated load check still runs.
 
 # Scoring domains. A domain carries the validator-decided FUNCTIONAL rating, and
 # the run's overall functional rating is the WORST across the domains.
@@ -463,7 +465,7 @@ format = 2
 # Every other point on this checklist reaches the build through the debug
 # surface, so the surface itself is checked first and a missing one caps the run
 # at `broken`: a build that never installs it is not merely unrated on this
-# category, it is unreadable on all nineteen. What `debug-api` decides is
+# category, it is unreadable on all twenty. What `debug-api` decides is
 # presence and shape only — reflection can report a `typeof` and nothing more —
 # and what each operation DOES is the subject of the item that owns that
 # behavior (`loadBoard` is `board/load-board`, `requestSwap` is the `moves`
@@ -482,18 +484,20 @@ title = "Instrumentation"
 [[review.categories.items]]
 id = "debug-api"
 title = "Debug and automation API present"
-description = "Every operation specs/instrumentation.md names is present as a function on the debug surface, version reports FACET_DEBUG_VERSION (1), each operation poses or reads the running game, and snapshot() reports the full documented shape with current values."
+description = "Every operation specs/instrumentation.md names is present as a function on the debug surface, version reports FACET_DEBUG_VERSION (1), and snapshot() reports the full documented shape at the documented types."
 domains = ["gameplay"]
 failure_cap = "broken"
 # Automated validation: reflect over the surface for every operation
-# specs/instrumentation.md names — twenty-five under `none`, which owns the
-# clock through `setAutoStep` and `advance`, and twenty-three under an engine,
+# specs/instrumentation.md names — twenty-six under `none`, which owns the
+# clock through `setAutoStep` and `advance`, and twenty-four under an engine,
 # which does not — read the version's value in both places that file fixes it,
 # then pose a board exercising all seven kinds, a prism, both cut letters and all
 # four strain digits and assert a snapshot carries every documented field at the
 # documented type, with all 64 cells in reading order and each carrying its
 # `fell`, with `pointer` carrying its `device`, and with `targets` present as an
-# array. See validation/<engine>/instrumentation/debug-api.test.ts.
+# array. Presence and shape are the whole verdict: what each operation DOES is
+# the subject of the item that owns that behavior, and nothing is read here. See
+# validation/<engine>/instrumentation/debug-api.test.ts.
 validation = { script = "instrumentation/debug-api.test.ts", outputs = [
   { id = "state", name = "The driven board the surface was inspected against", kind = "image" },
 ] }
@@ -739,14 +743,15 @@ id = "r1-adjacent-accepted"
 title = "R1 accepts an orthogonally adjacent swap"
 description = "A productive swap of two cells differing by 1 in column and 0 in row is accepted, and so is one differing by 0 in column and 1 in row: phase becomes swapping with the two cells exchanged and no refusal standing, and SWAP_SECONDS (0.18) later the step resolves at chainStep 1."
 domains = ["gameplay"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 # Automated validation: pose one board on which a horizontal neighbor exchange
 # makes a run and one on which a vertical exchange does, request each, assert the
 # phase is `swapping` with no refusal and the two cells exchanged, then drive
-# past SWAP_SECONDS and assert the phase is `resolving` at chain step 1. Both
-# admissible offsets are one point because R1 states them as one rule; that the
-# swap HOLDS for its own span before resolving is `chain`'s two points, and what
-# is read here is only that the acceptance path was opened at all. See
+# past SWAP_SECONDS and assert the phase is `resolving` at chain step 1. That
+# the swap HOLDS for its own span before resolving is `chain`'s two points, and
+# what is read here is only that the acceptance path was opened at all. Capped
+# at `broken` because every move Facet has begins with an orthogonal exchange:
+# a build that refuses them cannot be played. See
 # validation/<engine>/moves/r1-adjacent-accepted.test.ts.
 validation = { script = "moves/r1-adjacent-accepted.test.ts", outputs = [
   { id = "swap", name = "An accepted adjacent swap", kind = "replay" },
@@ -1841,7 +1846,7 @@ id = "level-advances"
 title = "Reaching the target ends the level"
 description = "When phase returns to idle with levelScore at or past levelTarget, screen becomes levelclear with menuIndex 0, and level, levelScore, bestChain and bestMove hold what the level left them at with the board standing as the chain left it."
 domains = ["gameplay"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 # Automated validation: pose the level score at the target the round REPORTS —
 # what that figure ought to be is `level-target-derived`'s point — accept a swap,
 # advance until the phase returns to idle, and assert the screen is `levelclear`
@@ -1851,7 +1856,9 @@ failure_cap = "scuffed"
 # definition: R7 guarantees a settled board carries strain and a fresh deal
 # carries none, so a build that dealt on reaching the target rather than holding
 # the screen is caught here. What CONTINUE then does is
-# `continue-opens-next-level`'s. See
+# `continue-opens-next-level`'s. Capped at `broken` because a build that never
+# raises this screen has no route past its first level: the round simply keeps
+# playing on a board it has already won. See
 # validation/<engine>/levels/level-advances.test.ts.
 validation = { script = "levels/level-advances.test.ts", outputs = [
   { id = "levelup", name = "A level ending on the board it was won on", kind = "replay" },
@@ -2120,12 +2127,14 @@ id = "press-selects"
 title = "A press selects the cell it targets"
 description = "A press within GEM_HIT_R (36) of a cell's center, with nothing selected, selects that cell with no offer standing."
 domains = ["gameplay"]
-failure_cap = "scuffed"
+failure_cap = "broken"
 # Automated validation: with nothing selected, press at a cell's exact center
 # and again at a point inside GEM_HIT_R of it and outside every other cell's,
 # and assert that cell is selected each time and no offer stands. Every point is
 # posed at an exact stage coordinate, so there is no sampling noise to tolerate.
-# See validation/<engine>/pointer/press-selects.test.ts.
+# Capped at `broken` because the press is the first link of every input path
+# Facet has: a build whose press selects nothing has no move to make, by drag
+# or by tap. See validation/<engine>/pointer/press-selects.test.ts.
 validation = { script = "pointer/press-selects.test.ts", outputs = [
   { id = "select", name = "A cell selected by the pointer", kind = "image" },
 ] }
@@ -2593,10 +2602,13 @@ id = "title-screen"
 title = "Title / main menu"
 description = "After reset() the screen is title with menuIndex 0, and the frame draws TITLE_TEXT (FACET), TAGLINE_TEXT (PRESSURE FINDS THE FLAW) and every item of TITLE_ITEMS."
 domains = ["gameplay"]
-failure_cap = "great"
+failure_cap = "scuffed"
 # Automated validation: reset, render, and search the frame's text for the
 # title, the tagline and both menu items, asserting the screen and the menu
-# index. See validation/<engine>/screens/title-screen.test.ts.
+# index. Capped at `scuffed` rather than at what copy alone would cost, because
+# this one point also decides that the game arrives on the title at all, and a
+# build that opens somewhere else leaves a player without the menu a round is
+# started from. See validation/<engine>/screens/title-screen.test.ts.
 validation = { script = "screens/title-screen.test.ts", outputs = [
   { id = "title", name = "The title screen", kind = "image" },
 ] }
@@ -2648,7 +2660,7 @@ id = "howto-screen"
 title = "How to play"
 description = "Choosing HOW TO PLAY from the title sets screen to howto with menuIndex 0, and the frame draws text naming the pointer the board is played with and the keys bound to the up, down, confirm, pause, mute and back actions."
 domains = ["gameplay"]
-failure_cap = "great"
+failure_cap = "scuffed"
 # Automated validation: reach the screen and assert the frame names the key
 # bound to each of the six actions, matched on a word boundary so that PLAY does
 # not answer for P, and that it names the pointer — a mouse, a pen or a finger,
@@ -2656,7 +2668,10 @@ failure_cap = "great"
 # played with one of the three and fixes no wording. Both spellings of a key
 # answer — the key's own letter and its full event code — because specs/ui.md
 # fixes that the screen names those keys and fixes no spelling for how one is
-# written. See validation/<engine>/screens/howto-screen.test.ts.
+# written. Capped at `scuffed` rather than at what copy alone would cost,
+# because this one point also decides that HOW TO PLAY reaches the screen at
+# all, and a build that never opens it strands a player on an optional path the
+# title offers them. See validation/<engine>/screens/howto-screen.test.ts.
 validation = { script = "screens/howto-screen.test.ts", outputs = [
   { id = "howto", name = "The how-to-play screen", kind = "image" },
 ] }
@@ -2681,10 +2696,13 @@ id = "paused-screen"
 title = "Pause menu"
 description = "The pause action on playing sets screen to paused with menuIndex 0, and the frame draws PAUSED_TITLE_TEXT (PAUSED) and every item of PAUSED_ITEMS."
 domains = ["gameplay"]
-failure_cap = "great"
+failure_cap = "scuffed"
 # Automated validation: pause a posed board with KeyP, render, and assert the
 # screen, the menu index, and the pause title and both menu items among the
-# frame's text. See validation/<engine>/screens/paused-screen.test.ts.
+# frame's text. Capped at `scuffed` rather than at what copy alone would cost,
+# because this one point also decides that the pause action reaches the screen,
+# which is what `keyboard/pause-key` and `keyboard/pause-escape` are capped at
+# for the same reason. See validation/<engine>/screens/paused-screen.test.ts.
 validation = { script = "screens/paused-screen.test.ts", outputs = [
   { id = "paused", name = "The pause menu over a held board", kind = "image" },
 ] }
@@ -2734,7 +2752,7 @@ id = "gameover-screen"
 title = "Game over"
 description = "A round driven to its end sets screen to gameover with menuIndex 0, and the frame draws GAMEOVER_TITLE_TEXT (NO MOVES LEFT), every item of GAMEOVER_ITEMS, and the round's final score and level."
 domains = ["gameplay"]
-failure_cap = "great"
+failure_cap = "broken"
 # Automated validation: drive the round to its end with a posed score and level,
 # render, and search the frame's text for the title, both menu items and the two
 # figures. The figures are posed to be unmistakable — a score under a thousand,
@@ -2742,7 +2760,11 @@ failure_cap = "great"
 # needle is not a lone digit another readout could answer for. That the figures
 # are drawn by the game-over PANEL rather than by a HUD still on screen behind
 # it cannot be told apart without asserting position, which this case does not
-# do. See validation/<engine>/screens/gameover-screen.test.ts.
+# do. Capped at `broken` rather than at what copy alone would cost, because this
+# one point also decides that a round driven to its end reaches the screen, and
+# a round with no end is not the game specs/rules.md describes.
+# `levels/gameover-no-legal-swap` is capped there for the same reason. See
+# validation/<engine>/screens/gameover-screen.test.ts.
 validation = { script = "screens/gameover-screen.test.ts", outputs = [
   { id = "gameover", name = "The game-over screen", kind = "image" },
 ] }
@@ -3546,4 +3568,46 @@ failure_cap = "great"
 # validation/<engine>/audio/cue-land-only-for-a-long-fall.test.ts.
 validation = { script = "audio/cue-land-only-for-a-long-fall.test.ts", outputs = [
   { id = "quiet", name = "A short fall landing quietly", kind = "replay" },
+] }
+
+# --- Showcase -----------------------------------------------------------------
+# specs/showcase.md asks the finished game for its store-page presentation: a
+# `showcase/` directory holding a description, a carousel, and the media the two
+# name. It is a deliverable of the build like any other, so it carries a point.
+#
+# ONE point, and it grades EXISTENCE alone, WEIGHTED at 3 because what fails is a
+# whole deliverable rather than one behavior of the game. Whether the description
+# reads like something a player would want to play, whether the carousel opens on
+# the strongest view of live play, and whether the media is worth looking at is a
+# reviewer's judgement, and belongs to the AESTHETIC rating rather than to an
+# assertion. The validator's whole verdict is that the two files are there and
+# that the carousel points at a file that is there with them: not a dimension,
+# not a byte of a picture, not a word of the prose. No other item on this
+# checklist asserts anything about the media.
+#
+# Capped at `great`: a missing showcase leaves the game itself exactly as
+# playable as it was, which is what that cap is for.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm the carousel names a file present beside
+# them; the still handed back is a `.png` copied out of the showcase itself.
+# Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }

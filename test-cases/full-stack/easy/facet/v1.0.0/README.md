@@ -175,9 +175,11 @@ This case is validator-rated: every point on the checklist carries a Vitest
 suite, and the validators decide the functional rating through each point's
 failure cap. A reviewer rates the run's aesthetics and may override a verdict.
 
-The checklist in `test-case.toml` holds 168 points across 19 categories, all on
+The checklist in `test-case.toml` holds 169 points across 20 categories, all on
 the single `gameplay` domain, and each point is one observable behavior, so a
-build fails exactly the rule it breaks. `validation/` holds one project per
+build fails exactly the rule it breaks. One of them, the showcase's existence,
+carries a weight of 3; every other point is worth 1, for 171 in
+total. `validation/` holds one project per
 engine — `validation/none/`, `validation/simple-2d/` and
 `validation/structured-2d/` — each with a suite per point at
 `<category>/<id>.test.ts`. The `none` suites drive the built site in Chromium
@@ -193,7 +195,10 @@ value a suite asserts comes from that oracle or from a figure the specs fix,
 never from a reference build. Suites pose boards through `loadBoard` in the
 notation `specs/board.md` defines and drive swaps through `requestSwap` and the
 pointer operations, all of which take effect the moment they are called, so a
-whole scenario costs milliseconds.
+whole scenario costs milliseconds. Every operation the surface carries writes
+one element of the state, so the sequences that arrange a whole screen — a round
+started, a level opened, a round quit — live in each project's `harness.ts`
+rather than in the debug API.
 
 A point declares its own media, captured by the suite that decides it: an image
 where the claim is one frame, and a replay — the build's own draw commands,

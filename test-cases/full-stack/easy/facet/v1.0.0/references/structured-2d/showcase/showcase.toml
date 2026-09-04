@@ -1,0 +1,7 @@
+[[media]]
+file = "board.png"
+name = "A fresh deal on the bench"
+
+[[media]]
+file = "level-clear.png"
+name = "A level cleared, with its longest chain and its best move"
