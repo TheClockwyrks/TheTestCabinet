@@ -13,7 +13,7 @@
 // with no choke both factors are 1, so the lead segment gains the level's own
 // figure every second.
 //
-// THE DRIVE. Per level: open it, spend the quota so the inlet places nothing,
+// THE DRIVE. Per level: pose it in play, hold the inlet so it places nothing,
 // empty the channel, and pose ONE core. A lone core is the head, so it is the
 // lead segment ("the lead segment is the one containing the head"), and it is the
 // only segment, so no merge and no clamp can touch the measurement. Sixty ticks
@@ -69,7 +69,6 @@ it("advances the lead segment at each level's own feed speed", async () => {
     for (const level of LEVELS) {
       await poseHall(h, {
         level: level.level,
-        quotaRemaining: 0,
         pressure: 0,
         cores: [[POSED_S, "halide", null]],
       });

@@ -16,8 +16,8 @@
 //   specs/instrumentation.md (`pause`): "`pause` poses the pause control, moving
 //   the screen to `paused`."
 //
-// THE DRIVE. An isolated hall: one core on the channel, the inlet stopped with
-// `quotaRemaining = 0`, and nothing else posed, so the only thing that can move
+// THE DRIVE. An isolated hall: one core on the channel, the inlet held, and
+// nothing else posed, so the only thing that can move
 // is the thing the requirement is about. The hall is run for a stretch of live
 // play first — a hall that was never riding would sit still under a pause that
 // leaks, and the check would pass on nothing — and paused through the surface

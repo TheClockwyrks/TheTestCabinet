@@ -20,12 +20,12 @@
 // the inserted core takes `p` and everything at or below `p` shifts back by one
 // spacing — so the run is three long either way and the marked core is in it.
 //
-// THE DECOY. One core of another charge is posed far behind, out of the run and
-// out of the projectile's path. Without it the extraction would leave the
-// channel empty against an exhausted quota, which `specs/progression.md` clears
-// the level for on that same tick — a screen change this point is not about. It
-// rides the catch-up rate `specs/channel.md` fixes at 180 units/s and closes
-// only 68 units of the 252 it starts behind, so it never joins the run.
+// THE HALL HOLDS THE PAIR AND NOTHING ELSE. `poseHall` holds the inlet with
+// `setEmission(false)` and leaves the level's quota where it stands, so nothing
+// arrives and the channel the extraction empties does not trip the clear
+// `specs/progression.md` gives an EXHAUSTED quota — which is what lets the
+// scenario be the two cores the requirement is about, with no third core standing
+// anywhere to keep the hall in play.
 //
 // THE AIM. `specs/channel.md` advances the lead segment every tick of the
 // flight, so the shot is aimed where the front core will BE when the projectile
@@ -78,13 +78,9 @@ const FRONT_S = 380;
 /** The core behind it, one channel spacing back, carrying the mark. */
 const REAR_S = FRONT_S - SPACING;
 
-/** A core of another charge, far enough behind to stay out of the run. */
-const DECOY_S = 100;
-
 const CORES: PosedCore[] = [
   [FRONT_S, CHARGE, null],
   [REAR_S, CHARGE, MARK],
-  [DECOY_S, "sulfur", null],
 ];
 
 /** Ticks the projectile needs to come within striking distance of the pair. */
@@ -125,7 +121,7 @@ it(`grants ${MARK} on the tick the run holding its mark is extracted`, async () 
   assertTrue(shot.landed, "the fired core resolved within the sweep");
   assertEqual(
     coreCount(shot.snapshot),
-    CORES.length - 2,
+    0,
     "the cores left on the channel once the run of three was drawn out",
   );
   assertNotNull(

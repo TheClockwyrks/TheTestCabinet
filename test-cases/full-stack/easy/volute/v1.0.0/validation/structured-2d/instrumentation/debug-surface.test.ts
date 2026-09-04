@@ -17,7 +17,7 @@
 //   "the game instance's `initialize` builds the finished surface and returns
 //    it. The engine hands that same object back from `engine.debug`"
 //   "The surface carries `version` (`VOLUTE_DEBUG_VERSION`, `1`)"
-//   the fourteen operation headings under "The operations"    — REQUIRED_OPS
+//   the twenty-one operation headings under "The operations" — REQUIRED_OPS
 //   "A pose that opens a level takes effect no later than the end of the next
 //    advanced frame"                                          — the frame after
 //   the `reset` heading's list of title-screen values
@@ -156,7 +156,8 @@ it("restores every declared field to its title value on reset", async () => {
     queued: "olivine",
     machinery: "sightline",
   });
-  h.debug.fire(90);
+  h.debug.setAim(90);
+  h.debug.fire();
   await h.step(DRIVE_TICKS);
 
   h.debug.reset({ seed: DEFAULT_SEED });
@@ -197,18 +198,54 @@ it("restores every declared field to its title value on reset", async () => {
   );
 });
 
-it("opens a run with start and a named level with startLevel", async () => {
+it("sets the screen, the level, and the run's figures one at a time", async () => {
   h.debug.reset({ seed: DEFAULT_SEED });
   await h.step(1);
-  h.debug.start();
-  const started = await h.step(1);
 
-  // "the score `0`, the cells at `CELLS` (`3`), and level `1` opened exactly as
-  // `startLevel` opens it", and `startLevel` makes "the screen ... `playing`".
-  assertEqual(started.screen, "playing", "the screen start leaves");
-  assertEqual(started.score, 0, "the score start leaves");
-  assertEqual(started.cells, CELLS, "the cells start leaves");
-  assertEqual(started.level, 1, "the level start leaves");
+  // "Sets the screen to `name` ... and changes nothing else: no level is opened,
+  // no channel is seeded, no timer is started". So `playing` on a hall the reset
+  // emptied leaves it empty: a build that opened a level here fails.
+  h.debug.setScreen("playing");
+  const playing = h.snapshot();
+  assertEqual(playing.screen, "playing", "the screen setScreen set");
+  assertLength(playing.train, 0, "the cores setScreen seeded");
+  assertEqual(playing.interlude, 0, "the interlude setScreen started");
+
+  // "Sets the level in play to `level` ... and changes nothing else." Level 3
+  // rather than 1, so a build that ignores the argument fails.
+  h.debug.setLevel(3);
+  const levelled = h.snapshot();
+  assertEqual(levelled.level, 3, "the level setLevel set");
+  assertEqual(levelled.screen, "playing", "the screen setLevel left");
+  assertLength(levelled.train, 0, "the cores setLevel seeded");
+
+  // "`setScore` sets the run's score to `n` ... `setCells` sets the cells
+  // remaining to `n` ... Neither ends a run or opens one: `setCells(0)` leaves
+  // the screen exactly as it stands."
+  h.debug.setScore(1234);
+  h.debug.setCells(0);
+  const figures = h.snapshot();
+  assertEqual(figures.score, 1234, "the score setScore set");
+  assertEqual(figures.cells, 0, "the cells setCells set");
+  assertEqual(
+    figures.screen,
+    "playing",
+    "the screen setCells(0) left, which ends no run of its own",
+  );
+  h.debug.setCells(CELLS);
+
+  // "Sets the chain step ... and restarts the window that returns the step to
+  // `1`", so both readings move together.
+  h.debug.setChainStep(4);
+  const chained = h.snapshot();
+  assertEqual(chained.chainStep, 4, "the chain step setChainStep set");
+  assertGreaterThan(chained.chainTimer, 0, "the window setChainStep restarted");
+});
+
+it("opens a level with startLevel, exactly as an interlude opens it", async () => {
+  h.debug.reset({ seed: DEFAULT_SEED });
+  await h.step(1);
+  h.debug.setScore(500);
 
   // "Opens `level`, a whole number clamped to `1` through `LEVEL_COUNT` (`5`)".
   // Level 3 rather than 1, so a build that ignores the argument fails.
@@ -225,9 +262,64 @@ it("opens a run with start and a named level with startLevel", async () => {
     PRESSURE_TOL,
     "the pressure startLevel leaves",
   );
+  // "The score and the cells stay as they are."
+  assertEqual(opened.score, 500, "the score startLevel leaves");
+  assertEqual(opened.cells, CELLS, "the cells startLevel leaves");
   // "The injector draws a fresh loaded and queued core."
   assertNotNull(opened.injector.loaded, "the loaded core startLevel drew");
   assertNotNull(opened.injector.queued, "the queued core startLevel drew");
+});
+
+it("holds the inlet and the train, and lets each go again", async () => {
+  // A quota that is not exhausted, so the only thing keeping the inlet quiet is
+  // its gate, and an empty channel, so an emission is the one way a core can
+  // appear. "It is independent of the quota" (specs/instrumentation.md).
+  await poseHall(h, {
+    level: 1,
+    cores: spacedBlock(1000, 2, "halide"),
+    feed: false,
+  });
+  const held = h.snapshot();
+  assertEqual(held.emission, false, "snapshot().emission with the inlet held");
+  assertEqual(held.feed, false, "snapshot().feed with the train held");
+
+  // Both gates hold across the ticks that follow: nothing arrives at the inlet,
+  // and the cores stand exactly where they were posed.
+  const stood = await h.step(DRIVE_TICKS);
+  assertLength(stood.train, 2, "the cores standing while the inlet is held");
+  assertNear(
+    head(stood).s,
+    head(held).s,
+    1e-6,
+    "the head's arc position while the train is held",
+  );
+
+  // "`setFeed(true)` returns the train to advancing by its own rules." How FAR it
+  // advances is `channel/feed-advance`; that it advances at all is this half.
+  h.debug.setFeed(true);
+  const running = await h.step(DRIVE_TICKS);
+  assertEqual(running.feed, true, "snapshot().feed once the train is let go");
+  assertGreaterThan(
+    head(running).s,
+    head(stood).s,
+    "the head's arc position once the train is let go",
+  );
+
+  // "`setEmission(true)` returns the inlet to emitting by its own rule." The
+  // cadence is `channel/emission-cadence`'s point; that the gate lets go is this
+  // one's.
+  h.debug.setEmission(true);
+  const emitting = await h.step(DRIVE_TICKS);
+  assertEqual(
+    emitting.emission,
+    true,
+    "snapshot().emission once the inlet is let go",
+  );
+  assertGreaterThan(
+    emitting.train.length,
+    stood.train.length,
+    "the cores on the channel once the inlet is let go",
+  );
 });
 
 it("poses the train it is handed, and clears the channel", async () => {
@@ -267,7 +359,8 @@ it("poses the train it is handed, and clears the channel", async () => {
   }
 
   // "Removes every core from the channel and every projectile."
-  h.debug.fire(270);
+  h.debug.setAim(270);
+  h.debug.fire();
   h.debug.clearTrain();
   const cleared = h.snapshot();
   assertLength(cleared.train, 0, "the cores clearTrain left");
@@ -280,17 +373,26 @@ it("holds the charges it is given and releases the loaded one on fire", async ()
   assertEqual(held.injector.loaded, "cobalt", "the charge setLoaded set");
   assertEqual(held.injector.queued, "garnet", "the charge setQueued set");
 
-  // "Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and releases the
-  // loaded core along it": -90 is 270 once normalized, which is what makes this a
-  // reading of the normalization rather than of an angle the build echoed back.
-  h.debug.fire(-90);
-  const fired = h.snapshot();
+  // "Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and does nothing
+  // else": -90 is 270 once normalized, which is what makes this a reading of the
+  // normalization rather than of an angle the build echoed back. And "no core is
+  // released, the cooldown is untouched", so the hall is unchanged apart from the
+  // aim.
+  h.debug.setAim(-90);
+  const aimed = h.snapshot();
   assertAngleNear(
-    fired.injector.aim,
+    aimed.injector.aim,
     OPENING_AIM,
     ANGLE_TOL,
-    "the aim fire(-90) normalized to",
+    "the aim setAim(-90) normalized to",
   );
+  assertLength(aimed.projectiles, 0, "the projectiles setAim released");
+  assertEqual(aimed.injector.loaded, "cobalt", "the charge setAim left loaded");
+
+  // "Releases the loaded core along the current aim through the same path the
+  // fire control takes."
+  h.debug.fire();
+  const fired = h.snapshot();
 
   // "the core leaves the injector as a projectile, the queued core becomes
   // loaded, a fresh core is drawn as queued, and the cooldown is set as a played
@@ -390,7 +492,8 @@ it("reports the whole documented snapshot shape, from a live hall", async () => 
     queued: "garnet",
     machinery: "sightline",
   });
-  h.debug.fire(270);
+  h.debug.setAim(270);
+  h.debug.fire();
   await h.step(2);
 
   // The frame the snapshot below is read off: what the surface reports and what
@@ -560,7 +663,8 @@ it("reports values that move when the hall is stepped", async () => {
     cores: spacedBlock(1000, 3, "halide"),
     machinery: "sightline",
   });
-  h.debug.fire(270);
+  h.debug.setAim(270);
+  h.debug.fire();
   const before = h.snapshot();
 
   const after = await h.step(DRIVE_TICKS);

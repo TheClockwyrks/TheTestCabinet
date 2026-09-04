@@ -1,45 +1,49 @@
 // progression/game-over — the run ends with the last cell.
 //
-// THE SPEC LINE. `specs/progression.md` — "Cells": "A run starts with 3 cells"
-// (`CELLS`), and "A spend that takes the count to 0 ends the run in place of
-// restarting the level, so the third arrival is a run's last." The screen it ends
-// on is that file's table: "A cell spent taking the count to 0 | `gameover` | the
-// run is over".
+// THE SPEC LINE. `specs/progression.md` — "Cells": "A spend that takes the count
+// to 0 ends the run in place of restarting the level, so the third arrival is a
+// run's last." The screen it ends on is that file's table: "A cell spent taking
+// the count to 0 | `gameover` | the run is over".
 //
-// THE DRIVE. Three arrivals in turn. Each is the same isolated hall
-// `progression/cell-lost-at-intake` poses — level 1 with its quota spent and ONE
-// core 20 units short of the intake — and each is driven until the cell count
-// moves. Between them the level is opened again, which `specs/instrumentation.md`
-// defines as leaving the run's own figures alone: "The score and the cells stay
-// as they are." So the three spends are three spends of the same run, and nothing
-// but the arrivals touches the count.
+// THE DRIVE. One arrival, over a run standing on its LAST cell. The cells are
+// posed at 1 through `setCells`, which `specs/instrumentation.md` says "sets the
+// cells remaining to `n` ... Neither ends a run or opens one: `setCells(0)`
+// leaves the screen exactly as it stands, and the ending a spent last cell
+// reaches comes from the ticks run after the pose." So the pose puts the run one
+// arrival from its end and decides nothing; the ending is the game's.
 //
-// WHY THE FIRST TWO ARE CHECKED TOO. Not as their own claim — that a single
-// arrival spends a cell is `progression/cell-lost-at-intake` — but because the
-// third arrival is only the last one if the two before it landed. A drive whose
-// first core never reached the intake would otherwise read as a build that ends
-// its run too early.
+// WHY ONE ARRIVAL AND NOT THREE. What this point decides is what the LAST spend
+// does. Driving three real arrivals to reach it would fold
+// `progression/cell-lost-at-intake`'s requirement into this one — a build whose
+// first arrival spends no cell would fail here for a reason this point does not
+// own — and would spend three times the frames.
+//
+// THE HALL. Level 1, one core posed 20 units short of the intake, the inlet held
+// by `poseHall` and the quota left part-spent, so nothing arrives to join the
+// scenario and the channel the spend empties does not clear the level.
 //
 // TOLERANCES. None: a cell count and a screen name are both exact under the
-// standing tolerances. The 90-tick ceiling on each sweep is a ceiling rather than
+// standing tolerances. The 90-tick ceiling on the sweep is a ceiling rather than
 // a tolerance, comfortably past the 55 ticks the ride takes at level 1's feed
-// speed and inside the 120 ticks of the interlude a spend opens.
+// speed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
-import { CELLS, INTAKE_S } from "../constants";
+import { INTAKE_S } from "../constants";
 import {
   captureReplay,
   createHarness,
   poseHall,
   type Harness,
-  type UntilResult,
 } from "../harness";
 
-/** Where each arriving core is posed: 20 units short of the intake. */
+/** Where the arriving core is posed: 20 units short of the intake. */
 const POSED_S = INTAKE_S - 20;
 
-/** Comfortably past the 55 ticks the ride takes, and inside the 2 s interlude. */
+/** The cells the run stands on, so the arrival that follows is its last. */
+const LAST_CELL = 1;
+
+/** Comfortably past the 55 ticks the ride takes at level 1's feed speed. */
 const MAX_TICKS = 90;
 
 let h: Harness;
@@ -52,36 +56,38 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Pose one arriving core and step until the run's cell count moves. */
-async function driveArrival(cellsBefore: number): Promise<UntilResult> {
+it("ends the run on the gameover screen with no cells left", async () => {
   await poseHall(h, {
     level: 1,
-    quotaRemaining: 0,
     pressure: 0,
+    cells: LAST_CELL,
     cores: [[POSED_S, "halide", null]],
   });
-  return h.stepUntil((snapshot) => snapshot.cells !== cellsBefore, {
-    maxTicks: MAX_TICKS,
-    poll: 1,
-  });
-}
 
-it("ends the run on the gameover screen with no cells left", async () => {
-  const opened = await h.snapshot();
-  assertEqual(opened.cells, CELLS, "the cells a fresh run opens with");
+  const posed = await h.snapshot();
+  assertEqual(
+    posed.cells,
+    LAST_CELL,
+    "the cells the run was posed standing on",
+  );
+  assertEqual(
+    posed.screen,
+    "playing",
+    "the screen the pose left, which setCells does not decide",
+  );
 
-  // The two arrivals the run survives, so the third is the one under test.
-  let cells = opened.cells;
-  for (let spend = 1; spend < CELLS; spend += 1) {
-    const swept = await driveArrival(cells);
-    assertTrue(swept.hit, `a cell spent on arrival ${spend} of ${CELLS}`);
-    cells = swept.snapshot.cells;
-    assertEqual(cells, CELLS - spend, `the cells left after arrival ${spend}`);
-  }
+  const last = await captureReplay(h, "over", () =>
+    h.stepUntil((snapshot) => snapshot.cells !== LAST_CELL, {
+      maxTicks: MAX_TICKS,
+      poll: 1,
+    }),
+  );
 
-  const last = await captureReplay(h, "over", () => driveArrival(cells));
-
-  assertTrue(last.hit, `a cell spent on arrival ${CELLS} of ${CELLS}`);
+  assertTrue(
+    last.hit,
+    `a cell spent within ${MAX_TICKS} ticks of a core posed ` +
+      `${INTAKE_S - POSED_S} units short of the intake`,
+  );
   assertEqual(last.snapshot.cells, 0, "the cells left after the last arrival");
   assertEqual(
     last.snapshot.screen,

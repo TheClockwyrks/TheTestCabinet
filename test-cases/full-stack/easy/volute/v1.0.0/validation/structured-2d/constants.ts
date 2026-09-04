@@ -263,6 +263,15 @@ export const SIGHTLINE_DURATION = 12;
 /** The kinds that become the active machinery; `bore` never does. */
 export const TIMED_MACHINERY = ["choke", "backflow", "sightline"] as const;
 
+/**
+ * One of the three kinds `grantMachinery` grants.
+ *
+ * "Grants `kind`, one of the three timed machinery kinds — `choke`, `backflow`,
+ * or `sightline`" (specs/instrumentation.md). A `bore` is reached by extracting a
+ * run that carries a `bore` mark, never by a pose.
+ */
+export type TimedMachineryKind = (typeof TIMED_MACHINERY)[number];
+
 /** How long each timed kind runs, in seconds. */
 export const MACHINERY_DURATION: Readonly<Record<MachineryKind, number>> = {
   choke: CHOKE_DURATION,
@@ -423,7 +432,7 @@ export const HALL_BED = "hall-loop";
 export const DANGER_BED = "danger-loop";
 
 /* -------------------------------------------------------------------------- */
-/* Controls (specs/controls.md — "Actions and bindings")                      */
+/* Controls (specs/controls.md — "Actions")                                   */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -446,8 +455,8 @@ export const BINDINGS = {
   swap: ["KeyX"],
   /** "`confirm` | edge | starts a run, and dismisses an ending". */
   confirm: ["Enter", "Space"],
-  /** "`pause` | edge | pauses, and resumes". */
-  pause: ["Escape"],
+  /** "`pause` | edge | pauses, and resumes"; "bound to `Escape` and to `KeyP`". */
+  pause: ["Escape", "KeyP"],
   /** "`mute` | edge | toggles the audio between muted and unmuted". */
   mute: ["KeyM"],
 } as const;
@@ -486,15 +495,22 @@ export const DEFAULT_SEED = 1;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
-  "start",
+  "setScreen",
+  "setLevel",
+  "setScore",
+  "setCells",
+  "setChainStep",
   "startLevel",
   "poseTrain",
   "clearTrain",
   "setLoaded",
   "setQueued",
+  "setAim",
   "fire",
   "setPressure",
   "setQuotaRemaining",
+  "setEmission",
+  "setFeed",
   "grantMachinery",
   "pause",
   "resume",
@@ -520,6 +536,8 @@ export const SNAPSHOT_FIELDS = [
   "injector",
   "projectiles",
   "machinery",
+  "emission",
+  "feed",
   "muted",
   "simTime",
   "rngState",

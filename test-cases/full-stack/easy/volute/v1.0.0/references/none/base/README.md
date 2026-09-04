@@ -39,8 +39,8 @@ committed under `assets/` and bundled into the build.
 | Aim                              | `←` `→`            | move the pointer |
 | Fire                             | `Space`            | left button      |
 | Swap the loaded and queued cores | `X`                | right button     |
-| Start a run, dismiss an ending   | `Enter` or `Space` | —                |
-| Pause and resume                 | `Esc`              | —                |
+| Start a run, dismiss an ending   | `Enter` or `Space` | left button      |
+| Pause and resume                 | `Esc` or `P`       | —                |
 | Mute and unmute                  | `M`                | —                |
 | Show and hide the debug overlay  | `` ` ``            | —                |
 

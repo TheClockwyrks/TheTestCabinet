@@ -23,25 +23,23 @@
 // waveform, envelope or duration is assumed, because the specification fixes none
 // of them.
 //
-// THE CUE'S NAME IS NOT ASSERTED, THOUGH THIS ENGINE OFFERS IT. `specs/ui.md`
-// fixes the fifteen names and the bus announces the one that played, so a check
-// here COULD hold the shot to `fire` — and the two other validator projects of
-// this case cannot, because an engineless build owns its whole audio layer and
-// there is no bus to ask. The three projects decide the same eighty-three points,
-// and this case's manifest turns on a score recorded under one engine being
-// comparable with a score recorded under another, so the reading is the one every
-// engine can make. Whether the right sound plays for the right event is the
-// reviewer's, by ear.
+// THE CUE'S NAME IS NOT ASSERTED HERE, THOUGH THIS ENGINE OFFERS IT. This point
+// covers all three engines the case supports, and an engineless build owns its
+// whole audio layer with no bus to ask which cue played — so the reading here is
+// the one every engine can make, and a score recorded under one engine stays
+// comparable with a score recorded under another. The identity is decided by
+// `audio/fire-cue-named` beside this file, which the manifest scopes to the two
+// engines whose bus reports it.
 //
-// THE HALL IS POSED SO THAT ONLY THE SHOT CAN SOUND. One lone core, the inlet
-// stopped (`quotaRemaining` 0), pressure 0, and the core parked on the bottom run
-// far from the shot's path. Nothing else in `specs/ui.md`'s cue table can fire:
-// no insertion (nothing is struck), no extraction (`MIN_RUN` is 3 and there is
-// one core), no intake arrival (the core is nowhere near `s = 5000`), no clear
-// ("A level is cleared the moment its quota is exhausted AND no cores remain on
-// the channel" — a core remains, so the level never clears, which is exactly why
-// the hall is not posed empty), no emission, no grant, and no swap. Every sound
-// the probe hears therefore belongs to the shot.
+// THE HALL IS POSED SO THAT ONLY THE SHOT CAN SOUND. An EMPTY channel, pressure
+// 0, and the inlet held by `poseHall`'s `setEmission(false)` with the level's
+// quota left where it stands. Nothing else in `specs/ui.md`'s cue table can fire:
+// no insertion or extraction (there is nothing to strike and nothing to draw
+// out), no intake arrival (there is no core to reach `s = 5000`), no clear ("A
+// level is cleared the moment its quota is EXHAUSTED and no cores remain on the
+// channel" — the quota is not exhausted, so the empty channel clears nothing), no
+// emission, no grant, and no swap. Every sound the probe hears therefore belongs
+// to the shot, and no core has to stand anywhere to keep the hall in play.
 //
 // AUDIO IS ARMED WITH A KEY FIRST, and the bed is left to start BEFORE the probe
 // opens. "Muting and the first-gesture unlock belong to the engine", which opens
@@ -62,14 +60,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { CHANNEL_ARC, type ChargeId } from "../constants";
 import {
   captureReplay,
   createHarness,
   driveShot,
   poseHall,
   pressFire,
-  spacedBlock,
   startRun,
   stepUntilBed,
   stepUntilSound,
@@ -85,22 +81,6 @@ import {
  * on no tick before it" a real reading rather than a formality.
  */
 const QUIET_TICKS = 30;
-
-/**
- * Where the lone core stands: the middle of the leg from vertex 2 to vertex 3.
- *
- * `specs/channel.md` runs that leg along `y = 500`, the bottom of the field,
- * while `specs/injector.md` fixes the injector at `(420, 330)` and this shot
- * flies UP from it — so the core cannot be struck however far it advances during
- * the drive, and at an arc position this low it is nowhere near the intake at
- * `s = 5000` nor the danger line at `s = 4000`. It is here at all only because a
- * hall with NO core clears the moment the tick runs, which would move the game
- * off `playing` and stop the bed.
- */
-const QUIET_S = (CHANNEL_ARC[2] + CHANNEL_ARC[3]) / 2;
-
-/** Immaterial: no rule here turns on which of the five charges is posed. */
-const QUIET_CHARGE: ChargeId = "halide";
 
 let h: Harness;
 
@@ -127,7 +107,7 @@ it("sounds a cue on the tick the injector fires, and on no tick before it", asyn
   const looping = await stepUntilBed(h);
   if (looping === 0) await stepUntilSound(h);
 
-  await poseHall(h, { cores: spacedBlock(QUIET_S, 1, QUIET_CHARGE) });
+  await poseHall(h);
 
   // Watched from here, so what is read is the quiet stretch and the shot alone.
   const played = watchCues(h);

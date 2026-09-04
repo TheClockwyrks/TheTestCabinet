@@ -7,7 +7,7 @@
 // for the drop a removal pays, "clamped the same way", and `setPressure` is held
 // to it too (`specs/instrumentation.md`: "clamped to `0` through `100`").
 //
-// THE DRIVE. An isolated hall with the quota stopped at 0, the pressure posed
+// THE DRIVE. An isolated hall with the inlet held, the pressure posed
 // just above the floor at 0.5, and 10 cores on the channel in one segment. Ten is
 // under `PRESSURE_FREE` (`24`), so `specs/channel.md` bleeds at the full 2.0 per
 // second and rises by nothing: an unclamped build reaches -1.5 within the
@@ -72,7 +72,6 @@ afterEach(async () => {
 it("never reports a pressure below 0 under a bleed that would undershoot", async () => {
   await poseHall(harness, {
     level: 1,
-    quotaRemaining: 0,
     pressure: START_PRESSURE,
     cores: spacedBlock(HEAD_S, CORES, CHARGE),
   });

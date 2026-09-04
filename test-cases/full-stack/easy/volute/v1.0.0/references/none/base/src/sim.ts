@@ -151,8 +151,10 @@ function playingTick(
   runTimers(state, dt);
 
   // 2. Every segment advances, and a merge that completes a run extracts it.
+  // The debug surface's feed gate holds the whole step, so a scenario that does
+  // not exercise the advance can keep the train exactly where it posed it.
   const grants: PendingGrant[] = [];
-  advanceTrain(state, dt, report, grants);
+  if (state.feed) advanceTrain(state, dt, report, grants);
 
   // 3. Every projectile advances, oldest first, and a strike seats.
   advanceProjectiles(state, dt, report, grants);
@@ -410,11 +412,12 @@ function clearLevel(state: VoluteState, report: TickReport): void {
 /**
  * Step 7: the inlet emits.
  *
- * One core at most per tick, only while the quota holds, only once the tail has
- * cleared one spacing, and never while backflow is packing the train against the
- * inlet.
+ * One core at most per tick, only while the inlet's gate is open, only while the
+ * quota holds, only once the tail has cleared one spacing, and never while
+ * backflow is packing the train against the inlet.
  */
 function runInlet(state: VoluteState): void {
+  if (!state.emission) return;
   if (state.quotaRemaining <= 0) return;
   if (state.machinery?.kind === "backflow") return;
   const tail = state.cores[state.cores.length - 1];

@@ -33,15 +33,22 @@ useHarness();
 const OPERATIONS: readonly (keyof VoluteDebug)[] = [
   "reset",
   "snapshot",
-  "start",
+  "setScreen",
+  "setLevel",
+  "setScore",
+  "setCells",
+  "setChainStep",
   "startLevel",
   "poseTrain",
   "clearTrain",
   "setLoaded",
   "setQueued",
+  "setAim",
   "fire",
   "setPressure",
   "setQuotaRemaining",
+  "setEmission",
+  "setFeed",
   "grantMachinery",
   "pause",
   "resume",
@@ -206,9 +213,11 @@ describe("clamping", () => {
     const h = current();
     await isolate(h);
     poseTrain(h, [[1300, "halide", null]]);
-    h.debug.fire(-90);
+    h.debug.setAim(-90);
+    h.debug.fire();
     expect(h.snapshot().injector.aim).toBe(270);
-    h.debug.fire(725);
+    h.debug.setAim(725);
+    h.debug.fire();
     expect(h.snapshot().injector.aim).toBe(5);
   });
 
@@ -231,13 +240,14 @@ describe("clamping", () => {
     expect(h.snapshot().machinery?.remaining).toBe(MACHINERY_DURATIONS.choke);
   });
 
-  it("removes nothing when a bore is granted over an empty channel", async () => {
+  it("takes `bore` as `choke`, since only the timed kinds are granted", async () => {
     const h = current();
     await isolate(h);
+    poseTrain(h, [[1000, "halide", null]]);
     h.debug.grantMachinery("bore");
-    expect(h.snapshot().train).toEqual([]);
+    expect(h.snapshot().machinery?.kind).toBe("choke");
+    expect(h.snapshot().train).toHaveLength(1);
     expect(h.snapshot().score).toBe(0);
-    expect(h.snapshot().machinery).toBeNull();
   });
 });
 
@@ -296,9 +306,12 @@ describe("determinism", () => {
     try {
       h.debug.reset({ seed });
       await h.engine.advance(1);
-      h.debug.start();
+      h.debug.setScore(0);
+      h.debug.setCells(CELLS);
+      h.debug.startLevel(1);
       await h.engine.advance(1);
-      h.debug.fire(300);
+      h.debug.setAim(300);
+      h.debug.fire();
       await h.engine.advance(240);
       return h.snapshot();
     } finally {
@@ -324,14 +337,16 @@ describe("determinism", () => {
   });
 });
 
-describe("start and startLevel", () => {
+describe("startLevel", () => {
   it("opens a run from the title with the score and the cells fresh", async () => {
     const h = current();
     await openLevel(h, 4);
     h.debug.setPressure(50);
     await h.engine.advance(30);
 
-    h.debug.start();
+    h.debug.setScore(0);
+    h.debug.setCells(CELLS);
+    h.debug.startLevel(1);
     await h.engine.advance(1);
     const shot = h.snapshot();
     expect(shot.level).toBe(1);

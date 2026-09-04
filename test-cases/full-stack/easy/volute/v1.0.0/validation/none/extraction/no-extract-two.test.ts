@@ -15,8 +15,8 @@
 //
 // THE POSE. The mirror of extract-three's: one segment of halide, cobalt, cobalt
 // on the straight top run (specs/channel.md — cores "whose arc positions differ
-// by exactly SPACING (28 units)"), the quota exhausted so the inlet delivers
-// nothing (specs/channel.md — "Emission"), and the injector loaded with halide.
+// by exactly SPACING (28 units)"), the inlet held so it delivers nothing
+// (specs/instrumentation.md — `setEmission`), and the injector loaded with halide.
 // The head sits at arc position 380, which specs/channel.md's polyline puts at
 // (420, 40), straight above the injector at (420, 330).
 //

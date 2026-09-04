@@ -149,7 +149,8 @@ describe("cells", () => {
       [PATH_LENGTH, "halide", null],
       [PATH_LENGTH - 28, "halide", null],
     ]);
-    hall.api.fire(270);
+    hall.api.setAim(270);
+    hall.api.fire();
     hall.step(2);
     const after = hall.api.snapshot();
     expect(after.cells).toBe(CELLS - 1);

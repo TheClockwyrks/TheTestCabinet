@@ -343,7 +343,8 @@ export function toward(x: number, y: number): number {
 export async function seatAhead(charge: string, head = 400): Promise<void> {
   const h = current();
   h.debug.setLoaded(charge);
-  h.debug.fire(toward(head - 20, 420));
+  h.debug.setAim(toward(head - 20, 420));
+  h.debug.fire();
   for (let i = 0; i < 20; i += 1) {
     await h.engine.advance(1);
     if (h.snapshot().projectiles.length === 0) return;

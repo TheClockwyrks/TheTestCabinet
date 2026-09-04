@@ -17,9 +17,18 @@
 //
 // WHY ONE CORE. As in `choke-multiplier`: "a lone core forms a segment of one,
 // and the lead segment is the one containing the head" (`specs/channel.md`), so
-// the reading is the feed speed and nothing else. The quota is 0, so the inlet
-// adds nothing, and the pressure is 0, so the only factor away from 1 is the one
-// that has just lapsed.
+// the reading is the feed speed and nothing else. The inlet is held, so it adds
+// nothing, and the pressure is 0, so the only factor away from 1 is the one that
+// has just lapsed.
+//
+// WHAT THE REPLAY BRACKETS. The 8 s the choke runs down is stepped OUTSIDE the
+// recorder, all but a short run-up: a written recording holds at most three
+// hundred frames and a longer one is decimated to fit, so a bracket that spent
+// 481 of its 541 frames on a choke quietly ticking would hand a reviewer a
+// thinned nine-second clip of a hall doing nothing. The bracket is
+// {@link RUNUP_TICKS} before the lapse and the measured second after it, which is
+// the behavior this point backs — the moment the crawl ends and the train picks
+// back up — at full frame rate.
 //
 // THE TOLERANCE. An ideal build gains exactly 22 units over the 60 ticks after
 // the lapse. The case's standing speed tolerance is 2% of the stated figure
@@ -58,6 +67,17 @@ const CORE_S = 500;
 /** A tick past the 8 s the specs give choke, so the boundary itself is not graded. */
 const EXPIRE_TICKS = ticksFor(CHOKE_DURATION) + 1;
 
+/**
+ * Ticks of the choke still running when the recorder is armed.
+ *
+ * Half a second of the crawl, so the clip opens on the choked rate and the lapse
+ * is a change a reviewer sees rather than a state the clip starts in.
+ */
+const RUNUP_TICKS = 30;
+
+/** The ticks stepped before the recorder is armed: the rest of the choke's run. */
+const WAIT_TICKS = EXPIRE_TICKS - RUNUP_TICKS;
+
 /** One second of simulated time, the span the gain is read over. */
 const MEASURE_TICKS = TICK_HZ;
 
@@ -84,14 +104,16 @@ it(`is back at ${FREE_FEED} units/s once the ${CHOKE_DURATION} s choke has run o
   await poseHall(h, {
     level: LEVEL,
     pressure: 0,
-    quotaRemaining: 0,
     cores: [[CORE_S, "halide", null]],
     machinery: "choke",
   });
 
+  // The 8 s of crawl runs outside the recorder; only the lapse is recorded.
+  await h.step(WAIT_TICKS);
+
   let lapsed: VoluteSnapshot | undefined;
   const after = await captureReplay(h, "expiry", async () => {
-    lapsed = await h.step(EXPIRE_TICKS);
+    lapsed = await h.step(RUNUP_TICKS);
     return h.step(MEASURE_TICKS);
   });
 

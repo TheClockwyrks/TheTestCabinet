@@ -55,8 +55,9 @@ the particle effects above those, and the HUD and the screens last.
 {{#if (eq engine.slug "none")}}
 Commit the produced files under `assets/`, and resolve each PNG, `system.json`,
 and `.wav` through the bundler. The build owns the loading, the decoding, and the
-2D context, so it holds the decoded images, parsed systems, and audio buffers
-outside the game's state and draws them in that order each frame.
+2D context: every image is decoded, every system parsed, and every cue ready
+before the first frame that draws or plays it, and a `reset` of the game's state
+leaves every one of them loaded.
 {{else if (eq engine.slug "simple-2d")}}
 Commit the produced files under `public/assets/`, which the engine serves at its
 asset root and the build copies into `dist/` unchanged. Load every image with

@@ -54,16 +54,7 @@ import {
   topRunS,
   type Harness,
 } from "../harness";
-import {
-  approach,
-  assertInFlight,
-  LEAD_STEP,
-  PARKED,
-  PLUMB_SHOT_X,
-  poseFor,
-  SHOT,
-  UP_AIM,
-} from "./stage";
+import { approach, assertInFlight, PLUMB_SHOT_X, SHOT, UP_AIM } from "./stage";
 
 /**
  * How far to the side of the shot's path the core's centre stands when the
@@ -107,16 +98,14 @@ it("seats a fired core that comes within the strike distance", async () => {
     "a sample a whole tick off the ideal is still inside the window",
   );
 
-  await poseHall(h, { cores: PARKED, loaded: SHOT });
+  await poseHall(h, { feed: false, loaded: SHOT });
 
   const after = await captureReplay(h, "seat", async () => {
     const short = await approach(h, UP_AIM);
     assertInFlight(short);
     // One core, placed so that after the single tick that follows it stands
     // OFFSET units to the side of the shot's path, on the straight top run.
-    h.debug.poseTrain([
-      [poseFor(topRunS(PLUMB_SHOT_X + OFFSET), LEAD_STEP), TARGET, null],
-    ]);
+    h.debug.poseTrain([[topRunS(PLUMB_SHOT_X + OFFSET), TARGET, null]]);
     const struck = await h.step(1);
     await h.step(SETTLE);
     return struck;

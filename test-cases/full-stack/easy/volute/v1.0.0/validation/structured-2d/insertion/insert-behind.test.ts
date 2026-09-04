@@ -38,16 +38,7 @@ import {
   topRunS,
   type Harness,
 } from "../harness";
-import {
-  approach,
-  assertInFlight,
-  LEAD_STEP,
-  PARKED,
-  PLUMB_SHOT_X,
-  poseFor,
-  SHOT,
-  UP_AIM,
-} from "./stage";
+import { approach, assertInFlight, PLUMB_SHOT_X, SHOT, UP_AIM } from "./stage";
 
 /** How far along `+x` of the shot's path the struck core's centre stands. */
 const LAG = 14;
@@ -75,16 +66,14 @@ it("seats the fired core behind the core it struck from behind", async () => {
     "the arrangement is inside the strike distance",
   );
 
-  await poseHall(h, { cores: PARKED, loaded: SHOT });
+  await poseHall(h, { feed: false, loaded: SHOT });
 
   const after = await captureReplay(h, "behind", async () => {
     const short = await approach(h, UP_AIM);
     assertInFlight(short);
     // The struck core stands LAG units ahead of the shot's path in `x`, so at the
     // strike `dot(d - c.position, forward)` is `-LAG`: the shot arrives behind.
-    h.debug.poseTrain([
-      [poseFor(topRunS(PLUMB_SHOT_X + LAG), LEAD_STEP), TARGET, null],
-    ]);
+    h.debug.poseTrain([[topRunS(PLUMB_SHOT_X + LAG), TARGET, null]]);
     const struck = await h.step(1);
     await h.step(SETTLE);
     return struck;

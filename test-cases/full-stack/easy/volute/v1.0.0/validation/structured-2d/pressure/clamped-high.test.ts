@@ -8,7 +8,7 @@
 // to `0` through `100`"), so no value a scenario poses can carry the reading past
 // it either.
 //
-// THE DRIVE. An isolated hall with the quota stopped at 0, the pressure posed
+// THE DRIVE. An isolated hall with the inlet held, the pressure posed
 // just under the ceiling at 99.9, and 100 cores on the channel in one segment.
 // `max(0, 100 - 24) x 0.05` is a rise of 3.8 per second, so an unclamped build
 // reaches 103.7 within the measured second while a clamped one stops at exactly
@@ -73,7 +73,6 @@ afterEach(async () => {
 it("never reports a pressure above 100 under a rise that would overshoot", async () => {
   await poseHall(harness, {
     level: 1,
-    quotaRemaining: 0,
     pressure: START_PRESSURE,
     cores: spacedBlock(HEAD_S, CORES, CHARGE),
   });

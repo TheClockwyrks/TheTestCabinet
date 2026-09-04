@@ -8,7 +8,7 @@
 // advance". `RECOIL_HOLD` is 0.4 s in specs/extraction.md's Figures table.
 //
 // THE DRIVE is recoil-distance's: one segment of three halide at the head and four
-// cobalt behind them, the quota exhausted (specs/channel.md — "Emission") so
+// cobalt behind them, the inlet held (specs/instrumentation.md — `setEmission`) so
 // nothing arrives to disturb the group, and a halide released straight up the
 // field, which extracts the run at the head and recoils the four cobalt. What that
 // check reads as a distance, this one reads as a stillness.

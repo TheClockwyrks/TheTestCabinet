@@ -39,46 +39,19 @@
 // line across the field, exactly as the spec measures it, and not an arc
 // distance.
 //
-// AND WHAT THE BORE LEAVES ALONE. `specs/machinery.md` ("The active machinery"):
-// "`bore` never becomes the active machinery and leaves the active machinery and
-// its remaining time untouched." So a choke is granted before the drive and read
-// back after the bore has resolved: a build whose bore takes the active slot
-// reports `bore` there, or reports nothing, and a build whose bore restarts or
-// disturbs the timer reports the wrong remaining. That is the same requirement
-// this point already decides — what a bore does when it is granted — read on the
-// other side of the rule, and it costs the drive one operation.
-//
-// THE CHOKE DOES NOT MOVE THE READING. `specs/machinery.md` ("Choke"): it
-// multiplies the feed speed alone and "catch-up, recoil, merging, emission, and
-// the rise and bleed of pressure all hold at the rates they otherwise take", so
-// the trailing core still closes at 180 units/s and the merge still happens. The
-// lead segment rides SLOWER while it closes, which only leaves every distance
-// measured below nearer the arc positions it was posed at, and the arc actually
-// ridden is read off the surviving head either way.
+// WHAT THIS POINT DOES NOT DECIDE. What a bore does to the machinery slot is
+// `machinery/bore-takes-no-slot`, and what a marked core a bore removes is worth
+// is `machinery/bore-grants-nothing`. Both are separate things a build can get
+// wrong on its own, so the reading here is the radius and nothing else.
 //
 // THE TOLERANCE. None on the radius: each core is unambiguously inside or
 // outside, by a margin of 11 units on the closest pair, and the check asserts
 // presence rather than a distance. A core is matched to its posed arc position
-// within the case's standing arc tolerance of 0.5 units. The machinery's
-// remaining time is read against the case's standing +/- 2 ticks on a duration.
+// within the case's standing arc tolerance of 0.5 units.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertLessThan,
-  assertNear,
-  assertNotNull,
-  assertTrue,
-} from "../assert";
-import {
-  ARC_TOL,
-  BORE_RADIUS,
-  MACHINERY_DURATION,
-  SPACING,
-  TICK_DT,
-  TICK_TOL,
-  type ChargeId,
-} from "../constants";
+import { assertEqual, assertLessThan, assertTrue } from "../assert";
+import { ARC_TOL, BORE_RADIUS, SPACING, type ChargeId } from "../constants";
 import {
   arcPositions,
   captureReplay,
@@ -128,11 +101,11 @@ const CLOSING_GAP = 60;
  * The core that closes the gap and completes the run.
  *
  * A segment behind the lead one rides 180 units/s (`specs/channel.md`,
- * "Advance") against a lead segment on the level's 22 taken down to 8.8 by the
- * choke the drive leaves running, so from 60 units further back than the channel
- * spacing it takes about 21 ticks to arrive — a run-up the replay can show, and
- * one the reading does not depend on, since the arc every core rode while it
- * closed is measured off the surviving head rather than assumed.
+ * "Advance") against a lead segment on the level's 22, so from 60 units further
+ * back than the channel spacing it takes about 23 ticks to arrive — a run-up the
+ * replay can show, and one the reading does not depend on, since the arc every
+ * core rode while it closed is measured off the surviving head rather than
+ * assumed.
  */
 const CLOSER_S = MARKED_S - SPACING - CLOSING_GAP;
 
@@ -145,23 +118,19 @@ const CLOSER_MERGED_S = MARKED_S - SPACING;
  * How long the drive waits for the merge, in ticks.
  *
  * `specs/channel.md` fixes the closing rate — 180 units/s behind a lead segment
- * riding 8.8 under the choke — so {@link CLOSING_GAP} closes in
- * 60 / (180 - 8.8) seconds, 21.0 ticks. The cap is nearly three times that, and
- * it is also what keeps the arrangement's margins honest: the lead segment rides
- * while it closes, and the further it rides past the vertex the closer the pair
- * straddling the radius comes to it. At the 21.0 ticks the spec's own rates
- * give, the two sit 10.7 and 11.9 units either side of 90; at the cap they still
- * sit 9.8 and 14.1 units either side, and every classification below is computed
- * from the arc actually ridden rather than from an assumed one.
+ * riding the level's 22 — so {@link CLOSING_GAP} closes in 60 / (180 - 22)
+ * seconds, 22.8 ticks. The cap is nearly three times that, and it is also what
+ * keeps the arrangement's margins honest: the lead segment rides while it closes,
+ * and the further it rides past the vertex the closer the pair straddling the
+ * radius comes to it. At the 22.8 ticks the spec's own rates give, the two sit
+ * 10.4 and 12.2 units either side of 90; at the cap they still sit 9.8 and 14.1
+ * units either side, and every classification below is computed from the arc
+ * actually ridden rather than from an assumed one.
  */
 const MERGE_MAX_TICKS = 60;
 
 /** Ticks recorded after the bore resolves, so the replay shows what it left. */
 const TRAILING_TICKS = 40;
-
-/** The timed machinery left running across the bore, and its stated duration. */
-const STANDING = "choke";
-const STANDING_DURATION = MACHINERY_DURATION[STANDING];
 
 let h: Harness;
 
@@ -174,14 +143,7 @@ afterEach(async () => {
 });
 
 it(`clears every core within ${BORE_RADIUS} units of the extraction point and leaves the next one standing`, async () => {
-  await poseHall(h, {
-    level: LEVEL,
-    pressure: 0,
-    cores: CORES,
-    // Running before the bore is granted, so what the bore does to it is
-    // readable on the tick the bore resolves.
-    machinery: STANDING,
-  });
+  await poseHall(h, { level: LEVEL, pressure: 0, cores: CORES });
 
   const swept = await captureReplay(h, "bore", async () => {
     const merged = await h.stepUntil((s) => coreCount(s) < CORES.length, {
@@ -230,24 +192,5 @@ it(`clears every core within ${BORE_RADIUS} units of the extraction point and le
     standing.length,
     expectedSurvivors,
     "the cores left standing once the extraction and its bore had resolved",
-  );
-
-  // The bore took no slot and stopped no clock: `poseHall` granted the choke
-  // before the first tick, so what is left of it is its full duration less the
-  // ticks the drive ran.
-  assertNotNull(
-    swept.snapshot.machinery,
-    `the active machinery on the tick the bore resolved, with a ${STANDING} running across it`,
-  );
-  assertEqual(
-    swept.snapshot.machinery?.kind,
-    STANDING,
-    "the kind left active by a bore, which becomes no active machinery",
-  );
-  assertNear(
-    swept.snapshot.machinery?.remaining ?? Number.NaN,
-    STANDING_DURATION - swept.ticks * TICK_DT,
-    TICK_TOL * TICK_DT,
-    `the seconds left on the ${STANDING} the bore was asked to leave untouched`,
   );
 });

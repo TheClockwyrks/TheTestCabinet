@@ -7,7 +7,7 @@
 // intake: "`PATH_LENGTH` (`5000`) is the channel's total arc length ... vertex
 // `11` is the intake, at `PATH_LENGTH`."
 //
-// THE DRIVE. Level 1 with its quota spent and ONE core, posed 20 units short of
+// THE DRIVE. Level 1 with the inlet held and ONE core, posed 20 units short of
 // the intake. A lone core is the head, so it is the lead segment and rides at the
 // level's feed speed of 22 units/s with pressure at 0 and no machinery, which
 // carries it the 20 units in a little over half a second. Nothing else stands on
@@ -54,7 +54,6 @@ afterEach(async () => {
 it("spends exactly one cell when a core reaches the intake", async () => {
   await poseHall(h, {
     level: 1,
-    quotaRemaining: 0,
     pressure: 0,
     cores: [[POSED_S, "halide", null]],
   });

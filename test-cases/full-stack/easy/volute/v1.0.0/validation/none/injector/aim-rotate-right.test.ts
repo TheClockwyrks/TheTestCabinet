@@ -17,18 +17,15 @@
 // wrong way under one of them must score differently from one that turns the
 // wrong way under both.
 //
-// THE HALL. `fire(180)` leaves the aim at a known 180 degrees the way the
-// review item names — specs/instrumentation.md: "Sets the aim to
-// `angleDegrees`, normalized into `[0, 360)`" — and 180 keeps the whole sweep
-// clear of the `[0, 360)` seam. The quota is exhausted and one core is parked
-// at the inlet (`parkedCore()`), which specs/channel.md's polyline puts at
-// `(40, 40)`: an exhausted quota over an EMPTY channel clears the level on the
-// next tick (specs/channel.md, "The order of a tick", step 6) and the turn
-// actions are live on `playing` alone (specs/controls.md), so one core has to
-// stand there, and it stands where neither the shot nor the aim reading ever
-// reaches. The shot the pose fires runs due `-x` along `y = 330` and leaves the
-// field 40.6 ticks later, so it is still in flight and still harmless across
-// the whole window.
+// THE HALL. Nothing stands on the channel and nothing arrives. `poseHall` holds
+// the inlet with `setEmission(false)` — specs/instrumentation.md: it "stops step
+// 7 of the tick order ... and the quota is left where it stands" — and leaves the
+// quota unexhausted, so specs/progression.md's clear condition ("the moment its
+// quota is exhausted and no cores remain on the channel") never fires and the
+// hall holds `playing`, where the turn actions are live (specs/controls.md). The
+// aim is posed with `setAim`, which "does nothing else: no core is released", so
+// there is no projectile in the hall either: the aim is the only thing this check
+// touches. 180 keeps the whole sweep clear of the `[0, 360)` seam.
 //
 // WHAT IS READ, AND WHY IT IS A DELTA. The item's own drive reads the aim's
 // absolute value at the end of a 30-tick hold. This reads its CHANGE across 30
@@ -55,7 +52,6 @@ import { AIM_RATE, TICK_DT, TURN_TOL } from "../constants";
 import {
   captureReplay,
   createHarness,
-  parkedCore,
   poseHall,
   signedTurn,
   type Harness,
@@ -87,8 +83,7 @@ afterEach(async () => {
 });
 
 it("turns the aim clockwise at 180 degrees per second while ArrowRight is held", async () => {
-  await poseHall(h, { cores: parkedCore() });
-  await h.debug.fire(OPENING);
+  await poseHall(h, { aim: OPENING });
 
   const swung = await captureReplay(h, "right", async () => {
     await h.hold("ArrowRight");

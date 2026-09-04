@@ -37,12 +37,12 @@
 // The head's own movement is bounded by half a spacing rather than by a tick of
 // the feed, deliberately. What has to be ruled out is the head shifting BACK one
 // spacing, which is what a build that shifts the whole train does; what must not
-// be ruled out is the head advancing, which every conformant build does on the
-// tick the strike lands on. One tick at the fastest feed the specification allows
-// anywhere — level 5's 38 units/s at the maximum pressure of 100, so `76 / 60 =
-// 1.27` units (specs/progression.md, specs/channel.md) — is well inside 14, and
-// so is one tick of the 180 units/s catch-up rate at 3.0. So the bound passes
-// every conformant build without grading any rate.
+// be ruled out is any forward drift a build's own ordering leaves. The train is
+// held for this check (`feed: false`), so no conformant build drifts at all, and
+// even one tick at the fastest feed the specification allows anywhere — level 5's
+// 38 units/s at the maximum pressure of 100, so `76 / 60 = 1.27` units
+// (specs/progression.md, specs/channel.md) — would sit well inside 14. So the
+// bound passes every conformant build without grading any rate.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertNear } from "../assert";
@@ -58,16 +58,7 @@ import {
   topRunS,
   type Harness,
 } from "../harness";
-import {
-  approach,
-  assertInFlight,
-  LEAD_STEP,
-  PARKED,
-  PLUMB_SHOT_X,
-  poseFor,
-  SHOT,
-  UP_AIM,
-} from "./stage";
+import { approach, assertInFlight, PLUMB_SHOT_X, SHOT, UP_AIM } from "./stage";
 
 /**
  * The five charges, one per core, so no three consecutive cores can ever match
@@ -115,7 +106,7 @@ it("shifts the train behind the seated slot back by one spacing", async () => {
     "the shot arrives behind the struck core and inside the strike distance",
   );
 
-  await poseHall(h, { cores: PARKED, loaded: SHOT });
+  await poseHall(h, { feed: false, loaded: SHOT });
 
   const short = await approach(h, UP_AIM);
   assertInFlight(short);
@@ -123,9 +114,7 @@ it("shifts the train behind the seated slot back by one spacing", async () => {
   // Five cores in one segment, placed so that after the single tick that follows
   // the struck core stands LAG units to the +x side of the shot's path.
   const struckS = topRunS(PLUMB_SHOT_X + LAG);
-  await h.debug.poseTrain(
-    spacedRun(poseFor(struckS + STRUCK_INDEX * SPACING, LEAD_STEP), RUN),
-  );
+  await h.debug.poseTrain(spacedRun(struckS + STRUCK_INDEX * SPACING, RUN));
   const before = await h.snapshot();
   assertEqual(coreCount(before), RUN.length, "the five-core segment is posed");
   const spanBefore = head(before).s - tail(before).s;

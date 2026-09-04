@@ -8,7 +8,7 @@
 // EVERY OPERATION IS A READING OR A POSE, and both are written in the shape of
 // `update`, because the engine holds the state by value and nothing holds a
 // writable one. A pose takes the current state and returns the next, and a caller
-// drives it through `engine.apply((s) => debug.start(s))`; a reading takes the
+// drives it through `engine.apply((s) => debug.startLevel(s, 1))`; a reading takes the
 // state and returns what it read, as `debug.snapshot(engine.state)`.
 //
 // A POSE ARRANGES THE HALL and never fabricates an outcome: it puts the game into
@@ -24,6 +24,8 @@
 // outside its range is clamped to the nearest legal value or normalized.
 
 import {
+  CELLS,
+  CHAIN_RESET,
   CHARGE_IDS,
   DEFAULT_SEED,
   LEVEL_COUNT,
@@ -31,6 +33,7 @@ import {
   PATH_LENGTH,
   PRESSURE_MAX,
   PRESSURE_MIN,
+  SCREENS,
   VOLUTE_DEBUG_VERSION,
 } from "./constants";
 import type { ChargeId, MachineryKind, ScreenName } from "./constants";
@@ -46,14 +49,13 @@ import {
 } from "./draft";
 import { newReport } from "./events";
 import type { VoluteDebugApi, VoluteState } from "./game";
+import { levelSpec, normalizeAngle, startLevel, toTitle } from "./level";
 import {
-  levelSpec,
-  normalizeAngle,
-  startLevel,
-  startRun,
-  toTitle,
-} from "./level";
-import { fire, grantMachinery, inDanger } from "./sim";
+  fire,
+  grantTimedMachinery,
+  inDanger,
+  type TimedMachineryKind,
+} from "./sim";
 import { effectiveFeed } from "./train";
 
 /** One core, as `poseTrain` takes it: `[s, charge, mark]`. */
@@ -113,6 +115,10 @@ export interface VoluteSnapshot {
   };
   projectiles: ProjectileSnapshot[];
   machinery: { kind: MachineryKind; remaining: number } | null;
+  /** Whether the inlet emits. */
+  emission: boolean;
+  /** Whether the train advances. */
+  feed: boolean;
   muted: boolean;
   simTime: number;
   rngState: number;
@@ -130,6 +136,27 @@ function asMark(value: unknown): MachineryKind | null {
   return MACHINERY_KINDS.includes(value as MachineryKind)
     ? (value as MachineryKind)
     : null;
+}
+
+/** The three timed kinds a grant may name; anything else is taken as `choke`. */
+const TIMED_KINDS: readonly TimedMachineryKind[] = [
+  "choke",
+  "backflow",
+  "sightline",
+];
+
+/** A timed machinery kind, or `choke` when the argument names none. */
+function asTimedKind(value: unknown): TimedMachineryKind {
+  return TIMED_KINDS.includes(value as TimedMachineryKind)
+    ? (value as TimedMachineryKind)
+    : TIMED_KINDS[0];
+}
+
+/** A screen name, or `title` when the argument names none. */
+function asScreen(value: unknown): ScreenName {
+  return SCREENS.includes(value as ScreenName)
+    ? (value as ScreenName)
+    : SCREENS[0];
 }
 
 /** A finite number, or a stated fallback. */
@@ -190,6 +217,8 @@ export function snapshot(state: DeepReadonly<VoluteState>): VoluteSnapshot {
       state.machinery === null
         ? null
         : { kind: state.machinery.kind, remaining: state.machinery.remaining },
+    emission: state.emission,
+    feed: state.feed,
     muted: state.muted,
     simTime: state.simTime,
     rngState: state.rngState >>> 0,
@@ -219,7 +248,10 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
      * generator.
      *
      * `muted` is deliberately untouched: muting is a player preference the
-     * runtime owns, and a reset is not a reason to start making noise again.
+     * runtime owns, and a reset is not a reason to start making noise again. So
+     * are `emission` and `feed`, which belong to the caller driving the game
+     * rather than to the run being played, so a reset inside a posed scenario
+     * leaves the hall held exactly as the scenario held it.
      */
     reset(state, options) {
       const draft = thaw(state);
@@ -233,16 +265,55 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
     snapshot,
 
     /**
-     * Pose exactly what the start control on the title does: the score `0`, the
-     * cells full, and level `1` opened as `startLevel` opens it.
-     *
-     * The generator's state and `simTime` stay as they are, so a run from a known
-     * seed is a `reset` followed by this.
+     * Set the screen, and change nothing else: no level is opened, no channel is
+     * seeded, no timer is started, and no interlude is set.
      */
-    start(state) {
+    setScreen(state, name) {
       const draft = thaw(state);
-      startRun(draft);
-      reopen();
+      draft.screen = asScreen(name);
+      return freeze(draft);
+    },
+
+    /**
+     * Set the level in play, and change nothing else.
+     *
+     * The level's feed speed and its charge set follow the new value at once,
+     * because both are read off `level` wherever they are wanted rather than
+     * copied into the state when a level opens.
+     */
+    setLevel(state, level) {
+      const draft = thaw(state);
+      draft.level = clamp(Math.round(asNumber(level, 1)), 1, LEVEL_COUNT);
+      return freeze(draft);
+    },
+
+    /** Set the run's score, clamped to at least `0`. */
+    setScore(state, n) {
+      const draft = thaw(state);
+      draft.score = Math.max(0, Math.round(asNumber(n, draft.score)));
+      return freeze(draft);
+    },
+
+    /**
+     * Set the cells remaining, clamped to `0` through `CELLS`.
+     *
+     * It ends no run: `setCells(0)` leaves the screen exactly as it stands, and
+     * the ending a spent last cell reaches comes from the ticks that follow.
+     */
+    setCells(state, n) {
+      const draft = thaw(state);
+      draft.cells = clamp(Math.round(asNumber(n, draft.cells)), 0, CELLS);
+      return freeze(draft);
+    },
+
+    /**
+     * Set the chain step, and restart the window that returns it to `1`, so the
+     * posed step holds for `CHAIN_RESET` of play from the call.
+     */
+    setChainStep(state, k) {
+      const draft = thaw(state);
+      draft.chainStep = Math.max(1, Math.round(asNumber(k, draft.chainStep)));
+      draft.chainTimer = CHAIN_RESET;
       return freeze(draft);
     },
 
@@ -307,18 +378,29 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
     },
 
     /**
-     * Aim at `angleDegrees` and release the loaded core along it, through the
-     * same path the fire control takes.
+     * Set the aim, normalized into `[0, 360)`, and do nothing else: no core is
+     * released, the cooldown is untouched, and the loaded and queued cores stay
+     * as they are.
+     */
+    setAim(state, angleDegrees) {
+      const draft = thaw(state);
+      draft.aim = normalizeAngle(asNumber(angleDegrees, draft.aim));
+      return freeze(draft);
+    },
+
+    /**
+     * Release the loaded core along the CURRENT aim, through the same path the
+     * fire control takes.
      *
      * Any cooldown outstanding at the call is cleared first, so the call always
      * launches, and a call made while the injector holds no loaded core draws one
-     * first. The flight, the strike, the insertion and any extraction the
+     * first. The aim is read and never written — `setAim` is what points the
+     * injector. The flight, the strike, the insertion and any extraction the
      * insertion causes come from the ticks that follow, and so does the sound:
      * the cues this raises are dropped, because a pose sounds nothing.
      */
-    fire(state, angleDegrees) {
+    fire(state) {
       const draft = thaw(state);
-      draft.aim = normalizeAngle(asNumber(angleDegrees, draft.aim));
       draft.fireCooldown = 0;
       fire(draft, newReport());
       return freeze(draft);
@@ -353,14 +435,43 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
     },
 
     /**
-     * Grant a kind exactly as extracting a run holding a mark of that kind grants
-     * it: the three timed kinds become the active machinery at their full
-     * duration, and `bore` resolves at once, centered on the head core's
-     * position.
+     * Hold the inlet, and let it go again.
+     *
+     * Independent of the quota: a hall whose quota is untouched and whose inlet
+     * is held emits nothing and is never cleared for an exhausted quota, which is
+     * how a scenario poses a channel holding only the cores it is about.
+     */
+    setEmission(state, enabled) {
+      const draft = thaw(state);
+      draft.emission = enabled !== false;
+      return freeze(draft);
+    },
+
+    /**
+     * Hold the train where it stands, and let it advance again.
+     *
+     * Step 2 of the tick order alone: every other step runs unchanged, so a
+     * projectile still flies and seats, a removal still recoils what is behind
+     * it, pressure still moves, and the inlet still emits.
+     */
+    setFeed(state, enabled) {
+      const draft = thaw(state);
+      draft.feed = enabled !== false;
+      return freeze(draft);
+    },
+
+    /**
+     * Grant one of the three TIMED kinds exactly as extracting a run holding a
+     * mark of that kind grants it: it becomes the active machinery at its full
+     * duration, replacing whatever was active and restarting its timer.
+     *
+     * `bore` is not granted here. It removes cores and scores the moment it
+     * resolves, and no pose decides an outcome, so a caller that wants a bore
+     * poses a run carrying a `bore` mark and lets the ticks extract it.
      */
     grantMachinery(state, kind) {
       const draft = thaw(state);
-      grantMachinery(draft, asMark(kind) ?? MACHINERY_KINDS[0], newReport());
+      grantTimedMachinery(draft, asTimedKind(kind), newReport());
       return freeze(draft);
     },
 

@@ -12,10 +12,11 @@
 // figure: the score before it was 0, the level in play is 1, and the cells are
 // drawn as icons rather than as a number.
 //
-// A core of another charge is left standing behind the run so the level is not
-// cleared on the same tick: `specs/progression.md` clears a level "the moment its
-// quota is exhausted and no cores remain on the channel", and "Every clear adds
-// 500 to the score", which would take the figure off 50.
+// Nothing else stands on the channel and nothing arrives. The extraction may
+// empty the hall without the level clearing on the same tick, because `poseHall`
+// holds the inlet and leaves the quota unexhausted: `specs/progression.md` clears
+// a level "the moment its quota is exhausted and no cores remain on the channel",
+// and a clear "adds 500 to the score", which would take the figure off 50.
 //
 // HOW THE FIGURE IS READ. `specs/ui.md` fixes no font, no layout and no copy, so
 // a build may draw "SCORE 50" in one call or lay the readout down a glyph at a
@@ -30,6 +31,7 @@ import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
+  fireAt,
   poseHall,
   spacedRun,
   type Harness,
@@ -39,12 +41,8 @@ import { drewFigure } from "./readouts";
 /** The head of the run, in units from the inlet: see `./extract.ts` for the aim. */
 const HEAD_S = 350;
 
-/** Where the core that keeps the level from clearing stands. */
-const BYSTANDER_S = 100;
-
-/** The charge the run is made of, and the one the bystander carries. */
+/** The charge the run is made of. */
 const RUN_CHARGE = "halide" as const;
-const OTHER_CHARGE = "sulfur" as const;
 
 /** Four posed plus the one released: an extraction of five at chain step 1. */
 const RUN_SIZE = 5;
@@ -66,13 +64,10 @@ afterEach(async () => {
 it("draws the score an extraction paid", async () => {
   await poseHall(h, {
     level: 1,
-    cores: [
-      ...spacedRun(HEAD_S, [RUN_CHARGE, RUN_CHARGE, RUN_CHARGE, RUN_CHARGE]),
-      [BYSTANDER_S, OTHER_CHARGE, null],
-    ],
+    cores: spacedRun(HEAD_S, [RUN_CHARGE, RUN_CHARGE, RUN_CHARGE, RUN_CHARGE]),
     loaded: RUN_CHARGE,
   });
-  await h.debug.fire(270);
+  await fireAt(h, 270);
 
   const scored = await h.stepUntil((snapshot) => snapshot.score > 0, {
     maxTicks: 90,

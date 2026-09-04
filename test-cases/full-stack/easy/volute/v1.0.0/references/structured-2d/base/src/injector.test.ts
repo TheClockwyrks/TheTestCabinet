@@ -51,7 +51,8 @@ describe("aiming", () => {
     const h = current();
     await isolate(h);
     poseTrain(h, [[1300, "halide", null]]);
-    h.debug.fire(180);
+    h.debug.setAim(180);
+    h.debug.fire();
     h.point(INJECTOR_X, INJECTOR_Y);
     await h.engine.advance(1);
     expect(h.snapshot().injector.aim).toBeCloseTo(180, 6);
@@ -61,7 +62,8 @@ describe("aiming", () => {
     const h = current();
     await isolate(h);
     poseTrain(h, [[1300, "halide", null]]);
-    h.debug.fire(180);
+    h.debug.setAim(180);
+    h.debug.fire();
     h.hold("ArrowLeft");
     await h.engine.advance(30);
     expect(h.snapshot().injector.aim).toBeCloseTo(90, 4);
@@ -71,7 +73,8 @@ describe("aiming", () => {
     const h = current();
     await isolate(h);
     poseTrain(h, [[1300, "halide", null]]);
-    h.debug.fire(180);
+    h.debug.setAim(180);
+    h.debug.fire();
     h.hold("ArrowRight");
     await h.engine.advance(30);
     expect(h.snapshot().injector.aim).toBeCloseTo(270, 4);
@@ -81,7 +84,8 @@ describe("aiming", () => {
     const h = current();
     await isolate(h);
     poseTrain(h, [[1300, "halide", null]]);
-    h.debug.fire(180);
+    h.debug.setAim(180);
+    h.debug.fire();
     h.hold("ArrowLeft");
     h.hold("ArrowRight");
     await h.engine.advance(30);
@@ -95,7 +99,8 @@ describe("firing", () => {
     await isolate(h);
     poseTrain(h, [[1300, "halide", null]]);
 
-    h.debug.fire(270);
+    h.debug.setAim(270);
+    h.debug.fire();
     expect(h.snapshot().injector.cooldown).toBeCloseTo(FIRE_COOLDOWN, 6);
     await h.engine.advance(10);
 
@@ -114,7 +119,8 @@ describe("firing", () => {
     const h = current();
     await isolate(h);
     poseTrain(h, [[1300, "halide", null]]);
-    h.debug.fire(270);
+    h.debug.setAim(270);
+    h.debug.fire();
     await h.engine.advance(30);
     const shot = h.snapshot().projectiles[0];
     expect(shot.angle).toBeCloseTo(270, 6);
@@ -130,7 +136,8 @@ describe("firing", () => {
     const h = current();
     await openLevel(h, 1);
     h.debug.clearTrain();
-    h.debug.fire(270);
+    h.debug.setAim(270);
+    h.debug.fire();
     await h.engine.advance(60);
     expect(h.snapshot().projectiles).toEqual([]);
   });
@@ -141,7 +148,8 @@ describe("firing", () => {
     poseTrain(h, [[1300, "halide", null]]);
     h.debug.setLoaded("halide");
     h.debug.setQueued("cobalt");
-    h.debug.fire(270);
+    h.debug.setAim(270);
+    h.debug.fire();
     const shot = h.snapshot();
     expect(shot.projectiles[0].charge).toBe("halide");
     expect(shot.injector.loaded).toBe("cobalt");
@@ -167,7 +175,8 @@ describe("striking a core", () => {
     await isolate(h);
     poseTrain(h, [[onLowerLeg(420), "halide", null]]);
     h.debug.setLoaded("cobalt");
-    h.debug.fire(90);
+    h.debug.setAim(90);
+    h.debug.fire();
     await h.engine.advance(12);
     expect(h.snapshot().projectiles).toEqual([]);
     expect(h.snapshot().train).toHaveLength(2);
@@ -178,7 +187,8 @@ describe("striking a core", () => {
     await isolate(h);
     poseTrain(h, [[onLowerLeg(300), "halide", null]]);
     h.debug.setLoaded("cobalt");
-    h.debug.fire(90);
+    h.debug.setAim(90);
+    h.debug.fire();
     await h.engine.advance(12);
     expect(h.snapshot().train).toHaveLength(1);
   });
@@ -190,7 +200,8 @@ describe("striking a core", () => {
     poseTrain(h, [[at, "halide", null]]);
     // The leg runs toward `-x`, so a shot landing at smaller x arrives in front.
     h.debug.setLoaded("cobalt");
-    h.debug.fire(toward(400, 420));
+    h.debug.setAim(toward(400, 420));
+    h.debug.fire();
     await h.engine.advance(14);
 
     const train = h.snapshot().train;
@@ -206,7 +217,8 @@ describe("striking a core", () => {
     const at = onLowerLeg(420);
     poseTrain(h, [[at, "halide", null]]);
     h.debug.setLoaded("cobalt");
-    h.debug.fire(toward(440, 420));
+    h.debug.setAim(toward(440, 420));
+    h.debug.fire();
     await h.engine.advance(14);
 
     const train = h.snapshot().train;
@@ -225,7 +237,8 @@ describe("striking a core", () => {
     // Land the shot beside the third core of the five.
     const third = h.snapshot().train[2].s;
     const x = 840 - (third - 3540);
-    h.debug.fire(toward(x + 20, 420));
+    h.debug.setAim(toward(x + 20, 420));
+    h.debug.fire();
 
     let before = h.snapshot().train;
     let after = before;

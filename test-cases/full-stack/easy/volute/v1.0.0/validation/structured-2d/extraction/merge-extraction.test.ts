@@ -17,8 +17,8 @@
 //
 // THE POSE. A lead segment of halide, cobalt, cobalt on the straight top run, and
 // a detached segment of cobalt, halide behind it, its head one further gap back
-// from where the merge would trip. The quota is exhausted (specs/channel.md —
-// "Emission") so the inlet puts nothing into the gap, and no shot is fired, so the
+// from where the merge would trip. The inlet is held (specs/instrumentation.md —
+// `setEmission`) so it puts nothing into the gap, and no shot is fired, so the
 // only thing that can extract here is the merge.
 //
 // WHY THE RUN IS EXACTLY THREE. The lead segment carries two cobalt at its tail and

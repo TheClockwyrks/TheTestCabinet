@@ -122,6 +122,10 @@ describe("one cue per event", () => {
         [head - SPACING, "halide", null],
       ],
       "halide",
+      // Spent on the strike tick alone, so the level clears on the extraction.
+      () => {
+        h.api.setQuotaRemaining(0);
+      },
     );
     expect(h.since(marker).filter((cue) => cue === "level-clear")).toHaveLength(
       1,

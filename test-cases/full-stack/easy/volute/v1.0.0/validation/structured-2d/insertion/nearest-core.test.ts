@@ -68,17 +68,7 @@ import {
   topRunS,
   type Harness,
 } from "../harness";
-import {
-  approach,
-  assertInFlight,
-  CATCHUP_STEP,
-  LEAD_STEP,
-  PARKED,
-  PLUMB_SHOT_X,
-  poseFor,
-  SHOT,
-  UP_AIM,
-} from "./stage";
+import { approach, assertInFlight, PLUMB_SHOT_X, SHOT, UP_AIM } from "./stage";
 
 /** How far apart in arc the two candidate cores stand when the strike resolves. */
 const PAIR_GAP = 42;
@@ -120,7 +110,7 @@ it("strikes the nearer of two cores inside the window", async () => {
     "a pair one spacing apart would seat in the same slot either way",
   );
 
-  await poseHall(h, { cores: PARKED, loaded: SHOT });
+  await poseHall(h, { feed: false, loaded: SHOT });
 
   const after = await captureReplay(h, "nearest", async () => {
     const short = await approach(h, UP_AIM);
@@ -131,8 +121,8 @@ it("strikes the nearer of two cores inside the window", async () => {
     // front the feed, so each is posed one tick of its own rate short.
     const rearS = topRunS(PLUMB_SHOT_X - NEAR_OFFSET);
     h.debug.poseTrain([
-      [poseFor(rearS + PAIR_GAP, LEAD_STEP), FRONT, null],
-      [poseFor(rearS, CATCHUP_STEP), REAR, null],
+      [rearS + PAIR_GAP, FRONT, null],
+      [rearS, REAR, null],
     ]);
     const struck = await h.step(1);
     await h.step(SETTLE);

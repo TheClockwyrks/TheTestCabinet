@@ -42,8 +42,8 @@ invokes no asset tool.
 | `←` / `→`            | Swings the aim counter-clockwise and clockwise |
 | `Space` / left click | Fires the loaded core                          |
 | `X`                  | Exchanges the loaded and queued cores          |
-| `Enter`              | Starts a run, and dismisses an ending          |
-| `Esc`                | Pauses, and resumes                            |
+| `Enter` / left click | Starts a run, and dismisses an ending          |
+| `Esc` / `P`          | Pauses, and resumes                            |
 | `M`                  | Toggles the audio mute                         |
 | `` ` ``              | Toggles the engine's debug overlay             |
 

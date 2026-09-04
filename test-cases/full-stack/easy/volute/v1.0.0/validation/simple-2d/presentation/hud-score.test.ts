@@ -30,6 +30,7 @@ import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
+  fireAt,
   poseHall,
   spacedRun,
   type Harness,
@@ -39,12 +40,8 @@ import { drewFigure } from "./readouts";
 /** The head of the run, in units from the inlet: see `./extract.ts` for the aim. */
 const HEAD_S = 350;
 
-/** Where the core that keeps the level from clearing stands. */
-const BYSTANDER_S = 100;
-
-/** The charge the run is made of, and the one the bystander carries. */
+/** The charge the run is made of. */
 const RUN_CHARGE = "halide" as const;
-const OTHER_CHARGE = "sulfur" as const;
 
 /** Four posed plus the one released: an extraction of five at chain step 1. */
 const RUN_SIZE = 5;
@@ -66,13 +63,10 @@ afterEach(async () => {
 it("draws the score an extraction paid", async () => {
   await poseHall(h, {
     level: 1,
-    cores: [
-      ...spacedRun(HEAD_S, [RUN_CHARGE, RUN_CHARGE, RUN_CHARGE, RUN_CHARGE]),
-      [BYSTANDER_S, OTHER_CHARGE, null],
-    ],
+    cores: spacedRun(HEAD_S, [RUN_CHARGE, RUN_CHARGE, RUN_CHARGE, RUN_CHARGE]),
     loaded: RUN_CHARGE,
   });
-  await h.debug.fire(270);
+  await fireAt(h, 270);
 
   const scored = await h.stepUntil((snapshot) => snapshot.score > 0, {
     maxTicks: 90,

@@ -4,12 +4,13 @@
 // the game to `playing` with level 1 under way.
 //
 // THE SPEC IT RESTS ON.
-//   specs/controls.md ("Actions and bindings"): "confirm | `Enter`, `Space` | —
-//   | edge | starts a run, and dismisses an ending", and ("What each screen
-//   reads") "`title` | confirm starts a run".
-//   specs/instrumentation.md (`start`): the start control poses "the score `0`,
-//   the cells at `CELLS` (`3`), and level `1` opened exactly as `startLevel`
-//   opens it", and `startLevel` is where "the screen becomes `playing`".
+//   specs/controls.md ("Actions"): "`confirm` | edge | starts a run, and
+//   dismisses an ending", with `src/constants.ts` binding the action to `Enter`
+//   and `Space`; and ("What each screen reads") "`title` | confirm starts a run,
+//   from the keyboard or a primary pointer press".
+//   specs/instrumentation.md (`startLevel`): opening a level is where "the
+//   screen becomes `playing`", and specs/state.md fixes what a fresh run opens
+//   with — score `0`, `CELLS` cells, level `1`.
 //   specs/progression.md ("Levels"): "A run plays five levels over the same
 //   channel and starts at level 1."
 //
@@ -18,8 +19,8 @@
 // build that never reached the title fails here rather than deciding nothing.
 // `pressConfirm` is a REAL `Enter` dispatched at the engine's own input seam, so
 // the whole path from the physical key through the registered action to the
-// opened run is what runs, which is the point of this item: the debug surface's
-// own `start()` is not what a player presses.
+// opened run is what runs, which is the point of this item: the harness's own
+// `startRun` sequence is not what a player presses.
 //
 // THE TOLERANCE. None. The screen and the level are both exact comparisons
 // (test-case.toml, STANDING TOLERANCES — "count, score, charge id, screen |

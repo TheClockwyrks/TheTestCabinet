@@ -16,7 +16,7 @@
 // that term is unambiguously one tick of the `2.0` per second bleed whichever
 // count a build reads it from.
 //
-// THE DRIVE. An isolated hall at level 1 with the quota stopped at 0. Two cores
+// THE DRIVE. An isolated hall at level 1 with the inlet held. Two cores
 // of one charge sit on the channel's straight top leg, and the injector is loaded
 // with that same charge and fired straight up the field at 270 degrees, which
 // `specs/injector.md` carries into a strike and an insertion. The pair is what
@@ -25,9 +25,8 @@
 // `specs/injector.md` ("Insertion") allows leaves three same-charge cores spaced
 // by `SPACING` in one segment, which is the maximal run of at least 3 that
 // `specs/extraction.md` extracts on the insertion. A third core of a DIFFERENT
-// charge is posed far behind, so the extraction does not empty the channel and
-// trip the clear `specs/progression.md` gives an exhausted quota; it is a
-// different charge and a separate segment, so it takes no part in the run.
+// charge is posed far behind, so the extraction does not empty the channel; it is
+// a different charge and a separate segment, so it takes no part in the run.
 //
 // WHAT IS ASSERTED, AND WHAT IS NOT. The count of cores the removal took is read
 // off the build's own snapshots rather than assumed, because how many cores an
@@ -121,7 +120,6 @@ afterEach(async () => {
 it("drops pressure by 0.8 for each core the extraction removed", async () => {
   await poseHall(harness, {
     level: 1,
-    quotaRemaining: 0,
     pressure: START_PRESSURE,
     cores: [
       ...spacedRun(PAIR_HEAD_S, [RUN_CHARGE, RUN_CHARGE]),

@@ -29,7 +29,8 @@ describe("the aim", () => {
   it("opens straight up the field and keeps its value across a level change", () => {
     const hall = harness();
     expect(hall.api.snapshot().injector.aim).toBe(270);
-    hall.api.fire(123);
+    hall.api.setAim(123);
+    hall.api.fire();
     hall.api.startLevel(3);
     expect(hall.api.snapshot().injector.aim).toBe(123);
   });
@@ -46,7 +47,8 @@ describe("the aim", () => {
 
   it("leaves the aim alone for a pointer exactly on the injector", () => {
     const hall = bare();
-    hall.api.fire(180);
+    hall.api.setAim(180);
+    hall.api.fire();
     hall.point(INJECTOR_X, INJECTOR_Y);
     hall.step();
     expect(hall.api.snapshot().injector.aim).toBeCloseTo(180, 6);
@@ -54,7 +56,8 @@ describe("the aim", () => {
 
   it("swings counter-clockwise under the turn-left action", () => {
     const hall = bare();
-    hall.api.fire(180);
+    hall.api.setAim(180);
+    hall.api.fire();
     hall.hold("left");
     hall.step(30);
     expect(hall.api.snapshot().injector.aim).toBeCloseTo(90, 1);
@@ -62,7 +65,8 @@ describe("the aim", () => {
 
   it("swings clockwise under the turn-right action", () => {
     const hall = bare();
-    hall.api.fire(180);
+    hall.api.setAim(180);
+    hall.api.fire();
     hall.hold("right");
     hall.step(30);
     expect(hall.api.snapshot().injector.aim).toBeCloseTo(270, 1);
@@ -70,7 +74,8 @@ describe("the aim", () => {
 
   it("turns by nothing with both held", () => {
     const hall = bare();
-    hall.api.fire(180);
+    hall.api.setAim(180);
+    hall.api.fire();
     hall.hold("left");
     hall.hold("right");
     hall.step(30);
@@ -79,7 +84,8 @@ describe("the aim", () => {
 
   it("wraps continuously through a full turn", () => {
     const hall = bare();
-    hall.api.fire(10);
+    hall.api.setAim(10);
+    hall.api.fire();
     hall.hold("left");
     hall.step(10);
     const aim = hall.api.snapshot().injector.aim;
@@ -93,7 +99,8 @@ describe("firing", () => {
   it("launches along the aim and sets the cooldown", () => {
     const hall = bare();
     hall.api.setLoaded("cobalt");
-    hall.api.fire(270);
+    hall.api.setAim(270);
+    hall.api.fire();
     const shot = hall.api.snapshot();
     expect(shot.projectiles).toHaveLength(1);
     expect(shot.projectiles[0]).toMatchObject({
@@ -107,7 +114,8 @@ describe("firing", () => {
 
   it("refuses the fire control inside the cooldown, and sounds the refusal", () => {
     const hall = bare();
-    hall.api.fire(270);
+    hall.api.setAim(270);
+    hall.api.fire();
     hall.step(10);
     const marker = hall.cues.length;
     hall.press("fire");
@@ -118,7 +126,8 @@ describe("firing", () => {
 
   it("honors the fire control once the cooldown has run out", () => {
     const hall = bare();
-    hall.api.fire(270);
+    hall.api.setAim(270);
+    hall.api.fire();
     hall.step(11);
     hall.press("fire");
     hall.step();
@@ -130,7 +139,8 @@ describe("firing", () => {
     const hall = bare();
     hall.api.setLoaded("halide");
     hall.api.setQueued("garnet");
-    hall.api.fire(270);
+    hall.api.setAim(270);
+    hall.api.fire();
     expect(hall.api.snapshot().injector.loaded).toBe("garnet");
     expect(hall.api.snapshot().injector.queued).not.toBeNull();
   });
@@ -150,7 +160,8 @@ describe("firing", () => {
 
   it("flies 620 units a second in a straight line", () => {
     const hall = bare();
-    hall.api.fire(270);
+    hall.api.setAim(270);
+    hall.api.fire();
     hall.step(30);
     const shot = hall.api.snapshot().projectiles[0];
     expect(Math.hypot(shot.x - INJECTOR_X, shot.y - INJECTOR_Y)).toBeCloseTo(
@@ -163,16 +174,19 @@ describe("firing", () => {
 
   it("discards a shot whose center leaves the field", () => {
     const hall = bare();
-    hall.api.fire(270);
+    hall.api.setAim(270);
+    hall.api.fire();
     hall.step(60);
     expect(hall.api.snapshot().projectiles).toHaveLength(0);
   });
 
   it("keeps several shots in flight at once, each independent", () => {
     const hall = bare();
-    hall.api.fire(260);
+    hall.api.setAim(260);
+    hall.api.fire();
     hall.step(6);
-    hall.api.fire(280);
+    hall.api.setAim(280);
+    hall.api.fire();
     expect(hall.api.snapshot().projectiles).toHaveLength(2);
     hall.step(4);
     const [first, second] = hall.api.snapshot().projectiles;

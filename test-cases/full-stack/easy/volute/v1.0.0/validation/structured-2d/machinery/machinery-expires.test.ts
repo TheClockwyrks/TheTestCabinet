@@ -17,9 +17,18 @@
 //
 // WHY ONE CORE. As in `choke-multiplier`: "a lone core forms a segment of one,
 // and the lead segment is the one containing the head" (`specs/channel.md`), so
-// the reading is the feed speed and nothing else. The quota is 0, so the inlet
+// the reading is the feed speed and nothing else. The inlet is held, so it
 // adds nothing, and the pressure is 0, so the only factor away from 1 is the one
 // that has just lapsed.
+//
+// WHAT THE REPLAY BRACKETS. The behavior this point backs is the LAPSE and the
+// return to the level's feed speed, not the eight seconds of choke that precede
+// it. `writing-debug-apis-and-validators`: "A written recording holds at most
+// three hundred frames ... so a bracket that spends its length on a world at rest
+// hands the reviewer a thinned recording of the moment that mattered." So the
+// wait is stepped OUTSIDE the recorder and the recorder is armed a second before
+// the expiry tick: 120 frames, a second of the choked crawl and a second of the
+// freed feed, undecimated and centred on the lapse.
 //
 // THE TOLERANCE. An ideal build gains exactly 22 units over the 60 ticks after
 // the lapse. The case's standing speed tolerance is 2% of the stated figure
@@ -61,6 +70,12 @@ const EXPIRE_TICKS = ticksFor(CHOKE_DURATION) + 1;
 /** One second of simulated time, the span the gain is read over. */
 const MEASURE_TICKS = TICK_HZ;
 
+/** The run-up the replay is armed for, so a reviewer sees the choked rate first. */
+const RUNUP_TICKS = TICK_HZ;
+
+/** The wait stepped before the recorder is armed: everything but that run-up. */
+const WAIT_TICKS = EXPIRE_TICKS - RUNUP_TICKS;
+
 /** The free rate the specs give: 22 x (1 + 0 / 100) x 1. */
 const FREE_FEED = effectiveFeed(LEVEL, 0, false);
 
@@ -84,14 +99,17 @@ it(`is back at ${FREE_FEED} units/s once the ${CHOKE_DURATION} s choke has run o
   await poseHall(h, {
     level: LEVEL,
     pressure: 0,
-    quotaRemaining: 0,
     cores: [[CORE_S, "halide", null]],
     machinery: "choke",
   });
 
+  // The choke simply running down, stepped outside the recording it would
+  // otherwise fill.
+  await h.step(WAIT_TICKS);
+
   let lapsed: VoluteSnapshot | undefined;
   const after = await captureReplay(h, "expiry", async () => {
-    lapsed = await h.step(EXPIRE_TICKS);
+    lapsed = await h.step(RUNUP_TICKS);
     return h.step(MEASURE_TICKS);
   });
 

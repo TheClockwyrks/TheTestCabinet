@@ -7,8 +7,8 @@
 // reaches it the only way anything reaches it — over HTTP, in Chromium. That is
 // per-project scaffolding rather than per-suite: launching a browser costs a
 // couple of hundred milliseconds and holding one costs a couple of hundred
-// megabytes, and doing either eighty-three times over is the difference between
-// a suite run that takes a minute and one that takes ten.
+// megabytes, and doing either once per suite is the difference between a suite
+// run that takes a minute and one that takes ten.
 //
 // The whole of it — finding the build output, serving it on a loopback port,
 // starting the Chromium server, and handing both to the suite workers as

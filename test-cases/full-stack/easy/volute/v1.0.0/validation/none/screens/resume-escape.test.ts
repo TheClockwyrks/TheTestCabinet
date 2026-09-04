@@ -5,8 +5,8 @@
 // differently from one that does neither, which is why this is its own point.
 //
 // THE SPEC IT RESTS ON.
-//   specs/controls.md ("Actions and bindings"): "pause | `Escape` | — | edge |
-//   pauses, and resumes", and ("What each screen reads") "`paused` | pause,
+//   specs/controls.md ("Actions and bindings"): "pause | `Escape`, `KeyP` | — |
+//   edge | pauses, and resumes", and ("What each screen reads") "`paused` | pause,
 //   which resumes".
 //   specs/ui.md ("Screens"): `playing` is "The live hall."
 //   specs/instrumentation.md (`pause`, `resume`): "`pause` poses the pause

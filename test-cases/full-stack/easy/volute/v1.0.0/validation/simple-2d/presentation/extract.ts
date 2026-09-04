@@ -26,6 +26,7 @@
 import { SPACING, type ChargeId, type Point } from "../constants";
 import {
   drawnPoints,
+  fireAt,
   poseHall,
   type DrawCall,
   type Harness,
@@ -81,15 +82,15 @@ export async function poseRun(h: Harness, charge: ChargeId): Promise<void> {
  * Release the loaded core along the opening aim and step `ticks` ticks, keeping
  * every frame.
  *
- * `debug.fire` rather than the fire control, because this drive is not about the
- * cooldown: "Any cooldown outstanding at the call is cleared first, so the call
- * always launches".
+ * The surface's `setAim` and `fire` rather than the fire control, because this
+ * drive is not about the cooldown: "Any cooldown outstanding at the call is
+ * cleared first, so the call always launches".
  */
 export async function driveShot(
   h: Harness,
   ticks: number,
 ): Promise<ShotFrames> {
-  await h.debug.fire(270);
+  await fireAt(h, 270);
   const result: ShotFrames = {
     strike: -1,
     removed: false,

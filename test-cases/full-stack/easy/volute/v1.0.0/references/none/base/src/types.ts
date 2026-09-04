@@ -108,6 +108,15 @@ export interface VoluteState {
   accumulator: number;
   /** Whether the simulation advances on its own each frame. */
   autoStep: boolean;
+  /**
+   * Whether the inlet emits, and whether the train advances.
+   *
+   * Both hold in play, and neither is restored by a `reset` or a level opening:
+   * they are the debug surface's two faculty gates, and they belong to the
+   * caller driving the game rather than to the run being played.
+   */
+  emission: boolean;
+  feed: boolean;
   /** The game's readable copy of the runtime's mute bit. */
   muted: boolean;
   /** The state of the seeded generator every random draw comes from. */

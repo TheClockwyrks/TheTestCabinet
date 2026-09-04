@@ -31,10 +31,9 @@
 //
 // The pair is posed with a THIRD core well ahead of it, which is what makes both
 // of them "Every other segment" (specs/channel.md, "Advance") rather than one of
-// them the lead. Both then close at the fixed catch-up rate of 180 units/s, both
-// are posed one tick of that rate short of where they must stand, and the tick
-// the strike resolves on moves them by the same amount — which is what keeps them
-// symmetric about `y = 330` when it matters.
+// them the lead. The train is held for the whole check (`feed: false`), so
+// neither moves between the pose and the strike and the two stay exactly
+// symmetric about `y = 330` where it matters.
 //
 // WHAT THE TIE DECIDES. The pair is `PAIR_GAP` (42 units) apart, so the two
 // answers differ: the tie-break's core is the one with the LARGER arc position,
@@ -73,10 +72,8 @@ import {
 import {
   approach,
   assertInFlight,
-  CATCHUP_STEP,
   leg5S,
   LEVEL_SHOT_Y,
-  poseFor,
   RIGHT_AIM,
   SHOT,
 } from "./stage";
@@ -128,6 +125,7 @@ it("strikes the core with the larger arc position when two are tied", async () =
   );
 
   await poseHall(h, {
+    feed: false,
     cores: [[LEAD_S, LEAD, null]],
     loaded: SHOT,
   });
@@ -136,8 +134,8 @@ it("strikes the core with the larger arc position when two are tied", async () =
     const short = await approach(h, RIGHT_AIM);
     assertInFlight(short);
     // Leg 5 descends, so the core BELOW the shot's line carries the larger arc
-    // position. Both ride the catch-up rate behind the lead core, so both are
-    // posed one tick of that rate short of the symmetric arrangement.
+    // position. The train is held, so each is posed at exactly the arc position
+    // the strike must see.
     const belowS = leg5S(LEVEL_SHOT_Y + HALF_GAP);
     const aboveS = leg5S(LEVEL_SHOT_Y - HALF_GAP);
     assertNear(
@@ -148,8 +146,8 @@ it("strikes the core with the larger arc position when two are tied", async () =
     );
     await h.debug.poseTrain([
       [LEAD_S, LEAD, null],
-      [poseFor(belowS, CATCHUP_STEP), AHEAD, null],
-      [poseFor(aboveS, CATCHUP_STEP), REAR, null],
+      [belowS, AHEAD, null],
+      [aboveS, REAR, null],
     ]);
     const struck = await h.step(1);
     await h.step(SETTLE);

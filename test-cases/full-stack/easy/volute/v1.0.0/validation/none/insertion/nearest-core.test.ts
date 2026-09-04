@@ -71,12 +71,9 @@ import {
 import {
   approach,
   assertInFlight,
-  CATCHUP_STEP,
-  LEAD_STEP,
-  PARKED,
   PLUMB_SHOT_X,
-  poseFor,
   SHOT,
+  STAGE,
   UP_AIM,
 } from "./stage";
 
@@ -120,7 +117,7 @@ it("strikes the nearer of two cores inside the window", async () => {
     "a pair one spacing apart would seat in the same slot either way",
   );
 
-  await poseHall(h, { cores: PARKED, loaded: SHOT });
+  await poseHall(h, STAGE);
 
   const after = await captureReplay(h, "nearest", async () => {
     const short = await approach(h, UP_AIM);
@@ -131,8 +128,8 @@ it("strikes the nearer of two cores inside the window", async () => {
     // front the feed, so each is posed one tick of its own rate short.
     const rearS = topRunS(PLUMB_SHOT_X - NEAR_OFFSET);
     await h.debug.poseTrain([
-      [poseFor(rearS + PAIR_GAP, LEAD_STEP), FRONT, null],
-      [poseFor(rearS, CATCHUP_STEP), REAR, null],
+      [rearS + PAIR_GAP, FRONT, null],
+      [rearS, REAR, null],
     ]);
     const struck = await h.step(1);
     await h.step(SETTLE);

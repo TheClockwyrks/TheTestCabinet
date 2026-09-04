@@ -1,14 +1,18 @@
 // Volute — the figures this case's specification fixes. CASE-PROVIDED.
 //
-// Under an engine the same numbers reach a validator from `src/constants.ts`,
-// which is SEEDED into the run: the case hands the build the module and the
-// checks import it back. An engineless run seeds no `src/` at all — the build
-// writes every module it has, including whichever one it chooses to name these
-// figures in — so there is nothing for a check to import, and the values have to
-// live on the validator's side of the line.
+// EVERY ENGINE'S PROJECT HOLDS ITS OWN COPY OF THIS FILE, and no project imports
+// a figure from the build. Under an engine the case seeds the build a
+// `src/constants.ts` carrying the same numbers, and a suite that read a threshold
+// back out of it would grade nothing: the comparison becomes "does the build do
+// what the build says it does", which holds for every build, including one whose
+// figure is wrong. So `validation/none/`, `validation/simple-2d/` and
+// `validation/structured-2d/` each transcribe the figures from the rendered specs
+// under the names the specs use, and each is the ONE PLACE its own project writes
+// a threshold. An engineless run makes the same rule unavoidable rather than
+// merely required — it seeds no `src/` at all, so there is nothing to import —
+// but the rule is the same on all three.
 //
-// So this file is that side, and it is the ONE PLACE a threshold is written. A
-// suite next door imports the bound it asserts from here rather than spelling a
+// A suite next door imports the bound it asserts from here rather than spelling a
 // number of its own, so a figure appears once and every point that turns on it
 // reads the same value.
 //
@@ -250,8 +254,22 @@ export const BORE_RADIUS = 90;
 /** "`sightline` | The aim ray is drawn ... | `12` s". */
 export const SIGHTLINE_DURATION = 12;
 
-/** The kinds that become the active machinery; `bore` never does. */
-export const TIMED_MACHINERY = ["choke", "backflow", "sightline"] as const;
+/**
+ * The kinds that become the active machinery; `bore` never does.
+ *
+ * These are also exactly the kinds `grantMachinery` takes
+ * (`specs/instrumentation.md`): a bore removes cores and scores the moment it
+ * resolves, and no pose decides an outcome, so a bore is reached by posing a run
+ * that carries a `bore` mark and letting the ticks extract it.
+ */
+export const TIMED_MACHINERY = [
+  "choke",
+  "backflow",
+  "sightline",
+] as const satisfies readonly MachineryKind[];
+
+/** One of the three kinds `grantMachinery` grants. */
+export type TimedMachineryKind = (typeof TIMED_MACHINERY)[number];
 
 /** How long each timed kind runs, in seconds. */
 export const MACHINERY_DURATION: Readonly<Record<MachineryKind, number>> = {
@@ -433,8 +451,8 @@ export const BINDINGS = {
   swap: ["KeyX"],
   /** "confirm | `Enter`, `Space` | — | edge". */
   confirm: ["Enter", "Space"],
-  /** "pause | `Escape` | — | edge". */
-  pause: ["Escape"],
+  /** "pause | `Escape`, `KeyP` | — | edge". */
+  pause: ["Escape", "KeyP"],
   /** "mute | `KeyM` | — | edge". */
   mute: ["KeyM"],
 } as const;
@@ -473,15 +491,22 @@ export const REQUIRED_OPS = [
   "step",
   "reset",
   "snapshot",
-  "start",
+  "setScreen",
+  "setLevel",
+  "setScore",
+  "setCells",
+  "setChainStep",
   "startLevel",
   "poseTrain",
   "clearTrain",
   "setLoaded",
   "setQueued",
+  "setAim",
   "fire",
   "setPressure",
   "setQuotaRemaining",
+  "setEmission",
+  "setFeed",
   "grantMachinery",
   "pause",
   "resume",
@@ -507,6 +532,9 @@ export const SNAPSHOT_FIELDS = [
   "injector",
   "projectiles",
   "machinery",
+  "emission",
+  "feed",
+  "autoStep",
   "muted",
   "simTime",
   "rngState",

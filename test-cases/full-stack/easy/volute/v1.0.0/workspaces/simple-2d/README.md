@@ -53,8 +53,9 @@ The debug surface is a required deliverable. The engine returns it from
 is driven from code, so it is present and exactly as `specs/instrumentation.md`
 specifies. Because nothing holds a writable state, its operations are written in
 the shape of `update`: a pose takes the current state and returns the next, and
-a caller applies it through `engine.apply((s) => debug.start(s))`; a reading
-takes the state and returns what it read, as `debug.snapshot(engine.state)`.
+a caller applies it through `engine.apply((s) => debug.startLevel(s, 1))`; a
+reading takes the state and returns what it read, as
+`debug.snapshot(engine.state)`.
 Nothing is published to the page.
 
 `VoluteState` is a contract. Keep every field, under the name, type, and meaning

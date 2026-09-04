@@ -6,8 +6,8 @@
 // carrying one charge ... Firing moves the queued charge into the loaded slot and
 // draws a new queued charge; a swap exchanges the two charges, draws nothing, and
 // is available whether or not the fire cooldown has expired."
-// specs/controls.md binds swap to `KeyX`, read as a press edge, and makes it live
-// on `playing`. specs/instrumentation.md's `setLoaded` / `setQueued` "sets the
+// specs/controls.md ("Actions") gives `b` the exchange, read as a press
+// edge and live on `playing` alone, and `src/constants.ts` binds it to `KeyX`. specs/instrumentation.md's `setLoaded` / `setQueued` "sets the
 // core the injector holds loaded, and the one it holds queued, to `charge`", and
 // leaves the generator untouched — so the two charges the check poses are the two
 // it reads back, and no draw can substitute for the exchange.
@@ -20,13 +20,11 @@
 // (specs/progression.md), so nothing about the pose is out of the ordinary for the
 // level it is posed on.
 //
-// THE HALL. The quota is exhausted and one core is parked at the inlet
-// (`parkedCore()`), which specs/channel.md's polyline puts at `(40, 40)`. An
-// exhausted quota over an empty channel clears the level on the tick the press
-// runs (specs/channel.md, "The order of a tick", step 6), and swap is live on
-// `playing` alone (specs/controls.md), so one core has to stand there. It is
-// nowhere near the injector and nothing is fired, so the two charges are the
-// only things this check touches.
+// THE HALL. `poseHall` holds the inlet with `setEmission(false)` and leaves the
+// level's quota where it stands, so no core arrives and the "quota exhausted and
+// channel empty" clear of specs/progression.md never fires — which is what keeps
+// the screen on `playing`, where this control is live (specs/controls.md). The
+// channel is EMPTY: nothing stands in the hall but the injector.
 //
 // TOLERANCE. None. A charge id is one of five names and the case grades it
 // exactly.
@@ -36,7 +34,6 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  parkedCore,
   poseHall,
   pressSwap,
   type Harness,
@@ -59,7 +56,7 @@ afterEach(async () => {
 });
 
 it("exchanges the loaded and queued charges when the swap control is raised", async () => {
-  await poseHall(h, { cores: parkedCore(), loaded: LOADED, queued: QUEUED });
+  await poseHall(h, { loaded: LOADED, queued: QUEUED });
 
   const posed = await h.snapshot();
   assertEqual(posed.injector.loaded, LOADED, "the charge posed as loaded");

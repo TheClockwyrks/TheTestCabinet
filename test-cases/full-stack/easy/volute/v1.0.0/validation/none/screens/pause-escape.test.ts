@@ -5,8 +5,8 @@
 // point (screens/pause-freezes), and resuming is another (screens/resume-escape).
 //
 // THE SPEC IT RESTS ON.
-//   specs/controls.md ("Actions and bindings"): "pause | `Escape` | — | edge |
-//   pauses, and resumes", and ("What each screen reads") "`playing` | the
+//   specs/controls.md ("Actions and bindings"): "pause | `Escape`, `KeyP` | — |
+//   edge | pauses, and resumes", and ("What each screen reads") "`playing` | the
 //   pointer, the two turn actions, fire, swap, and pause, which pauses".
 //   specs/ui.md ("Screens"): `paused` is "The hall held still."
 //

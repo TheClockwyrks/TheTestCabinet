@@ -33,13 +33,14 @@ Each operation is a reading or a pose of `VoluteState`, written in the shape of
 writable one. A pose takes the current state, as `DeepReadonly<VoluteState>`, and
 returns the next `VoluteState`; a reading takes the state the same way and
 returns what it read. A caller drives a pose through the engine's `apply`, as
-`engine.apply((s) => debug.start(s))`, and a reading against the engine's current
-state, as `debug.snapshot(engine.state)`. A pose arranges the hall, and the
-game's own systems run from there exactly as they do in play: a core placed
-through the surface advances, merges, and recoils as one the inlet emitted, and a
-core released through it flies, strikes, and seats through the same insertion a
-played shot uses. Where the surface's implementation lives under `src/` is yours
-to decide; `src/game.ts` declares and exports its type, `VoluteDebugApi`.
+`engine.apply((s) => debug.startLevel(s, 1))`, and a reading against the
+engine's current state, as `debug.snapshot(engine.state)`. A pose arranges the
+hall, and the game's own systems run from there exactly as they do in play: a
+core placed through the surface advances, merges, and recoils as one the inlet
+emitted, and a core released through it flies, strikes, and seats through the
+same insertion a played shot uses. Where the surface's implementation lives
+under `src/` is yours to decide; `src/game.ts` declares and exports its type,
+`VoluteDebugApi`.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{else}}
@@ -60,8 +61,8 @@ emitted, and a core released through it flies, strikes, and seats through the
 same insertion a played shot uses. A reading takes no arguments and returns plain
 data, read off the world at the instant of the call. A pose that opens a level
 takes effect no later than the end of the next advanced frame, so a caller
-advances one frame after `reset`, `start`, or `startLevel` before it poses,
-presses a key, or reads further. Where the surface's implementation lives under
+advances one frame after `reset` or `startLevel` before it poses, presses a key,
+or reads further. Where the surface's implementation lives under
 `src/` is yours to decide; the type your instance declares for it, the `D` of its
 `GameInstance<D>`, is the surface this file specifies.
 
@@ -220,12 +221,14 @@ queued core with its cooldown at `0`, the aim at `270` degrees, and `simTime` at
 `muted` is deliberately untouched: muting is a player preference the runtime
 owns. Because a reset restores exactly the declared fields, anything else the
 build keeps across ticks is derived from them.
-{{#if (eq engine.slug "none")}}
 
-Whether the simulation advances on its own each frame is untouched as well.
-`setAutoStep` belongs to the caller driving the game, not to the run being
-played, so a `reset` inside a stepped scenario leaves the game off the wall clock
-and the scenario stays reproducible.
+The inlet's gate and the train's gate are untouched as well, for the reason
+`setEmission` and `setFeed` give below.
+{{#if (eq engine.slug "none")}}
+Whether the simulation advances on its own each frame is untouched for the same
+reason: `setAutoStep` belongs to the caller driving the game, not to the run
+being played, so a `reset` inside a stepped scenario leaves the game off the wall
+clock and the scenario stays reproducible.
 {{/if}}
 
 {{#if (eq engine.slug "simple-2d")}}
@@ -234,20 +237,53 @@ and the scenario stays reproducible.
 A pure reading of `state`, returned as the plain object under Snapshot shape
 below. It returns no state, because it poses nothing.
 
-### `start(state)`
+### `setScreen(state, name)`
 {{else}}
 ### `snapshot()`
 
 A pure read of the running game, returned as the plain object under Snapshot
 shape below. It changes nothing.
 
-### `start()`
+### `setScreen(name)`
 {{/if}}
 
-Poses exactly what the start control on the title does: the score `0`, the cells
-at `CELLS` (`3`), and level `1` opened exactly as `startLevel` opens it. The
-generator's state and `simTime` stay as they are, so a run from a known seed is a
-`reset` followed by this.
+Sets the screen to `name`, one of the seven the state carries, and changes
+nothing else: no level is opened, no channel is seeded, no timer is started, and
+no interlude is set. A name outside the seven is taken as `title`.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setLevel(state, level)`
+{{else}}
+### `setLevel(level)`
+{{/if}}
+
+Sets the level in play to `level`, a whole number clamped to `1` through
+`LEVEL_COUNT` (`5`), and changes nothing else: the screen, the channel, the
+quota, the pressure, the chain step, the active machinery, the projectiles, and
+the injector are all left as they are. The level's feed speed and its charge set
+follow the new value at once.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setScore(state, n)`, `setCells(state, n)`
+{{else}}
+### `setScore(n)`, `setCells(n)`
+{{/if}}
+
+`setScore` sets the run's score to `n`, a whole number clamped to at least `0`.
+`setCells` sets the cells remaining to `n`, a whole number clamped to `0` through
+`CELLS` (`3`). Neither ends a run or opens one: `setCells(0)` leaves the screen
+exactly as it stands, and the ending a spent last cell reaches comes from the
+ticks run after the pose.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setChainStep(state, k)`
+{{else}}
+### `setChainStep(k)`
+{{/if}}
+
+Sets the chain step an extraction scores at to `k`, a whole number clamped to at
+least `1`, and restarts the window that returns the step to `1`, so the posed
+step holds for `CHAIN_RESET` (`2.0` s) of play from the call.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `startLevel(state, level)`
@@ -262,6 +298,11 @@ the pressure becomes `0`,
 the chain step becomes `1`, the active machinery clears, every projectile is
 discarded, and the injector draws a fresh loaded and queued core. The score and
 the cells stay as they are.
+
+This is the one operation that arranges more than one thing, because opening a
+level IS the thing it poses: the seeded cores, the level's quota, and the fresh
+draws are the level opening itself, and a caller that wants some other hall
+assembles it from the single-field poses above.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `poseTrain(state, cores)`
@@ -303,17 +344,27 @@ Sets the core the injector holds loaded, and the one it holds queued, to
 draw is the one it would otherwise have made.
 
 {{#if (eq engine.slug "simple-2d")}}
-### `fire(state, angleDegrees)`
+### `setAim(state, angleDegrees)`
 {{else}}
-### `fire(angleDegrees)`
+### `setAim(angleDegrees)`
 {{/if}}
 
-Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and releases the
-loaded core along it through the same path the fire control takes: the core
-leaves the injector as a projectile, the queued core becomes loaded, a fresh
-core is drawn as queued, and the cooldown is set as a played shot sets it. Any
-cooldown outstanding at the call is cleared first, so the call always launches,
-and a call made while the injector holds no loaded core draws one first.
+Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and does nothing
+else: no core is released, the cooldown is untouched, and the loaded and queued
+cores stay as they are.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `fire(state)`
+{{else}}
+### `fire()`
+{{/if}}
+
+Releases the loaded core along the current aim through the same path the fire
+control takes: the core leaves the injector as a projectile, the queued core
+becomes loaded, a fresh core is drawn as queued, and the cooldown is set as a
+played shot sets it. Any cooldown outstanding at the call is cleared first, so
+the call always launches, and a call made while the injector holds no loaded core
+draws one first.
 
 The flight, the strike, the insertion, and any extraction the insertion causes
 come from the ticks that follow.
@@ -340,17 +391,55 @@ is the level's quota less what remains, so which of the following emissions carr
 a mark, and which kind each mark is, follow the new value.
 
 {{#if (eq engine.slug "simple-2d")}}
+### `setEmission(state, enabled)`
+{{else}}
+### `setEmission(enabled)`
+{{/if}}
+
+Holds the inlet, and lets it go again. `setEmission(false)` stops step 7 of the
+tick order `specs/channel.md` fixes: no core is emitted, whatever the quota and
+whatever the tail has cleared, and the quota is left where it stands.
+`setEmission(true)` returns the inlet to emitting by its own rule. It is
+independent of the quota, so a hall whose quota is untouched and whose inlet is
+held emits nothing and is never cleared for an exhausted quota.
+
+The inlet emits when a game opens, and a `reset` and a `startLevel` both leave
+this where the caller put it, because it belongs to the caller driving the game
+rather than to the run being played.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setFeed(state, enabled)`
+{{else}}
+### `setFeed(enabled)`
+{{/if}}
+
+Holds the train where it stands, and lets it advance again. `setFeed(false)`
+stops step 2 of that same tick order: no segment advances, no merge follows from
+an advance, and an active `backflow` moves nothing. `setFeed(true)` returns the
+train to advancing by its own rules.
+
+Every other step runs unchanged while the train is held: timers fall, projectiles
+fly, a strike seats and the run it completes is extracted, a removal recoils what
+is behind it, pressure rises and bleeds, a core standing at the intake spends a
+cell, and the inlet emits. The train advances when a game opens, and a `reset`
+and a `startLevel` both leave this where the caller put it, for the same reason
+the inlet's gate is left alone.
+
+{{#if (eq engine.slug "simple-2d")}}
 ### `grantMachinery(state, kind)`
 {{else}}
 ### `grantMachinery(kind)`
 {{/if}}
 
-Grants `kind`, one of the four machinery kinds, exactly as extracting a run
-holding a mark of that kind grants it. `choke`, `backflow`, and `sightline`
-become the active machinery at their full duration, replacing whatever was active
-and restarting its timer. `bore` resolves at once, centered on the head core's
-position, through the same removal and the same score an extraction's `bore`
-produces; an empty channel removes nothing and scores nothing.
+Grants `kind`, one of the three timed machinery kinds — `choke`, `backflow`, or
+`sightline` — exactly as extracting a run holding a mark of that kind grants it:
+it becomes the active machinery at its full duration, replacing whatever was
+active and restarting its timer. A `kind` naming none of the three is taken as
+`choke`.
+
+`bore` is not granted here. It removes cores and scores the moment it resolves,
+and no pose decides an outcome, so a caller that wants a bore poses a run
+carrying a `bore` mark and lets the ticks extract it.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `pause(state)`, `resume(state)`
@@ -412,6 +501,11 @@ again, returning the screen to `playing`. Neither touches anything else.
 
   machinery: { kind: <string>, remaining: <number> } | null,
 
+  emission: <boolean>,           // whether the inlet emits
+  feed: <boolean>,               // whether the train advances
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,           // whether the frame loop advances the simulation
+{{/if}}
   muted: <boolean>,
   simTime: <number>,             // accumulated simulation time, in seconds
   rngState: <number>,

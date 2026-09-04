@@ -4,6 +4,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createCanvas } from "@napi-rs/canvas";
 import {
+  CELLS,
   DANGER_S,
   FIELD_H,
   FIELD_W,
@@ -343,7 +344,9 @@ describe("the surface on the page", () => {
     })();
     api.setAutoStep(false);
     api.reset({ seed: 3 });
-    api.start();
+    api.setScore(0);
+    api.setCells(CELLS);
+    api.startLevel(1);
     api.setQuotaRemaining(0);
     api.clearTrain();
     api.poseTrain([[PATH_LENGTH - 1, "halide", null]]);

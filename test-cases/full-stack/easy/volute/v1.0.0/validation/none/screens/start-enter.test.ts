@@ -6,7 +6,8 @@
 // THE SPEC IT RESTS ON.
 //   specs/controls.md ("Actions and bindings"): "confirm | `Enter`, `Space` | —
 //   | edge | starts a run, and dismisses an ending", and ("What each screen
-//   reads") "`title` | confirm starts a run".
+//   reads") "`title` | confirm starts a run, from the keyboard or a primary
+//   pointer press".
 //   specs/instrumentation.md (`start`): the start control poses "the score `0`,
 //   the cells at `CELLS` (`3`), and level `1` opened exactly as `startLevel`
 //   opens it", and `startLevel` is where "the screen becomes `playing`".

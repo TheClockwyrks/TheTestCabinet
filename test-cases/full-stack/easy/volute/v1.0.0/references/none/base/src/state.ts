@@ -60,6 +60,8 @@ export function createState(seed: number): VoluteState {
     simTime: 0,
     accumulator: 0,
     autoStep: true,
+    emission: true,
+    feed: true,
     muted: false,
     rngState: seed >>> 0,
   };

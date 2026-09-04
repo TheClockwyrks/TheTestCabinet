@@ -143,6 +143,10 @@ export interface VoluteState {
   readonly simTime: number;
   /** The frame time waiting for the next whole tick, in `[0, TICK_DT)`. */
   readonly accumulator: number;
+  /** Whether the inlet emits. `true` in play; the debug surface's gate sets it. */
+  readonly emission: boolean;
+  /** Whether the train advances. `true` in play; the debug surface's gate sets it. */
+  readonly feed: boolean;
   /** The game's readable copy of the engine's mute bit. */
   readonly muted: boolean;
   /** The state of the game's one seeded generator. */
@@ -160,8 +164,8 @@ export interface VoluteState {
  * Every operation is a READING or a POSE, written in the shape of `update`: each
  * takes the current state as `DeepReadonly<VoluteState>` and either returns the
  * next `VoluteState` or returns what it read. A caller drives a pose through
- * `engine.apply((s) => debug.start(s))` and a reading against `engine.state`, as
- * `debug.snapshot(engine.state)`.
+ * `engine.apply((s) => debug.startLevel(s, 1))` and a reading against
+ * `engine.state`, as `debug.snapshot(engine.state)`.
  */
 export interface VoluteDebugApi {
   /** `VOLUTE_DEBUG_VERSION`. */
@@ -176,8 +180,20 @@ export interface VoluteDebugApi {
   /** A pure reading of the running game. */
   snapshot(state: DeepReadonly<VoluteState>): VoluteSnapshot;
 
-  /** Pose what the start control on the title does. */
-  start(state: DeepReadonly<VoluteState>): VoluteState;
+  /** Set the screen, and nothing else. */
+  setScreen(state: DeepReadonly<VoluteState>, name: string): VoluteState;
+
+  /** Set the level in play, and nothing else. */
+  setLevel(state: DeepReadonly<VoluteState>, level: number): VoluteState;
+
+  /** Set the run's score, clamped to at least `0`. */
+  setScore(state: DeepReadonly<VoluteState>, n: number): VoluteState;
+
+  /** Set the cells remaining, clamped to `0` through `CELLS`. */
+  setCells(state: DeepReadonly<VoluteState>, n: number): VoluteState;
+
+  /** Set the chain step, and restart the window that returns it to `1`. */
+  setChainStep(state: DeepReadonly<VoluteState>, k: number): VoluteState;
 
   /** Open `level`, exactly as the interlude before it opens it. */
   startLevel(state: DeepReadonly<VoluteState>, level: number): VoluteState;
@@ -197,8 +213,11 @@ export interface VoluteDebugApi {
   /** Set the charge the injector holds queued. */
   setQueued(state: DeepReadonly<VoluteState>, charge: string): VoluteState;
 
-  /** Aim at `angleDegrees` and release the loaded core along it. */
-  fire(state: DeepReadonly<VoluteState>, angleDegrees: number): VoluteState;
+  /** Set the aim, normalized into `[0, 360)`, and nothing else. */
+  setAim(state: DeepReadonly<VoluteState>, angleDegrees: number): VoluteState;
+
+  /** Release the loaded core along the current aim. */
+  fire(state: DeepReadonly<VoluteState>): VoluteState;
 
   /** Set the pressure, clamped to `0` through `100`. */
   setPressure(state: DeepReadonly<VoluteState>, value: number): VoluteState;
@@ -206,7 +225,13 @@ export interface VoluteDebugApi {
   /** Set the cores the inlet has left to emit this level. */
   setQuotaRemaining(state: DeepReadonly<VoluteState>, n: number): VoluteState;
 
-  /** Grant `kind` exactly as extracting a run holding its mark grants it. */
+  /** Hold the inlet, and let it go again. */
+  setEmission(state: DeepReadonly<VoluteState>, enabled: boolean): VoluteState;
+
+  /** Hold the train where it stands, and let it advance again. */
+  setFeed(state: DeepReadonly<VoluteState>, enabled: boolean): VoluteState;
+
+  /** Grant one of the three timed kinds, as extracting its mark grants it. */
   grantMachinery(state: DeepReadonly<VoluteState>, kind: string): VoluteState;
 
   /** Pose the pause control. */
@@ -254,9 +279,7 @@ function readInput(api: UpdateApi): Controls {
   // The samples the primary pointer delivered since the input frame last closed:
   // a pointer that has not moved leaves the aim to the turn actions, and a
   // second finger on a touchscreen aims nothing.
-  const samples = api.input
-    .pointerSamples()
-    .filter((sample) => sample.primary);
+  const samples = api.input.pointerSamples().filter((sample) => sample.primary);
   const last = samples[samples.length - 1];
   const pointer: Point | null =
     last === undefined ? null : { x: last.x, y: last.y };
@@ -266,7 +289,9 @@ function readInput(api: UpdateApi): Controls {
     pointer,
     fire: fire || pointerFire,
     swap,
-    confirm,
+    // The pointer's press is the shot on `playing` and confirm on the three
+    // screens that read confirm, which the screen's own row decides between.
+    confirm: confirm || pointerFire,
     pause,
   };
 }

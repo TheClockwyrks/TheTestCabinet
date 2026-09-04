@@ -133,7 +133,8 @@ describe("advance", () => {
     const tailBefore = h.snapshot().train[6].s;
 
     h.debug.setLoaded("halide");
-    h.debug.fire(270);
+    h.debug.setAim(270);
+    h.debug.fire();
     let extracted = false;
     for (let i = 0; i < 40 && !extracted; i += 1) {
       await h.engine.advance(1);

@@ -32,15 +32,15 @@
 // ear, and inferring the cue from the waveform the reference happens to use would
 // grade builds against an implementation rather than against the specification.
 //
-// THE HALL IS POSED SO THAT ONLY THE SHOT CAN SOUND. One lone core, the inlet
-// stopped (`quotaRemaining` 0), pressure 0, and the core parked on the bottom run
-// far from the shot's path. Nothing else in `specs/ui.md`'s cue table can fire:
-// no insertion (nothing is struck), no extraction (`MIN_RUN` is 3 and there is
-// one core), no intake arrival (the core is nowhere near `s = 5000`), no clear
-// ("A level is cleared the moment its quota is exhausted AND no cores remain on
-// the channel" — a core remains, so the level never clears, which is exactly why
-// the hall is not posed empty), no emission, no grant, and no swap. Every sound
-// the probe hears therefore belongs to the shot.
+// THE HALL IS POSED SO THAT ONLY THE SHOT CAN SOUND. An EMPTY channel with the
+// inlet held and the pressure at 0. Nothing else in `specs/ui.md`'s cue table can
+// fire: no core to strike, insert, extract, or carry into the intake, no
+// emission, no grant, and no swap. The hall stays on `playing` while it stands
+// empty because `poseHall` leaves the quota unexhausted and holds the inlet with
+// `setEmission(false)` (`specs/instrumentation.md`) rather than starving it, so
+// `specs/progression.md`'s clear condition — "the moment its quota is exhausted
+// and no cores remain on the channel" — never fires. Every sound the probe hears
+// therefore belongs to the shot.
 //
 // THE HARNESS IS CREATED ARMED, and the bed is left to start BEFORE the probe
 // opens. A browser opens no audio context without a genuine user gesture, so
@@ -65,14 +65,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { CHANNEL_ARC, type ChargeId } from "../constants";
 import {
   captureReplay,
   createHarness,
   driveShot,
   poseHall,
   pressFire,
-  spacedBlock,
   startRun,
   stepUntilBed,
   stepUntilSound,
@@ -88,22 +86,6 @@ import {
  * on no tick before it" a real reading rather than a formality.
  */
 const QUIET_TICKS = 30;
-
-/**
- * Where the lone core stands: the middle of the leg from vertex 2 to vertex 3.
- *
- * `specs/channel.md` runs that leg along `y = 500`, the bottom of the field,
- * while `specs/injector.md` fixes the injector at `(420, 330)` and this shot
- * flies UP from it — so the core cannot be struck however far it advances during
- * the drive, and at an arc position this low it is nowhere near the intake at
- * `s = 5000` nor the danger line at `s = 4000`. It is here at all only because a
- * hall with NO core clears the moment the tick runs, which would move the game
- * off `playing` and stop the bed.
- */
-const QUIET_S = (CHANNEL_ARC[2] + CHANNEL_ARC[3]) / 2;
-
-/** Immaterial: no rule here turns on which of the five charges is posed. */
-const QUIET_CHARGE: ChargeId = "halide";
 
 let h: Harness;
 
@@ -130,7 +112,7 @@ it("sounds a cue on the tick the injector fires, and on no tick before it", asyn
   const looping = await stepUntilBed(h);
   if (looping === 0) await stepUntilSound(h);
 
-  await poseHall(h, { cores: spacedBlock(QUIET_S, 1, QUIET_CHARGE) });
+  await poseHall(h);
 
   // Watched from here, so what is read is the quiet stretch and the shot alone.
   const played = watchCues(h);

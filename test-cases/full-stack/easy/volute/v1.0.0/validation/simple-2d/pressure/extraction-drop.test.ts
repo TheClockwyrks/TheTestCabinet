@@ -11,23 +11,24 @@
 //
 // WHAT ELSE MOVES ON THAT TICK. `specs/channel.md` ("The order of a tick") puts
 // the insertion and its extraction at step 3 and the rise or bleed at step 5, so
-// the tick's own bleed lands on top of the drop. The channel here carries three
-// cores before the shot and one after, both well under `PRESSURE_FREE` (`24`), so
-// that term is unambiguously one tick of the `2.0` per second bleed whichever
+// the tick's own bleed lands on top of the drop. The channel here carries two
+// cores before the shot and none after, both well under `PRESSURE_FREE` (`24`),
+// so that term is unambiguously one tick of the `2.0` per second bleed whichever
 // count a build reads it from.
 //
-// THE DRIVE. An isolated hall at level 1 with the quota stopped at 0. Two cores
-// of one charge sit on the channel's straight top leg, and the injector is loaded
-// with that same charge and fired straight up the field at 270 degrees, which
-// `specs/injector.md` carries into a strike and an insertion. The pair is what
-// makes the outcome independent of which core is struck and from which side: with
-// two same-charge cores spaced by `SPACING`, every one of the four cases
-// `specs/injector.md` ("Insertion") allows leaves three same-charge cores spaced
-// by `SPACING` in one segment, which is the maximal run of at least 3 that
-// `specs/extraction.md` extracts on the insertion. A third core of a DIFFERENT
-// charge is posed far behind, so the extraction does not empty the channel and
-// trip the clear `specs/progression.md` gives an exhausted quota; it is a
-// different charge and a separate segment, so it takes no part in the run.
+// THE DRIVE. An isolated hall at level 1 holding two cores of one charge on the
+// channel's straight top leg, and nothing else: `poseHall` holds the inlet with
+// `setEmission(false)` and leaves the level's quota where it stands, so nothing
+// arrives, the channel the extraction empties does not trip the clear
+// `specs/progression.md` gives an EXHAUSTED quota, and no third core has to stand
+// anywhere to keep the hall in play. The injector is loaded with the pair's charge
+// and fired straight up the field at 270 degrees, which `specs/injector.md`
+// carries into a strike and an insertion. The pair is what makes the outcome
+// independent of which core is struck and from which side: with two same-charge
+// cores spaced by `SPACING`, every one of the four cases `specs/injector.md`
+// ("Insertion") allows leaves three same-charge cores spaced by `SPACING` in one
+// segment, which is the maximal run of at least 3 that `specs/extraction.md`
+// extracts on the insertion.
 //
 // WHAT IS ASSERTED, AND WHAT IS NOT. The count of cores the removal took is read
 // off the build's own snapshots rather than assumed, because how many cores an
@@ -69,9 +70,6 @@ import {
 /** The charge the pair carries and the injector is loaded with. */
 const RUN_CHARGE: ChargeId = "halide";
 
-/** The bystander's charge, different from the pair's so it joins no run. */
-const BYSTANDER_CHARGE: ChargeId = "cobalt";
-
 /**
  * The head of the pair, on the channel's straight top leg.
  *
@@ -87,17 +85,8 @@ const BYSTANDER_CHARGE: ChargeId = "cobalt";
  */
 const PAIR_HEAD_S = topRunS(412);
 
-/**
- * The bystander, far enough behind the pair that it cannot reach it.
- *
- * It is a segment of its own, so `specs/channel.md` advances it at the fixed
- * catch-up rate of 180 units/s; over the flight it closes to some 160 units short
- * of the pair's tail, which is far more than the `SPACING` a merge needs.
- */
-const BYSTANDER_S = 100;
-
-/** Cores on the channel when the shot is fired: the pair and the bystander. */
-const POSED_CORES = 3;
+/** Cores on the channel when the shot is fired: the pair and nothing else. */
+const POSED_CORES = 2;
 
 /** Long enough for the shot to cross the field; the flight itself is some 28 ticks. */
 const MAX_TICKS = 90;
@@ -121,12 +110,8 @@ afterEach(async () => {
 it("drops pressure by 0.8 for each core the extraction removed", async () => {
   await poseHall(harness, {
     level: 1,
-    quotaRemaining: 0,
     pressure: START_PRESSURE,
-    cores: [
-      ...spacedRun(PAIR_HEAD_S, [RUN_CHARGE, RUN_CHARGE]),
-      ...spacedRun(BYSTANDER_S, [BYSTANDER_CHARGE]),
-    ],
+    cores: spacedRun(PAIR_HEAD_S, [RUN_CHARGE, RUN_CHARGE]),
     loaded: RUN_CHARGE,
   });
   await fireAt(harness, OPENING_AIM);
