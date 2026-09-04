@@ -29,13 +29,12 @@
 // this code. Istanbul's instrumentation is deterministic given the source and the
 // plugin version, and it emits the JSON format that is stored natively rather
 // than through a remap. Its one real cost is that instrumented code runs slower,
-// and that is the cost this architecture does not pay: these commands run
-// host-side after the run's container is gone, so a slow suite costs the run none
-// of its runtime budget.
+// which this project can afford: these checks run after the fact rather than in
+// the inner development loop.
 //
 // `src/constants.ts` and `src/main.ts` are supplied with the project and must not
 // be edited, so they are excluded from coverage: they are not this build's work
-// and counting them would put case-authored lines in the build's denominator.
+// and counting them would put supplied lines in the build's denominator.
 
 import { defineConfig } from "vitest/config";
 
