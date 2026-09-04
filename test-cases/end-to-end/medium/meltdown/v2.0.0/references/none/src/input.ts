@@ -301,6 +301,8 @@ export function applyPointerSample(
   state.pointer.x = sample.x;
   state.pointer.y = sample.y;
 
+  if (sample.type === "move") reachMenuRow(state, sample.x, sample.y, host);
+
   if (sample.type === "move" || sample.type === "down") {
     if (state.build !== null && sample.x < PANEL_X) {
       movePreviewTo(state, sample.x, sample.y);
@@ -321,6 +323,32 @@ export function applyPointerSample(
     if (sameRegion(began, region) && region !== null) {
       resolvePress(state, region, host);
     }
+  }
+}
+
+/**
+ * The pointer reaching a row of the current screen's menu highlights it
+ * (specs/controls.md).
+ *
+ * Reaching a row is not taking it, so nothing is confirmed here. Off every row
+ * the highlight stays on the row it last reached, and reaching the row already
+ * highlighted changes nothing and raises nothing, which is why the cue sits
+ * behind the same guard the keyboard's move does.
+ */
+function reachMenuRow(
+  state: MeltdownState,
+  x: number,
+  y: number,
+  host: InputHost,
+): void {
+  const rows = menuRects(state.screen);
+  for (let index = 0; index < rows.length; index += 1) {
+    if (!inRect(rows[index], x, y)) continue;
+    if (state.menuIndex !== index) {
+      state.menuIndex = index;
+      host.cue("menu");
+    }
+    return;
   }
 }
 

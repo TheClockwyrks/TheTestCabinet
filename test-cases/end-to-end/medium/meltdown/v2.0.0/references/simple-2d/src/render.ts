@@ -126,12 +126,11 @@ const MODE_BLURB: Readonly<Record<ModeName, string[]>> = {
  * The how-to screen's vertical rhythm.
  *
  * The step is what makes the body fit: HOWTO_LINES is long enough that a 20px
- * step would carry its last line to 716, past the 720 of the stage and straight
- * through the footer.
+ * step would carry its last line past the 720 of the stage and straight through
+ * the BACK row drawn under it.
  */
-const HOWTO_TOP = 116;
-const HOWTO_LINE_STEP = 19;
-const HOWTO_FOOTER_GAP = 14;
+const HOWTO_TOP = 100;
+const HOWTO_LINE_STEP = 18;
 
 /** The how-to screen's body, one line per entry. */
 const HOWTO_LINES: readonly string[] = [
@@ -189,7 +188,7 @@ export function renderGame(state: MeltdownState, ctx: Ctx): void {
       drawDifficultySelect(state, ctx);
       break;
     case "howto":
-      drawHowTo(ctx);
+      drawHowTo(state, ctx);
       break;
     case "paused":
       drawPause(state, ctx);
@@ -828,7 +827,10 @@ function drawTitle(state: MeltdownState, ctx: Ctx): void {
 function drawModeSelect(state: MeltdownState, ctx: Ctx): void {
   text(ctx, "SELECT A MODE", STAGE_W / 2, 150, 34, COLOR.text, "center", 700);
   drawMenu(state, ctx);
-  const blurb = MODE_BLURB[MODES[state.menuIndex]] ?? [];
+  // The last row is `BACK`, which names no mode and draws no description
+  // (specs/screens.md).
+  const mode = MODES[state.menuIndex];
+  const blurb = mode === undefined ? [] : (MODE_BLURB[mode] ?? []);
   let y = 552;
   for (const line of blurb) {
     text(ctx, line, STAGE_W / 2, y, 16, COLOR.dim, "center");
@@ -847,7 +849,6 @@ function drawDifficultySelect(state: MeltdownState, ctx: Ctx): void {
     ctx.strokeStyle = on ? COLOR.highlight : COLOR.panelEdge;
     ctx.lineWidth = on ? 2 : 1;
     ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
-    const row = DIFFICULTY_TABLE[DIFFICULTIES[index]];
     text(
       ctx,
       label,
@@ -858,6 +859,10 @@ function drawDifficultySelect(state: MeltdownState, ctx: Ctx): void {
       "left",
       on ? 700 : 600,
     );
+    // `BACK` names no difficulty and draws no figures (specs/screens.md).
+    const difficulty = DIFFICULTIES[index];
+    if (difficulty === undefined) return;
+    const row = DIFFICULTY_TABLE[difficulty];
     text(
       ctx,
       `${row.money} MONEY   ${row.waves} WAVES`,
@@ -870,16 +875,14 @@ function drawDifficultySelect(state: MeltdownState, ctx: Ctx): void {
   });
 }
 
-function drawHowTo(ctx: Ctx): void {
+function drawHowTo(state: MeltdownState, ctx: Ctx): void {
   text(ctx, "HOW TO PLAY", 80, 74, 34, COLOR.text, "left", 700);
   let y = HOWTO_TOP;
   for (const line of HOWTO_LINES) {
     text(ctx, line, 80, y, 15, line === "" ? COLOR.dim : COLOR.text);
     y += HOWTO_LINE_STEP;
   }
-  // Below the copy rather than at a height of its own, so the block and the
-  // control under it cannot run into each other however long the copy grows.
-  text(ctx, "ESC — BACK", 80, y + HOWTO_FOOTER_GAP, 15, COLOR.highlight);
+  drawMenu(state, ctx);
 }
 
 function drawPause(state: MeltdownState, ctx: Ctx): void {

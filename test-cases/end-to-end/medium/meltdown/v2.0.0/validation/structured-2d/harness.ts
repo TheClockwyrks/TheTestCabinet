@@ -117,6 +117,7 @@ import type {
   Face,
   MeltdownDebugApi,
   MeltdownSnapshot,
+  MenuRow,
   ModeName,
   Phase,
   Screen,
@@ -1381,7 +1382,7 @@ export function captureStill(h: Harness, outputId: string): void {
 // about a tower's cooling poses no unit.
 
 /**
- * `reset({seed})`: the title screen, a seeded generator, every declared field at
+ * `reset(seed)`: the title screen, a seeded generator, every declared field at
  * its title-screen value, both rosters empty and the world gate back on.
  *
  * No frame is advanced. A pose acts on the live game at the call under this
@@ -1390,7 +1391,7 @@ export function captureStill(h: Harness, outputId: string): void {
  * that has run no frame since.
  */
 export function resetTo(h: Harness, seed?: number): void {
-  h.debug.reset(seed === undefined ? undefined : { seed });
+  h.debug.reset(seed);
 }
 
 /** The money a run on this pair opens with (specs/modes.md). */
@@ -1780,6 +1781,49 @@ export async function pressAt(h: Harness, x: number, y: number): Promise<void> {
 export function tapControl(h: Harness, control: ControlRect): Promise<void> {
   const { x, y } = rectCenter(control);
   return pressAt(h, x, y);
+}
+
+/**
+ * The rectangle the build reported for row `index` of the current screen's menu,
+ * or the failure that it reported none.
+ *
+ * `specs/screens.md` requires every row of every menu to be a pointer target and
+ * has the build report each row's rectangle, so a screen whose menu the build
+ * drew but did not report cannot be driven with the pointer at all.
+ */
+export function menuRow(snapshot: MeltdownSnapshot, index: number): MenuRow {
+  const row = snapshot.menu.find((entry) => entry.index === index);
+  if (row === undefined) {
+    fail(
+      `snapshot().menu to hold row ${index} of the ${snapshot.screen} menu, ` +
+        `one rectangle per row in row order (specs/screens.md)`,
+      snapshot.menu.map((entry) => entry.index),
+    );
+  }
+  return row;
+}
+
+/**
+ * Move the pointer onto the centre of a reported menu row and run the frame that
+ * delivers it.
+ *
+ * Hover alone: `specs/controls.md` says reaching a row and taking it are
+ * separate, so this presses nothing.
+ */
+export async function hoverMenuRow(
+  h: Harness,
+  index: number,
+): Promise<MenuRow> {
+  const row = menuRow(h.debug.snapshot(), index);
+  const at = rectCenter(row);
+  await movePointerTo(h, at.x, at.y);
+  return row;
+}
+
+/** {@link pressAt} on the centre of a reported menu row. */
+export async function tapMenuRow(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(menuRow(h.debug.snapshot(), index));
+  await pressAt(h, at.x, at.y);
 }
 
 /** {@link pressAt} on the centre of tile `(col, row)`. */

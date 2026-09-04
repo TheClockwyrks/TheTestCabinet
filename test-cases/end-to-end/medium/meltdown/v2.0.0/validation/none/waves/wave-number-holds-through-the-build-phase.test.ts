@@ -77,7 +77,7 @@ it("reads the coming wave for the whole of the build phase before it", async () 
   const leaked = await runUntilLeaked(h);
   const cleared = await h.snapshot();
 
-  const swept = await h.skipUntil((snapshot) => snapshot.wave !== COMING, {
+  const swept = await h.coastUntil((snapshot) => snapshot.wave !== COMING, {
     maxSeconds: WATCH_SECONDS,
     pollSeconds: SAMPLE_SECONDS,
   });

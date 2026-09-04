@@ -234,6 +234,12 @@ it("reports every control the build panel offers, as a rectangle", async () => {
   const s = poseShape();
   await h.advance(1);
 
+  // The floor posed here is `playing`, which shows no menu, so what the SHAPE
+  // requires of `menu` is the field itself: an array, present on every screen.
+  // What it holds on each of the seven menu screens, and that it is empty here,
+  // is `screens.menu-rows-reported`'s.
+  assertEqual(Array.isArray(s.menu), true, "menu, an array on every screen");
+
   assertLength(
     s.controls.shop,
     TOWER_TYPES.length,

@@ -1,10 +1,11 @@
 # Dependencies — reinstalled with `npm ci`; never committed.
 node_modules/
 
-# Production build output — produced by `npm run build`.
-dist/
-build/
-out/
+# Production build output — produced by `npm run build`. Anchored to this
+# project's root so the patterns name only its own output.
+/dist/
+/build/
+/out/
 
 # Coverage reports — produced by `npm test`.
 coverage/
@@ -15,3 +16,6 @@ playwright-report/
 
 # Logs.
 *.log
+
+# Scratch that `tcab validate --implementation` writes beside the build.
+.tcab/

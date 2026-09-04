@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   DIFFICULTY_ITEMS,
   ENDING_ITEMS,
+  HOWTO_ITEMS,
   MODE_ITEMS,
   PAUSE_ITEMS,
   REACTOR_W,
@@ -11,7 +12,6 @@ import {
 } from "./constants";
 import { NO_CUES } from "./build";
 import {
-  HOWTO_ITEMS,
   backFromScreen,
   confirmMenu,
   highlighted,
@@ -125,8 +125,29 @@ describe("confirming a row", () => {
     state.menuIndex = 1;
     confirmMenu(state);
     expect(state.screen).toBe("howto");
+    expect(state.menuIndex).toBe(0);
     confirmMenu(state);
     expect(state.screen).toBe("title");
+    // Returning highlights the row that led away (specs/screens.md).
+    expect(state.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
+  });
+
+  it("takes the mode list's BACK row to the title, starting nothing", () => {
+    const state = on("modeselect");
+    state.menuIndex = MODE_ITEMS.indexOf("BACK");
+    confirmMenu(state);
+    expect(state.screen).toBe("title");
+    expect(state.menuIndex).toBe(0);
+    expect(state.towers).toEqual([]);
+  });
+
+  it("takes the difficulty list's BACK row to the mode list", () => {
+    const state = on("difficultyselect");
+    state.menuIndex = DIFFICULTY_ITEMS.indexOf("BACK");
+    confirmMenu(state);
+    expect(state.screen).toBe("modeselect");
+    expect(state.menuIndex).toBe(0);
+    expect(state.towers).toEqual([]);
   });
 
   it("sends Containment to the difficulty select", () => {
@@ -220,6 +241,13 @@ describe("leaving a screen", () => {
       backFromScreen(state);
       expect(state.screen).toBe(to);
     }
+  });
+
+  it("returns from the how-to screen with HOW TO PLAY highlighted", () => {
+    const state = on("howto");
+    backFromScreen(state);
+    expect(state.screen).toBe("title");
+    expect(state.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 
   it("does nothing at the title, where the game starts", () => {

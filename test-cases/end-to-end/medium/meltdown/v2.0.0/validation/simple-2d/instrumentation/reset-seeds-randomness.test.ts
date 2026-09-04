@@ -16,10 +16,10 @@
 // release order, over one wave.
 //
 // THREE LEGS, AND THE THIRD IS WHAT MAKES THE FIRST TWO MEAN ANYTHING. Two waves
-// released after `reset({ seed: 7 })` must draw the identical sequence — that is
+// released after `reset(7)` must draw the identical sequence — that is
 // reproducibility. But a build that draws no randomness at all, releasing every
 // unit at the same vent forever, satisfies reproducibility perfectly; so a wave
-// after `reset({ seed: 8 })` must draw a DIFFERENT sequence, which is what says
+// after `reset(8)` must draw a DIFFERENT sequence, which is what says
 // the sequence was drawn from the seed rather than fixed in the code.
 //
 // SIXTEEN UNITS, AND THE LENGTH IS DELIBERATE. Each draw is one of two vents, so a
@@ -81,7 +81,7 @@ afterEach(() => {
  * own from the frame the phase is entered (specs/instrumentation.md).
  */
 async function ventsAfterReset(seed: number): Promise<string[]> {
-  h.debug.reset({ seed });
+  h.debug.reset(seed);
   h.debug.setScreen("playing");
   h.debug.setPhase("wave");
   h.debug.setWave(1);
@@ -114,7 +114,7 @@ it("draws the same vents twice from one seed, and different vents from another",
   assertEqual(
     again.join(""),
     once.join(""),
-    `two waves released after reset({ seed: ${SEED_A} }) draw the same vents`,
+    `two waves released after reset(${SEED_A}) draw the same vents`,
   );
 
   const other = await ventsAfterReset(SEED_B);
@@ -126,6 +126,6 @@ it("draws the same vents twice from one seed, and different vents from another",
   assertNotEqual(
     other.join(""),
     once.join(""),
-    `a wave after reset({ seed: ${SEED_B} }) draws a different sequence`,
+    `a wave after reset(${SEED_B}) draws a different sequence`,
   );
 });

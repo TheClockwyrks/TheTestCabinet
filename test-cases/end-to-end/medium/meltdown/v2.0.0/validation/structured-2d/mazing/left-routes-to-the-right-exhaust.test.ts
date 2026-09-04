@@ -94,17 +94,20 @@ it("walks a left-vent unit off the floor through the right exhaust", async () =>
     "a left-vent unit is assigned the right exhaust (specs/floor.md)",
   );
 
-  const departure = await captureReplay(h, "crossing", (): Promise<Departure> =>
-    walkOffTheFloor(
-      h,
-      walker,
-      (unit) => tileAtPoint(unit.x, unit.y).col >= APPROACH_COL,
-      {
-        approachSeconds: APPROACH_SECONDS,
-        departureSeconds: DEPARTURE_SECONDS,
-        pollFrames: POLL_FRAMES,
-      },
-    ),
+  const departure = await captureReplay(
+    h,
+    "crossing",
+    (): Promise<Departure> =>
+      walkOffTheFloor(
+        h,
+        walker,
+        (unit) => tileAtPoint(unit.x, unit.y).col >= APPROACH_COL,
+        {
+          approachSeconds: APPROACH_SECONDS,
+          departureSeconds: DEPARTURE_SECONDS,
+          pollFrames: POLL_FRAMES,
+        },
+      ),
   );
 
   const last = departure.last;

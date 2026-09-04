@@ -78,7 +78,7 @@ it("draws the seconds left in a build phase, falling with the timer", async () =
   const opened = await h.snapshot();
   await captureStill(h, "timer");
 
-  await h.skip(FALL);
+  await h.coast(FALL);
   const second = await readPanel(h);
   const fallen = await h.snapshot();
 

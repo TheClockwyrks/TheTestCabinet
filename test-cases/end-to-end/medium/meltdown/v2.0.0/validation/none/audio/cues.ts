@@ -6,9 +6,9 @@
 // BY NAME and the bus announces the play, so a check reads the name, the frame
 // and the gain. There is no bus here to ask — `specs/audio.md` hands the whole
 // audio layer to the build, which "synthesize[s]" its cues "with the Web Audio
-// API" itself — so what is observed is the SOUND. `audio-init.js` is injected
-// before a line of the build's own script runs and wraps the two doors a browser
-// can emit sound through: a Web Audio source node being `start()`ed, whatever
+// API" itself — so what is observed is the SOUND. The shared harness's
+// `audio-init.js` probe is injected before a line of the build's own script runs
+// and wraps the two doors a browser can emit sound through: a Web Audio source node being `start()`ed, whatever
 // kind it is, and an `<audio>` element being played. The harness brackets every
 // driven frame around that count, so a sound is attributed to the frame that
 // produced it ({@link watchCues}).
@@ -376,6 +376,31 @@ export async function mousePress(
     frame: h.frame(),
     snapshot: await h.snapshot(),
   };
+}
+
+/**
+ * Move Chromium's own mouse to a logical stage point and run the frame that
+ * delivers it.
+ *
+ * WHY A REAL MOUSE. `specs/instrumentation.md` is explicit that no operation of
+ * the debug surface plays a cue, so a move posed through `pointerMove` is
+ * entitled to be silent. Only a genuine pointer event can raise the `menu` cue
+ * `specs/controls.md` binds to the pointer reaching a row. The logical point is
+ * mapped through the harness's own fit, which at the stage's own size is the
+ * identity.
+ *
+ * The frame run after the move is the frame the cue belongs to, and it is what
+ * is returned.
+ */
+export async function mouseMove(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<number> {
+  const at = h.css(x, y);
+  await h.page.mouse.move(at.x, at.y);
+  await h.advance(1);
+  return h.frame();
 }
 
 /**

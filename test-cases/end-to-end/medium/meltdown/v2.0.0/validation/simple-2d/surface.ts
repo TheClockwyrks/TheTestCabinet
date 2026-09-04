@@ -64,14 +64,25 @@ export type Phase = "opening" | "building" | "wave";
 
 /** The eight towers: six emitters, then the two movers. */
 export type TowerType =
-  "arc" | "stutter" | "rime" | "flak" | "bloom" | "lance" | "forge" | "sink";
+  | "arc"
+  | "stutter"
+  | "rime"
+  | "flak"
+  | "bloom"
+  | "lance"
+  | "forge"
+  | "sink";
 
 /** The six surge units. */
 export type SurgeType = "mote" | "sprint" | "hulk" | "swarm" | "drift" | "core";
 
 /** The five modes. */
 export type ModeName =
-  "containment" | "hundred" | "deeppockets" | "bottleneck" | "suddendeath";
+  | "containment"
+  | "hundred"
+  | "deeppockets"
+  | "bottleneck"
+  | "suddendeath";
 
 /** The three difficulties. */
 export type DifficultyName = "easy" | "medium" | "hard";
@@ -118,6 +129,17 @@ export interface ControlsSnapshot {
   speed: RectSnapshot;
   pause: RectSnapshot;
   mute: RectSnapshot;
+}
+
+/**
+ * One row of the current screen's menu, as the build drew it.
+ *
+ * `index` is the row number `menuIndex` counts. `specs/screens.md` leaves the
+ * layout of a menu to the build and requires every row to be a pointer target,
+ * so the build reports what it drew and a scenario presses that rectangle.
+ */
+export interface MenuRowSnapshot extends RectSnapshot {
+  index: number;
 }
 
 /** The held placement preview. */
@@ -245,6 +267,11 @@ export interface MeltdownSnapshot {
   buildZone: { col0: number; row0: number; col1: number; row1: number } | null;
   /** The two vent-to-exhaust routes, in tiles. Never `null`. */
   paths: { left: { length: number }; top: { length: number } };
+  /**
+   * Every row of the menu the current screen shows, in row order from `0`, and
+   * empty while the screen is `playing`. Refreshed at the call.
+   */
+  menu: MenuRowSnapshot[];
   /** Where the build panel put each control, refreshed at the call. */
   controls: ControlsSnapshot;
   /** Every tower on the floor, in roster order. */
@@ -282,7 +309,7 @@ export interface MeltdownDebugApi<S = unknown> {
   // ---- The core ----------------------------------------------------------
 
   /** Restore every declared field to its title-screen value. */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>, seed?: number): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): MeltdownSnapshot;
 

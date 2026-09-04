@@ -41,7 +41,7 @@ import {
   type Harness,
 } from "../harness";
 
-/** The row the press starts from: the last of the five `MODE_ITEMS`. */
+/** The row the press starts from: the last of the six `MODE_ITEMS`. */
 const LAST_ROW = MODE_ITEMS.length - 1;
 
 /** The row it must land on: the first. */

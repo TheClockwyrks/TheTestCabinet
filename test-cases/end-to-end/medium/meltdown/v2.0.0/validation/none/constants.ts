@@ -24,8 +24,8 @@
 //     writes its whole audio layer and there is no bus to ask, so a cue's NAME
 //     is unobservable from out here. NO CHECK IN THIS PROJECT MAY ASSERT ONE,
 //     and listing them would only invite it. What is observable is that a sound
-//     was emitted and on which frame; `audio-init.js` says why that is the
-//     honest reading.
+//     was emitted and on which frame; `case-harness/page/audio-init.js` says
+//     why that is the honest reading.
 //   - NO TOLERANCES. Every bound a check asserts is stated in that check, next
 //     to the figure the specification fixes for it.
 
@@ -755,8 +755,15 @@ export const MODE_ITEMS: readonly string[] = [
   "DEEP POCKETS",
   "BOTTLENECK",
   "SUDDEN DEATH",
+  "BACK",
 ];
-export const DIFFICULTY_ITEMS: readonly string[] = ["EASY", "MEDIUM", "HARD"];
+export const DIFFICULTY_ITEMS: readonly string[] = [
+  "EASY",
+  "MEDIUM",
+  "HARD",
+  "BACK",
+];
+export const HOWTO_ITEMS: readonly string[] = ["BACK"];
 export const PAUSE_ITEMS: readonly string[] = [
   "RESUME",
   "RESTART",
@@ -768,7 +775,13 @@ export const HUD_WAVE_LABEL = "WAVE";
 export const HUD_MONEY_LABEL = "MONEY";
 export const HUD_LIVES_LABEL = "LIVES";
 
-/** The smallest a panel control may be drawn, in logical units. */
+/**
+ * The smallest a panel control may be drawn, in logical units.
+ *
+ * `specs/hud.md` states the figure for the panel's controls and
+ * `specs/screens.md` names it again for a menu row, so one transcription serves
+ * both.
+ */
 export const MIN_TOUCH_TARGET = 32;
 
 /* -------------------------------------------------------------------------- */

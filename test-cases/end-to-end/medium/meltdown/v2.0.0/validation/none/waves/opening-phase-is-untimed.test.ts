@@ -85,7 +85,7 @@ afterEach(async () => {
 it("holds the opening phase at a zero timer for a minute of game time", async () => {
   await poseOpening(h);
 
-  const swept = await h.skipUntil(
+  const swept = await h.coastUntil(
     (snapshot) =>
       snapshot.phase !== "opening" ||
       Math.abs(snapshot.buildTimer) > TIMER_TOLERANCE ||

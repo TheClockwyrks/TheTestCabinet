@@ -12,8 +12,8 @@ import {
   BOTTOM_EXHAUST_COLS,
   CASING,
   COLS,
+  DIFFICULTIES,
   DIFFICULTY_TABLE,
-  DIFFICULTY_ITEMS,
   FLOOR_H,
   FLOOR_W,
   FLOOR_X0,
@@ -1028,20 +1028,25 @@ function drawModeSelect(
     weight: "700",
   });
   drawMenu(state, ctx);
-  const mode = MODES[highlighted(state)];
-  const figures = modeFigures(mode, state.difficulty);
-  wrapped(ctx, MODE_BLURBS[mode], 300, 540, 680, 24, {
-    size: 15,
-    color: COLOR.textDim,
-    align: "center",
-  });
-  text(
-    ctx,
-    `MONEY ${figures.startMoney}   WAVES ${figures.waveCount}   LIVES ${figures.startLives}`,
-    STAGE_W / 2,
-    632,
-    { size: 15, align: "center", color: COLOR.money },
-  );
+  // The last row is `BACK`, which names no mode and draws no description
+  // (specs/screens.md).
+  const index = highlighted(state);
+  if (index < MODES.length) {
+    const mode = MODES[index];
+    const figures = modeFigures(mode, state.difficulty);
+    wrapped(ctx, MODE_BLURBS[mode], 300, 540, 680, 24, {
+      size: 15,
+      color: COLOR.textDim,
+      align: "center",
+    });
+    text(
+      ctx,
+      `MONEY ${figures.startMoney}   WAVES ${figures.waveCount}   LIVES ${figures.startLives}`,
+      STAGE_W / 2,
+      632,
+      { size: 15, align: "center", color: COLOR.money },
+    );
+  }
   text(ctx, "ESC GOES BACK", STAGE_W / 2, 676, {
     size: 12,
     align: "center",
@@ -1060,9 +1065,11 @@ function drawDifficultySelect(
   });
   drawMenu(state, ctx);
   const rects = menuRects("difficultyselect");
-  DIFFICULTY_ITEMS.forEach((_item, i) => {
+  // `BACK` names no difficulty and draws no figures (specs/screens.md), so the
+  // figures are drawn beside the three difficulty rows alone.
+  DIFFICULTIES.forEach((difficulty, i) => {
     const rect = rects[i];
-    const row = DIFFICULTY_TABLE[(["easy", "medium", "hard"] as const)[i]];
+    const row = DIFFICULTY_TABLE[difficulty];
     text(
       ctx,
       `${row.money} MONEY   ${row.waves} WAVES`,

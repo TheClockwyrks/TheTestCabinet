@@ -85,7 +85,7 @@ it("The Forge carries no heat", async () => {
     const step = Math.min(SAMPLE_SECONDS, WATCH_SECONDS - elapsed);
     // Diced on the long-drive clock (`harness.ts`, The long-drive clock): the
     // minute is the requirement, the frame rate is this check's to choose.
-    await h.skip(step, DRIVE_HZ);
+    await h.coast(step, DRIVE_HZ);
     elapsed += step;
     assertCloseTo(
       await readHeat(h, forge, "the Forge against the white-hot Lance"),

@@ -44,12 +44,17 @@ import {
   type Harness,
 } from "../harness";
 
-/** The row Containment sits on: the one row this item is NOT about. */
-const CONTAINMENT_ROW = MODE_ITEMS.indexOf("CONTAINMENT");
-
-/** The four rows that open a run at once, as indices into `MODE_ITEMS`. */
-const SPECIAL_ROWS = MODE_ITEMS.map((_, index) => index).filter(
-  (index) => index !== CONTAINMENT_ROW,
+/**
+ * The four rows that open a run at once, as indices into `MODE_ITEMS`.
+ *
+ * Derived from `MODES`, the five mode slugs, so the sweep covers exactly the rows
+ * that NAME a mode: `MODE_ITEMS` carries a sixth row, `BACK`, which
+ * specs/screens.md sends to the title and which `screens.mode-select-back-row`
+ * decides. Containment is dropped because it opens the difficulty list rather
+ * than a run, which is `screens.containment-opens-difficulty-select`'s.
+ */
+const SPECIAL_ROWS = MODES.flatMap((mode, index) =>
+  mode === "containment" ? [] : [index],
 );
 
 let h: Harness;

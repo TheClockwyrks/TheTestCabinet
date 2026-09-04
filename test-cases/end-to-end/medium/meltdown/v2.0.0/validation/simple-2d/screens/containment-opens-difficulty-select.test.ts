@@ -9,7 +9,7 @@
 //
 // THE DIRECTION THIS ITEM DECIDES is Containment's alone. That the OTHER four rows
 // start at once is `screens.special-mode-starts-immediately`'s requirement, and
-// what the difficulty screen then lists is `screens.difficulty-lists-three`'s. A
+// what the difficulty screen then lists is `screens.difficulty-lists-its-rows`'s. A
 // build that sends every row to the difficulty screen fails that item and passes
 // this one, and a build that starts Containment on the spot fails this one alone —
 // which is the split a grade needs to name what the build got wrong.
@@ -29,7 +29,7 @@ import { poseMenu } from "./menu";
 /** The key specs/controls.md binds `confirm` to. */
 const CONFIRM = BINDINGS.confirm[0];
 
-/** The row Containment sits on, first of the five modes. */
+/** The row Containment sits on, first of the six rows of the mode list. */
 const CONTAINMENT_ROW = 0;
 
 let h: Harness;

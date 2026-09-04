@@ -46,8 +46,8 @@ import {
   type TowerType,
   type VentName,
 } from "./constants";
-import { resetWith } from "./flow";
-import { panelControls } from "./layout";
+import { menuRows, resetWith } from "./flow";
+import { menuRowRect, panelControls } from "./layout";
 import {
   damageOf,
   emitterDef,
@@ -158,6 +158,15 @@ export interface SnapshotUnit {
   motion: boolean;
 }
 
+/** One row of the current screen's menu, as its hit rectangle. */
+export interface SnapshotMenuRow {
+  index: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** The whole of the game, read at the call. */
 export interface MeltdownSnapshot {
   version: number;
@@ -201,6 +210,7 @@ export interface MeltdownSnapshot {
     left: { length: number };
     top: { length: number };
   };
+  menu: SnapshotMenuRow[];
   controls: SnapshotControls;
   towers: SnapshotTower[];
   surge: SnapshotUnit[];
@@ -216,7 +226,7 @@ export interface MeltdownSnapshot {
 export interface MeltdownDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(seed?: number): void;
   snapshot(): MeltdownSnapshot;
 
   setScreen(screen: Screen): void;
@@ -272,6 +282,19 @@ export interface MeltdownDebugApi {
 /** A control rectangle, copied so the caller owns what it holds. */
 function rect(source: ControlRect): ControlRect {
   return { x: source.x, y: source.y, w: source.w, h: source.h };
+}
+
+/**
+ * Every row of the current screen's menu, as its hit rectangle, in row order
+ * (specs/instrumentation.md). Empty while the screen is `playing`.
+ */
+function readMenu(screen: Screen): SnapshotMenuRow[] {
+  const rows: SnapshotMenuRow[] = [];
+  for (let index = 0; index < menuRows(screen); index += 1) {
+    const row = menuRowRect(screen, index);
+    if (row !== null) rows.push({ index, ...rect(row) });
+  }
+  return rows;
 }
 
 /** One tower, read into plain data. */
@@ -363,8 +386,8 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
   return {
     version: MELTDOWN_DEBUG_VERSION,
 
-    reset(options) {
-      resetWith(read(), options);
+    reset(seed) {
+      resetWith(read(), seed);
       sync();
     },
 
@@ -426,6 +449,7 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
           left: { length: state.routes.lengths.left },
           top: { length: state.routes.lengths.top },
         },
+        menu: readMenu(state.screen),
         controls: {
           shop: controls.shop.map((entry) => ({
             type: entry.type,

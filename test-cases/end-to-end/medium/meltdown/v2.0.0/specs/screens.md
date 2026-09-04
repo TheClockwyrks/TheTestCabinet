@@ -16,7 +16,35 @@ row highlights the last. This holds on every menu in the game. `confirm` takes
 the highlighted row.
 
 Every row is also a pointer target, as `specs/controls.md` states, so each of
-these screens is navigable with the pointer alone and on a touchscreen.
+these screens is navigable with the pointer alone and on a touchscreen. Where a
+build draws a menu is its own choice, so the game reports each row's hit
+rectangle as `menu` in the snapshot `specs/instrumentation.md` defines, in row
+order. A row's rectangle is at least `MIN_TOUCH_TARGET` logical units tall and at
+least `MIN_TOUCH_TARGET` wide, the figure `specs/hud.md` gives the panel's
+controls, and no two rows of one menu overlap.
+
+## What is highlighted on arrival
+
+Every arrival at a screen sets the highlight, and the row it sets is fixed by the
+screen arrived at and the screen come from. The general rule is that arriving at
+a screen highlights its row `0`, and that returning to a screen highlights the
+row that led away from it, so a player who steps into a screen and comes back
+finds the highlight where they left it.
+
+| Arriving at | Coming from | Highlighted row |
+| --- | --- | --- |
+| `title` | `howto` | `HOW TO PLAY`, row `1` |
+| `title` | Anywhere else, and the game starting | `PLAY`, row `0` |
+| `modeselect` | `difficultyselect` | `CONTAINMENT`, row `0` |
+| `modeselect` | `title` | `CONTAINMENT`, row `0` |
+| `difficultyselect` | `modeselect` | `EASY`, row `0` |
+| `howto` | `title` | `BACK`, row `0` |
+| `paused` | `playing` | `RESUME`, row `0` |
+| `victory` or `gameover` | `playing` | `PLAY AGAIN`, row `0` |
+
+`PLAY` is the row that led away from `title` toward every screen but `howto`, and
+`CONTAINMENT` is the row that led away from `modeselect` toward
+`difficultyselect`, so both cases follow the same rule as `howto` does.
 
 ## The eight screens
 
@@ -46,28 +74,34 @@ screen behind it.
 
 ## `modeselect`
 
-Draws the five rows of `MODE_ITEMS`: `CONTAINMENT`, `THE HUNDRED`,
-`DEEP POCKETS`, `BOTTLENECK`, and `SUDDEN DEATH`.
+Draws the six rows of `MODE_ITEMS`: `CONTAINMENT`, `THE HUNDRED`,
+`DEEP POCKETS`, `BOTTLENECK`, `SUDDEN DEATH`, and `BACK`.
 
 Each mode's description is readable before it is chosen: moving the highlight
-across the five rows draws a different body of text for each, describing what
-that mode is and what it changes, and moving the highlight starts nothing.
+across the five mode rows draws a different body of text for each, describing
+what that mode is and what it changes, and moving the highlight starts nothing.
+`BACK` names no mode and draws no description.
 
 | Row | Where it leads |
 | --- | --- |
 | `CONTAINMENT` | `difficultyselect`. |
+| `BACK` | `title`. |
 | Any other row | `playing`, in the `opening` phase, on that mode. |
 
-`back` returns to `title`.
+`back` returns to `title`, which is what `BACK` does.
 
 ## `difficultyselect`
 
-Draws the three rows of `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, and `HARD`. Each
-row draws that difficulty's starting money and its wave count, before it is
-chosen.
+Draws the four rows of `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, `HARD`, and `BACK`.
+Each of the three difficulty rows draws that difficulty's starting money and its
+wave count, before it is chosen. `BACK` names no difficulty and draws no figures.
 
-Confirming a row opens `playing` in the `opening` phase, on Containment at that
-difficulty. `back` returns to `modeselect`.
+| Row | Where it leads |
+| --- | --- |
+| `BACK` | `modeselect`. |
+| Any other row | `playing`, in the `opening` phase, on Containment at that difficulty. |
+
+`back` returns to `modeselect`, which is what `BACK` does.
 
 ## `howto`
 
@@ -75,7 +109,13 @@ Covers the goal of the game, the controls, heat as power and the redline trip,
 the Forge and the Sink, the heat-averse Rime, flyers and the air-only Flak, that
 a Containment wave fields a single type, and the economy.
 
-`back` returns to `title`.
+Draws the one row of `HOWTO_ITEMS`: `BACK`.
+
+| Row | Where it leads |
+| --- | --- |
+| `BACK` | `title`. |
+
+`back` returns to `title`, which is what `BACK` does.
 
 ## `playing`
 
@@ -98,8 +138,7 @@ which is what `RESUME` does.
 
 ## `victory` and `gameover`
 
-Both draw the two rows of `ENDING_ITEMS`, `PLAY AGAIN` and `MENU`, and both open
-with the highlight on `PLAY AGAIN`, at row `0`.
+Both draw the two rows of `ENDING_ITEMS`, `PLAY AGAIN` and `MENU`.
 
 | Screen | What it reports |
 | --- | --- |

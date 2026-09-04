@@ -92,6 +92,18 @@ function withoutLabels(text: string): string {
   return stripped;
 }
 
+/**
+ * The rows a description is read on: the five that name a mode, in `MODE_ITEMS`
+ * order.
+ *
+ * `BACK` is the sixth row and is excluded, because `specs/screens.md` says of it
+ * that it "names no mode and draws no description". Where it leads is
+ * `screens.mode-select-back-row`'s.
+ */
+const MODE_ROWS: readonly number[] = MODE_ITEMS.flatMap((item, row) =>
+  item === "BACK" ? [] : [row],
+);
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -110,7 +122,7 @@ it("draws a different body of text for each of the five modes", async () => {
   // One frame per row, each read with that row highlighted and nothing else
   // touched.
   const frames: string[][] = [];
-  for (const row of MODE_ITEMS.keys()) {
+  for (const row of MODE_ROWS) {
     await debug.setMenuIndex(row);
     const calls = await h.frameCalls();
     if (row === CAPTURE_ROW) await captureStill(h, "description");
@@ -131,9 +143,10 @@ it("draws a different body of text for each of the five modes", async () => {
     frames.push(drawnText(calls).map((text) => text.trim()));
   }
 
-  for (const [row, texts] of frames.entries()) {
+  for (const [leg, texts] of frames.entries()) {
+    const row = MODE_ROWS[leg];
     const elsewhere = new Set(
-      frames.flatMap((other, index) => (index === row ? [] : other)),
+      frames.flatMap((other, index) => (index === leg ? [] : other)),
     );
     const own = texts.filter((text) => !elsewhere.has(text));
     const letters = lettersIn(own.map(withoutLabels));

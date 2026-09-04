@@ -23,7 +23,7 @@
 // the highlighted row outright and `setMode` changes no other field
 // (`specs/instrumentation.md`), so a build whose arrow keys are broken still gets a
 // fair reading of where its Containment row leads. What the difficulty list DRAWS
-// is `screens.difficulty-lists-three`'s and
+// is `screens.difficulty-lists-its-rows`'s and
 // `screens.difficulty-shows-its-figures`'s; where its rows lead is
 // `screens.difficulty-starts-the-run`'s.
 
@@ -37,7 +37,7 @@ import {
   type Harness,
 } from "../harness";
 
-/** The row confirmed: `CONTAINMENT`, the first of the five `MODE_ITEMS`. */
+/** The row confirmed: `CONTAINMENT`, the first of the six `MODE_ITEMS`. */
 const CONTAINMENT_ROW = MODES.indexOf("containment");
 
 let h: Harness;

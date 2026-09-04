@@ -39,6 +39,16 @@ export default defineConfig({
     // a leg take longer, never cover less, which is the other half of why the
     // ceiling here is a ceiling on the host.
     //
+    // WHAT THE WHOLE CHECKLIST COSTS HERE, MEASURED AGAINST THE CONFORMANT
+    // REFERENCE. `guides/authoring/writing-debug-apis-and-validators.md` asks a
+    // case to finish in fifteen minutes on a two-core host. On this repository's
+    // twenty-core development machine, which is shared and never idle, these 376
+    // points came to 16 s of wall clock across all its cores at a load average
+    // of about fifteen, and to 154 s pinned to two of them with `taskset` at a
+    // load average of about thirty. The engineless project is the one that comes
+    // close to the budget, because it drives a browser; this one runs the same
+    // scenarios in process and does not.
+    //
     // TEN MINUTES, AND IT IS A CEILING ON THE HOST RATHER THAN A TOLERANCE ON
     // THE BUILD. No validator in this project asserts anything about how long it
     // took, so this figure can only ever turn a slow machine into a failing point
@@ -58,10 +68,10 @@ export default defineConfig({
     // busier than the worst this one has been measured at.
     //
     // IT CANNOT RUN AWAY WITH THE RUN, because the runner caps the WHOLE vitest
-    // invocation at twenty minutes of wall clock regardless (`VITEST_TIMEOUT`,
-    // `crates/core/src/vitest_validator.rs`). A hung suite is still bounded, and
-    // the figure here is deliberately half of that cap so that one stuck check
-    // cannot be the thing that spends it.
+    // invocation at forty-five minutes of wall clock regardless
+    // (`VITEST_TIMEOUT`, `crates/core/src/vitest_validator.rs`). A hung suite is
+    // still bounded, and the figure here is between a fifth and a quarter of that
+    // cap, so one stuck check cannot be the thing that spends it.
     testTimeout: 600_000,
     // The hook budget matches, for the same reason: `beforeEach` builds a harness
     // and poses a floor, and a host slow enough to need the ceiling above is slow

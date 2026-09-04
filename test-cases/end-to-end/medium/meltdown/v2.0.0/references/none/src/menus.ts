@@ -11,6 +11,7 @@ import {
   DIFFICULTIES,
   DIFFICULTY_ITEMS,
   ENDING_ITEMS,
+  HOWTO_ITEMS,
   MODES,
   MODE_ITEMS,
   PAUSE_ITEMS,
@@ -21,8 +22,12 @@ import type { CueSink } from "./build";
 import { startRun, type MeltdownState } from "./state";
 import type { Rect, Screen } from "./types";
 
-/** The how-to screen's one row, which is this build's own way back from it. */
-export const HOWTO_ITEMS: readonly string[] = ["BACK"];
+/**
+ * The row the title is highlighted on when the how-to screen is left, which
+ * `specs/screens.md` fixes at `HOW TO PLAY`: returning to a screen highlights
+ * the row that led away from it.
+ */
+const TITLE_HOWTO_ROW = TITLE_ITEMS.indexOf("HOW TO PLAY");
 
 /** A menu row's box, and the pitch between two of them. */
 export const MENU_ROW = { w: 380, h: 44, pitch: 52 } as const;
@@ -106,6 +111,11 @@ export function confirmMenu(state: MeltdownState): void {
       state.menuIndex = 0;
       return;
     case "modeselect": {
+      // The last row is `BACK`, which names no mode and starts nothing.
+      if (index >= MODES.length) {
+        backFromScreen(state);
+        return;
+      }
       const mode = MODES[index];
       state.mode = mode;
       if (mode === "containment") {
@@ -117,13 +127,17 @@ export function confirmMenu(state: MeltdownState): void {
       return;
     }
     case "difficultyselect":
+      // The last row is `BACK`, which names no difficulty and starts nothing.
+      if (index >= DIFFICULTIES.length) {
+        backFromScreen(state);
+        return;
+      }
       state.mode = "containment";
       state.difficulty = DIFFICULTIES[index];
       startRun(state);
       return;
     case "howto":
-      state.screen = "title";
-      state.menuIndex = 0;
+      backFromScreen(state);
       return;
     case "paused":
       if (index === 0) {
@@ -155,8 +169,13 @@ export function confirmMenu(state: MeltdownState): void {
 /** Leave the current screen, which is what `back` does once nothing is held. */
 export function backFromScreen(state: MeltdownState): void {
   switch (state.screen) {
-    case "modeselect":
     case "howto":
+      // Returning to a screen highlights the row that led away from it, and the
+      // row that leads to the how-to screen is `HOW TO PLAY` (specs/screens.md).
+      state.screen = "title";
+      state.menuIndex = TITLE_HOWTO_ROW;
+      return;
+    case "modeselect":
       state.screen = "title";
       state.menuIndex = 0;
       return;

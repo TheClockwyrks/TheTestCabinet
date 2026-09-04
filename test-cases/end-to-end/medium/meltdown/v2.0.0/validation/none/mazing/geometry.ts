@@ -249,7 +249,7 @@ export interface Departure {
  * game time at a Mote's own speed, which is two thousand frames: sampling every
  * one of them would cost a check a thousand crossings into the page for a
  * reading it takes once. So the bulk of the walk runs through
- * {@link Harness.skip}, off camera and unsampled, until `near` says the unit has
+ * {@link Harness.coast}, off camera and unsampled, until `near` says the unit has
  * reached the approach; the last stretch then runs through
  * {@link Harness.advance}, sampled every `pollFrames`, which is what fixes how
  * precisely the departure tile is known and is stated by the check that calls
@@ -284,7 +284,7 @@ export async function walkOffTheFloor(
     return unit === undefined;
   };
 
-  await h.skipUntil(
+  await h.coastUntil(
     (snapshot) => {
       if (watch(snapshot)) return true;
       return last !== null && near(last);

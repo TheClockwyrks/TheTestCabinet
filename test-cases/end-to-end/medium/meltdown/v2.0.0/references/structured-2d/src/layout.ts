@@ -201,12 +201,15 @@ export function menuGeometry(screen: Screen): MenuGeometry | null {
       return { x: 110, y: 200, w: 430, rowH: 48, step: 58 };
     case "difficultyselect":
       return { x: 200, y: 262, w: 520, rowH: 52, step: 64 };
+    case "howto":
+      // Beside the copy rather than under it, so the block can grow without
+      // running into the row that leaves the screen.
+      return { x: 830, y: 640, w: 380, rowH: 48, step: 58 };
     case "paused":
       return { x: 440, y: 300, w: 400, rowH: 48, step: 58 };
     case "victory":
     case "gameover":
       return { x: 440, y: 470, w: 400, rowH: 48, step: 58 };
-    case "howto":
     case "playing":
       return null;
   }

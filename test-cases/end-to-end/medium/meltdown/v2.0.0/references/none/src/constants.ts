@@ -276,8 +276,17 @@ export const MODE_ITEMS: readonly string[] = [
   "DEEP POCKETS",
   "BOTTLENECK",
   "SUDDEN DEATH",
+  "BACK",
 ];
-export const DIFFICULTY_ITEMS: readonly string[] = ["EASY", "MEDIUM", "HARD"];
+export const DIFFICULTY_ITEMS: readonly string[] = [
+  "EASY",
+  "MEDIUM",
+  "HARD",
+  "BACK",
+];
+
+/** The one row the how-to screen draws (specs/screens.md). */
+export const HOWTO_ITEMS: readonly string[] = ["BACK"];
 export const PAUSE_ITEMS: readonly string[] = [
   "RESUME",
   "RESTART",

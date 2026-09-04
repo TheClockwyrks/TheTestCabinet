@@ -55,7 +55,7 @@ it("The Flak is air-only", async () => {
   const mark = await poseMarkEast(h, TOWER, MARK, NEAR_UNITS);
   const opened = await readHp(h, mark);
 
-  await h.skip(WATCH_SECONDS);
+  await h.coast(WATCH_SECONDS);
   await h.advance(1);
   await captureStill(h, "ground");
   const gun = await readGun(

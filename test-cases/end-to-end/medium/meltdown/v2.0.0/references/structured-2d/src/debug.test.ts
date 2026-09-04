@@ -120,7 +120,7 @@ describe("reset", () => {
   it("seeds the generator, so the same seed replays the same vents", async () => {
     const vents = async (seed: number): Promise<string[]> => {
       const harness = await createHarness();
-      harness.debug.reset({ seed });
+      harness.debug.reset(seed);
       harness.debug.setScreen("playing");
       harness.debug.setPhase("wave");
       harness.debug.setWavePending(6);

@@ -92,9 +92,10 @@ target is slowable. The slow's strength falls as the Rime heats:
 slowFactor(H) = slowCeil * (1 - H / 100)
 ```
 
-`slowCeil` is `RIME_SLOW_CEIL` at the Rime's level: `0.55`, `0.68`, or `0.80`. A
-Rime at heat `0` and level I therefore applies `0.55`, a Rime at heat `50`
-applies `0.275`, and a Rime at heat `100` applies nothing at all.
+`slowCeil` is the Rime's `RIME_SLOW_CEIL` at its current level, which
+`specs/towers.md` gives. A Rime at heat `0` and level I therefore applies `0.55`,
+a Rime at heat `50` applies `0.275`, and a Rime at heat `100` applies nothing at
+all.
 
 A slow removes that fraction of the unit's base speed, so a slowed unit's current
 speed is `baseSpeed * (1 - slowFactor)`, and it lasts `SLOW_TIME` (`1.5`) seconds

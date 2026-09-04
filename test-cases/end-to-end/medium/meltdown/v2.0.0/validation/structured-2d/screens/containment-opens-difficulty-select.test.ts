@@ -37,7 +37,7 @@ import {
   type Harness,
 } from "../harness";
 
-/** The row confirmed: `CONTAINMENT`, the first of the five `MODE_ITEMS`. */
+/** The row confirmed: `CONTAINMENT`, the first of the six `MODE_ITEMS`. */
 const CONTAINMENT_ROW = MODE_ITEMS.indexOf("CONTAINMENT");
 
 let h: Harness;

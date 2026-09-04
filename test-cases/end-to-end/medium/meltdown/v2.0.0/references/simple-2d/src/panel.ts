@@ -152,6 +152,8 @@ function menuTop(state: MeltdownState): number {
       return 236;
     case "difficultyselect":
       return 300;
+    case "howto":
+      return 650;
     case "paused":
       return 296;
     case "victory":

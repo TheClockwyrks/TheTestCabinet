@@ -11,6 +11,7 @@ import {
   DIFFICULTY_ITEMS,
   DIFFICULTY_TABLE,
   ENDING_ITEMS,
+  HOWTO_ITEMS,
   MODES,
   MODE_ITEMS,
   PAUSE_ITEMS,
@@ -80,12 +81,13 @@ export function menuLength(screen: Screen): number {
       return MODE_ITEMS.length;
     case "difficultyselect":
       return DIFFICULTY_ITEMS.length;
+    case "howto":
+      return HOWTO_ITEMS.length;
     case "paused":
       return PAUSE_ITEMS.length;
     case "victory":
     case "gameover":
       return ENDING_ITEMS.length;
-    case "howto":
     case "playing":
       return 0;
   }
@@ -100,12 +102,13 @@ export function menuItems(screen: Screen): readonly string[] {
       return MODE_ITEMS;
     case "difficultyselect":
       return DIFFICULTY_ITEMS;
+    case "howto":
+      return HOWTO_ITEMS;
     case "paused":
       return PAUSE_ITEMS;
     case "victory":
     case "gameover":
       return ENDING_ITEMS;
-    case "howto":
     case "playing":
       return [];
   }
@@ -135,6 +138,19 @@ export function toTitle(state: MeltdownState): MeltdownState {
   return { ...state, screen: "title", menuIndex: 0 };
 }
 
+/**
+ * The title with `HOW TO PLAY` highlighted, which is where leaving the how-to
+ * screen lands: returning to a screen highlights the row that led away from it
+ * (specs/screens.md).
+ */
+function toTitleFromHowto(state: MeltdownState): MeltdownState {
+  return {
+    ...state,
+    screen: "title",
+    menuIndex: TITLE_ITEMS.indexOf("HOW TO PLAY"),
+  };
+}
+
 /** Take the highlighted row of the current screen's menu. */
 export function confirmMenu(state: MeltdownState): MeltdownState {
   switch (state.screen) {
@@ -143,6 +159,8 @@ export function confirmMenu(state: MeltdownState): MeltdownState {
         ? { ...state, screen: "modeselect", menuIndex: 0 }
         : { ...state, screen: "howto", menuIndex: 0 };
     case "modeselect": {
+      // The last row is `BACK`, which names no mode and starts nothing.
+      if (state.menuIndex >= MODES.length) return toTitle(state);
       const mode = MODES[state.menuIndex];
       if (mode === "containment") {
         return { ...state, screen: "difficultyselect", menuIndex: 0 };
@@ -150,7 +168,13 @@ export function confirmMenu(state: MeltdownState): MeltdownState {
       return freshRun(state, mode, state.difficulty);
     }
     case "difficultyselect":
+      // The last row is `BACK`, which names no difficulty and starts nothing.
+      if (state.menuIndex >= DIFFICULTIES.length) {
+        return { ...state, screen: "modeselect", menuIndex: 0 };
+      }
       return freshRun(state, "containment", DIFFICULTIES[state.menuIndex]);
+    case "howto":
+      return toTitleFromHowto(state);
     case "paused":
       if (state.menuIndex === 0) return { ...state, screen: "playing" };
       if (state.menuIndex === 1) {
@@ -162,7 +186,6 @@ export function confirmMenu(state: MeltdownState): MeltdownState {
       return state.menuIndex === 0
         ? freshRun(state, state.mode, state.difficulty)
         : toTitle(state);
-    case "howto":
     case "playing":
       return state;
   }
@@ -181,8 +204,9 @@ export function back(state: MeltdownState): MeltdownState {
     case "paused":
       return { ...state, screen: "playing" };
     case "modeselect":
-    case "howto":
       return toTitle(state);
+    case "howto":
+      return toTitleFromHowto(state);
     case "difficultyselect":
       return { ...state, screen: "modeselect", menuIndex: 0 };
     case "victory":
