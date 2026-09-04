@@ -12,7 +12,7 @@
 // to break at tier 1.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, TILE } from "../../src/constants";
+import { BAND_HEALTH, TILE } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,

@@ -21,7 +21,7 @@
 // and leaves a build that scatters correctly passing every time.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DENSITY_TOLERANCE } from "../../src/constants";
+import { DENSITY_TOLERANCE } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   bandAtFraction,

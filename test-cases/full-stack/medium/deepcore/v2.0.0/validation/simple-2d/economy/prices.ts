@@ -3,11 +3,11 @@
 // Not a suite: the lookups several of them share. `specs/upgrades.md` holds one
 // ladder for the six five-tier tracks, indexed by the tier being LEFT, and gives
 // the scanner the first two rungs of the same ladder; `specs/items.md` prices the
-// six field supplies. `src/constants.ts` is the case's own module and carries
-// both, so nothing here is a figure of its own — each is only the arithmetic that
-// turns the tier or the id into the price the specification prints.
+// six field supplies. `../constants` transcribes both from those specs, so nothing
+// here is a figure of its own — each is only the arithmetic that turns the tier or
+// the id into the price the specification prints.
 
-import { ITEMS, MAX_TIER, UPGRADE_PRICES } from "../../src/constants";
+import { ITEMS, MAX_TIER, UPGRADE_PRICES } from "../constants";
 import type { ItemId, UpgradeTrack } from "../harness";
 
 /** What buying `tier` on `track` costs, or `null` where the track is maxed out. */

@@ -29,18 +29,18 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { NANOBOT_HULL } from "../../src/constants";
+import { gasDamageAt, NANOBOT_HULL } from "../constants";
 import {
   captureReplay,
   createHarness,
   fillBlock,
+  type Harness,
   openScene,
   pinDrill,
   pinMiner,
   standOn,
-  type Harness,
 } from "../harness";
-import { bandRow, fractionOf, gasDamageAt, HAZARD_COL } from "./scene";
+import { bandRow, fractionOf, HAZARD_COL } from "./scene";
 
 /** The hull the charge has to get through: less than the blast, less than a repair. */
 const THIN_HULL = 15;
@@ -111,7 +111,11 @@ it("ends the expedition when a supply used from the inventory empties the hull",
     return { struck, ended: h.snapshot() };
   });
 
-  assertEqual(armed.panel, "inventory", "the overlay is open before the charge");
+  assertEqual(
+    armed.panel,
+    "inventory",
+    "the overlay is open before the charge",
+  );
   assertGreaterThan(
     gasDamageAt(fractionOf(armed, row)),
     THIN_HULL,
@@ -128,5 +132,9 @@ it("ends the expedition when a supply used from the inventory empties the hull",
     "specs/character.md, the charge emptied the hull with the overlay open",
   );
   assertEqual(run.ended.screen, "game-over", "specs/modes.md");
-  assertEqual(run.ended.summary?.deathCause, "hull-destroyed", "specs/modes.md");
+  assertEqual(
+    run.ended.summary?.deathCause,
+    "hull-destroyed",
+    "specs/modes.md",
+  );
 });

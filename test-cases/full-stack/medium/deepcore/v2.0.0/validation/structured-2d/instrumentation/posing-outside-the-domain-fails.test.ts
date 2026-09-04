@@ -22,7 +22,7 @@
 // cell that simply may not be posed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORLD_COLS } from "../../src/constants";
+import { WORLD_COLS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,

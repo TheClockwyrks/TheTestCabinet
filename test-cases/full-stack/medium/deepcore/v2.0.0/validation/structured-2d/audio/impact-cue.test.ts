@@ -20,7 +20,7 @@ import {
   GRAVITY,
   IMPACT_SAFE_SPEED,
   PLAYABLE_COL_MIN,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureReplay,

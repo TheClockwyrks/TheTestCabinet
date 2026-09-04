@@ -21,12 +21,7 @@
 // block. `specs/instrumentation.md` fixes both gates, and everything else about
 // the miner — damage above all — carries on under them.
 
-import {
-  GAS_DAMAGE_MAX,
-  GAS_DAMAGE_MIN,
-  ITEMS,
-  type ItemId,
-} from "../../src/constants";
+import { ITEMS, type ItemId } from "../constants";
 import { fail } from "../assert";
 import {
   fillBlock,
@@ -58,29 +53,6 @@ export const ROCKBED_ROW = 150;
 
 /** How far out from the miner's cell the scene is filled with rock. */
 export const PAD = 4;
-
-/**
- * The depth fraction gas first appears at, and so the floor of its damage curve,
- * as `specs/hazards.md`'s table names it.
- */
-const GAS_FLOOR_FRACTION = 0.25;
-
-/**
- * The hull a detonation at depth fraction `f` deals inside the radius.
- *
- * `specs/hazards.md`'s own expression:
- * `GAS_DAMAGE_MIN + (GAS_DAMAGE_MAX - GAS_DAMAGE_MIN) * max(0, f - 0.25) / 0.75`.
- * The two checks here that read a blast's cost are the ones a chained detonation
- * has to be billed at, so the curve is transcribed beside them rather than
- * restated inside each.
- */
-export function gasDamageAt(f: number): number {
-  return (
-    GAS_DAMAGE_MIN +
-    ((GAS_DAMAGE_MAX - GAS_DAMAGE_MIN) * Math.max(0, f - GAS_FLOOR_FRACTION)) /
-      (1 - GAS_FLOOR_FRACTION)
-  );
-}
 
 /** What one supply costs, as `specs/items.md`'s table fixes it. */
 export function itemPrice(id: ItemId): number {

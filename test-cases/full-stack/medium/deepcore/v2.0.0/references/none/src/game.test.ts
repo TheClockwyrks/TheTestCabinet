@@ -1,5 +1,5 @@
 // The expedition, the camera, and the deterministic core the debug surface rests on
-// (specs/gameplay.md, specs/world.md, specs/instrumentation.md).
+// (specs/expedition.md, specs/world.md, specs/instrumentation.md).
 
 import { describe, expect, it } from "vitest";
 import {

@@ -17,7 +17,7 @@ import {
   DRILL_HIT_INTERVAL,
   THRUST_BURN_SIZE_MULT,
   WORLD_SIZES,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

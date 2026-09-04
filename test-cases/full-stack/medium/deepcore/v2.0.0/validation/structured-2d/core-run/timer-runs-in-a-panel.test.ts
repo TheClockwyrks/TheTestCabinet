@@ -14,7 +14,7 @@
 // An eighth of a second either way covers the frame the span is divided into.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_TIMER } from "../../src/constants";
+import { CORE_TIMER } from "../constants";
 import { assertBetween } from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { elapse, openCampScene } from "./core-scene";

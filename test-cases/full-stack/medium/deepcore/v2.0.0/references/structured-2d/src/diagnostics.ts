@@ -45,7 +45,7 @@ function n1(value: number): string {
  */
 export function diagnosticSources(
   read: () => DeepcoreState,
-): [string, () => unknown][] {
+): [string, () => string][] {
   return [
     ["screen", () => `${read().screen}   panel ${read().panel ?? "-"}`],
     [

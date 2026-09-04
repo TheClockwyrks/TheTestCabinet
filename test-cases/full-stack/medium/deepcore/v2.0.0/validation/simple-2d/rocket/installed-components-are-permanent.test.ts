@@ -17,7 +17,7 @@
 // continuous check is what ends the expedition, on the next update".
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODES, ROCKET_COMPONENT_IDS } from "../../src/constants";
+import { MODES, ROCKET_COMPONENT_IDS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { openPadScene, runUntilScreenLeaves } from "./pad-scene";

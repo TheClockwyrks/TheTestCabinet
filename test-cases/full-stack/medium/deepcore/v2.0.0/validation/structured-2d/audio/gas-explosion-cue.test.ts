@@ -17,7 +17,7 @@
 // the control and closed after the frames that carry it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, HULL_TIERS, PLAYABLE_COL_MIN } from "../../src/constants";
+import { CUES, HULL_TIERS, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

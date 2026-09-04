@@ -21,7 +21,7 @@
 // the whole drop, no key is held, and the drill is gated.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FALL_TERMINAL_EMPTY, FALL_TERMINAL_LOADED } from "../../src/constants";
+import { FALL_TERMINAL_EMPTY, FALL_TERMINAL_LOADED } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

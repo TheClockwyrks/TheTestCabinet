@@ -13,22 +13,21 @@
 // mine. A build that leaves the bar's buttons live over the pause menu offers a
 // player a bag that opens nothing and a pause button on the pause screen.
 //
-// HOW THE CONTROLS ARE FOUND WITHOUT A LAYOUT. `specs/ui.md` fixes the band the
-// bar occupies and nothing else about where its controls sit, so the band is
-// swept: first in the mine, where the sweep must find a point that answers, and
-// then over the pause menu, where every point of the same sweep must do nothing.
-// The first half is the arrangement — it is what makes the second half a reading
-// rather than a click into empty space — and the point it found is clicked again
-// on the pause screen by itself, so the failure names a control that really is
-// there.
+// HOW THE CONTROLS ARE FOUND WITHOUT A LAYOUT. The build reports it.
+// `specs/instrumentation.md`'s `controlRect(control, null)` gives the region a
+// pointer drives each of the three from, so the regions are READ while the mine
+// is up — a reading, not a click, so nothing of the mine's own behavior is on the
+// line here — and then the pause menu is raised and each of those points is
+// clicked. A build that also reports a region for one of the three ON the pause
+// screen has that region clicked as well, so a bar laid out differently there is
+// covered too.
 //
 // ISOLATION. An expedition standing at the camp on an empty mine with the ground
-// laid back, the drill held, and nothing in the world that a stray click could
-// set off.
+// laid back, the miner and the drill both held, and nothing in the world that a
+// stray click could set off.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_H, STAGE_W } from "../../src/constants";
-import { assertEqual, assertNotNull, assertNull } from "../assert";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -39,13 +38,11 @@ import {
   standAtCamp,
   type Harness,
 } from "../harness";
-import { clickStage, sweepStatusBar } from "../panels/mouse";
+import type { ControlName } from "../surface";
+import { centerOf, clickStage, controlRegion } from "../panels/mouse";
 
-/** How far apart the sweep's columns sit, in logical units. */
-const SWEEP_STEP = 16;
-
-/** The rows of the status bar the sweep clicks along. */
-const SWEEP_ROWS: readonly number[] = [HUD_H / 2, HUD_H / 4, (HUD_H * 3) / 4];
+/** The three the status bar carries, by the names specs/ui.md gives them. */
+const BAR: readonly ControlName[] = ["inventory", "pause", "mute"];
 
 let h: Harness;
 
@@ -64,74 +61,59 @@ it("answers no click on the status bar while the pause menu is up", async () => 
   pinMiner(h);
   pinDrill(h);
   await h.advance(2);
-  const resting = h.snapshot();
 
-  /** Whether any of the bar's three controls has answered. */
-  const answered = (): boolean => {
-    const s = h.snapshot();
-    return (
-      s.panel !== null || s.screen !== "in-mine" || s.muted !== resting.muted
-    );
-  };
+  // Where the build put each of the three while the mine is up. Read only.
+  const points = BAR.map((control) => ({
+    control,
+    at: centerOf(controlRegion(h, control)),
+  }));
 
-  // The arrangement: a point on the bar that really does answer a click in the
-  // mine, found by sweeping the band specs/ui.md gives the bar.
-  let live: { x: number; y: number } | null = null;
-  for (const y of SWEEP_ROWS) {
-    for (let x = SWEEP_STEP / 2; x < STAGE_W && live === null; x += SWEEP_STEP) {
-      h.debug.setPanel(null);
-      h.debug.setScreen("in-mine");
-      await clickStage(h, x, y);
-      if (answered()) live = { x, y };
-    }
-    if (live !== null) break;
-  }
-  h.debug.setPanel(null);
-  h.debug.setScreen("in-mine");
-  await h.advance(1);
-
-  // The reading: the same band, over the pause menu.
   h.debug.setScreen("paused");
   await h.advance(2);
   const paused = h.snapshot();
   captureStill(h, "inert");
 
-  const found = live;
-  let atLive = null as ReturnType<Harness["snapshot"]> | null;
-  if (found !== null) {
-    await clickStage(h, found.x, found.y);
-    atLive = h.snapshot();
-  }
-
-  const stirred = await sweepStatusBar(h, () => {
+  /** Whether anything the bar could have done has happened. */
+  const answered = (): boolean => {
     const s = h.snapshot();
     return (
       s.panel !== null || s.screen !== "paused" || s.muted !== paused.muted
     );
-  });
+  };
 
-  assertNotNull(
-    live,
-    "specs/ui.md: a status-bar control the sweep found answering a click in the mine",
-  );
+  const stirred: string[] = [];
+  for (const point of points) {
+    await clickStage(h, point.at.x, point.at.y);
+    await h.advance(1);
+    if (answered()) stirred.push(point.control);
+
+    // And wherever the build reports that control ON the pause screen, if it
+    // reports one there at all: a bar drawn disabled still has a region.
+    const here = h.debug.controlRect(point.control, null);
+    if (here !== null) {
+      const at = centerOf(here);
+      await clickStage(h, at.x, at.y);
+      await h.advance(1);
+      if (answered() && !stirred.includes(point.control)) {
+        stirred.push(point.control);
+      }
+    }
+  }
+
   assertEqual(
-    atLive?.screen,
-    "paused",
-    "specs/controls.md: the bar control the mine answered on does not answer over the pause menu",
-  );
-  assertNull(
-    atLive?.panel ?? null,
-    "specs/controls.md: and it opens no panel there",
-  );
-  assertEqual(
-    stirred,
-    false,
-    "specs/controls.md: no point of the status bar answers a click on the pause screen",
+    stirred.join(", "),
+    "",
+    "specs/controls.md: status-bar controls that answered a click on the pause screen",
   );
   assertEqual(
     h.snapshot().screen,
     "paused",
-    "the pause menu is still up after the whole sweep",
+    "the pause menu is still up after every point was clicked",
+  );
+  assertEqual(
+    h.snapshot().panel,
+    null,
+    "specs/controls.md: and no panel was opened from it",
   );
   assertEqual(
     h.snapshot().muted,

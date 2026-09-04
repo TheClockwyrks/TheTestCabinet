@@ -21,7 +21,7 @@
 // is held, and no key is down: nothing but gravity is acting.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GRAVITY } from "../../src/constants";
+import { GRAVITY } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

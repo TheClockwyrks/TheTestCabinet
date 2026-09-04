@@ -25,7 +25,7 @@ import {
   CAM_LEAD_MAX,
   CAM_STILL_SPEED,
   FALL_TERMINAL_EMPTY,
-} from "../../src/constants";
+} from "../constants";
 import { assertBetween, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,

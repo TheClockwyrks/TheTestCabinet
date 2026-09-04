@@ -10,7 +10,7 @@
 // depth-varying quantity the size could plausibly drag along with it.
 //
 // THE PRICES. Fuel at `FUEL_PRICE` an unit and repair at `REPAIR_PRICE` a point
-// in `FUEL_BUY_INCREMENT` and `REPAIR_BUY_INCREMENT` lots (specs/gameplay.md),
+// in `FUEL_BUY_INCREMENT` and `REPAIR_BUY_INCREMENT` lots (specs/expedition.md),
 // the first rung of an upgrade track at `UPGRADE_PRICES[2]` (specs/upgrades.md),
 // and the first rocket component at its own price (specs/rocket.md). Each is
 // bought through the control that stands for the on-screen one, and what is read
@@ -216,7 +216,7 @@ it("keeps the prices and the ore mix at a depth fraction the same at every size"
     assertEqual(
       BUDGET - afterFuel,
       FUEL_LOT,
-      `specs/gameplay.md: a lot of fuel costs the same at ${size}`,
+      `specs/expedition.md: a lot of fuel costs the same at ${size}`,
     );
 
     await h.debug.setHull(1);
@@ -225,7 +225,7 @@ it("keeps the prices and the ore mix at a depth fraction the same at every size"
     assertEqual(
       afterFuel - afterRepair,
       REPAIR_LOT,
-      `specs/gameplay.md: a lot of repair costs the same at ${size}`,
+      `specs/expedition.md: a lot of repair costs the same at ${size}`,
     );
 
     await h.debug.buyUpgrade(TRACK);

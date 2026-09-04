@@ -1,7 +1,7 @@
 // save/new-expedition-abandons-the-save — starting a new expedition throws the
 // old save away.
 //
-// specs/gameplay.md: "There is one save slot, and saving overwrites it. Starting
+// specs/expedition.md: "There is one save slot, and saving overwrites it. Starting
 // a new expedition abandons any existing save." So the save and the new
 // expedition never coexist: once the size choice begins a run, `hasSave` is
 // false and the title carries no `CONTINUE` back into the abandoned one.
@@ -76,7 +76,7 @@ it("leaves no save behind once a new expedition has begun", async () => {
   assertEqual(
     started.hasSave,
     false,
-    "specs/gameplay.md: starting a new expedition abandons any existing save",
+    "specs/expedition.md: starting a new expedition abandons any existing save",
   );
 
   await h.debug.setScreen("title");

@@ -14,7 +14,7 @@
 // the whole of the slack allowed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_COL, CORE_TIMER } from "../../src/constants";
+import { CORE_COL, CORE_TIMER } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   captureReplay,

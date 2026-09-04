@@ -14,7 +14,7 @@
 // the cue it raised.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, ROCKET_COMPONENTS } from "../../src/constants";
+import { CUES, ROCKET_COMPONENTS } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

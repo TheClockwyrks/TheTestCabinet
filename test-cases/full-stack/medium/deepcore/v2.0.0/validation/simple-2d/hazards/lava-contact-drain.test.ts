@@ -17,7 +17,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { LAVA_CONTACT_DPS } from "../../src/constants";
+import { LAVA_CONTACT_DPS } from "../constants";
 import {
   captureReplay,
   createHarness,

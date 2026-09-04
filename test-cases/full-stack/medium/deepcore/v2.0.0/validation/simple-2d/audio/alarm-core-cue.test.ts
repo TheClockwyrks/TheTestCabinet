@@ -21,7 +21,7 @@
 // and the miner's travel is held, so nothing else in the scene can sound.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORE_TIMER, CUES, PLAYABLE_COL_MIN } from "../../src/constants";
+import { CORE_TIMER, CUES, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

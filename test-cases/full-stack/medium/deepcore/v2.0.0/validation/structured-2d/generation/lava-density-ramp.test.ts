@@ -17,7 +17,7 @@
 // the build uses rather than of which pools this one seed happened to place.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DENSITY_TOLERANCE } from "../../src/constants";
+import { DENSITY_TOLERANCE } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import {
   captureStill,

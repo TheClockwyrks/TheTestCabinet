@@ -14,7 +14,7 @@
 // the fuel spent is the thrust burn alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { THRUST_BURN_SIZE_MULT } from "../../src/constants";
+import { THRUST_BURN_SIZE_MULT } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -59,7 +59,7 @@ it("spends THRUST_BURN_MAX a second while thrusting from a stop", async () => {
   pinDrill(h);
 
   const before = h.snapshot();
-  assertEqual(before.worldSize, "standard", "specs/gameplay.md");
+  assertEqual(before.worldSize, "standard", "specs/expedition.md");
   assertEqual(before.miner.vy, 0, "specs/instrumentation.md");
 
   const after = await captureReplay(h, "liftoff", async () => {

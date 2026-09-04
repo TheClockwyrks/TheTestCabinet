@@ -16,7 +16,7 @@
 // stopped rather than a cap.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { JETPACK_TIERS, SURFACE_Y, TILE } from "../../src/constants";
+import { JETPACK_TIERS, SURFACE_Y, TILE } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

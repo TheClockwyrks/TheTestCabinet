@@ -66,6 +66,7 @@ describe("readings", () => {
         "menuIndex",
         "muted",
         "simTime",
+        "elapsedSeconds",
         "hasSave",
         "credits",
         "creditsEarned",
@@ -216,16 +217,6 @@ describe("restoring the world", () => {
     expect(h.debug.tileAt(6, 200).kind).toBe("tunnel");
     expect(snapshot.cargo.slotsUsed).toBe(0);
     expect(snapshot.miner.hull).toBe(HULL_TIERS[0]);
-  });
-
-  it("takes every ground item off without detonating a jettisoned Sample", () => {
-    h.debug.placeCoreSample(5, 200);
-    expect(h.debug.snapshot().coreGround).toEqual({ col: 5, row: 200 });
-    h.debug.clearGroundItems();
-    const snapshot = h.debug.snapshot();
-    expect(snapshot.coreGround).toBeNull();
-    expect(snapshot.coreTimer).toBeNull();
-    expect(snapshot.summary).toBeNull();
   });
 
   it("empties the bay and the supplies without earning Credits", () => {

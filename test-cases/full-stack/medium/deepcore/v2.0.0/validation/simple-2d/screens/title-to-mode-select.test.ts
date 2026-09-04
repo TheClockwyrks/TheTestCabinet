@@ -19,7 +19,7 @@
 // an expedition exists yet.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MODE_ITEMS, TITLE_ITEMS } from "../../src/constants";
+import { MODE_ITEMS, TITLE_ITEMS } from "../constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,

@@ -29,10 +29,7 @@ import {
   readPicture,
   type Picture,
 } from "./produced";
-import { MINER_CYCLES } from "./spec";
-
-/** How many different drawings a cycle carries at least, to be a cycle at all. */
-const DRAWINGS_MIN = 2;
+import { DRAWINGS_MIN, MINER_CYCLES } from "../constants";
 
 /** The state this point is about, and where `specs/assets.md` puts its cycle. */
 const STATE = "walk";

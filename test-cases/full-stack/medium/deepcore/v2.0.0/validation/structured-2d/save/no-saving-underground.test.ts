@@ -1,6 +1,6 @@
 // save/no-saving-underground — nothing but the Save Pad ever writes a save.
 //
-// specs/gameplay.md: "The Save Pad is the only way to save. There is no autosave
+// specs/expedition.md: "The Save Pad is the only way to save. There is no autosave
 // and no saving underground." So an expedition that never visits the pad has no
 // save, however much it did: selling a cargo, buying fuel, repair, an upgrade and
 // a supply, sinking a shaft and cutting into the rock at the bottom of it, half a
@@ -20,7 +20,7 @@
 // ground item anywhere near it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
@@ -76,7 +76,11 @@ it("writes no save for selling, buying, digging, waiting or dying", async () => 
     0,
     "specs/mining.md: selling the cargo earns Credits",
   );
-  assertEqual(sold.hasSave, false, "specs/gameplay.md: selling writes no save");
+  assertEqual(
+    sold.hasSave,
+    false,
+    "specs/expedition.md: selling writes no save",
+  );
 
   h.debug.setCredits(BUDGET);
   h.debug.setFuel(10);
@@ -88,7 +92,7 @@ it("writes no save for selling, buying, digging, waiting or dying", async () => 
   assertEqual(
     h.snapshot().hasSave,
     false,
-    "specs/gameplay.md: buying fuel, repair, an upgrade or a supply writes no save",
+    "specs/expedition.md: buying fuel, repair, an upgrade or a supply writes no save",
   );
 
   // The descent: a real fall down a real shaft and a real cut at the foot of it.
@@ -108,18 +112,18 @@ it("writes no save for selling, buying, digging, waiting or dying", async () => 
   assertGreaterThan(
     dug.snapshot.deepestDepthMeters,
     0,
-    "specs/gameplay.md: the expedition really did go underground",
+    "specs/expedition.md: the expedition really did go underground",
   );
   assertEqual(
     dug.snapshot.hasSave,
     false,
-    `specs/gameplay.md: descending, drilling and ${IDLE_SECONDS}s of play write no save`,
+    `specs/expedition.md: descending, drilling and ${IDLE_SECONDS}s of play write no save`,
   );
 
   const over = await driveDeath(h, "hull-destroyed");
   assertEqual(
     over.hasSave,
     false,
-    "specs/gameplay.md: dying writes no save either",
+    "specs/expedition.md: dying writes no save either",
   );
 });

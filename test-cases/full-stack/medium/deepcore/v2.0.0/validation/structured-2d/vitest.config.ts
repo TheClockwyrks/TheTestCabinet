@@ -10,9 +10,9 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator addresses the
-// build by the same relative paths the build itself uses — `src/constants.ts`,
-// `src/game.ts`, and the produced files under `assets/`, which several of the
+// The root is the workspace, not this directory, so the one reach a project makes
+// at the build addresses it by the same relative path the build itself uses —
+// `src/game.ts` — as do the produced files under `assets/`, which several of the
 // produced-asset suites read straight off disk. It is derived from this file's
 // own URL rather than from the working directory, so the command above works
 // from anywhere.

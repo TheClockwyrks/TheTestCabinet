@@ -26,7 +26,7 @@
 // open again brings the two together.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEEPCORE_DEBUG_VERSION } from "../../src/constants";
+import { DEEPCORE_DEBUG_VERSION } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,

@@ -1,19 +1,19 @@
-// screens/how-to-play-reachable — the how-to screen is reachable from the title,
-// and it comes back.
+// screens/how-to-play-reachable — the how-to screen is reachable from the title.
 //
-// specs/ui.md: `HOW TO PLAY` on the title "goes to `how-to-play`", and the
-// how-to-play screen "Returns to `title`". It is the one screen the file lists
-// with no menu items of its own, so what returns from it is the build's choice
-// between the two keys specs/controls.md gives a menu screen: `activate`, which
-// chooses whatever the screen offers, and `pause`, which goes back where a screen
-// has a back. Both are conformant, so the check accepts either — what it decides
-// is that the screen is reached and that it returns.
+// specs/ui.md: `HOW TO PLAY` on the title "goes to `how-to-play`". This point
+// decides that hop and nothing else.
+//
+// THE RETURN IS ITS OWN POINT. `screens/how-to-play-back` decides that the screen
+// comes back to the title, because a build that opens the screen and traps the
+// player on it must grade differently from one that never opens it. The category
+// splits every other pair the same way — `title-to-mode-select` beside
+// `mode-select-back`, `mode-to-size-select` beside `size-select-back`.
 //
 // ISOLATION. The title reached directly with the slot cleared, so `HOW TO PLAY`
 // is the entry specs/ui.md puts last with no save banked.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../../src/constants";
+import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -35,7 +35,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("opens the how-to screen from the title and returns from it", async () => {
+it("opens the how-to screen from the title", async () => {
   h.debug.clearSave();
   h.debug.reset();
   h.debug.setScreen("title");
@@ -43,18 +43,10 @@ it("opens the how-to screen from the title and returns from it", async () => {
   h.debug.setMenuIndex(ITEMS_NO_SAVE.indexOf("HOW TO PLAY"));
   await h.tap(ACTION_KEY.activate);
   captureStill(h, "howto");
+
   assertEqual(
     h.snapshot().screen,
     "how-to-play",
     "specs/ui.md: HOW TO PLAY goes to how-to-play",
-  );
-
-  await h.tap(ACTION_KEY.activate);
-  if (h.snapshot().screen !== "title") await h.tap(ACTION_KEY.pause);
-
-  assertEqual(
-    h.snapshot().screen,
-    "title",
-    "specs/ui.md: the how-to-play screen returns to the title",
   );
 });

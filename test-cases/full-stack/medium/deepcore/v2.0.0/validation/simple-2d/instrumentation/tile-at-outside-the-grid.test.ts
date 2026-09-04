@@ -14,7 +14,7 @@
 // that returns `bedrock` with a band and a health attached has invented a cell.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORLD_COLS } from "../../src/constants";
+import { WORLD_COLS } from "../constants";
 import { assertEqual, assertNull } from "../assert";
 import {
   captureStill,

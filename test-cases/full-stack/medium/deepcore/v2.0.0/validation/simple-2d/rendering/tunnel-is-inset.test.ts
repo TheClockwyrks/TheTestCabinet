@@ -33,7 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { TILE } from "../../src/constants";
+import { TILE } from "../constants";
 import {
   DISTINCT_MIN,
   captureStill,

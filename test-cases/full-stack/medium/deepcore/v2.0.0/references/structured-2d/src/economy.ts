@@ -1,4 +1,4 @@
-// Deepcore — the Credits economy (specs/gameplay.md, specs/mining.md,
+// Deepcore — the Credits economy (specs/expedition.md, specs/mining.md,
 // specs/upgrades.md).
 //
 // One source, selling the cargo at the Ore Market, and four sinks: fuel and
@@ -54,7 +54,7 @@ export function sellCargo(d: DeepcoreState): number {
   return total;
 }
 
-// ---- The Fuel Depot (specs/gameplay.md) ----------------------------------
+// ---- The Fuel Depot (specs/expedition.md) ----------------------------------
 
 /** How much fuel the tank is short of its maximum. */
 export function fuelDeficit(fuel: number, tiers: UpgradeTiers): number {

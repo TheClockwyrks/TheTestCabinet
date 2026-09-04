@@ -36,11 +36,7 @@
 // is held, so the only thing acting is the integration under test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  FALL_TERMINAL_EMPTY,
-  GRAVITY,
-  LIFE_SUPPORT_BURN,
-} from "../../src/constants";
+import { FALL_TERMINAL_EMPTY, GRAVITY, LIFE_SUPPORT_BURN } from "../constants";
 import { assertBetween, assertCloseTo } from "../assert";
 import {
   captureReplay,

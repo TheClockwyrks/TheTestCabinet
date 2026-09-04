@@ -22,7 +22,7 @@
 // its own; this one stops at the offer.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, ROCKET_COMPONENT_IDS } from "../../src/constants";
+import { CUES, ROCKET_COMPONENT_IDS } from "../constants";
 import {
   assertDeepEqual,
   assertEqual,

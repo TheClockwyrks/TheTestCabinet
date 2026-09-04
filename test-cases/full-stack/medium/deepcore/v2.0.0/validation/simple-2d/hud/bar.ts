@@ -30,7 +30,7 @@
 // because a band is nearly three hundred thousand pixels and a check compares a
 // few thousand of them.
 
-import { HUD_H, STAGE_H, STAGE_W } from "../../src/constants";
+import { HUD_H, STAGE_H, STAGE_W } from "../constants";
 import { textSpans, type Harness, type TextSpan } from "../harness";
 
 /** Device pixels between samples when the status bar is read. */

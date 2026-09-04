@@ -2,7 +2,7 @@
 // nothing.
 //
 // `specs/rocket.md`: the `FABRICATE` action "is enabled only while the Credits
-// are affordable and the material is held." `specs/gameplay.md` states the
+// are affordable and the material is held." `specs/expedition.md` states the
 // general rule: "Credits never go negative, and an action that cannot be
 // afforded is disabled."
 //
@@ -14,7 +14,7 @@
 // Nothing may move: not the checklist, not the satchel, not the balance.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCKET_COMPONENTS } from "../../src/constants";
+import { ROCKET_COMPONENTS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { openPadScene } from "./pad-scene";

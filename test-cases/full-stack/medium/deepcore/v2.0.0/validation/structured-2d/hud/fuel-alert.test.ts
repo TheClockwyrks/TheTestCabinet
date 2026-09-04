@@ -17,7 +17,7 @@
 // one phase and a pose read twice comes back identical.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FUEL_TIERS, LOW_FUEL_FRACTION } from "../../src/constants";
+import { FUEL_TIERS, LOW_FUEL_FRACTION } from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,

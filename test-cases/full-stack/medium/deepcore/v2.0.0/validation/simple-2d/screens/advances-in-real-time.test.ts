@@ -24,7 +24,7 @@
 // and no floor within reach, the drill gated, and nothing else in the world.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FALL_TERMINAL_EMPTY } from "../../src/constants";
+import { FALL_TERMINAL_EMPTY } from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   WallClock,

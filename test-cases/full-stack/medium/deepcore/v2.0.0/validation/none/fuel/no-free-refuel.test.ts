@@ -2,7 +2,7 @@
 //
 // specs/character.md: fuel "is replenished only by paying for it at the Fuel
 // Depot", and "fuel never refills on its own, on the surface or anywhere else".
-// specs/gameplay.md says the same from the other side: arriving at the surface
+// specs/expedition.md says the same from the other side: arriving at the surface
 // refuels and repairs nothing, and the surface is where they are bought back.
 //
 // So the tank is posed part empty and the miner left standing in the camp — the
@@ -63,7 +63,7 @@ it("leaves the tank exactly as the climb left it, however long the wait", async 
   const before = await h.snapshot();
   assertEqual(before.miner.fuel, LEFT, "specs/instrumentation.md");
   assertEqual(before.miner.maxFuel, FUEL_TANK_MAX[0], "specs/upgrades.md");
-  assertEqual(before.credits, 0, "specs/gameplay.md");
+  assertEqual(before.credits, 0, "specs/expedition.md");
 
   const after = await captureReplay(h, "tank", async () => {
     await h.advanceSeconds(HOLD_SECONDS, FRAMES);
@@ -74,5 +74,5 @@ it("leaves the tank exactly as the climb left it, however long the wait", async 
   assertLessThan(after.miner.fuel, after.miner.maxFuel, "specs/character.md");
   // And nothing was bought, so the tank standing where it stands is the absence
   // of a refill rather than one paid for out of the balance.
-  assertEqual(after.credits, 0, "specs/gameplay.md");
+  assertEqual(after.credits, 0, "specs/expedition.md");
 });

@@ -25,7 +25,7 @@
 // drawn frame with nine frames still to run.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MINER_W } from "../../src/constants";
+import { MINER_W } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
 import {
   TICK_HZ,

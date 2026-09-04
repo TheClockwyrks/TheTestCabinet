@@ -13,7 +13,7 @@
 // and the one the tier sets.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { JETPACK_TIERS, MAX_TIER } from "../../src/constants";
+import { JETPACK_TIERS, MAX_TIER } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

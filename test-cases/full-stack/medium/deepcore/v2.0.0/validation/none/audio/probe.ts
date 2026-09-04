@@ -39,13 +39,14 @@ export const AUDIO_READY_MS = 15_000;
 /** How long each poll of that wait leaves the page to get on with it. */
 const POLL_MS = 50;
 
-/** How many sounds the build has emitted since the page loaded. */
+/**
+ * How many sounds the build has emitted since the page loaded.
+ *
+ * The shared harness's own reading over the injected probe, named here so the
+ * checks next door go on saying what they mean.
+ */
 export function soundsStarted(h: Harness): Promise<number> {
-  return h.page.evaluate(() =>
-    (
-      window as unknown as { __deepcoreAudio: { started(): number } }
-    ).__deepcoreAudio.started(),
-  );
+  return h.sounds();
 }
 
 /**

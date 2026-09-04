@@ -1,7 +1,7 @@
 // save/continue-places-the-miner-on-the-surface — a restored expedition opens
 // with the miner back on the camp.
 //
-// specs/gameplay.md: "The main menu shows `CONTINUE` while a save exists, which
+// specs/expedition.md: "The main menu shows `CONTINUE` while a save exists, which
 // resumes it exactly as it was saved and places the miner on the surface", and
 // specs/modes.md says the same of restoring after a Standard death. So wherever
 // the miner was when the game went back to the title, the resumed expedition
@@ -81,7 +81,7 @@ it("stands the miner on the camp at depth 0 after a continue", async () => {
     resumed.depthMeters,
     0,
     0,
-    "specs/gameplay.md: continuing places the miner on the surface",
+    "specs/expedition.md: continuing places the miner on the surface",
   );
   assertLessThanOrEqual(
     resumed.miner.row,
@@ -91,6 +91,6 @@ it("stands the miner on the camp at depth 0 after a continue", async () => {
   assertEqual(
     resumed.miner.grounded,
     true,
-    "specs/gameplay.md: the miner stands on the camp ground rather than falling",
+    "specs/expedition.md: the miner stands on the camp ground rather than falling",
   );
 });

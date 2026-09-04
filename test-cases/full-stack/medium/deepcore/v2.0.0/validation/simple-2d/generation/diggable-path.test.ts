@@ -18,7 +18,7 @@
 // of a dug shaft: the drill cuts down, left, or right and never diagonally.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CAVE_MOUTH_COL, CORE_COL, WORLD_SIZES } from "../../src/constants";
+import { CAVE_MOUTH_COL, CORE_COL, WORLD_SIZES } from "../constants";
 import { assertLength, assertTrue } from "../assert";
 import {
   captureStill,

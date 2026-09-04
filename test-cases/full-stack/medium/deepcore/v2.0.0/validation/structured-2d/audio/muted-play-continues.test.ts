@@ -26,7 +26,7 @@
 // because the engine owns the bit and the surface does not carry it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYABLE_COL_MIN } from "../../src/constants";
+import { PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,

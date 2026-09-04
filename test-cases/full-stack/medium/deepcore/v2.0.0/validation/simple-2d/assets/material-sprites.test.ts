@@ -13,7 +13,7 @@
 // of each beside the miner.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MATERIALS, PLAYABLE_COL_MIN } from "../../src/constants";
+import { MATERIAL_SPRITES, MATERIALS, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
@@ -28,7 +28,6 @@ import {
   type Harness,
 } from "../harness";
 import { allDistinct, readPicture, type Picture } from "./produced";
-import { MATERIAL_SPRITES } from "./spec";
 
 /** Where the two nodes in the still are posed. */
 const ROW = 200;

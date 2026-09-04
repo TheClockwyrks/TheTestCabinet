@@ -159,7 +159,7 @@ export interface Miner {
 }
 
 // ---------------------------------------------------------------------------
-// The expedition (specs/gameplay.md, specs/modes.md)
+// The expedition (specs/expedition.md, specs/modes.md)
 // ---------------------------------------------------------------------------
 
 export type Mode = "standard" | "hardcore";

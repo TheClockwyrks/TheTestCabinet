@@ -19,7 +19,7 @@
 // the rock it is drawn over.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, CRACK_FRAMES, PLAYABLE_COL_MIN } from "../../src/constants";
+import { BAND_HEALTH, CRACK_FRAMES, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,

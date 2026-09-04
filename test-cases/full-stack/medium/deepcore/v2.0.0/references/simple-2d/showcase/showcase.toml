@@ -1,15 +1,7 @@
 [[media]]
-file = "dig.json.gz"
-name = "A shaft bored down into the rockbed and flown back up"
-
-[[media]]
 file = "shaft.png"
 name = "Seventy-five meters down, ore in the wall either side"
 
 [[media]]
 file = "camp.png"
 name = "The surface camp, where every dig starts and ends"
-
-[[media]]
-file = "fuel-depot.png"
-name = "The Fuel Depot, where nothing refills for free"

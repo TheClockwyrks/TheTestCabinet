@@ -1,5 +1,5 @@
-// Deepcore — the one static server and the one browser every suite in this project
-// shares. CASE-PROVIDED.
+// Deepcore — the one static server and the one browser every suite in this
+// project shares. CASE-PROVIDED.
 //
 // WHY THERE IS A GLOBAL SETUP AT ALL. An engineless build is a static site, and
 // there is nothing to import: the game is a bundle that runs in a browser, wires
@@ -10,134 +10,34 @@
 // megabytes, and doing either three hundred times over is the difference between
 // a suite run that takes a minute and one that takes ten.
 //
-// So this runs ONCE, before any suite: it serves the build's output directory on
-// a loopback port and starts a Chromium server. Vitest runs each suite file in a
-// worker of its own, which shares no memory with this process, so both are handed
-// over as addresses — a URL and a WebSocket endpoint — through vitest's `provide`,
-// under the keys `deepcoreUrl` and `deepcoreBrowserWs`, and the suites' shared
-// harness connects to the browser from inside each worker. One browser process
-// for the whole project, and a page per harness inside it.
+// The whole of it — finding the build output, serving it on a loopback port,
+// starting the Chromium server, and handing both to the suite workers as
+// addresses through vitest's `provide` — is the shared validator harness's,
+// because none of it is about Deepcore. The produced files a full-stack build
+// commits beside its bundle are served with their real content types there too,
+// so the `.wav` cues this case has the build produce are read the way they play.
+// What this file supplies is what is genuinely the case's: whose validators could
+// not run when something goes wrong, and the handle the run-wide surface probe
+// looks for.
 //
-// WHAT IS SERVED. The directory `npm run build` produced, found the same way the
-// case's own validator finds it (`dist`, then `build`, then `out`) so this suite
-// and the runner never disagree about which tree is under test. The server is a
-// few lines rather than a dependency because the build is a handful of static
-// files with no routing: whatever is asked for is read off disk, and anything
-// missing is a 404 the suite will see as a page error.
+// THE HANDLE IS PASSED, AND WHAT IT BUYS IS TIME RATHER THAN A VERDICT. With it,
+// the run answers "does this build install a surface at all" once, on pages of
+// its own and for the whole of the ceiling, instead of every one of this
+// project's several hundred harnesses paying that ceiling again. The ceiling
+// passed with it is the one `harness.ts` gives the worker-side probe, because a
+// probe that waited LESS than a harness does could call a slow build surfaceless
+// and have every harness agree without checking.
+//
+// IMPORTED FROM ITS OWN MODULE, NOT THE PACKAGE'S BARREL. This file is loaded by
+// vite's config path before the test runtime exists, and the barrel would drag
+// the harness, the media writer and Playwright's types into the one bundle whose
+// failure mode is "the project would not load at all". That is also why the
+// handle and the ceiling are written out here rather than read off `harness.ts`.
 
-import { createServer, type Server } from "node:http";
-import { readFile } from "node:fs/promises";
-import { existsSync, readdirSync } from "node:fs";
-import { extname, join, normalize, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import type { TestProject } from "vitest/node";
-import { launchChromiumServer } from "./chromium";
+import { makeGlobalSetup } from "./case-harness/global-setup";
 
-/** Where `npm run build` may have put the site, in the order the runner looks. */
-const BUILD_OUTPUTS = ["dist", "build", "out"] as const;
-
-/** Content types for what a Vite build emits. Anything else is served as bytes. */
-const CONTENT_TYPES: Readonly<Record<string, string>> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".webp": "image/webp",
-  ".woff2": "font/woff2",
-  ".ico": "image/x-icon",
-  // A full-stack build serves the audio it produced, so these are not optional
-  // here the way they are for a case that ships no media: a `.wav` handed back as
-  // `application/octet-stream` is refused by an `<audio>` element, and the audio
-  // points would fail a build that is sounding correctly.
-  ".wav": "audio/wav",
-  ".ogg": "audio/ogg",
-  ".mp3": "audio/mpeg",
-  ".mid": "audio/midi",
-};
-
-/**
- * The workspace root: the directory the build was produced in.
- *
- * Derived from this file's own URL rather than from the working directory, so it
- * names the same place in both layouts this project lives in — the case's own
- * `validation/none/`, and the `validation/` the runner stages it to inside the
- * build's tree.
- */
-const WORKSPACE_ROOT = resolve(
-  fileURLToPath(new URL(".", import.meta.url)),
-  "..",
-);
-
-/** The build output directory, or a failure naming what was looked for. */
-function findBuildOutput(): string {
-  for (const name of BUILD_OUTPUTS) {
-    const candidate = join(WORKSPACE_ROOT, name);
-    if (existsSync(candidate)) return candidate;
-  }
-  throw new Error(
-    `deepcore: no build output to serve — looked for ${BUILD_OUTPUTS.map(
-      (name) => `${name}/`,
-    ).join(", ")} under ${WORKSPACE_ROOT}. Run \`npm run build\` first.`,
-  );
-}
-
-/** Serve `root` as a static site on a loopback port the kernel chooses. */
-async function serve(root: string): Promise<{ server: Server; url: string }> {
-  const server = createServer((request, response) => {
-    const path = normalize(
-      decodeURI(new URL(request.url ?? "/", "http://localhost").pathname),
-    );
-    const file = join(
-      root,
-      path === "/" || path.endsWith("/") ? `${path}/index.html` : path,
-    );
-    // Nothing outside the served tree, whatever the request asked for.
-    if (!resolve(file).startsWith(resolve(root))) {
-      response.writeHead(403).end("forbidden");
-      return;
-    }
-    readFile(file).then(
-      (body) => {
-        response.writeHead(200, {
-          "content-type":
-            CONTENT_TYPES[extname(file)] ?? "application/octet-stream",
-          "cache-control": "no-store",
-        });
-        response.end(body);
-      },
-      () => {
-        response.writeHead(404).end("not found");
-      },
-    );
-  });
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("deepcore: the static server reported no port");
-  }
-  return { server, url: `http://127.0.0.1:${address.port}/` };
-}
-
-export default async function setup(
-  project: TestProject,
-): Promise<() => Promise<void>> {
-  const root = findBuildOutput();
-  if (readdirSync(root).length === 0) {
-    throw new Error(`deepcore: the build output at ${root} is empty`);
-  }
-
-  const { server, url } = await serve(root);
-  const browser = await launchChromiumServer();
-
-  project.provide("deepcoreUrl", url);
-  project.provide("deepcoreBrowserWs", browser.wsEndpoint());
-
-  return async () => {
-    await browser.close();
-    await new Promise<void>((done) => server.close(() => done()));
-  };
-}
+export default makeGlobalSetup({
+  slug: "deepcore",
+  handle: "__deepcore",
+  surfaceTimeoutMs: 15_000,
+});

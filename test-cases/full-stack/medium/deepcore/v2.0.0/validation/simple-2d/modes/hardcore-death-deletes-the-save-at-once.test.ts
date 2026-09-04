@@ -32,11 +32,7 @@ import {
   pinMiner,
   type Harness,
 } from "../harness";
-import {
-  bankSave,
-  openAtCamp,
-  waitForGameOver,
-} from "../save/expedition";
+import { bankSave, openAtCamp, waitForGameOver } from "../save/expedition";
 
 /**
  * Frames between the hull standing at `0` and the reading.
@@ -45,6 +41,17 @@ import {
  * in its own frame is not held to an ordering the specification leaves open.
  */
 const AT_ONCE_FRAMES = 2;
+
+/**
+ * Frames the recording holds either side of the death.
+ *
+ * The reading itself takes two frames and the Game Over screen arrives a moment
+ * later, so the bare bracket is a flicker. The expedition is left running at the
+ * camp before the hull is emptied and the summary is left on screen afterwards,
+ * which is what a reviewer watches this clip for.
+ */
+const RUN_UP_FRAMES = 20;
+const SETTLE_FRAMES = 20;
 
 let h: Harness;
 
@@ -64,10 +71,15 @@ it("deletes the save on the frame the Hardcore death lands", async () => {
   const banked = h.snapshot();
 
   const run = await captureReplay(h, "gone", async () => {
+    // The expedition alive at the camp, so the clip has a before.
+    await h.advance(RUN_UP_FRAMES);
     h.debug.setHull(0);
     await h.advance(AT_ONCE_FRAMES);
     const struck = h.snapshot();
-    return { struck, over: await waitForGameOver(h) };
+    const over = await waitForGameOver(h);
+    // And the Game Over screen left standing, which is what it left behind.
+    await h.advance(SETTLE_FRAMES);
+    return { struck, over };
   });
 
   assertEqual(banked.hasSave, true, "the save this check deletes was banked");

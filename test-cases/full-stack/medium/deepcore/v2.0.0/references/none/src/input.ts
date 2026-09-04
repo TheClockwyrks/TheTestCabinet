@@ -1,9 +1,14 @@
-// Deepcore — the keyboard and the mouse (specs/controls.md).
+// Deepcore — the keyboard and the contacts (specs/controls.md).
 //
 // Keys are read as `KeyboardEvent.code`, so the bindings are layout-independent.
 // Movement, thrust, and drilling are held, so the loop reads the live held set every
-// update; the rest are edge actions, drained once a frame. The pointer is collected in
-// client pixels and mapped into the stage's logical units by the loop.
+// update; the rest are edge actions, drained once a frame.
+//
+// Contacts are read as pointer events, which is what makes "a mouse and a finger on a
+// touch screen both reach the game as contacts on that same report" true without two
+// code paths. A choice carries BOTH of its edges — the press and its release, or the
+// landing and the lift — because the routing layer only acts where the two land in one
+// region.
 
 import { ACTIONS } from "./constants";
 import type { Action } from "./constants";
@@ -34,17 +39,35 @@ export class Input {
   private down = new Set<string>();
   /** Key codes that went down this frame, in order. */
   codes: string[] = [];
-  /** Clicks this frame, in the stage's logical units. */
-  clicks: { x: number; y: number }[] = [];
+  /** Completed contacts this frame, both edges, in the stage's logical units. */
+  choices: { from: { x: number; y: number }; to: { x: number; y: number } }[] =
+    [];
+  /** Where the contact currently down went down, or null while none is. */
+  private pressedAt: { x: number; y: number } | null = null;
 
   attach(canvas: HTMLCanvasElement): void {
-    canvas.addEventListener("mousemove", (e) => {
+    // A finger must drive the game rather than scroll the page under it.
+    canvas.style.touchAction = "none";
+    canvas.addEventListener("pointermove", (e) => {
       this.clientX = e.clientX;
       this.clientY = e.clientY;
     });
-    canvas.addEventListener("mousedown", (e) => {
+    canvas.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
-      this.clicks.push(this.toLogical(e.clientX, e.clientY));
+      this.clientX = e.clientX;
+      this.clientY = e.clientY;
+      this.pressedAt = this.toLogical(e.clientX, e.clientY);
+    });
+    canvas.addEventListener("pointerup", (e) => {
+      const from = this.pressedAt;
+      this.pressedAt = null;
+      if (from === null) return;
+      this.clientX = e.clientX;
+      this.clientY = e.clientY;
+      this.choices.push({ from, to: this.toLogical(e.clientX, e.clientY) });
+    });
+    canvas.addEventListener("pointercancel", () => {
+      this.pressedAt = null;
     });
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     window.addEventListener("keydown", (e) => this.onKeyDown(e));
@@ -92,10 +115,10 @@ export class Input {
     };
   }
 
-  /** Drop this frame's edge keys and clicks. */
+  /** Drop this frame's edge keys and completed contacts. */
   drain(): void {
     this.codes.length = 0;
-    this.clicks.length = 0;
+    this.choices.length = 0;
   }
 
   /** Let every held key up, which a reset does. */

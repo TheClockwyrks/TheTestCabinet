@@ -35,7 +35,7 @@ import {
   STONE_DENSITY_MAX,
   STONE_DENSITY_MIN,
   WORLD_COLS,
-} from "../../src/constants";
+} from "../constants";
 import { fail } from "../assert";
 import {
   bandAtFraction,

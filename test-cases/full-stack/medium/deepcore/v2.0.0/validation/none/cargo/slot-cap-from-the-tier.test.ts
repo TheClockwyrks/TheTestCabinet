@@ -45,7 +45,7 @@ it("reports the capacity the cargo tier gives, tier by tier", async () => {
   await pinDrill(h);
 
   const opening = await h.snapshot();
-  assertEqual(opening.tiers.cargo, 1, "specs/gameplay.md");
+  assertEqual(opening.tiers.cargo, 1, "specs/expedition.md");
   assertEqual(opening.cargo.slotCap, CARGO_CAPACITY[0], "specs/upgrades.md");
 
   for (let tier = 1; tier <= MAX_TIER.cargo; tier += 1) {

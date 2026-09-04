@@ -1,26 +1,30 @@
-// Deepcore — notices/lava-notice-fires-once: the first lava burn that hurts the
-// miner raises the lava card, and no later one raises it again.
+// Deepcore — notices/lava-notice-fires-once: no later burn raises the card
+// a second time.
 //
-// `specs/hazards.md`: "The first ... lava burn that does [damage the miner], each
-// raise a one-time notice card ... Each fires at most once per expedition." Two
-// real burns are driven in ONE expedition: a lava cell drills "exactly like its
-// band's rock" and deals its lump "once, as the cell breaks", so holding `down`
-// on a posed deepstone lava cell is a burn the game billed rather than a card the
-// check posed.
+// `specs/hazards.md`: "The first ... lava burn that does [damage the miner],
+// each raise a one-time notice card ... Each fires at most once per
+// expedition."
+//
+// This point decides the ONCE: two real, damaging burns are driven in one
+// expedition, and the second must raise nothing.
+//
+// THAT THE CARD ARRIVES AT ALL IS ITS OWN POINT, `notices/lava-notice-is-raised`.
 //
 // Both cells sit in the deepstone, the band `specs/world.md` first places lava
-// in, so the lump is the one that band really deals. The hull lost on the SECOND
-// burn is read too: a build that stopped burning the miner after the first would
-// otherwise pass a check that only looked for the absence of a card.
+// in, so the lump is the one that band really deals: a lava cell drills "exactly
+// like its band's rock" and deals its lump "once, as the cell breaks".
+//
+// The first card is dismissed before the second burn, so what the assertion
+// reads is a card that was never raised rather than the first one still hanging
+// about. `specs/hazards.md` fixes the press as an immediate dismissal.
+//
+// The hull lost on the SECOND burn is read as well: without it a build that
+// quietly stopped hurting the miner after the first would pass a check that only
+// looked for the absence of a card.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertNotNull,
-  assertNull,
-} from "../assert";
-import { NOTICE_DELAY } from "../../src/constants";
+import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { NOTICE_DELAY } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   burnOnLava,
@@ -44,14 +48,13 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("raises the lava card on the first damaging burn and never again", async () => {
+it("raises nothing on a later damaging burn", async () => {
   openNoticeScene(h);
   const row = lavaRow(h.snapshot());
 
   const run = await captureReplay(h, "card", async () => {
-    const first = await burnOnLava(h, FIRST_COL, row);
+    await burnOnLava(h, FIRST_COL, row);
     await elapse(h, PAST_DELAY);
-    const raised = h.snapshot();
 
     h.debug.dismissNotice();
     await h.advance(1);
@@ -59,28 +62,16 @@ it("raises the lava card on the first damaging burn and never again", async () =
 
     const second = await burnOnLava(h, SECOND_COL, row);
     await elapse(h, PAST_DELAY);
-    const after = h.snapshot();
-
-    return { first, raised, cleared, second, after };
+    return { cleared, second, after: h.snapshot() };
   });
 
-  assertEqual(run.first.cut.broke, true, "the first lava cell cleared");
-  assertGreaterThan(
-    run.first.hullBefore - run.first.hullAfter,
-    0,
-    "hull the first burn cost",
-  );
+  // The second burn really happened, and it really hurt.
   assertEqual(run.second.cut.broke, true, "the second lava cell cleared");
   assertGreaterThan(
     run.second.hullBefore - run.second.hullAfter,
     0,
     "hull the second burn cost",
   );
-
-  assertNotNull(run.raised.notice, "a card after the first burn");
-  assertEqual(run.raised.notice?.hazard, "lava");
-  assertEqual(run.raised.notice?.shown, true);
-  assertEqual(run.raised.noticesFired.lava, true);
 
   assertNull(run.cleared.notice, "no card once the first is dismissed");
   assertNull(run.after.notice, "no card after a later lava burn");

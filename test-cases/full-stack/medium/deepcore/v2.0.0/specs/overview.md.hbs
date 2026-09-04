@@ -29,8 +29,8 @@ the game they describe as one cohesive whole.
 ## The runtime
 
 This game stands on no engine, so the runtime under it is yours to write: the
-frame loop and the delta time it measures, the canvas fit, keyboard input, audio,
-asset loading, and the debug overlay. Where this specification speaks of the
+frame loop and the delta time it measures, the canvas fit, keyboard and pointer
+input, audio, asset loading, and the debug overlay. Where this specification speaks of the
 runtime it means that layer, and it states only what Deepcore needs from it. How
 the layer is structured is yours to decide.
 
@@ -79,8 +79,8 @@ Everything under `src/`. The directory does not exist yet.
 
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours: the frame loop and the
-canvas fit, keyboard input, audio, asset loading, the diagnostics overlay, the
-scrolling camera, the debug and automation surface, the figures this
+canvas fit, keyboard and pointer input, audio, asset loading, the diagnostics
+overlay, the scrolling camera, the debug and automation surface, the figures this
 specification fixes, and the game itself.
 
 The game's state is yours to shape. What it must carry is what this
@@ -229,7 +229,8 @@ and sound it plays.
 
 {{#if (eq engine.slug "none")}}
 - Write the runtime the game stands on: the frame loop and its delta time, the
-  canvas fit, keyboard input, audio, asset loading, and the debug overlay.
+  canvas fit, keyboard and pointer input, audio, asset loading, and the debug
+  overlay.
 {{else if (eq engine.slug "simple-2d")}}
 - Build on the {{engine.name}} engine, taking the frame loop, the input actions,
   audio, asset loading, and the debug overlay from it.
@@ -270,6 +271,9 @@ The stage is `STAGE_W x STAGE_H` (`1280 x 720`, 16:9) logical units. The origin
 - The letterbox bars around the stage carry the stage's background color.
 - Draw in logical units, and take the canvas element's own size from the runtime
   alone.
+- A pointer or touch position reaches the game in these same logical units, taken
+  through that same fit, so a position the game reads and a region the game
+  reports lie in one coordinate space.
 
 The stage is divided into two regions:
 

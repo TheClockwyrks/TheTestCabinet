@@ -10,51 +10,40 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator addresses the
-// build by the same relative paths the build itself uses — `src/constants.ts`,
-// `src/game.ts`, and the produced files under `assets/`, which several of the
-// produced-asset suites read straight off disk. It is derived from this file's
-// own URL rather than from the working directory, so the command above works
-// from anywhere.
+// Everything but the dials below is the shared validator harness's, because
+// everything but the dials is what makes a staged validator project one shape the
+// runner can drive: the project's name, the suites it collects, the scaffolding
+// it loads, the workers a shared browser can hold pages for, and the refusal to
+// pass a run that collected nothing.
 //
-// WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONES DO NOT. An engineless
-// build is a static site with nothing to import, so every check drives it in a
-// real browser through `window.__deepcore`. `globalSetup` starts the one server
-// and the one Chromium the whole project shares, before any suite runs, and
-// hands both to the workers through `provide`. The environment stays `node` —
-// the suites drive a browser, they do not run in one.
+// THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator addresses the
+// build's output by the same relative path the build itself produced it at —
+// which is also how the produced-asset suites read the files under `assets/`
+// straight off disk. It is computed HERE, from this file's own URL, rather than
+// inside the package: the package is staged one directory deeper than this file,
+// so anything derived from its own location would name the wrong tree.
 //
-// `setupFiles` runs beside it, once per worker rather than once per project. Its
-// only job is the per-worker teardown that hands a page back when a suite file is
-// done, which is a call into the shared harness — the one moment a worker has no
-// lifecycle hook of its own for.
+// Imported from its own module rather than through the package's barrel, for the
+// reason `globalSetup.ts` gives.
 
-import { defineConfig } from "vitest/config";
+import { availableParallelism } from "node:os";
 
-export default defineConfig({
+import { defineValidationConfig } from "./case-harness/vitest-config";
+
+export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    globalSetup: ["validation/globalSetup.ts"],
-    setupFiles: ["validation/setup.ts"],
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // Each suite file holds a page of the shared browser while it runs, so the
-    // ceiling on files in flight is the ceiling on pages. Capped rather than left
-    // to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it.
-    maxWorkers: 4,
-    minWorkers: 1,
-    // A Deepcore scenario is posed rather than played to, so the long ones are
-    // the Core Sample's ninety-second timer and the generation sweeps over
-    // several seeds at the Marathon size, both driven off the clock rather than
-    // waited out. Two minutes is generous against a healthy build and still
-    // bounds a hung one.
-    testTimeout: 120_000,
-    hookTimeout: 60_000,
-  },
+  // A Deepcore scenario is posed rather than played to, so the long ones are the
+  // Core Sample's ninety-second timer and the generation sweeps over several
+  // seeds at the Marathon size, both driven off the clock rather than waited out.
+  // Two minutes is generous against a healthy build and still bounds a hung one.
+  testTimeout: 120_000,
+  hookTimeout: 60_000,
+  // Four rather than the package's eight, and never more than the host has
+  // cores. A full-stack build loads the art and audio it produced into every
+  // page, so a page here costs several times what one of a code-only case does,
+  // and the host running this is running a model's build under it. On the
+  // two-core host a run is validated on, four pages contending for two cores
+  // spend a measurable share of the suite thrashing rather than working, so the
+  // dial follows the host down and stops at four on a larger one.
+  maxWorkers: Math.max(1, Math.min(4, availableParallelism())),
 });

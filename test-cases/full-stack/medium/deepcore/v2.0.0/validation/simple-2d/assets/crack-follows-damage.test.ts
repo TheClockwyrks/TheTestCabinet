@@ -19,7 +19,7 @@
 // are stood up off disk, because the overlay this is about is the produced one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, PLAYABLE_COL_MIN, TILE } from "../../src/constants";
+import { BAND_HEALTH, PLAYABLE_COL_MIN, TILE } from "../constants";
 import { assertGreaterThan } from "../assert";
 import {
   captureStill,

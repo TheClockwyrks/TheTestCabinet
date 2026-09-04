@@ -23,8 +23,6 @@ decision of every dig is when to stop, and the worst place to make it is four
 hundred meters down with a quarter tank left and a seam of Pyronium in front of
 you.
 
-![The bay, on the way home](cargo-hold.png)
-
 The deep does not just make you poor, it kills you. Gas pockets look exactly like
 ordinary rock and give themselves away only with a faint wisp, and drilling into
 one is a hull hit that gets worse the deeper you are. Lava pools sear on contact

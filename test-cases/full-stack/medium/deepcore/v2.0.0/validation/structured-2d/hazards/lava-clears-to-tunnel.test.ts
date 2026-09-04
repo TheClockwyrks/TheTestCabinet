@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { DRILL_HIT_FUEL } from "../../src/constants";
+import { DRILL_HIT_FUEL } from "../constants";
 import {
   captureReplay,
   createHarness,

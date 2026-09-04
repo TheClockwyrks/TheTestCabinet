@@ -235,7 +235,7 @@ function buildingControls(state: DeepReadonly<DeepcoreState>): Control[] {
 }
 
 /** The current screen's menu, as a column of buttons. */
-function menuControls(state: DeepReadonly<DeepcoreState>): Control[] {
+export function menuControls(state: DeepReadonly<DeepcoreState>): Control[] {
   const items = menuItems(state);
   const top = MENU_TOP[state.screen] ?? 340;
   const x = STAGE_W / 2 - MENU_COLUMN.w / 2;
@@ -296,7 +296,7 @@ function panelControls(
       const fuelFull = missingFuel <= 0;
       // FILL pays only for what is missing and only as far as the Credits reach,
       // so one unit's price is enough for it. The fixed increment is
-      // all-or-nothing, so specs/gameplay.md's "an action that cannot be
+      // all-or-nothing, so specs/expedition.md's "an action that cannot be
       // afforded is disabled" holds it to the whole of what it would buy.
       const noFuelMoney = fuelFull || state.credits < FUEL_PRICE;
       const noIncrementFuelMoney =

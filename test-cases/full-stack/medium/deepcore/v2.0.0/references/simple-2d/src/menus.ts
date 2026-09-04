@@ -82,6 +82,42 @@ export function menuFor(
   }
 }
 
+/**
+ * The entry a menu highlights on arrival (specs/ui.md, "Returning to a menu").
+ *
+ * Arriving at a menu by going back selects the entry that led away from it, so
+ * the entries are named rather than numbered: `CONTINUE` is on the title only
+ * while a save exists and shifts the ones below it when it is. Every other
+ * arrival highlights the menu's first item.
+ */
+export function arrivalIndex(
+  from: ScreenName,
+  to: ScreenName,
+  mode: Mode,
+  saved: boolean,
+): number {
+  const items = menuFor(to, mode, saved);
+  const at = (label: string): number => {
+    const index = items.findIndex((item) => item.label === label);
+    return index < 0 ? 0 : index;
+  };
+  if (to === "title") {
+    if (from === "how-to-play") return at(TITLE_ITEMS[2]);
+    if (
+      from === "mode-select" ||
+      from === "paused" ||
+      from === "victory" ||
+      from === "game-over"
+    ) {
+      return at(TITLE_ITEMS[1]);
+    }
+  }
+  if (to === "mode-select" && from === "size-select") {
+    return at(mode === "hardcore" ? MODE_ITEMS[1] : MODE_ITEMS[0]);
+  }
+  return 0;
+}
+
 /** The menu the game currently shows, read off its screen, mode, and save slot. */
 export function menuItems(state: {
   readonly screen: ScreenName;

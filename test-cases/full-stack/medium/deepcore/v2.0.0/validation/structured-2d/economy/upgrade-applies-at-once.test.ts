@@ -13,7 +13,7 @@
 // and holds its cut with the body pinned.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, DRILL_DAMAGE_TIERS } from "../../src/constants";
+import { BAND_HEALTH, DRILL_DAMAGE_TIERS } from "../constants";
 import { assertCloseTo, assertEqual, fail } from "../assert";
 import {
   ACTION_KEY,
@@ -102,7 +102,7 @@ it("cuts with the new drill damage on the very next cut", async () => {
   assertEqual(
     h.snapshot().tiers.drill,
     1,
-    "specs/gameplay.md, the starting tier",
+    "specs/expedition.md, the starting tier",
   );
 
   h.debug.setCredits(upgradePrice("drill", 2) ?? 0);

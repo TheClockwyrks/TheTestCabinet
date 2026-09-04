@@ -3,7 +3,7 @@
 //
 // `specs/items.md`: "Saving is refused while a Core Sample's timer runs, whether
 // the Sample is carried or lying jettisoned, so the timer is never frozen out by
-// saving and quitting." `specs/gameplay.md` repeats it among the save rules.
+// saving and quitting." `specs/expedition.md` repeats it among the save rules.
 //
 // The miner is stood at the Save Pad — whose footprint is asked of the build,
 // since where the six buildings sit along the camp is the build's to choose — and

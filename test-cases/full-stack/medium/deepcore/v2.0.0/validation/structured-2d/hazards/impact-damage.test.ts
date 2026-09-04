@@ -27,23 +27,18 @@ import {
   FALL_TERMINAL_EMPTY,
   FALL_TERMINAL_LOADED,
   IMPACT_SAFE_SPEED,
-} from "../../src/constants";
+  impactDamageAt,
+} from "../constants";
 import {
   captureReplay,
   createHarness,
+  type Harness,
   loadFraction,
   loadToFraction,
   openScene,
   pinDrill,
-  type Harness,
 } from "../harness";
-import {
-  armHull,
-  bandRow,
-  driveLanding,
-  HAZARD_COL,
-  impactDamageAt,
-} from "./scene";
+import { armHull, bandRow, driveLanding, HAZARD_COL } from "./scene";
 
 /** The tier whose hull outlasts the heaviest landing. */
 const HULL_TIER = 5;
@@ -56,6 +51,20 @@ const TOLERANCE = 3;
 
 /** The posed arrival speed of the first, empty landing. */
 const BRISK_SPEED = 800;
+
+/**
+ * The frames the recording runs before the first input and after the last, and
+ * the frames it holds between them.
+ *
+ * These bound the CLIP a reviewer watches, not the check: nothing below is
+ * asserted against them. A bracket that opened on the input and closed on the
+ * result would hand a reviewer a flicker a few frames long, so the recorder is
+ * armed with the world at rest, holds long enough for each step to be seen, and
+ * runs on once the behavior has settled.
+ */
+const RUN_UP = 15;
+const HOLD = 12;
+const SETTLE = 30;
 
 let h: Harness;
 
@@ -77,9 +86,11 @@ it("deals the impact rule's hull at every landing speed", async () => {
   }
 
   const landings = await captureReplay(h, "slam", async () => {
+    await h.advance(RUN_UP);
     // Two empty landings, the second at the empty terminal speed.
     armHull(h, HULL_TIER);
     const brisk = await driveLanding(h, HAZARD_COL, row, HEIGHT, BRISK_SPEED);
+    await h.advance(HOLD);
     armHull(h, HULL_TIER);
     const terminal = await driveLanding(
       h,
@@ -89,6 +100,7 @@ it("deals the impact rule's hull at every landing speed", async () => {
       FALL_TERMINAL_EMPTY,
     );
 
+    await h.advance(HOLD);
     // And one at the loaded terminal speed, which needs the load that raises it.
     const loaded = loadToFraction(h, 1);
     armHull(h, HULL_TIER);
@@ -99,6 +111,7 @@ it("deals the impact rule's hull at every landing speed", async () => {
       HEIGHT,
       FALL_TERMINAL_LOADED,
     );
+    await h.advance(SETTLE);
     return { brisk, terminal, heavy, loaded };
   });
 

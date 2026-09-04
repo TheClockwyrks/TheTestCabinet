@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { NANOBOT_HULL } from "../../src/constants";
+import { NANOBOT_HULL } from "../constants";
 import {
   captureStill,
   createHarness,

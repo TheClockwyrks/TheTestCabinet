@@ -32,6 +32,15 @@
 // radius, because every one of the three reaches is measured off the build's own
 // drawing, and it is a ratio of two of them.
 //
+// AND NOTHING HERE BOUNDS THE REACH ITSELF. `specs/assets.md` states that a
+// carved cell is drawn inset with a lip and rounded corners and that an L-bend
+// keeps a convex nub; it states no lip width, so a build with a two-unit lip and
+// one with a lip most of a tile wide are both conformant and a bound on `A` or
+// `B` would fail one of them on a figure that traces to no statement. The ratio
+// is the whole of the requirement, and it already fails a corner with no dirt at
+// it: a corner the dirt does not reach along reaches nothing along the diagonal
+// either, so the reach is `0` and the scan reports it as a bend with no nub.
+//
 // A chord read at its midpoint instead is not enough here. The scans cannot sit
 // exactly on the tile edges without reading the cells beyond them, and a shallow
 // scoop of a wide radius under-reads on an inset scan line by enough to drag the
@@ -45,11 +54,7 @@
 // the bend cell itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertBetween,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-} from "../assert";
+import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import { TILE } from "../constants";
 import {
   DISTINCT_MIN,
@@ -77,12 +82,6 @@ const SCAN_TO = 40;
  * boundary actually meets the edge.
  */
 const SCAN_OFF = 1;
-
-/** The least dirt an L-bend must keep along each edge for a nub to be there. */
-const NUB_MIN = 3;
-
-/** The most dirt a corner feature may run to before it is a wall, not a nub. */
-const NUB_MAX = 30;
 
 /**
  * How far past the flat chord the dirt must reach along the diagonal for the
@@ -180,18 +179,18 @@ it("keeps a convex nub of dirt at the inside of an L-bend", async () => {
     "the band's unmined rock drawn clearly apart from the carved tunnel's fill, in RGB distance",
   );
 
-  // There is dirt at the bend at all, and it is a corner feature rather than a
-  // wall of dirt across the passage.
-  assertBetween(
+  // There is dirt at the bend at all. PRESENCE rather than size: a convex nub at
+  // the shared corner necessarily leaves dirt along both edges that run out of
+  // it, so a reach of zero on either is a bend with no nub — and a zero would
+  // also leave the chord below with nothing to be a fraction of.
+  assertGreaterThan(
     alongTop,
-    NUB_MIN,
-    NUB_MAX,
+    0,
     "dirt kept along the bend's top edge, out from the corner the rock pokes into",
   );
-  assertBetween(
+  assertGreaterThan(
     alongRight,
-    NUB_MIN,
-    NUB_MAX,
+    0,
     "dirt kept along the bend's right edge, out from the corner the rock pokes into",
   );
 

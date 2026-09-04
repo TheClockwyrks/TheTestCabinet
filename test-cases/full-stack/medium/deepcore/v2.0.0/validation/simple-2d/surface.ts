@@ -40,16 +40,16 @@ import type { DeepReadonly } from "ts-essentials";
 /* The vocabularies the operations take                                       */
 /* -------------------------------------------------------------------------- */
 //
-// Read back off `src/constants.ts`, which is the CASE's own module: the case
-// seeds it into the workspace and every build receives it unchanged, so the
-// vocabulary a check names and the vocabulary the build was given are the same
-// list by construction. Nothing of the BUILD's is imported here — `src/game.ts`
-// and whatever module a build writes its surface in are both out of reach of this
-// file.
+// Read back off this project's own `constants.ts`, which transcribes each of these
+// lists from the specification that fixes it, so the vocabulary a check names is
+// the vocabulary the specification named. Nothing of the BUILD's is imported here
+// — `src/constants.ts`, `src/game.ts`, and whatever module a build writes its
+// surface in are all out of reach of this file.
 
 import type {
   BandName,
   ComponentId,
+  ControlName,
   DeathCause as DeathCauseId,
   Facing,
   ItemId,
@@ -63,7 +63,7 @@ import type {
   TileKind,
   TrackName,
   WorldSize,
-} from "../src/constants";
+} from "./constants";
 
 /** One of the four depth bands. */
 export type Band = BandName;
@@ -81,6 +81,15 @@ export type UpgradeTrack = TrackName;
 export type RocketComponentId = ComponentId;
 /** One of the two hazards a one-time notice is raised for. */
 export type Hazard = NoticeHazard;
+/** One of the sixteen on-screen controls `controlRect` reports a region for. */
+export type Control = ControlName;
+export type { ControlName };
+/**
+ * What a control acts on: an ore, a field supply, an upgrade track, or nothing.
+ *
+ * A control that acts on nothing further takes `null`.
+ */
+export type ControlSubject = OreId | ItemId | TrackName | null;
 /** How a death ended the expedition, as the summary reports it. */
 export type DeathCause = DeathCauseId;
 
@@ -116,6 +125,22 @@ export interface TileRead {
 /** One surface building's footprint in world units, as `buildings()` reports it. */
 export interface BuildingBox {
   id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * A hit region in the stage's logical units, as `menuItemRect` and `controlRect`
+ * report one.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size: the
+ * region a pointer or a touch contact drives that item or that control from
+ * (`specs/controls.md`). The layout is the build's, so this is how the build
+ * reports where it put each one.
+ */
+export interface HitRect {
   x: number;
   y: number;
   w: number;
@@ -246,6 +271,12 @@ export interface DeepcoreSnapshot {
   muted: boolean;
   /** Accumulated game time, in seconds, on every screen. */
   simTime: number;
+  /**
+   * The expedition's own clock, in seconds. It rests at `0` until an expedition
+   * begins, and the summary's `elapsedSeconds` is the value it holds when the
+   * expedition ends.
+   */
+  elapsedSeconds: number;
   hasSave: boolean;
   credits: number;
   creditsEarned: number;
@@ -303,6 +334,22 @@ export interface DeepcoreDebugApi<S = unknown> {
   /** The nearest cell of that kind to the miner, or `null` where the mine holds none. */
   findTile(state: DeepReadonly<S>, kind: TileKind): CellRef | null;
   buildings(state: DeepReadonly<S>): BuildingBox[];
+  /**
+   * The hit region of item `index` on the menu the current screen shows, and
+   * `null` on `in-mine` or where `index` names no item of that menu.
+   */
+  menuItemRect(state: DeepReadonly<S>, index: number): HitRect | null;
+  /**
+   * The hit region of the on-screen control `control`, for the ore, upgrade
+   * track, or field supply `subject` where the control takes one and `null`
+   * where it takes none. `null` while the control is not drawn, including while
+   * the panel that carries it is closed.
+   */
+  controlRect(
+    state: DeepReadonly<S>,
+    control: Control,
+    subject: string | null,
+  ): HitRect | null;
 
   /* ---- Restoring the world ---- */
 
@@ -315,8 +362,6 @@ export interface DeepcoreDebugApi<S = unknown> {
   generateMine(state: DeepReadonly<S>): S;
   /** Open every playable cell below `row 0` and above the Core chamber. */
   clearMine(state: DeepReadonly<S>): S;
-  /** Take every ground item off the mine, detonating nothing. */
-  clearGroundItems(state: DeepReadonly<S>): S;
   /** Empty the cargo bay, selling nothing. */
   clearCargo(state: DeepReadonly<S>): S;
   /** Set the held count of all six field supplies to `0`, using nothing. */
@@ -365,8 +410,16 @@ export interface DeepcoreDebugApi<S = unknown> {
   setMenuIndex(state: DeepReadonly<S>, index: number): S;
   setMode(state: DeepReadonly<S>, mode: Mode): S;
   /**
-   * The size and with it `coreRow`, and the mine the new depth leaves: emptied
-   * to that depth exactly as `clearMine` leaves it. It generates nothing.
+   * The size and with it `coreRow`, resizing the mine onto the new depth the way
+   * an array is resized rather than emptying or regenerating it
+   * (`specs/instrumentation.md`, Resizing the mine).
+   *
+   * Every cell the two depths share comes through untouched, keeping its own
+   * kind, band, ore, material, and remaining health, and a buried material node
+   * above the new Core chamber comes through with its cell. Rows past the new
+   * Core chamber go with their rows. Rows the old depth did not reach open as an
+   * empty mine holds them at that depth, and the row at the new `coreRow`
+   * becomes the Core chamber. It generates nothing.
    */
   setWorldSize(state: DeepReadonly<S>, size: WorldSize): S;
   setCredits(state: DeepReadonly<S>, value: number): S;
@@ -386,6 +439,11 @@ export interface DeepcoreDebugApi<S = unknown> {
   setNoticeFired(state: DeepReadonly<S>, hazard: Hazard, fired: boolean): S;
   /** The carried lead, within `[-CAM_LEAD_MAX, CAM_LEAD_MAX]`. */
   setCameraLead(state: DeepReadonly<S>, lead: number): S;
+  /**
+   * The expedition's elapsed time, at least `0`: the clock `elapsedSeconds`
+   * reports and the summary shows. It moves no other clock and advances nothing.
+   */
+  setElapsed(state: DeepReadonly<S>, seconds: number): S;
   clearSave(state: DeepReadonly<S>): S;
 
   /* ---- The controls: the named counterparts of the on-screen ones ---- */
@@ -419,6 +477,8 @@ export const READINGS = [
   "tileAt",
   "findTile",
   "buildings",
+  "menuItemRect",
+  "controlRect",
 ] as const satisfies readonly (keyof DeepcoreDebugApi)[];
 
 /**
@@ -439,11 +499,12 @@ export const REQUIRED_OPS = [
   "tileAt",
   "findTile",
   "buildings",
+  "menuItemRect",
+  "controlRect",
   // Restoring the world
   "reset",
   "generateMine",
   "clearMine",
-  "clearGroundItems",
   "clearCargo",
   "clearItems",
   // Posing the mine
@@ -476,6 +537,7 @@ export const REQUIRED_OPS = [
   "setRocketInstalled",
   "setNoticeFired",
   "setCameraLead",
+  "setElapsed",
   "clearSave",
   // The controls
   "dropOre",

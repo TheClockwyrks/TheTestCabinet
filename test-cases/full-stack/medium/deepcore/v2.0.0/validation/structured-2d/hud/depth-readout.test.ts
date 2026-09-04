@@ -12,7 +12,7 @@
 // is read is the depth of a settled miner and no frame of the descent.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYABLE_COL_MIN } from "../../src/constants";
+import { PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

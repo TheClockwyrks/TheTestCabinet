@@ -21,7 +21,7 @@
 // "that would change nothing" is a no-op the specification does not consume.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HULL_TIERS, NANOBOT_HULL } from "../../src/constants";
+import { HULL_TIERS, NANOBOT_HULL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

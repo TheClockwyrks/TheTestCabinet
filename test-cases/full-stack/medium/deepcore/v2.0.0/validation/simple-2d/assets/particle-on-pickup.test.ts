@@ -17,7 +17,7 @@
 // the mine is otherwise cleared.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYABLE_COL_MIN, TILE } from "../../src/constants";
+import { PLAYABLE_COL_MIN, TILE } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

@@ -1,13 +1,13 @@
 // hazards/hull-never-mends — damage is paid for, never waited out.
 //
 // `specs/character.md` closes the hull rules with one line: "Hull never mends on
-// its own", and `specs/gameplay.md` names the two things that do mend it, the
+// its own", and `specs/expedition.md` names the two things that do mend it, the
 // Fuel Depot's repair and, in `specs/items.md`, Regenerative Nanobots. So a
 // damaged miner is stood still for a long span in each of the two places a
 // player waits — the camp, where every other resource is bought back, and a
 // tunnel underground — and the hull is read back where the last hazard left it.
 //
-// Arriving at the surface is the case worth naming, because `specs/gameplay.md`
+// Arriving at the surface is the case worth naming, because `specs/expedition.md`
 // says what it does not do: "Arriving at the surface refuels and repairs
 // nothing: fuel and hull are exactly what the miner climbed out with."
 //

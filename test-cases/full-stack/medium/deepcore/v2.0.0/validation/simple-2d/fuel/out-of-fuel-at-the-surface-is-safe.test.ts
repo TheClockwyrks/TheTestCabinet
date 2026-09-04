@@ -22,7 +22,7 @@
 // against a one-tile floor is not a rate.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURFACE_Y } from "../../src/constants";
+import { SURFACE_Y } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
@@ -70,7 +70,7 @@ it("carries on with an empty tank while the miner stands in the camp", async () 
   });
 
   assertEqual(after.screen, "in-mine", "specs/character.md");
-  assertEqual(after.summary, null, "specs/gameplay.md");
+  assertEqual(after.summary, null, "specs/expedition.md");
   assertEqual(after.miner.fuel, 0, "specs/character.md");
   assertEqual(after.miner.grounded, true, "specs/character.md");
 });

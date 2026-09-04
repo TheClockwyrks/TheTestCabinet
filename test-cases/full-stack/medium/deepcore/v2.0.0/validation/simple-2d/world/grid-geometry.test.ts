@@ -23,7 +23,7 @@
 // key is not held; the shaft's walls are what keep the fall in its column.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MINER_W, TILE } from "../../src/constants";
+import { MINER_W, TILE } from "../constants";
 import {
   assertBetween,
   assertEqual,

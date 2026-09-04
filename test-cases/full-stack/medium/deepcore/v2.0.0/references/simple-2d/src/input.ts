@@ -68,8 +68,21 @@ function held(api: UpdateApi, action: ActionName): boolean {
 }
 
 /**
+ * The control each contact currently down was pressed on, by contact id.
+ *
+ * specs/controls.md: "A choice takes both of its edges inside one region: the
+ * press and its release for a pointer, the landing and the lift for a touch
+ * contact. Two edges falling in different regions, and an edge falling outside
+ * every region, choose nothing." So a press is remembered rather than acted on,
+ * and the release is what runs it — and only where it lands on the same control.
+ * A contact that goes down outside every region is remembered as `null`, so its
+ * release chooses nothing either.
+ */
+const pressedOn = new Map<number, string | null>();
+
+/**
  * Resolve this frame's pointer: the mirror the renderer hovers with, and every
- * press, in arrival order, against the controls the state offers.
+ * completed contact, in arrival order, against the controls the state offers.
  */
 export function readPointer(
   d: Draft,
@@ -79,9 +92,17 @@ export function readPointer(
   const pointer = api.input.pointer();
   d.pointer = { x: pointer.x, y: pointer.y, down: pointer.down };
   for (const sample of api.input.pointerSamples()) {
-    if (sample.type !== "down") continue;
+    if (sample.type === "down") {
+      const hit = controlAt(controls, sample.x, sample.y);
+      pressedOn.set(sample.id, hit ? hit.action : null);
+      continue;
+    }
+    if (sample.type !== "up") continue;
+    const pressed = pressedOn.get(sample.id) ?? null;
+    pressedOn.delete(sample.id);
+    if (pressed === null) continue;
     const hit = controlAt(controls, sample.x, sample.y);
-    if (hit) run(d, api, hit.action);
+    if (hit && hit.action === pressed) run(d, api, hit.action);
   }
   syncMenuToPointer(d, controls, pointer.x, pointer.y);
 }

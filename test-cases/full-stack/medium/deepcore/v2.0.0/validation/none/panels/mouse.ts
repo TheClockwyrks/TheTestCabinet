@@ -1,59 +1,63 @@
-// Deepcore — the mouse, for the checks that are about the mouse. CASE-PROVIDED.
+// Deepcore — the pointer, for the checks that are about the pointer. CASE-PROVIDED.
 //
 // `specs/controls.md` requires every menu item, panel control and status-bar
-// control to be clickable, and `specs/ui.md` requires every panel and menu to be
-// fully operable with the mouse. Nothing in either fixes WHERE any of them is
-// drawn: `specs/overview.md` hands the layout to the build. So a check about the
-// mouse has to find its target the way a player does — by looking at the screen —
-// rather than by knowing a coordinate the specification never stated.
+// control to occupy a rectangular hit region and to answer a pointer pressed and
+// released inside it, and `specs/ui.md` requires every panel and menu to be fully
+// operable that way. Neither fixes WHERE any of them is drawn: `specs/overview.md`
+// hands the layout to the build.
 //
-// Two ways of finding one, and both are here because the specification supports
-// exactly these two:
+// SO THE BUILD REPORTS IT. `specs/instrumentation.md` carries two readings for
+// exactly this — `menuItemRect(index)` and `controlRect(control, subject)`, both
+// answering `{ x, y, w, h }` in the stage's logical units — and everything here is
+// built on them. A check moves the pointer onto the region the build says it drew
+// the thing at, and asserts the selection or the effect that follows. Nothing here
+// searches the screen: there is no ring of offsets around a text anchor and no
+// sweep of a band, because both of those were guesses that a conformant build
+// could fail — a build that draws its labels as sprites rather than through
+// `fillText`, or whose control box misses a hardcoded offset, or whose bar control
+// is narrower than a sweep's step, was never found at all and lost the point for
+// it.
 //
-//   1. BY ITS COPY. The screen copy a menu item or a panel control carries IS
-//      fixed: `TITLE_ITEMS`, `PAUSE_ITEMS`, `SELL`, `FABRICATE`, `LAUNCH`,
-//      `JETTISON`, `USE`. So the frame's own text runs are read back through
-//      `textDraws`, which carries whatever transform the build drew under, and
-//      the run whose text matches is the control. A text anchor is a point ON the
-//      control rather than its centre — `textAlign` and `textBaseline` are the
-//      build's — so a small ring of offsets around it is tried until the control
-//      answers.
-//   2. BY SWEEPING THE BAND IT MUST BE IN. The status bar's three controls carry
-//      no fixed copy, and the only thing the specification fixes about them is
-//      that they are ON the status bar, `y` in `[0, HUD_H]`. So the band is swept
-//      until one of them answers. The sweep searches the SCREEN for a control the
-//      specification requires to be somewhere on it, which is what "operable with
-//      the mouse" means when no layout is fixed; it never searches the game's
-//      world for a scenario to stand in.
+// A REGION THE BUILD DOES NOT REPORT IS THE BUILD'S FAULT. `menuItemRect` and
+// `controlRect` are deliverables like every other operation, so a `null` where the
+// specification requires a region fails the point that asked for it, with the
+// requirement beside it. That is {@link menuItemRegion} and {@link controlRegion};
+// the checks that are ABOUT a control being absent read the raw operation instead.
 //
-// A CLICK IS NOT A FRAME. The page's own loop is what drains a DOM event into the
-// game — the same reason `browserHold` yields two animation frames — and the game
-// is off its clock, so nothing here advances the simulation on the browser's own
-// frames. One driven frame follows, which is what makes the press visible to a
-// build that reads its pointer at the top of an update.
+// A PRESS IS THREE EDGES AND EACH RUNS ITS OWN FRAME. The move, the press and the
+// release are separately observable, and `specs/controls.md` distinguishes them:
+// a pointer that moves onto a menu item highlights it, and a press and a release
+// inside one region choose it. A build that latches the edge in its own event
+// handler and a build that compares pointer state between frames are both
+// conformant, so each edge is delivered, then drained through the page's own loop,
+// then given one driven frame — which is the same reasoning the harness's `tap`
+// gives for putting a frame between a key's down and its up.
 
-import { HUD_H, STAGE_W } from "../constants";
-import { textDraws, type Harness, type TextDraw } from "../harness";
+import { fail } from "../assert";
+import {
+  touchPress,
+  touchRelease,
+  type ControlName,
+  type ControlSubject,
+  type Harness,
+  type HitRect,
+} from "../harness";
 
-/** Offsets around a text anchor, nearest first, tried until the control answers. */
-const NEAR_OFFSETS: readonly (readonly [number, number])[] = [
-  [0, -7],
-  [8, -7],
-  [-8, -7],
-  [0, 0],
-  [0, -16],
-  [20, -7],
-  [-20, -7],
-  [0, -24],
-];
+/** The middle of a hit region, which is where a press aims at what it holds. */
+export function regionCenter(rect: HitRect): { x: number; y: number } {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
 
-/** How far apart the sweep's columns sit, in logical units. */
-const SWEEP_STEP = 16;
-
-/** The rows of the status bar the sweep clicks along. */
-const SWEEP_ROWS: readonly number[] = [HUD_H / 2, HUD_H / 4, (HUD_H * 3) / 4];
-
-/** Let the page's own loop drain the event, then run one driven frame. */
+/**
+ * Let the page's OWN loop see what Chromium just delivered, then run one frame.
+ *
+ * A pointer event delivered by the browser arrives as a DOM event, and an
+ * engineless build is free to act on it in its own frame rather than in the
+ * handler. `advance` is not that loop — the game is off its clock, so the build's
+ * loop draws and drains its input and steps nothing — so the two animation frames
+ * come first and the driven frame, the one the game's own update runs on, comes
+ * after.
+ */
 async function settle(h: Harness): Promise<void> {
   await h.page.evaluate(
     () =>
@@ -64,68 +68,136 @@ async function settle(h: Harness): Promise<void> {
   await h.advance(1);
 }
 
-/** Click a logical stage point with the real mouse, and let the page see it. */
+/** Move the real pointer onto a logical stage point and let the game see it. */
+export async function movePointer(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  const at = h.css(x, y);
+  await h.page.mouse.move(at.x, at.y);
+  await settle(h);
+}
+
+/**
+ * Press and release the real pointer at one logical stage point.
+ *
+ * Both edges land inside whatever region holds the point, which is what
+ * `specs/controls.md` requires of a choice: "A choice takes both of its edges
+ * inside one region".
+ */
 export async function clickStage(
   h: Harness,
   x: number,
   y: number,
 ): Promise<void> {
-  const { dpr } = await h.surface();
-  const at = h.device(x, y);
-  const scale = dpr > 0 ? dpr : 1;
-  await h.page.mouse.click(at.x / scale, at.y / scale);
+  await movePointer(h, x, y);
+  await h.page.mouse.down();
+  await settle(h);
+  await h.page.mouse.up();
   await settle(h);
 }
 
-/** Every run of text the next frame draws, with its anchor in stage units. */
-export async function frameText(h: Harness): Promise<TextDraw[]> {
-  return textDraws(await h.frameCalls());
+/** Move the pointer onto the middle of a reported region. */
+export function hoverRegion(h: Harness, rect: HitRect): Promise<void> {
+  const at = regionCenter(rect);
+  return movePointer(h, at.x, at.y);
 }
 
-/** The first run of text the next frame draws whose content matches. */
-export async function findText(
-  h: Harness,
-  pattern: RegExp,
-): Promise<TextDraw | null> {
-  return (await frameText(h)).find((run) => pattern.test(run.text)) ?? null;
-}
-
-/**
- * Click around a point until `took` reports the control answered.
- *
- * The ring exists because a text anchor is a point on the control rather than its
- * middle: `textAlign` decides which end of the run it names and `textBaseline`
- * where in the line height it sits, and both are the build's.
- */
-export async function clickNear(
-  h: Harness,
-  point: { x: number; y: number },
-  took: () => Promise<boolean>,
-): Promise<boolean> {
-  for (const [dx, dy] of NEAR_OFFSETS) {
-    await clickStage(h, point.x + dx, point.y + dy);
-    if (await took()) return true;
-  }
-  return false;
+/** Press and release inside the middle of a reported region. */
+export function clickRegion(h: Harness, rect: HitRect): Promise<void> {
+  const at = regionCenter(rect);
+  return clickStage(h, at.x, at.y);
 }
 
 /**
- * Click along the status bar until `took` reports a control answered.
+ * Press inside one reported region and release inside another.
  *
- * `between` runs before each click, so a sweep whose earlier clicks landed on a
- * different control can put the game back where it started.
+ * `specs/controls.md`: "A choice takes both of its edges inside one region: the
+ * press and its release for a pointer... Two edges falling in different regions,
+ * and an edge falling outside every region, choose nothing." Each edge runs its
+ * own frame, for the reason {@link clickStage} gives.
  */
-export async function sweepStatusBar(
+export async function splitPress(
   h: Harness,
-  took: () => Promise<boolean>,
-  between?: () => Promise<void>,
-): Promise<boolean> {
-  for (const y of SWEEP_ROWS) {
-    for (let x = SWEEP_STEP / 2; x < STAGE_W; x += SWEEP_STEP) {
-      if (between !== undefined) await between();
-      await clickStage(h, x, y);
-      if (await took()) return true;
-    }
+  from: HitRect,
+  to: HitRect,
+): Promise<void> {
+  const down = regionCenter(from);
+  const up = regionCenter(to);
+  await movePointer(h, down.x, down.y);
+  await h.page.mouse.down();
+  await settle(h);
+  await movePointer(h, up.x, up.y);
+  await h.page.mouse.up();
+  await settle(h);
+}
+
+/**
+ * Land a REAL touch contact in the middle of a reported region and lift it there.
+ *
+ * `specs/controls.md`: "A touch contact lands and lifts inside one menu item's
+ * region: that item becomes the highlighted item and is chosen." The two edges
+ * are separately observable and each runs its own driven frame, so a build that
+ * acts on the landing and a build that acts on the lift are both reached.
+ *
+ * A finger is not a mouse: it carries `pointerType: "touch"`, it has no hover, and
+ * the first the build hears of it is the contact arriving. That is why this is a
+ * device gesture rather than a posed pointer.
+ */
+export async function touchRegion(h: Harness, rect: HitRect): Promise<void> {
+  const at = regionCenter(rect);
+  await touchPress(h, at.x, at.y);
+  await settle(h);
+  await touchRelease(h);
+  await settle(h);
+}
+
+/** What the specification requires of a region a check asked the build for. */
+function requireRegion(rect: HitRect | null, what: string): HitRect {
+  if (rect === null) {
+    fail(
+      `${what}, reported as { x, y, w, h } in the stage's logical units ` +
+        `(specs/instrumentation.md, Readings)`,
+      "null",
+    );
   }
-  return false;
+  if (!(rect.w > 0) || !(rect.h > 0)) {
+    fail(
+      `${what}, with a region a pointer can land in`,
+      `{ x: ${rect.x}, y: ${rect.y}, w: ${rect.w}, h: ${rect.h} }`,
+    );
+  }
+  return rect;
+}
+
+/**
+ * Where the build drew menu item `index` on the screen it is showing.
+ *
+ * Fails the running check when the build reports no region for an item its menu
+ * does show: the reading is a deliverable, and a point that cannot be decided is
+ * worth less than a point that fails.
+ */
+export async function menuItemRegion(
+  h: Harness,
+  index: number,
+): Promise<HitRect> {
+  const screen = (await h.snapshot()).screen;
+  return requireRegion(
+    await h.debug.menuItemRect(index),
+    `a hit region for menu item ${index} on the ${screen} screen`,
+  );
+}
+
+/** Where the build drew one on-screen control, failing the check when it reports none. */
+export async function controlRegion(
+  h: Harness,
+  control: ControlName,
+  subject: ControlSubject | null = null,
+): Promise<HitRect> {
+  return requireRegion(
+    await h.debug.controlRect(control, subject),
+    `a hit region for the ${control} control` +
+      (subject === null ? "" : ` on ${subject}`),
+  );
 }

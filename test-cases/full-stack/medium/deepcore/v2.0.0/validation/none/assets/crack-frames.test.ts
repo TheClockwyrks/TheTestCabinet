@@ -25,7 +25,7 @@ import {
   readPicture,
   type Picture,
 } from "./produced";
-import { CRACK_FRAMES } from "./spec";
+import { CRACK_FRAMES } from "../constants";
 
 let h: Harness;
 

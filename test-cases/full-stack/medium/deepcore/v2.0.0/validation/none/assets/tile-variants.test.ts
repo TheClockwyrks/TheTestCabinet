@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { BAND_ORDER, PLAYABLE_COL_MIN } from "../constants";
+import { BAND_ORDER, PLAYABLE_COL_MIN, TILE_VARIANTS } from "../constants";
 import {
   captureStill,
   cellCenter,
@@ -42,7 +42,6 @@ import {
   readPicture,
   type Picture,
 } from "./produced";
-import { TILE_VARIANTS } from "./spec";
 
 /** The band the drawn wall is laid in. */
 const BAND = "rockbed" as const;

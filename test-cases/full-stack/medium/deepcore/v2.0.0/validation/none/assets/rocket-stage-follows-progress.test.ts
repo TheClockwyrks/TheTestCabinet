@@ -15,7 +15,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { ROCKET_COMPONENTS, SURFACE_Y } from "../constants";
+import { ROCKET_COMPONENTS, ROCKET_STAGES, SURFACE_Y } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -27,7 +27,6 @@ import {
   type Harness,
 } from "../harness";
 import { boxChanged, sampleBox } from "./drawn";
-import { ROCKET_STAGES } from "./spec";
 
 /** How far above the pad's footprint the reading reaches, in world units. */
 const HEADROOM = 160;

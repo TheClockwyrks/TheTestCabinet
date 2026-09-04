@@ -19,7 +19,7 @@
 // which specs/ui.md fixes as `CONTINUE FROM SAVE` while a Standard save exists.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ROCKET_COMPONENT_IDS, TRACKS } from "../../src/constants";
+import { ROCKET_COMPONENT_IDS, TRACKS } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   ACTION_KEY,

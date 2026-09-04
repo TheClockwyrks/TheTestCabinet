@@ -7,11 +7,7 @@
 // world size's `THRUST_BURN_SIZE_MULT`. Stated once here rather than re-derived
 // in each check, so the target cannot drift file by file.
 
-import {
-  CRUISE_SPEED,
-  THRUST_BURN_MAX,
-  THRUST_BURN_MIN,
-} from "../../src/constants";
+import { CRUISE_SPEED, THRUST_BURN_MAX, THRUST_BURN_MIN } from "../constants";
 
 /** The thrust burn, in fuel per second, at an upward speed of `up`. */
 export function thrustBurnAt(up: number): number {

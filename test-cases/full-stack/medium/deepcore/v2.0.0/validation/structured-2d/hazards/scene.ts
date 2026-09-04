@@ -12,21 +12,12 @@
 // `specs/world.md`'s, so a check that stands the miner on a cell stands it where
 // the specification says that cell is.
 //
-// The three ARITHMETIC rules below are transcriptions of expressions
-// `specs/hazards.md` and `specs/character.md` state in full, kept here rather
-// than restated in each check that reads one, so the target a category shares
-// cannot drift file by file.
+// The arithmetic a hazard check compares against — the gas curve, the impact
+// cost, the hits a cut lands — is transcribed once in `../constants`, beside the
+// figures it is written over, so the target a category shares cannot drift file
+// by file.
 
-import {
-  GAS_DAMAGE_MAX,
-  GAS_DAMAGE_MIN,
-  HULL_TIERS,
-  IMPACT_DAMAGE_RATE,
-  IMPACT_SAFE_SPEED,
-  MINER_H,
-  TILE,
-  type BandName,
-} from "../../src/constants";
+import { HULL_TIERS, MINER_H, TILE, type BandName } from "../constants";
 import { fail } from "../assert";
 import {
   driveCut,
@@ -53,43 +44,6 @@ export const HAZARD_COL = 8;
  * getting to the thing it decides.
  */
 export const FAST_DRILL_TIER = 5;
-
-/**
- * The depth fraction gas first appears at, and so the floor of its damage curve.
- *
- * `specs/hazards.md` names it in the table itself: `GAS_DAMAGE_MIN` is the
- * "damage where gas first appears, at depth fraction `0.25`".
- */
-export const GAS_FLOOR_FRACTION = 0.25;
-
-/** How many hits break a cell of `health` at `damagePerHit`. */
-export function drillHitsFor(health: number, damagePerHit: number): number {
-  return Math.ceil(health / damagePerHit);
-}
-
-/**
- * The hull a detonation at depth fraction `f` deals inside the radius.
- *
- * `specs/hazards.md`'s own expression:
- * `GAS_DAMAGE_MIN + (GAS_DAMAGE_MAX - GAS_DAMAGE_MIN) * max(0, f - 0.25) / 0.75`.
- */
-export function gasDamageAt(f: number): number {
-  return (
-    GAS_DAMAGE_MIN +
-    ((GAS_DAMAGE_MAX - GAS_DAMAGE_MIN) * Math.max(0, f - GAS_FLOOR_FRACTION)) /
-      (1 - GAS_FLOOR_FRACTION)
-  );
-}
-
-/**
- * The hull a landing at downward speed `v` costs.
- *
- * `specs/hazards.md`'s own expression:
- * `max(0, v - IMPACT_SAFE_SPEED) * IMPACT_DAMAGE_RATE`.
- */
-export function impactDamageAt(v: number): number {
-  return Math.max(0, v - IMPACT_SAFE_SPEED) * IMPACT_DAMAGE_RATE;
-}
 
 /**
  * Raise the hull track to `tier` and fill the hull to its new maximum.

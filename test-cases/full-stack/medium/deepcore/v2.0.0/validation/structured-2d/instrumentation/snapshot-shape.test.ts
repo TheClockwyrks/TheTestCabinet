@@ -36,7 +36,7 @@ import {
   SCREENS,
   TRACKS,
   WORLD_SIZES,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertContains,
   assertEqual,
@@ -110,6 +110,7 @@ it("reports every documented field, with its documented type", async () => {
   assertNumber(s.menuIndex, "menuIndex");
   assertEqual(typeof s.muted, "boolean", "muted");
   assertNumber(s.simTime, "simTime");
+  assertNumber(s.elapsedSeconds, "elapsedSeconds");
   assertEqual(typeof s.hasSave, "boolean", "hasSave");
   assertNumber(s.credits, "credits");
   assertNumber(s.creditsEarned, "creditsEarned");

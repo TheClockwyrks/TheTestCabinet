@@ -2,7 +2,7 @@
 // and comes back with it.
 //
 // specs/world.md: "The chosen size is part of the expedition, so it is carried in
-// the save and reused when an expedition is replayed", and specs/gameplay.md
+// the save and reused when an expedition is replayed", and specs/expedition.md
 // lists "the generated mine and its world size" among what a save holds. So a
 // Marathon expedition saved and continued resumes at Marathon, with `coreRow`
 // back at 1000, rather than reverting to the Standard size a fresh session opens

@@ -21,7 +21,7 @@
 // than the three cells a cut begun on the keypress would leave.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, MINER_W, TILE } from "../../src/constants";
+import { BAND_HEALTH, MINER_W, TILE } from "../constants";
 import { assertBetween, assertEqual } from "../assert";
 import {
   ACTION_KEY,

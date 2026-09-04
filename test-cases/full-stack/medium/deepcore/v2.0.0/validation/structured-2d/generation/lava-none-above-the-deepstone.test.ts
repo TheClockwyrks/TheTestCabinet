@@ -10,7 +10,7 @@
 // states none, so the count is held at zero rather than at a small number.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORLD_SIZES } from "../../src/constants";
+import { WORLD_SIZES } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { bandRows, generatedMine, look, tallyBand } from "./mine-scan";

@@ -19,7 +19,7 @@ import {
   PLAYABLE_COL_MAX,
   PLAYABLE_COL_MIN,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,

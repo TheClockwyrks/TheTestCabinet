@@ -16,7 +16,7 @@
 // one phase and a pose read twice comes back identical.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CARGO_TIERS } from "../../src/constants";
+import { CARGO_TIERS } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

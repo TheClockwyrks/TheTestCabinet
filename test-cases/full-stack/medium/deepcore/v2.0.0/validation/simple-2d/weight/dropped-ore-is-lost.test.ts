@@ -82,7 +82,7 @@ it("discards the unit without banking it, dropping it, or returning it", async (
   );
   // Lost rather than sold.
   assertEqual(after.credits, CREDITS, "specs/character.md");
-  assertEqual(after.creditsEarned, 0, "specs/gameplay.md");
+  assertEqual(after.creditsEarned, 0, "specs/expedition.md");
   // Lost rather than dropped as a ground item.
   assertNull(after.coreGround, "specs/items.md");
   // Lost rather than put back into the mine.

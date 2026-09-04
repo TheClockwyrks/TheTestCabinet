@@ -49,6 +49,19 @@ const HEIGHT = 8;
 /** How far a reading may sit from the rule, in hull points. */
 const TOLERANCE = 3;
 
+/**
+ * The frames the replay is padded with, so a landing is something a reviewer can
+ * WATCH.
+ *
+ * Eight units at these speeds is one or two frames, so three landings recorded
+ * back to back is a twentieth of a second. The recorder is armed on the standing
+ * miner for `RUN_UP`, and each landing is held for `AFTER` so the arrival and the
+ * hull it cost are both on screen. The miner is grounded on solid rock and its
+ * drill is gated, so the extra frames change nothing the assertions read.
+ */
+const RUN_UP = 20;
+const AFTER = 30;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -70,8 +83,10 @@ it("deals the impact rule's hull at every landing speed", async () => {
 
   const landings = await captureReplay(h, "slam", async () => {
     // Two empty landings, the second at the empty terminal speed.
+    await h.advance(RUN_UP);
     await armHull(h, HULL_TIER);
     const brisk = await driveLanding(h, HAZARD_COL, row, HEIGHT, 800);
+    await h.advance(AFTER);
     await armHull(h, HULL_TIER);
     const terminal = await driveLanding(
       h,
@@ -80,6 +95,7 @@ it("deals the impact rule's hull at every landing speed", async () => {
       HEIGHT,
       FALL_TERMINAL_EMPTY,
     );
+    await h.advance(AFTER);
 
     // And one at the loaded terminal speed, which needs the load that raises it.
     const loaded = await loadToFraction(h, 1);
@@ -91,6 +107,7 @@ it("deals the impact rule's hull at every landing speed", async () => {
       HEIGHT,
       FALL_TERMINAL_LOADED,
     );
+    await h.advance(AFTER);
     return { brisk, terminal, heavy, loaded };
   });
 

@@ -13,7 +13,7 @@
 // grounded walk would spend six times as much.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { LIFE_SUPPORT_BURN } from "../../src/constants";
+import { LIFE_SUPPORT_BURN } from "../constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,

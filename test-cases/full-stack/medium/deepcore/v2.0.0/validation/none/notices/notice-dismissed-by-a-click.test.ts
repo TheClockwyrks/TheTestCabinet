@@ -1,13 +1,20 @@
-// Deepcore — notices/notice-dismissed-by-a-click: a click takes the card away at
-// once.
+// Deepcore — notices/notice-dismissed-by-a-click: a press on the card takes it
+// away at once.
 //
 // `specs/hazards.md`: "A click on the card dismisses it at once."
-// `specs/instrumentation.md` names the operation that stands for that click,
-// `dismissNotice()`, "as a click on it does", so the dismissal runs the game's own
-// rule for the control rather than posing the card away.
+// `specs/controls.md` says the same from the pointer's side: "The first-time
+// hazard notice card is dismissed by a press on it."
+//
+// SO THE PRESS IS A REAL PRESS. `specs/instrumentation.md` has the build report
+// where it drew the card, as `controlRect("dismiss-notice", null)`: "The hazard
+// notice card on screen". The pointer goes to the middle of the region the build
+// named and presses and releases there, so what is graded is the card's own hit
+// region and the game's own handling of a contact in it. A build that dismisses
+// the card only through its debug operation, or that reports no region for a card
+// it is showing, fails this point.
 //
 // The card is raised by a real detonation and left up only long enough to be on
-// screen, then dismissed; the notice must be gone on the very next frame. The
+// screen, then pressed; the notice must be gone on the very next frame. The
 // elapsed game time since the card appeared is read alongside it and held well
 // under `NOTICE_FADE`, so a build that simply let the card time out cannot pass
 // this by waiting.
@@ -16,6 +23,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan, assertNull } from "../assert";
 import { NOTICE_DELAY, NOTICE_FADE } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
+import { clickRegion, controlRegion } from "../panels/mouse";
 import {
   detonateGas,
   elapse,
@@ -37,7 +45,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("dismisses the card at once rather than waiting out the fade", async () => {
+it("dismisses the card on a press at the region the build reports for it", async () => {
   await openNoticeScene(h);
   const row = gasRow(await h.snapshot());
 
@@ -46,8 +54,7 @@ it("dismisses the card at once rather than waiting out the fade", async () => {
     await elapse(h, SHOWN_AT);
     const shown = await h.snapshot();
 
-    await h.debug.dismissNotice();
-    await h.advance(1);
+    await clickRegion(h, await controlRegion(h, "dismiss-notice"));
     const dismissed = await h.snapshot();
 
     await elapse(h, 1);
@@ -55,17 +62,17 @@ it("dismisses the card at once rather than waiting out the fade", async () => {
   });
 
   assertEqual(run.blast.cut.broke, true, "the pocket detonated");
-  assertEqual(run.shown.notice?.shown, true, "the card is up before the click");
+  assertEqual(run.shown.notice?.shown, true, "the card is up before the press");
 
-  assertNull(run.dismissed.notice, "no card on the frame after the click");
+  assertNull(run.dismissed.notice, "no card on the frame after the press");
   assertNull(run.settled.notice, "and none a second later");
 
-  // The card went because it was clicked, not because it timed out: the click
+  // The card went because it was pressed, not because it timed out: the press
   // landed sooner after the hit than the earliest moment any reading of the fade
   // could have taken the card away.
   assertLessThan(
     run.dismissed.simTime - run.blast.snapshot.simTime,
     NOTICE_FADE,
-    "game time between the hit and the click",
+    "game time between the hit and the press",
   );
 });

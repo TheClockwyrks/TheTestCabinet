@@ -1,4 +1,4 @@
-// Selling, the Fuel Depot, and the upgrade tracks (specs/gameplay.md, specs/upgrades.md).
+// Selling, the Fuel Depot, and the upgrade tracks (specs/expedition.md, specs/upgrades.md).
 
 import { describe, expect, it } from "vitest";
 import {

@@ -1,6 +1,6 @@
 // movement/spawn-on-the-surface — an expedition starts standing on the camp.
 //
-// `specs/gameplay.md`: "The miner starts standing on the camp ground at
+// `specs/expedition.md`: "The miner starts standing on the camp ground at
 // `SPAWN_COL` (`4`)", and `specs/world.md` puts the camp ground at `row 0`, whose
 // floor is the top of `row 1` at `SURFACE_Y` (`80`). So a fresh expedition opens
 // with the prospector on solid footing at the surface, at depth `0`, rather than

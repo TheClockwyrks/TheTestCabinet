@@ -22,7 +22,7 @@
 // against a one-tile floor is not a rate.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SURFACE_Y } from "../../src/constants";
+import { SURFACE_Y } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

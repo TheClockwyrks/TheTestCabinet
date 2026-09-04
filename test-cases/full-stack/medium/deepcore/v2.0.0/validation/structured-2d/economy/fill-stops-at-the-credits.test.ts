@@ -1,13 +1,13 @@
 // economy/fill-stops-at-the-credits — a thin balance buys a partial fill.
 //
-// `specs/gameplay.md` fixes fill-to-full as buying only as far as the Credits
+// `specs/expedition.md` fixes fill-to-full as buying only as far as the Credits
 // reach, so a miner with 20 Credits and a tank 60 units short leaves with 20
 // more fuel and a balance of 0. The two failure modes this separates are a
 // refusal (nothing bought, the balance untouched) and a debt (the tank full and
 // the balance negative), so both the fuel gained and the balance are read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FUEL_PRICE, FUEL_TIERS } from "../../src/constants";
+import { FUEL_PRICE, FUEL_TIERS } from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { openCamp } from "./camp";
@@ -44,9 +44,9 @@ it("buys as much fuel as the Credits cover and leaves the balance at 0", async (
     after.miner.fuel,
     FUEL_BEFORE + affordable,
     6,
-    "specs/gameplay.md",
+    "specs/expedition.md",
   );
-  assertEqual(after.credits, 0, "specs/gameplay.md");
+  assertEqual(after.credits, 0, "specs/expedition.md");
   // And the fill really was short of full, so the reading above is the Credits
   // ceiling rather than a tank that happened to fit inside the balance.
   assertCloseTo(after.miner.maxFuel, FUEL_TIERS[0], 6, "specs/upgrades.md");

@@ -15,7 +15,7 @@
 // continuous check acts on, and the miner's body and drill are gated.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { GAME_OVER_ITEMS, GAME_OVER_SAVE_ITEMS } from "../../src/constants";
+import { GAME_OVER_ITEMS, GAME_OVER_SAVE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,

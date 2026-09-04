@@ -13,21 +13,9 @@
 // in it, and a check that needs the number rather than the rate cannot afford
 // that. Health is unambiguous: it falls once per hit whenever the hit landed.
 
-import { DRILL_HIT_INTERVAL } from "../../src/constants";
+import { DRILL_HIT_INTERVAL } from "../constants";
 import type { Harness } from "../harness";
 import { TICK_HZ } from "../harness";
-
-/**
- * How many hits break a cell of `health` at `damagePerHit`.
- *
- * `specs/character.md` and `specs/upgrades.md` both state it as
- * `ceil(BAND_HEALTH / damagePerHit)`, and the table `specs/upgrades.md` prints
- * beside the drill ladder is that arithmetic written out. Transcribed here rather
- * than re-derived in each check, so the target cannot drift file by file.
- */
-export function drillHitsFor(health: number, damagePerHit: number): number {
-  return Math.ceil(health / damagePerHit);
-}
 
 /**
  * Frames between two samples of the target cell.

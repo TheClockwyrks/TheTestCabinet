@@ -23,7 +23,7 @@ import {
   MINER_H,
   TILE,
   WORLD_SIZES,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,

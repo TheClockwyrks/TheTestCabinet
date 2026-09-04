@@ -18,11 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
-import {
-  GAS_BLAST_TILES,
-  PLASTIC_EXPLOSIVES_RADIUS,
-  TILE,
-} from "../../src/constants";
+import { GAS_BLAST_TILES, PLASTIC_EXPLOSIVES_RADIUS, TILE } from "../constants";
 import {
   captureReplay,
   cellCenter,
@@ -41,8 +37,18 @@ import { armHull, bandRow, HAZARD_COL } from "./scene";
 /** The tier whose hull survives a rockbed detonation with room to read it. */
 const HULL_TIER = 5;
 
-/** Frames the blast is given to resolve. */
+/**
+ * Frames the blast is given to resolve, and the frames held either side of it.
+ *
+ * The hull loss lands within a frame or two of the detonation, so `SETTLE_FRAMES`
+ * is what the READING needs. The other two are what the RECORDING needs: the scene
+ * standing before each charge is used and the aftermath left on screen afterwards,
+ * so a reviewer sees the pocket, the blast, and what it left rather than a
+ * ten-frame flicker of two explosions back to back.
+ */
 const SETTLE_FRAMES = 4;
+const RUN_UP_FRAMES = 10;
+const AFTERMATH_FRAMES = 16;
 
 let h: Harness;
 
@@ -81,9 +87,14 @@ async function blastAt(
   const at = cellCenter(pocket.col, pocket.row);
   const tiles = Math.hypot(centre.x - at.x, centre.y - at.y) / TILE;
 
+  // The pocket posed and the miner at rest beside it, before the charge goes off.
+  await h.advance(RUN_UP_FRAMES);
+
   h.debug.useItem("plastic-explosives");
   await h.advance(SETTLE_FRAMES);
   const after = h.snapshot();
+  // And the aftermath, which is the half of the clip that shows the reach.
+  await h.advance(AFTERMATH_FRAMES);
   return {
     tiles,
     pocket,

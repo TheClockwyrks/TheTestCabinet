@@ -545,7 +545,7 @@ export const MATERIAL_COLOR: Record<Material, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// The economy (specs/gameplay.md)
+// The economy (specs/expedition.md)
 // ---------------------------------------------------------------------------
 
 /** Credits per unit of fuel at the Fuel Depot. */
@@ -843,7 +843,7 @@ export const ACTIONS: Record<Action, readonly string[]> = {
   up: ["KeyW", "ArrowUp", "Space"],
   activate: ["KeyE", "Enter"],
   inventory: ["KeyI"],
-  pause: ["Escape"],
+  pause: ["Escape", "KeyP"],
   mute: ["KeyM"],
   jettison: ["KeyJ"],
   supply1: ["Digit1"],

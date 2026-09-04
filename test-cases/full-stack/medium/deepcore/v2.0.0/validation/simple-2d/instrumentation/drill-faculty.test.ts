@@ -31,7 +31,7 @@ import {
   IMPACT_SAFE_SPEED,
   LIFE_SUPPORT_BURN,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import {
   assertCloseTo,
   assertEqual,

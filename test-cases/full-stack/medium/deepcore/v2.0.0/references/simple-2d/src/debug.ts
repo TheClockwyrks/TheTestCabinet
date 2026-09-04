@@ -58,6 +58,8 @@ import type {
   BandName,
 } from "./constants";
 import { placeCamera } from "./camera";
+import type { Control } from "./controls";
+import { controlsFor, menuControls } from "./controls";
 import { cutProgress } from "./drill";
 import {
   buyFuel,
@@ -81,7 +83,6 @@ import {
 } from "./figures";
 import {
   buildings,
-  clearGroundItems,
   clearMine,
   regenerateMine,
   resizeMine,
@@ -122,6 +123,45 @@ const SETTABLE_KINDS: readonly TileKind[] = [
 
 /** Every mineral id, the ten ores then the three gemstones. */
 const MINERAL_IDS: readonly OreId[] = [...ORE_IDS, ...GEMSTONE_IDS];
+
+/** The control names `controlRect` takes, and what each one acts on. */
+const CONTROL_SUBJECTS = {
+  "drop-ore": "ore",
+  "use-item": "item",
+  jettison: "none",
+  sell: "none",
+  "buy-fuel": "none",
+  "fill-fuel": "none",
+  "buy-repair": "none",
+  "repair-full": "none",
+  "buy-upgrade": "track",
+  "buy-item": "item",
+  fabricate: "none",
+  launch: "none",
+  "dismiss-notice": "none",
+  inventory: "none",
+  pause: "none",
+  mute: "none",
+} as const;
+
+/** Every control name, for the domain check. */
+const CONTROL_NAMES = Object.keys(CONTROL_SUBJECTS) as ControlName[];
+
+/** The action string the layout gives a control that takes no subject. */
+const PLAIN_ACTIONS: Readonly<Record<string, string>> = {
+  jettison: "jettison",
+  sell: "sell",
+  "buy-fuel": "buyfuel:increment",
+  "fill-fuel": "buyfuel:full",
+  "buy-repair": "buyrepair:increment",
+  "repair-full": "buyrepair:full",
+  fabricate: "fabricate",
+  launch: "launch",
+  "dismiss-notice": "notice:dismiss",
+  inventory: "sys:inventory",
+  pause: "sys:pause",
+  mute: "sys:mute",
+};
 
 // ---- The shapes the readings report --------------------------------------
 
@@ -201,6 +241,7 @@ export interface DeepcoreSnapshot {
   };
   notice: null | { hazard: NoticeHazard; shown: boolean };
   noticesFired: { gas: boolean; lava: boolean };
+  elapsedSeconds: number;
   summary: null | {
     deepestDepthMeters: number;
     creditsEarned: number;
@@ -209,6 +250,63 @@ export interface DeepcoreSnapshot {
     componentsInstalled: number;
     deathCause: DeathCause | null;
   };
+}
+
+/** A hit region on the stage, in logical units. */
+export interface HitRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** The on-screen controls `controlRect` reports, by their specified names. */
+export type ControlName =
+  | "drop-ore"
+  | "use-item"
+  | "jettison"
+  | "sell"
+  | "buy-fuel"
+  | "fill-fuel"
+  | "buy-repair"
+  | "repair-full"
+  | "buy-upgrade"
+  | "buy-item"
+  | "fabricate"
+  | "launch"
+  | "dismiss-notice"
+  | "inventory"
+  | "pause"
+  | "mute";
+
+/** What a control acts on, or `null` for one that acts on nothing further. */
+export type ControlSubject = OreId | ItemId | TrackName | null;
+
+/** A control's hit region, stripped of everything the drawing uses. */
+function rectOf(c: Control): HitRect {
+  return { x: c.x, y: c.y, w: c.w, h: c.h };
+}
+
+/**
+ * The action string the layout gives the named control, with its subject
+ * checked against the domain that control takes.
+ */
+function controlAction(name: ControlName, subject: unknown): string {
+  const takes = CONTROL_SUBJECTS[name];
+  if (takes === "none") {
+    if (subject !== null && subject !== undefined) {
+      fail(`controlRect() takes null for ${name}, got ${String(subject)}`);
+    }
+    return PLAIN_ACTIONS[name];
+  }
+  if (takes === "ore") {
+    return `drop:${requireOneOf("controlRect", "subject", subject, MINERAL_IDS)}`;
+  }
+  if (takes === "track") {
+    return `buy:${requireOneOf("controlRect", "subject", subject, TRACKS)}`;
+  }
+  const item = requireOneOf("controlRect", "subject", subject, ITEM_IDS);
+  return name === "use-item" ? `useitem:${item}` : `buyitem:${item}`;
 }
 
 /** A state as every operation is handed it. */
@@ -223,12 +321,27 @@ export interface DeepcoreDebugApi {
   tileAt(state: Read, col: number, row: number): TileRead;
   findTile(state: Read, kind: TileKind): { col: number; row: number } | null;
   buildings(state: Read): BuildingBox[];
+  /**
+   * The hit region of item `index` on the menu the current screen shows, and
+   * `null` on `in-mine` or where `index` names no item of that menu.
+   */
+  menuItemRect(state: Read, index: number): HitRect | null;
+  /**
+   * The hit region of the on-screen control `control`, for the ore, upgrade
+   * track, or field supply `subject` where the control takes one and `null`
+   * where it takes none. `null` while the control is not drawn, including while
+   * the panel that carries it is closed.
+   */
+  controlRect(
+    state: Read,
+    control: ControlName,
+    subject: ControlSubject,
+  ): HitRect | null;
 
   // Restoring the world
   reset(state: Read, options?: { seed?: number }): DeepcoreState;
   generateMine(state: Read): DeepcoreState;
   clearMine(state: Read): DeepcoreState;
-  clearGroundItems(state: Read): DeepcoreState;
   clearCargo(state: Read): DeepcoreState;
   clearItems(state: Read): DeepcoreState;
 
@@ -278,6 +391,7 @@ export interface DeepcoreDebugApi {
     fired: boolean,
   ): DeepcoreState;
   setCameraLead(state: Read, lead: number): DeepcoreState;
+  setElapsed(state: Read, seconds: number): DeepcoreState;
   clearSave(state: Read): DeepcoreState;
 
   // The controls
@@ -424,6 +538,7 @@ export function readSnapshot(state: Read): DeepcoreSnapshot {
     menuIndex: state.menuIndex,
     muted: state.muted,
     simTime: state.simTime,
+    elapsedSeconds: state.elapsedSeconds,
     hasSave: hasSave(),
     credits: state.credits,
     creditsEarned: state.creditsEarned,
@@ -564,6 +679,32 @@ export function createDebugApi(): DeepcoreDebugApi {
 
     buildings: () => [...buildings()],
 
+    menuItemRect(state, index) {
+      const at = requireInteger(
+        "menuItemRect",
+        "index",
+        index,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      );
+      const item = menuControls(state)[at];
+      return item ? rectOf(item) : null;
+    },
+
+    controlRect(state, control, subject) {
+      const name = requireOneOf(
+        "controlRect",
+        "control",
+        control,
+        CONTROL_NAMES,
+      );
+      const action = controlAction(name, subject);
+      const found = controlsFor(state).find(
+        (candidate) => candidate.action === action,
+      );
+      return found ? rectOf(found) : null;
+    },
+
     // ---- Restoring the world ----
 
     reset(state, options) {
@@ -583,8 +724,6 @@ export function createDebugApi(): DeepcoreDebugApi {
     generateMine: (state) => pose(state, (d) => regenerateMine(d)),
 
     clearMine: (state) => pose(state, (d) => clearMine(d)),
-
-    clearGroundItems: (state) => pose(state, (d) => clearGroundItems(d)),
 
     clearCargo: (state) =>
       pose(state, (d) => {
@@ -956,6 +1095,19 @@ export function createDebugApi(): DeepcoreDebugApi {
       return pose(state, (d) => {
         d.camLead = value;
         placeCamera(d);
+      });
+    },
+
+    setElapsed(state, seconds) {
+      const value = requireRange(
+        "setElapsed",
+        "seconds",
+        seconds,
+        0,
+        Number.MAX_SAFE_INTEGER,
+      );
+      return pose(state, (d) => {
+        d.elapsedSeconds = value;
       });
     },
 

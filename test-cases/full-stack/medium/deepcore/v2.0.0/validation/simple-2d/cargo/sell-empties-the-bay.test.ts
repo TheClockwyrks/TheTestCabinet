@@ -2,7 +2,7 @@
 //
 // specs/mining.md: "`SELL` at the Ore Market converts the whole cargo to Credits
 // at the values above and empties the bay", and the bay is emptied by selling.
-// specs/gameplay.md names the Ore Market as the one Credits source and says the
+// specs/expedition.md names the Ore Market as the one Credits source and says the
 // sale empties the bay there too.
 //
 // The bay is posed as a mix of four minerals and a gemstone, so a build that

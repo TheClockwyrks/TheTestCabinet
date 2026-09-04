@@ -15,7 +15,7 @@
 // fixing a pool size the specification does not state.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYABLE_COL_MAX, PLAYABLE_COL_MIN } from "../../src/constants";
+import { PLAYABLE_COL_MAX, PLAYABLE_COL_MIN } from "../constants";
 import { assertGreaterThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, kindAt, look, type MineScan } from "./mine-scan";

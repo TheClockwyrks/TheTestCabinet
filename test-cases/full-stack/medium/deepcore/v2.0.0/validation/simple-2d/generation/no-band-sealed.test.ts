@@ -15,7 +15,7 @@
 // seals under a band that is already sealed above it would hide behind that one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WORLD_SIZES } from "../../src/constants";
+import { WORLD_SIZES } from "../constants";
 import { assertTrue } from "../assert";
 import {
   BAND_ORDER,

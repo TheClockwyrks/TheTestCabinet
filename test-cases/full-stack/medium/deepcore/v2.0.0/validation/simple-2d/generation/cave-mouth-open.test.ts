@@ -13,7 +13,7 @@
 // generation left it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CAVE_MOUTH_COL, WORLD_SIZES } from "../../src/constants";
+import { CAVE_MOUTH_COL, WORLD_SIZES } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, kindAt, look } from "./mine-scan";

@@ -23,7 +23,7 @@
 // have sat through.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

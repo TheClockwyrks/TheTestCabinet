@@ -21,7 +21,7 @@
 // nothing else in the world.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, WORLD_SIZES } from "../../src/constants";
+import { BAND_HEALTH, WORLD_SIZES } from "../constants";
 import { assertEqual } from "../assert";
 import {
   bandAtFraction,

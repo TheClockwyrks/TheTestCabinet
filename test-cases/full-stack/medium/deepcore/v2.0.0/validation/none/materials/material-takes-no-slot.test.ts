@@ -1,12 +1,16 @@
-// materials/material-takes-no-slot — the satchel is not the cargo bay.
+// materials/material-takes-no-slot — a material uses no slot of the cargo bay.
 //
-// `specs/mining.md` keeps the two apart: "Exotic materials are not cargo: they
-// take no slot, carry no weight, and ride in a separate satchel." What that buys
-// a player is fixed by `specs/character.md`, where the load fraction is
-// `loadKg / liftLimitKg` and a fraction of `1` is the overload wall the jetpack
-// cannot lift past. So a satchel carrying both materials, spares included, must
-// leave `slotsUsed`, `loadKg` and `overloaded` exactly where an empty bay leaves
-// them.
+// `specs/mining.md` keeps the satchel and the cargo bay apart: "Exotic materials
+// are not cargo: they take no slot, carry no weight, and ride in a separate
+// satchel."
+//
+// TWO CLAIMS, TWO POINTS. A slot and a kilogram are separate things a build
+// tracks separately, so a build whose materials take no slot and DO weigh
+// something must grade differently from one that gets both wrong. The other half
+// is `materials/material-carries-no-weight`.
+//
+// THE SLOT. `specs/mining.md` gives the bay a fixed number of slots, so a
+// material that consumed one would cost a haul the ore it could have carried.
 //
 // The bay is emptied first and read before the materials are banked, so the
 // second reading is held against the first rather than against an assumption
@@ -38,7 +42,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("leaves the slots, the load and the overload flag as an empty bay leaves them", async () => {
+it("leaves the slots used exactly as an empty bay leaves them", async () => {
   await openScene(h);
   await layCamp(h);
   await standAtCamp(h);
@@ -47,7 +51,6 @@ it("leaves the slots, the load and the overload flag as an empty bay leaves them
 
   const empty = await h.snapshot();
   assertEqual(empty.cargo.slotsUsed, 0, "specs/mining.md");
-  assertEqual(empty.cargo.loadKg, 0, "specs/mining.md");
 
   await h.debug.setMaterial("resonite", RESONITE);
   await h.debug.setMaterial("cryenite", CRYENITE);
@@ -58,6 +61,4 @@ it("leaves the slots, the load and the overload flag as an empty bay leaves them
   assertEqual(held.satchel.resonite, RESONITE, "specs/instrumentation.md");
   assertEqual(held.satchel.cryenite, CRYENITE, "specs/instrumentation.md");
   assertEqual(held.cargo.slotsUsed, empty.cargo.slotsUsed, "specs/mining.md");
-  assertEqual(held.cargo.loadKg, empty.cargo.loadKg, "specs/mining.md");
-  assertEqual(held.miner.overloaded, false, "specs/character.md");
 });

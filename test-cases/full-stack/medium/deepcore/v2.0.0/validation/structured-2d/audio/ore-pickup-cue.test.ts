@@ -20,7 +20,7 @@
 // it cuts the cell it was posed over rather than sinking through it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, PLAYABLE_COL_MIN } from "../../src/constants";
+import { CUES, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,

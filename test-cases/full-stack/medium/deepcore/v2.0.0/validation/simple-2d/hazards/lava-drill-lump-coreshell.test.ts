@@ -11,7 +11,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { LAVA_DRILL_CORESHELL } from "../../src/constants";
+import { LAVA_DRILL_CORESHELL } from "../constants";
 import {
   captureReplay,
   createHarness,

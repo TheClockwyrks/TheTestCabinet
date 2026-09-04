@@ -1,7 +1,7 @@
 // world/deepest-depth-holds — the deepest depth reached does not fall back.
 //
 // `specs/instrumentation.md` carries `deepestDepthMeters` beside `depthMeters`,
-// and `specs/gameplay.md` has the summary report "the deepest depth reached in
+// and `specs/expedition.md` has the summary report "the deepest depth reached in
 // meters" rather than where the expedition ended. So the figure is a high-water
 // mark: it follows the miner down and holds while the miner climbs back toward
 // the surface. A build that simply mirrored `depthMeters` would report a

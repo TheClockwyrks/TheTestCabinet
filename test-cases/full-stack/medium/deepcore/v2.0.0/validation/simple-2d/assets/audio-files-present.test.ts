@@ -20,7 +20,7 @@
 // points decide; that there is a real sound behind each name is this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_HEALTH, PLAYABLE_COL_MIN } from "../../src/constants";
+import { AUDIO_FILES, BAND_HEALTH, PLAYABLE_COL_MIN } from "../constants";
 import { assertEqual } from "../assert";
 import {
   ACTION_KEY,
@@ -33,7 +33,6 @@ import {
   type Harness,
 } from "../harness";
 import { readSound } from "./produced";
-import { AUDIO_FILES } from "./spec";
 
 /** The shortest a produced cue can be and still be a sound, in seconds. */
 const SHORTEST = 0.01;

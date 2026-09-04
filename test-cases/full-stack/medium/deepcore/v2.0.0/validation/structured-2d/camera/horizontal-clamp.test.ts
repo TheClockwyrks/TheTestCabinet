@@ -19,7 +19,7 @@ import {
   PLAYABLE_COL_MIN,
   VIEW_W,
   WORLD_W,
-} from "../../src/constants";
+} from "../constants";
 import { assertCloseTo, assertGreaterThan, assertLessThan } from "../assert";
 import {
   captureStill,

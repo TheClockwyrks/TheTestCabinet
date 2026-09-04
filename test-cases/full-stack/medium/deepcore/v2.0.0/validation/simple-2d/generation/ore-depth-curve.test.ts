@@ -21,7 +21,7 @@
 // curve and the next.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MINERALS } from "../../src/constants";
+import { MINERALS } from "../constants";
 import { assertDeepEqual } from "../assert";
 import {
   captureStill,

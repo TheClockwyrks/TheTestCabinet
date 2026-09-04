@@ -13,7 +13,7 @@
 // miner that could not lift before ends the hold above where it started.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { JETPACK_TIERS } from "../../src/constants";
+import { JETPACK_TIERS } from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   ACTION_KEY,

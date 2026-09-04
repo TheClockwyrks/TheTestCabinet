@@ -20,7 +20,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
-import { NOTICE_DELAY, TILE } from "../../src/constants";
+import { NOTICE_DELAY, TILE } from "../constants";
 import {
   captureReplay,
   createHarness,
