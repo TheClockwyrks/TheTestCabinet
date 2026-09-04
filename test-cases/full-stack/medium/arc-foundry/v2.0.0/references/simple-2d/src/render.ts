@@ -41,7 +41,6 @@ import {
   TILE,
   TITLE_TEXT,
   type ComboId,
-  type ComponentType,
   type FoundryMap,
   type LoadType,
 } from "./constants";
@@ -75,11 +74,15 @@ import {
   PANEL_COL_W,
   PANEL_COL_X,
   PANEL_PROMPT_Y,
+  bookCards,
+  bookEntries,
   controls,
   inRect,
   isHighlighted,
   leaderboardHoverId,
   leaderboardTop,
+  selectedIngredient,
+  type BookEntry,
   type Control,
 } from "./layout";
 import { drawBursts } from "./particles";
@@ -2236,116 +2239,38 @@ function drawTooltip(ctx: CanvasRenderingContext2D, frame: Frame): void {
 
 // ---- The recipe book -----------------------------------------------------
 
-/** The three states an ingredient reads in, against the yard as it stands. */
-type IngredientState = "selected" | "owned" | "missing";
-
 /**
- * Each of a recipe's ingredients, resolved to its state.
+ * A recipe's ingredients, each token drawn inside the cell `layout.ts` names for it.
  *
- * Ownership is a multiset, so a recipe calling for two ingredients at the same type and
- * quality reads as covered only when the yard holds two: the pool is decremented as it
- * is spent, and the selection covers exactly one slot.
+ * The cell is the rectangle `recipeEntries` reports, so whatever tells the three states
+ * apart at a glance — the weight, the colour, and the selected token's pulse — is inside
+ * the rectangle a caller reads back (specs/instrumentation.md).
  */
-function recipeStates(
-  combo: ComboId,
-  held: { type: ComponentType; quality: number } | null,
-  owned: ReadonlyMap<string, number>,
-): IngredientState[] {
-  const pool = new Map(owned);
-  let spent = false;
-  return COMBO_BY_ID[combo].recipe.map((r) => {
-    if (
-      !spent &&
-      held !== null &&
-      r.type === held.type &&
-      r.tier === held.quality
-    ) {
-      spent = true;
-      return "selected";
-    }
-    const key = `${r.type}@${r.tier}`;
-    const have = pool.get(key) ?? 0;
-    if (have > 0) {
-      pool.set(key, have - 1);
-      return "owned";
-    }
-    return "missing";
-  });
-}
-
-/** The selection's own ingredient, when it is one, for the book to fold against. */
-function selectedIngredient(
-  g: FoundryView,
-): { type: ComponentType; quality: number } | null {
-  const sel = selected(g);
-  if (!sel) return null;
-  if (sel.kind === "candidate") return { type: sel.type, quality: sel.quality };
-  if (sel.kind === "component" && !sel.combo) {
-    return { type: sel.type, quality: sel.quality };
-  }
-  return null;
-}
-
-/** The yard's ingredient pool, as counts, excluding the current selection. */
-function ownedIngredients(g: FoundryView): Map<string, number> {
-  const selectedId = selected(g)?.id ?? null;
-  const out = new Map<string, number>();
-  for (const s of g.structures) {
-    if (s.id === selectedId) continue;
-    if (s.kind === "blocker") continue;
-    if (s.kind === "component" && s.combo) continue;
-    const key = `${s.type}@${s.quality}`;
-    out.set(key, (out.get(key) ?? 0) + 1);
-  }
-  return out;
-}
-
-/** A recipe as its ingredient list, each token in the state the yard puts it in. */
-function drawRecipe(
+function drawRecipeCells(
   g: FoundryView,
   ctx: CanvasRenderingContext2D,
-  combo: ComboId,
-  states: readonly IngredientState[],
-  x: number,
-  y: number,
-  maxW: number,
+  entries: readonly BookEntry[],
   size: number,
 ): void {
-  const recipe = COMBO_BY_ID[combo].recipe;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  const sep = " + ";
-  ctx.font = `400 ${size}px ${FONT}`;
-  const sepW = ctx.measureText(sep).width;
   const pulse = 0.5 + 0.5 * Math.sin(g.clockTime * 3);
-  let cx = x;
-  let cy = y;
-  for (let i = 0; i < recipe.length; i++) {
-    const r = recipe[i]!;
-    const state = states[i]!;
-    const token = `${TYPE_LABEL[r.type]} ${QUALITY_ROMAN[qualityIndex(r.tier)]}`;
+  for (const cell of entries) {
+    const token = `${TYPE_LABEL[cell.type]} ${QUALITY_ROMAN[qualityIndex(cell.quality)]}`;
     const weight =
-      state === "selected" ? "800" : state === "owned" ? "700" : "400";
+      cell.state === "selected"
+        ? "800"
+        : cell.state === "owned"
+          ? "700"
+          : "400";
     ctx.font = `${weight} ${size}px ${FONT}`;
-    const tokenW = ctx.measureText(token).width;
-    if (cx > x && cx + tokenW > x + maxW) {
-      cx = x;
-      cy += size + 3;
-    }
     ctx.fillStyle =
-      state === "selected"
+      cell.state === "selected"
         ? hexA(COL.charge, 0.55 + 0.45 * pulse)
-        : state === "owned"
+        : cell.state === "owned"
           ? COL.legal
           : COL.text2;
-    ctx.fillText(token, cx, cy);
-    cx += tokenW;
-    if (i < recipe.length - 1) {
-      ctx.font = `400 ${size}px ${FONT}`;
-      ctx.fillStyle = COL.text3;
-      ctx.fillText(sep, cx, cy);
-      cx += sepW;
-    }
+    ctx.fillText(token, cell.x + 2, cell.y + cell.h / 2);
   }
 }
 
@@ -2356,7 +2281,7 @@ function drawRecipeBook(
   list: readonly Control[],
 ): void {
   const held = selectedIngredient(g);
-  const owned = ownedIngredients(g);
+  const entries = bookEntries(g);
   const { x0, y0, x1, y1 } = BOOK;
   const w = x1 - x0;
   const h = y1 - y0;
@@ -2412,60 +2337,65 @@ function drawRecipeBook(
     );
   }
 
-  const gridY = y0 + 56;
-  const gap = 12;
-  const cols = 2;
-  const rows = 6;
-  const cellW = (w - 36 - gap) / cols;
-  const cellH = (y1 - gridY - 16 - (rows - 1) * gap) / rows;
+  // The cards and the ingredient cells inside them come from `layout.ts`, so what the
+  // book draws and what `recipeEntries` reports are one rectangle rather than two
+  // (specs/instrumentation.md).
   let hovered: ComboId | null = null;
-  const ids = COMBO_BY_ID;
-  const order = Object.keys(ids) as ComboId[];
-  for (let i = 0; i < order.length; i++) {
-    const combo = order[i]!;
-    const def = ids[combo];
+  for (const card of bookCards()) {
+    const combo = card.combo;
+    const def = COMBO_BY_ID[combo];
     const accent = COMBO_COLOR[combo];
-    const cx = x0 + 18 + (i % cols) * (cellW + gap);
-    const cy = gridY + Math.floor(i / cols) * (cellH + gap);
     const uses =
       held !== null &&
       def.recipe.some((r) => r.type === held.type && r.tier === held.quality);
-    roundRect(ctx, cx, cy, cellW, cellH, 8);
+    roundRect(ctx, card.x, card.y, card.w, card.h, 8);
     ctx.fillStyle = uses ? hexA(COL.charge, 0.14) : hexA(accent, 0.08);
     ctx.fill();
     ctx.strokeStyle = uses ? COL.charge : hexA(accent, 0.45);
     ctx.lineWidth = uses ? 1.8 : 1;
     ctx.stroke();
-    if (inRect(g.pointerX, g.pointerY, cx, cy, cellW, cellH)) hovered = combo;
-    text(ctx, def.name, cx + 12, cy + 15, 12, accent, "left", "800", 0.3);
+    if (inRect(g.pointerX, g.pointerY, card.x, card.y, card.w, card.h)) {
+      hovered = combo;
+    }
+    text(
+      ctx,
+      def.name,
+      card.x + 12,
+      card.y + 15,
+      12,
+      accent,
+      "left",
+      "800",
+      0.3,
+    );
     const reference = comboStats(combo, COMBO_MAX_LEVEL);
     const tags = abilityTags(reference).join("·");
     text(
       ctx,
       `${def.damage} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? ` · ${tags}` : ""}`,
-      cx + 12,
-      cy + 31,
+      card.x + 12,
+      card.y + 31,
       8,
       COL.text2,
       "left",
       "600",
       0.2,
     );
-    const states = recipeStates(combo, held, owned);
-    const have = states.filter((st) => st !== "missing").length;
+    const mine = entries.filter((e) => e.combo === combo);
+    const have = mine.filter((e) => e.state !== "missing").length;
     text(
       ctx,
-      `RECIPE · ${have}/${states.length} ON YARD`,
-      cx + 12,
-      cy + 45,
+      `RECIPE · ${have}/${mine.length} ON YARD`,
+      card.x + 12,
+      card.y + 45,
       7,
-      have === states.length ? COL.legal : COL.text3,
+      have === mine.length ? COL.legal : COL.text3,
       "left",
       "700",
       0.5,
     );
-    drawRecipe(g, ctx, combo, states, cx + 12, cy + 57, cellW - 24, 9);
   }
+  drawRecipeCells(g, ctx, entries, 9);
 
   if (hovered) drawComboTooltip(g, ctx, hovered);
 }
@@ -3051,7 +2981,7 @@ function drawHowto(
   text(ctx, "CONTROLS", 150, fy + 22, 12, COL.text3, "left", "700", 1.5);
   wrap(
     ctx,
-    "B press · press to place and select · SHIFT-press to add to a combine set · K keep · G downgrade · C combine · U upgrade · T target · X dismantle · F speed · SPACE pause · V recipes · L damage · M mute · ↑ ↓ move · Enter confirm · Esc back",
+    "B press · press to place and select · SHIFT-press to add to a combine set · K keep · G downgrade · C combine · U upgrade · T target · X dismantle · F speed · SPACE pause · P pause menu · V recipes · L damage · M mute · ↑ ↓ move · Enter confirm · Esc back",
     150,
     fy + 44,
     980,

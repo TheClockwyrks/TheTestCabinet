@@ -105,6 +105,10 @@ export class Game {
   mazeRating = 0;
   finale = false; // the post-final Overload Dynamo is walking the maze (specs/enemies.md)
   wave = 0; // 0 before Wave 1 (the untimed opening build phase)
+  // The driver's hold on the resolution that ends a wave (specs/instrumentation.md). While
+  // it is on, a wave whose units have all died or leaked stays running: no bonus is paid,
+  // the counter does not advance, and no build phase opens. Every other rule keeps running.
+  waveHeld = false;
   speed: 1 | 2 | 4 | 8 = 1;
 
   units: Unit[] = [];
@@ -228,6 +232,7 @@ export class Game {
     this.sndQueue = [];
     this.activeWave = null;
     this.spawnerHeld = false;
+    this.waveHeld = false;
     this.spawnCursor = 0;
     this.waveClock = 0;
     this.simTime = 0;
@@ -953,6 +958,10 @@ export class Game {
   private checkWaveEnd(): void {
     const w = this.activeWave;
     if (!w) return;
+    // The driver's hold is on this resolution and on nothing else: everything above has
+    // already run, so structures fired, bounties were paid and leaks cost Grid Integrity
+    // exactly as they do with the hold off (specs/instrumentation.md).
+    if (this.waveHeld) return;
     if (this.spawnCursor >= w.events.length && this.units.length === 0)
       this.endWave();
   }
@@ -1997,6 +2006,7 @@ export class Game {
     this.cuesThisStep.clear();
     this.activeWave = null;
     this.spawnerHeld = false;
+    this.waveHeld = false;
     this.spawnCursor = 0;
     this.waveClock = 0;
     this.simTime = 0;
@@ -2034,13 +2044,44 @@ export class Game {
 
   // Move to a named screen, as reaching it in play does. The eight identifiers are
   // specs/ui.md's.
-  setScreen(screen: GameState): void {
+  //
+  // "A menu reached other than by returning to it opens with its first entry
+  // highlighted, at menu index 0. Returning to a menu highlights the entry that led
+  // away from it" (specs/ui.md), so the default is the first entry and a caller
+  // returning to a menu names the entry it came through.
+  setScreen(screen: GameState, index = 0): void {
     this.state = screen;
-    this.menuIndex = 0;
+    this.menuIndex = index;
   }
 
   setMenuIndex(index: number): void {
     this.menuIndex = index;
+  }
+
+  // Move the run between its three phases and do nothing else (specs/instrumentation.md).
+  // "wave" opens a live wave whose spawn schedule is empty, exactly as a driver-released
+  // unit does, so the yard holds whatever it already held; "build" ends whatever phase is
+  // running without paying a bonus and without advancing the counter; "finale" opens the
+  // maze-rating finale over the units already walking. It spends no wave number.
+  setPhase(phase: "build" | "wave" | "finale"): void {
+    if (phase === "build") {
+      this.activeWave = null;
+      this.spawnerHeld = false;
+      this.spawnCursor = 0;
+      this.waveClock = 0;
+      this.finale = false;
+      this.phase = "build";
+      this.harvest = { mode: "none" };
+      return;
+    }
+    this.finale = phase === "finale";
+    this.phase = "wave";
+    this.holdSpawner();
+  }
+
+  // Hold the running wave's own clear-and-pay resolution, or release it.
+  setWaveHold(held: boolean): void {
+    this.waveHeld = held;
   }
 
   setPaused(paused: boolean): void {
@@ -2383,6 +2424,7 @@ export class Game {
       wave: this.wave,
       totalWaves: this.diff.waves,
       waveActive: this.activeWave !== null || this.units.some((u) => !u.dead),
+      waveHeld: this.waveHeld,
       charge: this.charge,
       integrity: this.integrity,
       refinement: this.refinement,

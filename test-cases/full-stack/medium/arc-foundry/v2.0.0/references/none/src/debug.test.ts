@@ -27,12 +27,23 @@ function install(): { api: FoundryDebugApi; game: Game; frames: number[] } {
     },
     pointerDown: () => {},
     pointerUp: () => {},
+    touchStart: (x, y) => {
+      game.pointerX = x;
+      game.pointerY = y;
+    },
+    touchMove: (x, y) => {
+      game.pointerX = x;
+      game.pointerY = y;
+    },
+    touchEnd: () => {},
     keyDown: () => {},
     keyUp: () => {},
     panelButtons: () => [],
     pressControls: () => [],
     menuButtons: () => [],
     statusControls: () => [],
+    statusReadouts: () => [],
+    recipeEntries: () => [],
   });
   return { api: holder.__foundry!, game, frames };
 }

@@ -35,7 +35,7 @@ import {
   setRenderTime,
 } from "./render";
 import type { Action } from "./constants";
-import type { Clickable, ComboType, Difficulty } from "./types";
+import type { Clickable, ComboType, Difficulty, GameState } from "./types";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -62,6 +62,10 @@ async function main(): Promise<void> {
   // The keys currently down, so a LEVEL-read action such as `modify` can be read at the
   // moment it matters rather than sampled once a frame (specs/controls.md).
   const heldKeys = new Set<string>();
+  // The menu entry a pointer press or a touch landing fell inside, until its release.
+  // `specs/ui.md` takes an entry "only when both edges of the gesture fall inside one
+  // entry's region", so the press's entry is what the release is held against.
+  let pressedMenu: string | null = null;
 
   // The manual clock (specs/instrumentation.md). `autoStep` is on for normal play: the
   // animation loop advances the game from the wall clock. The debug surface turns it off to
@@ -123,9 +127,18 @@ async function main(): Promise<void> {
         game.setScreen("howto");
         break;
       case "menu:back":
-        game.setScreen(
-          game.state === "difficultyselect" ? "mapselect" : "title",
-        );
+        // "Returning to a menu highlights the entry that led away from it"
+        // (specs/ui.md): the map select comes back on the map that was chosen, and
+        // the title comes back on HOW TO PLAY when How To Play is what was left.
+        if (game.state === "difficultyselect") {
+          game.setScreen(
+            "mapselect",
+            entryIndex("mapselect", `map:${game.map.id}`),
+          );
+        } else {
+          const led = game.state === "howto" ? "menu:howto" : "menu:play";
+          game.setScreen("title", entryIndex("title", led));
+        }
         break;
       case "menu:quit":
       case "menu:menu":
@@ -220,10 +233,21 @@ async function main(): Promise<void> {
         continue;
       }
       if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) {
+        const entry = menuEntryAt(x, y);
+        if (entry !== null && entry.item.action === c.action) {
+          // A menu entry moves the highlight on the press and is TAKEN on a release
+          // inside the same region (specs/ui.md), so the press only records itself.
+          game.setMenuIndex(entry.index);
+          pressedMenu = c.action;
+          return;
+        }
         activate(c.action, c.payload);
         return;
       }
     }
+    // A press that fell outside every menu entry takes none, and leaves no gesture
+    // for a later release to complete (specs/ui.md).
+    pressedMenu = null;
     if (game.state === "playing" && x < PANEL_X && y > BOARD_Y0) {
       if (game.holding) {
         const a = game.board.pixelToAnchor(x, y);
@@ -235,7 +259,82 @@ async function main(): Promise<void> {
   }
 
   function onPointerUp(): void {
-    // Every control commits on its press (specs/controls.md), so a release commits nothing.
+    releaseGesture(game.pointerX, game.pointerY);
+  }
+
+  // ---- The touch contact (specs/controls.md) -----------------------------------
+  //
+  // A contact drives the menus over the same reported hit regions the pointer acts
+  // over: its landing gets what a pointer press gets and its lift what a release
+  // gets. Outside the menus it "reaches the game as an ordinary pointer press and
+  // release at the positions it lands and lifts at", which is exactly what routing
+  // both through the pointer's own handlers gives it. One contact is down at a time,
+  // a move or an end with none down does nothing, and a landing with one already
+  // down replaces it (specs/instrumentation.md).
+
+  let contactDown = false;
+
+  function onTouchStart(x: number, y: number): void {
+    contactDown = true;
+    onPointerDown(x, y);
+  }
+
+  function onTouchMove(x: number, y: number): void {
+    if (!contactDown) return;
+    onPointerMove(x, y);
+  }
+
+  function onTouchEnd(): void {
+    if (!contactDown) return;
+    contactDown = false;
+    releaseGesture(game.pointerX, game.pointerY);
+  }
+
+  /**
+   * Close the gesture a press or a landing opened.
+   *
+   * Only a menu entry answers to a release: `specs/ui.md` takes one "only when both
+   * edges of the gesture fall inside one entry's region", so the release is held
+   * against the entry the press landed in and takes nothing when the two differ or
+   * when the release fell outside every entry. Every other control commits on its
+   * press, so a release reaches none of them.
+   */
+  function releaseGesture(x: number, y: number): void {
+    const opened = pressedMenu;
+    pressedMenu = null;
+    if (opened === null) return;
+    const entry = menuEntryAt(x, y);
+    if (entry === null || entry.item.action !== opened) return;
+    activate(entry.item.action);
+  }
+
+  /** The menu entry a point falls inside, with its place in the menu, or `null`. */
+  function menuEntryAt(
+    x: number,
+    y: number,
+  ): { index: number; item: { action: string } } | null {
+    if (!isMenuState(game.state)) return null;
+    const items = menuItems(game.state);
+    for (let idx = 0; idx < items.length; idx++) {
+      const item = items[idx]!;
+      const c = clickables.find((cl) => cl.action === item.action);
+      if (
+        c &&
+        !c.disabled &&
+        x >= c.x &&
+        x <= c.x + c.w &&
+        y >= c.y &&
+        y <= c.y + c.h
+      )
+        return { index: idx, item };
+    }
+    return null;
+  }
+
+  /** Where an entry sits in a screen's menu, or the first entry when it has none. */
+  function entryIndex(screen: GameState, action: string): number {
+    const at = menuItems(screen).findIndex((item) => item.action === action);
+    return at < 0 ? 0 : at;
   }
 
   // ---- The keyboard (specs/controls.md) ----------------------------------------
@@ -286,6 +385,19 @@ async function main(): Promise<void> {
       activate("menu:menu");
   }
 
+  // `pause-menu` "opens the pause menu on `playing`, and closes it and resumes on
+  // `paused`" (specs/controls.md), and does nothing on any other screen. Unlike `back`
+  // it runs no ladder, so it opens the menu whatever is pending and leaves the held
+  // rock, the selection and the open overlay exactly as they were; resuming hands all
+  // three back, because neither this nor `menu:resume` touches any of them.
+  function pauseMenu(): void {
+    if (game.state === "playing") {
+      game.setScreen("paused");
+      return;
+    }
+    if (game.state === "paused") activate("menu:resume");
+  }
+
   function onKeyDown(code: string): void {
     gesture();
     heldKeys.add(code);
@@ -305,8 +417,15 @@ async function main(): Promise<void> {
       activate("mute");
       return;
     }
+    // `Escape` fires `back` and `pause-menu` together and one press resolves once, so
+    // `back` runs first and spends the press (specs/controls.md). `KeyP` fires
+    // `pause-menu` alone and reaches the branch below.
     if (action === "back") {
       back();
+      return;
+    }
+    if (action === "pause-menu") {
+      pauseMenu();
       return;
     }
     if (game.state === "playing") {
@@ -386,6 +505,9 @@ async function main(): Promise<void> {
     pointerMove: onPointerMove,
     pointerDown: onPointerDown,
     pointerUp: onPointerUp,
+    touchStart: onTouchStart,
+    touchMove: onTouchMove,
+    touchEnd: onTouchEnd,
     keyDown: onKeyDown,
     keyUp: onKeyUp,
   });
@@ -422,6 +544,9 @@ async function main(): Promise<void> {
     game.renderAlpha =
       game.state === "playing" && !game.paused ? acc / FIXED_STEP : 0;
 
+    // The bed loops under the yard and nowhere else (specs/ui.md), so it follows the
+    // screen the game is on rather than the gesture that opened the audio.
+    audio.setPlaying(game.state === "playing" || game.state === "paused");
     for (const cue of game.sndQueue) audio.play(cue);
     game.sndQueue.length = 0;
     for (const fx of game.fxQueue) bursts.spawn(fx);
@@ -472,6 +597,9 @@ async function main(): Promise<void> {
     pointerMove: onPointerMove,
     pointerDown: onPointerDown,
     pointerUp: onPointerUp,
+    touchStart: onTouchStart,
+    touchMove: onTouchMove,
+    touchEnd: onTouchEnd,
     keyDown: onKeyDown,
     keyUp: onKeyUp,
     // The inspector's action controls for the selected structure, in slot order.
@@ -522,6 +650,36 @@ async function main(): Promise<void> {
       }
       return out;
     },
+    // The status bar's READS — the entries it draws that are not controls — each with the
+    // rectangle it was drawn at, so a caller stands the pointer on one without knowing
+    // where the bar put it. Empty on any screen with no status bar.
+    statusReadouts: () =>
+      clickables
+        .filter((c) => c.readout !== undefined)
+        .map((c) => ({
+          readout: c.readout!,
+          label: c.label ?? "",
+          x: c.x,
+          y: c.y,
+          w: c.w,
+          h: c.h,
+        })),
+    // Every ingredient cell the recipe book drew, in the order it drew them. Empty while
+    // the book is closed, because a closed book draws none.
+    recipeEntries: () =>
+      clickables
+        .filter((c) => c.recipe !== undefined)
+        .map((c) => ({
+          combo: c.recipe!.combo,
+          ingredient: c.recipe!.ingredient,
+          type: c.recipe!.type,
+          quality: c.recipe!.quality,
+          state: c.recipe!.state,
+          x: c.x,
+          y: c.y,
+          w: c.w,
+          h: c.h,
+        })),
     // The status bar's overlay, speed, pause, and mute controls, each carrying the value it
     // currently reads. Empty on any screen with no status bar.
     statusControls: () => {

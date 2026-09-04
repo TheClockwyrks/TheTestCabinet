@@ -172,6 +172,7 @@ export function createWorld(assets: Assets): FoundryWorld {
     phase: "build",
     paused: false,
     menuIndex: 0,
+    pressedMenu: null,
     mapId: "substation",
     difficultyId: "medium",
     charge: START_CHARGE,
@@ -195,6 +196,7 @@ export function createWorld(assets: Assets): FoundryWorld {
     leakCount: 0,
     activeWave: null,
     spawnerHeld: false,
+    waveHeld: false,
     nextWave: buildWave(1, DIFFICULTY_BY_ID.medium),
     spawnCursor: 0,
     waveClock: 0,
@@ -236,6 +238,7 @@ export function resetWorld(w: FoundryWorld, seed: number = DEFAULT_SEED): void {
   w.screen = "title";
   w.phase = "build";
   w.menuIndex = 0;
+  w.pressedMenu = null;
   w.paused = false;
   w.charge = START_CHARGE;
   w.integrity = START_INTEGRITY;
@@ -262,6 +265,7 @@ export function resetWorld(w: FoundryWorld, seed: number = DEFAULT_SEED): void {
   w.cueQueue = [];
   w.activeWave = null;
   w.spawnerHeld = false;
+  w.waveHeld = false;
   w.spawnCursor = 0;
   w.waveClock = 0;
   w.simTime = 0;
@@ -302,12 +306,14 @@ export function startRun(w: FoundryWorld): void {
   w.refinement = 0;
   w.harvest = { mode: "none" };
   w.menuIndex = 0;
+  w.pressedMenu = null;
   w.kills = 0;
   w.leakCount = 0;
   w.fxQueue = [];
   w.cueQueue = [];
   w.activeWave = null;
   w.spawnerHeld = false;
+  w.waveHeld = false;
   w.spawnCursor = 0;
   w.waveClock = 0;
   w.simTime = 0;
@@ -1110,6 +1116,10 @@ function cullDead(w: FoundryWorld): void {
 function checkWaveEnd(w: FoundryWorld): void {
   const wave = w.activeWave;
   if (!wave) return;
+  // The surface's second hold. It holds this resolution alone: the bounty for the kill
+  // that emptied the yard has already been paid by the time this runs, and the leak that
+  // emptied it has already cost its Grid Integrity (specs/instrumentation.md).
+  if (w.waveHeld) return;
   if (w.spawnCursor >= wave.events.length && w.units.length === 0) endWave(w);
 }
 
@@ -1257,6 +1267,7 @@ function win(w: FoundryWorld): void {
   w.finale = false;
   w.screen = "victory";
   w.menuIndex = 0;
+  w.pressedMenu = null;
   w.units = [];
   w.projectiles = [];
 }
@@ -1266,6 +1277,7 @@ function lose(w: FoundryWorld): void {
   w.finale = false;
   w.screen = "overload";
   w.menuIndex = 0;
+  w.pressedMenu = null;
   w.units = [];
   w.projectiles = [];
   w.activeWave = null;
@@ -2138,9 +2150,25 @@ export function setPaused(w: FoundryWorld, paused: boolean): void {
   w.paused = paused;
 }
 
-export function setScreen(w: FoundryWorld, screen: ScreenName): void {
+/**
+ * Show a screen, with `index` highlighted.
+ *
+ * `specs/ui.md`: "A menu reached other than by returning to it opens with its first
+ * entry highlighted, at menu index `0`. Returning to a menu highlights the entry
+ * that led away from it." The default is the first entry, and the callers that
+ * return to a menu name the entry they came through.
+ *
+ * A gesture in flight is dropped, because the entry its press landed in belongs to
+ * a menu that is no longer showing.
+ */
+export function setScreen(
+  w: FoundryWorld,
+  screen: ScreenName,
+  index = 0,
+): void {
   w.screen = screen;
-  w.menuIndex = 0;
+  w.menuIndex = index;
+  w.pressedMenu = null;
 }
 
 export function setMenuIndex(w: FoundryWorld, index: number): void {
@@ -2384,6 +2412,48 @@ export function setUnitHp(u: Unit, hp: number): void {
 
 export function setUnitFrozen(u: Unit, frozen: boolean): void {
   u.frozen = frozen;
+}
+
+/**
+ * Put away whatever rock is held on the cursor (specs/instrumentation.md).
+ *
+ * `specs/scrap-press.md` makes placement continuous, so a drop that leaves stamps in the
+ * allowance arms the next rock immediately. This empties the cursor and does nothing
+ * else: no stamp is spent and none is returned, the arming, the selection and the yard
+ * are left as they stand, and an empty hand is left empty.
+ */
+export function clearHeldRock(w: FoundryWorld): void {
+  w.holding = false;
+}
+
+/**
+ * Move the run between its three phases, and do nothing else
+ * (specs/instrumentation.md).
+ *
+ * It releases no unit and composes no wave, so `"wave"` opens a live wave whose spawn
+ * schedule is empty exactly as `spawnUnit` does — the hold on the spawner engages and the
+ * yard holds whatever it already held. `"build"` ends whatever phase is running without
+ * paying a wave-clear bonus and without advancing the wave counter, and `"finale"` opens
+ * the maze-rating finale without releasing its Overload Dynamo.
+ */
+export function setPhase(w: FoundryWorld, phase: PhaseName): void {
+  if (phase === "build") {
+    w.activeWave = null;
+    w.spawnerHeld = false;
+    w.spawnCursor = 0;
+    w.waveClock = 0;
+    w.finale = false;
+    w.phase = "build";
+    return;
+  }
+  w.finale = phase === "finale";
+  w.phase = "wave";
+  holdSpawner(w);
+}
+
+/** Hold the wave's own clear-and-pay resolution, or release it. */
+export function setWaveHold(w: FoundryWorld, held: boolean): void {
+  w.waveHeld = held;
 }
 
 // ---- Lookups an argument is validated against ----------------------------

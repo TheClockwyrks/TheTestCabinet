@@ -971,6 +971,34 @@ export const STATUS_CONTROLS = [
 export type StatusControl = (typeof STATUS_CONTROLS)[number];
 
 /**
+ * The status bar's readouts, in the order `specs/hud.md` draws them left to right.
+ *
+ * These are the bar's READS rather than its controls, so `statusControls` reports
+ * none of them and `statusReadouts` reports each one's rectangle
+ * (specs/instrumentation.md). `charge`, `integrity`, `wave`, and `maze-length` are
+ * the four the bar always carries; `paused` and `overload` are the two conditional
+ * reads, present only on the frames the bar is actually drawing them.
+ */
+export const STATUS_READOUTS = [
+  "charge",
+  "integrity",
+  "wave",
+  "maze-length",
+  "paused",
+  "overload",
+] as const;
+
+export type StatusReadout = (typeof STATUS_READOUTS)[number];
+
+/**
+ * The three states every ingredient of every recipe is drawn in, "told apart at a
+ * glance" (specs/hud.md), as `recipeEntries` reports them.
+ */
+export const INGREDIENT_STATES = ["selected", "owned", "missing"] as const;
+
+export type IngredientState = (typeof INGREDIENT_STATES)[number];
+
+/**
  * The build panel's own two controls, in the order the panel draws them.
  *
  * They belong to the panel rather than to the inspector: the refinement control is
@@ -1025,6 +1053,7 @@ export const ACTIONS = [
   "dismantle",
   "speed",
   "pause",
+  "pause-menu",
   "combos",
   "damage",
   "mute",
@@ -1054,6 +1083,7 @@ export const BINDINGS: Readonly<Record<ActionName, readonly string[]>> = {
   dismantle: ["KeyX"],
   speed: ["KeyF"],
   pause: ["Space"],
+  "pause-menu": ["Escape", "KeyP"],
   combos: ["KeyV"],
   damage: ["KeyL"],
   mute: ["KeyM"],

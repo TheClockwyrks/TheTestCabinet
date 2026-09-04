@@ -29,6 +29,7 @@ import {
   type ComboId,
   type DifficultyId,
   type MapId,
+  type ScreenName,
 } from "./constants";
 import { controls, inRect, type Control } from "./layout";
 import { menuItems } from "./menus";
@@ -109,7 +110,15 @@ export function activate(
       setScreen(w, "howto");
       break;
     case "back":
-      setScreen(w, w.screen === "difficultyselect" ? "mapselect" : "title");
+      // "Returning to a menu highlights the entry that led away from it"
+      // (specs/ui.md): the map select comes back on the map that was chosen, and
+      // the title comes back on HOW TO PLAY when How To Play is what was left.
+      if (w.screen === "difficultyselect") {
+        setScreen(w, "mapselect", entryIndex("mapselect", `map-${w.mapId}`));
+      } else {
+        const led = w.screen === "howto" ? "howto" : "salvage";
+        setScreen(w, "title", entryIndex("title", led));
+      }
       break;
     case "restart":
     case "again":
@@ -222,6 +231,29 @@ function back(w: FoundryState, audio: WorldAudio): void {
     activate(w, audio, "menu");
 }
 
+/**
+ * Open the pause menu from `playing`, or close it and resume from `paused`.
+ *
+ * `specs/controls.md`: `pause-menu` "opens the pause menu on `playing`, and closes
+ * it and resumes on `paused`", and nothing on any other screen. Unlike `back` it
+ * runs no ladder, so "it opens the pause menu whatever is pending and leaves the
+ * held rock, the selection, and the open overlay exactly as they were; resuming
+ * hands all three back" — none of the three is touched here or by `resume`.
+ */
+function pauseMenu(w: FoundryState, audio: WorldAudio): void {
+  if (w.screen === "playing") {
+    setScreen(w, "paused");
+    return;
+  }
+  if (w.screen === "paused") activate(w, audio, "resume");
+}
+
+/** Where an entry sits in a screen's menu, or the first entry when it has none. */
+function entryIndex(screen: ScreenName, action: string): number {
+  const at = menuItems(screen).findIndex((item) => item.action === action);
+  return at < 0 ? 0 : at;
+}
+
 export class FoundryController extends PlayerController {
   override tick(): void {
     const state = foundryState(this.world);
@@ -252,6 +284,7 @@ export class FoundryController extends PlayerController {
   private handleKeys(w: FoundryState, audio: WorldAudio): void {
     const muteNow = this.input.pressed("mute");
     const backNow = this.input.pressed("back");
+    const pauseMenuNow = this.input.pressed("pause-menu");
     const upNow = this.input.pressed("up");
     const downNow = this.input.pressed("down");
     const confirmNow = this.input.pressed("confirm");
@@ -259,8 +292,15 @@ export class FoundryController extends PlayerController {
 
     // Muting is bound to the engine's own bit, so it works from every screen.
     if (muteNow) activate(w, audio, "mute");
+    // `Escape` fires `back` and `pause-menu` together and one press resolves once,
+    // so `back` runs first and spends the press (specs/controls.md). `KeyP` fires
+    // `pause-menu` alone and reaches the line below.
     if (backNow) {
       back(w, audio);
+      return;
+    }
+    if (pauseMenuNow) {
+      pauseMenu(w, audio);
       return;
     }
 
@@ -284,7 +324,8 @@ export class FoundryController extends PlayerController {
   /**
    * Resolve this frame's pointer samples, one at a time, in the order they arrived.
    *
-   * A release commits nothing: every control commits on its press.
+   * Every control but a menu entry commits on its press; a menu entry is taken on
+   * the release that closes the gesture its press opened (specs/ui.md).
    */
   private handlePointer(w: FoundryState, audio: WorldAudio): void {
     for (const sample of this.input.pointerSamples()) {
@@ -292,8 +333,37 @@ export class FoundryController extends PlayerController {
       w.pointerY = sample.y;
       if (sample.type === "down")
         this.handlePress(w, audio, sample.x, sample.y);
-      else if (sample.type === "move") syncMenuIndex(w, controls(w));
+      else if (sample.type === "move")
+        syncMenuIndex(w, controls(w), sample.x, sample.y);
+      else this.handleRelease(w, audio, sample.x, sample.y);
     }
+  }
+
+  /**
+   * Resolve one release at the pointer's position.
+   *
+   * Only a menu entry answers to a release: `specs/ui.md` takes one "only when both
+   * edges of the gesture fall inside one entry's region", so the release is held
+   * against the entry the press landed in and takes nothing when the two differ or
+   * when the release fell outside every entry.
+   *
+   * A touch contact is the same gesture: `specs/controls.md` gives its landing what
+   * a pointer press gets and its lift what a release gets, so both arrive here as
+   * samples and neither is told apart from the other.
+   */
+  private handleRelease(
+    w: FoundryState,
+    audio: WorldAudio,
+    x: number,
+    y: number,
+  ): void {
+    const pressedEntry = w.pressedMenu;
+    w.pressedMenu = null;
+    if (pressedEntry === null) return;
+    const hit = menuAt(controls(w), x, y);
+    if (hit === null || hit.control.disabled) return;
+    if (hit.control.action !== pressedEntry) return;
+    activate(w, audio, hit.control.action, hit.control.payload);
   }
 
   /**
@@ -316,9 +386,19 @@ export class FoundryController extends PlayerController {
       if (c.disabled) continue;
       if (w.screen !== "playing" && c.kind !== "menu") continue;
       if (!inRect(x, y, c.x, c.y, c.w, c.h)) continue;
+      if (c.kind === "menu") {
+        // A menu entry moves the highlight on the press and is TAKEN on a release
+        // inside the same region (specs/ui.md), so the press only records itself.
+        syncMenuIndex(w, list, x, y);
+        w.pressedMenu = c.action;
+        return;
+      }
       activate(w, audio, c.action, c.payload);
       return;
     }
+    // A press that fell outside every menu entry takes none, and leaves no gesture
+    // for a later release to complete (specs/ui.md).
+    w.pressedMenu = null;
     if (w.screen !== "playing") return;
     if (x >= YARD_RIGHT || y <= BOARD_Y || y > STAGE_H || x < BOARD_X) return;
     if (w.holding) {
@@ -333,14 +413,27 @@ export class FoundryController extends PlayerController {
   }
 }
 
-/** Move the highlight to whichever menu entry the pointer is over. */
-function syncMenuIndex(w: FoundryState, list: readonly Control[]): void {
+/** The menu entry a point falls inside, with its place in the menu, or `null`. */
+function menuAt(
+  list: readonly Control[],
+  x: number,
+  y: number,
+): { index: number; control: Control } | null {
   const items = list.filter((c) => c.kind === "menu");
   for (let i = 0; i < items.length; i++) {
     const c = items[i]!;
-    if (inRect(w.pointerX, w.pointerY, c.x, c.y, c.w, c.h)) {
-      setMenuIndex(w, i);
-      return;
-    }
+    if (inRect(x, y, c.x, c.y, c.w, c.h)) return { index: i, control: c };
   }
+  return null;
+}
+
+/** Move the highlight to whichever menu entry a point is over. */
+function syncMenuIndex(
+  w: FoundryState,
+  list: readonly Control[],
+  x: number,
+  y: number,
+): void {
+  const hit = menuAt(list, x, y);
+  if (hit !== null) setMenuIndex(w, hit.index);
 }

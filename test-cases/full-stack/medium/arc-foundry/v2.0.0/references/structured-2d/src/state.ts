@@ -44,6 +44,7 @@ import type {
   Harvest,
   Projectile,
   Pt,
+  RecipeCell,
   Structure,
   Unit,
   Wave,
@@ -78,6 +79,15 @@ export class FoundryState extends GameState {
   paused = false;
   /** The highlighted entry on whichever menu is showing, counted from `0`. */
   menuIndex = 0;
+  /**
+   * The menu entry a pointer press or a touch landing fell inside, until its
+   * release.
+   *
+   * `specs/ui.md` takes an entry "only when both edges of the gesture fall inside
+   * one entry's region", so the entry the press landed in is what the release is
+   * held against. `null` whenever no gesture is in flight.
+   */
+  pressedMenu: string | null = null;
 
   // ---- The run ----
   mapId: MapId = "substation";
@@ -121,10 +131,29 @@ export class FoundryState extends GameState {
   activeWave: Wave | null = null;
   /** The surface's hold on the spawner: a live wave with an empty schedule. */
   spawnerHeld = false;
+  /**
+   * The surface's hold on the wave's own clear-and-pay resolution.
+   *
+   * While it is on, a wave whose units have all died or leaked stays running: no
+   * bonus is paid, the wave counter does not advance, and no build phase opens.
+   * Nothing else is held with it (`specs/instrumentation.md`).
+   */
+  waveHeld = false;
   nextWave: Wave = buildWave(1, DIFFICULTY_BY_ID.medium);
   spawnCursor = 0;
   /** Milliseconds into the active wave. */
   waveClock = 0;
+
+  // ---- What the last drawn frame laid out ----
+  /**
+   * The recipe book's ingredient cells, as the last frame that drew the book laid
+   * them out, which is what `recipeEntries` reports (`specs/instrumentation.md`).
+   *
+   * A cell's width is the width of the text this build laid out, so it is recorded
+   * as it is drawn rather than computed twice. It is emptied on any frame that does
+   * not draw the book.
+   */
+  bookCells: RecipeCell[] = [];
 
   // ---- Clocks ----
   /** The simulation clock, in seconds. Every rate and duration is measured on it. */
