@@ -125,9 +125,11 @@ They are unrelated, and the case carries both.
 - **The run's showcase** is `specs/showcase.md`, a seeded spec like any other. It
   asks the build for a `showcase/` directory inside the game repository it
   writes: a player-facing description and a short carousel of media the build
-  captures from its own running game. It is part of what a run delivers. No
-  review item grades it, so it earns nothing on the checklist; a reviewer reads
-  it on the run's Play page.
+  captures from its own running game. It is part of what a run delivers. One
+  review item grades it, `showcase.exists`, and that item asks only whether the
+  showcase is there — the description, the carousel, and one file the carousel
+  names — for three points rather than the ordinary one. What it says and how
+  well it presents the game is the reviewer's, read off the run's Play page.
 - **The case's showcase** is `showcase/base/`, which no run ever sees. It is the
   media the catalog's preview stage and this case's detail page present to a
   visitor, registered by `showcase = "showcase/base"` on `variants/base.toml`.

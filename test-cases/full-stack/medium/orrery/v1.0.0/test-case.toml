@@ -433,9 +433,10 @@ source = "specs/modes/extras.md"
 # holding a player-facing description and a short carousel of media captured from
 # the game as it plays. It branches on the engine, because an engineless build
 # records motion as a `.webm` clip while an engine run records it as a replay
-# through the engine's recorder. It earns no review item: the showcase is the
-# build's own presentation of what it made, graded by a reviewer looking at the
-# run's Play page rather than decided by a script.
+# through the engine's recorder. It carries exactly one graded point, the
+# `showcase` category at the end of the checklist below, and that point asks only
+# whether the showcase is THERE. What it says and how well it presents the game
+# are the reviewer's, read off the run's Play page.
 [[spec]]
 source = "specs/showcase.md.hbs"
 
@@ -493,10 +494,13 @@ description = "Everything a player sees and hears. The produced assets first: th
 # Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
 # `[[review.categories]]` is a CATEGORY, a bare name grouping the points a reviewer
 # grades, and each `[[review.categories.items]]` under it is one graded review
-# item, worth one point (the default weight), so a category is worth the number of
-# items it holds and there is no fractional scoring. A category carries no prose of
-# its own; each review item states in `description` the claim checked against the
-# build, and its verdict is recorded under the composite id
+# item, worth one point unless it declares a `weight`, and there is no fractional
+# scoring. One item declares one: `showcase.exists` is worth three, because what is
+# missing when it fails is a whole deliverable rather than one behavior of the
+# game. Every other item rides the default, so every other category is worth the
+# number of items it holds. A category carries no prose of its own; each review
+# item states in `description` the claim checked against the build, and its
+# verdict is recorded under the composite id
 # `<category id>.<item id>`. The checklist is reporter-side material, never seeded
 # into a run, so the model never sees it; each item restates a requirement the
 # seeded specification already states, in the spec's own vocabulary and naming the
@@ -8522,3 +8526,35 @@ description = "While sim.status is faulted every part in sim.fault.parts is draw
 domains = ["presentation", "workshop"]
 failure_cap = "scuffed"
 validation = { script = "presentation/faulted-parts-drawn-distinct.test.ts", outputs = [ { id = "marked", name = "The faulting arm marked among its neighbors", kind = "image" } ] }
+
+# --- Showcase -----------------------------------------------------------------
+# The presentation the finished build ships beside its source: `specs/showcase.md`
+# asks for a `showcase/` directory holding a description, a carousel, and the
+# media the two name. ONE point, and it asks only whether that showcase EXISTS —
+# the two files, and one carousel entry naming a file that is actually there. Not
+# a dimension, not a byte of a picture, not a word of the prose, and no other item
+# anywhere above says anything about the media.
+#
+# It is worth `weight = 3` rather than the ordinary one, because what is missing
+# when it fails is a whole deliverable rather than one behavior of the game.
+# Whether the description reads like something a player would want to play, and
+# whether the carousel opens on the strongest view of live play, is the reviewer's
+# judgement and reaches the run through the `presentation` domain's aesthetic
+# rating.
+#
+# The check drives nothing: it reads the produced tree with `node:fs`, so the one
+# suite stands unchanged in all three projects and the point means the same thing
+# whichever engine the run selected. There is no `engines` here for that reason.
+# What it hands back is a `.png` copied out of the build's own showcase, so the
+# picture the build chose to present its game with stands beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and at least one file the carousel names is present in showcase/."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "showcase/exists.test.ts", outputs = [ { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" } ] }

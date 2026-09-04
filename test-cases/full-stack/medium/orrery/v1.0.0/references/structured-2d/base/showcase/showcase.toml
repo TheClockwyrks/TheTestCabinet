@@ -1,20 +1,3 @@
-# The carousel, in the order it is presented. The replay leads: one unbroken
-# half-minute of play, from the title menu through the Extras shelf to a machine
-# built on the field and run until Aetherfall is filled. The three stills are
-# frames of that same sitting.
-
-[[media]]
-file = "solving-a-challenge.json.gz"
-name = "Aetherfall, from an empty field to its sixth delivery"
-
 [[media]]
 file = "machine.png"
 name = "The finished machine: eleven parts, five tapes"
-
-[[media]]
-file = "running.png"
-name = "An aether lifted off the confluence, three of six"
-
-[[media]]
-file = "solved.png"
-name = "Challenge complete: cost, cycles and area"
