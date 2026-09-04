@@ -25,7 +25,9 @@ kill pays and leak is the lives a leak costs.
 A unit enters at one of the two vents. Its centre appears on the centre of an
 open opening tile of that vent, and it is assigned that vent's fixed opposite
 exhaust for its whole life, as `specs/floor.md` states. A unit never appears on
-an opening tile a tower's footprint has covered.
+an opening tile a tower's footprint has covered. Which of the open tiles it
+appears on is the build's own choice, and it carries no randomness: the vent draw
+of `specs/waves.md` is the only randomness in the game.
 
 A unit's maximum hp is its base hp scaled for the wave it belongs to, and its hp
 starts full.

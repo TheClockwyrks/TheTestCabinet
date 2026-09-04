@@ -56,9 +56,9 @@ The cues are defined once, when the game is initialized, and played through the
 directory at the root of this repository. Each cue is synthesized rather than
 loaded: the build ships no audio file.
 
-The engine owns the first-interaction unlock, so the game plays none of the ten
-cues before the first input reaches it — it asks the bus for nothing, whatever
-the bus would have done with the request — and it starts and runs correctly
+The engine owns the first-interaction unlock. The game plays none of the ten cues
+before the first input reaches it and asks the bus for nothing until then,
+whatever the bus would have done with the request. It starts and runs correctly
 whether or not audio can start.
 
 ## Mute
@@ -68,8 +68,8 @@ toggled by the `mute` action and by the panel's mute control, from any screen,
 and `specs/hud.md` states how the control reads.
 
 While muted, none of the ten cues produces any sound. The game does not gate its
-own cues on the bit — the same events ask the bus for the same cues muted as
-unmuted — and the engine plays each of them at an amplitude of zero. The game
+own cues on the bit: the same events ask the bus for the same cues muted as
+unmuted, and the engine plays each of them at an amplitude of zero. The game
 stays fully playable muted: nothing about the floor, the run, or the screens
 changes with the mute bit, so every event that carries a cue still resolves.
 {{/if}}

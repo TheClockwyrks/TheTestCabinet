@@ -617,8 +617,10 @@ export const MODE_ITEMS = [
   "DEEP POCKETS",
   "BOTTLENECK",
   "SUDDEN DEATH",
+  "BACK",
 ] as const;
-export const DIFFICULTY_ITEMS = ["EASY", "MEDIUM", "HARD"] as const;
+export const DIFFICULTY_ITEMS = ["EASY", "MEDIUM", "HARD", "BACK"] as const;
+export const HOWTO_ITEMS = ["BACK"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const ENDING_ITEMS = ["PLAY AGAIN", "MENU"] as const;
 

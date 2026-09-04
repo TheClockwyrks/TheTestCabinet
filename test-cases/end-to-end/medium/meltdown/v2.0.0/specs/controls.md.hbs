@@ -10,14 +10,10 @@ is in `specs/hud.md`, and what each action does to the floor is in
 ## How input reaches the game
 
 This game stands on no engine, so the keyboard and the pointer belong to the
-runtime layer you write. That layer listens to the page and reports which keys
-are down, by their `KeyboardEvent.code` values, along with the press edge of
-each. Every key below is named by its `code`, so a binding is a physical key
-rather than a layout-dependent character.
-
-The same layer reports the pointer's position in logical stage units and whether
-it is pressed, mapping the browser's coordinates through the same fit it drew the
-stage with. Touch input reaches the game as the same pointer.
+runtime layer you write. Every key below is named by its `KeyboardEvent.code`, so
+a binding is a physical key rather than a layout-dependent character. The
+pointer's position is read in logical stage units, and touch input reaches the
+game as the same pointer.
 {{else}}
 ## How input reaches the game
 
@@ -48,8 +44,14 @@ and release inside one region as one interaction with that region.
 | A placed tower's footprint, with nothing armed | That tower is selected. |
 | Open floor, with nothing armed | Nothing is selected. |
 
-Moving the pointer does two things:
+Moving the pointer does three things:
 
+- Moving onto a row of the menu the current screen shows makes that row the
+  highlighted row, exactly as `up` and `down` reaching it do, and raises the
+  `menu` cue on the frame the highlight changes. Moving off every row leaves the
+  highlight on the row it last reached, and moving onto the already highlighted
+  row changes nothing and raises nothing. Hovering a row takes it no further:
+  reaching a row and taking it are separate.
 - With a placement armed, the held preview follows the pointer over the floor, as
   `specs/building.md` states.
 - Moving into a shop entry marks that entry as the one being hovered, and moving
@@ -114,7 +116,9 @@ Every interaction above is a tap, and the game is fully playable on a touchscree
 The whole stage is on screen at every size, so there is nothing to pan or scroll
 to, and no interaction needs a second pointer button. A tap on a shop entry both
 arms its type and marks it hovered, so the same panel that a mouse reads on hover
-is reached by tap.
+is reached by tap. A tap on a menu row both highlights that row and takes it, so
+the menu a mouse reaches by hovering and confirming is reached by one contact,
+and every screen is left by tapping a row rather than by pressing a key.
 
 ## The debug overlay
 
