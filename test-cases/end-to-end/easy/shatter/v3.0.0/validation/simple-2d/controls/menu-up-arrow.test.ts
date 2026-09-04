@@ -42,8 +42,9 @@
 // build that answers the held value both move the highlight by the one entry the
 // specification does fix.
 //
-// WHAT THIS ITEM DOES NOT DECIDE. That the highlight WRAPS, or that it never leaves
-// the menu's entries — `screens/menu-selection-stays-in-range`. Nor that the
+// WHAT THIS ITEM DOES NOT DECIDE. That the highlight WRAPS at the ends of the menu
+// (`screens/menu-wraps-up`, `screens/menu-wraps-down`), or that it never leaves the
+// menu's entries (`screens/menu-selection-stays-in-range`). Nor that the
 // highlighted entry is DRAWN differently from the rest, which is
 // `screens/title-menu-highlight`. Nor where confirming would lead. One key, one
 // entry of movement.

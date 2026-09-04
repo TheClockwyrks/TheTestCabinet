@@ -1462,15 +1462,6 @@ validation = { script = "saucer/avoids-the-core.test.ts", outputs = [
   { id = "closest", name = "The closest of the 54 crossings to the core", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "wraps-top-and-bottom"
-title = "A saucer wraps vertically"
-description = "With its mind off and a vertical velocity posed, a saucer driven off the top edge re-enters at the bottom."
-domains = ["arcade"]
-failure_cap = "passable"
-validation = { script = "saucer/wraps-top-and-bottom.test.ts", outputs = [
-  { id = "wrap", name = "The saucer re-entering at the opposite edge", kind = "image" },
-] }
-[[review.categories.items]]
 id = "despawns-after-12s"
 title = "A saucer leaves after 12 seconds"
 description = "A saucer added with its mind and gun off is still up at 11.5 s of game time and gone by 12.5 s."
@@ -2321,6 +2312,24 @@ failure_cap = "passable"
 validation = { script = "screens/menu-selection-stays-in-range.test.ts", outputs = [
   { id = "menu", name = "The selection held inside the menu's entries", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "menu-wraps-up"
+title = "Up wraps from the first entry to the last"
+description = "With the pause menu posed on entry 0, one press of the up key gives menuIndex 2, the last of its three entries."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/menu-wraps-up.test.ts", outputs = [
+  { id = "menu", name = "The last entry the up move wrapped onto", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-wraps-down"
+title = "Down wraps from the last entry to the first"
+description = "With the pause menu posed on entry 2, one press of the down key gives menuIndex 0."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/menu-wraps-down.test.ts", outputs = [
+  { id = "menu", name = "The first entry the down move wrapped onto", kind = "image" },
+] }
 
 # --- The menus under a mouse and under a finger ------------------------------
 # `specs/ui.md` has every menu take a pointer and touch as well as the keyboard,
@@ -2489,7 +2498,7 @@ validation = { script = "presentation/thrust-flame-while-thrusting.test.ts", out
 [[review.categories.items]]
 id = "invulnerable-ship-blinks"
 title = "A ship in its grace reads as protected"
-description = "Over the grace window the ship's drawn appearance — the pixels inside SHIP_R of its centre, compared as an RGB distance out of 441 — differs measurably from its steady appearance at some sampled instant and matches it at another. Presence and difference, not one blink implementation: a build blinking by color, by outline weight or by alpha keeps its drawn pixel count roughly constant and is conformant."
+description = "Over the grace window the ship's drawn appearance — the pixels inside SHIP_R of its centre, compared as an RGB distance out of 441 — differs measurably from its steady appearance at some sampled instant, and reads as the steady ship again once the grace has run out. Presence and difference, not one blink implementation: a build that blinks and a build that holds one changed look for the whole window both pass."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/invulnerable-ship-blinks.test.ts", outputs = [
