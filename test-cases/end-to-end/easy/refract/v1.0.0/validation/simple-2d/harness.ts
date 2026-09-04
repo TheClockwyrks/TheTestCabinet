@@ -1144,39 +1144,56 @@ export async function tapAction(h: Harness, action: ActionName): Promise<void> {
 }
 
 /**
- * Choose CAMPAIGN from the title menu the way a player does.
+ * Open the campaign's select grid, through the two single-field poses that ARE
+ * what choosing CAMPAIGN does: specs/modes/campaign.md fixes the effect as
+ * "sets `state.mode` to `\"campaign\"` and goes to `select`", and nothing
+ * else. The one frame after them is what puts the grid on the canvas. Assumes
+ * a fresh course (`resetTo` first), which is what the menu item would leave.
  *
- * Assumes a fresh title (`resetTo` first): CAMPAIGN is `TITLE_ITEMS[0]` and
- * `menuIndex` is 0 on arriving at the title, so one `confirm` takes it. The
- * arrival is asserted here because every course helper below stands on it: a
- * build that cannot enter the campaign fails with the requirement named
+ * Through the poses rather than through the title menu, deliberately: a build
+ * with a broken title menu and a correct grid must fail the menu checks and
+ * pass the grid's, so campaign/campaign-starts is where taking the item is the
+ * subject and every other check reaches the campaign directly. The arrival is
+ * asserted here because every course helper below stands on it: a build whose
+ * debug surface cannot open the campaign fails with the requirement named
  * rather than three helpers later.
  */
 export async function startCampaign(h: Harness): Promise<RefractSnapshot> {
-  await tapAction(h, "confirm");
+  h.debug.setMode("campaign");
+  h.debug.setScreen("select");
+  await h.advance(1);
   const snapshot = h.snapshot();
   assertEqual(
     snapshot.screen,
     "select",
-    "choosing CAMPAIGN on the title goes to select (specs/modes/campaign.md)",
+    "the campaign opens on select (specs/modes/campaign.md)",
   );
   return snapshot;
 }
 
 /**
- * Choose CASCADE from the title menu the way a player does: one `down` from
- * CAMPAIGN to CASCADE, then `confirm`. Assumes a fresh title (`resetTo`
- * first), and asserts the arrival for the same reason {@link startCampaign}
- * does.
+ * Begin a cascade sequence by taking the title's CASCADE item with the pointer.
+ * Assumes a title on screen (`resetTo` first), and asserts the arrival for the
+ * same reason {@link startCampaign} does.
+ *
+ * Cascade's entry is not a pose: specs/modes/cascade.md makes starting it set
+ * the mode, zero `solvedCount`, set `tier` to 1, GENERATE the first board, and
+ * move to `playing`, and the surface carries no operation that generates a
+ * board. So the sequence is begun the way the game itself begins it. The route
+ * is the pointer rather than the menu keys: CASCADE is `TITLE_ITEMS[1]`, so
+ * specs/controls.md fixes its target as `menu-1` and taking that target as
+ * "the same as `confirm` with `state.menuIndex` at `i`", which reaches the
+ * entry without walking the highlight — a build whose `down` does not move the
+ * highlight owes that point to screens/title-down and to no cascade check.
  */
 export async function startCascade(h: Harness): Promise<RefractSnapshot> {
-  await tapAction(h, "down");
-  await tapAction(h, "confirm");
+  const cascade = targetCenter(targetById(h.snapshot(), "menu-1"));
+  await pressRelease(h, cascade);
   const snapshot = h.snapshot();
   assertEqual(
     snapshot.screen,
     "playing",
-    "choosing CASCADE on the title goes straight to playing " +
+    "taking CASCADE on the title goes straight to playing " +
       "(specs/modes/cascade.md)",
   );
   return snapshot;
@@ -1184,19 +1201,13 @@ export async function startCascade(h: Harness): Promise<RefractSnapshot> {
 
 /**
  * Begin a cascade sequence from wherever the game stands, WITHOUT resetting:
- * the title screen and its first item are posed through the single-field
- * operations, and the choice itself is made with the real registered actions.
- *
- * Starting Cascade is not a pose. specs/modes/cascade.md makes it set the mode,
- * zero `solvedCount`, set `tier` to 1, GENERATE the first board and move to
- * `playing`, and the surface carries no operation that generates a board — so
- * the sequence is begun the way the game itself begins it. A check that has
+ * the title screen is posed through its single-field operation, and the entry
+ * itself is taken the way {@link startCascade} takes it. A check that has
  * progress it must not lose (a solved campaign course, say) uses this rather
  * than {@link startCascade}, whose fresh title is only reached by a reset.
  */
 export async function enterCascade(h: Harness): Promise<RefractSnapshot> {
   h.debug.setScreen("title");
-  h.debug.setMenuIndex(0);
   await h.advance(1);
   return startCascade(h);
 }

@@ -7,9 +7,8 @@
 // point-by-point distance two regions of the same shape are compared by.
 //
 // Every figure is one the review items state: `DISTINCT_MIN` (50 of 441) is the
-// case's line for a reading "clearly apart" from another, and `MATCH_MAX`
-// (25 of 441) its line for a reading that "matches". A node's form is read as a
-// BODY MASK: the disk about its cell center binarized against the board's own
+// case's line for a reading "clearly apart" from another. A node's form is read
+// as a BODY MASK: the disk about its cell center binarized against the board's own
 // ground at half the form's own strongest reading. {@link bodyMask} says why
 // the cut is relative and why the region is a disc; {@link groundSample} says
 // why the comparand is the board's ground and not the bench off it. The
@@ -22,9 +21,6 @@ import { cellCenter, NODE_R, type Board } from "../notation";
 
 /** The case's "clearly apart" line: more than 50 of the 441 the RGB cube spans. */
 export const DISTINCT_MIN = 50;
-
-/** The case's "matches" line: within 25 of 441. */
-export const MATCH_MAX = 25;
 
 /** How far apart, in logical px, the disk's sample points sit on each axis. */
 const SAMPLE_STRIDE = 2;

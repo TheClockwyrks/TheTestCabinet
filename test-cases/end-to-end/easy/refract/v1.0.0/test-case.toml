@@ -611,8 +611,8 @@ validation = { script = "instrumentation/rules-read-nothing-from-the-renderer.te
 # in the game is measured against it: a board drawn off the cell centers makes the
 # hit radius wrong and the game unplayable. The rest of these points are the
 # legibility floor the player depends on to read a board at all, decided from the
-# pixels the build actually renders — samples at known cell centers against a
-# background sample, with every threshold stated in the item. The palette itself
+# pixels the build actually renders — samples at known cell centers against the
+# board's own ground, with every threshold stated in the item. The palette itself
 # is the build's, and how good the bench looks is the aesthetic rating's.
 [[review.categories]]
 id = "board"
@@ -620,12 +620,12 @@ title = "Board and rendering"
 [[review.categories.items]]
 id = "cell-geometry"
 title = "Nodes sit on the cell centers the formula gives"
-description = "On a posed 3x3 and a posed 7x6 board, every node's computed center carries a node — some pixel within NODE_R (30) of it stands more than 50 of 441 from the board's own ground — and that node's mass sits on the center rather than merely near it, its silhouette's centroid within NODE_R / 3 + 2 (12) of the formula center, with adjacent centers CELL_PITCH (96) apart on both axes and the grid centered on BOARD_CX, BOARD_CY (640, 392) whatever its dimensions, and the four corners just outside the 7x6 board's extent match the background, so the board does not drift as boards change size."
+description = "On a posed 3x3 and a posed 7x6 board, every node's computed center carries a node — some pixel within NODE_R (30) of it stands more than 50 of 441 from the board's own ground — and that node's mass sits on the center rather than merely near it, its silhouette's centroid within NODE_R / 3 + 2 (12) of the formula center, with adjacent centers CELL_PITCH (96) apart on both axes and the grid centered on BOARD_CX, BOARD_CY (640, 392) whatever its dimensions, so the board does not drift as boards change size."
 domains = ["tracing", "presentation"]
 failure_cap = "scuffed"
 # Automated validation: read each node's silhouette at every formula center on two
-# board sizes, for its loudest pixel and its centroid, and sample just outside the
-# largest board's extent. See
+# board sizes, for its loudest pixel and its centroid. Nothing is sampled off the
+# board: specs/board.md leaves what sits behind and around it to the build. See
 # validation/<engine>/board/cell-geometry.test.ts.
 validation = { script = "board/cell-geometry.test.ts", outputs = [
   { id = "board", name = "The posed boards whose centers are sampled", kind = "image" },
@@ -646,7 +646,7 @@ validation = { script = "board/silhouettes-distinct.test.ts", outputs = [
 [[review.categories.items]]
 id = "emitter-versus-lens"
 title = "An emitter reads as outlined against a lens's fill"
-description = "Both nodes of one channel are drawn — some pixel within NODE_R (30) of each center exceeds 50 of 441 from the board's ground — and the lens covers more than half of the inner disc of radius NODE_R / 2 (15) about its center where the emitter covers less than half of it, so a node's channel and its role read in the same glance."
+description = "Both nodes of one channel are drawn — some pixel within NODE_R (30) of each center exceeds 50 of 441 from the board's ground — and the lens covers more than half of its own inner disc where the emitter covers less than half of its own, each node's inner disc being half the reach the form it drew has, which is the largest disc about the center that a triangle of that reach encloses, so the reading holds at whatever size within NODE_R (30) the build draws its nodes, and so a node's channel and its role read in the same glance."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: pose an emitter and a lens of one channel and measure how
@@ -684,22 +684,14 @@ description = "A 1-charge and a 3-charge crystal render differently within NODE_
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: pose a 1-charge and a 3-charge crystal on one board and
-# compare their rendered regions sample against sample.
+# compare their rendered regions sample against sample. The spent half of
+# specs/board.md's readout requirement carries no point of its own: every
+# arrangement that moves a crystal's spent count also draws a beam over the
+# region a script would read, so no pixel reading isolates the readout, and it
+# is left to the reviewer's presentation rating.
 # See validation/<engine>/board/crystal-charges-read.test.ts.
 validation = { script = "board/crystal-charges-read.test.ts", outputs = [
   { id = "charges", name = "A 1-charge and a 3-charge crystal side by side", kind = "image" },
-] }
-[[review.categories.items]]
-id = "crystal-spent-reads"
-title = "A crystal's spent count reads from its form"
-description = "A crystal's region within NODE_R (30) of its center changes by more than 50 of 441 RGB distance at some paired sample once a traced beam enters it and its spent count goes from 0 to 1."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: trace a beam into a crystal and compare its region
-# before the entry against the region after it.
-# See validation/<engine>/board/crystal-spent-reads.test.ts.
-validation = { script = "board/crystal-spent-reads.test.ts", outputs = [
-  { id = "spent", name = "A crystal before and after a charge is spent", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "node-radius"
@@ -1591,7 +1583,7 @@ validation = { script = "presentation/stage-fit.test.ts", outputs = [
 [[review.categories.items]]
 id = "readouts-clear-of-the-board"
 title = "The readouts sit clear of the board"
-description = "On a posed 7x6 board in each mode, every text draw's bounds sit outside the board's extent — cell centers spanning x 352 to 928 and y 152 to 632 per specs/board.md, widened by NODE_R (30) — so nothing overlaps a node or a beam on the largest board."
+description = "On a posed 7x6 board carrying no crystal, in each mode, every text draw's bounds sit outside the board's extent — cell centers spanning x 352 to 928 and y 152 to 632 per specs/board.md, widened by NODE_R (30) — so nothing but the board, its nodes' own readouts and its beams is drawn inside that extent, as specs/ui.md states for the playing screen."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/readouts-clear-of-the-board.test.ts", outputs = [

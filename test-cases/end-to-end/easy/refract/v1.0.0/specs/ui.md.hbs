@@ -118,8 +118,12 @@ counting segments.
 
 The current mode adds its own readouts to this screen, and states them itself:
 `specs/modes/campaign.md` for Campaign and `specs/modes/cascade.md` for Cascade.
-Those sit clear of the board, whose extent is given in `specs/board.md`, as do
-the two controls.
+
+Inside the board's extent — the cell centers `specs/board.md` places, widened by
+`NODE_R` (`30`) on every side — this screen draws only the board: its cells, the
+nodes on them with whatever readout a node itself carries, and the beams. Every
+other element of the screen sits clear of that extent, the mode's own readouts
+and the two controls included.
 
 ## What advances on each screen
 

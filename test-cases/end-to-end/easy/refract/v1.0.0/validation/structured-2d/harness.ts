@@ -1328,19 +1328,26 @@ export async function tapAction(
 }
 
 /**
- * From a fresh title, choose CAMPAIGN the way a player does: `confirm` on the
- * title menu's first item. Lands on `select` with a fresh course.
+ * Open the campaign's select grid on a fresh course, through the two
+ * single-field poses that ARE what choosing CAMPAIGN does:
+ * specs/modes/campaign.md fixes the effect as "sets `state.mode` to
+ * `\"campaign\"` and goes to `select`", and nothing else.
+ *
+ * Through the poses rather than through the title menu, deliberately: a build
+ * with a broken title menu and a correct grid must fail the menu checks and
+ * pass the grid's, so campaign/campaign-starts is where taking the item is the
+ * subject and every other check reaches the campaign directly.
  */
 export async function startCampaign(h: Harness, seed?: number): Promise<void> {
   await resetTo(h, seed);
-  await tapAction(h, "confirm");
+  h.debug.setMode("campaign");
+  h.debug.setScreen("select");
   await h.advance(1);
 }
 
 /**
- * From a fresh title, choose CASCADE the way a player does: `down` to the
- * second item, then `confirm`. Lands on `playing` with the first generated
- * board.
+ * From a fresh title, begin a cascade sequence by taking the title's CASCADE
+ * item with the pointer. Lands on `playing` with the first generated board.
  */
 export async function startCascade(h: Harness, seed?: number): Promise<void> {
   await resetTo(h, seed);
@@ -1349,23 +1356,26 @@ export async function startCascade(h: Harness, seed?: number): Promise<void> {
 
 /**
  * Begin a cascade sequence from wherever the game stands, WITHOUT resetting:
- * the title screen and its first item are posed through the single-field
- * operations, and the choice itself is made with the real registered actions.
+ * the title screen is posed through its single-field operation, and the entry
+ * is taken with the pointer.
  *
  * Starting Cascade is not a pose. specs/modes/cascade.md makes it set the
  * mode, zero `solvedCount`, set `tier` to 1, GENERATE the first board and move
  * to `playing`, and the surface carries no operation that generates a board —
- * so the sequence is begun the way the game itself begins it. A check that has
- * progress it must not lose (a solved campaign course, say) uses this rather
- * than {@link startCascade}, whose fresh title costs a reset.
+ * so the sequence is begun the way the game itself begins it. The route is the
+ * pointer rather than the menu keys: CASCADE is `TITLE_ITEMS[1]`, so
+ * specs/controls.md fixes its target as `menu-1` and taking that target as
+ * "the same as `confirm` with `state.menuIndex` at `i`", which reaches the
+ * entry without walking the highlight — a build whose `down` does not move the
+ * highlight owes that point to screens/title-down and to no cascade check. A
+ * check that has progress it must not lose (a solved campaign course, say)
+ * uses this rather than {@link startCascade}, whose fresh title costs a reset.
  */
 export async function enterCascade(h: Harness): Promise<void> {
   h.debug.setScreen("title");
-  h.debug.setMenuIndex(0);
   await h.advance(1);
-  await tapAction(h, "down");
-  await tapAction(h, "confirm");
-  await h.advance(1);
+  const cascade = targetCenter(targetById(h.snapshot(), "menu-1"));
+  await pressRelease(h, cascade);
 }
 
 /* ---- The campaign course -------------------------------------------------- */
