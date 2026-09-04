@@ -162,6 +162,7 @@ export const REQUIRED_OPS = [
   "setBallHoldTimer",
   "setAiTracking",
   "setAiMovement",
+  "setMuted",
   "snapshot",
   "menuItemRect",
 ] as const;
@@ -174,12 +175,7 @@ export const DEFAULT_SEED = 1;
 
 /** The screens the state machine moves between. */
 export type Screen =
-  | "title"
-  | "howto"
-  | "countdown"
-  | "playing"
-  | "paused"
-  | "matchover";
+  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
 
 /** The two screens a pause can resume to, which `resumeScreen` holds. */
 export type ResumeScreen = "countdown" | "playing";
@@ -515,6 +511,11 @@ export interface CaromDebugApi<B extends BallOps = SingleBallOps> {
   /** Whether the AI's paddle travels toward that target. */
   setAiMovement(enabled: boolean): Promise<void>;
 
+  /* Audio. */
+
+  /** Sets the mute bit, the same bit the `mute` action toggles. */
+  setMuted(muted: boolean): Promise<void>;
+
   /* Obstacles: gyre alone. */
 
   /** `gyre`: sets the obstacle clock to `t` seconds, and nothing else. */
@@ -591,8 +592,8 @@ const kit = createCaseHarness<CaromSnapshot, CaromCoreApi>({
   // A GENUINE browser gesture, so the build's audio can open: a build is free to
   // open its audio context from a real DOM event alone (both are conformant), so
   // a gesture delivered any other way would leave a perfectly good build silent.
-  // `specs/controls.md` leaves this key bound to nothing, so arming changes no
-  // game state.
+  // `specs/ui.md` leaves this key bound to nothing, so arming changes no game
+  // state.
   arm: { kind: "key", code: UNBOUND_KEY },
   // Carom's menus are driven by a finger as well as a mouse and the keyboard
   // (specs/ui.md), so the context reports a touchscreen: a contact arrives as
@@ -1059,7 +1060,13 @@ export async function takePaddles(h: AnyHarness, vy = 0): Promise<void> {
   await takePaddle(h, "right", vy);
 }
 
-/** Hand both paddles back to the player and the AI. */
+/**
+ * Hand both paddles back to the player and the AI.
+ *
+ * Kept unreached so the three engine projects present one vocabulary: the
+ * engine harnesses export the same pair, and a scenario ported between them
+ * reads the same either way.
+ */
 export async function releasePaddles(h: AnyHarness): Promise<void> {
   await releasePaddle(h, "left");
   await releasePaddle(h, "right");
@@ -1103,6 +1110,9 @@ export async function enableAi(h: AnyHarness): Promise<void> {
  * The two are separate operations because a check on what the AI SENSES while
  * its body is held still cannot be expressed by one switch — that check turns
  * movement off and leaves tracking on, through the surface directly.
+ *
+ * Kept unreached for the reason {@link releasePaddles} gives: it is the pair of
+ * {@link enableAi}, and the two read as one operation.
  */
 export async function disableAi(h: AnyHarness): Promise<void> {
   await h.debug.setAiTracking(false);
@@ -1207,6 +1217,9 @@ export async function startWithKeys(h: AnyHarness, mode: Mode): Promise<void> {
  * independently of one another and no one of them is "the serve". So this is a
  * no-op where the variant declares none, and a shared scenario can ask for a
  * receiver without knowing which variant it is running under.
+ *
+ * Reached through {@link stageServe} rather than by a check of its own, and kept
+ * for the reason {@link releasePaddles} gives.
  */
 export async function aimServe(h: AnyHarness, side: Side): Promise<void> {
   if (!(await hasOperation(h, "setReceiver"))) return;
@@ -1236,6 +1249,9 @@ export interface ServeOptions {
  * LENGTH, the serve's direction, or the serve's speed measures from: the first
  * frames advanced from here count the hold down, and the build's own rule
  * launches the ball.
+ *
+ * Kept unreached for the reason {@link releasePaddles} gives: both engine
+ * harnesses export a `stageServe`, and this is its engineless form.
  */
 export async function stageServe(
   h: AnyHarness,
@@ -1262,6 +1278,10 @@ export interface PauseOptions {
  * what the pause menu SHOWS and a check about what resuming DOES both start from
  * the same place, without either of them depending on the key that opens it.
  * The check that is about that key presses it.
+ *
+ * Kept beside {@link openIsolatedPauseMenu} for a check that wants the standard
+ * match world frozen behind the menu. Every navigation, pointer and touch check
+ * on the pause menu takes the isolated form, for the reason that one gives.
  */
 export async function openPauseMenu(
   h: AnyHarness,
@@ -1271,6 +1291,35 @@ export async function openPauseMenu(
   const mode = options.mode ?? "versus";
   if (from === "playing") await startPlaying(h, mode);
   else await openCountdown(h, mode);
+  await h.debug.setResumeScreen(from);
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("paused");
+}
+
+/**
+ * The pause menu over a field holding nothing but the paddles.
+ *
+ * {@link openPauseMenu} leaves the standard match world frozen behind the menu,
+ * which is only quiet while the build's own pause really stops it. A check on
+ * what the pause menu's KEYS do wants nothing else on the field: a ball left
+ * live behind a build whose pause does not stop the world can bank a shot into a
+ * goal and take the screen away from the reading, which would report the pause's
+ * defect against a menu point. So this empties the field before the menu is
+ * posed, which is the ground the `simple-2d` and `structured-2d` projects give
+ * the same points.
+ *
+ * The paddles are left with the player: a menu is not driven through a paddle,
+ * and a driven one would be scenery these checks do not need.
+ */
+export async function openIsolatedPauseMenu(
+  h: AnyHarness,
+  options: PauseOptions = {},
+): Promise<void> {
+  const from = options.from ?? "playing";
+  const mode = options.mode ?? "versus";
+  if (from === "playing") await startPlaying(h, mode);
+  else await openCountdown(h, mode);
+  await clearField(h);
   await h.debug.setResumeScreen(from);
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("paused");
@@ -1367,6 +1416,25 @@ export async function pointerOntoItem(
 ): Promise<void> {
   const at = rectCenter(await menuRect(h, index));
   await mouseGlide(h, at.x, at.y);
+}
+
+/**
+ * Move the real mouse onto item `index` and run NO frame.
+ *
+ * The one gesture part that drives no frame of its own, for the one check that
+ * needs a pointer move and a key edge to land in the SAME input read:
+ * specs/ui.md reads the pointer once per frame, in the same read as the keyboard
+ * actions, and applies it after that frame's keyboard edges. Every other part of
+ * a gesture runs its own frame, so a caller counting frames adds this move to
+ * the frame it drives itself.
+ */
+export async function aimPointerAtItem(
+  h: AnyHarness,
+  index: number,
+): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  const css = h.css(at.x, at.y);
+  await h.page.mouse.move(css.x, css.y);
 }
 
 /**

@@ -11,9 +11,10 @@
 //   * Nothing about audio may fail a frame. A browser with no Web Audio, a
 //     context that never unlocked, a context that died mid-frame — each degrades
 //     to silence, never to a thrown frame.
-//   * Muting is a gain of zero, not a skipped cue. The bus does the same work
-//     either way, so a muted game and a loud one behave identically apart from
-//     what comes out of the speakers.
+//   * A muted bus starts NO source. specs/audio.md: while the bit is set the
+//     game starts no sound at all, rather than playing at zero volume. So the
+//     cue is looked up and validated as it always is, and then nothing is
+//     scheduled.
 //
 // The context is not created until the first user gesture. One created outside a
 // gesture starts suspended, and some browsers count the attempt against the page.

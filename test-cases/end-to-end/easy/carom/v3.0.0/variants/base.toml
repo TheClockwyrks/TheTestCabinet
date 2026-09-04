@@ -165,11 +165,19 @@ validation = { script = "gameplay/countdown-length.test.ts", outputs = [
   { id = "countdown", name = "The pre-serve countdown running out", kind = "replay" },
 ] }
 # Scoring is checked per side — one point for each goal — so a build that scores on
-# only one edge is caught rather than averaged away by the other.
+# only one edge is caught rather than averaged away by the other. Each side is TWO
+# points, because a goal does two separable things: it moves the score, and it puts
+# the match back on the countdown. A build that increments and then leaves the ball
+# where it went out is a build that plays one point and stops, which is nothing like
+# a build that never scores at all, so the increment carries the `broken` cap and the
+# restart carries `scuffed` — the game is still playable, but the rule that restarts
+# a rally is wrong. WHICH SIDE RECEIVES is not read here: `serve-after-p1` and
+# `serve-after-p2` above decide that rule from the serve's own direction, and reading
+# it twice would dock one defect two points.
 [[review.categories.items]]
 id = "scoring-p1"
 title = "Player one scores past the right goal"
-description = "A ball driven past the right goal edge increments player one's score by 1 and leaves player two's unchanged, and the screen returns to countdown with receiver right."
+description = "A ball driven past the right goal edge increments player one's score by 1 and leaves player two's unchanged."
 domains = ["single-player", "versus"]
 failure_cap = "broken"
 # Automated validation: drive a real ball out the right goal and confirm player one's
@@ -178,15 +186,39 @@ validation = { script = "gameplay/scoring-p1.test.ts", outputs = [
   { id = "goal", name = "Player one scoring past the right goal", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "scoring-p1-countdown"
+title = "The rally restarts after player one scores"
+description = "On the frame a ball crosses the right goal edge, screen becomes countdown."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive the same real ball out the right goal and read the
+# screen on the frame the score turned over. See
+# validation/<engine>/gameplay/scoring-p1-countdown.test.ts.
+validation = { script = "gameplay/scoring-p1-countdown.test.ts", outputs = [
+  { id = "countdown", name = "The countdown opening after a point on player two", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "scoring-p2"
 title = "Player two scores past the left goal"
-description = "A ball driven past the left goal edge increments player two's score by 1 and leaves player one's unchanged, and the screen returns to countdown with receiver left."
+description = "A ball driven past the left goal edge increments player two's score by 1 and leaves player one's unchanged."
 domains = ["single-player", "versus"]
 failure_cap = "broken"
 # Automated validation: drive a real ball out the left goal and confirm player two's
 # score increments and player one's does not. See validation/<engine>/gameplay/scoring-p2.test.ts.
 validation = { script = "gameplay/scoring-p2.test.ts", outputs = [
   { id = "goal", name = "Player two scoring past the left goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p2-countdown"
+title = "The rally restarts after player two scores"
+description = "On the frame a ball crosses the left goal edge, screen becomes countdown."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
+# Automated validation: drive the same real ball out the left goal and read the
+# screen on the frame the score turned over. See
+# validation/<engine>/gameplay/scoring-p2-countdown.test.ts.
+validation = { script = "gameplay/scoring-p2-countdown.test.ts", outputs = [
+  { id = "countdown", name = "The countdown opening after a point on player one", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "match-win"

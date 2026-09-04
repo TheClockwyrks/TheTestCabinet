@@ -8,6 +8,12 @@
 // by the binding the case declares, and the result is read back off the game's
 // own state. The still is the frame the press left.
 //
+// The entry this point confirms is POSED with `setMenuIndex` rather than walked
+// to with arrow presses. Walking there would put the movement edges inside a
+// check about a confirm, so a build with a broken down edge would fail this
+// point as well as `title-down`; the ground a check presses its one key from is
+// its ground rather than its subject.
+//
 // The field is left exactly as `reset` arranged it. What "Starting a match"
 // fixes is the arrangement the build itself must make from the title, so posing
 // or clearing anything on the field first would replace the very thing the
@@ -36,8 +42,11 @@ afterEach(() => {
 it("starts a Versus match from the second title item", async () => {
   await openTitle(h);
   assertEqual(TITLE_ITEMS[1], "VERSUS");
-  await h.tap("ArrowDown");
-  assertEqual(h.snapshot().menuIndex, 1);
+  h.debug.setMenuIndex(1);
+  const posed = h.snapshot();
+  assertEqual(posed.screen, "title");
+  assertEqual(posed.menuIndex, 1);
+
   await h.tap("Enter");
   captureStill(h, "countdown");
 

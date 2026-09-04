@@ -117,6 +117,12 @@ import {
   SPEED_MULT,
   WIN_SCORE,
 } from "./constants";
+// `game` is the build's entry, and `BACKGROUND` is the clear colour it exports
+// beside it. `BACKGROUND` is a value specs/overview.md leaves to the build, read
+// only to locate the colour a bare pixel was cleared to and never compared as a
+// figure: {@link clearColor} rasterizes it so a patch the game never drew over
+// can be told from one it did. Those two names are the whole of what this
+// project takes from the build outside a type.
 import { BACKGROUND, game as build } from "../src/game";
 import { assertEqual, assertTruthy, fail } from "./assert";
 import type {
@@ -667,10 +673,7 @@ class PointerShapedEvent extends Event {
 
 /** The four pointer events the engine listens for. */
 type PointerEventType =
-  | "pointerdown"
-  | "pointermove"
-  | "pointerup"
-  | "pointercancel";
+  "pointerdown" | "pointermove" | "pointerup" | "pointercancel";
 
 /**
  * The browser's own numbering for `PointerEvent.button`, which the engine reads
@@ -1997,6 +2000,46 @@ export async function openPaused(
   h.debug.setMenuIndex(options.menuIndex ?? 0);
 }
 
+/** What a scenario opens an isolated pause menu over. */
+export interface IsolatedPauseOptions extends IsolatedPlayOptions {
+  /** The highlighted pause item. Defaults to `RESUME`. */
+  menuIndex?: number;
+}
+
+/**
+ * The pause menu over a field holding only what the scenario is about.
+ *
+ * {@link openPaused} leaves the STANDARD match world frozen behind the menu,
+ * which is what a check on what the pause screen SHOWS reads. A check on what
+ * the pause menu's own keys DO wants nothing else on the field: a ball left live
+ * behind a build whose pause does not really stop the world can bank a shot into
+ * a goal and take the screen away from the reading, which would report the
+ * pause's defect against this point. So this opens {@link openIsolatedPlay} and
+ * poses the pause over it — `setScreen`, the frame the header's discipline asks
+ * for, then the `resumeScreen` and `menuIndex` specs/ui.md says a `pause` edge
+ * sets.
+ *
+ * The KEY that opens the pause menu is not pressed. That key belongs to the
+ * `controls-solo` and `controls-versus` points and to `navigation/pause-escape`;
+ * pressing it to reach the ground here would put it at both ends of every other
+ * pause check, and one broken binding would take the whole pause menu's points
+ * with it.
+ *
+ * Neither paddle is taken from the player: a menu is not driven through a
+ * paddle, and a driven one would be scenery these checks do not need.
+ */
+export async function openIsolatedPaused(
+  h: Harness,
+  options: IsolatedPauseOptions = {},
+): Promise<UntilResult> {
+  const live = await openIsolatedPlay(h, options);
+  h.debug.setScreen("paused");
+  await h.advance(1);
+  h.debug.setResumeScreen("playing");
+  h.debug.setMenuIndex(options.menuIndex ?? 0);
+  return live;
+}
+
 /** What a scenario opens the match-over screen over. */
 export interface MatchOverOptions {
   mode?: Mode;
@@ -2099,6 +2142,25 @@ export async function hoverMenuItem(
   const at = menuCenter(h, index);
   h.pointerMove(at.x, at.y, options);
   await h.advance(1);
+}
+
+/**
+ * Move the pointer onto item `index` and run NO frame, reporting where it went.
+ *
+ * The one pointer drive that delivers no frame of its own, for the one check
+ * that needs a pointer move and a key edge to land in the SAME input read:
+ * specs/ui.md reads the pointer once per frame, in the same read as the keyboard
+ * actions, and applies it after that frame's keyboard edges. Every other drive
+ * runs its own frame, so a caller adds this move to the frame it drives itself.
+ */
+export function aimPointerAtItem(
+  h: Harness,
+  index: number,
+  options: PointerOptions = {},
+): { x: number; y: number } {
+  const at = menuCenter(h, index);
+  h.pointerMove(at.x, at.y, options);
+  return at;
 }
 
 /**

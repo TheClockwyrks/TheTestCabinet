@@ -14,7 +14,8 @@ which is installed as an ordinary dependency and documents itself under
 
 The module does not exist yet. `src/main.ts` imports `game` and `BACKGROUND`
 from it, so the project does not compile until you create it — a fresh
-workspace failing `npm run typecheck` is the starting point, not a broken seed.
+workspace failing `npm run typecheck` is the starting point, not a fault in the
+project.
 
 `src/game.ts` exports `game`, the `GameDefinition` the engine drives: the level
 registry, keyed by exactly the names `LEVELS` holds, with the title level
@@ -63,7 +64,8 @@ testing a game this way.
   the level names, the actor tags. Read from it.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
+  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+  and `.gitignore`.
 - **The vendored engine directory** that `package.json` resolves the engine
   dependency from.
 

@@ -10,7 +10,7 @@
 // point cannot pass by serving left out of a countdown it never left.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
+import { assertEqual, assertLessThan } from "../assert";
 import {
   arrangeGoal,
   ball0,
@@ -68,9 +68,4 @@ it("serves toward player one after player two scores", async () => {
     // on.
     assertLessThan(ball0(launched.snapshot).vx, 0);
   });
-  // And the page stayed quiet throughout: nothing the build threw, and nothing
-  // it logged as an error, while this harness was driving it. An engineless
-  // build loads no assets through a runtime, so there is no asset log to read —
-  // the browser's own is the wider reading, and it covers the whole drive.
-  assertDeepEqual(harness.pageErrors, []);
 });

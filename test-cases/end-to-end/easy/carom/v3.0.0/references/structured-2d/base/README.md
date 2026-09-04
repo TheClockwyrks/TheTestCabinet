@@ -159,6 +159,7 @@ const { ball } = engine.debug.snapshot();
 | Paddles | `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side, driven)` |
 | The ball | `setBallPosition(x, y)`, `setBallVelocity(vx, vy)`, `setBallSpin(spin)`, `setBallHeld(held)`, `setBallHoldTimer(seconds)` |
 | The AI | `setAiTracking(enabled)`, `setAiMovement(enabled)` |
+| Audio | `setMuted(muted)` |
 | Readings | `snapshot()`, `menuItemRect(index)` |
 
 `snapshot()` reports every field an operation sets, so each one is verified by

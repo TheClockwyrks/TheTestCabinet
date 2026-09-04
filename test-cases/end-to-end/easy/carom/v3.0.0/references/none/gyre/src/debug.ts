@@ -45,7 +45,7 @@ import { isObstacleIndex, placeObstacle, poseObstacles } from "./obstacles";
 export const CAROM_HANDLE = "__carom";
 
 /**
- * The runtime's clock, as the surface reaches it.
+ * The runtime, as the surface reaches it: the clock and the mute bit.
  *
  * Structural on purpose: `src/runtime.ts` satisfies it without knowing this file
  * exists, and a test can hand the surface a clock of its own.
@@ -57,6 +57,8 @@ export interface DebugClock {
   autoStep(): boolean;
   /** Run `frames` whole frames covering `seconds` of game time. */
   advance(seconds: number, frames?: number): void;
+  /** Set the audio bus's mute bit, the same bit the `mute` action toggles. */
+  setMuted(muted: boolean): void;
 }
 
 /** One trail sample, as a snapshot reports it. */
@@ -182,6 +184,9 @@ export interface CaromDebugApi {
   /* The AI opponent: one operation per faculty. */
   setAiTracking(enabled: boolean): void;
   setAiMovement(enabled: boolean): void;
+
+  /* Audio. */
+  setMuted(muted: boolean): void;
 
   /* Obstacles. */
   setObstacleClock(t: number): void;
@@ -414,6 +419,19 @@ export function createDebugApi(
     /** Whether the AI's paddle travels toward that target. */
     setAiMovement(enabled) {
       state.ai.movement = Boolean(enabled);
+    },
+
+    // ---- Audio ----------------------------------------------------------
+
+    /**
+     * Set the mute bit, the same bit the `mute` action toggles.
+     *
+     * The runtime owns the bit, so this sets it there; `state.muted` is the
+     * game's readable copy and the next update refreshes it from the bus.
+     */
+    setMuted(muted) {
+      clock.setMuted(Boolean(muted));
+      state.muted = Boolean(muted);
     },
 
     /* ---- Obstacles ------------------------------------------------------ */

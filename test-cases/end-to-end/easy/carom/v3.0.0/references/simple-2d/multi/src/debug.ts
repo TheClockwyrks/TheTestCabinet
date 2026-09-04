@@ -194,6 +194,11 @@ export interface CaromDebugApi {
   setAiTracking(state: State, enabled: boolean): CaromState;
   setAiMovement(state: State, enabled: boolean): CaromState;
 
+  /* Audio. */
+
+  /** Sets the mute bit, the same bit the `mute` action toggles. */
+  setMuted(state: State, muted: boolean): CaromState;
+
   /* Readings. */
   snapshot(state: State): CaromSnapshot;
   menuItemRect(state: State, index: number): MenuRect | null;
@@ -410,6 +415,16 @@ export function createDebugApi(): CaromDebugApi {
      */
     setAiMovement(state, enabled) {
       return { ...state, ai: { ...state.ai, movement: enabled } };
+    },
+
+    // ---- Audio ----------------------------------------------------------
+
+    /**
+     * The mute bit set. The state carries it and `game.update` brings the
+     * engine's bus into line with it on the next frame.
+     */
+    setMuted(state, muted) {
+      return { ...state, muted: Boolean(muted) };
     },
 
     // ---- Readings -------------------------------------------------------

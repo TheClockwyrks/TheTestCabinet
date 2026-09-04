@@ -16,13 +16,14 @@
 //                                   failure with its message
 //   coverage/coverage-summary.json  istanbul's four metrics, whole and per file
 //
-// Neither is a terminal summary: nothing reads what this command prints.
+// Neither figure is read off the terminal; the `text` reporter prints its
+// summary for whoever is watching the command.
 //
 // `reportOnFailure` is what makes a red suite write its coverage at all, which
 // is the suite whose coverage is most worth having.
 //
-// Coverage is measured over `src/` alone, which on an engineless run is the whole
-// of what the build wrote: the project seeds no source for it to exclude.
+// Coverage is measured over `src/` alone, which is the whole of what the build
+// wrote: the project supplies no source for it to exclude.
 // `passWithNoTests` keeps a build that has not written its tests yet reporting an
 // honest zero rather than a runner error.
 
@@ -38,7 +39,7 @@ export default defineConfig({
     outputFile: { json: "coverage/test-report.json" },
     coverage: {
       provider: "istanbul",
-      reporter: ["json-summary"],
+      reporter: ["text", "json-summary"],
       reportOnFailure: true,
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts"],

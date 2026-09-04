@@ -178,7 +178,7 @@ export const TITLE_ITEMS = ["SOLO", "VERSUS", "HOW TO PLAY"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const MATCHOVER_ITEMS = ["PLAY AGAIN", "MENU"] as const;
 
-// ---- Key bindings (specs/modes/*.md) -------------------------------------
+// ---- Key bindings (specs/ui.md) ------------------------------------------
 //
 // `KeyboardEvent.code` values, because a binding is a physical key rather than a
 // layout-dependent character — and because that is the vocabulary a check presses

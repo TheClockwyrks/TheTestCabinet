@@ -1,5 +1,5 @@
 // Carom — ui/state-title: the title is the screen the game opens on, and it
-// draws the copy the specification fixes for it.
+// draws the title copy.
 //
 // Two readings of the same frame. The game's own state says which screen it
 // believes it is on, and the frame's draw calls say what it actually put on the
@@ -17,14 +17,18 @@
 // describes and a still that misrepresents what a reviewer is grading. Nothing
 // takes a paddle: a menu is not driven through one.
 //
-// The copy is the case's own: TITLE_TEXT and every entry of TITLE_ITEMS from
-// `validation/constants.ts`, which states what specs/ui.md fixes. Matching is by
-// substring, because a menu entry is commonly drawn with a selection marker
-// beside it. Everything else about the screen is the build's, rated through the
-// domains.
+// The copy is the case's own: TITLE_TEXT from `validation/constants.ts`, which
+// states what specs/ui.md fixes. Matching is by substring, because a heading is
+// commonly drawn with decoration around it. Everything else about the screen is
+// the build's, rated through the domains.
+//
+// THE MENU'S OWN ENTRIES ARE `ui/state-title-items`'S POINT. A build that draws
+// its menu but no heading is not the same build as one that draws neither: the
+// first is a title screen a player can use and the second is not, so the two
+// halves are graded apart and capped apart.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS, TITLE_TEXT } from "../constants";
+import { TITLE_TEXT } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
@@ -44,7 +48,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("opens on the title and draws its name and menu", async () => {
+it("opens on the title and draws its name", async () => {
   openTitle(h);
   h.calls.length = 0;
   await h.advance(1);
@@ -52,7 +56,4 @@ it("opens on the title and draws its name and menu", async () => {
 
   assertEqual(h.snapshot().screen, "title");
   assertEqual(drewText(h.calls, TITLE_TEXT), true);
-  for (const item of TITLE_ITEMS) {
-    assertEqual(drewText(h.calls, item), true);
-  }
 });

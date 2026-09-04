@@ -10,7 +10,9 @@
 // net and the HUD. So everything lit in that lane behind the ball is the trail
 // and nothing else, and the lit run is measured pixel by pixel against the same
 // lane read bare before the flight, so a mode label or texture the build puts
-// there is never mistaken for trail.
+// there is never mistaken for trail. How the build keeps the recent path it draws
+// from is its own arrangement of the world's game state (specs/state.md), so the
+// reading is the pixels alone.
 //
 // The bounds are the review item's: between half and one and a half times the
 // length TRAIL_TIME gives it, plus up to two ball radii for however the build
@@ -18,17 +20,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BALL_R, TRAIL_TIME } from "../constants";
-import {
-  assertDeepEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-} from "../assert";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
   driveTrail,
-  trail0,
   trailReach,
   type Harness,
 } from "../harness";
@@ -50,16 +46,6 @@ it("reaches back about speed * TRAIL_TIME behind the ball", async () => {
   const ball = await driveTrail(h, SPEED);
   captureStill(h, "trail");
   const expected = SPEED * TRAIL_TIME;
-
-  // The recent path really is held as state, oldest sample first
-  // (specs/state.md), which is what the trail is drawn from.
-  const samples = trail0(h);
-  assertGreaterThan(samples.length, 1);
-  const times = samples.map((sample) => sample.t);
-  assertDeepEqual(
-    [...times].sort((a, b) => a - b),
-    times,
-  );
 
   const reach = trailReach(h, ball);
   assertGreaterThanOrEqual(reach, 0.5 * expected);

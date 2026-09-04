@@ -24,7 +24,7 @@ Start by declaring and exporting `CaromState`, exactly as `specs/state.md` fixes
 it, and `CaromDebugApi`, the debug and automation surface `specs/instrumentation.md`
 specifies. The stub in `src/game.ts` is written against both names, so the
 project does not compile until they exist — a fresh workspace failing
-`npm run typecheck` is the starting point, not a broken seed.
+`npm run typecheck` is the starting point, not a fault in the project.
 
 `src/game.ts` then exports `game`, a `Game<CaromState, CaromDebugApi>`: three
 functions over that state. `initialize` builds the state and the debug surface
@@ -63,7 +63,8 @@ carries a complete worked example of testing a game this way.
   speeds, spin, the match rules, the action names, the cue names. Read from it.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
+  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
+  and `.gitignore`.
 - **The vendored engine directory** that `package.json` resolves the engine
   dependency from.
 

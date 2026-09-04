@@ -16,7 +16,7 @@
 // which way a serve goes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
+import { assertEqual, assertLessThan } from "../assert";
 import {
   arrangeGoal,
   ball0,
@@ -71,5 +71,4 @@ it("serves toward player one after player two scores", async () => {
     // on.
     assertLessThan(ball0(launched.snapshot).vx, 0);
   });
-  assertDeepEqual(harness.assetFailures, []);
 });

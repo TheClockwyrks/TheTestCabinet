@@ -8,8 +8,8 @@ coverage/
 .tcab/
 package-lock.json
 
-# Seeded reading material rather than this project's source: the specification,
-# and the engine's own documentation on a run that has one.
+# Reading material rather than this project's source: the specification and the
+# engine's own documentation.
 specs/
 engine/
 

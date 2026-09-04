@@ -48,6 +48,5 @@ export default defineConfig({
     // build under it, and a project that fans out across every core contends
     // with itself, so each suite takes several times longer than it does alone.
     maxWorkers: 4,
-    minWorkers: 1,
   },
 });

@@ -236,6 +236,11 @@ export interface CaromDebugApi {
   /** Whether the AI's paddle travels toward that target. */
   setAiMovement(state: DeepReadonly<CaromState>, enabled: boolean): CaromState;
 
+  /* Audio. */
+
+  /** Sets the mute bit, the same bit the `mute` action toggles. */
+  setMuted(state: DeepReadonly<CaromState>, muted: boolean): CaromState;
+
   /* Readings. */
 
   /** The whole declared state. */
@@ -500,6 +505,16 @@ export function createDebugApi(): CaromDebugApi {
 
     setAiMovement(state, enabled) {
       return poseAi(state, { movement: enabled });
+    },
+
+    // ---- Audio ---------------------------------------------------------
+
+    /**
+     * The mute bit set. The state carries it and `game.update` brings the
+     * engine's bus into line with it on the next frame.
+     */
+    setMuted(state, muted) {
+      return { ...state, muted: Boolean(muted) };
     },
 
     // ---- Readings ------------------------------------------------------

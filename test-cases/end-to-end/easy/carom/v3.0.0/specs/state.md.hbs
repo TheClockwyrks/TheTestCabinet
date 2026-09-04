@@ -177,7 +177,7 @@ The AI's two faculties are each declared state, and both gate the rule
 
 | Field | Holds |
 | --- | --- |
-| `tracking` | Whether the AI senses the ball and chooses a target. |
+| `tracking` | Whether the AI senses{{#if (eq variant.slug "multi")}} the balls{{else}} the ball{{/if}} and chooses a target. |
 | `movement` | Whether the AI's paddle travels toward that target. |
 
 {{#if (eq variant.slug "multi")}}

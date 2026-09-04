@@ -36,14 +36,18 @@ read each action, alongside the mouse and touch input the menus take.
 The game is a small state machine, and `screen` names the state it is in. Each
 state has its own screen.
 
+{{#if (eq variant.slug "multi")}}
 1. `title`, the main menu. It shows the title `TITLE_TEXT` (`CAROM`) and a
    vertical menu of `TITLE_ITEMS` (`SOLO`, `VERSUS`, `HOW TO PLAY`) in that
    order. The item at `menuIndex` is highlighted, drawn distinctly from the
-   others. The field furniture (paddles,
-{{#if (eq variant.slug "multi")}}
-   balls, obstacles, net) may show dimmed behind the menu.
+   others. The field furniture (paddles, balls, obstacles, net) may show dimmed
+   behind the menu.
 {{else}}
-   ball, obstacles, net) may show dimmed behind the menu.
+1. `title`, the main menu. It shows the title `TITLE_TEXT` (`CAROM`) and a
+   vertical menu of `TITLE_ITEMS` (`SOLO`, `VERSUS`, `HOW TO PLAY`) in that
+   order. The item at `menuIndex` is highlighted, drawn distinctly from the
+   others. The field furniture (paddles, ball, obstacles, net) may show dimmed
+   behind the menu.
 {{/if}}
 2. `howto`, how to play. It names the controls and describes the spin and
    obstacle mechanics. It also shows a single menu item, index `0`, whose copy
