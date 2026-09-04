@@ -5,34 +5,34 @@
 // the state the world holds, the debug surface that poses and reads that state,
 // and the definition below.
 //
-// FIRST, DECLARE AND EXPORT `FacetState`, exactly as `specs/state.md` fixes
-// it — a class extending the engine's `GameState` — and `FacetDebugApi`, the
+// FIRST, DECLARE AND EXPORT `FacetState`, a class extending the engine's
+// `GameState`, exactly as `specs/state.md` fixes it, and `FacetDebugApi`, the
 // debug and automation surface `specs/instrumentation.md` specifies. The stub
 // below is written against both names, so this project does not compile until
-// they exist — the type check failing on a freshly seeded workspace is the
+// they exist. The type check failing on a freshly seeded workspace is the
 // starting point, not a broken seed.
 //
 // THEN IMPLEMENT the game inside the engine's framework. The definition below
 // registers the single level the whole game runs in: the engine opens it once,
-// at `startLevel`, and the game never opens another — every screen is a value
-// of the state's `screen` field. The instance's `initialize` runs once, before
-// that level opens: register every action in ACTIONS against its BINDINGS,
-// define the nine CUES against the sounds this build produces, and return the
-// debug surface, which the engine holds and returns from `engine.debug`
-// (`specs/instrumentation.md`). The level's game mode runs the screens and the
-// rules: its `gameStateClass` is `FacetState`, so the engine builds the state
-// `specs/state.md` declares when the world opens, with every field at its
-// title-screen initializer; its `beginPlay` adds a single player possessing
-// nothing, whose controller is where the frame's actions and pointer are read,
-// and registers the diagnostic sources `specs/instrumentation.md` lists through
-// `world.diagnostics`, each a function of no arguments that reads the live
-// state at the call; and its `tick` accumulates `state.simTime` and mirrors the
-// engine's mute bit into `state.muted`. The framework's states are live
-// objects — a tick writes the fields it advances in place — and the actors,
-// components, and controllers you write draw that state and drive it, holding
-// no authoritative state of their own. The engine's own documentation, seeded
-// at `engine/`, defines all of this and the classes below; read it before you
-// start.
+// at `startLevel`, and the game never opens another, since every screen is a
+// value of the state's `screen` field. The instance's `initialize` runs once,
+// before that level opens: register every action in ACTIONS against its
+// BINDINGS, define the nine CUES against the sounds this build produces, and
+// return the debug surface, which the engine holds and returns from
+// `engine.debug` (`specs/instrumentation.md`). The level's game mode runs the
+// screens and the rules: its `gameStateClass` is `FacetState`, so the engine
+// builds the state `specs/state.md` declares when the world opens, with every
+// field at its title-screen initializer; its `beginPlay` adds a single player
+// possessing nothing, whose controller is where the frame's actions and
+// pointer are read, and registers the diagnostic sources
+// `specs/instrumentation.md` lists through `world.diagnostics`, each a
+// function of no arguments that reads the live state at the call; and its
+// `tick` accumulates `state.simTime` and mirrors the engine's mute bit into
+// `state.muted`. The framework's states are live objects: a tick writes the
+// fields it advances in place. The actors, components, and controllers you
+// write draw that state and drive it, holding no authoritative state of their
+// own. The engine's own documentation, seeded at `engine/`, defines all of
+// this and the classes below; read it before you start.
 //
 // The POINTER comes from the engine as well, and it is what the whole game is
 // worked with: a gem is taken hold of by pressing on it, offered onto its
@@ -40,15 +40,15 @@
 // Every screen carries pointer targets besides, so a player with nothing but a
 // touchscreen reaches all of them. The player controller reads the pointer from
 // its input reader already in logical stage units, as the frame's ordered
-// samples carrying the press and release edges and the device that drove them —
-// the engine's input documentation, seeded at `engine/`, defines the API, and
+// samples carrying the press and release edges and the device that drove them.
+// The engine's input documentation, seeded at `engine/`, defines the API, and
 // `specs/controls.md` states what Facet does with them.
 //
 // The ART, the EFFECTS and the SOUND are yours to produce as well. Facet ships
 // none of them: `specs/assets.md` is the contract for what you make with the
 // tools on this machine's `PATH`, where each produced file lands under
-// `public/assets/`, and how it is wired in — the sprites and sheets through the
-// engine's asset loading, the cues through its audio, and the `system.json`
+// `public/assets/`, and how it is wired in. The sprites and sheets go through
+// the engine's asset loading, the cues through its audio, and the `system.json`
 // particle systems through `@test-cabinet/particle-runtime`, which is already a
 // dependency of this project.
 
@@ -89,12 +89,9 @@ class FacetMode extends GameMode {
 /**
  * The game this build's engine drives.
  *
- * Implement the instance and the mode, and split the work across new modules
- * under `src/` however you like — the board, the ruleset, the chain resolution,
- * the board generator, the actors and components that render, the produced
- * assets and the effects they play, the debug surface, and so on. Nothing else
- * in the project needs changing for the game to run: `src/main.ts` already
- * binds this definition to the engine.
+ * Implement the instance and the mode; where their implementation lives under
+ * `src/` is your call. Nothing else in the project needs changing for the game
+ * to run: `src/main.ts` already binds this definition to the engine.
  */
 export const game: GameDefinition<FacetDebugApi> = {
   instance: FacetInstance,

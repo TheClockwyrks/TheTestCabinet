@@ -22,9 +22,9 @@
 // (`DeepReadonly<FacetState>`, from `ts-essentials`) and stores whatever
 // `update` returns as the next state; `render` is handed that next state, as the
 // same read-only view, and returns nothing. Nothing ever holds a writable
-// `FacetState`: `update` builds the next state from the current one (spread the
-// parts that change, `map` over the cells) rather than assigning into it, and a
-// frame that returns `undefined` is refused by the engine. The engine's own
+// `FacetState`: `update` builds the next state from the current one rather than
+// assigning into it, and a frame that returns `undefined` is refused by the
+// engine. The engine's own
 // documentation, seeded at `engine/`, defines all of this and the scoped APIs
 // each function receives; read it before you start.
 //
@@ -50,9 +50,8 @@
 //
 // The sprites, effects, and sounds are produced, not supplied.
 // `specs/assets.md` states what you produce with the asset tools and commit
-// under `public/assets/`; `initialize` loads each image with
-// `api.assets.loadImage` and binds each cue to its file with `api.audio.load`,
-// awaited, so every asset is decoded before the first frame.
+// under `public/assets/`; the images and the cues are loaded through the
+// engine's own asset and audio APIs, which its documentation defines.
 
 import type {
   Game,

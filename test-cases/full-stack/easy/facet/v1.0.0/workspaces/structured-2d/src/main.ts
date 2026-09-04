@@ -42,9 +42,9 @@ const engine = createEngine({
 
 async function main(): Promise<void> {
   // The engine runs no frame until this resolves: it constructs the game
-  // instance, runs its `initialize` — whose returned debug surface the engine
-  // holds as `engine.debug` (specs/instrumentation.md) — and opens the start
-  // level, so nothing here has to publish anything.
+  // instance, runs its `initialize`, and opens the start level, so nothing here
+  // has to publish anything. The debug surface `initialize` returned is what
+  // the engine holds as `engine.debug` (specs/instrumentation.md).
   await engine.initialize();
 
   // Runs until the engine is destroyed.

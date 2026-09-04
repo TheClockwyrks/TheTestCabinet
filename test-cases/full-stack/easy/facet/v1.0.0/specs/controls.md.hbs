@@ -19,10 +19,10 @@ write. What the game reads from that layer is a pointer position in the game's
 logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, a
 release edge, and which of `mouse`, `pen`, and `touch` drove it. That layer
 delivers all three devices on that one path, and it takes the browser's own
-gestures on the canvas — panning, pinch-zoom, double-tap zoom, text selection,
-and the context menu — so a drag on a touchscreen reaches the game whole rather
-than being taken for a scroll part way through. How the layer produces those is
-yours to decide.
+gestures on the canvas: panning, pinch-zoom, double-tap zoom, text selection,
+and the context menu. A drag on a touchscreen therefore reaches the game whole
+rather than being taken for a scroll part way through. How the layer produces
+those is yours to decide.
 {{else if (eq engine.slug "simple-2d")}}
 The pointer belongs to the engine, which documents it in the `engine/` directory
 at the root of this repository. What the game reads from it is a pointer

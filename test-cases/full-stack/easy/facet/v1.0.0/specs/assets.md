@@ -8,10 +8,9 @@ which tool makes it, where it lands, and how it is played.
 
 Produce the assets as a one-time step. Your build (`npm run build`) is
 self-contained: it bundles the committed files without invoking the tools, which
-are on your `PATH` only while this run is live, and not when the build is re-run
-to validate it or rebuilt from the published source. A build that shells out to
-`draw` or any of the other five at build time fails wherever they are absent,
-however complete the game is.
+are on your `PATH` here and not when the project is installed and rebuilt
+elsewhere. A build that shells out to `draw` or any of the other five at build
+time fails wherever they are absent, however complete the game is.
 
 Every figure here is consistent with `specs/board.md`, which fixes the cell
 geometry the produced art is drawn to, and `specs/rules.md`, which fixes the
@@ -64,8 +63,7 @@ path below that root, as `gems/ruby.png`.
 
 Every produced file is loaded at runtime, so it obeys the same base-path rule
 the build itself does. The built site is not guaranteed to be served from the
-root of its origin; it is played back mounted under a per-run sub-path, a path
-like `/runs/<id>/build/`. So:
+root of its origin, so it runs correctly from any sub-path of it. So:
 
 - Reference every asset page-relative, as `assets/gems/ruby.png`, which resolves
   against the document wherever the site is mounted.
@@ -75,17 +73,15 @@ like `/runs/<id>/build/`. So:
   JS, CSS, and asset URLs are page-relative too.
 
 This governs the produced art, the `system.json` files, the `.wav`s, and the
-bundled JS and CSS alike. The quickest self-check: serve your `dist/` from a
-non-root sub-path and confirm the game loads with no 404s.
+bundled JS and CSS alike.
 
 ## Sprites — `draw`
 
 Every gem on the board is a produced sprite. Produce a single PNG per sprite
 with `draw`, on a `64 x 64` transparent (straight-alpha) canvas, sized to the
-`GEM_R` (`30`) gem radius the board draws at. These are pixel art: draw them at
-native size and sample them nearest-neighbor in the game
-(`imageSmoothingEnabled = false` for Canvas, `image-rendering: pixelated` for
-DOM) so they stay crisp. Land them under `public/assets/gems/`.
+`GEM_R` (`30`) gem radius the board draws at. These are pixel art, drawn at
+native size and displayed crisply at the logical stage size, with the pixel grid
+intact rather than smoothed. Land them under `public/assets/gems/`.
 
 - The seven kinds at each of four strain states, one sprite each. The lit,
   faceted look of a lapidary's bench is the target, and each kind is told apart
@@ -111,10 +107,9 @@ frame. Land each sequence under its own directory, for example
 `public/assets/gems/break/ruby/` and `public/assets/gems/prism-turn/`.
 
 - A break animation for each of the seven kinds, a short sequence in which the
-  stone fractures and flies apart. Play a cleared gem's sheet at its cell when a
-  chain step removes it, starting at the moment `specs/rules.md` gives that
-  cell's wave and advancing the frames on a timer, and the cell is empty once the
-  sheet has run.
+  stone fractures and flies apart. A cleared gem's sequence plays at its cell
+  when a chain step removes it, beginning at the moment `specs/rules.md` gives
+  that cell's wave, and the cell is empty once it has run.
 - The prism's idle turn, a short looping sequence in which the cut rotates and
   catches the light. Loop it for every prism standing on the board, so a prism
   is picked out from the stones around it by its motion as well as its art.
@@ -185,10 +180,9 @@ where its glass and impact material belongs.
   a `.wav` (the ready asset you play) and a `.mid` score alongside it; play the
   `.wav`.
 
-Load each `.wav` page-relative as above, decode it with the Web Audio API
-(`decodeAudioData`), and play it on the event that fires it. Audio starts only
-after the player has interacted with the page, and the mute toggle silences
-everything at once.
+Each `.wav` is loaded page-relative as above and played on the event that fires
+it. Audio starts only after the player has interacted with the page, and the
+mute toggle silences everything at once.
 
 ## What you draw in code (no tool for these)
 
