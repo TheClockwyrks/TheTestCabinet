@@ -106,13 +106,15 @@ for every run:
 | `campaign-boards.md` | The twenty-four campaign boards, authoritative for every layout.                                                                                   |
 | `modes/campaign.md`  | The course, its progression, and the `select` and `complete` screens.                                                                              |
 | `modes/cascade.md`   | The endless sequence, the generator's contract, and the tier ladder.                                                                               |
+| `showcase.md`        | The showcase the finished game ships: the description, the carousel, and the media.                                                                |
 
 `board.md`, `beams.md` and `campaign-boards.md` are plain Markdown, identical
 under every engine. `overview.md.hbs`, `controls.md.hbs`, `state.md.hbs`,
-`instrumentation.md.hbs`, `ui.md.hbs`, `modes/campaign.md.hbs` and
-`modes/cascade.md.hbs` are Handlebars templates rendered on the engine axis
-before they land. Because the branching resolves at seed time, each seeded set
-reads as one self-contained game with no alternative in view.
+`instrumentation.md.hbs`, `ui.md.hbs`, `modes/campaign.md.hbs`,
+`modes/cascade.md.hbs` and `showcase.md.hbs` are Handlebars templates rendered
+on the engine axis before they land. Because the branching resolves at seed
+time, each seeded set reads as one self-contained game with no alternative in
+view.
 
 Under `simple-2d` and `structured-2d`, every figure the specification fixes is
 exported from the seeded `src/constants.ts` under the name the specs cite, so a
