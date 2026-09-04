@@ -27,6 +27,7 @@ import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
+  driveSteps,
   framesFor,
   headOf,
   poseWorm,
@@ -61,13 +62,20 @@ it("flips the vertical heading up and rises a row rather than leaving the board"
   await startPlaying(h);
   const id = await poseWorm(h, { c: HEAD_C, r: HEAD_R, length: 1 });
 
-  const swept = await captureReplay(h, "floor", () =>
-    h.until(
+  const swept = await captureReplay(h, "floor", async () => {
+    const left = await h.until(
       (s) =>
         !segmentTiles(s).some((tile) => tile.c === HEAD_C && tile.r === HEAD_R),
       { maxFrames: STEP_TIMEOUT, poll: 1 },
-    ),
-  );
+    );
+    // A settle, inside the bracket. What this point CLAIMS is that the worm
+    // turns rather than leaving the board, and a recording that stopped on the
+    // frame the head left its tile shows the leaving and not the turn. Two
+    // further steps carry it visibly up the board. The reading is taken above,
+    // before the settle, so no verdict moves.
+    await driveSteps(h, 2);
+    return left;
+  });
 
   assertEqual(
     swept.hit,

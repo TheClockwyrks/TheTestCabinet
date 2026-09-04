@@ -83,6 +83,13 @@ it("moves every segment into the tile the one ahead of it held", async () => {
       steps.push({ before, swept });
       if (swept.hit) before = wormOf(swept.snapshot, id);
     }
+    // A settle, inside the bracket: two further steps' worth of frames, so a
+    // reviewer watching this replay sees the worm travel ON rather than the
+    // recording cutting to black on the frame the last step landed. Half an
+    // interval past the second of them, which is the furthest point from a
+    // step boundary. Every reading above was taken before it, so no verdict
+    // moves.
+    await h.advance(ticksFor(WORM_STEP_L1 * 2.5));
   });
 
   for (let step = 1; step <= STEPS; step += 1) {

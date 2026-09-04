@@ -25,6 +25,7 @@ import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
+  driveSteps,
   framesFor,
   poseWorm,
   requireWorm,
@@ -83,6 +84,11 @@ it("advances the head one tile per step along its heading", async () => {
         ),
       );
     }
+    // A settle, inside the bracket: two further steps so a reviewer watching
+    // this replay sees the worm travel ON rather than the recording cutting to
+    // black on the frame the last step landed. Every reading above was taken
+    // before it, so no verdict moves.
+    await driveSteps(h, 2);
   });
 
   for (let step = 1; step <= STEPS; step += 1) {

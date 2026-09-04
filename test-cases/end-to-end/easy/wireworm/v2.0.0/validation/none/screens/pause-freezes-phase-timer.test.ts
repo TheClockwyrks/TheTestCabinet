@@ -90,7 +90,7 @@ it("holds the phase timer where it was through three banners of paused time", as
   );
   assertEqual(atPause.phase, "banner", "the phase the pause landed on");
 
-  await h.skip(PAUSED_SECONDS);
+  await h.skip(framesFor(PAUSED_SECONDS));
   await captureStill(h, "held");
 
   const after = await h.snapshot();

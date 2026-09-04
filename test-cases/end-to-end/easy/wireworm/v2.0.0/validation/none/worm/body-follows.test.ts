@@ -26,6 +26,7 @@ import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureReplay,
   createHarness,
+  driveSteps,
   framesFor,
   poseWorm,
   requireWorm,
@@ -89,6 +90,11 @@ it("moves every segment into the tile the one ahead of it held", async () => {
         before = requireWorm(swept.snapshot, id, `after step ${step}`);
       }
     }
+    // A settle, inside the bracket: two further steps so a reviewer watching
+    // this replay sees the worm travel ON rather than the recording cutting to
+    // black on the frame the last step landed. Every reading above was taken
+    // before it, so no verdict moves.
+    await driveSteps(h, 2);
   });
 
   for (let step = 1; step <= STEPS; step += 1) {

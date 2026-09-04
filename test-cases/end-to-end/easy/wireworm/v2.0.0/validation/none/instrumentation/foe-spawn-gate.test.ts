@@ -50,6 +50,7 @@ import { assertLength, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
+  framesFor,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -93,7 +94,7 @@ it("keeps the level's own foes away while the gate is off", async () => {
 
   // Off camera: a minute of real frames is a minute of the level's own pacing,
   // and no picture of the wait is worth keeping.
-  await h.skip(GATED_SECONDS);
+  await h.skip(framesFor(GATED_SECONDS));
   await h.advance(1);
   // Before the assertions, so a failing gate still leaves the picture of the
   // level-5 board a foe joined.
@@ -113,8 +114,8 @@ it("keeps the level's own foes away while the gate is off", async () => {
   // And the control: the level really would have spawned one.
   await h.debug.setFoeSpawning(true);
   const arrived = await h.skipUntil((s) => s.foes.length > 0, {
-    maxSeconds: UNGATED_SECONDS,
-    pollSeconds: POLL_SECONDS,
+    maxFrames: framesFor(UNGATED_SECONDS),
+    poll: framesFor(POLL_SECONDS),
   });
   assertTrue(
     arrived.hit,

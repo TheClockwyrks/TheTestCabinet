@@ -24,6 +24,24 @@
 // THE WORLD IS ONE HEAD ON A CLEAR ROW. `startPlaying` leaves the board empty and
 // the world gates shut, and the worm is a single segment four tiles clear of
 // anything, so nothing can block a step and no body follows.
+//
+// AND THE RECORDING BRACKETS THE PAIR RATHER THAN BEING THE PAIR. Two frames are
+// not something a reviewer can watch — a player opened on them shows a still —
+// so the same `SequenceClock` carries a run-up before the long frame and a
+// settle after the short one, of frames far too short to fall due: ten and then
+// twenty frames of `QUIET_MS`, `36` ms of game time all told against a `140` ms
+// interval. The two readings are still taken on the same two frames, so the
+// verdict is untouched; what changes is that the reviewer sees the board at rest,
+// then the head jump three tiles, then take its fourth, then run on.
+//
+// THE RUN-UP'S TIME ENTERS THE LONG FRAME, so the margins are restated with it
+// included. The accumulator holds `12` ms when the long frame opens, so that
+// frame reaches `502` ms: still three steps, and `58` ms clear of the fourth at
+// `560`. It leaves `82` ms standing, so the short frame reaches `157` ms and
+// takes the fourth step, while a build that dropped the remainder reaches `75` ms
+// and cannot — the same `65` ms of daylight the check had before. The settle
+// then adds `24` ms to the `17` ms left over, which is `99` ms short of a fifth
+// step, so nothing lands inside it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { WORM_STEP_L1 } from "../constants";
@@ -71,10 +89,39 @@ const MARGIN = 0.005;
 /** The second frame, in milliseconds: half an interval and the margin, `75` ms. */
 const SHORT_MS = (INTERVAL * 0.5 + MARGIN) * 1000;
 
+/**
+ * A frame of the run-up and the settle, in milliseconds.
+ *
+ * Short enough that a run of them cannot pay for a step: thirty frames of it is
+ * `36` ms against the `140` ms interval, so every step this check reads is one
+ * of the two frames it is about.
+ */
+const QUIET_MS = 1.2;
+
+/** Frames of run-up: the board at rest, before the long frame lands. */
+const RUN_UP_FRAMES = 10;
+
+/** Frames of settle: what the two frames left behind. */
+const SETTLE_FRAMES = 20;
+
+/**
+ * The whole frame script, in order, which is exactly what the drive consumes.
+ *
+ * `SequenceClock` cycles its deltas, so the drive below runs
+ * `RUN_UP_FRAMES + 2 + SETTLE_FRAMES` frames against a script of that length and
+ * never wraps.
+ */
+const SCRIPT = [
+  ...Array<number>(RUN_UP_FRAMES).fill(QUIET_MS),
+  LONG_MS,
+  SHORT_MS,
+  ...Array<number>(SETTLE_FRAMES).fill(QUIET_MS),
+];
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new SequenceClock([LONG_MS, SHORT_MS]) });
+  h = await createHarness({ clock: new SequenceClock(SCRIPT) });
 });
 
 afterEach(async () => {
@@ -89,10 +136,13 @@ it("runs the three steps one long frame covered and carries the remainder", asyn
     h,
     "catch-up",
     async (): Promise<{ long: WirewormSnapshot; short: WirewormSnapshot }> => {
+      await h.advance(RUN_UP_FRAMES);
       await h.advance(1);
       const long = await h.snapshot();
       await h.advance(1);
-      return { long, short: await h.snapshot() };
+      const short = await h.snapshot();
+      await h.advance(SETTLE_FRAMES);
+      return { long, short };
     },
   );
 
