@@ -106,9 +106,8 @@ export async function readSystem(file: string): Promise<SystemRead> {
 
   let Simulator: typeof ParticleSimulator;
   try {
-    ({ ParticleSimulator: Simulator } = await import(
-      "@test-cabinet/particle-runtime"
-    ));
+    ({ ParticleSimulator: Simulator } =
+      await import("@test-cabinet/particle-runtime"));
   } catch (error) {
     return {
       system: null,

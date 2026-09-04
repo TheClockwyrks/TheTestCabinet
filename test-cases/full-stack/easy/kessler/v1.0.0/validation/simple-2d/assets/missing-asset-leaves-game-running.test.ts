@@ -49,7 +49,9 @@ function distinctColors(h: Harness): number {
     for (let x = 0; x < width; x += stepX) {
       const at = (y * width + x) * 4;
       seen.add(
-        ((data[at] >> 4) << 8) | ((data[at + 1] >> 4) << 4) | (data[at + 2] >> 4),
+        ((data[at] >> 4) << 8) |
+          ((data[at + 1] >> 4) << 4) |
+          (data[at + 2] >> 4),
       );
     }
   }

@@ -45,8 +45,12 @@ export function decodeWav(bytes: Buffer): DecodedWav {
     throw new Error("a RIFF file, but not a WAVE file");
   }
   let offset = 12;
-  let format: { tag: number; channels: number; rate: number; bits: number } | null =
-    null;
+  let format: {
+    tag: number;
+    channels: number;
+    rate: number;
+    bits: number;
+  } | null = null;
   let data: { start: number; size: number } | null = null;
   while (offset + 8 <= bytes.length) {
     const id = bytes.toString("ascii", offset, offset + 4);
@@ -118,7 +122,11 @@ export function readBed(path: string): DecodedWav {
 }
 
 /** The largest |sample| in `samples[start, end)`. */
-export function peak(samples: Float32Array, start = 0, end = samples.length): number {
+export function peak(
+  samples: Float32Array,
+  start = 0,
+  end = samples.length,
+): number {
   let top = 0;
   for (let i = start; i < end; i++) {
     const value = Math.abs(samples[i]);
@@ -128,7 +136,11 @@ export function peak(samples: Float32Array, start = 0, end = samples.length): nu
 }
 
 /** The RMS level of `samples[start, end)`. */
-export function rms(samples: Float32Array, start = 0, end = samples.length): number {
+export function rms(
+  samples: Float32Array,
+  start = 0,
+  end = samples.length,
+): number {
   let total = 0;
   const count = Math.max(1, end - start);
   for (let i = start; i < end; i++) total += samples[i] * samples[i];
@@ -165,7 +177,10 @@ function envelope(
   const mid = y + h / 2;
   for (let column = 0; column < w; column++) {
     const from = Math.floor((column / w) * samples.length);
-    const to = Math.max(from + 1, Math.floor(((column + 1) / w) * samples.length));
+    const to = Math.max(
+      from + 1,
+      Math.floor(((column + 1) / w) * samples.length),
+    );
     let low = 1;
     let high = -1;
     for (let i = from; i < to; i++) {
@@ -182,7 +197,8 @@ function envelope(
 export function monoMix(wav: DecodedWav): Float32Array {
   const mono = new Float32Array(wav.frames);
   for (const channel of wav.channels) {
-    for (let i = 0; i < wav.frames; i++) mono[i] += channel[i] / wav.channels.length;
+    for (let i = 0; i < wav.frames; i++)
+      mono[i] += channel[i] / wav.channels.length;
   }
   return mono;
 }

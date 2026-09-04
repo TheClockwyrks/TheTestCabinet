@@ -28,7 +28,10 @@ import {
   spawnBallPolar,
   type Harness,
 } from "../harness";
-import { CANVAS_BINDING, sourcesImportingCanvasBinding } from "./runtime-import";
+import {
+  CANVAS_BINDING,
+  sourcesImportingCanvasBinding,
+} from "./runtime-import";
 
 let h: Harness;
 
