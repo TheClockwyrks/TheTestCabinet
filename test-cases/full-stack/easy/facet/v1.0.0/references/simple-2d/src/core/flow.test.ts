@@ -10,7 +10,7 @@ import {
 } from "../constants";
 import { formatBoard } from "./board";
 import { requestSwap, tick } from "./chain";
-import { loadBoard } from "./debug";
+import { loadBoard, setScreen } from "./debug";
 import { isOpeningBoard } from "./deal";
 import { quietRowsWith } from "./fixtures";
 import {
@@ -32,7 +32,7 @@ import { createInitialState, EMPTY_BOARD, type FacetState } from "./state";
 const title = () => createInitialState(1);
 
 const playing = (edits: Readonly<Record<string, string>> = {}): FacetState =>
-  loadBoard(createInitialState(1), quietRowsWith(edits));
+  setScreen(loadBoard(createInitialState(1), quietRowsWith(edits)), "playing");
 
 describe("the menus", () => {
   it("names the menu each screen carries", () => {

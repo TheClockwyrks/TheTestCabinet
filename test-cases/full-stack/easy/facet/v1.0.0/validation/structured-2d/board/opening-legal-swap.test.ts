@@ -23,8 +23,8 @@
 //
 // WHY SEVERAL SEEDS. A build that never checks its deal still passes on a seed
 // that happens to draw a playable board. specs/instrumentation.md makes a round
-// from a known deal `reset` carrying a seed followed by `start`, so a dozen
-// seeds are dealt and the property must hold of every one of them.
+// from a known deal `reset` carrying a seed followed by a `dealBoard`, which is
+// what the harness's `startRound` runs, so a dozen seeds are dealt and the property must hold of every one of them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { legalSwaps } from "../board";

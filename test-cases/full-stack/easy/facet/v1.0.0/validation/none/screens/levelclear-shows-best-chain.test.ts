@@ -58,11 +58,9 @@ import {
   assertBoardEquals,
   legalSwaps,
   maximalRuns,
-  parseRows,
   quietRowsWith,
   quietRowsWithEscape,
   swapIsLegal,
-  tokenAt,
   type BoardRows,
   type CellRef,
   type PlacedToken,
@@ -74,6 +72,7 @@ import {
   loadBoard,
   showsText,
   swapAndStep,
+  writeBoard,
   type Harness,
 } from "../harness";
 
@@ -113,18 +112,6 @@ function requireCopy(drawn: readonly string[], wanted: string): void {
   }
 }
 
-/** Write a whole board onto the live one, `setGem` by `setGem`. */
-async function writeBoard(rows: BoardRows): Promise<void> {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      await h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
-
 beforeEach(async () => {
   h = await createHarness();
 });
@@ -148,7 +135,7 @@ it("draws the longest-chain label and the level's longest chain", async () => {
   const first = await swapAndStep(h, SWAP_A, SWAP_B);
   assertEqual(first.phase, "resolving", "the phase the accepted swap opened");
 
-  await writeBoard(SETTLED);
+  await writeBoard(h, SETTLED);
   assertBoardEquals(
     await h.board(),
     SETTLED,

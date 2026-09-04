@@ -21,7 +21,7 @@
 // defines `pause()` as the `pause` action from `playing`, so it arranges the
 // screen this point starts on. Arranging it that way keeps the verdict about
 // LEAVING the menu: a build whose pause key never opened the menu fails the
-// points that are about opening it — `screens/paused-screen`, `keyboard/pause-key`
+// points that are about opening it — `screens/paused-copy`, `keyboard/pause-key`
 // — and is still asked this question fairly.
 //
 // WHAT "EXACTLY AS IT WAS LEFT" IS MEASURED AS. The board in the notation of
@@ -40,6 +40,7 @@ import { assertBoardEquals } from "../board";
 import {
   captureStill,
   createHarness,
+  pauseGame,
   poseBoardWithEscape,
   type Harness,
 } from "../harness";
@@ -74,7 +75,7 @@ it("returns to playing with the board and every timer as the pause left them", a
   );
   const heldBoard = h.board();
 
-  h.debug.pause();
+  pauseGame(h);
   const paused = h.snapshot();
   assertEqual(
     paused.screen,

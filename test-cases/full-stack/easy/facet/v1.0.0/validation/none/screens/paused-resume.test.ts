@@ -7,9 +7,11 @@
 // for that choice: "the screen returns to `playing` and the board, the chain,
 // and every timer carry on from exactly where `pause` left them."
 //
-// THE POSE IS THE ROUTE. specs/instrumentation.md defines `resume()` as the
-// choice of `RESUME` from the pause menu, so the pose decides the same thing the
-// menu entry does. It is the right route because this point is about what the
+// THE POSE IS THE ROUTE. `setScreen("playing")` makes the same screen change
+// `RESUME` makes, and specs/instrumentation.md says the screen "behaves from
+// there exactly as it does when a player reaches it", so the pose decides the
+// same thing the menu entry does. It is the right route because this point is
+// about what the
 // screen change PRESERVES rather than about which key chose it: taking the
 // choice through the menu would put `PAUSED_ITEMS`' ordering and the `confirm`
 // binding inside a verdict about the board, and both of those are points of
@@ -39,11 +41,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  assertCloseTo,
+  assertBetween,
   assertEqual,
   assertLength,
   assertTrue,
 } from "../assert";
+import { PAUSED_ITEMS, TICK_S } from "../constants";
 import {
   assertBoardEquals,
   maximalRuns,
@@ -57,7 +60,9 @@ import {
   createHarness,
   framesPast,
   loadBoard,
+  pauseGame,
   swapAndStep,
+  takeMenuItem,
   type Harness,
 } from "../harness";
 
@@ -93,6 +98,9 @@ const FRAMES_BEFORE_PAUSE = 6;
 /** How many of the paused step's own holds the game is left standing for. */
 const HOLDS_PAUSED = 4;
 
+/** Where `RESUME` sits on the pause menu, from specs/ui.md's `PAUSED_ITEMS`. */
+const RESUME_INDEX = PAUSED_ITEMS.indexOf("RESUME");
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -127,7 +135,7 @@ it("returns to playing with the board, the chain and both timers where the pause
 
   // Paused, and left paused for four of that step's own holds, so a build that
   // rebuilt the position on resuming has had every chance to lose it.
-  await h.debug.pause();
+  await pauseGame(h);
   assertEqual(
     (await h.snapshot()).screen,
     "paused",
@@ -136,22 +144,35 @@ it("returns to playing with the board, the chain and both timers where the pause
   await h.advance(HOLDS_PAUSED * framesPast(held.stepHold));
 
   await captureReplay(h, "resumed", async () => {
-    await h.debug.resume();
+    // RESUME is really CHOSEN, which is what the item says: the highlight is
+    // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+    // it, through the key specs/controls.md binds and the build's own input path.
+    await takeMenuItem(h, RESUME_INDEX);
 
     const resumed = await h.snapshot();
     assertEqual(resumed.screen, "playing", "the screen RESUME returns to");
     assertEqual(resumed.phase, "resolving", "the phase the resume hands back");
     assertEqual(resumed.chainStep, held.chainStep, "chainStep after resuming");
-    assertCloseTo(
+
+    // A WINDOW OF ONE FRAME, not an equality, and the reason is the choice
+    // itself: `confirm` is a key, and a key press is delivered by a frame. A
+    // build that reads the press in its event handler is back on `playing`
+    // before that frame's update runs, so the step's timer carries a tick of
+    // that frame; one that compares held state at the top of the frame is still
+    // on `paused` through it and carries nothing. Both are conformant, and
+    // specs/ui.md fixes neither. What the item forbids is the timer being LOST
+    // — reset to zero, or rebuilt from the resume — and a window one frame wide
+    // catches that while passing both readings of when the press lands.
+    assertBetween(
       resumed.swapTimer,
       held.swapTimer,
-      6,
+      held.swapTimer + TICK_S,
       "swapTimer after resuming",
     );
-    assertCloseTo(
+    assertBetween(
       resumed.stepTimer,
       held.stepTimer,
-      6,
+      held.stepTimer + TICK_S,
       "stepTimer after resuming",
     );
     assertBoardEquals(await h.board(), heldBoard, "the board after resuming");

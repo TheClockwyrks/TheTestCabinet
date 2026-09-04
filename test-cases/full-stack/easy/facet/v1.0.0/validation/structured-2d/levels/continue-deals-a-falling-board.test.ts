@@ -20,8 +20,8 @@
 // level through code that does not — the two are different call sites — so the
 // claim is read once on each route.
 //
-// THE READING IS TAKEN BEFORE A FRAME RUNS. `continueLevel` is a pose and
-// specs/instrumentation.md resolves a pose at the call, so the board is read the
+// THE READING IS TAKEN ON THE FRAME THE CHOICE IS DELIVERED ON. `confirm` is
+// taken by one frame and the deal happens inside it, so the board is read the
 // moment it is dealt, while every gem still carries the fall it arrived with. A
 // frame of game time would let the gems land and a build that reports the fall of
 // the drop in motion would then read as having reported nothing.
@@ -33,7 +33,7 @@ import {
   assertLength,
   assertTrue,
 } from "../assert";
-import { GRID_COLS, GRID_ROWS } from "../constants";
+import { GRID_COLS, GRID_ROWS, LEVELCLEAR_ITEMS } from "../constants";
 import {
   assertFell,
   hasAnyRun,
@@ -48,6 +48,7 @@ import {
   loadBoard,
   resolveChain,
   swapAndStep,
+  takeMenuItem,
   type Harness,
 } from "../harness";
 
@@ -74,6 +75,9 @@ const RUN_SWAP: { a: CellRef; b: CellRef } = {
  * whole arrival at the suite's own frame size.
  */
 const WATCH_FRAMES = 32;
+
+/** Where `CONTINUE` sits on the level-clear menu, from specs/ui.md's `LEVELCLEAR_ITEMS`. */
+const CONTINUE_INDEX = LEVELCLEAR_ITEMS.indexOf("CONTINUE");
 
 let h: Harness;
 
@@ -113,7 +117,10 @@ it("deals every gem in from above its row", async () => {
     );
 
     // The reading, taken at the pose and before any frame has run.
-    h.debug.continueLevel();
+    // CONTINUE is really CHOSEN, which is what the item says: the highlight is
+    // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+    // it, through the key specs/controls.md binds and the build's own input path.
+    await takeMenuItem(h, CONTINUE_INDEX);
     const reading = h.snapshot();
     await h.advance(WATCH_FRAMES);
     return reading;

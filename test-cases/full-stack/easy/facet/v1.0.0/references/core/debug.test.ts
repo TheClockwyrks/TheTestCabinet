@@ -15,9 +15,12 @@ import {
 import { cellX, cellY, formatBoard, withGem } from "./board";
 import { requestSwap, stepHold, tick } from "./chain";
 import {
+  clearBoard,
+  clearChain,
   clearOffer,
+  clearRefusal,
   clearSelection,
-  continueLevel,
+  dealBoard,
   loadBoard,
   poseSwap,
   reset,
@@ -26,13 +29,17 @@ import {
   setGem,
   setLevel,
   setLevelScore,
+  setMenuIndex,
+  setMoveScore,
   setOffer,
   setScore,
+  setScreen,
   setSelection,
   snapshot,
 } from "./debug";
 import { quietRows, quietRowsWith } from "./fixtures";
 import {
+  continueLevel,
   openHowTo,
   pauseGame,
   quitToTitle,
@@ -45,7 +52,7 @@ import { createInitialState, type FacetState } from "./state";
 const title = () => createInitialState(1);
 
 const play = (edits: Readonly<Record<string, string>> = {}): FacetState =>
-  loadBoard(createInitialState(1), quietRowsWith(edits));
+  setScreen(loadBoard(createInitialState(1), quietRowsWith(edits)), "playing");
 
 const ROW_RUN = { "3,3": "R0", "4,4": "R0" };
 const ROW_RUN_SWAP = { a: { col: 3, row: 3 }, b: { col: 3, row: 4 } };
@@ -284,18 +291,13 @@ describe("reset", () => {
 });
 
 describe("loadBoard", () => {
-  it("poses the board and moves to playing, settled and nothing held", () => {
-    const posed = loadBoard({ ...title(), armedTarget: "menu-0" }, quietRows());
-    expect(posed.screen).toBe("playing");
-    expect(posed.phase).toBe("idle");
-    expect(posed.chainStep).toBe(0);
-    expect(posed.swapTimer).toBe(0);
-    expect(posed.stepTimer).toBe(0);
-    expect(posed.selection).toBeNull();
-    expect(posed.offer).toBeNull();
-    expect(posed.refusal).toBeNull();
-    expect(posed.armedTarget).toBeNull();
+  it("writes the board and nothing else", () => {
+    const before = { ...title(), armedTarget: "menu-0", menuIndex: 1 };
+    const posed = loadBoard(before, quietRows());
     expect(formatBoard(posed.board)).toEqual(quietRows());
+    expect(posed.screen).toBe("title");
+    expect(posed.menuIndex).toBe(1);
+    expect(posed.armedTarget).toBe("menu-0");
   });
 
   it("stands every gem of a posed board still, so every cell reports 0", () => {
@@ -338,6 +340,61 @@ describe("loadBoard", () => {
 
   it("refuses a board that is not the notation", () => {
     expect(() => loadBoard(title(), ["R0"])).toThrow();
+  });
+});
+
+describe("the single-element poses", () => {
+  it("setScreen shows a screen and touches nothing else", () => {
+    const before = play(ROW_RUN);
+    const after = setScreen(before, "paused");
+    expect(after).toEqual({ ...before, screen: "paused" });
+  });
+
+  it("setMenuIndex highlights an item and touches nothing else", () => {
+    const before = title();
+    expect(setMenuIndex(before, 1)).toEqual({ ...before, menuIndex: 1 });
+  });
+
+  it("dealBoard deals an opening board and leaves the screen alone", () => {
+    const before = title();
+    const after = dealBoard(before);
+    expect(after.screen).toBe("title");
+    expect(after.board.cols).toBe(GRID_COLS);
+    expect(after.board.rows).toBe(GRID_ROWS);
+    expect(snapshot(after).legalSwap).toBe(true);
+  });
+
+  it("clearBoard leaves no board in play and touches nothing else", () => {
+    const before = play();
+    const after = clearBoard(before);
+    expect(after.board).toEqual({ cols: 0, rows: 0, gems: [] });
+    expect(after.screen).toBe("playing");
+  });
+
+  it("clearChain settles resolution and leaves the board as it found it", () => {
+    const running = move(play(ROW_RUN));
+    expect(running.phase).toBe("resolving");
+    const settled = clearChain(running);
+    expect(settled.phase).toBe("idle");
+    expect(settled.chainStep).toBe(0);
+    expect(settled.swapTimer).toBe(0);
+    expect(settled.stepTimer).toBe(0);
+    expect(formatBoard(settled.board)).toEqual(formatBoard(running.board));
+  });
+
+  it("clearRefusal drops a standing refusal and touches nothing else", () => {
+    const refused = poseSwap(play(), 0, 0, 1, 0);
+    expect(refused.refusal).not.toBeNull();
+    const cleared = clearRefusal(refused);
+    expect(cleared.refusal).toBeNull();
+    expect(formatBoard(cleared.board)).toEqual(formatBoard(refused.board));
+  });
+
+  it("setMoveScore sets moveScore and leaves bestMove alone", () => {
+    const before = setBestMove(play(), 900);
+    const after = setMoveScore(before, 120);
+    expect(after.moveScore).toBe(120);
+    expect(after.bestMove).toBe(900);
   });
 });
 

@@ -53,18 +53,71 @@
 // runtime's.
 //
 // ONE SERVER, ONE BROWSER, ONE PAGE PER HARNESS. `globalSetup.ts` starts the
-// server and the browser once for the whole project; this module connects to them
-// from inside each suite's worker and opens a page per harness, so every check
-// drives a build that has just started and no check can be affected by what the
-// one before it pressed, opened or muted.
+// server and the browser once for the whole project; this module takes a page off
+// them per harness, so every check drives a build that has just started and no
+// check can be affected by what the one before it pressed, opened or muted.
+//
+// THE MACHINERY THAT DOES ALL OF THAT IS NOT FACET'S. Finding and launching
+// Chromium, serving the built site, holding one browser per worker, instrumenting
+// a context with the draw-command recorder and the audio probe, reading the
+// build's surface and reporting what is wrong with it, the frame clocks, the
+// viewport fit, the readings taken off a frame, and the replay document a review
+// point's evidence is written as — every engineless case needs exactly that, and
+// it lives once, in `@test-cabinet/case-harness`, staged beside this file as
+// `./case-harness/`. What stays here is what is genuinely Facet's.
+//
+// WHAT IS GENUINELY FACET'S, AND WHY THIS FILE STILL BUILDS ITS OWN HARNESS.
+// Three things the shared kit's own `createHarness` does not carry, and every one
+// of them is load-bearing for a review point:
+//
+//   - THE REQUEST LOG. `assets/` reads WHERE a build loaded from — that a
+//     produced file was asked for at all, that it was named page-relative rather
+//     than from the origin root, and which one never arrived. That log has to be
+//     attached before the page navigates, and the kit navigates inside itself.
+//   - THE SERVED TREE A CHECK POSES. `runs/` mounts the build under a sub-path
+//     and serves it with its produced files stripped, both by intercepting on the
+//     wire before the first request goes out.
+//   - `advanceSeconds(span, frames)`. `instrumentation/delta-time-independent`
+//     needs `advance(1, 1)` and `advance(1, 60)` as ONE call each, so the BUILD
+//     divides the interval rather than this harness.
+//
+// Everything under those three is the package's.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { expect, inject } from "vitest";
-import type { Browser, BrowserContext, Page } from "playwright";
-import { connectChromium } from "./chromium";
+import { inject } from "vitest";
+import type { Page } from "playwright";
+import {
+  ConstantClock,
+  JitterClock,
+  PROVIDE_SURFACE_ABSENT_KEY,
+  PROVIDE_URL_KEY,
+  SequenceClock,
+  closeWorkerBrowser,
+  contextFor,
+  fitViewport as fitStage,
+  makeFailSurface,
+  mediaDestination as mediaPath,
+  openPages,
+  readSurfaceFault,
+  resolveConfig,
+  retable,
+  surfaceRequirement,
+  thinReplay,
+  toDrawCall,
+  toDevice as toDeviceOf,
+  unexposedSurface,
+  type Clock,
+  type DrawCall,
+  type Pixel,
+  type RecordedOp,
+  type Recording,
+  type ResolvedConfig,
+  type Rgb,
+  type Viewport,
+} from "./case-harness/index";
 import { fail } from "./assert";
 import {
   type ActionName,
@@ -99,6 +152,7 @@ import {
   REQUIRED_OPS,
   type FacetSnapshot,
   type FacetWindowApi,
+  type Screen,
 } from "./surface";
 
 export { TICK_HZ, TICK_MS, MAX_REPLAY_FRAMES } from "./constants";
@@ -112,14 +166,11 @@ export type {
   Screen,
 } from "./surface";
 
-declare module "vitest" {
-  export interface ProvidedContext {
-    /** Where the built site is served, from `globalSetup.ts`. */
-    facetUrl: string;
-    /** The one Chromium every suite worker connects to. */
-    facetBrowserWs: string;
-  }
-}
+// The keys the served build's URL and the shared browser's endpoint arrive
+// under are the shared harness's, declared once there for every engineless case:
+// two cases type-checked together that each declared their own would collide,
+// which is exactly what one shared set avoids. `globalSetup.ts` provides them
+// and this module reads them by the package's own constants.
 
 /* -------------------------------------------------------------------------- */
 /* The step schedule                                                          */
@@ -133,88 +184,19 @@ declare module "vitest" {
 // step size drives the same scenario under the other two schedules here.
 
 /**
- * A source of frame deltas, in milliseconds.
+ * A source of frame deltas, in milliseconds, and the three schedules a check may
+ * drive under.
  *
- * Under the two engines this and the three clocks below are RE-EXPORTED from the
- * engine package, so a suite imports its clocks from `./harness` whichever engine
- * ran and the three read the same. There is no engine here to re-export from, so
- * this project owns them — same names, same behavior, same seeded jitter
- * constants — and turns each delta into its own `__facet.advance(dt, 1)`.
+ * THE SHARED HARNESS'S, not this project's. Under the two engines these are
+ * re-exported from the engine package, so a suite imports its clocks from
+ * `./harness` whichever engine ran and the three read the same; there is no
+ * engine here to re-export from, so they come from `@test-cabinet/case-harness`,
+ * whose copies are the same names, the same behavior and the same seeded jitter
+ * constants. What this project does with a delta is its own: each one becomes a
+ * `__facet.advance(dt / 1000, 1)`.
  */
-export interface Clock {
-  /** The next frame's delta, in ms. */
-  delta(nowMs?: number): number;
-}
-
-/** Every frame the same length. */
-export class ConstantClock implements Clock {
-  constructor(private readonly ms: number) {}
-  delta(): number {
-    return this.ms;
-  }
-}
-
-/** A repeating pattern of steps: what an uneven but predictable display gives. */
-export class SequenceClock implements Clock {
-  private index = 0;
-  constructor(private readonly stepsMs: readonly number[]) {
-    if (stepsMs.length === 0) {
-      throw new RangeError("SequenceClock needs at least one step, got none");
-    }
-  }
-  delta(): number {
-    const step = this.stepsMs[this.index % this.stepsMs.length];
-    this.index += 1;
-    return step;
-  }
-}
-
-/**
- * A hash of the seed and the frame index, avalanched so that neighboring
- * indices — which is all a frame counter ever produces — do not yield
- * neighboring outputs. The constants and the order are the engine's
- * (`packages/simple-2d/src/clocks.ts`), so a seed means the same thing under all
- * three engines' harnesses.
- */
-function hash32(seed: number, index: number): number {
-  let h =
-    (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(index | 0, 0x85ebca6b)) >>> 0;
-  h = (h ^ (h >>> 16)) >>> 0;
-  h = Math.imul(h, 0x21f0aaad) >>> 0;
-  h = (h ^ (h >>> 15)) >>> 0;
-  h = Math.imul(h, 0x735a2d97) >>> 0;
-  h = (h ^ (h >>> 15)) >>> 0;
-  return h >>> 0;
-}
-
-/**
- * A seeded draw from a range, indexed by frame: the clock that stands in for a
- * real machine under load. The seed is mandatory, because a claim that a build is
- * delta-time independent is worth making only when the failing case replays.
- */
-export class JitterClock implements Clock {
-  private index = 0;
-  private readonly spanMs: number;
-  constructor(
-    private readonly minMs: number,
-    maxMs: number,
-    private readonly seed: number,
-  ) {
-    if (maxMs < minMs) {
-      throw new RangeError(
-        `JitterClock needs maxMs >= minMs, got minMs ${minMs} and maxMs ${maxMs}`,
-      );
-    }
-    this.spanMs = maxMs - minMs;
-  }
-  delta(): number {
-    const index = this.index;
-    this.index += 1;
-    return (
-      this.minMs + (hash32(this.seed, index) / 0x1_0000_0000) * this.spanMs
-    );
-  }
-}
+export { ConstantClock, JitterClock, SequenceClock };
+export type { Clock };
 
 /** Seconds of simulated time in `frames` frames of the default clock. */
 export function seconds(frames: number): number {
@@ -225,30 +207,15 @@ export function seconds(frames: number): number {
 /* What a check reads                                                         */
 /* -------------------------------------------------------------------------- */
 
-/** Where a `fillText`/`strokeText` put its run, and how wide it measured. */
-export interface TextGeometry {
-  transform: {
-    a: number;
-    b: number;
-    c: number;
-    d: number;
-    e: number;
-    f: number;
-  };
-  width: number;
-  textAlign: string;
-}
-
 /**
- * One recorded operation on the 2D context, in the order the render made it.
+ * One recorded operation on the 2D context, in the order the render made it, and
+ * where a `fillText` put its run.
  *
- * `text` is carried only on a `fillText` or a `strokeText`, and only where the
- * recorder could measure the run — so a check that wants geometry rather than
- * copy guards on it before reading it.
+ * THE SHARED HARNESS'S, because the document a replay is written as is the
+ * console player's rather than this case's: the recorder that produces these is
+ * the package's injected one, and the two have to agree call for call.
  */
-export type DrawCall =
-  | { kind: "call"; method: string; args: unknown[]; text?: TextGeometry }
-  | { kind: "set"; property: string; value: unknown };
+export type { DrawCall, TextGeometry } from "./case-harness/index";
 
 /**
  * A sound the build emitted, and the frame of the drive it emitted it on.
@@ -288,11 +255,15 @@ export interface AssetFailure {
   reason: string;
 }
 
-/** A color read off the canvas. */
-export type Rgb = { r: number; g: number; b: number };
-
-/** A device pixel, as the canvas holds it. */
-export type Rgba = [number, number, number, number];
+/**
+ * A color read off the canvas, and a device pixel as the canvas holds it.
+ *
+ * THE SHARED HARNESS'S. `Rgba` is this case's name for the package's `Pixel`,
+ * kept because the two engine projects' harnesses spell it that way too and the
+ * same suite text has to compile against all three.
+ */
+export type { Rgb } from "./case-harness/index";
+export type Rgba = Pixel;
 
 /** A square of device pixels read off the canvas, centered on a cell. */
 export interface Patch {
@@ -304,14 +275,13 @@ export interface Patch {
   data: Uint8ClampedArray;
 }
 
-/** How the stage is mapped onto the canvas: one uniform scale and a letterbox. */
-export interface Viewport {
-  width: number;
-  height: number;
-  scale: number;
-  offsetX: number;
-  offsetY: number;
-}
+/**
+ * How the stage is mapped onto the canvas: one uniform scale and a letterbox.
+ *
+ * THE SHARED HARNESS'S, and the same shape the two engine projects re-export
+ * from their engine.
+ */
+export type { Viewport };
 
 export interface HarnessOptions {
   /** The clock each frame takes its delta from. Defaults to 64 Hz. */
@@ -592,7 +562,8 @@ export interface Harness {
    *
    * `specs/instrumentation.md` puts the version in two places — on the surface
    * ("carries `version` … a plain number") and in the snapshot — so
-   * `instrumentation/debug-api` reads both, and this is the surface half. One
+   * `instrumentation/debug-api-version` reads both, and this is the surface half.
+   * One
    * spelling under all three engines: {@link Harness.probe} reports only the
    * `typeof` of a name, and the surface's own members are not otherwise
    * reachable as values under every engine.
@@ -661,13 +632,6 @@ export interface Harness {
 }
 
 /* -------------------------------------------------------------------------- */
-/* The page                                                                   */
-/* -------------------------------------------------------------------------- */
-
-/** The init scripts injected before any of the build's own script runs. */
-const INIT_SCRIPTS = ["recorder-init.js", "audio-init.js"] as const;
-
-/* -------------------------------------------------------------------------- */
 /* The build's own tree, and the addresses derived from it                    */
 /* -------------------------------------------------------------------------- */
 //
@@ -681,6 +645,49 @@ export const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /** The workspace the build was produced in: the directory above this project. */
 export const WORKSPACE_ROOT = resolve(PROJECT_ROOT, "..");
+
+/** The specification a surface fault points the build's author at. */
+const SPEC_PATH = "specs/instrumentation.md";
+
+/**
+ * Facet, as the shared harness needs to know it.
+ *
+ * ONE OBJECT, and every value in it is the case's: the global the specification
+ * told the build to install its surface on, the operations that specification
+ * requires, the logical stage its coordinates are stated in, and the rate this
+ * suite steps at. The package's browser, its context, its recorder and its
+ * surface probe are all driven from here, so nothing about Facet is baked into
+ * the package and nothing about the package is baked into a figure of Facet's.
+ *
+ * `projectRoot` MUST come from this module and never from the package's: the
+ * package is staged one directory deeper, and a produced replay or still is
+ * addressed relative to it.
+ */
+const CASE: ResolvedConfig = resolveConfig({
+  slug: "facet",
+  handle: HANDLE,
+  requiredOps: REQUIRED_OPS,
+  // `advance(seconds, frames)`: a span of simulated time divided into whole
+  // frames, so the harness's clock decides how long a frame is.
+  step: { kind: "seconds-frames", op: "advance" },
+  stage: { width: STAGE_W, height: STAGE_H },
+  tickHz: TICK_HZ,
+  defaultSeed: DEFAULT_SEED,
+  // A GENUINE browser gesture, so the build's audio context can open: a build is
+  // free to open its audio from a real DOM event alone, so a gesture delivered
+  // any other way would leave a perfectly good build silent. A KEY rather than a
+  // click, because Facet's pointer works the board and every screen's targets, so
+  // a press anywhere is a press on something. `UNBOUND_KEY` is bound to nothing
+  // in specs/controls.md's whole binding table.
+  arm: { kind: "key", code: UNBOUND_KEY },
+  // A build installs its surface while its entry module runs, so a page that has
+  // fired `load` has either installed it already or is not going to. Facet's
+  // build decodes its whole produced asset set before its first frame, so the
+  // wait is the generous one rather than the short one.
+  surfaceTimeoutMs: 15_000,
+  specPath: SPEC_PATH,
+  projectRoot: PROJECT_ROOT,
+});
 
 /**
  * The built site, or the committed `public/` tree when nothing has been built:
@@ -743,88 +750,33 @@ function normalizeBasePath(basePath: string): string {
   return trimmed === "" ? "/" : `/${trimmed}/`;
 }
 
-/**
- * How long the surface is waited for before the build is called non-conformant.
- *
- * Generous against a conformant build and cheap against one: the wait is a poll
- * that returns the instant the global appears, and a build installs it while its
- * entry module runs. What the ceiling really bounds is the cost of a build with no
- * surface at all, which pays it once per harness.
- */
-const SURFACE_TIMEOUT_MS = 5_000;
-
 /** Real milliseconds a warm-up waits between attempts, and how many it makes. */
 const AUDIO_WARM_POLL_MS = 50;
 const AUDIO_WARM_ATTEMPTS = 40;
 
-let browserPromise: Promise<Browser> | null = null;
-
-async function sharedBrowser(): Promise<Browser> {
-  browserPromise ??= connectChromium(inject("facetBrowserWs"));
-  return browserPromise;
-}
-
 /**
- * One browser context per WINDOW SHAPE, shared by every harness of that shape in
- * this file, and one PAGE per harness inside it.
+ * The browser, the instrumented context, and the pages this worker opened.
  *
- * The split is what the init scripts force and what correctness wants. The
- * recorder and the audio probe are installed on the CONTEXT, so every page it
- * opens is instrumented before a line of the build's script runs, and a context is
- * also where the viewport and the device pixel ratio are fixed. Everything else
- * about a harness is the page: a fresh one opens on a build that has just started,
- * with no key held, no audio context opened and the mute preference back off,
- * which is a stronger guarantee than any reset the surface offers, since `reset()`
- * deliberately leaves muting alone.
- */
-const contexts = new Map<string, BrowserContext>();
-
-/** Every page this worker opened, so none is left behind in the shared browser. */
-const openPages = new Set<Page>();
-
-function shapeKey(cssWidth: number, cssHeight: number, dpr: number): string {
-  return `${cssWidth}x${cssHeight}@${dpr}`;
-}
-
-/** The context for a window of this shape, opened and instrumented on demand. */
-async function contextFor(
-  cssWidth: number,
-  cssHeight: number,
-  dpr: number,
-): Promise<BrowserContext> {
-  const key = shapeKey(cssWidth, cssHeight, dpr);
-  const existing = contexts.get(key);
-  if (existing !== undefined) return existing;
-
-  const browser = await sharedBrowser();
-  const context = await browser.newContext({
-    viewport: { width: cssWidth, height: cssHeight },
-    deviceScaleFactor: dpr,
-  });
-  for (const name of INIT_SCRIPTS) {
-    await context.addInitScript(readFileSync(join(PROJECT_ROOT, name), "utf8"));
-  }
-  contexts.set(key, context);
-  return context;
-}
-
-/**
- * Shut everything this worker opened.
+ * ALL THREE ARE THE SHARED HARNESS'S. Connecting to the one Chromium
+ * `globalSetup.ts` launched, opening one context per WINDOW SHAPE with the
+ * draw-command recorder and the audio probe installed on it before a line of the
+ * build's script runs, holding a page per harness inside that context, and
+ * shutting the lot when the worker's last file is done — none of that is about
+ * Facet, and it lives in `@test-cabinet/case-harness`.
  *
- * Registered from `setup.ts` as an `afterAll`, so a suite file never has to think
- * about it and a worker cannot leave a page behind in the shared browser.
+ * The context split is what the init scripts force and what correctness wants.
+ * The recorder and the audio probe are installed on the CONTEXT, so every page
+ * it opens is instrumented before a line of the build's script runs, and a
+ * context is also where the viewport and the device pixel ratio are fixed.
+ * Everything else about a harness is the page: a fresh one opens on a build that
+ * has just started, with no key held, no audio context opened and the mute
+ * preference back off, which is a stronger guarantee than any reset the surface
+ * offers, since `reset()` deliberately leaves muting alone.
+ *
+ * `openPages` is the package's own set, so `dispose` below and the `afterAll`
+ * `setup.ts` registers are talking about the same pages.
  */
-export async function closeWorkerBrowser(): Promise<void> {
-  for (const page of openPages) await page.close().catch(() => undefined);
-  openPages.clear();
-  for (const context of contexts.values()) {
-    await context.close().catch(() => undefined);
-  }
-  contexts.clear();
-  const browser = browserPromise;
-  browserPromise = null;
-  if (browser !== null) await (await browser).close().catch(() => undefined);
-}
+export { closeWorkerBrowser };
 
 /* -------------------------------------------------------------------------- */
 /* The surface a build never installed                                        */
@@ -843,13 +795,7 @@ export async function closeWorkerBrowser(): Promise<void> {
  * verdict below with noise from the machinery that was trying to report it.
  */
 export function missingSurface(reason: string): AsyncSurface<FacetWindowApi> {
-  return new Proxy({} as AsyncSurface<FacetWindowApi>, {
-    get: (_target, property): unknown => {
-      if (typeof property === "symbol") return undefined;
-      if (property === "then" || property === "constructor") return undefined;
-      return () => failSurface(reason);
-    },
-  });
+  return unexposedSurface<AsyncSurface<FacetWindowApi>>(reason, failSurface);
 }
 
 /**
@@ -894,53 +840,17 @@ export function readDebugSurface(
  * What `specs/instrumentation.md` requires of the surface: the `Expected:` line of
  * the failure a build with no usable surface lands on every check that reaches for
  * it, beside the {@link Harness.surfaceFault} that says what was found.
+ *
+ * Composed by the shared harness from the handle and the spec path, so the
+ * sentence a reviewer reads is the same one every engineless case prints.
  */
-export const SURFACE_REQUIREMENT =
-  `a usable debug and automation surface on window.${HANDLE} as soon as the ` +
-  `game has initialized, carrying every operation specs/instrumentation.md ` +
-  `requires`;
+export const SURFACE_REQUIREMENT = surfaceRequirement(HANDLE, SPEC_PATH);
 
 /**
  * Fail the running check on `fault`, the harness's account of what is wrong with
  * the build's surface, paired with what the specification requires.
  */
-export function failSurface(fault: string): never {
-  return fail(SURFACE_REQUIREMENT, fault);
-}
-
-/**
- * What is wrong with the surface this page installed, or `null` when nothing is:
- * the surface never appeared, or it appeared without an operation the
- * specification requires.
- */
-async function readSurfaceFault(page: Page): Promise<string | null> {
-  try {
-    await page.waitForFunction(
-      (handle) =>
-        typeof (window as never)[handle] === "object" &&
-        (window as never)[handle] !== null,
-      HANDLE,
-      { timeout: SURFACE_TIMEOUT_MS },
-    );
-  } catch {
-    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
-  }
-  const missing = await page.evaluate(
-    ([handle, ops]) => {
-      const target = (
-        window as unknown as Record<string, Record<string, unknown>>
-      )[handle];
-      return ops.filter((op) => typeof target[op] !== "function");
-    },
-    [HANDLE, [...REQUIRED_OPS]] as const,
-  );
-  if (missing.length > 0) {
-    return `window.${HANDLE} is installed but carries no ${missing
-      .map((op) => `${op}()`)
-      .join(", ")}`;
-  }
-  return null;
-}
+export const failSurface = makeFailSurface(SURFACE_REQUIREMENT);
 
 /* -------------------------------------------------------------------------- */
 /* Building one                                                               */
@@ -964,7 +874,7 @@ export async function createHarness(
   const seed = options.seed ?? DEFAULT_SEED;
   const serveAssets = options.assets ?? true;
   const basePath = normalizeBasePath(options.basePath ?? "/");
-  const context = await contextFor(cssWidth, cssHeight, dpr);
+  const context = await contextFor({ cssWidth, cssHeight, dpr }, CASE);
   const page = await context.newPage();
   openPages.add(page);
 
@@ -1008,6 +918,15 @@ export async function createHarness(
   // page asks over HTTP, so both are answered on the wire rather than in a loader.
   // A route is installed only when one of them is actually posed, so the ordinary
   // harness carries no interception at all.
+  //
+  // THE MOUNT IS THE HARNESS'S, NOT THE SERVER'S. The static server the shared
+  // harness runs publishes the build at the root and nowhere else, which is what
+  // makes it strict; the sub-path `specs/assets.md` describes — "it is played
+  // back mounted under a per-run sub-path, a path like `/runs/<id>/build/`" — is
+  // posed here, by refusing anything that reaches outside the mount and stripping
+  // the mount off everything that stays inside it. So the request the build made
+  // is what a check reads, and the file the server hands back is the one that
+  // request would have found under the mount.
   if (basePath !== "/" || !serveAssets) {
     await page.route("**/*", (route, request) => {
       const path = pathOf(request.url());
@@ -1024,14 +943,20 @@ export async function createHarness(
         void route.fulfill({ status: 404, body: "not found" });
         return;
       }
-      void route.continue();
+      if (basePath === "/") {
+        void route.continue();
+        return;
+      }
+      const under = new URL(request.url());
+      under.pathname = `/${path.slice(basePath.length)}`;
+      void route.continue({ url: under.href });
     });
   }
 
   // Never throws from here: a page that will not load is a fault to be reported
   // on the checks that reach through the surface, alongside every other way a
   // build can fail to stand up, rather than an exception out of a `beforeEach`.
-  const url = new URL(basePath, inject("facetUrl")).href;
+  const url = new URL(basePath, inject(PROVIDE_URL_KEY)).href;
   let loadFault: string | null = null;
   try {
     await page.goto(url, { waitUntil: "load" });
@@ -1041,7 +966,19 @@ export async function createHarness(
     }`;
   }
 
-  const surfaceFault = loadFault ?? (await readSurfaceFault(page));
+  const surfaceFault =
+    loadFault ??
+    (await readSurfaceFault(
+      page,
+      HANDLE,
+      REQUIRED_OPS,
+      CASE.surfaceTimeoutMs,
+      loadFault === null,
+      // The answer `globalSetup.ts` already bought for the whole run, on pages
+      // of its own and for the whole of the ceiling. Without it a build that
+      // installs no surface at all pays the ceiling once per harness.
+      inject(PROVIDE_SURFACE_ABSENT_KEY),
+    ));
   const refuse = (): never => failSurface(surfaceFault ?? "");
 
   const call = async (operation: string, args: unknown[]): Promise<unknown> => {
@@ -1063,7 +1000,7 @@ export async function createHarness(
   if (surfaceFault === null) {
     // Off the wall clock and back to a known title screen before a check touches
     // anything: from here the game changes only when this harness says so, and the
-    // deal a `start` makes is the one this seed makes.
+    // deal a fresh round makes is the one this seed makes.
     await call("setAutoStep", [false]);
     await call("reset", [{ seed }]);
     // And a recorder over the surface before a check can arm one. A build is free
@@ -1073,12 +1010,12 @@ export async function createHarness(
     // nothing and writes no evidence for a section that drew.
     await page
       .waitForFunction(
-        () =>
-          (
-            window as unknown as { __facetRec: { ready(): boolean } }
-          ).__facetRec.ready(),
-        undefined,
-        { timeout: SURFACE_TIMEOUT_MS },
+        (recorder) =>
+          (window as unknown as Record<string, { ready(): boolean }>)[
+            recorder
+          ].ready(),
+        CASE.recorderGlobal,
+        { timeout: CASE.surfaceTimeoutMs },
       )
       .catch(() => undefined);
   }
@@ -1126,7 +1063,7 @@ export async function createHarness(
     const deltas: number[] = [];
     for (let i = 0; i < frames; i += 1) deltas.push(clock.delta());
     const result = (await page.evaluate(
-      ([handle, dts]) => {
+      ([handle, recorder, prober, dts]) => {
         const api = (
           window as unknown as Record<
             string,
@@ -1134,31 +1071,36 @@ export async function createHarness(
           >
         )[handle];
         const rec = (
-          window as unknown as {
-            __facetRec: Record<string, (...a: unknown[]) => unknown>;
-          }
-        ).__facetRec;
+          window as unknown as Record<
+            string,
+            Record<string, (...a: unknown[]) => unknown>
+          >
+        )[recorder];
+        // The package's probe counts every sound and the looping ones apart, so
+        // the one-shots are the difference. Both are cumulative, and this reads
+        // them either side of a frame, so the mapping is exact.
         const audio = (
-          window as unknown as {
-            __facetAudio: { oneShots(): number; loops(): number };
-          }
-        ).__facetAudio;
+          window as unknown as Record<
+            string,
+            { started(): number; loopStarts(): number }
+          >
+        )[prober];
         const oneShots: number[] = [];
         const loops: number[] = [];
         const ops: unknown[][] = [];
         for (const dt of dts) {
-          const shotsBefore = audio.oneShots();
-          const loopsBefore = audio.loops();
+          const shotsBefore = audio.started() - audio.loopStarts();
+          const loopsBefore = audio.loopStarts();
           rec.begin();
           api.advance(dt / 1000, 1);
           rec.end(dt);
-          oneShots.push(audio.oneShots() - shotsBefore);
-          loops.push(audio.loops() - loopsBefore);
+          oneShots.push(audio.started() - audio.loopStarts() - shotsBefore);
+          loops.push(audio.loopStarts() - loopsBefore);
           ops.push(rec.last() as unknown[]);
         }
         return { snapshot: api.snapshot(), oneShots, loops, ops };
       },
-      [HANDLE, deltas] as const,
+      [HANDLE, CASE.recorderGlobal, CASE.audioGlobal, deltas] as const,
     )) as {
       snapshot: FacetSnapshot;
       oneShots: number[];
@@ -1249,7 +1191,7 @@ export async function createHarness(
       // boundaries inside an `advance` it did not drive.
       const ms = span * 1000;
       const sounds = (await page.evaluate(
-        ([handle, secs, count, deltaMs]) => {
+        ([handle, recorder, prober, secs, count, deltaMs]) => {
           const api = (
             window as unknown as Record<
               string,
@@ -1257,27 +1199,36 @@ export async function createHarness(
             >
           )[handle];
           const rec = (
-            window as unknown as {
-              __facetRec: Record<string, (...a: unknown[]) => unknown>;
-            }
-          ).__facetRec;
+            window as unknown as Record<
+              string,
+              Record<string, (...a: unknown[]) => unknown>
+            >
+          )[recorder];
           const audio = (
-            window as unknown as {
-              __facetAudio: { oneShots(): number; loops(): number };
-            }
-          ).__facetAudio;
-          const shotsBefore = audio.oneShots();
-          const loopsBefore = audio.loops();
+            window as unknown as Record<
+              string,
+              { started(): number; loopStarts(): number }
+            >
+          )[prober];
+          const shotsBefore = audio.started() - audio.loopStarts();
+          const loopsBefore = audio.loopStarts();
           rec.begin();
           api.advance(secs, count);
           rec.end(deltaMs);
           return {
-            oneShots: audio.oneShots() - shotsBefore,
-            loops: audio.loops() - loopsBefore,
+            oneShots: audio.started() - audio.loopStarts() - shotsBefore,
+            loops: audio.loopStarts() - loopsBefore,
             ops: rec.last(),
           };
         },
-        [HANDLE, span, frames, ms] as const,
+        [
+          HANDLE,
+          CASE.recorderGlobal,
+          CASE.audioGlobal,
+          span,
+          frames,
+          ms,
+        ] as const,
       )) as { oneShots: number; loops: number; ops: RecordedOp[] };
       frameCount += frames;
       timeMs += ms;
@@ -1311,10 +1262,10 @@ export async function createHarness(
       // does not rest on a flag alone.
       await page.bringToFront().catch(() => undefined);
       await page.evaluate(
-        ([handle]) => {
-          (
-            window as unknown as { __facetRec: { setMode(m: string): void } }
-          ).__facetRec.setMode("raf");
+        ([handle, recorder]) => {
+          (window as unknown as Record<string, { setMode(m: string): void }>)[
+            recorder
+          ].setMode("raf");
           (
             window as unknown as Record<
               string,
@@ -1322,22 +1273,22 @@ export async function createHarness(
             >
           )[handle].setAutoStep(true);
         },
-        [HANDLE] as const,
+        [HANDLE, CASE.recorderGlobal] as const,
       );
       await page.waitForTimeout(ms);
       await page.evaluate(
-        ([handle]) => {
+        ([handle, recorder]) => {
           (
             window as unknown as Record<
               string,
               { setAutoStep(on: boolean): void }
             >
           )[handle].setAutoStep(false);
-          (
-            window as unknown as { __facetRec: { setMode(m: string): void } }
-          ).__facetRec.setMode("manual");
+          (window as unknown as Record<string, { setMode(m: string): void }>)[
+            recorder
+          ].setMode("manual");
         },
-        [HANDLE] as const,
+        [HANDLE, CASE.recorderGlobal] as const,
       );
     },
 
@@ -1505,10 +1456,12 @@ export async function createHarness(
 
     async warmAudio() {
       const heard = async (): Promise<number> =>
-        page.evaluate(() =>
-          (
-            window as unknown as { __facetAudio: { started(): number } }
-          ).__facetAudio.started(),
+        page.evaluate(
+          (prober) =>
+            (window as unknown as Record<string, { started(): number }>)[
+              prober
+            ].started(),
+          CASE.audioGlobal,
         );
       await this.armAudio();
       for (let attempt = 0; attempt < AUDIO_WARM_ATTEMPTS; attempt += 1) {
@@ -1564,27 +1517,16 @@ export function fitViewport(
   cssHeight: number,
   dpr: number,
 ): Viewport {
-  const deviceWidth = Math.round(cssWidth * dpr);
-  const deviceHeight = Math.round(cssHeight * dpr);
-  const scale = Math.min(cssWidth / STAGE_W, cssHeight / STAGE_H) * dpr;
-  return {
-    width: STAGE_W,
-    height: STAGE_H,
-    scale,
-    offsetX: (deviceWidth - STAGE_W * scale) / 2,
-    offsetY: (deviceHeight - STAGE_H * scale) / 2,
-  };
+  return fitStage(cssWidth, cssHeight, dpr, CASE.stage);
 }
 
+/** Where a logical point lands in the canvas's backing store. */
 function toDevice(
   view: Viewport,
   x: number,
   y: number,
 ): { x: number; y: number } {
-  return {
-    x: Math.round(view.offsetX + x * view.scale),
-    y: Math.round(view.offsetY + y * view.scale),
-  };
+  return toDeviceOf(view, x, y);
 }
 
 /**
@@ -1614,23 +1556,15 @@ function toClient(
 /* Draw calls                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** One operation as the injected recorder writes it. */
-export type RecordedOp =
-  | { op: "call"; method: string; args: unknown[]; text?: TextGeometry }
-  | { op: "set"; property: string; value: unknown };
+/**
+ * One operation as the injected recorder writes it, and its reading as a
+ * {@link DrawCall}.
+ *
+ * THE SHARED HARNESS'S, both of them: the recorder that writes these is the
+ * package's, so the shape it writes and the reading of it are the package's too.
+ */
+export { toDrawCall, type RecordedOp } from "./case-harness/index";
 
-function toDrawCall(op: RecordedOp): DrawCall {
-  if (op.op !== "call") {
-    return { kind: "set", property: op.property, value: op.value };
-  }
-  const call: DrawCall = { kind: "call", method: op.method, args: op.args };
-  // Carried only where the recorder could measure the run: a `fillText` or a
-  // `strokeText`, on a context that answered `measureText`.
-  if (op.text !== undefined) call.text = op.text;
-  return call;
-}
-
-/** Every argument list `method` was called with, in order. */
 export function callsTo(
   calls: readonly DrawCall[],
   method: string,
@@ -1870,302 +1804,54 @@ export function meanColor(patch: Patch): Rgb {
 // 4. IT COSTS NOTHING WHEN NOBODY IS COLLECTING. Outside a run the media directory
 //    is unset and the whole thing is a no-op that still runs the scenario.
 
-/** The environment variable the runner names the media directory in. */
-export const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
-
 /**
- * The directory the runner stages this project to inside the build's tree.
+ * Where a produced output is written, and under what name.
  *
- * A recording is addressed by the STAGED path of the suite that produced it —
- * `validation/moves/r1-adjacent-accepted.test.ts` — because that is the path the
- * review item's declared script resolves to, and so the only name the case's
- * manifest and the runner both already agree on. Stating the prefix here is what
- * keeps that address the same when this suite is run in place against a reference
- * implementation.
+ * THE SHARED HARNESS'S: the address is `validation/<suite path>/<id>.<ext>`
+ * under the directory the runner names in `TCAB_VALIDATION_MEDIA_DIR`, and that
+ * address is the runner's contract rather than this case's. `PROJECT_ROOT` is
+ * passed in from THIS module, never from the package's — the package is staged
+ * one directory deeper, and taken from there every output would be addressed one
+ * level too deep, silently, since a writer that raised on a failed write would
+ * be blaming the build for the host's problem.
  */
-export const STAGED_PROJECT_DIR = "validation";
+export { MEDIA_DIR_ENV, STAGED_PROJECT_DIR } from "./case-harness/index";
 
-/**
- * The ground the console's player paints behind a recorded frame.
- *
- * The specification fixes no background: the build paints its own each frame, and
- * the recorded frames carry that paint. What the player needs is a color for the
- * canvas under them, and the page the build is served on is painted `#000` by the
- * case's own `index.html`, so that is what a replay says.
- *
- * THIS ENGINE ONLY. Under the two engines `specs/overview.md` makes `BACKGROUND`
- * an export of `src/game.ts` that `src/main.ts` hands the engine, so a capture
- * there reads the build's own answer. Nothing is exported to read here — an
- * engineless build clears its canvas however it likes inside its own render — so
- * the ground is the page's, which the case supplies.
- */
-export const REPLAY_BACKGROUND = "#000";
-
-/** One frame of a recording, as the console's player reads it. */
-export interface RecordedFrame {
-  count: number;
-  timeMs: number;
-  deltaMs: number;
-  surface: { width: number; height: number };
-  /** Index into the recording's `states` of the state this frame inherited. */
-  state: number;
-  /** Indices into `states` of the states saved under this frame, outermost first. */
-  stack: number[];
-  /** Indices into the recording's `ops`, in the order the frame issued them. */
-  ops: number[];
-  /** Whether part of what this frame inherited was cut down to a bound. */
-  truncated?: boolean;
-}
-
-/** The context state a frame is drawn from, before its own operations. */
-export interface RecordedState {
-  properties: Record<string, unknown>;
-  transform: number[] | null;
-  lineDash: number[] | null;
-  /** The clip region in force, as the segments that built it, in order. */
-  clip: RecordedPathSegment[];
-  /** The current path, as the operations issued since the last `beginPath`. */
-  path: RecordedPathSegment[];
-}
-
-/** One run of path operations, and the transform they were issued under. */
-export interface RecordedPathSegment {
-  transform: number[] | null;
-  ops: RecordedOp[];
-}
-
-/** A value the context produced, as the recipe that rebuilds it. */
-export interface RecordedResource {
-  make: { method: string; args: unknown[] };
-  then: RecordedOp[];
-}
-
-/** A recording, as the console's player reads it. */
-export interface Recording {
-  format: number;
-  width: number;
-  height: number;
-  background: string | null;
-  images: unknown[];
-  resources: RecordedResource[];
-  ops: RecordedOp[];
-  states: RecordedState[];
-  frames: RecordedFrame[];
-}
-
-/**
- * Where the running suite's `outputId` output belongs, or `null` when nothing is
- * collecting media.
- *
- * The suite is the one vitest is currently running rather than one the caller
- * names, because the two must not be able to disagree: a check that named its own
- * path would be free to write its evidence under some other point's address.
- */
+/** Where the running suite's `outputId` output belongs, or `null` when nothing is collecting. */
 export function mediaDestination(
   outputId: string,
   extension: string,
 ): string | null {
-  const mediaDir = process.env[MEDIA_DIR_ENV];
-  if (mediaDir === undefined || mediaDir === "") return null;
-  const testPath = expect.getState().testPath;
-  if (testPath === undefined) return null;
-  const suite = relative(PROJECT_ROOT, testPath).split(sep).join("/");
-  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.${extension}`);
+  return mediaPath(PROJECT_ROOT, outputId, extension);
 }
 
-/** A value's JSON with object keys in a fixed order, as a table's dedup key. */
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? "null";
-  }
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
-    .join(",")}}`;
-}
-
-/** Add `entry` to a table if it is new, and answer where it lives. */
-function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
-  const key = canonical(entry);
-  const found = at.get(key);
-  if (found !== undefined) return found;
-  const index = table.length;
-  table.push(entry);
-  at.set(key, index);
-  return index;
-}
+export const REPLAY_BACKGROUND = "#000";
 
 /**
- * `frames` re-expressed against tables holding only what those frames name.
+ * The replay document, exactly as the console's player reads it.
  *
- * Dropping a frame drops the last reference to whatever only that frame drew
- * with, so tables carried over whole would put operations, gradients and images in
- * the file that no frame asks for. Every entry here is reached from a kept frame,
- * and every reference inside one is rewritten as it is reached, transitively.
- *
- * Exported for the suite beside this file, which drives it over a recording a
- * browser cannot deliver: Playwright's serializer drops an own field named
- * `__proto__` on the way out of the page, so handing one to this directly is the
- * only way to check that the rewrite carries it.
+ * THE SHARED HARNESS'S, every type of it. The format is the console's
+ * (`packages/ui`), the injected recorder that writes it is the package's, and
+ * the two have to agree field for field — so neither half is Facet's to restate.
  */
-export function retable(
-  recording: Recording,
-  frames: RecordedFrame[],
-): Recording {
-  const images: unknown[] = [];
-  const imageAt = new Map<number, number>();
-  const resources: RecordedResource[] = [];
-  const resourceAt = new Map<number, number>();
-  const ops: RecordedOp[] = [];
-  const opAt = new Map<string, number>();
-  const states: RecordedState[] = [];
-  const stateAt = new Map<string, number>();
-
-  const takeImage = (source: number): number => {
-    const found = imageAt.get(source);
-    if (found !== undefined) return found;
-    const index = images.length;
-    images.push(recording.images[source]);
-    imageAt.set(source, index);
-    return index;
-  };
-
-  const takeResource = (source: number): number => {
-    const found = resourceAt.get(source);
-    if (found !== undefined) return found;
-    const recipe = recording.resources[source];
-    // A recipe's own arguments can only name values made before it, so rewriting
-    // it terminates and cannot re-enter this resource.
-    const rebuilt: RecordedResource = {
-      make: { method: recipe.make.method, args: recipe.make.args.map(value) },
-      then: recipe.then.map(operation),
-    };
-    const index = resources.length;
-    resources.push(rebuilt);
-    resourceAt.set(source, index);
-    return index;
-  };
-
-  const value = (entry: unknown): unknown => {
-    if (Array.isArray(entry)) return entry.map(value);
-    if (entry === null || typeof entry !== "object") return entry;
-    const record = entry as Record<string, unknown>;
-    if (typeof record.$img === "number")
-      return { $img: takeImage(record.$img) };
-    if (typeof record.$res === "number")
-      return { $res: takeResource(record.$res) };
-    const rewritten: Record<string, unknown> = {};
-    for (const [key, held] of Object.entries(record)) {
-      // Defined rather than assigned: a build's own object may carry a field named
-      // `__proto__`, and assigning that name reaches the prototype setter instead
-      // of writing a field the document carries.
-      Object.defineProperty(rewritten, key, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return rewritten;
-  };
-
-  const operation = (op: RecordedOp): RecordedOp =>
-    op.op === "call"
-      ? { op: "call", method: op.method, args: op.args.map(value) }
-      : { op: "set", property: op.property, value: value(op.value) };
-
-  const segments = (list: RecordedPathSegment[]): RecordedPathSegment[] =>
-    list.map((segment) => ({
-      transform: segment.transform,
-      ops: segment.ops.map(operation),
-    }));
-
-  const stateOf = (state: RecordedState): RecordedState => {
-    const properties: Record<string, unknown> = {};
-    for (const [name, held] of Object.entries(state.properties)) {
-      Object.defineProperty(properties, name, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return {
-      properties,
-      transform: state.transform,
-      lineDash: state.lineDash,
-      clip: segments(state.clip),
-      path: segments(state.path),
-    };
-  };
-
-  const takeState = (source: number): number =>
-    intern(states, stateAt, stateOf(recording.states[source]));
-
-  return {
-    ...recording,
-    images,
-    resources,
-    ops,
-    states,
-    frames: frames.map((frame) => ({
-      ...frame,
-      state: takeState(frame.state),
-      stack: frame.stack.map(takeState),
-      ops: frame.ops.map((op) =>
-        intern(ops, opAt, operation(recording.ops[op])),
-      ),
-    })),
-  };
-}
+export type {
+  RecordedFrame,
+  RecordedPathSegment,
+  RecordedResource,
+  RecordedState,
+  Recording,
+} from "./case-harness/index";
 
 /**
- * A recording of at most {@link MAX_REPLAY_FRAMES} frames, covering the whole of
- * what was captured, with each kept frame's `deltaMs` restated as the time since
- * the frame kept before it.
+ * The recorder's frames folded into the shared document, and that document cut
+ * down to what a reviewer can scrub.
  *
- * The restatement is what makes a decimated recording play at the speed the game
- * really ran at: the deltas still sum to the section's elapsed time. The frame
- * `count` is left as it was recorded, so a reader can see that frames were skipped
- * rather than being told a smooth lie. The last frame is always kept whatever the
- * stride lands on — it is the frame the check's sweep stopped at, and the one a
- * reviewer looks at first.
- *
- * Exported for the suite beside this file, which reaches it over frame counts a
- * driven section cannot hand it.
+ * THE SHARED HARNESS'S, both of them. `retable` interns a run of frames into the
+ * op, state and resource tables the console's player reads, and `thinReplay`
+ * decimates a long section to {@link MAX_REPLAY_FRAMES} evenly across its whole
+ * span. Neither is about Facet, and both have to agree with the player.
  */
-export function thinReplay(recording: Recording): Recording {
-  const { frames } = recording;
-  if (frames.length === 0) return recording;
-
-  const stride = Math.max(1, Math.ceil(frames.length / MAX_REPLAY_FRAMES));
-  const kept: RecordedFrame[] = [];
-  let previousMs = frames[0].timeMs - frames[0].deltaMs;
-  const keep = (frame: RecordedFrame): void => {
-    kept.push({ ...frame, deltaMs: frame.timeMs - previousMs });
-    previousMs = frame.timeMs;
-  };
-
-  for (let i = 0; i < frames.length; i += stride) keep(frames[i]);
-  const last = frames[frames.length - 1];
-  if (kept[kept.length - 1].count !== last.count) {
-    if (kept.length >= MAX_REPLAY_FRAMES) {
-      // The stride spent the whole budget on the way to a frame short of the end.
-      // Drop the frame it stopped on, and put the moment back to the one before
-      // it: a kept frame's restated delta is measured from exactly that moment, so
-      // subtracting it recovers it, and the last frame's own delta then spans the
-      // gap the two of them leave.
-      const displaced = kept[kept.length - 1];
-      kept.length -= 1;
-      previousMs = displaced.timeMs - displaced.deltaMs;
-    }
-    keep(last);
-  }
-
-  return retable(recording, kept);
-}
+export { retable, thinReplay };
 
 /**
  * Write a recording out, reporting rather than raising anything that goes wrong.
@@ -2204,20 +1890,25 @@ export async function captureReplay<T>(
   if (destination === null) return scenario();
 
   await h.page.evaluate(
-    (design) =>
-      (
-        window as unknown as { __facetRec: { arm(d: unknown): boolean } }
-      ).__facetRec.arm(design),
-    { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
+    ([recorder, design]) =>
+      (window as unknown as Record<string, { arm(d: unknown): boolean }>)[
+        recorder as string
+      ].arm(design),
+    [
+      CASE.recorderGlobal,
+      { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
+    ] as const,
   );
   try {
     return await scenario();
   } finally {
     // In a `finally`, so a scenario that failed still leaves its evidence behind.
-    const recording = (await h.page.evaluate(() =>
-      (
-        window as unknown as { __facetRec: { disarm(): unknown } }
-      ).__facetRec.disarm(),
+    const recording = (await h.page.evaluate(
+      (recorder) =>
+        (window as unknown as Record<string, { disarm(): unknown }>)[
+          recorder
+        ].disarm(),
+      CASE.recorderGlobal,
     )) as Recording | null;
     writeReplay(destination, recording);
   }
@@ -2353,27 +2044,250 @@ export function framesPast(seconds: number): number {
 // Each of these poses a situation through `window.__facet` and then lets the real
 // game run. Every figure they encode is the case's, and the same helpers under the
 // same names stand in the two engine-backed projects next door.
-
-/** Choose `PLAY` from the title menu, and read the round it opened. */
-export async function startRound(h: Harness): Promise<FacetSnapshot> {
-  await h.debug.start();
-  return h.snapshot();
-}
+//
+// COMPOUND SEQUENCES LIVE HERE, NOT ON THE SURFACE. Every operation
+// specs/instrumentation.md puts on the debug surface writes ONE element of the
+// state, reads it, or moves the clock. Beginning a round, opening the next
+// level, quitting to the title and reaching a screen are each several of those
+// in a row, and the surface carries no operation for any of them — so those
+// sequences are written once, here, where the suites of all three engine
+// projects share one copy. What each one arranges is specs/rules.md's and
+// specs/ui.md's account of the same transition, field by field.
+//
+// THE ITEMS THAT DECIDE THOSE TRANSITIONS DO NOT REACH FOR THESE HELPERS.
+// Whether `PLAY` really opens a round, `CONTINUE` really opens the next level
+// and `QUIT` really returns to the title is what the two `screens/start-round-*`
+// points, `levels/continue-opens-next-level` and the two `screens/quit-from-*`
+// points decide, by
+// working the menu the way a player does and reading what the build did. Every
+// other check reaches its scenario through here instead, so a build with a
+// broken title menu fails those items rather than every item in the project.
 
 /**
- * Pose a written board and read it back. No frame is advanced: `loadBoard` takes
- * effect at the call.
+ * Write a board onto the game and change NOTHING else.
+ *
+ * One crossing, and the atomic operation specs/instrumentation.md states:
+ * `loadBoard(rows)` writes the board's dimensions and its cells, and "the
+ * screen, `menuIndex`, the phase and its timers, the selection, the offer, the
+ * refusal, and every figure of the round stand where they were". What a check
+ * reaches for when it must put a board under a move already in motion —
+ * replacing the gems a running step will read next without disturbing the step.
  *
  * The rows are parsed on this side FIRST, so a fixture typo fails the FIXTURE
  * with the token it could not read rather than crossing into the build and
  * failing it for a mistake the check made.
+ *
+ * {@link loadBoard} is the one to reach for otherwise: it poses the board on a
+ * settled `playing` screen, which is the situation nearly every scenario wants.
+ */
+export async function writeBoard(
+  h: Harness,
+  rows: BoardRows,
+): Promise<FacetSnapshot> {
+  parseRows(rows);
+  await h.debug.loadBoard(rows);
+  return h.snapshot();
+}
+
+/**
+ * Pose a written board on a settled `playing` screen, and read it back.
+ *
+ * THE SEQUENCE, not one operation: the board is written, resolution is settled,
+ * the selection, the offer and the refusal are put away, the menu highlight goes
+ * back to its resting `0` and the screen becomes `playing`. That is the world
+ * nearly every scenario in this project wants to stand on — a board, in play,
+ * with nothing of an earlier scenario standing on it.
+ *
+ * No frame is advanced. Every operation in it takes effect at its call, so the
+ * arrangement is complete in the state this reads back.
+ *
+ * A check that wants ONLY the cells written, leaving the screen and the move in
+ * motion alone, calls {@link writeBoard}.
  */
 export async function loadBoard(
   h: Harness,
   rows: BoardRows,
 ): Promise<FacetSnapshot> {
   parseRows(rows);
+  await h.debug.clearChain();
+  await h.debug.clearSelection();
+  await h.debug.clearOffer();
+  await h.debug.clearRefusal();
   await h.debug.loadBoard(rows);
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Begin a fresh round, exactly as choosing `PLAY` from the title does.
+ *
+ * Every figure specs/rules.md returns to its opening value when a round starts,
+ * written one at a time, and then the opening board dealt through the game's own
+ * code from `rngState` — which is the one part of it that cannot be decomposed,
+ * since what makes a dealt board an opening board is R4 and the generator rather
+ * than any cell a check could write.
+ *
+ * `PLAY AGAIN` on the game-over menu opens the same round; specs/ui.md gives the
+ * two menu items the same effect.
+ */
+export async function startRound(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.setScore(0);
+  await h.debug.setLevel(1);
+  await h.debug.setLevelScore(0);
+  await h.debug.setMoveScore(0);
+  await h.debug.setBestMove(0);
+  await h.debug.setBestChain(0);
+  await h.debug.clearSelection();
+  await h.debug.clearOffer();
+  await h.debug.clearRefusal();
+  await h.debug.clearChain();
+  await h.debug.dealBoard();
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Open the next level, exactly as choosing `CONTINUE` from the level-clear menu
+ * does.
+ *
+ * {@link startRound} with two differences, and both are specs/rules.md's:
+ * `score` CARRIES — it is the round's total and a level boundary does not touch
+ * it — and `level` goes up by one from wherever the round had reached rather
+ * than back to `1`. The level's target follows from `level`, so nothing here
+ * writes it.
+ */
+export async function openNextLevel(h: Harness): Promise<FacetSnapshot> {
+  const before = await h.snapshot();
+  await h.debug.setLevel(before.level + 1);
+  await h.debug.setLevelScore(0);
+  await h.debug.setMoveScore(0);
+  await h.debug.setBestMove(0);
+  await h.debug.setBestChain(0);
+  await h.debug.clearSelection();
+  await h.debug.clearOffer();
+  await h.debug.clearRefusal();
+  await h.debug.clearChain();
+  await h.debug.dealBoard();
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Abandon the round and return to the title, exactly as choosing `QUIT` from
+ * either menu that offers it does.
+ *
+ * specs/ui.md: "Sets `screen = title` and `menuIndex = 0`, abandoning the
+ * round." The round is abandoned by taking the board out of play and putting
+ * away everything that stood on it; `score` and `level` are left where the round
+ * left them, since the title screen reports neither and the next round's
+ * {@link startRound} writes both.
+ */
+export async function quitToTitle(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.clearSelection();
+  await h.debug.clearOffer();
+  await h.debug.clearRefusal();
+  await h.debug.clearChain();
+  await h.debug.clearBoard();
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("title");
+  return h.snapshot();
+}
+
+/**
+ * Open the instructions, exactly as choosing `HOW TO PLAY` from the title does.
+ *
+ * specs/ui.md: "Sets `screen = howto`", and `menuIndex` is `0` on entering every
+ * screen but the title entered from here.
+ */
+export async function openHowTo(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("howto");
+  return h.snapshot();
+}
+
+/**
+ * Pause the round, exactly as the `pause` action from `playing` does.
+ *
+ * The board is left exactly as it stands — specs/ui.md shows it behind the menu,
+ * quieted — and only the screen and the menu highlight move.
+ */
+export async function pauseGame(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("paused");
+  return h.snapshot();
+}
+
+/**
+ * Return to the round, exactly as choosing `RESUME` from the pause menu does.
+ *
+ * specs/ui.md: "Sets `screen = playing`, with the board exactly as it was left."
+ * The highlight goes back to the `0` specs/ui.md rests it at on `playing`.
+ */
+export async function resumeGame(h: Harness): Promise<FacetSnapshot> {
+  await h.debug.setMenuIndex(0);
+  await h.debug.setScreen("playing");
+  return h.snapshot();
+}
+
+/**
+ * Stand the game on `screen`, with whatever that screen needs behind it.
+ *
+ * REACHED DIRECTLY, through the atomic poses, rather than by playing the game
+ * into it. specs/instrumentation.md's `setScreen` shows a screen and changes
+ * nothing else, and "the screen behaves from there exactly as it does when a
+ * player reaches it" — so a check whose requirement is ABOUT a screen stands on
+ * it in two crossings instead of driving a chain to its end through the level
+ * and end conditions, which are other items' requirements and other items'
+ * failure modes.
+ *
+ * The four screens specs/ui.md draws a board behind get one: a quiet filler
+ * carrying no run and one legal swap, so the board behind the menu is a board a
+ * round could really be standing on.
+ */
+export async function reachScreen(
+  h: Harness,
+  screen: Screen,
+): Promise<FacetSnapshot> {
+  await h.debug.reset();
+  if (screen !== "title" && screen !== "howto") {
+    await loadBoard(h, quietRowsWithEscape([]));
+  }
+  if (screen !== "title") {
+    await h.debug.setMenuIndex(0);
+    await h.debug.setScreen(screen);
+  }
+  const reading = await h.snapshot();
+  if (reading.screen !== screen) {
+    fail(`the ${screen} screen these poses ask for`, reading.screen);
+  }
+  return reading;
+}
+
+/**
+ * Take the item at `index` on whichever menu the current screen shows, the way a
+ * player takes it.
+ *
+ * TWO HALVES, AND ONLY ONE OF THEM IS DRIVEN. The highlight is POSED —
+ * `setMenuIndex` "highlights the menu item at `index` … and no item is taken" —
+ * so a build whose `up` and `down` never worked is still asked this question,
+ * and which item the highlight lands on stays the menu items' own point. What is
+ * really driven is the `confirm` that takes it, through the key
+ * specs/controls.md binds and the build's own input path.
+ *
+ * This is what the items whose requirement IS the choice reach for: "Choosing
+ * PLAY", "Choosing QUIT", "Choosing CONTINUE", "Choosing RESUME". Every other
+ * check stands on the screen it needs through {@link reachScreen} and never
+ * presses a menu at all.
+ */
+export async function takeMenuItem(
+  h: Harness,
+  index: number,
+): Promise<FacetSnapshot> {
+  await h.debug.setMenuIndex(index);
+  await h.tapAction("confirm");
   return h.snapshot();
 }
 

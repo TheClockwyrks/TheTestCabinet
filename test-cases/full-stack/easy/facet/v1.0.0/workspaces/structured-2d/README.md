@@ -2,7 +2,9 @@
 
 This repository is the starting point for building Facet, the game the
 specification under `specs/` describes. Read `specs/overview.md` first; it says
-how the rest of the specification is organized.
+how the rest of the specification is organized. This file is the starter
+README, not a deliverable: `specs/overview.md` states the `README.md` the
+finished build ships in its place.
 
 The project is already wired up. It builds on the Structured 2D engine, which is
 installed as an ordinary dependency and documents itself under `engine/`; read
@@ -103,14 +105,3 @@ entries alone.
 - `npm run lint` runs ESLint.
 - `npm run format` runs Prettier in check mode.
 - `npm test` runs Vitest over `src/**/*.test.ts`, with coverage.
-
-## Before you finish
-
-- `npm run build` produces `dist/` with `index.html` at its root, and that
-  directory runs as-is on any static host, from a sub-path included.
-- `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all
-  pass. The same four commands are run over the repository you leave behind.
-- The produced files under `public/assets/` are committed alongside your source.
-- **Replace this file** with the `README.md` `specs/overview.md` asks the
-  finished build to ship: what the game is, how to install it, how to run it in
-  development, how to produce the production build, and the controls.

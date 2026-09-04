@@ -34,7 +34,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { TITLE_ITEMS } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  openHowTo,
+  type Harness,
+} from "../harness";
 
 /** Where `HOW TO PLAY` sits in the title menu specs/ui.md fixes. */
 const HOW_TO_PLAY_INDEX = TITLE_ITEMS.indexOf("HOW TO PLAY");
@@ -60,7 +65,7 @@ it("returns to the title with HOW TO PLAY highlighted, on the back key", async (
   );
 
   await h.debug.reset();
-  await h.debug.openHowTo();
+  await openHowTo(h);
 
   const opened = await h.snapshot();
   assertEqual(opened.screen, "howto", "the screen back is pressed on");

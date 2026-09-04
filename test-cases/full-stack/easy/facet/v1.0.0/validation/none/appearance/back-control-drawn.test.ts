@@ -33,11 +33,12 @@
 // rectangle answers the second half spuriously, which is a false pass and never a
 // false failure.
 //
-// HOW THE SCREEN IS REACHED. Through `openHowTo`, which
-// specs/instrumentation.md defines as "the choice of `HOW TO PLAY` from the title
-// menu: the screen becomes `howto` with `menuIndex` at `0`". Reaching it by
-// pressing the menu instead would put the title screen's own targets between this
-// point and the thing it decides, and those belong to the pointer items.
+// HOW THE SCREEN IS REACHED. Through the harness's `openHowTo`, which is
+// `setMenuIndex(0)` and `setScreen("howto")` — the two single-field poses
+// specs/instrumentation.md gives, arranged into what specs/ui.md says choosing
+// `HOW TO PLAY` reaches. Reaching it by pressing the menu instead would put the
+// title screen's own targets between this point and the thing it decides, and
+// those belong to the pointer items.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { type TargetRect } from "../board";
@@ -46,6 +47,7 @@ import { BACK_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
+  openHowTo,
   showsText,
   targetById,
   type Harness,
@@ -137,11 +139,11 @@ afterEach(async () => {
 });
 
 it("draws the BACK label and puts something inside the back target it reports", async () => {
-  await h.debug.openHowTo();
+  await openHowTo(h);
   assertEqual(
     (await h.snapshot()).screen,
     "howto",
-    "the screen openHowTo poses",
+    "the screen the how-to poses reach",
   );
   await h.settle(ART_SETTLE_MS);
 

@@ -35,14 +35,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { GRID_COLS, GRID_ROWS } from "../constants";
+import { LEVELCLEAR_ITEMS } from "../constants";
 import {
   hasAnyRun,
-  parseRows,
   quietRowsWithEscape,
   swapIsLegal,
-  tokenAt,
-  type BoardRows,
   type CellRef,
   type PlacedToken,
 } from "../board";
@@ -52,6 +49,8 @@ import {
   createHarness,
   loadBoard,
   swapAndStep,
+  takeMenuItem,
+  writeBoard,
   type Harness,
 } from "../harness";
 
@@ -71,6 +70,9 @@ const RUN_SWAP: { a: CellRef; b: CellRef } = {
 /** What the round is posed as having earned before the level in question. */
 const POSED_SCORE = 5000;
 
+/** Where `CONTINUE` sits on the level-clear menu, from specs/ui.md's `LEVELCLEAR_ITEMS`. */
+const CONTINUE_INDEX = LEVELCLEAR_ITEMS.indexOf("CONTINUE");
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -80,18 +82,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await h.dispose();
 });
-
-/** Write every cell of a board in the notation onto the live board, `setGem` by `setGem`. */
-async function writeBoard(rows: BoardRows): Promise<void> {
-  // Parsed on this side first, so a typo in the fixture fails here rather than
-  // crossing into the build one cell at a time.
-  parseRows(rows);
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLS; col += 1) {
-      await h.debug.setGem(col, row, tokenAt(rows, col, row));
-    }
-  }
-}
 
 it("keeps the round's score through the level change that zeroes the level score", async () => {
   const posed = quietRowsWithEscape(RUN_CELLS);
@@ -120,7 +110,7 @@ it("keeps the round's score through the level change that zeroes the level score
 
     // Nothing more may score: the step now holds a board with no run on it, so
     // the read at the end of its hold seeds nothing and the chain ends.
-    await writeBoard(quiet);
+    await writeBoard(h, quiet);
     const cleared = await advanceStep(h);
     return { earned: first.score, cleared };
   });
@@ -144,7 +134,10 @@ it("keeps the round's score through the level change that zeroes the level score
   );
 
   // CONTINUE is what turns the level over, and the figure has to survive it.
-  await h.debug.continueLevel();
+  // CONTINUE is really CHOSEN, which is what the item says: the highlight is
+  // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+  // it, through the key specs/controls.md binds and the build's own input path.
+  await takeMenuItem(h, CONTINUE_INDEX);
   const next = await h.snapshot();
   assertEqual(next.screen, "playing", "the screen CONTINUE returns to");
   assertEqual(next.level, 2, "the level CONTINUE opened");

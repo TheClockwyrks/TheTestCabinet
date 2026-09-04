@@ -964,7 +964,8 @@ describe("the harness stands a build up", () => {
     expect(ops.snapshot).toBe("function");
     expect(ops.loadBoard).toBe("function");
     // A name the surface does not carry is reported, not thrown: that is what
-    // lets `instrumentation/debug-api` decide an operation by `typeof`.
+    // lets `instrumentation/debug-api-operations-present` decide an operation by
+    // `typeof`.
     expect(ops.nothingLikeThis).toBe("undefined");
   });
 

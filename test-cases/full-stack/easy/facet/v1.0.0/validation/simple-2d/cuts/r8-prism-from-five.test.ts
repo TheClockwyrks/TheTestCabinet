@@ -23,7 +23,8 @@
 // refill dealt and may create cuts of its own, so the settled board would answer
 // a different question.
 //
-// WHERE the prism lands is `cuts/r8-run-placement`'s point; this check finds the
+// WHERE the prism lands is the three `cuts/r8-run-placement-at-the-*` points';
+// this check finds the
 // created gem wherever on the board it stands.
 
 import { afterEach, beforeEach, it } from "vitest";

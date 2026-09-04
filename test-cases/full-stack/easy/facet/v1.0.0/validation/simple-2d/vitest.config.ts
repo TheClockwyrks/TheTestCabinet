@@ -41,9 +41,17 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    // A chain driven to its cap is a thousand frames of real simulation, and a
-    // build's initialize decodes every produced file it ships; generous here,
-    // and still a fraction of a second in practice.
-    testTimeout: 60_000,
+    // AN ALLOWANCE A CORRECT BUILD CAN CROSS IS A DEFECT IN THE CHECK. Nothing
+    // these checks measure comes off the wall clock — every one drives the build
+    // frame by frame and asserts on what its own snapshot reports — so the only
+    // thing a short allowance can decide is how busy the machine was, and these
+    // suites run on a two-core host that is running nine other projects beside
+    // them. Sixty seconds has been measured deciding exactly that elsewhere in
+    // the repository, costing an unmodified reference four points at 66-76 s
+    // apiece against quiet times of 6-14 s. Five minutes is set against that
+    // worst case, and it is a ninth of the forty-five minutes the runner caps
+    // the whole suite run at, so a file can only cross it on a host where the
+    // run was already lost. A hung build is still bounded.
+    testTimeout: 300_000,
   },
 });

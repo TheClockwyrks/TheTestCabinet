@@ -48,13 +48,8 @@ import {
   type RenderParticle,
 } from "@test-cabinet/particle-runtime";
 import { assertGreaterThanOrEqual, assertNotNull, fail } from "../assert";
+import { FX_DIR, REQUIRED_FX_SYSTEMS } from "../constants";
 import { mediaDestination, siteRoot } from "../harness";
-
-/** The clear burst, the flawed detonation, the cut-gem flash, and the cut aura. */
-const REQUIRED_SYSTEMS = 4;
-
-/** The served directory specs/assets.md lands the particle systems under. */
-const FX_DIR = ["assets", "fx"];
 
 /**
  * How the systems are stepped: the size of a simulated frame, the least a system
@@ -190,7 +185,7 @@ it("ships four distinct particle systems the runtime plays", () => {
 
   assertGreaterThanOrEqual(
     effects.length,
-    REQUIRED_SYSTEMS,
+    REQUIRED_FX_SYSTEMS,
     "distinct produced system.json files under assets/fx/ that " +
       "@test-cabinet/particle-runtime plays and that emit a particle",
   );

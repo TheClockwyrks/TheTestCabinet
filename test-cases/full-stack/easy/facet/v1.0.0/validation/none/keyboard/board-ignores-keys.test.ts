@@ -33,7 +33,8 @@
 // rather than one caught between two.
 //
 // WHAT THIS DOES NOT DECIDE. That `pause` and `mute` DO act on this screen is
-// `keyboard/pause-key`, `keyboard/pause-escape` and `keyboard/mute-key`; that the
+// `keyboard/pause-key`, `keyboard/pause-escape` and the two `keyboard/mute-key-*`
+// points; that the
 // three keys pressed here drive a MENU where there is one is the `screens`
 // category's.
 

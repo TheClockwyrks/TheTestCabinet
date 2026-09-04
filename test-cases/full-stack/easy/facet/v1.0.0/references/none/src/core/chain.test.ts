@@ -30,7 +30,7 @@ import {
   stepHold,
   tick,
 } from "./chain";
-import { loadBoard, setLevelScore } from "./debug";
+import { loadBoard, setLevelScore, setScreen } from "./debug";
 import { quietRows, quietRowsWith } from "./fixtures";
 import { startRound } from "./flow";
 import { applySwap, cellKey, lastFall, seedFromRuns } from "./rules";
@@ -47,7 +47,11 @@ import {
 const play = (
   edits: Readonly<Record<string, string>> = {},
   seed = 1,
-): FacetState => loadBoard(createInitialState(seed), quietRowsWith(edits));
+): FacetState =>
+  setScreen(
+    loadBoard(createInitialState(seed), quietRowsWith(edits)),
+    "playing",
+  );
 
 const at = (state: FacetState, col: number, row: number) =>
   gemAt(state.board, { col, row });
@@ -588,7 +592,7 @@ describe("levels and the end of a round", () => {
     // The quiet board has no legal swap at all, so a chain settling over it
     // is the end of the round.
     const stuck: FacetState = {
-      ...loadBoard(createInitialState(1), quietRows()),
+      ...setScreen(loadBoard(createInitialState(1), quietRows()), "playing"),
       phase: "resolving",
       chainStep: 1,
     };
@@ -602,7 +606,10 @@ describe("levels and the end of a round", () => {
 
   it("ends the level rather than the round, when both would", () => {
     const stuck: FacetState = {
-      ...setLevelScore(loadBoard(createInitialState(1), quietRows()), 5000),
+      ...setLevelScore(
+        setScreen(loadBoard(createInitialState(1), quietRows()), "playing"),
+        5000,
+      ),
       phase: "resolving",
       chainStep: 1,
     };

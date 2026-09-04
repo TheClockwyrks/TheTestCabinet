@@ -32,6 +32,7 @@ import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
+  openHowTo,
   takeTarget,
   targetById,
   type Harness,
@@ -60,7 +61,7 @@ it("returns to the title with HOW TO PLAY highlighted", async () => {
   );
 
   await h.debug.reset();
-  await h.debug.openHowTo();
+  await openHowTo(h);
   const opened = await h.snapshot();
   assertEqual(opened.screen, "howto", "the screen the control is taken on");
 

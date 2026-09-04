@@ -26,6 +26,17 @@
 // `assertHasProperty`; a partial object match is `assertEqual` over the fields
 // the check cares about), not added as a new `expect` call.
 //
+// WHY THIS IS A COPY RATHER THAN A RE-EXPORT OF `@test-cabinet/case-harness`.
+// The shared harness carries this same vocabulary, and the engineless project
+// could reach it as `./case-harness/assert` — but the two ENGINE projects cannot:
+// that package is staged only into an engineless project. Facet's rule is that a
+// suite deciding one review item is the SAME TEXT under all three engines, so
+// `../assert` has to resolve to the same names, the same signatures and the same
+// message shape whichever project a suite is sitting in. So this file stays a
+// copy, and it is deliberately the shared harness's vocabulary rather than a
+// second one: a message thrown here is the message the runner already knows how
+// to render.
+//
 // Every helper takes an optional trailing `context`: what a check that runs the
 // same comparison many times over says to tell one failure from another
 // (`cell (3,5): kind`), or what a harness reading names as the requirement the

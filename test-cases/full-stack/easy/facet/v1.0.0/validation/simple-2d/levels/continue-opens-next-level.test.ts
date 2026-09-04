@@ -4,9 +4,11 @@
 // specs/rules.md: "Choosing `CONTINUE` there opens the next level: `level` rises
 // by `1`, `levelScore`, `bestChain`, and `bestMove` return to `0`, a fresh
 // opening board is dealt, and `screen` returns to `playing`."
-// specs/instrumentation.md poses that choice as `continueLevel`, and adds what
-// the arrival looks like: "`menuIndex` at `0`, no selection, no offer and no
-// refusal."
+// specs/ui.md gives the choice itself — the level-clear menu's `CONTINUE`
+// "opens the next level, as `specs/rules.md` describes, and sets
+// `screen = playing`" — and specs/instrumentation.md's snapshot shape adds what
+// the arrival looks like: `menuIndex` rests at `0` on `playing`, and
+// `selection`, `offer` and `refusal` are `null` while none stands.
 //
 // WHY IT IS SEPARATE FROM REACHING THE SCREEN. Meeting the target only raises
 // `levelclear` — `levels/level-advances` reads that, and reads that the level
@@ -42,6 +44,7 @@ import {
   assertNull,
   assertTrue,
 } from "../assert";
+import { LEVELCLEAR_ITEMS } from "../constants";
 import {
   allPlainAndClean,
   hasAnyRun,
@@ -56,6 +59,7 @@ import {
   loadBoard,
   resolveChain,
   swapAndStep,
+  takeMenuItem,
   type Harness,
 } from "../harness";
 
@@ -71,6 +75,9 @@ const RUN_SWAP: { a: CellRef; b: CellRef } = {
   a: { col: 3, row: 3 },
   b: { col: 3, row: 4 },
 };
+
+/** Where `CONTINUE` sits on the level-clear menu, from specs/ui.md's `LEVELCLEAR_ITEMS`. */
+const CONTINUE_INDEX = LEVELCLEAR_ITEMS.indexOf("CONTINUE");
 
 let h: Harness;
 
@@ -119,7 +126,10 @@ it("raises the level, zeroes the level score and deals a fresh board", async () 
       "every gem plain at strain 0 on the board the level was won on",
     );
 
-    h.debug.continueLevel();
+    // CONTINUE is really CHOSEN, which is what the item says: the highlight is
+    // posed onto it — `setMenuIndex` takes no item — and `confirm` is what takes
+    // it, through the key specs/controls.md binds and the build's own input path.
+    await takeMenuItem(h, CONTINUE_INDEX);
     return h.snapshot();
   });
 

@@ -12,7 +12,8 @@
 //
 // WHAT R8 DOES TO THE EVIDENCE, AND HOW THIS POINT KEEPS CLEAR OF IT. A maximal
 // run of exactly four creates a `brilliant`, and R8 places it at one of the four
-// cells the removal left empty — WHICH one is `cuts/r8-run-placement`'s point
+// cells the removal left empty — WHICH one is the three
+// `cuts/r8-run-placement-at-the-*` points'
 // and not this one. The run here therefore runs down a single COLUMN, which
 // takes the placement rule out of the reading altogether: the four empties are
 // four consecutive cells of one column with survivors below them, so wherever in
@@ -67,7 +68,8 @@ const RUN_CELLS: CellRef[] = RUN_ROWS.map((row) => ({ col: RUN_COL, row }));
  * column below them hold survivors that do not move. Whichever of the four R8
  * placed the created gem at, it is the lowest survivor above those two, so R9
  * drops it here — which is why this point can leave the placement rule to
- * `cuts/r8-run-placement` and simply not read this cell.
+ * the three `cuts/r8-run-placement-at-the-*` points and simply not read this
+ * cell.
  */
 const CREATED: CellRef = { col: RUN_COL, row: RUN_ROWS[RUN_LENGTH - 1] };
 

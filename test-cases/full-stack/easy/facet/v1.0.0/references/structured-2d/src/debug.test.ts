@@ -35,6 +35,66 @@ afterEach(() => {
   harness.dispose();
 });
 
+/*
+ * The compound sequences a caller builds out of the surface's single-element
+ * operations. The surface carries none of them, because
+ * `specs/instrumentation.md` gives it one operation per element of the state
+ * and leaves arranging a whole screen to whatever is driving it.
+ */
+
+/** An arbitrary board posed, and the game put on the playing screen. */
+function poseBoard(rows: readonly string[]): void {
+  harness.debug.loadBoard(rows);
+  harness.debug.setScreen("playing");
+}
+
+/** A round begun: the figures a round starts with, a fresh deal, and play. */
+function startRound(): void {
+  const d = harness.debug;
+  d.setScore(0);
+  d.setLevel(1);
+  d.setLevelScore(0);
+  d.setMoveScore(0);
+  d.setBestMove(0);
+  d.setBestChain(0);
+  d.clearSelection();
+  d.clearOffer();
+  d.clearRefusal();
+  d.clearChain();
+  d.dealBoard();
+  d.setMenuIndex(0);
+  d.setScreen("playing");
+}
+
+/** The next level opened, with `score` left to carry across. */
+function openNextLevel(): void {
+  const d = harness.debug;
+  d.setLevel(d.snapshot().level + 1);
+  d.setLevelScore(0);
+  d.setMoveScore(0);
+  d.setBestMove(0);
+  d.setBestChain(0);
+  d.clearSelection();
+  d.clearOffer();
+  d.clearRefusal();
+  d.clearChain();
+  d.dealBoard();
+  d.setMenuIndex(0);
+  d.setScreen("playing");
+}
+
+/** The round abandoned: no board in play, back on the title. */
+function quitToTitle(): void {
+  const d = harness.debug;
+  d.clearSelection();
+  d.clearOffer();
+  d.clearRefusal();
+  d.clearChain();
+  d.clearBoard();
+  d.setMenuIndex(0);
+  d.setScreen("title");
+}
+
 describe("version and snapshot", () => {
   it("reports the version the specification fixes", () => {
     expect(harness.debug.version).toBe(1);
@@ -76,7 +136,7 @@ describe("version and snapshot", () => {
   });
 
   it("derives a cell's center from the formulas in specs/board.md", () => {
-    harness.debug.loadBoard(quietRows());
+    poseBoard(quietRows());
     const shot = harness.debug.snapshot();
     expect(shot.board.cells).toHaveLength(GRID_COLS * GRID_ROWS);
     for (const cell of shot.board.cells) {
@@ -89,16 +149,16 @@ describe("version and snapshot", () => {
 
   it("derives the target, the multiplier, and whether a swap exists", () => {
     harness.debug.setLevel(4);
-    harness.debug.loadBoard(quietRows());
+    poseBoard(quietRows());
     expect(harness.debug.snapshot().levelTarget).toBe(4 * LEVEL_TARGET_STEP);
     expect(harness.debug.snapshot().legalSwap).toBe(false);
 
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     expect(harness.debug.snapshot().legalSwap).toBe(true);
   });
 
   it("caps the multiplier it reports at MAX_MULTIPLIER", async () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     harness.debug.requestSwap(1, 1, 1, 0);
     await harness.advance(SWAP_FRAMES);
     expect(harness.debug.snapshot().multiplier).toBe(1);
@@ -112,10 +172,10 @@ describe("version and snapshot", () => {
       "menu-1",
     ]);
 
-    harness.debug.openHowTo();
+    harness.debug.setScreen("howto");
     expect(harness.debug.snapshot().targets.map((t) => t.id)).toEqual(["back"]);
 
-    harness.debug.loadBoard(quietRows());
+    poseBoard(quietRows());
     const playing = harness.debug.snapshot().targets;
     expect(playing.map((t) => t.id)).toEqual(["pause"]);
     for (const target of playing) {
@@ -125,7 +185,7 @@ describe("version and snapshot", () => {
   });
 
   it("changes nothing at all", () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     const before = JSON.stringify(harness.debug.snapshot());
     harness.debug.snapshot();
     expect(JSON.stringify(harness.debug.snapshot())).toBe(before);
@@ -134,7 +194,7 @@ describe("version and snapshot", () => {
 
 describe("reset", () => {
   it("restores every declared field to its title-screen value", async () => {
-    harness.debug.start();
+    startRound();
     harness.debug.setScore(900);
     harness.debug.setBestMove(400);
     harness.debug.setBestChain(6);
@@ -176,11 +236,11 @@ describe("reset", () => {
 
   it("makes a round from a known deal reproducible", () => {
     harness.debug.reset({ seed: 9 });
-    harness.debug.start();
+    startRound();
     const first = harness.debug.snapshot().board.cells.map((c) => c.kind);
 
     harness.debug.reset({ seed: 9 });
-    harness.debug.start();
+    startRound();
     expect(harness.debug.snapshot().board.cells.map((c) => c.kind)).toEqual(
       first,
     );
@@ -188,11 +248,11 @@ describe("reset", () => {
 });
 
 describe("the screen poses", () => {
-  it("starts a round on an opening board dealt in from above", () => {
+  it("deals an opening board in from above", () => {
     harness.debug.setScore(500);
     harness.debug.setLevel(4);
     harness.debug.setBestChain(7);
-    harness.debug.start();
+    startRound();
     const shot = harness.debug.snapshot();
     expect(shot.screen).toBe("playing");
     expect(shot.score).toBe(0);
@@ -216,14 +276,14 @@ describe("the screen poses", () => {
     );
   });
 
-  it("opens how-to-play, and quits back to the title", () => {
-    harness.debug.openHowTo();
+  it("shows how-to-play, and leaves no board in play on quitting", () => {
+    harness.debug.setScreen("howto");
     expect(harness.debug.snapshot().screen).toBe("howto");
     expect(harness.debug.snapshot().menuIndex).toBe(0);
 
-    harness.debug.start();
+    startRound();
     harness.debug.setScore(700);
-    harness.debug.quit();
+    quitToTitle();
     const shot = harness.debug.snapshot();
     expect(shot.screen).toBe("title");
     expect(shot.board.cells).toEqual([]);
@@ -233,10 +293,10 @@ describe("the screen poses", () => {
   });
 
   it("holds every timer while paused and carries on where it left off", async () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     harness.debug.requestSwap(1, 1, 1, 0);
     await harness.advance(SWAP_FRAMES);
-    harness.debug.pause();
+    harness.debug.setScreen("paused");
     expect(harness.debug.snapshot().screen).toBe("paused");
 
     const held = harness.debug.snapshot();
@@ -249,14 +309,14 @@ describe("the screen poses", () => {
     // Only simTime moves, because it accumulates on every screen.
     expect(later.simTime).toBeGreaterThan(held.simTime);
 
-    harness.debug.resume();
+    harness.debug.setScreen("playing");
     expect(harness.debug.snapshot().screen).toBe("playing");
     await harness.advance(60);
     expect(harness.debug.snapshot().phase).toBe("idle");
   });
 
   it("opens the next level from the level-clear menu", async () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     harness.debug.setScore(4000);
     harness.debug.setLevelScore(LEVEL_TARGET_STEP);
     harness.debug.requestSwap(1, 1, 1, 0);
@@ -268,7 +328,7 @@ describe("the screen poses", () => {
     expect(cleared.level).toBe(1);
     expect(cleared.bestChain).toBeGreaterThanOrEqual(1);
 
-    harness.debug.continueLevel();
+    openNextLevel();
     const opened = harness.debug.snapshot();
     expect(opened.screen).toBe("playing");
     expect(opened.level).toBe(2);
@@ -287,7 +347,7 @@ describe("the board poses", () => {
     harness.debug.setScore(300);
     harness.debug.setLevel(2);
     harness.debug.setLevelScore(150);
-    harness.debug.loadBoard(quietRows());
+    poseBoard(quietRows());
 
     const shot = harness.debug.snapshot();
     expect(shot.screen).toBe("playing");
@@ -323,7 +383,7 @@ describe("the board poses", () => {
   });
 
   it("writes one cell and leaves the rest standing", () => {
-    harness.debug.loadBoard(quietRows());
+    poseBoard(quietRows());
     harness.debug.setSelection(2, 2);
     const before = harness.debug.snapshot();
 
@@ -346,7 +406,7 @@ describe("the board poses", () => {
   });
 
   it("writes a prism, which carries no kind", () => {
-    harness.debug.loadBoard(quietRows());
+    poseBoard(quietRows());
     harness.debug.setGem(0, 0, "X3");
     expect(harness.debug.snapshot().board.cells[0]).toMatchObject({
       kind: null,
@@ -356,7 +416,7 @@ describe("the board poses", () => {
   });
 
   it("refuses a cell that is not on the board", () => {
-    harness.debug.loadBoard(quietRows());
+    poseBoard(quietRows());
     expect(() => harness.debug.setGem(GRID_COLS, 0, "R0")).toThrow(
       /not a cell/,
     );
@@ -401,7 +461,7 @@ describe("the figure poses", () => {
   });
 
   it("carries a move's points into the level's best as the chain settles", async () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     harness.debug.requestSwap(1, 1, 1, 0);
     await harness.advance(SWAP_FRAMES);
     const during = harness.debug.snapshot();
@@ -418,7 +478,7 @@ describe("the figure poses", () => {
 
 describe("the selection and the offer", () => {
   it("selects a cell without requesting a swap, and clears it", () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     harness.debug.setSelection(1, 1);
     harness.debug.setSelection(1, 0);
     const shot = harness.debug.snapshot();
@@ -431,7 +491,7 @@ describe("the selection and the offer", () => {
   });
 
   it("offers a cell without requesting a swap, and withdraws it", () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     const board = JSON.stringify(harness.debug.snapshot().board);
     harness.debug.setSelection(1, 1);
     harness.debug.setOffer(1, 0);
@@ -452,7 +512,7 @@ describe("the selection and the offer", () => {
 
 describe("requestSwap", () => {
   it("puts an accepted swap in motion before its first step resolves", async () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     harness.debug.setSelection(4, 4);
     harness.debug.requestSwap(1, 1, 1, 0);
 
@@ -479,7 +539,7 @@ describe("requestSwap", () => {
   });
 
   it("refuses a swap R1, R2, or R3 rejects, and marks the two cells", async () => {
-    harness.debug.loadBoard(quietRows());
+    poseBoard(quietRows());
 
     // R1: not orthogonally adjacent.
     harness.debug.requestSwap(0, 0, 2, 2);
@@ -502,7 +562,7 @@ describe("requestSwap", () => {
   });
 
   it("refuses every swap while one is already in motion (R2)", () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     harness.debug.requestSwap(1, 1, 1, 0);
     const during = harness.debug.snapshot();
     harness.debug.requestSwap(5, 5, 6, 5);
@@ -514,7 +574,7 @@ describe("requestSwap", () => {
 
 describe("the pointer poses", () => {
   it("takes effect at the call, with no frame between them", async () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     const [ax, ay] = cellCenter({ col: 1, row: 1 });
     const [bx, by] = cellCenter({ col: 1, row: 0 });
 
@@ -544,7 +604,7 @@ describe("the pointer poses", () => {
   });
 
   it("reports the device that drove it, and drives the same path", () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     const [ax, ay] = cellCenter({ col: 1, row: 1 });
     harness.debug.pointerDown(ax, ay, "touch");
     const shot = harness.debug.snapshot();
@@ -556,7 +616,7 @@ describe("the pointer poses", () => {
   });
 
   it("clears the hold for a press off every cell", () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     harness.debug.setSelection(3, 3);
     harness.debug.setOffer(3, 4);
     harness.debug.pointerDown(20, 700);
@@ -573,7 +633,7 @@ describe("the pointer poses", () => {
   });
 
   it("withdraws the offer when the hold is carried back where it started", () => {
-    harness.debug.loadBoard(ONE_RUN);
+    poseBoard(ONE_RUN);
     const [ax, ay] = cellCenter({ col: 1, row: 1 });
     const [bx, by] = cellCenter({ col: 1, row: 0 });
     harness.debug.pointerDown(ax, ay);

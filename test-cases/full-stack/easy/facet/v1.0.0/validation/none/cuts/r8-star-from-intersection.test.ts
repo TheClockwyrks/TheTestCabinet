@@ -12,7 +12,8 @@
 // applies to any cell of either — the only row that applies anywhere on this board
 // is the crossing one, and a single created gem is the whole of what R8 owes.
 // That is what makes the check about the crossing rather than about priority,
-// which is `cuts/r8-priority`'s point.
+// which is `cuts/r8-priority-prism-over-star`'s and
+// `cuts/r8-priority-star-over-brilliant`'s point.
 //
 // Nothing else on the board seeds the step; nothing in the clear set is a
 // brilliant or a star to grow it under R6; every gem is at strain 0, so no flawed
