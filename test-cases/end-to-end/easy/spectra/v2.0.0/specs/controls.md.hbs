@@ -1,9 +1,10 @@
 # Spectra — Controls
 
-Spectra is played on the keyboard alone. This file defines every action the game
-answers to, the keys bound to it, and which screen reads which. What the ship does
-when it moves and fires is in `specs/ship.md`, and the screens the menu actions move
-between are in `specs/ui.md`.
+Spectra is played from the keyboard, and its menus also take a pointer and touch,
+as `specs/ui.md` states. This file defines every action the game answers to, the
+keys bound to it, and which screen reads which. What the ship does when it moves
+and fires is in `specs/ship.md`, and the screens the menu actions move between are
+in `specs/ui.md`.
 
 {{#if (eq engine.slug "none")}}
 ## How input reaches the game
@@ -13,6 +14,11 @@ write. It listens to the page and reports which keys are down, by their
 `KeyboardEvent.code` values, along with the press edge of each. Every key below is
 named by its `code`, so a binding is a physical key rather than a layout-dependent
 character.
+
+The same layer carries the pointer and the touch contacts `specs/ui.md` drives the
+menus with. It listens to the page for them and reports where each one is, in the
+stage's logical units through the same canvas fit the game is drawn under, along
+with the press and the release edges of each.
 {{else}}
 ## How input reaches the game
 
@@ -91,7 +97,8 @@ Every menu is vertical and is driven by `up`, `down`, and `confirm`. `up` and `d
 move the highlight by one item and wrap at both ends, so moving down from the last
 item highlights the first and moving up from the first highlights the last.
 `confirm` takes the highlighted item. `specs/ui.md` states each screen's items and
-where each one leads.
+where each one leads, and the pointer and touch rules that drive the same menus
+directly rather than through one of the actions above.
 
 ## The debug overlay
 

@@ -174,7 +174,11 @@ describe("the keys each screen reads", () => {
     expect(h.debug.snapshot().screen).toBe("howto");
     await h.tap("Escape");
     expect(h.debug.snapshot().screen).toBe("title");
-    expect(h.debug.snapshot().menuIndex).toBe(0);
+    // specs/ui.md: an arrival back at the title highlights the entry that led
+    // away from it, which for the how-to-play screen is `HOW TO PLAY`.
+    expect(h.debug.snapshot().menuIndex).toBe(
+      TITLE_ITEMS.indexOf("HOW TO PLAY"),
+    );
     h.dispose();
   });
 

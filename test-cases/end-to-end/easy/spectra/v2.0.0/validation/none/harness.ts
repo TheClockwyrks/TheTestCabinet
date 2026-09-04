@@ -77,14 +77,12 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
 import type { ParticleSystem } from "@test-cabinet/particle-runtime";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, CDPSession, Page } from "playwright";
 import { connectChromium } from "./chromium";
-import { fail } from "./assert";
+import { assertTruthy, fail } from "./assert";
 import {
   BURST_SYSTEM,
   ENEMY_BULLET_SPEED,
-  FIELD_LEFT,
-  FIELD_TOP,
   FORM_CENTER_X,
   FORM_COLS,
   FORM_ROWS,
@@ -135,6 +133,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "menuItemRect",
   // The clock (this engine alone).
   "setAutoStep",
   "advance",
@@ -147,9 +146,11 @@ export const REQUIRED_OPS = [
   "setLives",
   "setStage",
   "setExtraLifeAwarded",
+  "setChallengeHits",
   // The world gates and the dive clock.
   "setWaveEntry",
   "setDiveLaunching",
+  "setStageClearing",
   "setShipContact",
   "setDiveClock",
   // The ship and its cannon.
@@ -308,6 +309,7 @@ export interface SpectraSnapshot {
   score: number;
   lives: number;
   extraLifeAwarded: boolean;
+  challengeHits: number;
   resonance: number;
   dischargeReady: boolean;
   inversion: number;
@@ -315,6 +317,7 @@ export interface SpectraSnapshot {
   muted: boolean;
   waveEntry: boolean;
   diveLaunching: boolean;
+  stageClearing: boolean;
   diveClock: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
@@ -328,10 +331,26 @@ export interface SpectraSnapshot {
   simTime: number;
 }
 
+/**
+ * A menu item's hit region, in logical units, as `menuItemRect` reports it.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size
+ * (`specs/instrumentation.md`). Where a build LAYS its menus out is the build's
+ * own (`specs/ui.md`), so this is the only thing a pointer check knows about the
+ * geometry it drives at.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** The operations a check poses the game through. Every one crosses into the page. */
 export interface SpectraDebugApi {
   reset(options?: { seed?: number }): Promise<void>;
   snapshot(): Promise<SpectraSnapshot>;
+  menuItemRect(index: number): Promise<MenuRect | null>;
 
   setAutoStep(enabled: boolean): Promise<void>;
   advance(seconds: number, frames?: number): Promise<void>;
@@ -344,9 +363,11 @@ export interface SpectraDebugApi {
   setLives(lives: number): Promise<void>;
   setStage(stage: number): Promise<void>;
   setExtraLifeAwarded(awarded: boolean): Promise<void>;
+  setChallengeHits(hits: number): Promise<void>;
 
   setWaveEntry(enabled: boolean): Promise<void>;
   setDiveLaunching(enabled: boolean): Promise<void>;
+  setStageClearing(enabled: boolean): Promise<void>;
   setShipContact(enabled: boolean): Promise<void>;
   setDiveClock(seconds: number): Promise<void>;
 
@@ -3480,19 +3501,21 @@ export function distance(
  * The sequence, and why each part of it is here:
  *
  *   - THE FOUR ROSTERS ARE EMPTIED. `clearDrones`, `clearPlayerBullets`,
- *     `clearEnemyBullets`, `clearBursts`. An empty field is safe because of the
- *     stage-clear rule (`specs/stages.md`): a stage clears on the moment the last
- *     drone of its wave is DESTROYED, so a wave that never held one is being
- *     played rather than cleared. `stages/empty-wave-does-not-clear` is the item
- *     that grades that, and it is what makes every scenario below poseable.
- *   - THE THREE WORLD GATES ARE SHUT. Without `setWaveEntry(false)` the stage's
+ *     `clearEnemyBullets`, `clearBursts`. A scenario then poses the entities its
+ *     requirement concerns and stands nothing else beside them, which is what the
+ *     isolation rule asks for.
+ *   - THE FOUR WORLD GATES ARE SHUT. Without `setWaveEntry(false)` the stage's
  *     own wave releases a group every `ENTER_GROUP_GAP` (0.6 s), so any scenario
  *     running longer than half a second is joined by drones it never asked for;
  *     without `setDiveLaunching(false)` an assembled formation launches its first
  *     dive `DIVE_FIRST_DELAY` (2.0 s) in and a posed drone can be pulled into one
  *     mid-scenario; without `setShipContact(false)` a drone posed near the bottom
  *     or an enemy bullet anywhere costs a life, which enters the `ready` phase and
- *     stops the wave. Each gate is the WAVE's own faculty rather than any entity's,
+ *     stops the wave; and without `setStageClearing(false)` the live stage's own
+ *     clear test ends the stage the moment a scenario destroys the last drone it
+ *     posed, which takes the screen off `inWave`, stops the field resolving
+ *     contacts, and pays a bonus into the score a scoring check was about to read.
+ *     Each gate is the WAVE's or the STAGE's own faculty rather than any entity's,
  *     which is why shutting it is not "parking an entity in a harmless corner".
  *     THE ITEMS THAT TURN A GATE BACK ON ARE THE ITEMS WHOSE REQUIREMENT THE GATE
  *     IS; any other check that finds itself wanting one has been mis-posed.
@@ -3509,18 +3532,12 @@ export function distance(
  * It poses no drone, no bullet and no burst: a check adds exactly what its
  * requirement concerns.
  *
- * ONE CONSEQUENCE EVERY CHECK THAT DESTROYS A DRONE HAS TO KNOW. `specs/stages.md`
- * clears a stage in the moment the LAST drone of its wave is destroyed, and it
- * leaves a build free to read "its wave" either way: as the drones the stage
- * itself built, or as the drones on the field. Under the second reading a
- * scenario that poses one drone and destroys it clears the stage in that frame —
- * the screen leaves `inWave`, the field stops resolving contacts, and a standard
- * stage pays `SCORE_STAGE_CLEAR` into the score a scoring check was about to
- * read. So a check whose scenario destroys a drone and then needs play to carry
- * on poses {@link poseBystander} first, which is right under either reading, and
- * it does not assert the screen either way. The one item that grades the rule
- * itself, `stages/clears-on-last-drone`, opens the game's OWN wave with
- * {@link startStage}, where the two readings agree.
+ * A CHECK THAT DESTROYS A DRONE THEREFORE RUNS ON. With `stageClearing` shut, the
+ * wave stays live however the field empties, so a scenario that poses one drone
+ * and destroys it reads what the kill did rather than what the stage end did. The
+ * items whose requirement IS the clear rule — `stages/clears-on-last-drone`,
+ * `stages/empty-wave-does-not-clear` and `instrumentation/stage-clearing-gate` —
+ * are the ones that leave the gate on.
  */
 export async function startPosed(
   h: Harness,
@@ -3533,6 +3550,7 @@ export async function startPosed(
     ["clearBursts"],
     ["setWaveEntry", false],
     ["setDiveLaunching", false],
+    ["setStageClearing", false],
     ["setShipContact", false],
     ["setScreen", "inWave"],
     ["setPhase", "live"],
@@ -3547,6 +3565,7 @@ export async function startPosed(
     ["setLives", START_LIVES],
     ["setScore", 0],
     ["setExtraLifeAwarded", false],
+    ["setChallengeHits", 0],
     ["setDiveClock", 0],
   ]);
 }
@@ -3624,8 +3643,8 @@ export interface DroneSpec {
  *
  * ALL THREE FACULTIES DEFAULT OFF, which is the opposite of what `addDrone`
  * gives, and it is the important part of this helper. Most drones a check poses
- * are props — a target for a shot, a body for a contact test, a bystander in a
- * discharge — and a prop that travels, oscillates or fires wanders into the
+ * are props — a target for a shot, a body for a contact test, one drone of a
+ * discharge's reach — and a prop that travels, oscillates or fires wanders into the
  * scenario that posed it. A check asks for the one faculty its requirement is:
  *
  *   - a Flux's rhythm poses `oscillation: true` and leaves travel off, so the
@@ -3690,36 +3709,6 @@ function arrangeDrone(added: DroneView, spec: DroneSpec): SurfaceCall[] {
   calls.push(["setDroneOscillation", id, spec.oscillation ?? false]);
   calls.push(["setDroneFire", id, spec.fire ?? false]);
   return calls;
-}
-
-/**
- * Where {@link poseBystander} stands: inside the play field, in the corner
- * furthest from the ship's lane, the formation grid at its full sway, and the
- * points {@link EMPTY_FIELD_POINTS} samples.
- */
-export const BYSTANDER_AT = { x: FIELD_LEFT + 40, y: FIELD_TOP + 40 } as const;
-
-/**
- * Pose one inert Shard out of the way, so the wave still holds a drone.
- *
- * WHAT IT IS FOR. A stage clears in the moment the last drone of its wave is
- * destroyed (`specs/stages.md`). A build that reads "its wave" as the drones on
- * the field therefore ends the live wave the moment a scenario destroys the only
- * drone it posed — and on a standard stage pays `SCORE_STAGE_CLEAR` into the
- * score a scoring check was about to read. That is conformant behaviour, and it
- * is simply not what a check about a shot, a score, a burst or the meter is
- * asking about. A bystander leaves a drone standing, so the wave carries on
- * whichever reading the build took and the scenario under test runs to its end.
- *
- * It is a prop like any other {@link poseDrone}: every faculty off, so it holds
- * its corner and takes no part. A check that poses one accounts for it when it
- * counts drones.
- */
-export async function poseBystander(
-  h: Harness,
-  spec: DroneSpec = {},
-): Promise<number> {
-  return poseDrone(h, "shard", BYSTANDER_AT.x, BYSTANDER_AT.y, spec);
 }
 
 /** One entry of a posed formation: a kind, a slot of the grid, and its spec. */
@@ -3976,4 +3965,168 @@ export async function driveBullet(
 /** Show or hide the read-only debug overlay, through its fixed Backquote binding. */
 export async function toggleOverlay(h: Harness): Promise<void> {
   await h.tap(OVERLAY_KEY);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Menus, driven by a real mouse and a real finger                            */
+/* -------------------------------------------------------------------------- */
+//
+// The menus take a pointer and a touch contact as well as the keyboard
+// (`specs/ui.md`), and where a build LAYS the items out is the build's own — so a
+// check asks the build where it put an item, through `menuItemRect`, and then
+// drives Chromium's real mouse or a real touch contact at that region. Nothing
+// here poses a pointer through the surface: a pose would tell the build where the
+// pointer is without making its own input layer see a press, a travel and a
+// release the way a hand does, and what these checks are about is precisely that
+// the build reads them.
+//
+// EACH PART OF A GESTURE RUNS EXACTLY ONE DRIVEN FRAME, so a caller counting
+// frames can add them up, and a build that reads its input once per frame sees
+// every edge.
+
+/** The id every driven contact carries. One finger is all these checks need. */
+const CONTACT_ID = 1;
+
+/** The CDP session driving this page's touch contacts, opened on first use. */
+const touchSessions = new WeakMap<Page, Promise<CDPSession>>();
+
+/** The held session for `page`, opening it on the first contact it drives. */
+function touchSession(page: Page): Promise<CDPSession> {
+  const open = touchSessions.get(page);
+  if (open !== undefined) return open;
+  const opening = page.context().newCDPSession(page);
+  touchSessions.set(page, opening);
+  return opening;
+}
+
+/**
+ * Dispatch one raw touch event through CDP.
+ *
+ * Playwright's own `page.touchscreen` carries `tap` alone, which is a press and a
+ * lift with no frame between them, so a check that needs the contact HELD across
+ * a frame cannot express itself through it. The Chrome DevTools Protocol is the
+ * level that can, and it is what `page.touchscreen.tap` is itself built on.
+ */
+async function dispatchTouch(
+  h: Harness,
+  type: "touchStart" | "touchMove" | "touchEnd",
+  point: { x: number; y: number } | null,
+): Promise<void> {
+  const session = await touchSession(h.page);
+  await session.send("Input.dispatchTouchEvent", {
+    type,
+    touchPoints:
+      point === null ? [] : [{ x: point.x, y: point.y, id: CONTACT_ID }],
+  });
+}
+
+/**
+ * Where the build put item `index` of the menu the current screen shows.
+ *
+ * Fails by assertion when the build reports no region for an item its own menu
+ * shows, so the point names that fault rather than dividing by a `null` several
+ * lines later. A check that is ABOUT the reading returning `null` — on a screen
+ * with no menu, or past the end of one — calls `h.debug.menuItemRect` directly.
+ */
+export async function menuRect(h: Harness, index: number): Promise<MenuRect> {
+  const rect = await h.debug.menuItemRect(index);
+  assertTruthy(
+    rect,
+    `menuItemRect(${index}) must report the hit region of item ${index} on the ` +
+      "menu the current screen shows (specs/instrumentation.md)",
+  );
+  return rect as MenuRect;
+}
+
+/** The middle of a hit region: where a gesture aimed at that item lands. */
+export function rectCenter(rect: MenuRect): { x: number; y: number } {
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** Move the real mouse onto item `index`, and run the frame that reads it. */
+export async function pointerOntoItem(
+  h: Harness,
+  index: number,
+): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  const css = h.css(at.x, at.y);
+  await h.page.mouse.move(css.x, css.y);
+  await h.advance(1);
+}
+
+/** Press and release the real mouse inside item `index`'s region. */
+export async function clickItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  const css = h.css(at.x, at.y);
+  await h.page.mouse.move(css.x, css.y);
+  await h.advance(1);
+  await h.page.mouse.down();
+  await h.advance(1);
+  await h.page.mouse.up();
+  await h.advance(1);
+}
+
+/**
+ * Press on one item, travel to another, and release there.
+ *
+ * The two edges fall in different regions, so this confirms nothing — the
+ * affordance that lets a player slide off a control to cancel, which
+ * `specs/ui.md` states and a check reads back as a `menuIndex` that moved and a
+ * screen that did not.
+ */
+export async function dragBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = rectCenter(await menuRect(h, from));
+  const end = rectCenter(await menuRect(h, to));
+  const a = h.css(start.x, start.y);
+  const b = h.css(end.x, end.y);
+  await h.page.mouse.move(a.x, a.y);
+  await h.advance(1);
+  await h.page.mouse.down();
+  await h.advance(1);
+  await h.page.mouse.move(b.x, b.y);
+  await h.advance(1);
+  await h.page.mouse.up();
+  await h.advance(1);
+}
+
+/** Land a real touch contact inside item `index`'s region and leave it down. */
+export async function landOnItem(h: Harness, index: number): Promise<void> {
+  const at = rectCenter(await menuRect(h, index));
+  await dispatchTouch(h, "touchStart", h.css(at.x, at.y));
+  await h.advance(1);
+}
+
+/** Lift the contact `landOnItem` left down. */
+export async function liftContact(h: Harness): Promise<void> {
+  await dispatchTouch(h, "touchEnd", null);
+  await h.advance(1);
+}
+
+/**
+ * Land a real touch contact inside item `index`'s region and lift it there.
+ *
+ * The landing selects the item as well as confirming it, because a finger does
+ * not hover (`specs/ui.md`) — which is the difference between this and
+ * {@link clickItem}, and the reason both exist.
+ */
+export async function tapItem(h: Harness, index: number): Promise<void> {
+  await landOnItem(h, index);
+  await liftContact(h);
+}
+
+/** Land a contact on one item, travel to another, and lift there: confirms nothing. */
+export async function touchBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  await landOnItem(h, from);
+  const end = rectCenter(await menuRect(h, to));
+  await dispatchTouch(h, "touchMove", h.css(end.x, end.y));
+  await h.advance(1);
+  await liftContact(h);
 }

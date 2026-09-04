@@ -47,7 +47,7 @@ import { releaseDischarge, stepDischarge } from "./resonance";
 import { render } from "./render";
 import { flip, fire, moveShip, tickCannon } from "./ship";
 import { closeStageIfWaveGone } from "./stages";
-import { pause, updateScreen } from "./screens";
+import { applyPointer, pause, updateScreen } from "./screens";
 import {
   advanceDiveClock,
   beginDive,
@@ -94,6 +94,7 @@ export function freshState(seed = DEFAULT_SEED): SpectraState {
     bursts: [],
     waveEntry: true,
     diveLaunching: true,
+    stageClearing: true,
     entryClock: 0,
     swayClock: 0,
     diveClock: 0,
@@ -144,9 +145,13 @@ export function createGame(sprites: Sprites): Game<SpectraState> {
       const steps = Math.max(1, Math.ceil(dt / SUBSTEP_MAX));
       const h = dt / steps;
       const live = { ...intents };
+      const opened = state.screen;
       for (let index = 0; index < steps; index += 1) {
         subStep(state, live, cues, Number.isFinite(h) ? h : 0);
       }
+      // The pointer and the touch contacts are read once per frame and applied
+      // after the frame's keyboard edges (specs/ui.md).
+      applyPointer(state, api, opened, cues);
       cues.flush((cue) => api.audio.play(cue));
     },
 

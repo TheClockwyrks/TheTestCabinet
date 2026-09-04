@@ -48,9 +48,6 @@
 
 import type { DeepReadonly } from "ts-essentials";
 
-/** The surface's version, reported as `version` (`SPECTRA_DEBUG_VERSION`). */
-export const SPECTRA_DEBUG_VERSION = 1;
-
 /** The seed `reset()` restores when the caller names none (`DEFAULT_SEED`). */
 export const DEFAULT_SEED = 1;
 
@@ -159,6 +156,21 @@ export interface BurstSnapshot {
   particles: number;
 }
 
+/**
+ * A menu item's hit region, in logical units, as `menuItemRect` returns it.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size
+ * (`specs/instrumentation.md`). Where a build LAYS its menus out is the build's
+ * own (`specs/ui.md`), so this is the only thing a pointer check knows about the
+ * geometry it drives at.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** The plain, JSON-serializable view `snapshot()` returns. */
 export interface SpectraSnapshot {
   version: number;
@@ -178,6 +190,8 @@ export interface SpectraSnapshot {
   lives: number;
   /** The run's one extra life has been paid. */
   extraLifeAwarded: boolean;
+  /** The current challenge stage's tally of drones destroyed. */
+  challengeHits: number;
   /** `0..RESONANCE_MAX`. */
   resonance: number;
   /** Derived: `resonance >= RESONANCE_MAX`. */
@@ -192,6 +206,8 @@ export interface SpectraSnapshot {
   waveEntry: boolean;
   /** The assault's own dive choice runs. */
   diveLaunching: boolean;
+  /** The stage's own end-of-stage test runs. */
+  stageClearing: boolean;
   /** Seconds since the wave's last dive launch. */
   diveClock: number;
   /** Derived from `stage`. */
@@ -238,6 +254,14 @@ export interface SpectraDebugApi<S = unknown> {
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): SpectraSnapshot;
+  /**
+   * A pure read of the hit region of item `index` on the menu the current screen
+   * shows, in logical units. It changes nothing.
+   *
+   * `null` on the four screens that show no menu and for an index the current
+   * menu has no item at (`specs/instrumentation.md`).
+   */
+  menuItemRect(state: DeepReadonly<S>, index: number): MenuRect | null;
 
   // ---- The screen and the run --------------------------------------------
 
@@ -252,6 +276,11 @@ export interface SpectraDebugApi<S = unknown> {
   setStage(state: DeepReadonly<S>, n: number): S;
   /** Sets the run's one-extra-life latch. */
   setExtraLifeAwarded(state: DeepReadonly<S>, awarded: boolean): S;
+  /**
+   * Sets the current challenge stage's tally of drones destroyed, a whole
+   * number from `0`. It destroys nothing and pays nothing.
+   */
+  setChallengeHits(state: DeepReadonly<S>, n: number): S;
 
   // ---- The world gates and the dive clock --------------------------------
 
@@ -259,6 +288,8 @@ export interface SpectraDebugApi<S = unknown> {
   setWaveEntry(state: DeepReadonly<S>, enabled: boolean): S;
   /** Gates the assault's own choice of which drone dives next, and nothing else. */
   setDiveLaunching(state: DeepReadonly<S>, enabled: boolean): S;
+  /** Gates the live stage's own end-of-stage test, and nothing else. */
+  setStageClearing(state: DeepReadonly<S>, enabled: boolean): S;
   /** Gates the ship's contact test, and nothing else. Reported as `ship.contact`. */
   setShipContact(state: DeepReadonly<S>, enabled: boolean): S;
   /** Sets the seconds since the wave's last dive launch. It launches nothing. */
@@ -343,7 +374,7 @@ export interface SpectraDebugApi<S = unknown> {
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /**
  * Every operation the surface must carry under EITHER variant, in the order
@@ -358,6 +389,7 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "menuItemRect",
 
   "setScreen",
   "setPhase",
@@ -367,9 +399,11 @@ export const REQUIRED_OPS = [
   "setLives",
   "setStage",
   "setExtraLifeAwarded",
+  "setChallengeHits",
 
   "setWaveEntry",
   "setDiveLaunching",
+  "setStageClearing",
   "setShipContact",
   "setDiveClock",
 

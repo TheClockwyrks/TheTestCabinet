@@ -207,6 +207,8 @@ export interface SpectraState {
   waveEntry: boolean;
   /** Whether the assault's own dive launching runs. */
   diveLaunching: boolean;
+  /** Whether the live stage's own end-of-stage test runs. */
+  stageClearing: boolean;
   /** The clock the wave's entry groups are released against. */
   entryClock: number;
   /** The clock the formation's sway is drawn against. */

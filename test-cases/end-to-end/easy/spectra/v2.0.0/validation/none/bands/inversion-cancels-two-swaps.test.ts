@@ -19,10 +19,6 @@
 // costs a build its grade if the reading is cosmetic: the snapshot says cyan, AND
 // a CYAN shot destroys the exposed core, so a build whose contact code composes
 // the swaps differently from its snapshot fails here.
-//
-// A bystander holds the far corner of the field, because this scenario destroys
-// the drone it poses and a stage clears in the moment its last drone is destroyed
-// (specs/stages.md).
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertUndefined } from "../assert";
@@ -31,7 +27,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -73,7 +68,6 @@ afterEach(async () => {
 
 it("reads a stored-cyan Prism with its shell broken under an inversion as cyan", async () => {
   await startPosed(harness);
-  await poseBystander(harness);
   const id = await poseDrone(harness, "prism", AT.x, AT.y, {
     band: "cyan",
     shell: false,

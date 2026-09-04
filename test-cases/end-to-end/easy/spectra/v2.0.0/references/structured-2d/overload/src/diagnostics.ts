@@ -12,7 +12,7 @@
 // the overlay never changes what the simulation does. Each line is short enough to
 // read at a glance while the game runs.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 import { RESONANCE_MAX, fluxHold, isChallengeStage } from "./constants";
 import { droneEffectiveBand, shimmering } from "./bands";
 import { spectraState, type SpectraState } from "./game";
@@ -36,7 +36,7 @@ function bands(stored: string, effective: string): string {
  */
 export function diagnosticSources(
   read: () => SpectraState,
-): [string, () => unknown][] {
+): [string, () => DiagnosticValue][] {
   return [
     [
       "screen",

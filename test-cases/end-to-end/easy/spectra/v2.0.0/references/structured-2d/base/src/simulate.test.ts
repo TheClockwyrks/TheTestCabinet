@@ -22,6 +22,7 @@ import {
   START_LIVES,
   STAGE_CLEARED_HOLD,
   SUBSTEP_MAX,
+  TITLE_ITEMS,
   fluxHold,
 } from "./constants";
 import { newFrameEvents } from "./events";
@@ -451,7 +452,9 @@ describe("the screens a sub-step advances", () => {
 
     stepFrame(state, { ...IDLE_INPUT, back: true }, 1 / 60, newFrameEvents());
     expect(state.screen).toBe("title");
-    expect(state.menuIndex).toBe(0);
+    // specs/ui.md: an arrival back at the title highlights the entry that led
+    // away from it, which for the how-to-play screen is `HOW TO PLAY`.
+    expect(state.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 
   it("wraps a menu's highlight at both ends and plays the cue", () => {

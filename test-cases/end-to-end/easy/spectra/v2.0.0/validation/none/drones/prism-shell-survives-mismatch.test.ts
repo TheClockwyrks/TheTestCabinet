@@ -13,12 +13,6 @@
 // stored band and its shell intact, and the opposite band on the bullet. A build
 // that breaks the shell on every contact fails here and passes there; a build
 // that breaks it on none fails there and passes here.
-//
-// THE READING. The Prism is still on the field and its shell still stands. Which
-// band a shelled Prism reads as is `bands`', and what a mismatched shot does to
-// the DRONE beyond sparing it belongs to the mode the build ships
-// (specs/mode.md), which the variants grade in their own categories. Nothing is
-// destroyed here, so no bystander is needed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

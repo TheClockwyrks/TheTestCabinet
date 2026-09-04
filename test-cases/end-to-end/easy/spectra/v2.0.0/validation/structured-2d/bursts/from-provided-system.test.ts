@@ -55,7 +55,7 @@ import {
   type Harness,
 } from "../harness";
 import { burstOf } from "./reading";
-import { firedPop, poseBystander } from "./scene";
+import { firedPop } from "./scene";
 
 /** The age the burst is read at, in seconds: the tenth of a second above. */
 const READ_AGE = 0.1;
@@ -98,7 +98,6 @@ afterEach(() => {
 
 it("holds the live population the seeded system's own emitters give", async () => {
   startPosed(h);
-  poseBystander(h);
   poseDrone(h, "shard", POP_AT.x, POP_AT.y, { band: "cyan" });
 
   const pop = await firedPop(h, POP_AT.x, POP_AT.y, "cyan");

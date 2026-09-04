@@ -46,7 +46,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { poseBystander } from "./scene";
 
 /** The key `specs/controls.md` binds the discharge action to. */
 const DISCHARGE_KEY = BINDINGS.discharge[0];
@@ -74,9 +73,6 @@ afterEach(() => {
 
 it("leaves one burst for each of the three divers the wave destroyed", async () => {
   startPosed(h);
-  // In the formation, so the wave spares it and the wave stays open once the
-  // three divers are taken (specs/resonance.md, and see poseBystander).
-  poseBystander(h);
   for (const at of DIVERS_AT) {
     poseDrone(h, "shard", at.x, at.y, { phase: "diving" });
   }
@@ -89,8 +85,8 @@ it("leaves one burst for each of the three divers the wave destroyed", async () 
   );
   assertLength(
     posed.drones,
-    DIVERS_AT.length + 1,
-    "precondition: the three divers and the bystander are on the field",
+    DIVERS_AT.length,
+    "precondition: the three divers are on the field",
   );
 
   h.debug.setResonance(RESONANCE_MAX);
@@ -103,9 +99,8 @@ it("leaves one burst for each of the three divers the wave destroyed", async () 
   const after = h.snapshot();
   assertLength(
     after.drones,
-    1,
-    "precondition: the wave destroyed all three divers and spared the drone " +
-      "resting in the formation (specs/resonance.md)",
+    0,
+    "precondition: the wave destroyed all three divers (specs/resonance.md)",
   );
   assertLength(
     after.bursts,

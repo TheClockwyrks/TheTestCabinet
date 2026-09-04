@@ -18,8 +18,8 @@ plays the particle system.
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours. You write the runtime a
 browser game needs — the frame loop and the delta time it measures, fitting the
-fixed logical stage onto the canvas, keyboard input, audio, and the diagnostics
-overlay — and you write the game itself on top of it.
+fixed logical stage onto the canvas, keyboard, pointer and touch input, audio, and
+the diagnostics overlay — and you write the game itself on top of it.
 
 You also write the `window.__spectra` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how the

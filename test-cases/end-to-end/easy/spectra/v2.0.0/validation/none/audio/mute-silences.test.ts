@@ -43,7 +43,6 @@ import {
   droneById,
   framesFor,
   playerBullets,
-  poseBystander,
   poseDrone,
   requireDrone,
   startPosed,
@@ -56,7 +55,7 @@ const MUTE_KEY = BINDINGS.mute[0];
 const FIRE_KEY = BINDINGS.a[0];
 const FLIP_KEY = BINDINGS.b[0];
 
-/** Where the target Shard stands: clear of the ship's lane and of the bystander. */
+/** Where the target Shard stands: clear of the ship's lane. */
 const TARGET_X = 400;
 const TARGET_Y = 300;
 
@@ -96,11 +95,10 @@ it("starts no sound at all while the game is muted", async () => {
   // browser gesture and the silence below is a choice rather than a wait. The key
   // is bound to nothing, so this changes no game state.
   await h.armAudio();
-  // An empty, quiet, live wave, then exactly two drones: the target, and the
-  // bystander that keeps the wave from clearing on the kill and raising a fourth
-  // event inside the window.
+  // An empty, quiet, live wave, then the one drone this point is about. With
+  // `stageClearing` shut by `startPosed`, no stage end raises a further event
+  // inside the window.
   await startPosed(h);
-  await poseBystander(h);
   const targetId = await poseDrone(h, "shard", TARGET_X, TARGET_Y, {
     band: "cyan",
   });

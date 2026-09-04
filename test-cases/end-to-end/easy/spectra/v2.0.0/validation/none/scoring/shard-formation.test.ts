@@ -21,14 +21,6 @@
 // the Shard's own band destroys it (`specs/bands.md`), and the build's own
 // contact, band and scoring rules do the rest.
 //
-// WHY A BYSTANDER STANDS IN THE CORNER. A stage clears in the moment the last
-// drone of its wave is destroyed (`specs/stages.md`), and a build that reads
-// "its wave" as the drones on the field would clear this stage under the kill
-// and pay `SCORE_STAGE_CLEAR` into the very number this check reads. The
-// bystander leaves a drone standing, so the wave carries on under either reading
-// and the score holds the kill alone. It is a Shard in phase `formation` in the
-// far corner with every faculty off, so it takes no part.
-//
 // WHAT THIS DOES NOT DECIDE. That a matching shot destroys a drone at all is
 // `bands/match-destroys`, and it is read here as the precondition of a payment.
 // What a DIVING Shard pays is `scoring/shard-diving`, and what clearing a stage
@@ -41,7 +33,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   shootDrone,
   startPosed,
@@ -51,7 +42,7 @@ import {
 /**
  * Where the Shard is posed: a clear stretch of the play field, below the
  * formation grid's lowest row (`332`) and its full sway, above the ship's lane
- * (`SHIP_Y`, `600`), and well clear of the corner the bystander holds.
+ * (`SHIP_Y`, `600`).
  */
 const TARGET_AT = { x: 900, y: 460 } as const;
 
@@ -77,7 +68,6 @@ afterEach(async () => {
 
 it("adds exactly SCORE_SHARD_FORM when a formation Shard is destroyed", async () => {
   await startPosed(h);
-  await poseBystander(h);
   // Phase `formation` is what `addDrone` gives, and `poseDrone` leaves every
   // faculty off, so the Shard holds its centre, its band and its phase.
   const target = await poseDrone(h, "shard", TARGET_AT.x, TARGET_AT.y, {

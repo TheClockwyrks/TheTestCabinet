@@ -32,9 +32,6 @@
 // — is not held to them. {@link REQUIRED_OPS} is what every build owes;
 // {@link OVERLOAD_OPS} is what the `overload` suites additionally reach for.
 
-/** The surface's version, reported as `version`. */
-export const SPECTRA_DEBUG_VERSION = 1;
-
 /** The seed `reset()` restores when the caller names none. */
 export const DEFAULT_SEED = 1;
 
@@ -143,6 +140,21 @@ export interface DischargeSnapshot {
 }
 
 /**
+ * A menu item's hit region, in logical units, as `menuItemRect` returns it.
+ *
+ * `x` and `y` are the region's top-left corner and `w` and `h` its size
+ * (`specs/instrumentation.md`). Where a build LAYS its menus out is the build's
+ * own (`specs/ui.md`), so this is the only thing a pointer check knows about the
+ * geometry it drives at.
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
  * The plain, JSON-serializable view `snapshot()` returns.
  *
  * Every field an operation can set is present, so every operation is verifiable
@@ -170,6 +182,8 @@ export interface SpectraSnapshot {
   lives: number;
   /** The run's one extra life has been paid. */
   extraLifeAwarded: boolean;
+  /** The current challenge stage's tally of drones destroyed. */
+  challengeHits: number;
   /** `0..RESONANCE_MAX`. */
   resonance: number;
   /** Derived: `resonance >= RESONANCE_MAX`. */
@@ -184,6 +198,8 @@ export interface SpectraSnapshot {
   waveEntry: boolean;
   /** The assault's own dive choice runs. */
   diveLaunching: boolean;
+  /** The stage's own end-of-stage test runs. */
+  stageClearing: boolean;
   /** Seconds since the wave's last dive launch. */
   diveClock: number;
   /** Derived from `stage`. */
@@ -221,6 +237,14 @@ export interface SpectraDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): SpectraSnapshot;
+  /**
+   * A pure read of the hit region of item `index` on the menu the current screen
+   * shows, in logical units. It changes nothing.
+   *
+   * `null` on the four screens that show no menu and for an index the current
+   * menu has no item at (`specs/instrumentation.md`).
+   */
+  menuItemRect(index: number): MenuRect | null;
 
   setScreen(screen: Screen): void;
   setPhase(phase: Phase): void;
@@ -230,9 +254,11 @@ export interface SpectraDebugApi {
   setLives(n: number): void;
   setStage(n: number): void;
   setExtraLifeAwarded(awarded: boolean): void;
+  setChallengeHits(n: number): void;
 
   setWaveEntry(enabled: boolean): void;
   setDiveLaunching(enabled: boolean): void;
+  setStageClearing(enabled: boolean): void;
   setShipContact(enabled: boolean): void;
   setDiveClock(seconds: number): void;
 
@@ -279,7 +305,7 @@ export interface SpectraDebugApi {
  * sweeps the surface (instrumentation/surface-present) calls a reading for its
  * value and a pose for its effect.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /**
  * Every operation the surface must carry under this engine, in the order
@@ -294,6 +320,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "menuItemRect",
 
   // The screen and the run.
   "setScreen",
@@ -304,10 +331,12 @@ export const REQUIRED_OPS = [
   "setLives",
   "setStage",
   "setExtraLifeAwarded",
+  "setChallengeHits",
 
   // The world gates and the dive clock.
   "setWaveEntry",
   "setDiveLaunching",
+  "setStageClearing",
   "setShipContact",
   "setDiveClock",
 

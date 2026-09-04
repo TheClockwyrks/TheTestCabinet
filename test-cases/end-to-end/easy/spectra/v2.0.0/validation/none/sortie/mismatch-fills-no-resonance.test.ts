@@ -14,13 +14,6 @@
 // `RESONANCE_MAX` (100), a wrong fill has room to show: seeded at the ceiling the
 // cap would swallow it and the check would pass a build that fills.
 //
-// The shot is the same one `bands/mismatch-spares` fires — a magenta bullet into
-// a stored-cyan Shard, from below, driven clear past it — so nothing is
-// destroyed, no matching kill is anywhere in the scenario, and no bystander is
-// needed. The ship is never touched, so no absorb is either. What the shot does
-// to the DRONE is the sibling `sortie/mismatch-wasted`; what it does to the SCORE
-// is `sortie/mismatch-scores-nothing`. This check reads the meter alone.
-//
 // The whole drive is 0.4 s, which is why the seeded reading is safe to compare
 // exactly: that the meter does not decay with time is `resonance`'s own item, and
 // no build could decay perceptibly over four tenths of a second anyway.

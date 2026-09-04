@@ -78,7 +78,6 @@ import {
   footprint,
   framesFor,
   lastDrone,
-  poseBystander,
   poseDrone,
   poseFormation,
   readRegion,
@@ -287,10 +286,6 @@ it("advance runs exactly the frames it is asked for, and skip covers time off ca
 
 it("shootDrone drives a real shot to its real outcome", async () => {
   await startPosed(h);
-  // The bystander is what keeps the wave alive across the kill below: without
-  // one, destroying the only drone clears the stage in that frame and the second
-  // half of this check would be driving a field that is no longer live.
-  await poseBystander(h);
   const target = await poseDrone(h, "shard", 400, 300, { band: "cyan" });
   const spared = await poseDrone(h, "shard", 800, 300, { band: "cyan" });
 
@@ -303,7 +298,11 @@ it("shootDrone drives a real shot to its real outcome", async () => {
     undefined,
     "the destroyed drone",
   );
-  assertEqual(matched.snapshot.screen, "inWave", "the wave the bystander kept");
+  assertEqual(
+    matched.snapshot.screen,
+    "inWave",
+    "the wave the shut stage-clear gate kept live",
+  );
 
   // And a mismatched shot leaves the drone standing.
   const missed = await shootDrone(h, spared, "magenta", { below: 120 });
@@ -315,13 +314,13 @@ it("shootDrone drives a real shot to its real outcome", async () => {
   );
 });
 
-it("poseBystander keeps a posed wave running under a kill", async () => {
-  // The wave carries on across a kill because a drone is still standing, which
-  // is what makes the helper right under either reading of "the last drone of
-  // its wave" (see poseBystander). Nothing here asserts which reading the build
-  // took: that is `stages/clears-on-last-drone`'s, over the game's own wave.
+it("startPosed keeps a posed wave running once its last drone falls", async () => {
+  // `startPosed` shuts `stageClearing`, so a scenario that poses one drone and
+  // destroys it reads what the kill did rather than what a stage end did: the
+  // field empties and the wave stays live. Nothing here asserts the clear rule
+  // itself — that is `stages/clears-on-last-drone`'s, over the game's own wave,
+  // and `instrumentation/stage-clearing-gate`'s for the gate.
   await startPosed(h);
-  const bystander = await poseBystander(h);
   const target = await poseDrone(h, "shard", 400, 300, { band: "cyan" });
   const kept = await shootDrone(h, target, "cyan", { below: 120 });
 
@@ -331,8 +330,7 @@ it("poseBystander keeps a posed wave running under a kill", async () => {
     "the drone the shot destroyed",
   );
   assertEqual(kept.snapshot.screen, "inWave", "the wave still running");
-  assertLength(kept.snapshot.drones, 1, "the bystander alone");
-  assertEqual(kept.snapshot.drones[0].id, bystander, "and it is the bystander");
+  assertLength(kept.snapshot.drones, 0, "the field it left empty");
 });
 
 it("fireAtShip drives an enemy bullet into the ship", async () => {

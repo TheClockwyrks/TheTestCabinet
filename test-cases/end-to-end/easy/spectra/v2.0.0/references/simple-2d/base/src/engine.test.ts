@@ -86,6 +86,7 @@ import {
   STAGE_W,
   START_LIVES,
   SWAY_PERIOD,
+  TITLE_ITEMS,
   diveGapScale,
   droneSpeedScale,
   fluxHold,
@@ -379,8 +380,10 @@ describe("the debug surface", () => {
     h.pose((s, d) => d.setLives(s, 2));
     h.pose((s, d) => d.setStage(s, 7));
     h.pose((s, d) => d.setExtraLifeAwarded(s, true));
+    h.pose((s, d) => d.setChallengeHits(s, 17));
     h.pose((s, d) => d.setWaveEntry(s, false));
     h.pose((s, d) => d.setDiveLaunching(s, false));
+    h.pose((s, d) => d.setStageClearing(s, false));
     h.pose((s, d) => d.setShipContact(s, false));
     h.pose((s, d) => d.setDiveClock(s, 1.25));
     h.pose((s, d) => d.setShipX(s, 300));
@@ -399,8 +402,10 @@ describe("the debug surface", () => {
     expect(snap.lives).toBe(2);
     expect(snap.stage).toBe(7);
     expect(snap.extraLifeAwarded).toBe(true);
+    expect(snap.challengeHits).toBe(17);
     expect(snap.waveEntry).toBe(false);
     expect(snap.diveLaunching).toBe(false);
+    expect(snap.stageClearing).toBe(false);
     expect(snap.diveClock).toBeCloseTo(1.25, 6);
     expect(snap.ship.contact).toBe(false);
     expect(snap.ship.x).toBeCloseTo(300, 6);
@@ -449,6 +454,7 @@ describe("the debug surface", () => {
     expect(snap.ship.contact).toBe(true);
     expect(snap.waveEntry).toBe(true);
     expect(snap.diveLaunching).toBe(true);
+    expect(snap.stageClearing).toBe(true);
     expect(snap.diveClock).toBe(0);
     expect(snap.extraLifeAwarded).toBe(false);
     expect(snap.simTime).toBe(0);
@@ -1401,7 +1407,7 @@ describe("the screens", () => {
     expect(h.snapshot().menuIndex).toBe(0);
   });
 
-  it("reaches how-to-play and comes back to the first item", async () => {
+  it("reaches how-to-play and comes back on the entry that led there", async () => {
     h.tap("ArrowDown");
     await h.frames(1);
     h.tap("Enter");
@@ -1410,7 +1416,9 @@ describe("the screens", () => {
     h.tap("Escape");
     await h.frames(1);
     expect(h.snapshot().screen).toBe("title");
-    expect(h.snapshot().menuIndex).toBe(0);
+    // specs/ui.md: an arrival back at the title highlights the entry that led
+    // away from it, which for the how-to-play screen is `HOW TO PLAY`.
+    expect(h.snapshot().menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 
   it("freezes the field while paused and resumes it exactly as it was", async () => {

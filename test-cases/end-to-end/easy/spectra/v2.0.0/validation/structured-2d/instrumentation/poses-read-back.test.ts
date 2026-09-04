@@ -16,7 +16,7 @@
 // the check would be reading the tick rather than the pose.
 //
 // EVERY BOOLEAN IS POSED BOTH WAYS. A field read back once could be a constant.
-// The extra-life latch, the three world gates, a Prism's shell and each of a
+// The extra-life latch, the four world gates, a Prism's shell and each of a
 // drone's three faculties are set to one value, read, set to the other, and read
 // again, so a snapshot that simply always answers `true` fails on the second
 // reading.
@@ -78,6 +78,7 @@ const MENU_INDEX = 2;
 const SCORE = 4321;
 const LIVES = START_LIVES + 2;
 const STAGE = 7;
+const CHALLENGE_HITS = 17;
 const RESONANCE = 42;
 const INVERSION = 3.5;
 const SHIP_X = 417;
@@ -194,6 +195,12 @@ it("reports every posed field back through snapshot", async () => {
       `snapshot().extraLifeAwarded after setExtraLifeAwarded(${awarded})`,
     );
   }
+  readsBack(
+    () => h.debug.setChallengeHits(CHALLENGE_HITS),
+    (s) => s.challengeHits,
+    CHALLENGE_HITS,
+    `snapshot().challengeHits after setChallengeHits(${CHALLENGE_HITS})`,
+  );
 
   // ---- Resonance and the inversion ----------------------------------------
 
@@ -239,7 +246,7 @@ it("reports every posed field back through snapshot", async () => {
     `snapshot().ship.cooldown, in seconds, after setFireCooldown(${COOLDOWN})`,
   );
 
-  // ---- The three world gates, each posed both ways, and the dive clock -----
+  // ---- The four world gates, each posed both ways, and the dive clock ------
 
   for (const enabled of [true, false]) {
     readsBack(
@@ -253,6 +260,12 @@ it("reports every posed field back through snapshot", async () => {
       (s) => s.diveLaunching,
       enabled,
       `snapshot().diveLaunching after setDiveLaunching(${enabled})`,
+    );
+    readsBack(
+      () => h.debug.setStageClearing(enabled),
+      (s) => s.stageClearing,
+      enabled,
+      `snapshot().stageClearing after setStageClearing(${enabled})`,
     );
     readsBack(
       () => h.debug.setShipContact(enabled),

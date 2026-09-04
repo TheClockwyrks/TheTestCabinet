@@ -17,11 +17,6 @@
 // The shell is posed away rather than shot away, so a build that cannot break a
 // shell fails `drones/prism-shell-breaks-to-shell-band` and is graded here on the
 // core rule alone.
-//
-// One bystander stands out of the way, because this scenario destroys the drone it
-// poses and specs/stages.md clears a stage in the moment the last drone of its wave
-// is destroyed; the bystander leaves the wave a drone under either reading of "its
-// wave", so the field is still live when the reading is taken.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertUndefined } from "../assert";
@@ -30,7 +25,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   shootDrone,
   startPosed,
@@ -79,7 +73,6 @@ afterEach(async () => {
 
 it("destroys a Prism with a shot of its exposed core's band", async () => {
   await startPosed(harness, { stage: STAGE });
-  await poseBystander(harness);
   const prism = await poseDrone(harness, "prism", AT.x, AT.y, {
     band: SHELL_BAND,
     // The shell is already gone: the core is the exposed layer, which is the

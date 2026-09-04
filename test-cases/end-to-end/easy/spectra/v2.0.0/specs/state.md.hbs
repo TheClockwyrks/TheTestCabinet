@@ -49,8 +49,9 @@ Whatever its shape, the state carries the following.
 
 ## The wave's own schedules
 
-- Whether the wave's entry of drones is running, and whether the assault's dive
-  launching is running. Both are on when a run begins.
+- Whether the wave's entry of drones is running, whether the assault's dive
+  launching is running, and whether the live stage's own end-of-stage test is
+  running. All three are on when a run begins.
 - The wave's entry clock, which its entry groups are released against; its sway
   clock, which the formation's sway is drawn against; and its dive clock together
   with the gap the next dive launch waits for.
@@ -176,6 +177,7 @@ export interface SpectraState {
 
   readonly waveEntry: boolean;
   readonly diveLaunching: boolean;
+  readonly stageClearing: boolean;
   readonly entryClock: number;
   readonly swayClock: number;
   readonly diveClock: number;
@@ -312,6 +314,7 @@ export class SpectraState extends GameState {
 
   waveEntry = true;
   diveLaunching = true;
+  stageClearing = true;
   entryClock = 0;
   swayClock = 0;
   diveClock = 0;
@@ -405,6 +408,8 @@ is appended to it.
   surface poses.
 - `diveLaunching` — whether the assault's own dive launching runs, which the debug
   surface poses.
+- `stageClearing` — whether the live stage's own end-of-stage test runs, which the
+  debug surface poses.
 - `entryClock` — the seconds since the wave opened, which its entry groups are
   released against. It advances only while `waveEntry` is on.
 - `swayClock` — the seconds the wave has been played, which the formation's sway is

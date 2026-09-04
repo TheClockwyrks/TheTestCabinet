@@ -19,13 +19,6 @@
 // a number. What a dive's PATH and its FIRE do belong to `swarm`'s items; this
 // one needs the phase alone.
 //
-// WHY A BYSTANDER STANDS IN THE CORNER. A stage clears in the moment the last
-// drone of its wave is destroyed (`specs/stages.md`), and a build that reads
-// "its wave" as the drones on the field would clear this stage under the kill
-// and pay `SCORE_STAGE_CLEAR` into the very number this check reads. The
-// bystander leaves a drone standing, so the wave carries on under either reading
-// and the score holds the kill alone.
-//
 // WHAT THIS DOES NOT DECIDE. That a matching shot destroys a drone is
 // `bands/match-destroys`. That the other two moving phases pay this same figure
 // is `scoring/entering-scores-diving` and `scoring/returning-scores-diving`, each
@@ -38,7 +31,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -49,7 +41,7 @@ import {
 /**
  * Where the Shard is posed: a clear stretch of the play field, below the
  * formation grid's lowest row (`332`) and its full sway, above the ship's lane
- * (`SHIP_Y`, `600`), and well clear of the corner the bystander holds.
+ * (`SHIP_Y`, `600`).
  */
 const TARGET_AT = { x: 900, y: 460 } as const;
 
@@ -74,7 +66,6 @@ afterEach(async () => {
 
 it("adds exactly SCORE_SHARD_DIVE when a diving Shard is destroyed", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const target = await poseDrone(h, "shard", TARGET_AT.x, TARGET_AT.y, {
     band: "cyan",
     phase: "diving",

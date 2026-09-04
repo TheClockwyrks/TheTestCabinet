@@ -26,10 +26,10 @@
 // this one as well — two points for one fault. Reaching the scenario directly is what
 // `specs/instrumentation.md` gives `setScreen` for.
 //
-// WHAT IS NOT ASSERTED. That the title's highlight comes back to its first item is
-// `screens/howto-returns`'s and `screens/title-menu-selection`'s; what the how-to
-// screen draws is `screens/howto-content`'s. This point reads the screen the press
-// arrived at and nothing else.
+// WHAT IS NOT ASSERTED. Where the title's highlight comes back to is
+// `screens/howto-returns-selection`'s; what the how-to screen draws is
+// `screens/howto-content`'s. This point reads the screen the press arrived at and
+// nothing else.
 //
 // THE KEY IS TAPPED, AND IT IS A REAL ONE. `specs/controls.md` reads `back` as an
 // edge, so a conforming build resolves it through the engine's `pressed`: `tap`

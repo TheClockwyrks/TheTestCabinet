@@ -43,17 +43,16 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { poseBystander, release } from "./wave";
+import { release } from "./wave";
 
 /**
  * Where the three divers stand, in logical units.
  *
  * A clear stretch of the play field, spread across its width so no two are the
- * same distance from the ship at `(640, 600)`: 350, 180 and 361 units out, every
- * one a small fraction of `DISCHARGE_MAX_R` (`1500`), so the wave reaches all
- * three well inside its life. All three are well inside the play field on both
- * axes (`y` in `[64, 656]`, specs/field.md) and clear of the corner the bystander
- * holds.
+ * same distance from the ship at `(640, 600)`: 350, 180 and 361 units out,
+ * every one a small fraction of `DISCHARGE_MAX_R` (`1500`), so the wave reaches
+ * all three well inside its life. All three are well inside the play field on
+ * both axes (`y` in `[64, 656]`, specs/field.md).
  */
 const DIVERS_AT = [
   { x: 340, y: 420 },
@@ -83,10 +82,6 @@ afterEach(() => {
 
 it("destroys every drone in phase diving", async () => {
   startPosed(h);
-  // In the formation, which specs/resonance.md's own table spares, so the wave
-  // still leaves a drone standing: a stage clears in the moment the last drone of
-  // its wave is destroyed (specs/stages.md), and this scenario destroys three.
-  poseBystander(h);
   const divers = DIVERS_AT.map((at) =>
     poseDrone(h, "shard", at.x, at.y, { phase: "diving" }),
   );
@@ -94,8 +89,8 @@ it("destroys every drone in phase diving", async () => {
   const posed = h.snapshot();
   assertLength(
     posed.drones,
-    DIVERS_AT.length + 1,
-    "precondition: the three divers and the bystander are on the field",
+    DIVERS_AT.length,
+    "precondition: the three divers are on the field",
   );
   assertEqual(
     posed.discharge.active,

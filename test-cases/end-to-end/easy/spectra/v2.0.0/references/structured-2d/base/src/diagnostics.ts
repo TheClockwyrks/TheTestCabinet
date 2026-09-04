@@ -15,7 +15,7 @@ import { isChallengeStage } from "./constants";
 import { droneBand, inverted, isShimmering } from "./bands";
 import { dischargeReady } from "./discharge";
 import { spectraState, type DroneState, type SpectraState } from "./game";
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 
 /** A number, short enough to read on a line. */
 function n(value: number, places = 1): string {
@@ -46,7 +46,7 @@ function droneLine(drone: DroneState, state: SpectraState): string {
  */
 export function diagnosticSources(
   read: () => SpectraState,
-): [string, () => unknown][] {
+): [string, () => DiagnosticValue][] {
   return [
     [
       "screen",

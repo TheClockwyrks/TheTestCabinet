@@ -19,10 +19,6 @@
 // reach its slot and enter `formation`, which is the other figure and would
 // decide this point by accident.
 //
-// WHY A BYSTANDER STANDS IN THE CORNER. A stage clears in the moment the last
-// drone of its wave is destroyed (`specs/stages.md`); the bystander leaves a
-// drone standing so no `SCORE_STAGE_CLEAR` lands in the number this check reads.
-//
 // WHAT THIS DOES NOT DECIDE. The figure itself is `scoring/shard-diving`; this
 // point decides only that the `returning` phase is paid at it. `entering` is
 // `scoring/entering-scores-diving`.
@@ -34,7 +30,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -45,7 +40,7 @@ import {
 /**
  * Where the Shard is posed: a clear stretch of the play field, below the
  * formation grid's lowest row (`332`) and its full sway, above the ship's lane
- * (`SHIP_Y`, `600`), and well clear of the corner the bystander holds.
+ * (`SHIP_Y`, `600`).
  */
 const TARGET_AT = { x: 900, y: 460 } as const;
 
@@ -69,7 +64,6 @@ afterEach(async () => {
 
 it("adds SCORE_SHARD_DIVE when a Shard in phase returning is destroyed", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const target = await poseDrone(h, "shard", TARGET_AT.x, TARGET_AT.y, {
     band: "cyan",
     phase: "returning",

@@ -45,7 +45,6 @@ import {
   captureStill,
   createHarness,
   framesFor,
-  poseBystander,
   poseDrone,
   seededBurstSystem,
   shootDrone,
@@ -88,7 +87,6 @@ afterEach(async () => {
 
 it("holds the live population the seeded system's own emitters give", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const target = await poseDrone(h, "shard", POP_AT.x, POP_AT.y, {
     band: "cyan",
   });

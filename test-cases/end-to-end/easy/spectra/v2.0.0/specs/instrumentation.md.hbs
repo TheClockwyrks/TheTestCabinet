@@ -125,7 +125,8 @@ per-entity operation. Two rules make an id findable without an assignment scheme
 
 The surface carries `version` (`SPECTRA_DEBUG_VERSION`, `1`), a plain number, and the
 operations below. Values are plain numbers, strings, and booleans, and every `x` and
-`y` the surface takes or reports is an entity's center in the stage's logical units.
+`y` the surface takes or reports for an entity is that entity's center in the stage's
+logical units.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation takes the current state, `DeepReadonly<SpectraState>`, as its first
@@ -146,23 +147,30 @@ and changes nothing.
 | --- | --- |
 | `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `menuItemRect(index)` | A pure read of the hit region of item `index` on the menu the current screen shows. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `phase` to `"live"`, `phaseTimer` to `0`,
 `menuIndex` to `0`, `score` to `0`, `lives` to `START_LIVES` (`3`), `stage` to `1`,
 `resonance` to `0`, and `inversion` to `0`; it empties the drone, bullet, and burst
 rosters and the live discharge; it places the ship at the center of its lane (`640`)
 on the cyan band with `0` seconds of fire lockout and `0` seconds of fire cooldown;
-it turns the three world gates `waveEntry`, `diveLaunching`, and `ship.contact` back
-on; it returns the wave's entry, sway, and dive clocks, and the gap the next dive
-waits for, to their fresh-wave values, `diveClock` at `0` and the gap at
-`DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and the challenge-stage hit
-count to `0`; and it sets `simTime` to `0` and the counter the next entity's id is
-taken from back to the first id, so two runs reset with the same seed report the same
-ids for the same scenario.
+it turns the four world gates `waveEntry`, `diveLaunching`, `stageClearing`, and
+`ship.contact` back on; it returns the wave's entry, sway, and dive clocks, and the
+gap the next dive waits for, to their fresh-wave values, `diveClock` at `0` and the
+gap at `DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and `challengeHits`
+to `0`; and it sets `simTime` to `0` and the counter the next entity's id is taken
+from back to the first id, so two runs reset with the same seed report the same ids
+for the same scenario.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
 randomness. `muted` is left exactly as it stands, because muting is a player
 preference the runtime owns.
+
+`menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
+region's top-left corner and `w` and `h` its size: the region a pointer or a touch
+contact selects that item from, as `specs/ui.md` states. It returns `null` on the four
+screens that show no menu, `howto`, `stageIntro`, `inWave`, and `stageCleared`, and
+when `index` names no item of the menu the current screen shows.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -200,6 +208,7 @@ and `advance(1, 60)` cover the same second of game time and reach the same state
 | `setLives(n)` | Sets the lives remaining. |
 | `setStage(n)` | Sets the current stage, a whole number from `1`. |
 | `setExtraLifeAwarded(awarded)` | Sets whether the run's single extra life has already been awarded. Reported as `extraLifeAwarded`. |
+| `setChallengeHits(n)` | Sets how many of the current challenge stage's drones the run has destroyed, a whole number from `0`. It destroys nothing and pays nothing: it is the latch alone, and the bonus belongs to the scoring path. Reported as `challengeHits`. |
 
 `setScore` grants no extra life, whatever boundary it carries the score across: the
 award belongs to the scoring path, and this is a precondition. It also leaves
@@ -212,14 +221,15 @@ not re-arm the award.
 
 ### The world gates and the dive clock
 
-Three faculties belong to the wave itself rather than to any one entity. Each has its
-own gate, each gates one faculty and nothing else, each is on by default and restored
-to on by `reset`, and each is reported by `snapshot`.
+Four faculties belong to the wave and the stage themselves rather than to any one
+entity. Each has its own gate, each gates one faculty and nothing else, each is on by
+default and restored to on by `reset`, and each is reported by `snapshot`.
 
 | Operation | Gates |
 | --- | --- |
 | `setWaveEntry(enabled)` | The wave's own release of drones: the staggered groups a stage sends in on the `ENTER_GROUP_GAP` schedule. Off, no drone arrives unless one is added. A drone already traveling its entrance flies it as usual. |
 | `setDiveLaunching(enabled)` | The assault's own choice of which formation drone dives next, and when. Off, no dive is launched. A drone already diving flies its dive as usual. |
+| `setStageClearing(enabled)` | The live stage's own end-of-stage test, which is the rule `specs/stages.md` states for a standard stage clearing and for a challenge stage ending. Off, no stage clears or ends however the field empties, and nothing else changes: drones are still destroyed, still scored, and still burst as usual. It is reported as `stageClearing`. |
 | `setShipContact(enabled)` | The ship's contact test, which is whether an enemy bullet or a drone body reaching the ship costs a life. Off, the ship still draws, still moves under input, and still fires, and no contact costs anything. It is reported as `ship.contact`. |
 
 The wave carries one clock of its own beside those gates.
@@ -291,7 +301,7 @@ whole roster.
 | Operation | Effect |
 | --- | --- |
 | `addPlayerBullet(x, y, band)` | Adds one of the player's bullets in flight, its center at a logical stage position, traveling straight up at `PLAYER_BULLET_SPEED`, carrying `band`. It is appended to the roster with a fresh id and `friendly` true. |
-| `addEnemyBullet(x, y, band)` | Adds one enemy bullet in flight, its center at a logical stage position, traveling straight down at `ENEMY_BULLET_SPEED` multiplied by `bulletSpeedScale(stage)` — the same figure `snapshot().bulletSpeedScale` reports — carrying `band`. That figure is the stage's formula on EVERY stage, a challenge stage included, whatever speed the flyover itself is running its own fire at. It is appended with a fresh id and `friendly` false. |
+| `addEnemyBullet(x, y, band)` | Adds one enemy bullet in flight, its center at a logical stage position, carrying `band` and traveling straight down at `ENEMY_BULLET_SPEED` multiplied by `bulletSpeedScale(stage)`, the same figure `snapshot().bulletSpeedScale` reports. It is appended with a fresh id and `friendly` false. |
 | `setBulletVelocity(id, vx, vy)` | Sets the bullet's velocity, in logical units per second. |
 | `removeBullet(id)` | Removes the bullet with that id. |
 | `clearPlayerBullets()` | Removes every one of the player's bullets, leaving the enemy bullets, the drones, and the bursts standing. |
@@ -299,6 +309,9 @@ whole roster.
 
 A bullet's band is fixed for its life. Nothing sets it after the fact; a caller that
 wants the other band places another bullet.
+
+A bullet `addEnemyBullet` places takes that figure on a challenge stage too, whatever
+speed the flyover is running its own fire at.
 
 ### The bursts
 
@@ -330,6 +343,7 @@ so every operation is verifiable by setting a value and reading it back.
   score: <number>,
   lives: <number>,
   extraLifeAwarded: <boolean>,       // the run's one extra life has been paid
+  challengeHits: <number>,           // challenge drones this stage has destroyed
   resonance: <number>,               // 0..RESONANCE_MAX
   dischargeReady: <boolean>,         // derived: resonance >= RESONANCE_MAX
   inversion: <number>,               // seconds of spectral inversion left, 0 for none
@@ -337,6 +351,7 @@ so every operation is verifiable by setting a value and reading it back.
   muted: <boolean>,
   waveEntry: <boolean>,              // the wave's own release of drones runs
   diveLaunching: <boolean>,          // the assault's own dive choice runs
+  stageClearing: <boolean>,          // the stage's own end-of-stage test runs
   diveClock: <number>,               // seconds since the wave's last dive launch
   droneSpeedScale: <number>,         // derived from stage
   bulletSpeedScale: <number>,        // derived from stage
@@ -426,9 +441,10 @@ their own, and the notes that go with them:
 - `mode` names the mode this build ships, which `specs/mode.md` defines.
 - `muted` is the game's copy of the runtime's mute bit, refreshed in every update. No
   operation sets it; the `mute` action does.
-- `diveClock` is the wave's own dive timer and `extraLifeAwarded` is the run's
-  one-extra-life latch. Both are plain settable state rather than derived figures, and
-  both are restored by `reset`.
+- `diveClock` is the wave's own dive timer, `extraLifeAwarded` is the run's
+  one-extra-life latch, and `challengeHits` is the current challenge stage's tally of
+  drones destroyed. All three are plain settable state rather than derived figures,
+  and all three are restored by `reset`.
 - `bursts[].particles` is the count the burst's own particle simulation holds at the
   call.
 - `simTime` accumulates the time the game's sub-steps cover, as

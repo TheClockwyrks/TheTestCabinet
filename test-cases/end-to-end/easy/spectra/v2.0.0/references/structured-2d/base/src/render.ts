@@ -39,11 +39,9 @@ import {
   FIELD_LEFT,
   FIELD_RIGHT,
   FIELD_TOP,
-  GAME_OVER_ITEMS,
   HUD_BOTTOM_TOP,
   HUD_STAGE_LABEL,
   HUD_TOP_H,
-  PAUSE_ITEMS,
   PERFECT_TEXT,
   PLAYER_BULLET_H,
   PLAYER_BULLET_W,
@@ -57,13 +55,13 @@ import {
   STAGE_W,
   STARFIELD_MIN,
   TAGLINE_TEXT,
-  TITLE_ITEMS,
   TITLE_TEXT,
   isChallengeStage,
 } from "./constants";
 import { art } from "./assets";
 import { droneBand, inverted, isShimmering, opposite } from "./bands";
 import { dischargeReady } from "./discharge";
+import { highlightedItem, itemBaselineY, menuOf } from "./menus";
 import { droneSize } from "./simulate";
 import { CYAN, COLOR, FONT, MAGENTA } from "./theme";
 import type {
@@ -675,16 +673,14 @@ function scrim(ctx: Ctx, alpha = 0.62): void {
 }
 
 /** The vertical menu a screen shows, its highlight on the item `menuIndex` names. */
-function renderMenu(
-  state: SpectraState,
-  ctx: Ctx,
-  top: number,
-  items: readonly string[],
-): void {
+function renderMenu(state: SpectraState, ctx: Ctx): void {
   const width = STAGE_W;
-  items.forEach((item, i) => {
-    const y = top + i * 46;
-    const hot = i === state.menuIndex;
+  const menu = menuOf(state.screen);
+  if (menu === null) return;
+  const selected = highlightedItem(menu, state.menuIndex);
+  menu.items.forEach((item, i) => {
+    const y = itemBaselineY(menu, i);
+    const hot = i === selected;
     if (hot) {
       drawAccent(ctx, width / 2 - 150, y, 10, state.ship.band, 2);
       drawAccent(ctx, width / 2 + 150, y, 10, state.ship.band, 2);
@@ -717,7 +713,7 @@ export function renderScreen(state: SpectraState, ctx: Ctx): void {
       if (state.phase === "ready") renderBanner(ctx, READY_TEXT);
       break;
     case "paused":
-      renderMenuScreen(state, ctx, "PAUSED", PAUSE_ITEMS);
+      renderMenuScreen(state, ctx, "PAUSED");
       break;
     case "stageCleared":
       renderStageCleared(state, ctx);
@@ -736,7 +732,7 @@ function renderTitle(state: SpectraState, ctx: Ctx): void {
   drawAccent(ctx, width / 2 - 250, 210, 26, "cyan", 3);
   drawAccent(ctx, width / 2 + 250, 210, 26, "magenta", 3);
   centered(ctx, TAGLINE_TEXT, width / 2, 274, FONT.body, CYAN);
-  renderMenu(state, ctx, 400, TITLE_ITEMS);
+  renderMenu(state, ctx);
   centered(
     ctx,
     "ARROWS / AD MOVE — SPACE FIRE — F FLIP — X DISCHARGE",
@@ -866,7 +862,7 @@ function renderGameOver(state: SpectraState, ctx: Ctx): void {
     FONT.body,
     COLOR.textDim,
   );
-  renderMenu(state, ctx, 450, GAME_OVER_ITEMS);
+  renderMenu(state, ctx);
 }
 
 /** A screen that is a menu over the frozen field. */
@@ -874,9 +870,8 @@ function renderMenuScreen(
   state: SpectraState,
   ctx: Ctx,
   heading: string,
-  items: readonly string[],
 ): void {
   scrim(ctx, 0.6);
   centered(ctx, heading, STAGE_W / 2, 250, FONT.title, COLOR.text);
-  renderMenu(state, ctx, 380, items);
+  renderMenu(state, ctx);
 }

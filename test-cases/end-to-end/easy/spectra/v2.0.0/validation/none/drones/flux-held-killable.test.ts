@@ -19,11 +19,6 @@
 // (specs/instrumentation.md) — and the shot carries magenta too, so a build that
 // matches against a default rather than against the drone's stored band spares
 // the Flux and fails.
-//
-// One bystander stands out of the way, because this scenario destroys the drone
-// it poses and specs/stages.md clears a stage in the moment the last drone of its
-// wave is destroyed; the bystander leaves the wave a drone under either reading of
-// "its wave", so the field is still live when the reading is taken.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertUndefined } from "../assert";
@@ -32,7 +27,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   shootDrone,
   startPosed,
@@ -88,7 +82,6 @@ afterEach(async () => {
 
 it("destroys a Flux hit by its own band during a held window", async () => {
   await startPosed(harness, { stage: STAGE });
-  await poseBystander(harness);
   const flux = await poseDrone(harness, "flux", AT.x, AT.y, {
     band: POSED_BAND,
     bandClock: MID_HOLD,

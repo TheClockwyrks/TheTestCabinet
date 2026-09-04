@@ -16,11 +16,6 @@
 // drone shrug off a matching shot, or that treats every contact on a charged drone
 // as a charge, leaves the drone on the roster and fails here.
 //
-// A BYSTANDER STANDS OFF IN THE CORNER. This scenario destroys the drone it poses,
-// and specs/stages.md clears a stage in the moment the last drone of its wave is
-// destroyed; the bystander leaves the wave a drone under either reading of "its
-// wave", so the field is still live when the reading is taken.
-//
 // WHAT THIS DOES NOT DECIDE. What a matching shot pays or pops, which are
 // `scoring/*`'s and `bursts/spawns-on-kill`'s, and that a matching shot destroys an
 // UNCHARGED drone, which is `bands/match-destroys`'s.
@@ -32,7 +27,6 @@ import {
   captureStill,
   createHarness,
   droneById,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -73,7 +67,6 @@ afterEach(async () => {
 
 it("destroys a drone carrying charge when the shot's band matches", async () => {
   await startPosed(harness);
-  await poseBystander(harness);
   const target = await poseDrone(harness, "shard", TARGET.x, TARGET.y, {
     band: "cyan",
     charge: OVERLOAD_AT - 1,

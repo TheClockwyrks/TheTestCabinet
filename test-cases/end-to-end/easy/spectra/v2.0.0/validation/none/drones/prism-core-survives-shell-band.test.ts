@@ -19,11 +19,6 @@
 // a build that matches an exposed core against a default, or against the stored
 // band without taking the opposite once for the broken shell (specs/bands.md's
 // effective-band rule), destroys the Prism here and fails.
-//
-// The other half is `drones/prism-core-destroys`, which fires the core's own band
-// into this same posed Prism, so a build that destroys on every contact and one
-// that destroys on none grade differently. Nothing is destroyed here, so no
-// bystander is needed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDefined } from "../assert";

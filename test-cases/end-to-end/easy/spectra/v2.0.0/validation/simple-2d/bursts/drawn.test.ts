@@ -55,7 +55,7 @@ import {
   type Harness,
 } from "../harness";
 import { changedPixels, footprintOf, furthestChange } from "./reading";
-import { firedPop, poseBystander } from "./scene";
+import { firedPop } from "./scene";
 
 /**
  * How far a pixel must move to count as painted, as a Euclidean RGB distance out
@@ -103,7 +103,6 @@ afterEach(() => {
 
 it("paints the field inside the footprint the burst is played at", async () => {
   startPosed(h);
-  poseBystander(h);
   poseDrone(h, "shard", POP_AT.x, POP_AT.y, { band: "cyan" });
 
   await firedPop(h, POP_AT.x, POP_AT.y, "cyan");

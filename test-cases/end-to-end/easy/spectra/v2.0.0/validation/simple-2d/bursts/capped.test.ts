@@ -54,7 +54,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { poseBystander } from "./scene";
 
 /** The key `specs/controls.md` binds the discharge action to. */
 const DISCHARGE_KEY = BINDINGS.discharge[0];
@@ -68,7 +67,7 @@ const DIVER_COUNT = MAX_BURSTS + OVER_CAP;
 /**
  * The block the divers are laid out on: ten across the width of the play field,
  * three rows down it, every place well inside `DISCHARGE_MAX_R` (`1500`) of the
- * ship and clear of both HUD strips and of the corner the bystander holds.
+ * ship and clear of both HUD strips.
  */
 const DIVER_COLUMNS = 10;
 const DIVER_X0 = 100;
@@ -94,9 +93,6 @@ afterEach(() => {
 
 it("leaves at most the cap playing when a wave destroys more than it", async () => {
   startPosed(h);
-  // In the formation, so the wave spares it and the wave stays open once the
-  // divers are taken (specs/resonance.md, and see poseBystander).
-  poseBystander(h);
   for (const at of DIVERS_AT) {
     poseDrone(h, "shard", at.x, at.y, { phase: "diving" });
   }
@@ -104,8 +100,8 @@ it("leaves at most the cap playing when a wave destroys more than it", async () 
   const posed = h.snapshot();
   assertLength(
     posed.drones,
-    DIVERS_AT.length + 1,
-    "precondition: every diver and the bystander are on the field",
+    DIVERS_AT.length,
+    "precondition: every diver is on the field",
   );
   assertGreaterThan(
     DIVERS_AT.length,
@@ -124,9 +120,9 @@ it("leaves at most the cap playing when a wave destroys more than it", async () 
   const after = h.snapshot();
   assertLength(
     after.drones,
-    1,
-    `precondition: the wave destroyed all ${DIVERS_AT.length} divers and ` +
-      `spared the drone resting in the formation (specs/resonance.md)`,
+    0,
+    `precondition: the wave destroyed all ${DIVERS_AT.length} divers ` +
+      `(specs/resonance.md)`,
   );
   assertGreaterThan(
     after.bursts.length,

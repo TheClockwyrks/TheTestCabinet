@@ -56,6 +56,7 @@ import {
 } from "./entities";
 import { clampShipX } from "./field";
 import { resetState } from "./game";
+import { menuItemRect, type MenuRect } from "./menus";
 import { dischargeReady } from "./resonance";
 import { poseScore } from "./scoring";
 import { shipAlive } from "./progression";
@@ -136,6 +137,7 @@ export interface SpectraSnapshot {
   score: number;
   lives: number;
   extraLifeAwarded: boolean;
+  challengeHits: number;
   resonance: number;
   dischargeReady: boolean;
   inversion: number;
@@ -143,6 +145,7 @@ export interface SpectraSnapshot {
   muted: boolean;
   waveEntry: boolean;
   diveLaunching: boolean;
+  stageClearing: boolean;
   diveClock: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
@@ -174,6 +177,7 @@ export interface SpectraDebugApi {
   // The core.
   reset(options?: { seed?: number }): void;
   snapshot(): SpectraSnapshot;
+  menuItemRect(index: number): MenuRect | null;
 
   // The screen and the run.
   setScreen(screen: Screen): void;
@@ -184,10 +188,12 @@ export interface SpectraDebugApi {
   setLives(lives: number): void;
   setStage(stage: number): void;
   setExtraLifeAwarded(awarded: boolean): void;
+  setChallengeHits(hits: number): void;
 
   // The world gates and the dive clock.
   setWaveEntry(enabled: boolean): void;
   setDiveLaunching(enabled: boolean): void;
+  setStageClearing(enabled: boolean): void;
   setShipContact(enabled: boolean): void;
   setDiveClock(seconds: number): void;
 
@@ -245,6 +251,7 @@ export function snapshotOf(state: SpectraState): SpectraSnapshot {
     score: state.score,
     lives: state.lives,
     extraLifeAwarded: state.extraLifeAwarded,
+    challengeHits: state.challengeHits,
     resonance: state.resonance,
     dischargeReady: dischargeReady(state),
     inversion: state.inversion,
@@ -252,6 +259,7 @@ export function snapshotOf(state: SpectraState): SpectraSnapshot {
     muted: state.muted,
     waveEntry: state.waveEntry,
     diveLaunching: state.diveLaunching,
+    stageClearing: state.stageClearing,
     diveClock: state.diveClock,
     droneSpeedScale: droneSpeedScale(state.stage),
     bulletSpeedScale: bulletSpeedScale(state.stage),
@@ -359,6 +367,19 @@ export function createDebugApi(
       return snapshotOf(state);
     },
 
+    /**
+     * A pure read of the hit region of item `index` on the menu the current screen
+     * shows, in logical units. It changes nothing.
+     *
+     * Null on the four screens that show no menu, and null for an index the current
+     * menu has no item at (`specs/instrumentation.md`). The region is the one
+     * `src/menus.ts` lays out, which is the one the renderer draws the item's plate
+     * at and the one the pointer selects on.
+     */
+    menuItemRect(index) {
+      return menuItemRect(state.screen, index);
+    },
+
     setScreen(screen) {
       state.screen = screen;
     },
@@ -405,12 +426,26 @@ export function createDebugApi(
       state.extraLifeAwarded = Boolean(awarded);
     },
 
+    /**
+     * Set the current challenge stage's tally of drones destroyed.
+     *
+     * It destroys nothing and pays nothing: it is the latch alone, and the
+     * bonus belongs to the scoring path.
+     */
+    setChallengeHits(hits) {
+      state.challengeHits = Math.max(0, Math.round(hits));
+    },
+
     setWaveEntry(enabled) {
       state.waveEntry = Boolean(enabled);
     },
 
     setDiveLaunching(enabled) {
       state.diveLaunching = Boolean(enabled);
+    },
+
+    setStageClearing(enabled) {
+      state.stageClearing = Boolean(enabled);
     },
 
     setShipContact(enabled) {

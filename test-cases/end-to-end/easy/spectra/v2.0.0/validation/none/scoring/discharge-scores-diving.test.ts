@@ -34,12 +34,6 @@
 // band-blind (`specs/resonance.md`) and would take it either way, but a drone
 // that is not changing under the reading is one less thing in the scenario.
 //
-// WHY A BYSTANDER STANDS IN THE CORNER. It is a Shard in phase `formation`,
-// which `specs/resonance.md` puts outside what the wave takes, so it survives the
-// discharge and leaves a drone standing — and a build that reads "its wave" as
-// the drones on the field therefore does not clear the stage under these two
-// kills and pay `SCORE_STAGE_CLEAR` into the number this check reads.
-//
 // WHAT THIS DOES NOT DECIDE. That `KeyX` releases the wave is
 // `controls/discharge-x`; what the wave destroys and spares is `resonance`'s;
 // the two figures themselves are `scoring/shard-diving` and
@@ -58,7 +52,6 @@ import {
   createHarness,
   droneById,
   framesFor,
-  poseBystander,
   poseDrone,
   startPosed,
   type Harness,
@@ -70,8 +63,8 @@ const DISCHARGE_KEY = "KeyX";
 /**
  * Where the two drones stand: a clear stretch of the play field, below the
  * formation grid's lowest row (`332`) and its full sway, above the ship's lane
- * (`SHIP_Y`, `600`), either side of the lane's centre and well clear of the
- * corner the bystander holds. Each is about `200` units from the ship, which the
+ * (`SHIP_Y`, `600`), either side of the lane's centre. Each is about `200` units
+ * from the ship, which the
  * wave's radius passes in the first tenth of its life.
  */
 const SHARD_AT = { x: 500, y: 460 } as const;
@@ -106,7 +99,6 @@ afterEach(async () => {
 
 it("pays each drone the wave destroys its diving figure", async () => {
   await startPosed(h);
-  const bystander = await poseBystander(h);
   const shard = await poseDrone(h, "shard", SHARD_AT.x, SHARD_AT.y, {
     band: "cyan",
     phase: "diving",
@@ -122,8 +114,8 @@ it("pays each drone the wave destroys its diving figure", async () => {
   assertEqual(before.score, 0, "precondition: the run opens with a score of 0");
   assertLength(
     before.drones,
-    3,
-    "precondition: the field holds the two divers and the bystander",
+    2,
+    "precondition: the field holds the two divers",
   );
 
   await h.tap(DISCHARGE_KEY);
@@ -140,12 +132,6 @@ it("pays each drone the wave destroys its diving figure", async () => {
   assertUndefined(
     droneById(after, flux),
     "precondition: the wave destroyed the diving Flux (specs/resonance.md)",
-  );
-  assertEqual(
-    droneById(after, bystander) === undefined,
-    false,
-    "precondition: the wave left the formation bystander standing " +
-      "(specs/resonance.md: a drone in phase formation, nothing)",
   );
   assertEqual(
     after.score,

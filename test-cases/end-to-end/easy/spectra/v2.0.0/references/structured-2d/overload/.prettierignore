@@ -12,3 +12,10 @@ package-lock.json
 assets/
 engine/
 specs/
+
+# The showcase the finished game ships: prose, a carousel manifest and captured
+# media rather than source.
+showcase/
+
+# Prose. The formatter handles code; Markdown is left to its own linter.
+*.md

@@ -42,6 +42,7 @@ import {
   SHIP_SPEED,
   SHIP_Y,
   SUBSTEP_MAX,
+  TITLE_ITEMS,
   isChallengeStage,
 } from "./constants";
 import { bulletBand, droneBand, inverted, isShimmering } from "./bands";
@@ -63,10 +64,13 @@ import {
   waveReaches,
 } from "./discharge";
 import { startBurst, stepBursts } from "./bursts";
+import { highlightedItem, itemAt, menuOf } from "./menus";
 import { stepDiveLaunching, stepSwarm } from "./swarm";
+import type { PointerSample } from "@test-cabinet/structured-2d";
+
 import type { FrameInput } from "./input";
 import type { FrameEvents } from "./events";
-import type { DroneState, SpectraState } from "./game";
+import type { DroneState, Screen, SpectraState } from "./game";
 
 /** The half-extent a contact with this drone is decided by. */
 export function droneHalf(
@@ -115,6 +119,9 @@ interface Marks {
   readonly pops: { x: number; y: number; size: number }[];
 }
 
+/** `HOW TO PLAY`'s index on the title menu (`specs/ui.md`, `TITLE_ITEMS`). */
+const HOW_TO_PLAY_INDEX = TITLE_ITEMS.indexOf("HOW TO PLAY");
+
 /** Advance the frame: every clock, every path and every contact in `dt`. */
 export function stepFrame(
   state: SpectraState,
@@ -136,9 +143,137 @@ export function stepFrame(
     pause: false,
     mute: false,
   };
+  const opened = state.screen;
   for (let i = 0; i < steps; i++) {
     stepSub(state, i === 0 ? input : holdsOnly, h, events);
   }
+  // The pointer and the touch contacts are read once per frame and applied AFTER
+  // the frame's keyboard edges (`specs/ui.md`).
+  stepPointer(state, input.pointer, opened, events);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The pointer and the finger                                                 */
+/* -------------------------------------------------------------------------- */
+//
+// A press and the release that ends it may be frames apart, so where each press
+// landed is remembered until it comes up. The anchor records the screen as well as
+// the item, so a press that spans a change of screen — the keyboard's or the debug
+// surface's — confirms nothing.
+
+/** Where one press went down: the screen it landed on, and the item under it. */
+interface PressAnchor {
+  readonly screen: Screen;
+  readonly index: number | null;
+}
+
+const anchors = new Map<number, PressAnchor>();
+
+/** Forget every press in progress. Called as a fresh game is initialized. */
+export function forgetPresses(): void {
+  anchors.clear();
+}
+
+/** Move the selection to `index`, raising the menu cue if it actually moved. */
+function selectItem(
+  state: SpectraState,
+  index: number,
+  events: FrameEvents,
+): void {
+  if (state.menuIndex === index) return;
+  state.menuIndex = index;
+  events.cues.add("menu");
+}
+
+/**
+ * Apply this frame's pointer samples to the menu on screen.
+ *
+ * A move onto an item selects it, and so does a landing — which is what makes a
+ * finger, which never hovers, select the item it lands on. A confirm takes BOTH its
+ * edges inside one item's region: a press and a release in different regions, or
+ * either of them outside every region, confirms nothing.
+ */
+function stepPointer(
+  state: SpectraState,
+  samples: readonly PointerSample[],
+  opened: Screen,
+  events: FrameEvents,
+): void {
+  // A frame whose keys left the screen has already had its confirm, and the menu
+  // the pointer was over is gone; the presses in progress go with it.
+  if (state.screen !== opened) {
+    anchors.clear();
+    return;
+  }
+  for (const sample of samples) {
+    const menu = menuOf(state.screen);
+    const index = menu === null ? null : itemAt(menu, sample.x, sample.y);
+    if (sample.type === "down") {
+      anchors.set(sample.id, { screen: state.screen, index });
+      // A finger does not hover, so a landing is what selects under touch.
+      if (sample.device === "touch" && index !== null) {
+        selectItem(state, index, events);
+      }
+      continue;
+    }
+    if (sample.type === "move") {
+      if (index !== null) selectItem(state, index, events);
+      continue;
+    }
+    const anchor = anchors.get(sample.id);
+    anchors.delete(sample.id);
+    if (
+      anchor === undefined ||
+      index === null ||
+      anchor.index !== index ||
+      anchor.screen !== state.screen
+    ) {
+      continue;
+    }
+    selectItem(state, index, events);
+    confirmItem(state, index);
+  }
+}
+
+/**
+ * Take item `index` of whichever menu the current screen shows.
+ *
+ * `specs/ui.md` gives the keyboard, the pointer and a finger the same effect, so
+ * every confirm lands here rather than each input carrying its own copy of what an
+ * entry does.
+ */
+function confirmItem(state: SpectraState, index: number): void {
+  switch (state.screen) {
+    case "title":
+      if (index === 0) startRun(state);
+      else state.screen = "howto";
+      return;
+    case "paused":
+      if (index === 1) startRun(state);
+      else if (index === 2) toTitle(state);
+      else {
+        state.screen = "inWave";
+        state.menuIndex = 0;
+      }
+      return;
+    case "gameOver":
+      if (index === 0) startRun(state);
+      else toTitle(state);
+      return;
+    default:
+      return;
+  }
+}
+
+/**
+ * Return to the title, with its highlight on the entry that led away from it.
+ *
+ * `specs/ui.md`: the mode entry after a run, `HOW TO PLAY` after the how-to-play
+ * screen.
+ */
+function toTitle(state: SpectraState, index = 0): void {
+  state.screen = "title";
+  state.menuIndex = index;
 }
 
 /** One sub-step: whichever screen is showing, advanced by `h` seconds. */
@@ -158,10 +293,8 @@ function stepSub(
       stepBursts(state, h);
       break;
     case "howto":
-      if (input.back) {
-        state.screen = "title";
-        state.menuIndex = 0;
-      }
+      // The title comes back on the entry that led here (`specs/ui.md`).
+      if (input.back) toTitle(state, HOW_TO_PLAY_INDEX);
       stepBursts(state, h);
       break;
     case "stageIntro":
@@ -210,8 +343,14 @@ function stepTitle(
   if (input.menuUp) moveHighlight(state, -1, events);
   if (input.menuDown) moveHighlight(state, 1, events);
   if (!input.confirm) return;
-  if (state.menuIndex === 0) startRun(state);
-  else state.screen = "howto";
+  confirmHighlighted(state);
+}
+
+/** Take whichever item the menu on screen is DRAWING as highlighted. */
+function confirmHighlighted(state: SpectraState): void {
+  const menu = menuOf(state.screen);
+  if (menu === null) return;
+  confirmItem(state, highlightedItem(menu, state.menuIndex));
 }
 
 /** The pause menu, over the frozen field. */
@@ -229,14 +368,7 @@ function stepPaused(
     return;
   }
   if (!input.confirm) return;
-  if (state.menuIndex === 1) startRun(state);
-  else if (state.menuIndex === 2) {
-    state.screen = "title";
-    state.menuIndex = 0;
-  } else {
-    state.screen = "inWave";
-    state.menuIndex = 0;
-  }
+  confirmHighlighted(state);
 }
 
 /** The game-over menu: play again, or the title. */
@@ -248,11 +380,7 @@ function stepGameOver(
   if (input.menuUp) moveHighlight(state, -1, events);
   if (input.menuDown) moveHighlight(state, 1, events);
   if (!input.confirm) return;
-  if (state.menuIndex === 0) startRun(state);
-  else {
-    state.screen = "title";
-    state.menuIndex = 0;
-  }
+  confirmHighlighted(state);
 }
 
 /** One sub-step of the live wave. */
@@ -311,6 +439,7 @@ function stepWave(
   // A stage clears in the MOMENT the last drone of its wave leaves the field, so
   // a live wave that holds no drone and has had none removed is being played.
   if (
+    state.stageClearing &&
     state.screen === "inWave" &&
     state.drones.length === 0 &&
     events.dronesRemoved > 0

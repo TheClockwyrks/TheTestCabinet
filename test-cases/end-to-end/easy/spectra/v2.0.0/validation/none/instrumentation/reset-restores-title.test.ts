@@ -8,12 +8,13 @@
 // to `0`, and `inversion` to `0`; it empties the drone, bullet, and burst rosters
 // and the live discharge; it places the ship at the center of its lane (`640`) on
 // the cyan band with `0` seconds of fire lockout and `0` seconds of fire cooldown;
-// it turns the three world gates `waveEntry`, `diveLaunching`, and `ship.contact`
+// it turns the four world gates `waveEntry`, `diveLaunching`, `stageClearing`,
+// and `ship.contact`
 // back on; it returns the wave's clocks to their fresh-wave values, `diveClock` at
-// `0`; it sets `extraLifeAwarded` to `false`; and it sets `simTime` to `0`. Every
-// one of those is read below, in that order, except the wave's entry and sway
-// clocks and the gap the next dive waits for, which no field of the snapshot
-// reports.
+// `0`; it sets `extraLifeAwarded` to `false` and `challengeHits` to `0`; and it
+// sets `simTime` to `0`. Every one of those is read below, in that order, except
+// the wave's entry and sway clocks and the gap the next dive waits for, which no
+// field of the snapshot reports.
 //
 // EVERY FIELD IS POSED AWAY FROM ITS TITLE VALUE FIRST. A reset that restored
 // nothing would pass on a game still sitting at the title, so the run this point
@@ -23,8 +24,8 @@
 // far end of its lane on the other band with a lockout and a cooldown running, a
 // meter most of the way up, an inversion running, all three rosters carrying
 // entries, a wave discharging, all three world gates held off, a dive clock part
-// way to its next launch, the extra-life latch paid, and accumulated simulation
-// time.
+// way to its next launch, the extra-life latch paid, a challenge stage's tally of
+// drones destroyed standing at a count, and accumulated simulation time.
 //
 // TWO OF THOSE CANNOT BE POSED AND HAVE TO BE DRIVEN. There is no operation that
 // adds a burst and none that discharges (`specs/instrumentation.md`, The bursts
@@ -111,6 +112,7 @@ const SHIP_BAND = "magenta" as const;
 const LOCKOUT = 0.2;
 const COOLDOWN = 0.1;
 const DIVE_CLOCK = 1.7;
+const POSED_CHALLENGE_HITS = 12;
 
 /** Where the drones that outlive the kill stand, and where the popped one does. */
 const STANDING: readonly { x: number; y: number }[] = [
@@ -211,9 +213,11 @@ it("restores every declared field to its title value and leaves muted alone", as
   await h.debug.setFireLockout(LOCKOUT);
   await h.debug.setFireCooldown(COOLDOWN);
   await h.debug.setExtraLifeAwarded(true);
+  await h.debug.setChallengeHits(POSED_CHALLENGE_HITS);
   await h.debug.setDiveClock(DIVE_CLOCK);
   await h.debug.setWaveEntry(false);
   await h.debug.setDiveLaunching(false);
+  await h.debug.setStageClearing(false);
   await h.debug.setShipContact(false);
   await h.debug.setScreen(SCREEN);
   await h.debug.setPhase(PHASE);
@@ -322,6 +326,11 @@ it("restores every declared field to its title value and leaves muted alone", as
     "snapshot().diveLaunching after reset(), which restores the gate to on",
   );
   assertEqual(
+    title.stageClearing,
+    true,
+    "snapshot().stageClearing after reset(), which restores the gate to on",
+  );
+  assertEqual(
     title.diveClock,
     0,
     "snapshot().diveClock, in seconds since the last launch, after reset()",
@@ -330,6 +339,12 @@ it("restores every declared field to its title value and leaves muted alone", as
     title.extraLifeAwarded,
     false,
     "snapshot().extraLifeAwarded after reset(), the run's one-extra-life latch",
+  );
+  assertEqual(
+    title.challengeHits,
+    0,
+    "snapshot().challengeHits after reset(), the challenge stage's tally of " +
+      "drones destroyed",
   );
   assertEqual(title.simTime, 0, "snapshot().simTime after reset()");
 

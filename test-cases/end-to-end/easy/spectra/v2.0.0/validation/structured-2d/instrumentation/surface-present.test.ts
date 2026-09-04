@@ -42,7 +42,13 @@
 // `instrumentation.poses-read-back`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_SPEED, SHIP_X_MAX, SHIP_X_MIN } from "../constants";
+import {
+  BINDINGS,
+  SHIP_SPEED,
+  SHIP_X_MAX,
+  SHIP_X_MIN,
+  SPECTRA_DEBUG_VERSION,
+} from "../constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -58,7 +64,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { REQUIRED_OPS, SPECTRA_DEBUG_VERSION } from "../surface";
+import { REQUIRED_OPS } from "../surface";
 import { requireDrone } from "./crowded-field";
 
 /** Where the posed Prism stands: mid-field, clear of both HUD strips and the ship. */

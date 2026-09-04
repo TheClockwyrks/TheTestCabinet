@@ -48,7 +48,6 @@ import {
   createHarness,
   footprint,
   framesFor,
-  poseBystander,
   poseDrone,
   readRegion,
   shootDrone,
@@ -116,7 +115,6 @@ afterEach(async () => {
 
 it("paints the field inside the footprint the burst is played at", async () => {
   await startPosed(h);
-  await poseBystander(h);
   const target = await poseDrone(h, "shard", POP_AT.x, POP_AT.y, {
     band: "cyan",
   });

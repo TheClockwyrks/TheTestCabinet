@@ -58,6 +58,7 @@ export function waveStanding(state: SpectraState): boolean {
  * scenario from clearing a stage it was never playing.
  */
 export function closeStageIfWaveGone(state: SpectraState, cues: CueSink): void {
+  if (!state.stageClearing) return;
   if (!state.waveOpen || state.screen !== "inWave") return;
   if (waveStanding(state)) return;
   clearStage(state, cues);

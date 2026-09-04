@@ -42,8 +42,16 @@ export interface Surface {
   cssHeight(): number;
   /** Device pixels per CSS pixel. */
   dpr(): number;
-  /** The target key events are listened for on. */
+  /** The canvas's top-left corner, in the CSS pixels an event reports in. */
+  origin(): Point;
+  /** The target key and pointer events are listened for on. */
   events(): EventTarget;
+}
+
+/** A point in one of the two spaces this module maps between. */
+export interface Point {
+  x: number;
+  y: number;
 }
 
 /** A device pixel ratio worth multiplying by; anything else collapses to `1`. */
@@ -98,6 +106,30 @@ export function fitViewport(
   };
 }
 
+/**
+ * The logical point a CSS-pixel offset from the canvas's top-left corner lands
+ * on: the inverse of the fit, and how a pointer position reaches the game.
+ *
+ * A degenerate fit maps to null, because a canvas the page has not laid out yet
+ * has no point to name; the caller reports nothing for that frame rather than a
+ * position at the origin. A point inside a letterbox bar maps outside the stage,
+ * which is a miss rather than a clamp.
+ */
+export function logicalPoint(
+  view: Viewport,
+  dpr: number,
+  cssX: number,
+  cssY: number,
+): Point | null {
+  const ratio = normalizeDpr(dpr);
+  const cssScale = view.scale / ratio;
+  if (!(cssScale > 0)) return null;
+  return {
+    x: (cssX - view.offsetX / ratio) / cssScale,
+    y: (cssY - view.offsetY / ratio) / cssScale,
+  };
+}
+
 /** The backing-store size, in whole device pixels, of a CSS dimension. */
 export function deviceSize(cssSize: number, dpr: number): number {
   return Math.round(normalizeSize(cssSize) * normalizeDpr(dpr));
@@ -114,6 +146,10 @@ export function domSurface(canvas: HTMLCanvasElement): Surface {
     cssWidth: () => canvas.clientWidth,
     cssHeight: () => canvas.clientHeight,
     dpr: () => window.devicePixelRatio,
+    origin: () => {
+      const box = canvas.getBoundingClientRect();
+      return { x: box.left, y: box.top };
+    },
     events: () => document,
   };
 }

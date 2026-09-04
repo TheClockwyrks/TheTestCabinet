@@ -35,7 +35,6 @@ import { PRISM_SIZE, SHARD_SIZE } from "../constants";
 import {
   captureStill,
   createHarness,
-  poseBystander,
   poseDrone,
   requireDrone,
   shootDrone,
@@ -90,7 +89,6 @@ afterEach(async () => {
 
 it("plays a Prism's burst at its footprint and a Shard's at its own", async () => {
   await startPosed(h);
-  await poseBystander(h);
   // Both are given the cyan `addDrone` lays a drone down with, so a cyan shot
   // matches the Prism's shell and the Shard alike (specs/bands.md).
   const prism = await poseDrone(h, "prism", PRISM_AT.x, PRISM_AT.y, {

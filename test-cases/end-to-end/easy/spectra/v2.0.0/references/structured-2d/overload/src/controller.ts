@@ -18,10 +18,12 @@
 // `specs/controls.md`, so no key ever does two things at once.
 
 import { PlayerController } from "@test-cabinet/structured-2d";
+import type { PointerSample } from "@test-cabinet/structured-2d";
 import { GAME_OVER_ITEMS, PAUSE_ITEMS, TITLE_ITEMS } from "./constants";
 import { noCues, playCues, type FrameCues } from "./audio";
 import { startRun, toTitle } from "./flow";
-import { spectraState, type SpectraState } from "./game";
+import { spectraState, type Screen, type SpectraState } from "./game";
+import { highlightedItem, itemAt, menuOf } from "./menus";
 import { fireShot, flipShip, moveShip, releaseDischarge } from "./ship";
 
 /** The next index on a vertical menu, wrapping at both ends. */ function wrap(
@@ -32,10 +34,30 @@ import { fireShot, flipShip, moveShip, releaseDischarge } from "./ship";
   return (index + delta + count) % count;
 }
 
+/** `HOW TO PLAY`'s index on the title menu (`specs/ui.md`, `TITLE_ITEMS`). */
+const HOW_TO_PLAY_INDEX = TITLE_ITEMS.indexOf("HOW TO PLAY");
+
+/** Where one press went down: the screen it landed on, and the item under it. */
+interface PressAnchor {
+  readonly screen: Screen;
+  readonly index: number | null;
+}
+
 export class SpectraController extends PlayerController {
+  /**
+   * Where each press in progress went down.
+   *
+   * A press and the release that ends it may be frames apart, so the anchor lives
+   * across frames; it records the screen as well as the item, so a press that
+   * spans a change of screen confirms nothing. It is input bookkeeping rather than
+   * game state: nothing in it survives the controller (`specs/state.md`).
+   */
+  private readonly anchors = new Map<number, PressAnchor>();
+
   override tick(dt: number): void {
     const state = spectraState(this.world);
     const cues = noCues();
+    const opened = state.screen;
 
     // Mute works on every screen, so it is read before the per-screen switch.
     if (this.input.pressed("mute")) {
@@ -53,7 +75,8 @@ export class SpectraController extends PlayerController {
         });
         break;
       case "howto":
-        if (this.input.pressed("back")) toTitle(state);
+        // The title comes back on the entry that led here (`specs/ui.md`).
+        if (this.input.pressed("back")) toTitle(state, HOW_TO_PLAY_INDEX);
         break;
       case "stageIntro":
       case "stageCleared":
@@ -72,7 +95,106 @@ export class SpectraController extends PlayerController {
         break;
     }
 
+    // The pointer and the touch contacts are read once per frame and applied
+    // AFTER the frame's keyboard edges (`specs/ui.md`).
+    this.pointerFrame(state, opened, cues);
+
     playCues(this.world.audio, cues);
+  }
+
+  /**
+   * Apply this frame's pointer samples to the menu on screen.
+   *
+   * A move onto an item selects it, and so does a landing — which is what makes a
+   * finger, which never hovers, select the item it lands on. A confirm takes BOTH
+   * its edges inside one item's region: a press and a release in different
+   * regions, or either of them outside every region, confirms nothing.
+   */
+  private pointerFrame(
+    state: SpectraState,
+    opened: Screen,
+    cues: FrameCues,
+  ): void {
+    // A frame whose keys left the screen has already had its confirm, and the
+    // menu the pointer was over is gone; the presses in progress go with it.
+    if (state.screen !== opened) {
+      this.anchors.clear();
+      return;
+    }
+    for (const sample of this.input.pointerSamples()) {
+      this.applySample(state, sample, cues);
+    }
+  }
+
+  /** One pointer sample, against whichever menu the screen shows. */
+  private applySample(
+    state: SpectraState,
+    sample: PointerSample,
+    cues: FrameCues,
+  ): void {
+    const shown = menuOf(state.screen);
+    const index = shown === null ? null : itemAt(shown, sample.x, sample.y);
+    if (sample.type === "down") {
+      this.anchors.set(sample.id, { screen: state.screen, index });
+      // A finger does not hover, so a landing is what selects under touch.
+      if (sample.device === "touch" && index !== null) {
+        this.select(state, index, cues);
+      }
+      return;
+    }
+    if (sample.type === "move") {
+      if (index !== null) this.select(state, index, cues);
+      return;
+    }
+    const anchor = this.anchors.get(sample.id);
+    this.anchors.delete(sample.id);
+    if (
+      anchor === undefined ||
+      index === null ||
+      anchor.index !== index ||
+      anchor.screen !== state.screen
+    ) {
+      return;
+    }
+    this.select(state, index, cues);
+    this.confirm(state, index, cues);
+  }
+
+  /** Move the selection to `index`, raising the menu cue if it actually moved. */
+  private select(state: SpectraState, index: number, cues: FrameCues): void {
+    if (state.menuIndex === index) return;
+    state.menuIndex = index;
+    cues.menu = true;
+  }
+
+  /**
+   * Take item `index` of whichever menu the current screen shows.
+   *
+   * `specs/ui.md` gives the keyboard, the pointer and a finger the same effect,
+   * so a pointer confirm runs the very same entry the keyboard's would.
+   */
+  private confirm(state: SpectraState, index: number, cues: FrameCues): void {
+    switch (state.screen) {
+      case "title":
+        if (index === 0) startRun(state);
+        else {
+          state.screen = "howto";
+          state.menuIndex = 0;
+        }
+        return;
+      case "paused":
+        if (index === 0) this.resume(state);
+        else if (index === 1) startRun(state);
+        else toTitle(state);
+        return;
+      case "gameOver":
+        if (index === 0) startRun(state);
+        else toTitle(state);
+        return;
+      default:
+        void cues;
+        return;
+    }
   }
 
   /** Live play: the pause key, and the ship the player flies. */
@@ -127,14 +249,20 @@ export class SpectraController extends PlayerController {
     count: number,
     onConfirm: (index: number) => void,
   ): void {
+    const shown = menuOf(state.screen);
+    if (shown === null) return;
     const moveUp = this.input.pressed("up");
     const moveDown = this.input.pressed("down");
     const accepted = this.input.pressed("confirm");
     if (moveUp || moveDown) {
-      state.menuIndex = wrap(state.menuIndex, moveUp ? -1 : 1, count);
+      state.menuIndex = wrap(
+        highlightedItem(shown, state.menuIndex),
+        moveUp ? -1 : 1,
+        count,
+      );
       cues.menu = true;
       return;
     }
-    if (accepted) onConfirm(state.menuIndex);
+    if (accepted) onConfirm(highlightedItem(shown, state.menuIndex));
   }
 }

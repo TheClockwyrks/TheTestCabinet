@@ -39,9 +39,6 @@
 // THE DRONE IS POSED AS A PROP: travel, oscillation and firing all off, which
 // `specs/instrumentation.md` says holds its exact centre and its phase. So every
 // difference the reading can show is one the shot made, not one the world made.
-//
-// No bystander is posed: this scenario destroys nothing, so no stage-clear reading
-// is in play.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PLAYER_BULLET_SPEED } from "../constants";

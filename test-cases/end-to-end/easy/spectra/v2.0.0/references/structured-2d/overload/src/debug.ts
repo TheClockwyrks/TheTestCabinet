@@ -15,10 +15,11 @@
 // verifiable by setting a value and reading it back through `snapshot`, and it is
 // why the snapshot reports every field a pose can set.
 //
-// THE THREE WORLD GATES are worth naming: `setWaveEntry`, `setDiveLaunching` and
-// `setShipContact` each hold ONE faculty of the wave itself, default to on, are
-// restored to on by `reset`, and are reported by `snapshot`. With the three of them
-// off, nothing the caller did not ask for arrives, launches, or costs a life.
+// THE FOUR WORLD GATES are worth naming: `setWaveEntry`, `setDiveLaunching`,
+// `setStageClearing` and `setShipContact` each hold ONE faculty of the wave or the
+// stage itself, default to on, are restored to on by `reset`, and are reported by
+// `snapshot`. With the four of them off, nothing the caller did not ask for arrives,
+// launches, ends the stage, or costs a life.
 //
 // The surface holds no state and is inert during normal play: nothing below runs
 // until something calls it.
@@ -53,6 +54,7 @@ import {
   setDronePhase,
 } from "./drones";
 import { resetState } from "./flow";
+import { menuItemRect, type MenuRect } from "./menus";
 import { clampCharge } from "./overload";
 import { placeShip } from "./ship";
 import {
@@ -133,6 +135,7 @@ export interface SpectraSnapshot {
   score: number;
   lives: number;
   extraLifeAwarded: boolean;
+  challengeHits: number;
   resonance: number;
   dischargeReady: boolean;
   inversion: number;
@@ -140,6 +143,7 @@ export interface SpectraSnapshot {
   muted: boolean;
   waveEntry: boolean;
   diveLaunching: boolean;
+  stageClearing: boolean;
   diveClock: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
@@ -164,6 +168,7 @@ export interface SpectraDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): SpectraSnapshot;
+  menuItemRect(index: number): MenuRect | null;
 
   setScreen(screen: Screen): void;
   setPhase(phase: Phase): void;
@@ -173,9 +178,11 @@ export interface SpectraDebugApi {
   setLives(lives: number): void;
   setStage(stage: number): void;
   setExtraLifeAwarded(awarded: boolean): void;
+  setChallengeHits(hits: number): void;
 
   setWaveEntry(enabled: boolean): void;
   setDiveLaunching(enabled: boolean): void;
+  setStageClearing(enabled: boolean): void;
   setShipContact(enabled: boolean): void;
   setDiveClock(seconds: number): void;
 
@@ -265,6 +272,7 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
         score: state.score,
         lives: state.lives,
         extraLifeAwarded: state.extraLifeAwarded,
+        challengeHits: state.challengeHits,
         resonance: state.resonance,
         dischargeReady: state.resonance >= RESONANCE_MAX,
         inversion: state.inversion,
@@ -272,6 +280,7 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
         muted: state.muted,
         waveEntry: state.waveEntry,
         diveLaunching: state.diveLaunching,
+        stageClearing: state.stageClearing,
         diveClock: state.diveClock,
         droneSpeedScale: droneSpeedScale(state.stage),
         bulletSpeedScale: bulletSpeedScale(state.stage),
@@ -312,6 +321,19 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
       };
     },
 
+    /**
+     * A pure read of the hit region of item `index` on the menu the current screen
+     * shows, in logical units. It changes nothing.
+     *
+     * Null on the four screens that show no menu, and null for an index the current
+     * menu has no item at (`specs/instrumentation.md`). The region is the one
+     * `src/menus.ts` lays out, which is the one `src/render.ts` draws the item's
+     * plate at and the one the pointer selects on.
+     */
+    menuItemRect(index) {
+      return menuItemRect(read().screen, index);
+    },
+
     setScreen(screen) {
       read().screen = screen;
     },
@@ -350,12 +372,26 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
       read().extraLifeAwarded = awarded;
     },
 
+    /**
+     * Set the current challenge stage's tally of drones destroyed.
+     *
+     * It destroys nothing and pays nothing: it is the latch alone, and the
+     * bonus belongs to the scoring path.
+     */
+    setChallengeHits(hits) {
+      read().challengeHits = Math.max(0, Math.round(hits));
+    },
+
     setWaveEntry(enabled) {
       read().waveEntry = enabled;
     },
 
     setDiveLaunching(enabled) {
       read().diveLaunching = enabled;
+    },
+
+    setStageClearing(enabled) {
+      read().stageClearing = enabled;
     },
 
     setShipContact(enabled) {

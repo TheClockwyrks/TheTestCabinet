@@ -235,35 +235,6 @@ export function drewNumber(calls: readonly DrawCall[], value: number): boolean {
 /* A menu entry's neighbourhood                                               */
 /* -------------------------------------------------------------------------- */
 
-/**
- * The square of the stage one menu entry occupies, as the build itself drew it.
- *
- * Built from the run's own measured span rather than from any layout of the case's,
- * so it follows a menu drawn anywhere at any size: the run's extent, widened by
- * `padX` on each side so a marker or a highlight bar drawn beside the words is
- * inside it, and `halfHeight` above and below the anchor.
- *
- * Both figures are the caller's, because how far around an entry a build may
- * reasonably draw its highlight is the check's own judgement, and because the caller
- * is the one that knows how far apart the entries it is telling apart stand.
- */
-export function entryRegion(
-  run: TextSpan,
-  padX: number,
-  halfHeight: number,
-): Box {
-  const left = Math.max(0, run.left - padX);
-  const right = Math.min(STAGE_W, run.right + padX);
-  const top = Math.max(0, run.y - halfHeight);
-  const bottom = Math.min(STAGE_H, run.y + halfHeight);
-  return {
-    x: left,
-    y: top,
-    w: Math.max(1, right - left),
-    h: Math.max(1, bottom - top),
-  };
-}
-
 /** The first run of text a frame drew that carries `text`, ignoring case. */
 export function runCarrying(
   spans: readonly TextSpan[],
