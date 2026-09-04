@@ -27,14 +27,6 @@ const PANEL = {
   color: "#9ef0d6",
 } as const;
 
-/** What the heading line reports about the frame the panel is drawn over. */
-export interface FramePosition {
-  /** Frames the simulation has run. */
-  count: number;
-  /** The delta the most recent frame was stepped by, in seconds. */
-  dt: number;
-}
-
 export class Diagnostics {
   /** Insertion-ordered, so the panel's lines keep the order they were named in. */
   private readonly sources = new Map<string, () => unknown>();
@@ -55,12 +47,12 @@ export class Diagnostics {
     this.shown = !this.shown;
   }
 
-  /** Every line the panel would draw, heading first. A pure read. */
-  lines(frame: FramePosition): string[] {
-    return [
-      `frame ${frame.count}  dt ${(frame.dt * 1000).toFixed(2)}ms`,
-      ...[...this.sources].map(([name, source]) => `${name} ${read(source)}`),
-    ];
+  /**
+   * Every line the panel would draw: one per registered source, in the order
+   * they were named. A pure read.
+   */
+  lines(): string[] {
+    return [...this.sources].map(([name, source]) => `${name} ${read(source)}`);
   }
 
   /**
@@ -70,9 +62,12 @@ export class Diagnostics {
    * hands over a context carrying the game's logical transform and gets it back
    * exactly as it was.
    */
-  draw(ctx: CanvasRenderingContext2D, frame: FramePosition): void {
+  draw(ctx: CanvasRenderingContext2D): void {
     if (!this.shown) return;
-    const lines = this.lines(frame);
+    const lines = this.lines();
+    // Nothing has been named, so there is no panel: the background is sized from
+    // the widest line, and there is no widest line to size it from.
+    if (lines.length === 0) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.font = `${PANEL.fontPx}px monospace`;

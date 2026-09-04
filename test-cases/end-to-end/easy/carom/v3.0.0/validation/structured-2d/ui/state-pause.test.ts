@@ -1,26 +1,33 @@
 // Carom — ui/state-pause: pausing a live match opens the pause menu, and that
 // menu draws the items the specification fixes for it.
 //
-// The match is opened through the debug surface and run up to live play
-// (`startPlaying`), so the menu is raised over a match in flight rather than
-// over its countdown, and a build with a broken title menu but a working pause
-// fails only the navigation checks. The pause is a real `Escape` key event —
-// the debug driver holds only the paddles, so the key still lands — and
-// `Escape` drives both `pause` and `back`, so the build has to resolve it as
-// the pause here.
+// The match is opened into live play through the debug surface — the title
+// menus are the navigation checks' own surface to grade, not this one's — so a
+// build with a broken title menu but a working pause fails only there. The
+// pause itself is a real `Escape` key event: nothing here has taken a paddle or
+// anything else from the player, so the key reaches the game exactly as a
+// player's does, and `Escape` raises both `pause` and `back` on one frame, so
+// the build has to resolve it as the pause here.
 //
-// The three entries are the case's copy, PAUSE_ITEMS from `src/constants.ts`
-// (specs/ui.md). Matching is by substring, because a selected entry is commonly
-// drawn with a marker beside it.
+// The field is isolated to the one ball live play needs and no obstacles. What
+// this point reads is the menu; the frozen field behind it is the build's, and
+// an isolated one keeps anything on it from scoring a point and moving the
+// screen out from under the reading.
+//
+// The frame that is READ is advanced with the call list cleared, after the pause
+// has landed, so what is inspected is one whole render of the pause screen. The
+// three entries are the case's own, PAUSE_ITEMS from `validation/constants.ts`,
+// which states what specs/ui.md fixes. Matching is by substring, because a
+// selected entry is commonly drawn with a marker beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PAUSE_ITEMS } from "../../src/constants";
+import { PAUSE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
   drewText,
-  startPlaying,
+  openIsolatedPlay,
   type Harness,
 } from "../harness";
 
@@ -35,10 +42,13 @@ afterEach(() => {
 });
 
 it("opens a pause menu drawing every pause item", async () => {
-  await startPlaying(h, "versus");
+  const live = await openIsolatedPlay(h, { mode: "versus" });
+  assertEqual(live.hit, true);
   assertEqual(h.snapshot().screen, "playing");
 
   await h.tap("Escape");
+  assertEqual(h.snapshot().screen, "paused");
+
   h.calls.length = 0;
   await h.advance(1);
   captureStill(h, "pause");

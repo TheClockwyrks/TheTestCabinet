@@ -1,0 +1,237 @@
+# Maze mode: the grid-serpent run on a board laced with fixed fatal interior
+# obstacles. Threading the obstacle course is a distinct skill, so it is rated on its
+# own scoring domain alongside the common gameplay and presentation domains. This
+# variant seeds no mode spec of its own (the Maze mode is the `maze` branch of the
+# common `specs/mode.md.hbs`); it supplies the review items that roll up to the
+# `maze` domain.
+slug = "maze"
+name = "Maze"
+description = "Maze mode: the grid-serpent run on a board laced with fixed fatal interior obstacles to thread."
+
+# This variant seeds no spec of its own: the mode — its menu entry (`MAZE`), the
+# board, and the fixed course of fatal interior obstacles the snake must thread — is
+# the `maze` branch of the common `specs/mode.md.hbs`, selected by the variant
+# slug when that template is rendered for this variant.
+
+# The curated presentation this variant shows on the catalog and its case page: a
+# player-facing description and an ordered carousel, captured from the
+# `structured-2d` reference build below by `showcase/capture/`. The leading entry
+# is a replay of one sustained round rather than a moment, and both stills are
+# frames of that same take. Never seeded into a run.
+showcase = "showcase/maze"
+
+# The authored, *correct* playable build of this variant, one directory per supported
+# engine, because the build a reference demonstrates differs under each. Each is the
+# `base` project of the same engine with its single mode flipped to Maze, so it laces
+# the board with the fixed, fatal obstacle course. This table must name EXACTLY the
+# engines the case supports; the resolver checks both directions. No reference
+# directory is ever seeded into a run: each is the authored answer, built with the
+# case's own `[build]` commands and held to the same four toolchain gates a run is,
+# and each is what `tcab capture-baselines` drives to synthesize the baseline half of
+# the validation media for its engine. This is a full-stack case, so each of these
+# builds also PRODUCED its own snake sprites and audio during authoring, committed
+# beside it; the build itself only loads them, so `npm ci && npm run build` is
+# self-contained.
+[reference_implementation]
+none = "references/none/maze"
+"simple-2d" = "references/simple-2d/maze"
+"structured-2d" = "references/structured-2d/maze"
+
+# This variant needs a starter project of its own under each engine that seeds one:
+# the seeded `src/constants.ts` carries this mode — `MODE_ITEM` and `MODE_LABEL`
+# (`MAZE`), and the eighteen `OBSTACLE_CELLS` of the fixed course — where the case's
+# carries Classic's. The table REPLACES the case's `[workspaces]` rather than
+# layering on it, so it names one directory per engine exactly as the case's does.
+#
+# The engineless project is the case's own, shared with every variant. It holds no
+# game code for a variant to differ in — only the configuration the build is written
+# against — and what this variant changes about the game is carried by the specs,
+# which are rendered per variant before they land.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/maze/simple-2d"
+"structured-2d" = "workspaces/maze/structured-2d"
+
+[[domain]]
+id = "maze"
+name = "Maze"
+description = "The Maze mode: the fixed course of fatal interior obstacles the snake must thread, how it is laid, how it is drawn, and how the rest of the board answers to it."
+
+# This variant's own review points, in the categories grammar inherited from the
+# case manifest (`[review] format = 2` is declared there, and a variant only adds
+# `[[review.categories]]` and must not repeat the format). The `instrumentation`,
+# `hud`, `screens` and `visibility` points reuse a category id the case manifest
+# already declares, so they are merged into that category rather than opening a
+# second group with the same name; `board` is a category the two variants open
+# between them, because what the interior carries is the one thing about the board
+# only a mode can state. Each verdict is recorded under the composite id
+# `<category id>.<item id>`.
+#
+# A variant may only ADD to a common review point, never replace the validator
+# behind one, so a point whose CLAIM differs between the two modes cannot be stated
+# commonly at all: it moves out of the case manifest into both variant files, each
+# stating its own version against its own validator. Three points do. What the
+# board's interior carries is one of them, because this mode lays a fixed course of
+# obstacle cells where Classic lays none. The mode readout in the HUD and the entry
+# the title menu opens with are the other two, because `MODE_LABEL` and `MODE_ITEM`
+# carry this mode's copy. Classic states its own versions in `variants/base.toml`.
+#
+# Everything else here is an ADDITION rather than a replacement: the rules the course
+# obeys, the two operations the debug surface carries only in this mode, and the
+# color distance the course is held to. `domains` and `failure_cap` are on the same
+# scale the case manifest sets out above its `[review]` table, and a point may name
+# a common domain, this variant's own `maze` domain, or both.
+
+# --- Board --------------------------------------------------------------------
+# What this mode lays across the interior: the fixed course of specs/mode.md,
+# and the three rules it obeys. Classic states its own version of the first
+# point, because the two modes disagree about what the board carries.
+[[review.categories]]
+id = "board"
+title = "Board"
+[[review.categories.items]]
+id = "obstacles-layout"
+title = "The board carries the fixed obstacle course"
+description = "After a reset, obstacles is exactly the eighteen cells of OBSTACLE_CELLS, the four bars specs/mode.md fixes, and none of them changes while the round runs."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: reset, read the obstacle list back as a set, compare it
+# against the eighteen cells, then run a stretch of play and read it again. See
+# validation/<engine>/board/obstacles-layout.test.ts.
+validation = { script = "board/obstacles-layout.test.ts", outputs = [
+  { id = "layout", name = "The fixed obstacle course", kind = "image" },
+] }
+[[review.categories.items]]
+id = "obstacles-fatal"
+title = "An obstacle is fatal like a wall"
+description = "The head advancing into an obstacle cell ends the round immediately as a death, exactly as a wall cell does."
+domains = ["maze"]
+failure_cap = "scuffed"
+# Automated validation: pose the head one cell from a course cell and facing it
+# with the pellet cleared, run one tick, and read the screen back. See
+# validation/<engine>/board/obstacles-fatal.test.ts.
+validation = { script = "board/obstacles-fatal.test.ts", outputs = [
+  { id = "obstacle", name = "A fatal obstacle hit", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "obstacles-clear-start-row"
+title = "The starting row is clear of the course"
+description = "No cell of OBSTACLE_CELLS sits on row 8, the row the snake starts on, so the opening chain has a clear runway ahead of it."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: reset, read the obstacle list back, and confirm no cell
+# of it sits on the starting row. See
+# validation/<engine>/board/obstacles-clear-start-row.test.ts.
+validation = { script = "board/obstacles-clear-start-row.test.ts", outputs = [
+  { id = "runway", name = "The clear runway ahead of the opening chain", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pellet-avoids-obstacles"
+title = "A pellet never spawns on the course"
+description = "Across a long run of eats no pellet the game places ever lands on an obstacle cell, so the course counts against the valid set."
+domains = ["maze"]
+failure_cap = "scuffed"
+# Automated validation: drive a long run of eats and test every placed pellet
+# against the obstacle cells. See
+# validation/<engine>/board/pellet-avoids-obstacles.test.ts.
+validation = { script = "board/pellet-avoids-obstacles.test.ts", outputs = [
+  { id = "avoid", name = "Pellets respawning clear of the course", kind = "replay" },
+] }
+
+# --- Instrumentation ----------------------------------------------------------
+# The two operations this mode adds to the debug surface, each checked by what
+# it does to the board rather than by its presence alone.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "clear-obstacles"
+title = "clearObstacles empties the course"
+description = "clearObstacles leaves obstacles empty and the cleared cells ordinary: the head crosses one safely and a pellet may spawn on it, while the wall border is untouched."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: clear the course, read the obstacle list back, then walk
+# the head through a cell the course held and confirm the round is still
+# playing. See validation/<engine>/instrumentation/clear-obstacles.test.ts.
+validation = { script = "instrumentation/clear-obstacles.test.ts", outputs = [
+  { id = "cleared", name = "The board with the course cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "add-obstacle"
+title = "addObstacle lays one fatal cell"
+description = "addObstacle places one obstacle at the named cell, which is then fatal to the head and closed to a pellet spawn exactly as a cell of the laid course is."
+domains = ["maze"]
+failure_cap = "passable"
+# Automated validation: clear the course, add one obstacle ahead of the head,
+# read the obstacle list back, and drive the head into it. See
+# validation/<engine>/instrumentation/add-obstacle.test.ts.
+validation = { script = "instrumentation/add-obstacle.test.ts", outputs = [
+  { id = "added", name = "A single added obstacle, and the head meeting it", kind = "replay" },
+] }
+
+# --- HUD ----------------------------------------------------------------------
+# The mode readout names this mode, so it is stated per variant rather than
+# commonly.
+[[review.categories]]
+id = "hud"
+title = "HUD"
+[[review.categories.items]]
+id = "mode-label-maze"
+title = "The HUD names the mode"
+description = "A frame of the live round draws MODE_LABEL (MAZE) as the mode readout in the HUD band."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: render a live frame and find the mode readout's text
+# draw. See validation/<engine>/hud/mode-label-maze.test.ts.
+validation = { script = "hud/mode-label-maze.test.ts", outputs = [
+  { id = "mode", name = "The HUD naming the mode", kind = "image" },
+] }
+
+# --- Screens ------------------------------------------------------------------
+# The title's first menu entry is this mode's, so it too is stated per variant.
+[[review.categories]]
+id = "screens"
+title = "Screens"
+[[review.categories.items]]
+id = "title-mode-entry-maze"
+title = "The title menu opens with the mode entry"
+description = "The title frame draws MODE_ITEM (MAZE) as the first item of TITLE_ITEMS, above HOW TO PLAY."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: reset to the title, read the frame's text draws, and
+# confirm the mode entry heads the menu. See
+# validation/<engine>/screens/title-mode-entry-maze.test.ts.
+validation = { script = "screens/title-mode-entry-maze.test.ts", outputs = [
+  { id = "title", name = "The title menu of this mode", kind = "image" },
+] }
+
+# --- Visibility ---------------------------------------------------------------
+# The course is a solid a player must read at a glance, so it is held to the
+# same stated distance the other pieces on the board are.
+[[review.categories]]
+id = "visibility"
+title = "Visibility"
+[[review.categories.items]]
+id = "obstacle-apart-from-board"
+title = "An obstacle stands apart from the board"
+description = "The pixel at an obstacle cell's center is more than 50/441 in RGB distance from an empty interior cell."
+domains = ["maze", "presentation"]
+failure_cap = "scuffed"
+# Automated validation: render a live board and sample an obstacle cell against
+# an empty interior cell. See
+# validation/<engine>/visibility/obstacle-apart-from-board.test.ts.
+validation = { script = "visibility/obstacle-apart-from-board.test.ts", outputs = [
+  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "obstacle-apart-from-snake"
+title = "An obstacle stands apart from the snake"
+description = "The pixel at an obstacle cell's center is more than 50/441 in RGB distance from the pixels at the head cell and at a body cell, so an obstacle is never mistaken for a segment."
+domains = ["maze", "presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose the snake beside the course, render, and sample an
+# obstacle cell against the head and a body cell. See
+# validation/<engine>/visibility/obstacle-apart-from-snake.test.ts.
+validation = { script = "visibility/obstacle-apart-from-snake.test.ts", outputs = [
+  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
+] }

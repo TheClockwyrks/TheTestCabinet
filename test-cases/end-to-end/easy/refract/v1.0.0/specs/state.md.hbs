@@ -37,8 +37,11 @@ Whatever its shape, the state carries the following:
   appears across the beams, whether or not the crossing has been left again.
 - The live trace, and nothing when no trace is live. A trace carries the channel
   of the beam it is extending, and its live end is the last cell of that beam.
-- The pointer position, in the stage's logical units, and whether the pointer is
-  currently pressed, both refreshed from the runtime layer in every update.
+- The pointer position, in the stage's logical units, whether the pointer is
+  currently pressed, and the device driving it, all refreshed from the runtime
+  layer in every update.
+- The id of the pointer target armed by the press being held, and nothing when
+  no press has armed one, as `specs/controls.md` describes.
 - The course's progress, as `specs/modes/campaign.md` describes it: which board
   is being played, which boards have been solved, and how many boards are open
   to the player.
@@ -104,10 +107,13 @@ export interface TraceState {
   readonly channel: Channel;
 }
 
+export type PointerDevice = "mouse" | "pen" | "touch";
+
 export interface PointerState {
   readonly x: number;
   readonly y: number;
   readonly down: boolean;
+  readonly device: PointerDevice;
 }
 
 export interface RefractState {
@@ -128,6 +134,7 @@ export interface RefractState {
   readonly tier: number;
 
   readonly pointer: PointerState;
+  readonly armedTarget: string | null;
   readonly simTime: number;
   readonly muted: boolean;
   readonly rngState: number;
@@ -222,6 +229,9 @@ current frame.
   conversion.
 - `down` — whether the pointer is currently pressed. A press with no node within
   `NODE_HIT_R` (`44`) of it leaves `down` `true` and `tracing` `null`.
+- `device` — which of `"mouse"`, `"pen"`, and `"touch"` last drove the pointer,
+  as `specs/controls.md` describes. It reads `"mouse"` before the first pointer
+  event.
 
 ## `RefractState`
 
@@ -251,6 +261,9 @@ the fields posed and read back by reading them.
   time a board is solved, so it holds the opening tier while `solvedCount` is
   `0`.
 - `pointer` — the pointer as of this frame.
+- `armedTarget` — the id of the pointer target the held press armed, or `null`.
+  A release inside that same target takes it, and any other release clears the
+  field without taking anything, as `specs/controls.md` describes.
 - `simTime` — accumulated simulation time, in seconds. Every `update` adds its
   `dt`, whatever the screen, the menus included.
 - `muted` — the game's readable copy of the engine's mute bit, which every
@@ -344,10 +357,13 @@ export interface TraceState {
   channel: Channel;
 }
 
+export type PointerDevice = "mouse" | "pen" | "touch";
+
 export interface PointerState {
   x: number;
   y: number;
   down: boolean;
+  device: PointerDevice;
 }
 
 export class RefractState extends GameState {
@@ -367,7 +383,8 @@ export class RefractState extends GameState {
   solvedCount = 0;
   tier = 1;
 
-  pointer: PointerState = { x: 0, y: 0, down: false };
+  pointer: PointerState = { x: 0, y: 0, down: false, device: "mouse" };
+  armedTarget: string | null = null;
   simTime = 0;
   muted = false;
   rngState = DEFAULT_SEED;
@@ -463,6 +480,9 @@ it from the engine in the current frame.
   conversion.
 - `down` — whether the pointer is currently pressed. A press with no node within
   `NODE_HIT_R` (`44`) of it leaves `down` `true` and `tracing` `null`.
+- `device` — which of `"mouse"`, `"pen"`, and `"touch"` last drove the pointer,
+  as `specs/controls.md` describes. It reads `"mouse"` before the first pointer
+  event.
 
 ## `RefractState`
 
@@ -493,6 +513,9 @@ reading them.
   `0`.
 - `pointer` — the pointer as of this frame, refreshed by the player controller
   every tick.
+- `armedTarget` — the id of the pointer target the held press armed, or `null`.
+  A release inside that same target takes it, and any other release clears the
+  field without taking anything, as `specs/controls.md` describes.
 - `simTime` — accumulated simulation time, in seconds. Every frame adds its
   `dt`, whatever the screen; the game mode's tick is where it accumulates.
 - `muted` — the game's readable copy of the engine's mute bit, refreshed every

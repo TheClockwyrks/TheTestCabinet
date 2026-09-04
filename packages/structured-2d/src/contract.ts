@@ -92,6 +92,40 @@ export interface FrameMetrics {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Diagnostics                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every value a diagnostic source may report.
+ *
+ * Three types, and the set is closed: the overlay draws one line per source, and a
+ * reader of that line wants the presentation a `string` fixes, the magnitude a
+ * `number` carries, or the flag a `boolean` states. A framework object such as an
+ * actor is reduced to one of the three inside the source, which is where the game's
+ * own vocabulary lives. Closing the set is also what lets a check compare a reading
+ * against an expected value without narrowing it first.
+ */
+export type DiagnosticValue = string | number | boolean;
+
+/**
+ * One registered diagnostic and what it reports right now.
+ *
+ * Exactly one of `value` and `error` is present. A source that throws yields
+ * `error` and no `value`, which keeps a failure distinguishable from every reading
+ * a working source could produce: were the message reported as the value, a defect
+ * in the game's source would arrive as a well-typed `string` that a check comparing
+ * values could accept.
+ */
+export interface DiagnosticReading {
+  /** The name the source was registered under. */
+  readonly name: string;
+  /** What the source reported, when it returned. */
+  readonly value?: DiagnosticValue;
+  /** Why the source failed, when it threw. */
+  readonly error?: string;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Geometry, camera, and viewport                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -209,6 +243,27 @@ export interface SurfaceMetrics {
    * corner.
    */
   origin?(): { x: number; y: number };
+  /**
+   * Takes the browser's own pointer gestures on the surface, and returns the
+   * function that gives them back.
+   *
+   * Those gestures are panning, pinch-zoom, double-tap zoom, text selection,
+   * the wheel's page scroll, and the context menu. Claimed, a drag, a wheel,
+   * and a press of the secondary button reach the game instead of the page,
+   * which is what makes touch and the secondary button usable at all. The
+   * engine claims them as the pointer attaches and gives them back when it
+   * detaches. A surface with no element behind it owns no gestures and omits
+   * this.
+   */
+  claimGestures?(): () => void;
+  /**
+   * Routes every later event for `pointerId` to the surface, so a drag that
+   * leaves the element keeps delivering moves and its release is seen. The
+   * engine captures each pointer as it comes into contact.
+   */
+  capturePointer?(pointerId: number): void;
+  /** Ends the capture `capturePointer` began. */
+  releasePointerCapture?(pointerId: number): void;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -256,27 +311,92 @@ export interface TouchLayout {
   actions: string[];
 }
 
-/** What kind of pointer sample a frame delivered. */
-export type PointerSampleType = "down" | "move" | "up";
+/**
+ * The kind of device driving a pointer.
+ *
+ * A game reads it where it wants to differ between them, sizing a hit area for
+ * a fingertip or naming a button rather than a tap, and otherwise ignores it:
+ * all three arrive on the same reads.
+ */
+export type PointerDevice = "mouse" | "pen" | "touch";
 
 /**
- * One pointer sample, in the engine's logical design coordinates. The listed
- * samples alternate `down` and `up` strictly.
+ * A button on a pointing device.
+ *
+ * A pen or a touch in contact holds `primary`, which is what lets a game
+ * written against the primary button alone play identically on all three
+ * devices.
  */
+export type PointerButton =
+  | "primary"
+  | "secondary"
+  | "auxiliary"
+  | "back"
+  | "forward";
+
+/**
+ * What kind of pointer sample a frame delivered.
+ *
+ * The three describe the pointer's contact: a `down` is the pointer coming into
+ * contact, an `up` is it leaving, and a `move` is everything else it did, a
+ * change of position or a change of which buttons it holds. Per pointer, `down`
+ * and `up` therefore alternate strictly.
+ */
+export type PointerSampleType = "down" | "move" | "up";
+
+/** One pointer sample, in the engine's logical design coordinates. */
 export interface PointerSample {
   readonly type: PointerSampleType;
   readonly x: number;
   readonly y: number;
+  /** The pointer this sample came from. */
+  readonly id: number;
+  /** Whether it came from the primary pointer, the one the snapshot follows. */
+  readonly primary: boolean;
+  /** The device that drove it. */
+  readonly device: PointerDevice;
+  /** The button whose state it reports, or `null` when it reports movement. */
+  readonly button: PointerButton | null;
+  /** Every button held once the sample has been applied. */
+  readonly buttons: readonly PointerButton[];
 }
 
 /**
- * The pointer's most recent position and hold state, as a fresh copy. Before
- * the first pointer event the position is `(0, 0)` and `down` is `false`.
+ * The primary pointer's most recent position, hold state, device, and held
+ * buttons, as a fresh copy. Before the first pointer event the position is
+ * `(0, 0)`, `down` is `false`, `device` is `"mouse"`, and `buttons` is empty.
  */
 export interface PointerSnapshot {
   x: number;
   y: number;
   down: boolean;
+  device: PointerDevice;
+  buttons: PointerButton[];
+}
+
+/**
+ * One pointer in contact with the surface.
+ *
+ * The contact list is what a pinch, a two-finger drag, or two players on one
+ * screen read. A controller driving one thing with one pointer reads the
+ * snapshot instead, which follows the primary pointer alone.
+ */
+export interface PointerContact {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly primary: boolean;
+  readonly device: PointerDevice;
+  readonly buttons: readonly PointerButton[];
+}
+
+/**
+ * Wheel travel over one input frame, in logical design units, positive
+ * rightward and downward.
+ */
+export interface WheelDelta {
+  readonly x: number;
+  readonly y: number;
 }
 
 /**
@@ -301,12 +421,18 @@ export interface InputReader {
    * this controller's copy. `false` for an unregistered name.
    */
   pressed(name: string): boolean;
-  /** The most recent position and whether the pointer is held, as a fresh copy. */
+  /** The primary pointer's position, hold, device, and buttons, as a fresh copy. */
   pointer(): PointerSnapshot;
-  /** `true` exactly once per press edge per player controller; consuming. */
-  pointerPressed(): boolean;
-  /** `true` exactly once per release edge per player controller; consuming. */
-  pointerReleased(): boolean;
+  /**
+   * `true` exactly once per press edge of `button` per player controller;
+   * consuming. `button` defaults to `"primary"`.
+   */
+  pointerPressed(button?: PointerButton): boolean;
+  /**
+   * `true` exactly once per release edge of `button` per player controller;
+   * consuming. `button` defaults to `"primary"`.
+   */
+  pointerReleased(button?: PointerButton): boolean;
   /**
    * Every sample delivered since the input frame last closed, in arrival order,
    * as a fresh copy. Reading does not consume the list. At most 1024 samples
@@ -314,6 +440,10 @@ export interface InputReader {
    * the edges.
    */
   pointerSamples(): PointerSample[];
+  /** Every pointer in contact, in the order they came into contact, as a copy. */
+  pointerContacts(): PointerContact[];
+  /** The wheel travel accumulated since the input frame last closed, as a copy. */
+  wheel(): WheelDelta;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -509,6 +639,18 @@ export interface CollisionWorld {
 export type RenderMode = "shaded" | "wireframe" | "unlit" | "silhouette";
 
 /**
+ * Which map a render component draws through.
+ *
+ * `world`, the default, draws through the camera and then the viewport, so the
+ * component states every coordinate, size, and font size in world units.
+ * `screen` draws through the viewport alone: the component's composed
+ * transform is read in logical units from the top-left of the design field,
+ * and it holds its place on the canvas whatever the camera does. Both spaces
+ * share the pipeline's one sort.
+ */
+export type RenderSpace = "world" | "screen";
+
+/**
  * The rendering pipeline's two switches, reached as `engine.renderer` and
  * available from construction.
  */
@@ -531,15 +673,22 @@ export interface Renderer {
  * What a `DrawComponent`'s `draw` receives: the direct-drawing path, for a case
  * that measures the drawing itself.
  *
- * The context already carries the world-to-device transform, so the component
- * draws in world units. Render modes belong to the declarative pipeline, so a
- * `DrawComponent` reads `mode` and supplies its own.
+ * The context already carries the transform of the component's `space`: the
+ * world-to-device transform under `world`, so the component draws in world
+ * units, and the viewport alone under `screen`, so it draws in logical units.
+ * Render modes belong to the declarative pipeline, so a `DrawComponent` reads
+ * `mode` and supplies its own.
  */
 export interface DrawApi {
-  /** The 2D context, already carrying the world-to-device transform. */
+  /** The 2D context, already carrying the transform of the component's `space`. */
   readonly ctx: CanvasRenderingContext2D;
   /** The render mode in force for this frame. */
   readonly mode: RenderMode;
+  /**
+   * The component's space: `world` for the world-to-device transform, `screen`
+   * for the viewport alone.
+   */
+  readonly space: RenderSpace;
   /** The frame counter, the accumulated simulated time, and the last delta. */
   frame(): FrameInfo;
   /** The current logical-to-device fit, as a snapshot the caller owns. */
@@ -803,7 +952,9 @@ export interface World {
    * The world's diagnostic registry. A source registered here lives as long as
    * the world and is dropped when it closes; the instance's sources persist.
    */
-  readonly diagnostics: { register(name: string, source: () => unknown): void };
+  readonly diagnostics: {
+    register(name: string, source: () => DiagnosticValue): void;
+  };
   /** The engine's broadcaster. */
   readonly events: EngineEvents;
 
@@ -927,7 +1078,7 @@ export interface InitApi {
      * Registers a source that lives as long as the engine, invoked on each
      * read. Re-registering a name replaces its source in place.
      */
-    register(name: string, source: () => unknown): void;
+    register(name: string, source: () => DiagnosticValue): void;
   };
   /** The engine's broadcaster. */
   readonly events: EngineEvents;
@@ -951,6 +1102,11 @@ export interface EngineOptions<D = unknown> {
   game: GameDefinition<D>;
   /** A CSS color cleared to before every frame. Absent, transparency. */
   background?: string;
+  /**
+   * Whether an image the viewport fit scales is resampled bilinearly. `false`
+   * samples nearest-neighbor, which keeps pixel art crisp. Defaults to `true`.
+   */
+  imageSmoothing?: boolean;
   /** A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. */
   layout?: string;
   /** The clock supplying each frame's delta. Defaults to `new WallClock()`. */
@@ -1022,6 +1178,15 @@ export interface Engine<D = unknown> {
   frame(): FrameInfo;
   /** The current logical-to-device fit, as a snapshot the caller owns. */
   viewport(): Viewport;
+  /**
+   * Every registered diagnostic and what it reports now, the instance
+   * registry's first and then the world's, each in registration order.
+   *
+   * Evaluates each source and changes nothing else, so a check reads the
+   * sources a build registered without posing the overlay: the reading is the
+   * same whether the panel is drawn or hidden.
+   */
+  diagnostics(): readonly DiagnosticReading[];
   /** Whether draw-command recording is currently capturing. */
   recording(): boolean;
   /**

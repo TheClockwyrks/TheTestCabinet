@@ -365,6 +365,41 @@ describe("RunReviewEditor on a validator-rated run", () => {
     ).toBe("true");
   });
 
+  // A point whose validator names engines is decided only under those. The run
+  // above is built on `simple-2d`, so a point scoped to `none` was never driven
+  // and is not on this run's checklist: showing it would invite a verdict the
+  // backend refuses (`review overrides a verdict the run's checklist does not
+  // carry`), and would count weight the run does not carry.
+  it("hides a point whose validator does not cover the run's engine", async () => {
+    fixture.readReviewItems.mockResolvedValue([
+      ...items,
+      {
+        id: "debug-overlay",
+        title: "Debug overlay",
+        text: "",
+        weight: 1,
+        validation: { engines: ["none"] },
+        failureCap: "scuffed",
+        domains: ["single-player"],
+      },
+    ]);
+    mount(
+      <RunReviewEditor
+        run={run}
+        reviews={[]}
+        published={false}
+        validatorRated
+        onChanged={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
+
+    // The rail and the walker carry the two points the run does carry, and the
+    // scoped-away one is nowhere in the form.
+    expect(screen.getByText("2/2 addressed")).toBeTruthy();
+    expect(screen.queryByText("Debug overlay")).toBeNull();
+  });
+
   it("shows an existing review's run-wide aesthetic badge, not a per-card score", async () => {
     fixture.readReviewItems.mockResolvedValue(items);
     const review = {

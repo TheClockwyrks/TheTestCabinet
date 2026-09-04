@@ -1,0 +1,16 @@
+# The maze variant's carousel, in the order it is presented. The replay leads:
+# it is the entry the catalog's preview stage plays, and it is a sustained
+# stretch of one real round rather than a moment. Both stills are frames of that
+# same take.
+
+[[media]]
+file = "gameplay.json.gz"
+name = "One round threaded through the course, the multiplier taken to the cap and lost"
+
+[[media]]
+file = "combo-peak.png"
+name = "The multiplier at the cap, the chain doubled back along a bar"
+
+[[media]]
+file = "threading-the-course.png"
+name = "The four bars of the course, early in the round"

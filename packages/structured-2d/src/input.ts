@@ -21,12 +21,16 @@ import type {
   ActionBinding,
   ActionKind,
   InputReader,
+  PointerButton,
+  PointerContact,
+  PointerDevice,
   PointerSample,
   PointerSnapshot,
   RegisteredAction,
   SurfaceMetrics,
   TouchLayout,
   Viewport,
+  WheelDelta,
 } from "./contract";
 
 /**
@@ -88,6 +92,81 @@ export const TOUCH_LAYOUTS: Readonly<Record<string, TouchLayout>> =
  * only its place in the list is refused.
  */
 const POINTER_SAMPLE_CAP = 1024;
+
+/**
+ * CSS pixels one line of wheel travel is worth, for a wheel reporting its delta
+ * in lines. A page's worth is the surface's own CSS height, read at the event.
+ */
+const WHEEL_LINE_HEIGHT = 16;
+
+/** The buttons in the order {@link PointerButton} declares them. */
+const BUTTON_ORDER: readonly PointerButton[] = [
+  "primary",
+  "secondary",
+  "auxiliary",
+  "back",
+  "forward",
+];
+
+/** The bit each button occupies in `PointerEvent.buttons`. */
+const BUTTON_BITS: Readonly<Record<PointerButton, number>> = {
+  primary: 1,
+  secondary: 2,
+  auxiliary: 4,
+  back: 8,
+  forward: 16,
+};
+
+/** The button each `PointerEvent.button` index names. */
+const BUTTON_INDEX: readonly PointerButton[] = [
+  "primary",
+  "auxiliary",
+  "secondary",
+  "back",
+  "forward",
+];
+
+/** What the system tracks for one pointer in contact with the surface. */
+interface Contact {
+  readonly id: number;
+  x: number;
+  y: number;
+  readonly primary: boolean;
+  device: PointerDevice;
+  buttons: PointerButton[];
+}
+
+/**
+ * One button's press and release edges, counted the way an action's are:
+ * `armed` counts every edge the button has ever raised and `floor` marks how
+ * many the closing frame discarded, so a reader consumes against a pair of
+ * monotonic counters and needs no per-reader registration here.
+ */
+interface ButtonEdges {
+  pressArmed: number;
+  pressFloor: number;
+  releaseArmed: number;
+  releaseFloor: number;
+}
+
+/**
+ * What one pointer event said, once it has been placed on the stage.
+ *
+ * `buttons` is `null` when the event carried no mask, which a hand-dispatched
+ * event routinely does. Each listener resolves that absence for itself: a press
+ * adds its button, a move changes nothing, and a release drops the button it
+ * names.
+ */
+interface Reading {
+  placed: boolean;
+  x: number;
+  y: number;
+  id: number;
+  primary: boolean;
+  device: PointerDevice;
+  button: PointerButton | null;
+  buttons: PointerButton[] | null;
+}
 
 /** What an {@link InputSystem} is built over. */
 export interface InputSystemOptions {
@@ -173,17 +252,21 @@ export class InputSystem {
   private readonly selected: TouchLayout | null;
   private detached = false;
 
-  /** The pointer's most recent position and hold. */
+  /** The primary pointer's most recent position and the device that drove it. */
   private pointerX = 0;
   private pointerY = 0;
-  private pointerDown = false;
-  /** Monotonic edge counters and their discard marks, as an action's. */
-  private pressArmed = 0;
-  private pressFloor = 0;
-  private releaseArmed = 0;
-  private releaseFloor = 0;
+  private pointerDevice: PointerDevice = "mouse";
+  /** Every pointer in contact, keyed by id and held in contact order. */
+  private readonly contacts = new Map<number, Contact>();
+  /** The primary pointer's per-button edge counters. */
+  private readonly buttonEdges = new Map<PointerButton, ButtonEdges>();
   /** The samples delivered since the input frame last closed. */
   private samples: PointerSample[] = [];
+  /** Wheel travel accumulated since the input frame last closed, in logical units. */
+  private wheelX = 0;
+  private wheelY = 0;
+  /** Gives the browser back the gestures the surface claimed. */
+  private releaseGestures: (() => void) | null = null;
 
   private readonly onKeyDown = (event: Event): void => {
     const keyboard = asKeyboardEvent(event);
@@ -205,56 +288,106 @@ export class InputSystem {
   };
 
   private readonly onPointerDown = (event: Event): void => {
-    const position = this.position(event);
-    if (position.kind !== "at") return;
-    // A second `pointerdown` while already held — a chorded mouse button — is
-    // a continuation of the hold: the pointer moves, no edge arms, and the
-    // listed samples keep alternating `down` and `up` strictly.
-    if (this.pointerDown) {
-      this.record("move", position.x, position.y);
+    const reading = this.read(event);
+    if (reading === null || !reading.placed) return;
+    const existing = this.contacts.get(reading.id);
+    const pressed = reading.button ?? "primary";
+    if (existing === undefined) {
+      const contact: Contact = {
+        id: reading.id,
+        x: reading.x,
+        y: reading.y,
+        primary: reading.primary,
+        device: reading.device,
+        buttons: reading.buttons ?? [pressed],
+      };
+      this.contacts.set(contact.id, contact);
+      this.surface.capturePointer?.(contact.id);
+      if (contact.primary) this.edges(pressed).pressArmed += 1;
+      this.record(contact, "down", reading.x, reading.y, reading.button);
       return;
     }
-    this.pointerDown = true;
-    this.pressArmed += 1;
-    this.record("down", position.x, position.y);
+    // A second `pointerdown` on a pointer already in contact is a chorded
+    // button, not a new contact: the contact continues, its button set grows,
+    // and the sample is a `move` so `down` and `up` keep alternating strictly.
+    // A button already held arms nothing.
+    const chorded = !existing.buttons.includes(pressed);
+    existing.device = reading.device;
+    existing.buttons = reading.buttons ?? withButton(existing.buttons, pressed);
+    if (existing.primary && chorded) this.edges(pressed).pressArmed += 1;
+    this.record(existing, "move", reading.x, reading.y, reading.button);
   };
 
   private readonly onPointerMove = (event: Event): void => {
-    const position = this.position(event);
-    if (position.kind !== "at") return;
-    this.record("move", position.x, position.y);
+    const reading = this.read(event);
+    if (reading === null || !reading.placed) return;
+    const contact = this.contacts.get(reading.id);
+    if (contact === undefined) {
+      this.hover(reading);
+      return;
+    }
+    contact.device = reading.device;
+    contact.buttons = reading.buttons ?? contact.buttons;
+    this.record(contact, "move", reading.x, reading.y, null);
   };
 
   private readonly onPointerUp = (event: Event): void => {
-    const position = this.position(event);
-    if (position.kind === "ignore") return;
-    if (position.kind === "unplaced") {
-      // The release still ends the hold: a degenerate fit can place no
-      // position, but leaving `down` stranded would hold a drag or an aim for
-      // the rest of the run over one hidden-canvas release.
-      this.releasePointer();
+    const reading = this.read(event);
+    if (reading === null) return;
+    const contact = this.contacts.get(reading.id);
+    // A `pointerup` with no contact to end has no hold to release; it still
+    // says where the pointer is.
+    if (contact === undefined) {
+      this.hover(reading);
       return;
     }
-    // A `pointerup` while not held has no hold to end; it still says where the
-    // pointer is.
-    if (!this.pointerDown) {
-      this.record("move", position.x, position.y);
-      return;
+    contact.device = reading.device;
+    // A degenerate fit can place no position, but leaving a contact stranded
+    // would hold a drag or an aim for the rest of the run over one
+    // hidden-canvas release, so the release lands at the last known position.
+    if (reading.placed) {
+      contact.x = reading.x;
+      contact.y = reading.y;
     }
-    this.pointerX = position.x;
-    this.pointerY = position.y;
-    this.releasePointer();
+    this.lift(
+      contact,
+      reading.button,
+      reading.buttons ?? withoutButton(contact.buttons, reading.button),
+    );
   };
 
   /**
    * A cancelled pointer — the browser took the gesture for scrolling, the
-   * touch left the surface — ends the hold as a release at the last known
+   * touch left the surface — ends the contact as a release at the last known
    * position. Its own coordinates are not read: a cancel is the browser saying
    * the gesture stopped being the page's, not a report of where it went.
    */
   private readonly onPointerCancel = (event: Event): void => {
-    if ((event as Partial<PointerEvent>).isPrimary === false) return;
-    this.releasePointer();
+    const contact = this.contacts.get(pointerId(event));
+    if (contact === undefined) return;
+    this.lift(contact, null, []);
+  };
+
+  /**
+   * Accumulates wheel travel in logical units, through the same scale a
+   * position goes through, so a controller reads the wheel on the axes the
+   * game draws on.
+   */
+  private readonly onWheel = (event: Event): void => {
+    const candidate = event as Partial<WheelEvent>;
+    if (
+      typeof candidate.deltaX !== "number" ||
+      typeof candidate.deltaY !== "number"
+    ) {
+      return;
+    }
+    const viewport = this.viewport();
+    if (viewport.scale === 0) return;
+    const dpr = this.surface.dpr();
+    const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+    const unit = this.wheelUnit(candidate.deltaMode);
+    this.wheelX += (candidate.deltaX * unit * ratio) / viewport.scale;
+    this.wheelY += (candidate.deltaY * unit * ratio) / viewport.scale;
   };
 
   /**
@@ -272,12 +405,18 @@ export class InputSystem {
     this.selected = resolveLayout(options.layout);
 
     this.target = options.surface.events();
+    // Claimed here rather than left to the page: without the claim a touch drag
+    // is taken for a pan and arrives as a `pointercancel` part way through the
+    // gesture, the secondary button opens a context menu instead of reaching
+    // the game, and the wheel scrolls the page out from under the canvas.
+    this.releaseGestures = options.surface.claimGestures?.() ?? null;
     this.target.addEventListener("keydown", this.onKeyDown);
     this.target.addEventListener("keyup", this.onKeyUp);
     this.target.addEventListener("pointerdown", this.onPointerDown);
     this.target.addEventListener("pointermove", this.onPointerMove);
     this.target.addEventListener("pointerup", this.onPointerUp);
     this.target.addEventListener("pointercancel", this.onPointerCancel);
+    this.target.addEventListener("wheel", this.onWheel);
   }
 
   /**
@@ -377,8 +516,10 @@ export class InputSystem {
     // How many of each action's edges this reader has consumed, by name. The
     // map is bounded by the names the game registers and asks about.
     const consumed = new Map<string, number>();
-    let pressConsumed = 0;
-    let releaseConsumed = 0;
+    // How many of each button's pointer edges this reader has consumed. Bounded
+    // by the five buttons.
+    const pressConsumed = new Map<PointerButton, number>();
+    const releaseConsumed = new Map<PointerButton, number>();
 
     // One edge, consumed against a monotonic pair: `floor` is where discarded
     // edges end and `armed` is where the live ones do, so a reader that was
@@ -406,32 +547,36 @@ export class InputSystem {
         return result.taken;
       },
       pointer(): PointerSnapshot {
-        return {
-          x: system.pointerX,
-          y: system.pointerY,
-          down: system.pointerDown,
-        };
+        return system.snapshot();
       },
-      pointerPressed(): boolean {
+      pointerPressed(button: PointerButton = "primary"): boolean {
+        const edges = system.edges(button);
         const result = take(
-          pressConsumed,
-          system.pressFloor,
-          system.pressArmed,
+          pressConsumed.get(button) ?? 0,
+          edges.pressFloor,
+          edges.pressArmed,
         );
-        pressConsumed = result.seen;
+        pressConsumed.set(button, result.seen);
         return result.taken;
       },
-      pointerReleased(): boolean {
+      pointerReleased(button: PointerButton = "primary"): boolean {
+        const edges = system.edges(button);
         const result = take(
-          releaseConsumed,
-          system.releaseFloor,
-          system.releaseArmed,
+          releaseConsumed.get(button) ?? 0,
+          edges.releaseFloor,
+          edges.releaseArmed,
         );
-        releaseConsumed = result.seen;
+        releaseConsumed.set(button, result.seen);
         return result.taken;
       },
       pointerSamples(): PointerSample[] {
         return [...system.samples];
+      },
+      pointerContacts(): PointerContact[] {
+        return system.pointerContacts();
+      },
+      wheel(): WheelDelta {
+        return { x: system.wheelX, y: system.wheelY };
       },
     };
   }
@@ -444,9 +589,13 @@ export class InputSystem {
    */
   endFrame(): void {
     for (const state of this.actionStates.values()) state.floor = state.armed;
-    this.pressFloor = this.pressArmed;
-    this.releaseFloor = this.releaseArmed;
+    for (const edges of this.buttonEdges.values()) {
+      edges.pressFloor = edges.pressArmed;
+      edges.releaseFloor = edges.releaseArmed;
+    }
     this.samples = [];
+    this.wheelX = 0;
+    this.wheelY = 0;
   }
 
   /**
@@ -463,6 +612,13 @@ export class InputSystem {
     this.target.removeEventListener("pointermove", this.onPointerMove);
     this.target.removeEventListener("pointerup", this.onPointerUp);
     this.target.removeEventListener("pointercancel", this.onPointerCancel);
+    this.target.removeEventListener("wheel", this.onWheel);
+    for (const id of this.contacts.keys()) {
+      this.surface.releasePointerCapture?.(id);
+    }
+    this.contacts.clear();
+    this.releaseGestures?.();
+    this.releaseGestures = null;
   }
 
   /**
@@ -513,44 +669,141 @@ export class InputSystem {
     }
   }
 
-  /** Ends the hold at the last known position, arming the release edge. */
-  private releasePointer(): void {
-    if (!this.pointerDown) return;
-    this.pointerDown = false;
-    this.releaseArmed += 1;
-    this.record("up", this.pointerX, this.pointerY);
+  /**
+   * Applies a release: every button the contact loses arms its release edge,
+   * and a contact left holding nothing ends.
+   *
+   * A mouse releasing one of two held buttons keeps its contact and reports a
+   * `move` naming the button, so `down` and `up` stay one contact apart.
+   */
+  private lift(
+    contact: Contact,
+    button: PointerButton | null,
+    remaining: readonly PointerButton[],
+  ): void {
+    if (contact.primary) {
+      for (const held of contact.buttons) {
+        if (!remaining.includes(held)) this.edges(held).releaseArmed += 1;
+      }
+    }
+    contact.buttons = [...remaining];
+    if (remaining.length > 0) {
+      this.record(contact, "move", contact.x, contact.y, button);
+      return;
+    }
+    this.contacts.delete(contact.id);
+    this.surface.releasePointerCapture?.(contact.id);
+    this.record(contact, "up", contact.x, contact.y, button);
   }
 
   /**
-   * The event's position in logical coordinates, or the refusal that keeps it
-   * off the stage.
-   *
-   * `ignore` is an event this input does not track at all: one with no numeric
-   * client position (the narrowing is structural, like the key listeners', so
-   * a plain `Event` carrying `clientX`/`clientY` from any realm drives the
-   * pointer) or a non-primary pointer — the second touch of a multi-touch
-   * gesture — since one logical pointer is tracked. `unplaced` is a real
-   * pointer event a degenerate fit (a `scale` of `0`) gives no place on the
-   * stage: a `down` or `move` is dropped, and the one listener that must still
-   * act — a release, which ends the hold wherever it happened — tells the two
-   * apart.
+   * An event from a pointer holding nothing: it moves the snapshot when it is
+   * the primary pointer, which is what hover and aiming read, and lists a
+   * sample carrying no buttons.
    */
-  private position(
-    event: Event,
-  ):
-    | { kind: "at"; x: number; y: number }
-    | { kind: "ignore" }
-    | { kind: "unplaced" } {
+  private hover(reading: Reading): void {
+    if (!reading.placed) return;
+    if (reading.primary) {
+      this.pointerX = reading.x;
+      this.pointerY = reading.y;
+      this.pointerDevice = reading.device;
+    }
+    this.list({
+      type: "move",
+      x: reading.x,
+      y: reading.y,
+      id: reading.id,
+      primary: reading.primary,
+      device: reading.device,
+      button: reading.button,
+      buttons: [],
+    });
+  }
+
+  /** The primary pointer's position, hold, device, and buttons, as a copy. */
+  private snapshot(): PointerSnapshot {
+    const primary = this.primaryContact();
+    return {
+      x: this.pointerX,
+      y: this.pointerY,
+      down: primary !== undefined && primary.buttons.length > 0,
+      device: this.pointerDevice,
+      buttons: primary === undefined ? [] : [...primary.buttons],
+    };
+  }
+
+  /** Every pointer in contact, in contact order, as a fresh copy. */
+  private pointerContacts(): PointerContact[] {
+    return [...this.contacts.values()].map((contact) => ({
+      id: contact.id,
+      x: contact.x,
+      y: contact.y,
+      primary: contact.primary,
+      device: contact.device,
+      buttons: [...contact.buttons],
+    }));
+  }
+
+  /** The edge counters for `button`, created on first use. */
+  private edges(button: PointerButton): ButtonEdges {
+    const existing = this.buttonEdges.get(button);
+    if (existing !== undefined) return existing;
+    const created: ButtonEdges = {
+      pressArmed: 0,
+      pressFloor: 0,
+      releaseArmed: 0,
+      releaseFloor: 0,
+    };
+    this.buttonEdges.set(button, created);
+    return created;
+  }
+
+  /** The primary pointer's contact, when one is in contact. */
+  private primaryContact(): Contact | undefined {
+    for (const contact of this.contacts.values()) {
+      if (contact.primary) return contact;
+    }
+    return undefined;
+  }
+
+  /** CSS pixels one unit of `deltaMode` is worth. */
+  private wheelUnit(deltaMode: number | undefined): number {
+    if (deltaMode === 1) return WHEEL_LINE_HEIGHT;
+    if (deltaMode === 2) {
+      const height = this.surface.cssHeight();
+      return Number.isFinite(height) && height > 0 ? height : WHEEL_LINE_HEIGHT;
+    }
+    return 1;
+  }
+
+  /**
+   * The event's position, identity, device, and buttons, or `null` for an
+   * event this input does not track at all: one with no numeric client
+   * position. The narrowing is structural, like the key listeners', so a plain
+   * `Event` carrying `clientX`/`clientY` from any realm drives the pointer.
+   *
+   * A degenerate fit (a `scale` of `0`) gives a real pointer event no place on
+   * the stage, and the reading comes back unplaced. Its position is dropped,
+   * and the release that must still end a contact wherever it happened acts on
+   * it anyway.
+   */
+  private read(event: Event): Reading | null {
     const candidate = event as Partial<PointerEvent>;
     if (
       typeof candidate.clientX !== "number" ||
       typeof candidate.clientY !== "number"
     ) {
-      return { kind: "ignore" };
+      return null;
     }
-    if (candidate.isPrimary === false) return { kind: "ignore" };
+    const common = {
+      id: pointerId(event),
+      primary: candidate.isPrimary !== false,
+      device: namedDevice(candidate.pointerType),
+      button: namedButton(candidate.button),
+      buttons: heldButtons(candidate.buttons),
+    };
     const viewport = this.viewport();
-    if (viewport.scale === 0) return { kind: "unplaced" };
+    if (viewport.scale === 0) return { ...common, x: 0, y: 0, placed: false };
     // The documented conversion: client position relative to the surface's
     // origin, multiplied by the device pixel ratio, through the inverse
     // viewport map. Over a surface with no `origin`, the origin reads (0, 0),
@@ -560,27 +813,114 @@ export class InputSystem {
     const dpr = this.surface.dpr();
     const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
     return {
-      kind: "at",
+      ...common,
       x:
         ((candidate.clientX - origin.x) * ratio - viewport.offsetX) /
         viewport.scale,
       y:
         ((candidate.clientY - origin.y) * ratio - viewport.offsetY) /
         viewport.scale,
+      placed: true,
     };
   }
 
   /**
-   * Moves the snapshot and lists the sample, refusing the listing — and only
-   * the listing — past the cap.
+   * Moves the contact and the snapshot, and lists the sample.
+   *
+   * The snapshot follows the primary pointer alone, so a second finger landing
+   * on the screen leaves a game built for one pointer exactly as it was.
    */
-  private record(type: PointerSample["type"], x: number, y: number): void {
-    this.pointerX = x;
-    this.pointerY = y;
-    if (this.samples.length < POINTER_SAMPLE_CAP) {
-      this.samples.push({ type, x, y });
+  private record(
+    contact: Contact,
+    type: PointerSample["type"],
+    x: number,
+    y: number,
+    button: PointerButton | null,
+  ): void {
+    contact.x = x;
+    contact.y = y;
+    if (contact.primary) {
+      this.pointerX = x;
+      this.pointerY = y;
+      this.pointerDevice = contact.device;
     }
+    this.list({
+      type,
+      x,
+      y,
+      id: contact.id,
+      primary: contact.primary,
+      device: contact.device,
+      button,
+      buttons: [...contact.buttons],
+    });
   }
+
+  /**
+   * Lists a sample, refusing the listing — and only the listing — past the cap.
+   */
+  private list(sample: PointerSample): void {
+    if (this.samples.length < POINTER_SAMPLE_CAP) this.samples.push(sample);
+  }
+}
+
+/**
+ * The pointer's id.
+ *
+ * An event carrying no `pointerId` is read as `0`, whatever else it says about
+ * itself: a browser always supplies the field, so an event without one was
+ * dispatched by hand, and the id is the one thing a hand-dispatched event has
+ * no way of implying. Reading `isPrimary` as a second id instead would invent a
+ * pointer the dispatcher never named, and a suite driving two contacts says
+ * which two by giving each a `pointerId` — which is what the field is for.
+ */
+function pointerId(event: Event): number {
+  const candidate = event as Partial<PointerEvent>;
+  if (typeof candidate.pointerId === "number") return candidate.pointerId;
+  return 0;
+}
+
+/** The device `pointerType` names, defaulting to a mouse. */
+function namedDevice(pointerType: string | undefined): PointerDevice {
+  if (pointerType === "touch" || pointerType === "pen") return pointerType;
+  return "mouse";
+}
+
+/**
+ * The button `PointerEvent.button` names, or `null` when it names none. A move
+ * reports `-1`, which is the field saying the event is about position rather
+ * than about a button.
+ */
+function namedButton(button: number | undefined): PointerButton | null {
+  if (typeof button !== "number") return null;
+  return BUTTON_INDEX[button] ?? null;
+}
+
+/**
+ * The buttons `PointerEvent.buttons` reports as held, or `null` when the event
+ * carried no mask and each listener must decide what its absence means.
+ */
+function heldButtons(buttons: number | undefined): PointerButton[] | null {
+  if (typeof buttons !== "number") return null;
+  return BUTTON_ORDER.filter((name) => (buttons & BUTTON_BITS[name]) !== 0);
+}
+
+/** `held` with `button` added, keeping the declared order. */
+function withButton(
+  held: readonly PointerButton[],
+  button: PointerButton,
+): PointerButton[] {
+  if (held.includes(button)) return [...held];
+  return BUTTON_ORDER.filter((name) => name === button || held.includes(name));
+}
+
+/** `held` with `button` removed, or emptied when the release named none. */
+function withoutButton(
+  held: readonly PointerButton[],
+  button: PointerButton | null,
+): PointerButton[] {
+  if (button === null) return [];
+  return held.filter((name) => name !== button);
 }
 
 /** A held key is full deflection; otherwise the driven value, quantized if digital. */

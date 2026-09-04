@@ -1,7 +1,7 @@
 [
   {
     "tick": 6250,
-    "checksum": "fnv1a64:91247e247f4a9622",
+    "checksum": "fnv1a64:a34ec13ede50aacd",
     "entities": [
       {
         "source": {
@@ -16,15 +16,21 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 32,
               "item": "copper-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 32,
               "item": "copper-plate"
             }
           ]
@@ -34,22 +40,6 @@
         "belt": {
           "left": [],
           "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ]
         }
       },
       {
@@ -82,31 +72,21 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ]
+          "left": [],
+          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "copper-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "copper-plate"
             }
           ]
@@ -142,15 +122,21 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "copper-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "copper-plate"
             }
           ]
@@ -160,22 +146,6 @@
         "belt": {
           "left": [],
           "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ]
         }
       },
       {
@@ -202,24 +172,14 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ]
+          "left": [],
+          "right": []
         }
       },
       {
         "sink": {
           "consumed": {
-            "copper-plate": 1764
+            "copper-plate": 1772
           }
         }
       },
@@ -232,167 +192,125 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-plate"
             }
           ]
@@ -400,26 +318,158 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ]
         }
       },
       {
         "splitter": {
-          "out_pref": 12,
+          "out_pref": 3,
           "in_first": 0
         }
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ]
         }
       },
       {
         "sink": {
           "consumed": {
-            "iron-plate": 1546
+            "iron-plate": 1528
           }
         }
       },
@@ -440,20 +490,38 @@
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ],
           "right": [
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ]
         }
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -474,8 +542,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -496,8 +574,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -522,20 +610,38 @@
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ],
           "right": [
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ]
         }
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -556,8 +662,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -578,8 +694,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -604,11 +730,19 @@
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ],
           "right": [
             {
               "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 224,
               "item": "copper-plate"
             }
           ]
@@ -616,8 +750,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -639,7 +783,7 @@
       {
         "sink": {
           "consumed": {
-            "copper-plate": 1764
+            "copper-plate": 1744
           }
         }
       },
@@ -656,31 +800,21 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
+          "left": [],
+          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ]
@@ -696,29 +830,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 160,
               "item": "iron-gear"
             }
           ]
@@ -734,29 +852,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-gear"
             }
           ]
@@ -772,13 +874,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-gear"
             }
           ]
@@ -786,15 +888,27 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ]
@@ -810,29 +924,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 160,
               "item": "iron-gear"
             }
           ]
@@ -848,13 +946,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "iron-gear"
             }
           ]
@@ -864,12 +962,28 @@
         "belt": {
           "left": [],
           "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-gear"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-gear"
+            }
+          ]
         }
       },
       {
         "sink": {
           "consumed": {
-            "iron-gear": 2060
+            "iron-gear": 2066
           }
         }
       },
@@ -882,13 +996,13 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
               "item": "copper-cable"
             }
           ]
@@ -898,13 +1012,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -914,13 +1036,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -930,13 +1060,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -946,13 +1084,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -962,13 +1108,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -978,13 +1132,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -994,13 +1156,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1010,13 +1180,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1026,13 +1204,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1042,13 +1228,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1058,13 +1252,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1074,13 +1276,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1090,13 +1300,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1106,13 +1324,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1122,13 +1348,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1138,13 +1372,21 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
               "item": "copper-cable"
             }
           ]
@@ -1152,14 +1394,32 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
+              "item": "copper-cable"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 224,
+              "item": "copper-cable"
+            }
+          ]
         }
       },
       {
         "sink": {
           "consumed": {
-            "copper-cable": 3090
+            "copper-cable": 3054
           }
         }
       }
@@ -1167,7 +1427,7 @@
   },
   {
     "tick": 12500,
-    "checksum": "fnv1a64:7878ff964e5a67ec",
+    "checksum": "fnv1a64:a0ccb7a4950a40b1",
     "entities": [
       {
         "source": {
@@ -1182,22 +1442,6 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
           "left": [],
           "right": []
         }
@@ -1226,18 +1470,80 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 192,
+              "pos": 224,
               "item": "copper-plate"
             }
           ],
           "right": [
             {
-              "pos": 192,
+              "pos": 224,
               "item": "copper-plate"
             }
           ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
         }
       },
       {
@@ -1264,15 +1570,21 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 64,
+              "pos": 96,
               "item": "copper-plate"
             }
           ],
           "right": [
             {
-              "pos": 64,
+              "pos": 96,
               "item": "copper-plate"
             }
           ]
@@ -1286,106 +1598,14 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
           "left": [],
           "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ]
         }
       },
       {
         "sink": {
           "consumed": {
-            "copper-plate": 3550
+            "copper-plate": 3558
           }
         }
       },
@@ -1396,21 +1616,15 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ]
@@ -1418,21 +1632,15 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ]
@@ -1440,21 +1648,15 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ]
@@ -1462,21 +1664,15 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ]
@@ -1484,21 +1680,15 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ]
@@ -1506,21 +1696,15 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ]
@@ -1528,21 +1712,15 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ]
@@ -1550,21 +1728,143 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ]
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
               "item": "iron-plate"
             }
           ]
@@ -1572,7 +1872,7 @@
       },
       {
         "splitter": {
-          "out_pref": 12,
+          "out_pref": 3,
           "in_first": 0
         }
       },
@@ -1585,7 +1885,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-plate": 3108
+            "iron-plate": 3092
           }
         }
       },
@@ -1596,8 +1896,34 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -1618,8 +1944,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -1640,8 +1976,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -1666,20 +2012,38 @@
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ],
           "right": [
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ]
         }
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -1700,8 +2064,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -1722,8 +2096,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -1748,20 +2132,38 @@
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ],
           "right": [
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ]
         }
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -1782,21 +2184,15 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "copper-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "copper-plate"
             }
           ]
@@ -1805,7 +2201,7 @@
       {
         "sink": {
           "consumed": {
-            "copper-plate": 3550
+            "copper-plate": 3530
           }
         }
       },
@@ -1816,15 +2212,21 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 160,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 160,
               "item": "iron-gear"
             }
           ]
@@ -1840,29 +2242,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-gear"
             }
           ]
@@ -1878,13 +2264,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-gear"
             }
           ]
@@ -1892,15 +2278,27 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ]
@@ -1916,29 +2314,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 160,
               "item": "iron-gear"
             }
           ]
@@ -1954,29 +2336,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-gear"
             }
           ]
@@ -1992,29 +2358,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 32,
               "item": "iron-gear"
             }
           ]
@@ -2028,15 +2378,21 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 224,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 224,
               "item": "iron-gear"
             }
           ]
@@ -2045,7 +2401,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 4142
+            "iron-gear": 4150
           }
         }
       },
@@ -2058,13 +2414,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2074,13 +2438,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2090,13 +2462,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2106,13 +2486,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2122,13 +2510,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2138,13 +2534,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2154,13 +2558,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2170,13 +2582,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2186,13 +2606,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2202,13 +2630,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2218,13 +2654,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2234,13 +2678,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2250,13 +2702,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2266,13 +2726,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2282,13 +2750,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2298,13 +2774,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2314,13 +2798,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2330,13 +2822,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -2345,7 +2845,7 @@
       {
         "sink": {
           "consumed": {
-            "copper-cable": 6214
+            "copper-cable": 6178
           }
         }
       }
@@ -2353,7 +2853,7 @@
   },
   {
     "tick": 25000,
-    "checksum": "fnv1a64:d63557cf6f875fd7",
+    "checksum": "fnv1a64:6ed8f85e6ffe477e",
     "entities": [
       {
         "source": {
@@ -2370,16 +2870,50 @@
         "belt": {
           "left": [
             {
-              "pos": 192,
+              "pos": 64,
               "item": "copper-plate"
             }
           ],
           "right": [
             {
-              "pos": 192,
+              "pos": 64,
               "item": "copper-plate"
             }
           ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
         }
       },
       {
@@ -2406,18 +2940,80 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 64,
+              "pos": 96,
               "item": "copper-plate"
             }
           ],
           "right": [
             {
-              "pos": 64,
+              "pos": 96,
               "item": "copper-plate"
             }
           ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
         }
       },
       {
@@ -2440,138 +3036,12 @@
               "item": "copper-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 64,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "sink": {
           "consumed": {
-            "copper-plate": 7122
+            "copper-plate": 7128
           }
         }
       },
@@ -2584,167 +3054,125 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-plate"
             }
           ]
@@ -2752,13 +3180,135 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ]
         }
       },
       {
         "splitter": {
-          "out_pref": 12,
+          "out_pref": 3,
           "in_first": 0
         }
       },
@@ -2766,13 +3316,13 @@
         "belt": {
           "left": [
             {
-              "pos": 64,
+              "pos": 96,
               "item": "iron-plate"
             }
           ],
           "right": [
             {
-              "pos": 64,
+              "pos": 96,
               "item": "iron-plate"
             }
           ]
@@ -2781,7 +3331,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-plate": 6232
+            "iron-plate": 6216
           }
         }
       },
@@ -2792,50 +3342,6 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 192,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "copper-plate"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "belt": {
           "left": [
             {
               "pos": 64,
@@ -2852,8 +3358,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -2874,8 +3390,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -2900,11 +3426,19 @@
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ],
           "right": [
             {
               "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 224,
               "item": "copper-plate"
             }
           ]
@@ -2912,8 +3446,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -2934,8 +3478,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -2956,8 +3510,18 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -2982,11 +3546,19 @@
             {
               "pos": 0,
               "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
             }
           ],
           "right": [
             {
               "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 224,
               "item": "copper-plate"
             }
           ]
@@ -2994,14 +3566,88 @@
       },
       {
         "belt": {
-          "left": [],
-          "right": []
+          "left": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
         "sink": {
           "consumed": {
-            "copper-plate": 7122
+            "copper-plate": 7102
           }
         }
       },
@@ -3018,31 +3664,21 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
+          "left": [],
+          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ]
@@ -3058,29 +3694,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 160,
               "item": "iron-gear"
             }
           ]
@@ -3096,29 +3716,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 96,
               "item": "iron-gear"
             }
           ]
@@ -3134,13 +3738,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
               "item": "iron-gear"
             }
           ]
@@ -3148,15 +3752,27 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 0,
+              "pos": 224,
               "item": "iron-gear"
             }
           ]
@@ -3172,29 +3788,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 160,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "iron-gear"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
+              "pos": 160,
               "item": "iron-gear"
             }
           ]
@@ -3210,13 +3810,13 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "iron-gear"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 96,
               "item": "iron-gear"
             }
           ]
@@ -3226,12 +3826,28 @@
         "belt": {
           "left": [],
           "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-gear"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "iron-gear"
+            }
+          ]
         }
       },
       {
         "sink": {
           "consumed": {
-            "iron-gear": 8310
+            "iron-gear": 8316
           }
         }
       },
@@ -3244,13 +3860,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3260,13 +3884,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3276,13 +3908,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3292,13 +3932,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3308,13 +3956,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3324,13 +3980,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3340,13 +4004,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3356,13 +4028,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3372,13 +4052,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3388,13 +4076,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3404,13 +4100,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3420,13 +4124,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3436,13 +4148,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3452,13 +4172,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3468,13 +4196,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3484,13 +4220,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3500,13 +4244,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3516,13 +4268,21 @@
         "belt": {
           "left": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 32,
+              "item": "copper-cable"
+            },
+            {
+              "pos": 160,
               "item": "copper-cable"
             }
           ]
@@ -3531,7 +4291,7 @@
       {
         "sink": {
           "consumed": {
-            "copper-cable": 12464
+            "copper-cable": 12428
           }
         }
       }

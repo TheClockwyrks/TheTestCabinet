@@ -140,8 +140,8 @@ import {
   type Clock,
 } from "@test-cabinet/structured-2d";
 import { expect, it } from "vitest";
-import { ORB_POINTS, TAGS } from "../src/constants";
 import { advanceMs } from "./advance-ms";
+import { ORB_POINTS, TAGS } from "./constants";
 import { createHarness } from "./harness";
 
 const START = { x: 120, y: 60 };

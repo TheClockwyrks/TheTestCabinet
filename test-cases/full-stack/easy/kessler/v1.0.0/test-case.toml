@@ -1,0 +1,2576 @@
+slug = "kessler"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which engines
+# a run may select, how the produced implementation is built and checked, and what a
+# reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Kessler"
+
+# Test type. Kessler is a `full-stack` case: an end-to-end (playable-browser-game)
+# case with one addition — the model under test must PRODUCE some of the game's own
+# assets DURING the run, using the asset-generation binaries on the run image's
+# `PATH`, and then build a game that uses them. Here that produced set is the planet
+# and salvage-pod sprites, the ball's six-frame spin sheet, the three particle
+# systems (the destruction burst, the impact spark, and the burn-up), and the game's
+# thirteen audio cues and two music beds; the rings and their derelicts, the
+# deflector, the shield ring, the containment field, the starfield, and the HUD are
+# all still drawn in code. The `full-stack` type, with `asset_dimension` left at its
+# `2d` default, schedules the run onto the `test-cabinet-full-stack-2d` image, which
+# carries six binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; `specs/assets.md` is the production
+# contract. A root identity field, so it sits above the first table.
+type = "full-stack"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Kessler is easy:
+# everything lives in polar coordinates around one center, so every rule is a table
+# row or a short formula over an angle and a radius — a contact is a crossing event
+# with a direction gate, and the deflector bounce is a fixed four-step pipeline
+# (specular reflection, english from the contact offset, an exit-angle clamp, and the
+# wave's ball speed) with a spelled-out decay-and-kick pipeline on every other
+# surface. Around that core sit three orbiting rings with per-wave speed formulas, a
+# seeded salvage-pod stream feeding five distinct effects, waves, lives, and six
+# screens — all of them exactly specified, with no physics to tune, no opponent to
+# model, and no subsystem large enough to need splitting out behind an interface.
+# What it measures is whether a build carries the specified loop through without
+# blurring a row. The produced-asset pass — two sprite sets and a sheet, three
+# particle systems, thirteen cues and two seamless music beds — is what the runtime
+# budget below accounts for, not the difficulty.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "orbital", "score-attack"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+An orbital demolition arcade game: the deflector rides a circular track above \
+a planet, batting a ball outward through three rings of derelict satellites \
+while caught salvage pods grant tools and any ball it misses burns up below. \
+Where the ball meets the deflector decides the angle it leaves at, so the real \
+game is steering the bounce — and the build must produce its own sprites, \
+particle systems, sound, and music with the on-PATH asset tools."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected variant) and handed to the model as
+# the build instruction. It injects absolute in-container paths via template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
+# unbounded. Six hours is calibrated to Kessler's own scale: the polar simulation
+# and its contact pipelines are a real build beyond Coil's grid serpent, and the
+# produced-asset pass covers sprites, a sheet, three particle systems, and fifteen
+# audio files — clearly more than Coil's three hours cover — while the game is still
+# one field and one loop, well short of the world simulation that earns Deepcore its
+# eight.
+max_runtime_hours = 6
+
+# Init command, run in the run container once the workspace and specs are seeded and
+# before the harness starts. `npm install` — NOT `npm ci` — because `packages` injects
+# the `@test-cabinet/particle-runtime` `file:` dependency this build plays its produced
+# particle systems with, and an engine run has its engine package vendored in the same
+# way, so the lockfile is completed at seed time; the same command downloads the
+# Playwright Chromium build (the base image ships the OS libraries Chromium links
+# against, but not the browser binary), so the model can build the game and look at it
+# in a browser without any further setup.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the whole
+# point of a full-stack case: the model PRODUCES the game's art, animation, and audio
+# itself, during the run, with the six binaries on the run image's `PATH` (see `type`
+# above and `specs/assets.md`). Nothing pictorial is seeded, and no rendered mockup is
+# shown to the model or to the reviewer: every piece of evidence a reviewer sees is
+# captured from the build itself.
+
+# Test Cabinet runtime libraries installed into the run so the build can play the
+# particle systems it produces. `@test-cabinet/particle-runtime` is the same library
+# the review UI plays a produced effect with; core bakes it into the run image and the
+# seeded workspace `package.json` depends on it via its baked-in `file:` path, so the
+# build imports it (its `/canvas` binding) like any other dependency and plays each
+# produced `system.json` by simulating it live. Kessler's three VFX — the destruction
+# burst at a broken derelict, the impact spark at deflector, containment, and shield
+# contacts, and the burn-up at the planet — are all produced `particle-2d` systems
+# played this way; see `specs/assets.md` for the consumption contract. It is declared
+# for every engine: neither engine draws particles, and both hand the game a raw 2D
+# context to play a produced system through. (A root key, so it must sit above the
+# first `[table]` header.)
+packages = ["@test-cabinet/particle-runtime"]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Kessler offers a single `base` variant — the endless score-attack expedition through
+# the rings — declared in its own file under `variants/`. Nothing about the game is a
+# variant axis here: the wave progression is the game's own difficulty curve, and the
+# five pod effects are in-game tools rather than modes, so one variant carries the
+# whole case. This list is a root key, so it must sit above the first `[table]`
+# header below.
+variants = [
+  "variants/base.toml",
+]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the input
+# actions a player drives it with, the audio bus, asset loading, and the on-screen
+# diagnostics; one of them also owns rendering and the gameplay framework the game
+# is written inside. It is a *run dimension*, chosen per run alongside the model,
+# the harness, and the variant, and recorded on the run; it is not a property of
+# the game.
+#
+# Kessler supports three, and the game is the same orbital demolition under all of
+# them — the collision is simulation-owned polar math on EVERY engine, so no engine
+# collider or collision event stands in for the crossing rules the specs fix. What
+# differs is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build writes
+#                     the fixed-tick loop, the canvas fit, the keyboard input, the
+#                     audio, the overlay and the `window.__kessler` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the entry module
+#                     around it (`src/main.ts`, plus the `src/game.ts` the build
+#                     writes, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds the same
+#                     entry module; the build writes its game module — the game
+#                     definition, its mode, its state and its actors — and the debug
+#                     surface its instance's `initialize` returns.
+# What does NOT differ is the asset-production pass. Every engine run still produces
+# the sprites, the particle systems, and the audio with the on-`PATH` binaries,
+# because no engine supplies art or sound; `specs/assets.md` is the same contract
+# under all three.
+#
+# `none` supplies no package and therefore carries no version, so it is named in the
+# bare `engines` list; `simple-2d` and `structured-2d` each carry a range and are
+# named in `[[engine]]` tables. `min_version` is the 1.0.0 contract the specs are
+# written against, and there is deliberately no `max_version`, so a later 1.x or 2.x
+# from the host package store is accepted as it lands. Widening or moving a range
+# means a new case version, so the pin is the statement that THIS spec set matches
+# THIS contract.
+#
+# This declaration deliberately does not describe an engine. An engine ships its own
+# documentation from its own package and seeding puts it in the run for the model to
+# read, so the specs seeded from this folder never restate an engine's API. Where a
+# spec speaks of the runtime it states only what is specific to *this game* under it —
+# which surfaces the build still supplies, Kessler's action list, and Kessler's cue
+# names.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same TypeScript, lint, format and test configuration
+# the `[toolchain]` commands below run against, an `index.html` holding the
+# 1000x1000 stage canvas, the `@test-cabinet/particle-runtime` dependency `packages`
+# injects, and the project-local `playwright` dependency the model drives the built
+# game through. What differs is how much of the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own fixed-tick loop, canvas fit,
+#                     keyboard input, audio, diagnostics overlay and
+#                     `window.__kessler` surface, and every figure this
+#                     specification fixes, from the specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored in
+#                     at seed time so the build imports it by its bare package name,
+#                     and seeds the two case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes —
+#                     the stage and polar geometry, every contact radius, the
+#                     deflector's rate and span, the bounce pipeline's figures, the
+#                     ring tables and orbit formulas, the pod draw and kind weights,
+#                     the effect durations, the scores, the screen copy, the action
+#                     bindings, the cue names, and the paths the produced files land
+#                     at; the look is NOT among them) and `src/main.ts` (the browser
+#                     entry). The build writes `src/game.ts`: the state, the debug
+#                     surface its `initialize` returns beside that state, and the
+#                     game's update and render.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules (its `constants.ts` also
+#                     carries the level name and the tag vocabulary). The build
+#                     writes `src/game.ts`: the game definition the engine drives —
+#                     its mode, its live state, and its actors — and the debug
+#                     surface its instance's `initialize` returns.
+#
+# Under both engines the seeded `src/game.ts` is a stub written against types the
+# build has yet to declare, so a freshly seeded workspace does not type-check: that
+# failing typecheck is the starting point rather than a broken seed.
+#
+# This table must name EXACTLY the engines the case supports; the resolver checks
+# both directions. The seeded files land at the run root
+# (`workspaces/none/package.json` seeds to `package.json`). There is one starter
+# project per engine and no per-variant set: the single `base` variant declares no
+# `[workspaces]` override of its own.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
+
+# The audio packs the run container is staged with. `sfx-sample` and `music`
+# reach these and nothing else, and a tool config that names no pack plays the
+# first pack of that kind.
+#
+# `combat-core` is the sample pack the demolition cues are layered from: the
+# metal impacts, clangs, and debris a ball chipping a derelict, a derelict
+# breaking, and a pod burning up are made of. `specs/assets.md` holds the
+# thirteen cues and the two beds to one cold, glassy, spacey palette, and two
+# banks answer that description from different sides. `synthwave` leads for the
+# analog pads, sub bass, and FM bell a spacey bed is built on, and `gm-lite`
+# follows it for the glockenspiel, vibraphone, and music box that carry the
+# glassy half. `cinematic` is an orchestra, which is not a sound this game makes
+# anywhere, so it is not staged.
+[audio]
+packs = ["combat-core@0.1.0", "synthwave@0.1.0", "gm-lite@0.1.0"]
+
+# How the validator (and the per-run static deploy) turns a produced implementation
+# into a served static site. These run verbatim from the build's repository root:
+# dependencies are installed, then the static build is produced into `dist/`,
+# `build/`, or `out/`. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`, so the validated build installs exactly what the deploy will.
+# Both commands are required; there are no defaults. The build must be
+# self-contained: it bundles the committed produced assets without invoking the
+# asset tools, which are on `PATH` only while the run is live (`specs/assets.md`).
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. A full-stack build is written in TypeScript, and the seeded
+# workspace ships the configuration each of these commands reads (`tsconfig.json`,
+# `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so what is checked here
+# is the code the model wrote against configuration the case fixed. The commands run
+# host-side over the collected tree after the run's container is gone, so a slow suite
+# costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does not
+# compile is not reviewable. The other three are recorded and gate nothing — `test`
+# additionally records the count and coverage the build's own suite reports, which is
+# how a build that ships tests is told apart from one that ships none. Each is spelled
+# `npx` rather than `npm run <script>` so the check is the case's own statement of what
+# is run and does not depend on the model leaving the seeded scripts intact. These four
+# are exactly the commands `specs/overview.md` tells the build will be run over the
+# finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once here.
+# It is reporter-side and never seeded; the seeded specification documents the surface
+# independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md). It is what every review item's validator suite below
+# poses its scenario through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__kessler` once the game has initialized, so the
+# handle is what a person opening the console of such a build finds. An engine run has
+# NO global at all: the build writes the surface, its `initialize` returns it — beside
+# the state as `[state, debug]` under `simple-2d`, alone under `structured-2d` — and a
+# caller reads it back off `engine.debug`. One handle, three ways to reach the same
+# operations.
+#
+# `tick_hz` is Kessler's fixed simulation rate. The engineless debug surface advances
+# the game in whole ticks (`step(ticks)`) rather than in seconds, so there is no
+# rounding and no ambiguity about what a step means, and this is the rate the
+# validation runtime relates that stepping back to real time with: one tick is 1/60 of
+# a second, so a second of simulated time is 60 ticks. Under an engine it is the step
+# a scripted clock takes by default, so the same scenario walks the same number of
+# ticks on all three engines and one tolerance covers every suite. It matches the
+# timestep `specs/field.md` and `specs/instrumentation.md` fix, and every timer on
+# the checklist — the 600-tick effects, the 360-tick pierce, the 180-tick
+# interstitial, the 5-tick sprite frame — is stated in these ticks.
+[instrumentation]
+handle = "__kessler"
+tick_hz = 60
+
+# Common specs: seeded for EVERY run, at the `dest` path within the run workspace.
+# Every one of these is common, because the case has a single variant and the whole
+# game is one mode.
+#
+# The specification is decomposed by concern: the overview, the field's polar
+# geometry and tick, the deflector and the ball, the rings and their derelicts, the
+# salvage pods and their effects, the scoring, the screens, the controls, the
+# produced-asset contract, the debugging/automation surface, and the showcase the
+# build ships.
+#
+# A source is an `.hbs` template only where it actually branches, and the one axis to
+# branch on is `engine.slug` — what the build is handed and what it must write. A
+# spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so an
+# `.md.hbs` source seeds to the same `.md` path and a plain `.md` source is seeded
+# verbatim.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The field: the 1000x1000 stage and its polar mapping, the geometry table with every
+# contact radius, the containment field and the planet, the order a tick resolves in,
+# and the determinism statement. Unbranched: the field is the same simulation under
+# every engine.
+[[spec]]
+source = "specs/field.md"
+
+[[spec]]
+source = "specs/deflector-and-ball.md"
+
+[[spec]]
+source = "specs/rings.md"
+
+[[spec]]
+source = "specs/pods.md"
+
+[[spec]]
+source = "specs/scoring.md"
+
+[[spec]]
+source = "specs/screens.md"
+
+# The actions a player drives the game with and the keys bound to them. It branches
+# on the engine, because an engine run declares Kessler's actions on the engine's
+# input map while an engineless build listens for the key events itself.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The asset-production contract: the assets the model must PRODUCE with the on-PATH
+# binaries during the run — the planet and pod sprites, the ball's spin sheet, the
+# three particle systems, the thirteen cues and the two music beds — where each file
+# lands in the workspace, how it is loaded and played, and the bar each is held to;
+# and what stays drawn in code. It branches on the engine, because an engineless
+# build loads and decodes its own files while an engine run goes through the engine's
+# asset loader and cue bus (the particle systems play through
+# `@test-cabinet/particle-runtime` on all three). This is the defining spec of a
+# full-stack case.
+[[spec]]
+source = "specs/assets.md.hbs"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# seedable core, an API to pose and inspect the game from code, and a read-only debug
+# overlay. Seeded for every run and framed as an ordinary developer affordance of the
+# game. It branches on the engine, for how the surface is reached, what shape its
+# operations take, and the `step`/`setAutoStep` pair only an engineless build carries
+# (under an engine the runtime's own clock is driven instead); the engineless branch
+# also carries the viewport contract a browser driver inverts the stage mapping with.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished build ships beside its source: a `showcase/` directory
+# holding a player-facing description and a short carousel of captured media. It
+# branches on the engine, because an engineless build records motion as a `.webm`
+# clip while an engine run records it as a replay through the engine's recorder.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# Scoring domains. A run is rated on each independently, and the run's overall
+# rating is the WORST across them: a flawless orbital simulation cannot mask crude,
+# un-produced art or silence, and a beautiful produced field cannot mask a game that
+# does not play correctly. Every case must declare at least one. Each review item
+# below names the domains its failure lowers and how far, through `domains` and
+# `failure_cap`; the reviewer's judgement lives in the separate AESTHETIC rating of
+# each domain, which is the look, the polish and the feel.
+[[domain]]
+id = "gameplay"
+name = "Orbital Play"
+description = "The demolition game itself, and how it plays: the fixed-tick polar simulation, the deflector and its bounce pipeline, serving and losing balls, the three rings and their orbits, target contacts and destruction, the seeded salvage pods and the five effects they grant, scoring, waves, lives, and the screens' rules."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "Everything a player sees and hears. The produced assets first: the planet and the five salvage-pod sprites, the ball's six-frame spin sheet, the destruction burst, impact spark and burn-up particle systems, and the thirteen produced cues and two seamless music beds the game plays. Then the rings and their derelicts, the deflector, the shield, the containment field, the starfield, the HUD and the screens the build draws in code around them."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY, a bare name grouping the points a reviewer
+# grades, and each `[[review.categories.items]]` under it is one graded review item,
+# worth one point (the default weight), so a category is worth the number of items
+# it holds and there is no fractional scoring. A category carries no prose of its
+# own; each review item states in `description` the claim checked against the build,
+# and its verdict is recorded under the composite id `<category id>.<item id>`. The
+# checklist is reporter-side material, never seeded into a run, so the model never
+# sees it; each item restates a requirement the seeded specification already states.
+#
+# EVERY ITEM CARRIES A `validation` SCRIPT. Each item declares its
+# `validation/<engine>/<category>/<item id>.test.ts` suite — one Vitest project per
+# engine, the same relative path under each — and the media the suite writes; the
+# suites were captured against the three reference implementations under
+# `references/<engine>/base/`. The checklist was authored first so the suites are
+# written TO these claims rather than the claims drifting to fit what a suite
+# happened to check. Every item is cut to that standard: ONE observable behavior, posed
+# through the instrumentation surface and read back, so a build fails exactly the
+# rule it breaks. Each rotation key is its own item, each screen transition is its
+# own item in one direction, and each edge case the rules imply is an item of its
+# own — the inclusive span boundary, the both-keys-held stalemate, the ball already
+# inside the deflector's radius, the cap met mid-multiball.
+#
+# EVERY item carries `domains` and `failure_cap`. `domains` names the scoring
+# domains a failure lowers: a rule of the simulation lowers `gameplay`, an item
+# about what is drawn or heard lowers `presentation`, and the surface every other
+# item is driven through lowers both. `failure_cap` is the highest functional rating
+# those domains may reach while the item fails; each domain takes the LOWEST cap
+# among its failing items, and a domain with no failing item is flawless. The caps
+# are graded by how much of the game a failure takes away: `broken` where the game
+# cannot be played as intended (no debug surface, a snapshot that cannot be read, a
+# planet that never costs a ball, a deflector that does not turn, a bounce that
+# never resolves, a ball that cannot be served or launched, a session that cannot be
+# started, a lost ball that is never parked again); `scuffed` where a rule the game is built
+# on is noticeably wrong (a contact rule, a formula, a draw from the seeded stream,
+# an effect that does not apply); `passable` where the fault is a tolerance, an edge
+# case, a ceiling or a secondary path; and `great` where it is a cosmetic detail (a
+# second key bound to an action a first key already covers, the distinctness of a
+# damaged derelict). No item caps at `flawless`: a failure always costs something.
+[review]
+format = 2
+
+# Kessler review checklist — fragment K1
+# Categories: instrumentation, field, paddle, serve, bounce, controls.
+# [[review.categories]] / [[review.categories.items]] blocks; each item's
+# validation key names its suite under validation/<engine>/.
+
+# --- Instrumentation ----------------------------------------------------------
+# The surface every other point is driven through, and a deliverable of the case
+# in its own right. Each control operation is posed and read back one at a time,
+# the two driver switches are checked alone, and the four overlay points close
+# the category, so a surface that is missing, hollow, or wired to nothing fails
+# here by name rather than only as every other suite failing to run.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+
+[[review.categories.items]]
+id = "debug-api"
+title = "The debug and automation surface is present"
+description = "Every operation specs/instrumentation.md names for this mode is present as a function on the surface — window.__kessler in an engineless build, the surface initialize returns and engine.debug hands back in an engine build — and the surface is live: a pose changes the running game and snapshot reads the change back."
+domains = ["gameplay", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/debug-api.test.ts", outputs = [ { id = "surface", name = "The Driven Surface", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "On a posed session holding balls, targets on every ring, a falling pod, a running effect timer, and the shield, snapshot returns every field specs/instrumentation.md documents with its documented type, including the nested paddle, balls, rings, pods, effects, and menu objects, with values matching what was posed."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [ { id = "posed", name = "The Posed Session", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "snapshot-fixed-shape"
+title = "The snapshot shape is fixed on every screen"
+description = "The snapshot carries every documented field on each of the six screens, with rings always holding three entries, paddle.angleDeg and every ring angleDeg normalized into [0, 360), and menu.index resting at 0 on a screen with no menu."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/snapshot-fixed-shape.test.ts", outputs = [ { id = "screens", name = "The Screen Sweep", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "reset-restores"
+title = "reset restores the boot state"
+description = "From a thoroughly disturbed session, reset() returns the game to its boot state: the title screen with menu.index 0, score 0, 3 lives, wave 1, ticks 0, the deflector at angle 90 with span 48, every slot filled at full hit points with every ring angle at 0 and the wave-1 speeds, no balls, no pods, no timed effect, no shield, and both driver switches on."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/reset-restores.test.ts", outputs = [ { id = "reset", name = "The Boot State After Reset", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "seeded-replay-deterministic"
+title = "A seeded session replays to identical snapshots"
+description = "Two sessions given reset({ seed }) with the same seed, the same sequence of operations, and the same elapsed ticks report identical snapshots, including the same pods of the same kinds in the same order."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/seeded-replay-deterministic.test.ts", outputs = [ { id = "seeded", name = "A Seeded Session", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-screen-playing"
+title = "setScreen('playing') starts a fresh session"
+description = "setScreen('playing') starts a fresh session exactly as confirming START does: score 0, 3 lives, wave 1, every slot filled, ring angles at 0, the wave-1 figures in force, and a ball parked on the deflector."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-screen-playing.test.ts", outputs = [ { id = "fresh", name = "The Fresh Session", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-screen-waveclear"
+title = "setScreen('waveclear') enters a fresh interstitial"
+description = "setScreen('waveclear') enters the interstitial exactly as the clearing event does: balls, pods, timed effects, and the shield are removed, the score stays as it stands, and a fresh interstitial begins for the wave the counter holds and runs out into the next wave exactly as a played one does."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-screen-waveclear.test.ts", outputs = [ { id = "interstitial", name = "The Posed Interstitial Running Out", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-score"
+title = "setScore poses the score play carries on from"
+description = "setScore(n) sets the score to n, the snapshot reads n back, and the next scoring event adds its award to the posed figure."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-score.test.ts", outputs = [ { id = "scored", name = "A Hit Adding To The Posed Score", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-lives"
+title = "setLives poses the lives play carries on from"
+description = "setLives(n) sets the lives to n, the snapshot reads n back, and play carries on from the posed figure, so a life loss at posed lives 1 ends the game."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-lives.test.ts", outputs = [ { id = "last-life", name = "The Posed Last Life Spent", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-wave-figures"
+title = "setWave puts the wave-n figures in force"
+description = "setWave(n) sets the wave counter to n, sets each ring's speed from the wave formulas of specs/rings.md, overwriting any setRingSpeed, and makes the wave-n ball speed of specs/deflector-and-ball.md the speed a serve, a launch, and a deflector bounce use."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-wave-figures.test.ts", outputs = [ { id = "launch", name = "A Launch At The Posed Wave's Speed", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-wave-leaves-the-rest"
+title = "setWave changes nothing but the wave figures"
+description = "After setWave(n) the rings keep their targets and their angles, every ball keeps the velocity it holds, and the effects, pods, score, lives, and screen stay as they stand."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-wave-leaves-the-rest.test.ts", outputs = [ { id = "held", name = "The Scene Held Across setWave", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-paddle-angle"
+title = "setPaddleAngle poses the deflector's center angle"
+description = "setPaddleAngle(deg) sets the deflector's center angle to deg normalized into [0, 360), a parked ball follows it to the new angle, and the span is untouched."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-paddle-angle.test.ts", outputs = [ { id = "posed-angle", name = "The Posed Deflector Angle", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "clear-balls"
+title = "clearBalls removes every ball without a loss"
+description = "clearBalls() leaves balls empty, the parked ball included, and nothing burns up: no life is lost, and the field stands without a ball until one is spawned or parked."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clear-balls.test.ts", outputs = [ { id = "cleared", name = "The Field Standing Without A Ball", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "spawn-ball"
+title = "spawnBall adds one posed ball"
+description = "spawnBall(x, y, vx, vy) appends one unparked ball at (x, y) with velocity (vx, vy) in spawn order, and the ball keeps its posed speed until a rule of specs/deflector-and-ball.md changes it."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-ball.test.ts", outputs = [ { id = "flight", name = "Two Spawned Balls In Flight", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "spawn-ball-at-cap"
+title = "spawnBall at the 6-ball cap changes nothing"
+description = "With 6 balls in play, spawnBall changes nothing: balls still holds 6 entries and every one of them is unchanged."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-ball-at-cap.test.ts", outputs = [ { id = "capped", name = "The Six Balls At The Cap", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "clear-targets"
+title = "clearTargets empties the rings without an outcome"
+description = "clearTargets() removes every target from all three rings and is not a destruction and not a clearing: nothing scores, no pod draw is made, and the screen stays where it stands, so a field emptied this way plays on in playing."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clear-targets.test.ts", outputs = [ { id = "emptied", name = "The rings emptied with play carrying on", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "spawn-target"
+title = "spawnTarget places a target in its slot"
+description = "spawnTarget(ring, slot, hp) places a target with hp hit points in the named slot, replacing whatever the slot holds, and the target occupies its slot's arc under the ring's current angle exactly as a wave-start target does."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-target.test.ts", outputs = [ { id = "occupied", name = "A ball hitting the placed target on its slot's arc", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-ring-angle"
+title = "setRingAngle poses a ring's angle"
+description = "setRingAngle(ring, deg) sets the ring's angle to deg normalized into [0, 360), every target on the ring moves with it, and the ring's speed is untouched."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-ring-angle.test.ts", outputs = [ { id = "ridden", name = "A target ridden to the posed ring angle and hit there", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-ring-speed"
+title = "setRingSpeed poses a ring's orbital speed"
+description = "setRingSpeed(ring, degPerSec) sets the ring's orbital speed, signed as specs/rings.md signs it, the ring advances at the posed rate from the next tick, and the posed speed holds until the next setWave or wave transition restores the wave formula."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-ring-speed.test.ts", outputs = [ { id = "orbit", name = "Ring 1 orbiting at the posed speed", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "clear-pods"
+title = "clearPods removes every pod without an outcome"
+description = "clearPods() leaves pods empty, and nothing is caught and nothing burns: no score, no effect, and no life change comes of it."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clear-pods.test.ts", outputs = [ { id = "cleared", name = "Pods removed with nothing caught or burned", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "spawn-pod"
+title = "spawnPod adds one falling pod off the generator"
+description = "spawnPod(kind, x, y) adds one pod of the named kind at (x, y) that falls radially inward at 120 units per second from the call onward, and the generator is not consumed, so the seeded pod sequence stays where it stands."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-pod.test.ts", outputs = [ { id = "falling", name = "Posed pods falling radially inward", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-effect-ticks"
+title = "setEffectTicks puts an effect in force and ends it"
+description = "setEffectTicks(kind, ticks) with ticks above 0 puts widen, narrow, or pierce in force exactly as catching its pod would — the same span change and the same mutual cancel between widen and narrow, the timer at exactly ticks, and the 25-point catch score not added — and setEffectTicks(kind, 0) ends the effect and restores the baseline exactly as its expiry does."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-effect-ticks.test.ts", outputs = [ { id = "posed", name = "The posed effect timers and their span changes", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-shield"
+title = "setShield raises and removes the shield"
+description = "setShield(true) raises the shield ring exactly as catching a shield pod does and setShield(false) removes it; neither scores, and a shield raised this way is consumed by its first reflection exactly as specs/pods.md states."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-shield.test.ts", outputs = [ { id = "consumed", name = "The posed shield spent by its first reflection", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "wave-advance-switch"
+title = "The waveAdvance switch holds the clearing event"
+description = "With setWaveAdvance(false), a ball-caused destruction that leaves zero live targets fires no clearing event: play carries on in playing over an empty field and destructions keep scoring, and turning the switch back on resumes the clearing from the next qualifying destruction with no catching up."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/wave-advance-switch.test.ts", outputs = [ { id = "held", name = "An emptying destruction held out of the clearing", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "pod-spawn-switch"
+title = "The podSpawn switch holds the pod draw"
+description = "With setPodSpawn(false) a destruction makes no pod draw and does not consume the generator, so no pod spawns and the seeded sequence resumes exactly where it stood when the switch comes back on."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/pod-spawn-switch.test.ts", outputs = [ { id = "resumed", name = "The seeded pod draw resuming where it stood", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "overlay-sources"
+title = "The overlay shows the registered diagnostics"
+description = "The debug overlay, once shown, reports at least the current screen, the score, the lives, the wave, the deflector's angle and span, the counts of live balls, live targets, and falling pods, the three effect timers, and the shield state, each with the live value the snapshot reports."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-sources.test.ts", outputs = [ { id = "sources", name = "The overlay reporting the registered diagnostics", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "overlay-toggle"
+title = "Backquote shows and hides the overlay"
+description = "Pressing the backtick key (KeyboardEvent.code Backquote) shows the debug overlay, and pressing it again hides it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-toggle.test.ts", outputs = [ { id = "shown", name = "The overlay shown by the backtick key", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "overlay-off-at-start"
+title = "The overlay is off when the game starts"
+description = "A freshly started build draws no debug overlay until the backtick key first shows it."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "instrumentation/overlay-off-at-start.test.ts", outputs = [ { id = "fresh", name = "A fresh boot with no overlay drawn", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "overlay-read-only"
+title = "The overlay reads the game without changing it"
+description = "Showing the overlay, letting it report over a stretch of ticks, and hiding it leaves the game exactly as an identical session without it: every diagnostic source is a pure read, so the two sessions' snapshots are identical."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-read-only.test.ts", outputs = [ { id = "watched", name = "The watched stretch the overlay reports over", kind = "replay" } ] }
+
+# --- Field --------------------------------------------------------------------
+# The two fixed surfaces that bound play: the containment field the ball comes
+# back from, and the planet it burns up on. The containment reflection is where
+# the pipeline's renormalize and orbital-decay steps are read cleanly, with no
+# ring in the scene.
+[[review.categories]]
+id = "field"
+title = "Field"
+
+[[review.categories.items]]
+id = "containment-reflects"
+title = "The containment field reflects an outbound ball"
+description = "In a tick where a ball's center radius moves from below 472 to 472 or above with outward radial velocity, the ball reflects as a face contact: its radial velocity component is reversed while the tangential component is kept, per step 1 of the pipeline in specs/deflector-and-ball.md."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "field/containment-reflects.test.ts", outputs = [ { id = "reflect", name = "The containment field reflecting an outbound ball", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "containment-outward-gate"
+title = "Only the outward crossing is a containment contact"
+description = "A ball posed beyond radius 472 moving inward crosses 472 without reflecting, because the containment contact of specs/field.md fires only on the crossing from below 472 with outward radial velocity, so the ball re-enters play unchanged."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "field/containment-outward-gate.test.ts", outputs = [ { id = "reentry", name = "An inbound ball crossing radius 472 unchanged", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "containment-preserves-speed"
+title = "A containment reflection preserves the ball's speed"
+description = "A ball leaving a containment reflection has exactly the speed it arrived with, per the renormalize step of the pipeline in specs/deflector-and-ball.md."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "field/containment-preserves-speed.test.ts", outputs = [ { id = "speed", name = "A containment reflection keeping the arrival speed", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "containment-decay"
+title = "Orbital decay turns a reflected ball toward the radial"
+description = "A ball leaving a containment reflection with the reflected velocity more than 6 degrees off the nearer radial direction is rotated exactly 6 degrees toward it, reducing |phi|, per the orbital-decay step of specs/deflector-and-ball.md."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "field/containment-decay.test.ts", outputs = [ { id = "decay", name = "Orbital decay turning a reflected ball 6 degrees", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "containment-decay-to-radial"
+title = "Orbital decay never overshoots the radial"
+description = "A ball leaving a containment reflection with the reflected velocity within 6 degrees of the nearer radial direction is rotated exactly onto it, because the decay step rotates by min(6, |phi|) degrees."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "field/containment-decay-to-radial.test.ts", outputs = [ { id = "to-radial", name = "Orbital decay settling a reflection onto the radial", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "planet-burns-ball"
+title = "The planet burns up a ball that reaches it"
+description = "In a tick where a ball's center radius reaches 78 or less, the ball is removed from play."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "field/planet-burns-ball.test.ts", outputs = [ { id = "burnup", name = "A ball diving into the planet and burning up", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "burnup-threshold-boundary"
+title = "The burn-up threshold reads at exactly 78"
+description = "A ball whose center radius reaches exactly 78 burns up, and a ball holding a radius just above 78 does not, because the threshold of specs/field.md is a center radius of 78 or less."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "field/burnup-threshold-boundary.test.ts", outputs = [ { id = "burns", name = "A ball carried below center radius 78 burning up", kind = "replay" }, { id = "holds", name = "A ball holding just above radius 78 surviving", kind = "replay" } ] }
+
+# --- Paddle -------------------------------------------------------------------
+# The deflector's motion — each key its own point, each direction its own point —
+# and its one ball contact, the inward crossing of radius 194 within the span.
+# The two implied edge cases the rules leave unstated in prose, a ball already
+# inside the contact radius and a parked ball riding the track, are points of
+# their own.
+[[review.categories]]
+id = "paddle"
+title = "Paddle"
+
+[[review.categories.items]]
+id = "arrow-left-rotates"
+title = "ArrowLeft rotates the deflector toward falling angles"
+description = "While ArrowLeft is held on the playing screen, the deflector's center angle falls tick over tick."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "paddle/arrow-left-rotates.test.ts", outputs = [ { id = "arrow-left-hold", name = "ArrowLeft Held", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "arrow-right-rotates"
+title = "ArrowRight rotates the deflector toward rising angles"
+description = "While ArrowRight is held on the playing screen, the deflector's center angle rises tick over tick."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "paddle/arrow-right-rotates.test.ts", outputs = [ { id = "arrow-right-hold", name = "ArrowRight Held", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "key-a-rotates"
+title = "KeyA rotates the deflector like ArrowLeft"
+description = "KeyA does exactly what ArrowLeft does: while it is held on the playing screen, the deflector's center angle falls at the same rate."
+domains = ["gameplay"]
+failure_cap = "great"
+validation = { script = "paddle/key-a-rotates.test.ts", outputs = [ { id = "key-a-hold", name = "KeyA Held", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "key-d-rotates"
+title = "KeyD rotates the deflector like ArrowRight"
+description = "KeyD does exactly what ArrowRight does: while it is held on the playing screen, the deflector's center angle rises at the same rate."
+domains = ["gameplay"]
+failure_cap = "great"
+validation = { script = "paddle/key-d-rotates.test.ts", outputs = [ { id = "key-d-hold", name = "KeyD Held", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "rotation-speed"
+title = "The deflector rotates at 270 degrees per second"
+description = "One second of game time under a held rotation key moves the deflector's center angle by exactly 270 degrees."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "paddle/rotation-speed.test.ts", outputs = [ { id = "one-second-turn", name = "One Held Second", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "angle-wraps"
+title = "The deflector's angle wraps modulo 360"
+description = "A held rotation carried across 0 or 360 keeps the deflector circling the track without limit, its center angle wrapping modulo 360 and reading in [0, 360)."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "paddle/angle-wraps.test.ts", outputs = [ { id = "wrap-up", name = "Wrap Across 360", kind = "replay" }, { id = "wrap-down", name = "Wrap Across 0", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "starts-at-90"
+title = "A session starts the deflector at angle 90"
+description = "A freshly started session holds the deflector at center angle 90 with the baseline span of 48 degrees."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "paddle/starts-at-90.test.ts", outputs = [ { id = "session-start", name = "Session Start", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "both-held-no-motion"
+title = "Both rotation directions held cancel out"
+description = "With ArrowLeft and ArrowRight held together, the deflector's center angle holds its value, because the two held rotations of specs/deflector-and-ball.md move it at equal and opposite 270 degrees per second."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "paddle/both-held-no-motion.test.ts", outputs = [ { id = "both-held", name = "Both Keys Held", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "bounce-crossing"
+title = "The deflector bounces a ball crossing its face"
+description = "In a tick where a ball's center radius moves from above 194 to 194 or below with inward radial velocity and its center angle within the deflector's span, the ball bounces: its velocity turns outward instead of carrying on toward the planet."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "paddle/bounce-crossing.test.ts", outputs = [ { id = "bounce", name = "Deflector Bounce", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "span-gate"
+title = "A ball outside the span is not saved"
+description = "A ball crossing radius 194 inward with its center angle outside the deflector's span passes the deflector untouched and carries on toward the planet."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "paddle/span-gate.test.ts", outputs = [ { id = "pass-through", name = "Outside the Span", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "span-boundary-inclusive"
+title = "The span's boundary is inclusive"
+description = "A ball crossing radius 194 inward with its center angle exactly at the span's edge — 24 degrees off the center angle at the baseline span — bounces, because angular membership in specs/field.md is decided with the boundaries inclusive."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "paddle/span-boundary-inclusive.test.ts", outputs = [ { id = "edge-high", name = "Rising Edge Bounce", kind = "replay" }, { id = "edge-low", name = "Falling Edge Bounce", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "inside-not-saved"
+title = "A ball already inside the contact radius is never saved"
+description = "A ball posed inside radius 194 within the span never bounces off the deflector, however it moves, because the deflector's one ball contact is the crossing from above 194 and no other deflector contact exists."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "paddle/inside-not-saved.test.ts", outputs = [ { id = "inside-inward", name = "Inward From Inside", kind = "replay" }, { id = "inside-outward", name = "Outward From Inside", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "parked-no-collide"
+title = "A parked ball triggers no contact"
+description = "A parked ball riding the deflector at radius 194 triggers no contact over a long stretch of ticks — no bounce and no velocity change — because every contact is a crossing event and a parked ball crosses nothing."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "paddle/parked-no-collide.test.ts", outputs = [ { id = "parked-stretch", name = "Parked Ride", kind = "replay" } ] }
+
+# --- Serve --------------------------------------------------------------------
+# The parked ball and the launch: where the ball sits, how it follows, the
+# radial launch, and the wave ball-speed figure a serve carries — with the
+# one-parked rule and the 6-ball cap each read on its own.
+[[review.categories]]
+id = "serve"
+title = "Serve"
+
+[[review.categories.items]]
+id = "park-position"
+title = "A parked ball sits on the deflector"
+description = "A parked ball sits at radius 194 at the deflector's center angle, reported in balls with parked true."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "serve/park-position.test.ts", outputs = [ { id = "parked", name = "The parked ball on the deflector", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "park-follows-deflector"
+title = "A parked ball follows the deflector"
+description = "As the deflector rotates, a parked ball holds radius 194 at the deflector's center angle tick over tick."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "serve/park-follows-deflector.test.ts", outputs = [ { id = "follow", name = "The parked ball riding the rotating deflector", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "launch-radial"
+title = "A launch sends the ball radially outward"
+description = "Launching a parked ball sends it radially outward: its velocity points along the outward radial at its center, so its center angle holds while its radius grows."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "serve/launch-radial.test.ts", outputs = [ { id = "launch", name = "A launch heading straight out along the radial", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "launch-at-wave-speed"
+title = "A launch serves at the current wave's ball speed"
+description = "A ball launched on wave 1 leaves at 240 units per second, the wave-1 ball speed of specs/deflector-and-ball.md."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "serve/launch-at-wave-speed.test.ts", outputs = [ { id = "serve-speed", name = "A wave-1 serve leaving at 240 units per second", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "wave-speed-formula"
+title = "The wave ball speed follows its formula"
+description = "With the wave posed to w, a launch serves at 240 + 30 * (w - 1) units per second, so wave 3 serves at 300."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "serve/wave-speed-formula.test.ts", outputs = [ { id = "wave3", name = "A wave-3 serve at 300 units per second", kind = "replay" }, { id = "wave5", name = "A wave-5 serve at 360 units per second", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "wave-speed-cap"
+title = "The wave ball speed caps at 480"
+description = "On a wave past the cap point, a launch serves at exactly 480 units per second, the cap specs/deflector-and-ball.md puts on the wave ball speed."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "serve/wave-speed-cap.test.ts", outputs = [ { id = "capped", name = "A deep-wave serve capped at 480 units per second", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "one-parked-at-a-time"
+title = "At most one ball is parked at a time"
+description = "While a parked ball exists, parkBall() changes nothing: balls still holds exactly one entry with parked true."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "serve/one-parked-at-a-time.test.ts", outputs = [ { id = "one-parked", name = "A second parkBall changing nothing", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "parked-counts-toward-cap"
+title = "A parked ball counts toward the 6-ball cap"
+description = "With five balls in flight and one parked, the field is at the 6-ball cap, so a call that would add a seventh ball changes nothing, because a parked ball is live and counts toward the cap."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "serve/parked-counts-toward-cap.test.ts", outputs = [ { id = "at-cap", name = "Six balls with one parked refusing a seventh", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "launch-no-parked-noop"
+title = "A launch with no parked ball changes nothing"
+description = "launchBall() with no parked ball changes nothing: no ball appears and every ball in flight keeps its velocity."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "serve/launch-no-parked-noop.test.ts", outputs = [ { id = "no-parked", name = "A launch with no parked ball changing nothing", kind = "image" } ] }
+
+# --- Bounce -------------------------------------------------------------------
+# The four steps of the deflector bounce, each read alone: the specular
+# reflection, the english in each sign, the clamp on each side, and the speed
+# set to the wave figure — plus reflect-in-place, the rule every reflection in
+# the game shares.
+[[review.categories]]
+id = "bounce"
+title = "Bounce"
+
+[[review.categories.items]]
+id = "specular"
+title = "The bounce reflects the radial component"
+description = "A ball bouncing at the deflector's center angle (offset 0) leaves with v' = v - 2 (v . n) n: the radial velocity component reversed and the tangential component kept, with no english applied."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "bounce/specular.test.ts", outputs = [ { id = "bounce", name = "The center-angle mirror bounce", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "english-positive"
+title = "A positive offset adds english toward +theta"
+description = "A ball bouncing with its center offset toward +theta from the deflector's center angle leaves with the specular velocity rotated by exactly 1.2 times the offset in degrees, in the +theta direction."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "bounce/english-positive.test.ts", outputs = [ { id = "bounce", name = "English applied toward +theta", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "english-negative"
+title = "A negative offset adds english toward -theta"
+description = "A ball bouncing with its center offset toward -theta from the deflector's center angle leaves with the specular velocity rotated by exactly 1.2 times the offset in degrees, in the -theta direction."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "bounce/english-negative.test.ts", outputs = [ { id = "bounce", name = "English applied toward -theta", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "english-wrap-aware"
+title = "The english offset is wrap-aware"
+description = "A bounce straddling the 0/360 seam — the deflector centered near 0 and the ball's center angle near 360 — computes its offset wrap-aware in [-180, 180), so the english is the small signed offset rather than one near a full turn."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "bounce/english-wrap-aware.test.ts", outputs = [ { id = "bounce", name = "A bounce straddling the 0/360 seam", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "clamp-positive"
+title = "The outgoing angle clamps at +60"
+description = "A bounce whose rotated velocity sits more than 60 degrees from the outward radial on the positive side leaves at exactly +60 degrees from it, sign preserved."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "bounce/clamp-positive.test.ts", outputs = [ { id = "bounce", name = "A bounce clamped to +60 degrees", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "clamp-negative"
+title = "The outgoing angle clamps at -60"
+description = "A bounce whose rotated velocity sits more than 60 degrees from the outward radial on the negative side leaves at exactly -60 degrees from it, sign preserved."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "bounce/clamp-negative.test.ts", outputs = [ { id = "bounce", name = "A bounce clamped to -60 degrees", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "clamp-boundary"
+title = "An angle inside the clamp passes unclamped"
+description = "A bounce whose rotated velocity sits at or under 60 degrees from the outward radial keeps that angle exactly, because the clamp of specs/deflector-and-ball.md is to [-60, +60] inclusive."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "bounce/clamp-boundary.test.ts", outputs = [ { id = "bounce", name = "A 57-degree bounce kept unclamped", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "speed-set-to-wave"
+title = "The bounce sets the outgoing speed to the wave figure"
+description = "A ball arriving at the deflector at a posed speed far from the wave figure leaves the bounce at exactly the current wave's ball speed, the one speed-setting reflection in the game."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "bounce/speed-set-to-wave.test.ts", outputs = [ { id = "bounce", name = "The bounce resetting the ball to the wave speed", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "reflect-in-place"
+title = "A reflection changes velocity only"
+description = "A deflector bounce leaves the ball at the position its advance gave it this tick — only the velocity changes — per the reflect-in-place rule every reflection in specs/deflector-and-ball.md shares."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "bounce/reflect-in-place.test.ts", outputs = [ { id = "bounce", name = "The bounce turning the velocity in place", kind = "replay" } ] }
+
+# --- Controls -----------------------------------------------------------------
+# The keys wired to the actions the rotation points do not already cover: the
+# launch, the menu keys, the two pause keys, and the edge-versus-held semantics
+# the action table fixes. Each key bound to an action is its own point.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+
+[[review.categories.items]]
+id = "space-launches"
+title = "Space launches the parked ball"
+description = "Space on the playing screen launches the parked ball exactly as specs/deflector-and-ball.md serves it: radially outward at the current wave's ball speed."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "controls/space-launches.test.ts", outputs = [ { id = "launch", name = "The parked ball served by Space", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "enter-confirms"
+title = "Enter accepts the highlighted menu entry"
+description = "Enter on a menu-bearing screen accepts the highlighted entry, so Enter on the title's START entry starts a session."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "controls/enter-confirms.test.ts", outputs = [ { id = "start", name = "START accepted with Enter", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "space-confirms"
+title = "Space accepts the highlighted menu entry"
+description = "Space does exactly what Enter does on a menu-bearing screen: it accepts the highlighted entry."
+domains = ["gameplay"]
+failure_cap = "great"
+validation = { script = "controls/space-confirms.test.ts", outputs = [ { id = "start", name = "START accepted with Space", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "arrow-up-moves-highlight"
+title = "ArrowUp moves the menu highlight up"
+description = "ArrowUp on a menu-bearing screen moves the highlight one entry up, so menu.index falls by one from a lower entry."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "controls/arrow-up-moves-highlight.test.ts", outputs = [ { id = "moved", name = "The highlight moved up with ArrowUp", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "arrow-down-moves-highlight"
+title = "ArrowDown moves the menu highlight down"
+description = "ArrowDown on a menu-bearing screen moves the highlight one entry down, so menu.index rises by one from the top entry."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "controls/arrow-down-moves-highlight.test.ts", outputs = [ { id = "moved", name = "The highlight moved down with ArrowDown", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "key-w-moves-highlight"
+title = "KeyW moves the menu highlight like ArrowUp"
+description = "KeyW does exactly what ArrowUp does on a menu-bearing screen."
+domains = ["gameplay"]
+failure_cap = "great"
+validation = { script = "controls/key-w-moves-highlight.test.ts", outputs = [ { id = "moved", name = "The highlight moved up with KeyW", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "key-s-moves-highlight"
+title = "KeyS moves the menu highlight like ArrowDown"
+description = "KeyS does exactly what ArrowDown does on a menu-bearing screen."
+domains = ["gameplay"]
+failure_cap = "great"
+validation = { script = "controls/key-s-moves-highlight.test.ts", outputs = [ { id = "moved", name = "The highlight moved down with KeyS", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "escape-pauses"
+title = "Escape pauses a live session"
+description = "Escape on the playing screen moves the game to the paused screen."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "controls/escape-pauses.test.ts", outputs = [ { id = "paused", name = "The session paused with Escape", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "key-p-pauses"
+title = "KeyP pauses a live session"
+description = "KeyP on the playing screen moves the game to the paused screen, so a player reaches the pause menu with either key."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "controls/key-p-pauses.test.ts", outputs = [ { id = "paused", name = "The session paused with KeyP", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "release-stops-rotation"
+title = "Releasing a rotation key stops the deflector"
+description = "The rotation actions are read as held values, so releasing the one held rotation key leaves the deflector's center angle holding its value on the ticks that follow."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "controls/release-stops-rotation.test.ts", outputs = [ { id = "held", name = "The deflector still after the key's release", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "edge-once-per-press"
+title = "An edge action fires once per press"
+description = "An action read as a press edge answers once for the press however long the key is held: holding Space over many ticks launches the parked ball once, and a repeat key event arms no further edge."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "controls/edge-once-per-press.test.ts", outputs = [ { id = "once", name = "One launch for one held press", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "omitted-action-inert"
+title = "An action a screen omits does nothing there"
+description = "An action the screen table of specs/controls.md omits does nothing on that screen: KeyP on the title screen leaves the game on title with the menu unchanged."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "controls/omitted-action-inert.test.ts", outputs = [ { id = "title", name = "The title untouched by KeyP", kind = "image" } ] }
+
+# --- Targets ------------------------------------------------------------------
+# The derelicts themselves: each ring's slot layout, hit points, the two
+# crossing events a ball scores a hit through, the tie between them, and the
+# gaps a ball slips through untouched. Every rule here is a figure from
+# specs/rings.md decided against specs/field.md's contact radii.
+[[review.categories]]
+id = "targets"
+title = "Targets"
+[[review.categories.items]]
+id = "ring1-slot-layout"
+title = "Ring 1 lays out its twelve slots"
+description = "Ring 1 holds 12 slots of 30 degrees, slot k beginning at the ring's angle plus k * 30, with each target arc beginning 2 degrees into its slot and spanning 26 degrees, leaving a 2-degree structural gap at each side of the slot."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "targets/ring1-slot-layout.test.ts", outputs = [ { id = "probes", name = "Arc-edge and gap probes on ring 1", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring2-slot-layout"
+title = "Ring 2 lays out its sixteen slots"
+description = "Ring 2 holds 16 slots of 22.5 degrees, slot k beginning at the ring's angle plus k * 22.5, with each target arc beginning 2 degrees into its slot and spanning 18.5 degrees, leaving a 2-degree structural gap at each side of the slot."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "targets/ring2-slot-layout.test.ts", outputs = [ { id = "probes", name = "Arc-edge and gap probes on ring 2", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring3-slot-layout"
+title = "Ring 3 lays out its twenty slots"
+description = "Ring 3 holds 20 slots of 18 degrees, slot k beginning at the ring's angle plus k * 18, with each target arc beginning 2 degrees into its slot and spanning 14 degrees, leaving a 2-degree structural gap at each side of the slot."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "targets/ring3-slot-layout.test.ts", outputs = [ { id = "probes", name = "Arc-edge and gap probes on ring 3", kind = "replay" } ] }
+[[review.categories.items]]
+id = "every-slot-filled-at-start"
+title = "Every slot is filled at the start of a wave"
+description = "A fresh session at wave 1 fills every slot of all three rings — 12, 16, and 20 targets — each at its ring's full hit points."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "targets/every-slot-filled-at-start.test.ts", outputs = [ { id = "field", name = "The fresh wave-1 field", kind = "image" } ] }
+[[review.categories.items]]
+id = "ring1-destroyed-in-one-hit"
+title = "A ring 1 target falls to one hit"
+description = "A ring 1 target holds 1 hit point, so a single hit brings it to zero and the target is removed."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/ring1-destroyed-in-one-hit.test.ts", outputs = [ { id = "hit", name = "One hit destroying a ring 1 target", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring2-survives-first-hit"
+title = "A ring 2 target takes two hits"
+description = "A ring 2 target holds 2 hit points: the first hit leaves it live at 1 hit point, and the second brings it to zero and removes it."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/ring2-survives-first-hit.test.ts", outputs = [ { id = "hits", name = "Two hits felling a ring 2 target", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring3-destroyed-in-one-hit"
+title = "A ring 3 target falls to one hit"
+description = "A ring 3 target holds 1 hit point, so a single hit brings it to zero and the target is removed."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/ring3-destroyed-in-one-hit.test.ts", outputs = [ { id = "hit", name = "One hit destroying a ring 3 target", kind = "replay" } ] }
+[[review.categories.items]]
+id = "damaged-ring2-distinct"
+title = "A damaged ring 2 target reads at a glance"
+description = "A ring 2 target that has taken a hit is drawn visibly distinct from an undamaged one, so a player reads its state at a glance."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "targets/damaged-ring2-distinct.test.ts", outputs = [ { id = "fresh", name = "An undamaged ring 2 target", kind = "image" }, { id = "damaged", name = "A ring 2 target after a hit", kind = "image" } ] }
+[[review.categories.items]]
+id = "face-hit-from-outside"
+title = "A face hit lands crossing inward onto a ring"
+description = "In a tick where a ball's center radius crosses a ring's outer contact radius (322, 392, or 462) from above to on or below it, with its center angle within a live target's arc, the ball scores a face hit on that target."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "targets/face-hit-from-outside.test.ts", outputs = [ { id = "ring1", name = "Inward face hit on ring 1", kind = "replay" }, { id = "ring2", name = "Inward face hit on ring 2", kind = "replay" }, { id = "ring3", name = "Inward face hit on ring 3", kind = "replay" } ] }
+[[review.categories.items]]
+id = "face-hit-from-inside"
+title = "A face hit lands crossing outward onto a ring"
+description = "In a tick where a ball's center radius crosses a ring's inner contact radius (282, 352, or 422) from below to on or above it, with its center angle within a live target's arc, the ball scores a face hit on that target."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/face-hit-from-inside.test.ts", outputs = [ { id = "ring1", name = "Outward face hit on ring 1", kind = "replay" }, { id = "ring2", name = "Outward face hit on ring 2", kind = "replay" }, { id = "ring3", name = "Outward face hit on ring 3", kind = "replay" } ] }
+[[review.categories.items]]
+id = "edge-hit-by-ball-motion"
+title = "An edge hit lands crossing into an arc"
+description = "In a tick where a ball's center radius lies between a ring's inner and outer contact radii and the ball's own motion carries its center angle into a live target's arc, the ball scores an edge hit on that target."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/edge-hit-by-ball-motion.test.ts", outputs = [ { id = "edge-hit", name = "The ball's motion carrying it into a live arc", kind = "replay" } ] }
+[[review.categories.items]]
+id = "face-beats-edge"
+title = "A double crossing resolves as the face hit"
+description = "A tick where the same target takes both a face and an edge crossing resolves as the face hit alone: one hit point removed, one hit awarded, the reflection a face contact's."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/face-beats-edge.test.ts", outputs = [ { id = "double", name = "A same-tick double crossing resolving as the face hit", kind = "replay" } ] }
+[[review.categories.items]]
+id = "gap-pass-through"
+title = "A structural gap lets the ball through"
+description = "A ball whose center angle stays inside a structural gap while its radius crosses a ring passes through untouched: no hit, no reflection, no hit point removed."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/gap-pass-through.test.ts", outputs = [ { id = "pass", name = "A ball passing through a structural gap untouched", kind = "replay" } ] }
+[[review.categories.items]]
+id = "no-repeat-without-crossing"
+title = "A contact repeats only after a fresh crossing"
+description = "A crossing is an event: a ball that has scored a hit takes no further hit on later ticks while no fresh face or edge crossing occurs, however long its center radius stays near the ring."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/no-repeat-without-crossing.test.ts", outputs = [ { id = "linger", name = "A hit ball lingering in the band without a repeat", kind = "replay" } ] }
+[[review.categories.items]]
+id = "face-reflects-radial"
+title = "A face hit reflects the radial component"
+description = "A face hit on a stationary ring reflects the radial component of the ball's velocity (v' = v - 2 (v . n) n) at the speed the ball arrived with, before the pipeline's orbital decay rotates the result toward the nearer radial axis by min(6, |phi|) degrees."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "targets/face-reflects-radial.test.ts", outputs = [ { id = "bounce", name = "A face hit reflecting the radial component", kind = "replay" } ] }
+[[review.categories.items]]
+id = "edge-reflects-tangential"
+title = "An edge hit reflects the tangential component"
+description = "An edge hit on a stationary ring reflects the tangential component of the ball's velocity (v' = v - 2 (v . t) t) at the speed the ball arrived with, before the pipeline's orbital decay rotates the result toward the nearer radial axis by min(6, |phi|) degrees."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "targets/edge-reflects-tangential.test.ts", outputs = [ { id = "bounce", name = "An edge hit reflecting the tangential component", kind = "replay" } ] }
+
+# --- Orbits -------------------------------------------------------------------
+# The rings in motion: each ring's speed formula and its cap, the wrap, the
+# starting pose, and the two consequences of motion — the swept edge hit and
+# the ring kick — that keep a moving ring a different surface from a still one.
+[[review.categories]]
+id = "orbits"
+title = "Orbits"
+[[review.categories.items]]
+id = "ring1-stationary"
+title = "Ring 1 stands still"
+description = "Ring 1's orbit speed is 0 at every wave, so its ring angle holds its value across ticks while rings 2 and 3 advance."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/ring1-stationary.test.ts", outputs = [ { id = "hold", name = "Ring 1 holding still while rings 2 and 3 orbit", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring2-speed-formula"
+title = "Ring 2 orbits by its wave formula"
+description = "Ring 2's angle advances toward +theta at min(12 + 3 * (w - 1), 45) degrees per second: 12 degrees over a second at wave 1 and 18 at wave 3, advanced in step 2 of the tick order."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/ring2-speed-formula.test.ts", outputs = [ { id = "orbit", name = "Ring 2 orbiting one second at wave 1", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring3-speed-formula"
+title = "Ring 3 orbits by its wave formula"
+description = "Ring 3's angle advances toward -theta at min(8 + 2 * (w - 1), 30) degrees per second: 8 degrees over a second at wave 1 and 12 at wave 3, advanced in step 2 of the tick order."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/ring3-speed-formula.test.ts", outputs = [ { id = "orbit", name = "Ring 3 orbiting one second at wave 1", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring2-speed-cap"
+title = "Ring 2's orbit speed caps at 45"
+description = "Ring 2's orbit speed is capped at 45 degrees per second, so at wave 12 and every wave beyond it advances 45 degrees over a second and no faster."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/ring2-speed-cap.test.ts", outputs = [ { id = "capped", name = "Ring 2 orbiting a second at the wave-12 cap", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring3-speed-cap"
+title = "Ring 3's orbit speed caps at 30"
+description = "Ring 3's orbit speed is capped at 30 degrees per second, so at wave 12 and every wave beyond it advances 30 degrees over a second and no faster."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/ring3-speed-cap.test.ts", outputs = [ { id = "capped", name = "Ring 3 orbiting a second at the wave-12 cap", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring-angle-wraps"
+title = "Ring angles wrap modulo 360"
+description = "A ring angle advancing past 360, or falling below 0, wraps modulo 360 rather than growing without bound in either direction."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/ring-angle-wraps.test.ts", outputs = [ { id = "wrap-up", name = "Ring 2 wrapping past 360", kind = "replay" }, { id = "wrap-down", name = "Ring 3 wrapping below 0", kind = "replay" } ] }
+[[review.categories.items]]
+id = "rings-start-at-zero"
+title = "Every ring starts a session at angle 0"
+description = "A fresh session starts every ring at ring angle 0."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/rings-start-at-zero.test.ts", outputs = [ { id = "fresh", name = "A fresh session's rings at angle 0", kind = "image" } ] }
+[[review.categories.items]]
+id = "contacts-use-posed-angles"
+title = "Contacts are decided against this tick's pose"
+description = "Both crossing events are decided against the target arcs as this tick's ring advance posed them, so a hit at an arc boundary resolves against the angle the ring holds after step 2, not the angle it held last tick."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/contacts-use-posed-angles.test.ts", outputs = [ { id = "posed-hit", name = "The hit the advanced arc grants", kind = "replay" }, { id = "posed-miss", name = "The miss the advanced arc decides", kind = "replay" } ] }
+[[review.categories.items]]
+id = "sweep-edge-hit"
+title = "A rotating ring sweeps an edge hit"
+description = "The edge crossing is relative: a moving ring's rotation carrying a live target's arc across the center angle of a ball inside the contact band scores an edge hit even when the ball's own motion produces no angular crossing."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "orbits/sweep-edge-hit.test.ts", outputs = [ { id = "sweep", name = "A rotating ring sweeping an edge hit onto a drifting ball", kind = "replay" } ] }
+[[review.categories.items]]
+id = "moving-ring-kick"
+title = "A moving ring kicks the reflected ball"
+description = "A hit on a target in a moving ring adds 0.5 * u to the reflected velocity — u tangential in the ring's direction of motion with magnitude the ring's angular speed in radians per second times the ball's center radius — then renormalizes to the incoming speed, so the ball leaves deflected toward the ring's motion at the speed it arrived with."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "orbits/moving-ring-kick.test.ts", outputs = [ { id = "kick", name = "A moving ring kicking the reflected ball", kind = "replay" } ] }
+
+# --- Pierce -------------------------------------------------------------------
+# The one effect that changes what a target contact is. Its outright
+# destruction, the velocity it leaves alone, the balls it covers, the surfaces
+# it does not touch, and its 360-tick end.
+[[review.categories]]
+id = "pierce"
+title = "Pierce"
+[[review.categories.items]]
+id = "destroys-outright"
+title = "A piercing contact destroys outright"
+description = "While pierce is in force a ball's target contact, face or edge, destroys the target outright whatever its hit points, so a full-hit-point ring 2 target is removed by a single contact."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "pierce/destroys-outright.test.ts", outputs = [ { id = "destroy", name = "A full-hit-point target pierced away in one contact", kind = "replay" } ] }
+[[review.categories.items]]
+id = "velocity-unchanged"
+title = "A piercing contact leaves velocity alone"
+description = "A piercing ball's target contact leaves the ball's velocity unchanged — no reflection, no ring kick, no orbital decay — so the ball carries on through the ring on its straight line."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pierce/velocity-unchanged.test.ts", outputs = [ { id = "through", name = "The ball carrying straight through the ring", kind = "replay" } ] }
+[[review.categories.items]]
+id = "covers-launched-balls"
+title = "Balls launched during pierce also pierce"
+description = "While pierce is in force every ball pierces, balls served or launched during it included, so a ball launched mid-effect destroys targets outright like the balls that were flying at the catch."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pierce/covers-launched-balls.test.ts", outputs = [ { id = "launched", name = "A ball launched mid-effect piercing a target", kind = "replay" } ] }
+[[review.categories.items]]
+id = "other-surfaces-still-reflect"
+title = "Pierce changes target contacts alone"
+description = "The deflector, the shield ring, and the containment field reflect a piercing ball exactly as they reflect any other, so pierce changes what happens at targets and nothing else."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pierce/other-surfaces-still-reflect.test.ts", outputs = [ { id = "deflector", name = "The deflector bouncing a piercing ball", kind = "replay" }, { id = "shield", name = "The shield reflecting a piercing ball", kind = "replay" }, { id = "containment", name = "The containment field reflecting a piercing ball", kind = "replay" } ] }
+[[review.categories.items]]
+id = "expires-after-360"
+title = "Pierce ends when its 360 ticks run out"
+description = "Pierce runs a 360-tick timer, and when it reaches 0 every ball returns to ordinary contacts, so a later hit on a full-hit-point ring 2 target leaves it live at 1 hit point."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pierce/expires-after-360.test.ts", outputs = [ { id = "catch", name = "A pierce catch arming the 360-tick timer", kind = "replay" }, { id = "expired", name = "An ordinary hit after the timer ran out", kind = "replay" } ] }
+[[review.categories.items]]
+id = "destruction-resolves-fully"
+title = "A pierce destruction resolves as any other"
+description = "A piercing ball's destruction otherwise resolves exactly as an ordinary one: the target is removed, the salvage pod draw runs, and a destruction that leaves zero live targets clears the wave."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pierce/destruction-resolves-fully.test.ts", outputs = [ { id = "shed", name = "The piercing destruction shedding its drawn pod", kind = "replay" }, { id = "clear", name = "A piercing destruction clearing the wave", kind = "replay" } ] }
+
+# --- Salvage pods -------------------------------------------------------------
+# The seeded draw, the pod in flight, and the two ways a flight ends. The draw
+# rules are validator-load-bearing: the same seed must shed the same pods, so
+# the stream, its consumption, and the kind table each stand as their own item.
+[[review.categories]]
+id = "pods"
+title = "Salvage Pods"
+[[review.categories.items]]
+id = "seeded-stream-reproducible"
+title = "The pod sequence is seeded and reproducible"
+description = "Two sessions from reset({ seed }) with the same seed and the same destructions in the same order shed the same pods, of the same kinds, in the same order."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/seeded-stream-reproducible.test.ts", outputs = [ { id = "seeded-run", name = "Seeded run", kind = "replay" } ] }
+[[review.categories.items]]
+id = "shed-below-quarter"
+title = "A destruction sheds on a draw below 0.25"
+description = "Each destruction takes the stream's next value u1 at the moment it resolves and sheds a pod exactly when u1 < 0.25; at u1 >= 0.25 it sheds nothing."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "pods/shed-below-quarter.test.ts", outputs = [ { id = "shed", name = "Shedding draw", kind = "replay" }, { id = "no-shed", name = "Empty draw", kind = "replay" } ] }
+[[review.categories.items]]
+id = "no-shed-consumes-one"
+title = "A draw that sheds nothing consumes one value"
+description = "A destruction that sheds nothing consumes exactly one value and the draw ends there, so the next destruction's u1 is the stream's next value and the seeded sequence stays aligned."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/no-shed-consumes-one.test.ts", outputs = [ { id = "aligned-draw", name = "Aligned draw", kind = "replay" } ] }
+[[review.categories.items]]
+id = "kind-table"
+title = "The second draw picks the kind by the table"
+description = "On a shed the second value u2 picks the kind by the fixed bands: widen on [0, 0.25), multiball on [0.25, 0.45), shield on [0.45, 0.65), pierce on [0.65, 0.80), and narrow on [0.80, 1)."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/kind-table.test.ts", outputs = [ { id = "band-draw", name = "Band draw", kind = "replay" } ] }
+[[review.categories.items]]
+id = "default-seed-one"
+title = "A fresh session seeds with DEFAULT_SEED"
+description = "A fresh session seeds the stream with DEFAULT_SEED (1), so its pod sequence matches a reset({ seed: 1 }) session played the same way."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/default-seed-one.test.ts", outputs = [ { id = "default-run", name = "Default-seed run", kind = "replay" } ] }
+[[review.categories.items]]
+id = "spawns-at-arc-center"
+title = "A pod spawns at the destroyed target's arc center"
+description = "A shed pod spawns at its ring's mid radius — 302, 372, or 442 — at the destroyed target's arc-center angle as the ring stands posed on the destruction tick."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/spawns-at-arc-center.test.ts", outputs = [ { id = "spawn-ring1", name = "Ring 1 spawn", kind = "replay" }, { id = "spawn-ring3", name = "Ring 3 spawn", kind = "replay" } ] }
+[[review.categories.items]]
+id = "falls-at-120"
+title = "A pod falls inward at 120 units per second"
+description = "A pod falls radially inward at 120 units per second — 2 units per tick — with its center angle constant for the whole flight."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/falls-at-120.test.ts", outputs = [ { id = "fall", name = "Fall", kind = "replay" } ] }
+[[review.categories.items]]
+id = "catch-crossing"
+title = "A catch is a crossing of radius 196 in the span"
+description = "In a tick where a pod's center radius moves from prev_r > 196 to new_r <= 196 with its center angle within the deflector's span, the pod is caught: it is removed and its kind's effect applies."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "pods/catch-crossing.test.ts", outputs = [ { id = "catch", name = "Catch", kind = "replay" } ] }
+[[review.categories.items]]
+id = "no-catch-outside-span"
+title = "A pod outside the span is not caught"
+description = "A pod whose center angle is outside the deflector's span in the tick its radius crosses 196 is not caught and keeps falling inward."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/no-catch-outside-span.test.ts", outputs = [ { id = "fall-past", name = "Fall past", kind = "replay" } ] }
+[[review.categories.items]]
+id = "catch-tests-span-in-force"
+title = "The catch tests the span in force that tick"
+description = "The span the catch tests is the span in force that tick, so a widened deflector (72 degrees) catches a pod 30 degrees off its center angle that the 48-degree baseline span would let fall past."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/catch-tests-span-in-force.test.ts", outputs = [ { id = "widened-catch", name = "Widened catch", kind = "replay" } ] }
+[[review.categories.items]]
+id = "burn-up-no-effect"
+title = "A pod burning up applies nothing"
+description = "In a tick where a pod's center radius reaches 78 or less the pod burns up: it is removed and no effect applies."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/burn-up-no-effect.test.ts", outputs = [ { id = "burn-up", name = "Burn-up", kind = "replay" } ] }
+[[review.categories.items]]
+id = "passes-through-everything"
+title = "A falling pod passes through everything"
+description = "In flight a pod passes through the shield ring, every target, and every ball, its fall unchanged by any of them."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/passes-through-everything.test.ts", outputs = [ { id = "through-flight", name = "Through flight", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pod-spawn-switch"
+title = "The podSpawn switch stops the draw"
+description = "With setPodSpawn(false) a destruction makes no draw and the stream is not consumed, so no pod spawns and the seeded sequence stays where it stands; turned back on, draws resume from the next destruction with no catching up."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "pods/pod-spawn-switch.test.ts", outputs = [ { id = "resumed-draw", name = "Resumed draw", kind = "replay" } ] }
+
+# --- Effects ------------------------------------------------------------------
+# What each caught kind does and for how long: the two span figures and their
+# 600-tick timers, the mutual cancel and the restart, multiball's two launches
+# against the cap, and the shield's one reflection.
+[[review.categories]]
+id = "effects"
+title = "Effects"
+[[review.categories.items]]
+id = "widen-span-72"
+title = "Widen sets the span to 72"
+description = "Catching a widen pod sets the deflector's span to 72 degrees on the catch tick."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "effects/widen-span-72.test.ts", outputs = [ { id = "widen-catch", name = "Widen catch", kind = "replay" } ] }
+[[review.categories.items]]
+id = "narrow-span-30"
+title = "Narrow sets the span to 30"
+description = "Catching a narrow pod sets the deflector's span to 30 degrees on the catch tick."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/narrow-span-30.test.ts", outputs = [ { id = "narrow-catch", name = "Narrow catch", kind = "replay" } ] }
+[[review.categories.items]]
+id = "timers-fall-one-per-tick"
+title = "Effect timers fall one per tick"
+description = "A timed effect's whole-tick timer starts at its duration and falls by one on every tick the simulation advances, read back in effects.widenTicks, narrowTicks, and pierceTicks."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/timers-fall-one-per-tick.test.ts", outputs = [ { id = "timer-countdown", name = "Timer countdown", kind = "replay" } ] }
+[[review.categories.items]]
+id = "widen-expires-at-600"
+title = "Widen ends when its 600 ticks run out"
+description = "Widen runs 600 ticks, and when its timer reaches 0 the span returns to its 48-degree baseline."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/widen-expires-at-600.test.ts", outputs = [ { id = "widen-expiry", name = "Widen expiry", kind = "replay" } ] }
+[[review.categories.items]]
+id = "narrow-expires-at-600"
+title = "Narrow ends when its 600 ticks run out"
+description = "Narrow runs 600 ticks, and when its timer reaches 0 the span returns to its 48-degree baseline."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/narrow-expires-at-600.test.ts", outputs = [ { id = "narrow-expiry", name = "Narrow expiry", kind = "replay" } ] }
+[[review.categories.items]]
+id = "catch-restarts-timer"
+title = "Catching a kind in force restarts its timer"
+description = "Catching a kind already in force restarts that kind's timer at its full duration rather than stacking or ignoring the catch."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/catch-restarts-timer.test.ts", outputs = [ { id = "timer-restart", name = "Timer restart", kind = "replay" } ] }
+[[review.categories.items]]
+id = "widen-narrow-replace"
+title = "Widen and narrow replace each other"
+description = "Catching widen while narrow is in force, or the reverse, ends the other kind on the spot and puts the caught kind in force with a full timer."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/widen-narrow-replace.test.ts", outputs = [ { id = "span-swap", name = "Span swap", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pierce-runs-alongside-span"
+title = "Pierce runs alongside a span effect"
+description = "Pierce is independent of both span effects, so catching a span kind during pierce leaves pierceTicks running, and catching pierce leaves the span effect in force."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/pierce-runs-alongside-span.test.ts", outputs = [ { id = "pierce-alongside", name = "Pierce alongside widen", kind = "replay" } ] }
+[[review.categories.items]]
+id = "multiball-launches-two"
+title = "Multiball launches up to two balls"
+description = "A multiball catch launches up to two balls from radius 194 at the deflector's center angle, each at the current wave's ball speed."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "effects/multiball-launches-two.test.ts", outputs = [ { id = "multiball-pair", name = "Multiball pair", kind = "replay" } ] }
+[[review.categories.items]]
+id = "multiball-angles"
+title = "The two balls head 20 degrees off radial"
+description = "One multiball ball heads 20 degrees to the +theta side of the outward radial and the other 20 degrees to the -theta side, and the +theta ball launches first, so it stands earlier in spawn order."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/multiball-angles.test.ts", outputs = [ { id = "multiball-headings", name = "Multiball headings", kind = "replay" } ] }
+[[review.categories.items]]
+id = "multiball-respects-cap"
+title = "Multiball launches what the cap admits"
+description = "As many of multiball's two balls launch as the six-ball cap admits: at five live balls one launches, and at the cap the catch launches nothing."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/multiball-respects-cap.test.ts", outputs = [ { id = "multiball-cap", name = "Multiball at the cap", kind = "replay" } ] }
+[[review.categories.items]]
+id = "multiball-parked-stays"
+title = "A parked ball stays parked through multiball"
+description = "A multiball catch leaves a parked ball parked: it neither launches with the pair nor is removed."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/multiball-parked-stays.test.ts", outputs = [ { id = "multiball-parked", name = "Multiball over a parked ball", kind = "replay" } ] }
+[[review.categories.items]]
+id = "shield-appears-on-catch"
+title = "A shield catch raises the shield ring"
+description = "Catching a shield pod raises the shield ring around the planet, drawn at radius 92 and reported as effects.shieldActive true."
+domains = ["gameplay", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "effects/shield-appears-on-catch.test.ts", outputs = [ { id = "shield-catch", name = "Shield catch", kind = "replay" }, { id = "shield-ring", name = "Shield ring", kind = "image" } ] }
+[[review.categories.items]]
+id = "shield-reflects-first-ball"
+title = "The shield reflects the first inward ball"
+description = "While the shield is active, the first ball in spawn order whose center radius moves from prev_r > 100 to new_r <= 100 in a tick is reflected off the shield: the specular radial reflection with orbital decay, at the ball's incoming speed."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "effects/shield-reflects-first-ball.test.ts", outputs = [ { id = "shield-reflect", name = "Shield reflection", kind = "replay" } ] }
+[[review.categories.items]]
+id = "shield-consumed-once"
+title = "One shield reflects one ball"
+description = "The shield disappears on the reflection it makes, so the next ball to cross radius 100 inward passes unimpeded and burns up."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/shield-consumed-once.test.ts", outputs = [ { id = "shield-spent", name = "Shield spent", kind = "replay" } ] }
+[[review.categories.items]]
+id = "shield-catch-noop-while-active"
+title = "A second shield catch changes nothing else"
+description = "Catching a shield pod while a shield is active scores the catch and changes nothing else: the shield stays active and is still consumed by its first reflection."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "effects/shield-catch-noop-while-active.test.ts", outputs = [ { id = "shield-re-catch", name = "Shield re-catch", kind = "replay" } ] }
+
+# --- Lives --------------------------------------------------------------------
+# The life-loss check that runs after the ball phase: when a life is lost and
+# when it is not, what a loss clears, the ball that parks after it, and the end
+# of the session at zero.
+[[review.categories]]
+id = "lives"
+title = "Lives"
+[[review.categories.items]]
+id = "start-at-three"
+title = "A session starts with three lives"
+description = "A fresh session starts lives at 3."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "lives/start-at-three.test.ts", outputs = [ { id = "fresh", name = "A fresh session holding 3 lives", kind = "image" } ] }
+[[review.categories.items]]
+id = "lost-on-last-ball"
+title = "Losing the last ball costs a life"
+description = "After the ball phase, a tick whose burn-ups removed the last live ball lowers lives by exactly 1."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "lives/lost-on-last-ball.test.ts", outputs = [ { id = "burn-up", name = "The last ball burning up for a life", kind = "replay" } ] }
+[[review.categories.items]]
+id = "not-lost-with-balls-left"
+title = "A burn-up with balls left costs nothing"
+description = "A ball burning up while at least one live ball remains — the parked ball included — costs no life."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "lives/not-lost-with-balls-left.test.ts", outputs = [ { id = "parked-remains", name = "A burn-up spared by the parked ball", kind = "replay" }, { id = "flight-remains", name = "A burn-up spared by a ball in flight", kind = "replay" } ] }
+[[review.categories.items]]
+id = "loss-clears-effects-and-shield"
+title = "A life loss ends effects and the shield"
+description = "On a life loss every timed effect ends, the span returns to its 48-degree baseline, and the shield disappears."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "lives/loss-clears-effects-and-shield.test.ts", outputs = [ { id = "loss", name = "A loss ending the effects and the shield", kind = "replay" } ] }
+[[review.categories.items]]
+id = "loss-clears-pods"
+title = "A life loss removes every falling pod"
+description = "On a life loss every falling pod is removed."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "lives/loss-clears-pods.test.ts", outputs = [ { id = "loss", name = "A loss removing the falling pods", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ball-parks-after-loss"
+title = "A ball parks after a loss with lives left"
+description = "A life loss that leaves lives remaining parks a new ball on the deflector, so play can continue."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "lives/ball-parks-after-loss.test.ts", outputs = [ { id = "re-park", name = "A fresh ball parking on the loss tick", kind = "replay" } ] }
+[[review.categories.items]]
+id = "gameover-at-zero"
+title = "Zero lives ends the session"
+description = "A life loss that brings lives to 0 moves the game to the gameover screen."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "lives/gameover-at-zero.test.ts", outputs = [ { id = "game-over", name = "The last life's loss ending the session", kind = "replay" } ] }
+[[review.categories.items]]
+id = "clear-balls-costs-nothing"
+title = "clearBalls never costs a life"
+description = "clearBalls() removes every ball, parked included, with nothing burning up: no life is lost and the field stands without a ball until one is spawned or parked."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "lives/clear-balls-costs-nothing.test.ts", outputs = [ { id = "cleared", name = "The field standing empty after clearBalls", kind = "image" } ] }
+
+# --- Waves --------------------------------------------------------------------
+# The clearing event and what follows it: only a ball-caused destruction
+# triggers it, the switch that holds it, the instant emptying, the 180-tick
+# interstitial, and the refill that applies the next wave's figures. The bonus
+# it awards is scored under Scoring.
+[[review.categories]]
+id = "waves"
+title = "Waves"
+[[review.categories.items]]
+id = "ball-destruction-clears"
+title = "A ball clearing the field is the event"
+description = "A hit from a ball that destroys a target and leaves zero live targets across all three rings is the clearing event, moving the game to the waveclear screen at that instant."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "waves/ball-destruction-clears.test.ts", outputs = [ { id = "clearing", name = "The clearing hit", kind = "replay" } ] }
+[[review.categories.items]]
+id = "clear-targets-never-clears"
+title = "clearTargets is never a clearing"
+description = "A field emptied by clearTargets() is not a clearing: the screen stays in playing and play carries on over the empty field."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "waves/clear-targets-never-clears.test.ts", outputs = [ { id = "empty-field", name = "Play over the emptied field", kind = "replay" } ] }
+[[review.categories.items]]
+id = "wave-advance-switch"
+title = "The waveAdvance switch holds the event"
+description = "With setWaveAdvance(false) a ball-caused destruction that leaves zero live targets does not fire the clearing event: play carries on in playing and destructions keep scoring."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "waves/wave-advance-switch.test.ts", outputs = [ { id = "held-clearing", name = "Destruction with waveAdvance off", kind = "replay" } ] }
+[[review.categories.items]]
+id = "clearing-empties-play"
+title = "The event removes everything in flight"
+description = "At the instant of the clearing event every ball, every pod, every timed effect, and the shield are removed, with no life lost."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "waves/clearing-empties-play.test.ts", outputs = [ { id = "field-emptied", name = "The event empties the field", kind = "replay" } ] }
+[[review.categories.items]]
+id = "interstitial-runs-180"
+title = "The interstitial runs 180 ticks"
+description = "The waveclear interstitial runs for 180 ticks, only its timer advancing, and then hands back to playing."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "waves/interstitial-runs-180.test.ts", outputs = [ { id = "interstitial", name = "The 180-tick interstitial", kind = "replay" } ] }
+[[review.categories.items]]
+id = "rings-refill-full"
+title = "Every slot refills for the new wave"
+description = "When the interstitial ends every slot of every ring refills with a full-hit-point target."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "waves/rings-refill-full.test.ts", outputs = [ { id = "refilled", name = "The refilled rings", kind = "image" } ] }
+[[review.categories.items]]
+id = "ring-angles-reset"
+title = "Ring angles reset to 0 for the new wave"
+description = "When the interstitial ends the ring angles reset to 0."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "waves/ring-angles-reset.test.ts", outputs = [ { id = "reset-angles", name = "Ring angles back at zero", kind = "image" } ] }
+[[review.categories.items]]
+id = "wave-number-increments"
+title = "The wave number rises by one"
+description = "When the interstitial ends the wave number rises by one."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "waves/wave-number-increments.test.ts", outputs = [ { id = "next-wave", name = "The next wave's HUD", kind = "image" } ] }
+[[review.categories.items]]
+id = "new-wave-figures-apply"
+title = "The new wave's figures take effect"
+description = "The new wave's ball speed and orbit speeds apply: at wave 2 a launch serves at 270 units per second (240 + 30 * (w - 1)), ring 2 orbits at 15 degrees per second, and ring 3 at 10."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "waves/new-wave-figures-apply.test.ts", outputs = [ { id = "wave-two-launch", name = "A wave-2 launch", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ball-speed-caps-at-480"
+title = "The wave ball speed caps at 480"
+description = "The wave ball speed 240 + 30 * (w - 1) is capped at 480 units per second, so at wave 9 and every wave beyond a launch serves at 480."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "waves/ball-speed-caps-at-480.test.ts", outputs = [ { id = "capped-launch", name = "Launching at the cap", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ball-parks-on-new-wave"
+title = "A ball parks when the new wave begins"
+description = "When the interstitial ends a ball parks on the deflector, following it until launched."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "waves/ball-parks-on-new-wave.test.ts", outputs = [ { id = "re-parked", name = "The new wave's parked ball", kind = "replay" } ] }
+
+# --- Scoring ------------------------------------------------------------------
+# Every award of specs/scoring.md, one row of the table at a time, plus the
+# rules that decide which row a hit awards. The three redundant catches are
+# their own points because a build is most likely to skip the award when the
+# effect is a no-op.
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "score-starts-at-zero"
+title = "A fresh session starts the score at zero"
+description = "A fresh session starts the score at 0, and it holds there until the first award lands."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "scoring/score-starts-at-zero.test.ts", outputs = [ { id = "held-at-zero", name = "Held at zero", kind = "replay" } ] }
+[[review.categories.items]]
+id = "surviving-hit-scores-50"
+title = "A hit that leaves the target alive scores 50"
+description = "A hit that leaves the target's hit points above zero raises the score by exactly 50, on the tick the hit resolves."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "scoring/surviving-hit-scores-50.test.ts", outputs = [ { id = "hit", name = "Surviving hit", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring1-destroy-scores-100"
+title = "Destroying a ring 1 target scores 100"
+description = "The hit that destroys a ring 1 target raises the score by exactly 100."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "scoring/ring1-destroy-scores-100.test.ts", outputs = [ { id = "destroy", name = "Ring 1 destruction", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring2-destroy-scores-200"
+title = "Destroying a ring 2 target scores 200"
+description = "The hit that destroys a ring 2 target raises the score by exactly 200."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "scoring/ring2-destroy-scores-200.test.ts", outputs = [ { id = "destroy", name = "Ring 2 destruction", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ring3-destroy-scores-300"
+title = "Destroying a ring 3 target scores 300"
+description = "The hit that destroys a ring 3 target raises the score by exactly 300."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "scoring/ring3-destroy-scores-300.test.ts", outputs = [ { id = "destroy", name = "Ring 3 destruction", kind = "replay" } ] }
+[[review.categories.items]]
+id = "destroy-awards-one-row"
+title = "A destroying hit awards the destroy figure alone"
+description = "The hit that destroys a target awards its ring's destroy figure and no 50 for the hit itself, so a hit awards exactly one row of the table."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "scoring/destroy-awards-one-row.test.ts", outputs = [ { id = "first-hit", name = "Surviving first hit", kind = "replay" }, { id = "second-hit", name = "Destroying second hit", kind = "replay" } ] }
+[[review.categories.items]]
+id = "edge-hit-awards-like-face"
+title = "An edge hit awards exactly what a face hit does"
+description = "An edge hit awards like a face hit: 50 while the target survives, its ring's destroy figure when it destroys."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "scoring/edge-hit-awards-like-face.test.ts", outputs = [ { id = "edge-hit", name = "Surviving edge hit", kind = "replay" }, { id = "edge-destroy", name = "Destroying edge hit", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pierce-awards-destroy-only"
+title = "A piercing contact awards the destroy figure alone"
+description = "A piercing ball's target contact destroys outright and awards the ring's destroy figure alone, with no 50, whatever hit points the target held."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "scoring/pierce-awards-destroy-only.test.ts", outputs = [ { id = "pierce", name = "Piercing destruction", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pod-catch-scores-25"
+title = "Catching a salvage pod scores 25"
+description = "A caught salvage pod raises the score by exactly 25 on the catch tick."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "scoring/pod-catch-scores-25.test.ts", outputs = [ { id = "catch", name = "Pod catch", kind = "replay" } ] }
+[[review.categories.items]]
+id = "redundant-shield-catch-scores"
+title = "A shield pod caught under an active shield still scores"
+description = "A shield pod caught while a shield is already active awards the 25 even though it changes nothing else."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "scoring/redundant-shield-catch-scores.test.ts", outputs = [ { id = "catch", name = "Redundant shield catch", kind = "replay" } ] }
+[[review.categories.items]]
+id = "capped-multiball-catch-scores"
+title = "A multiball pod caught at the ball cap still scores"
+description = "A multiball pod caught at the six-ball cap awards the 25 even though nothing launches."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "scoring/capped-multiball-catch-scores.test.ts", outputs = [ { id = "catch", name = "Capped multiball catch", kind = "replay" } ] }
+[[review.categories.items]]
+id = "wave-clear-bonus"
+title = "The clearing event awards 500 times the wave"
+description = "The clearing event on wave w raises the score by exactly 500 * w, so clearing wave 3 awards 1500."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "scoring/wave-clear-bonus.test.ts", outputs = [ { id = "clear-wave-1", name = "Wave 1 clearing", kind = "replay" }, { id = "clear-wave-3", name = "Wave 3 clearing", kind = "replay" } ] }
+[[review.categories.items]]
+id = "clearing-destruction-awards-both"
+title = "The clearing destruction awards its own figure and the bonus"
+description = "The destruction that clears a wave awards its ring's destroy figure and the wave-clear bonus on the same tick."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "scoring/clearing-destruction-awards-both.test.ts", outputs = [ { id = "clear", name = "Clearing destruction", kind = "replay" } ] }
+
+# --- Screens ------------------------------------------------------------------
+# Every transition of specs/screens.md, one key path at a time, the menu rules,
+# and the copy each screen draws. Where two actions share a transition, each
+# path is its own point, so losing one leaves the other's grade standing.
+[[review.categories]]
+id = "screens"
+title = "Screens"
+[[review.categories.items]]
+id = "opens-on-title"
+title = "The game opens on the title screen"
+description = "A freshly loaded game is on the title screen with menu.index at 0."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "screens/opens-on-title.test.ts", outputs = [ { id = "title-boot", name = "The title screen a freshly loaded game opens on", kind = "image" } ] }
+[[review.categories.items]]
+id = "start-begins-session"
+title = "Confirming START begins a fresh session"
+description = "confirm on START sets screen to playing as a fresh session: wave 1, a score of 0, 3 lives, and a ball parked on the deflector."
+domains = ["gameplay"]
+failure_cap = "broken"
+validation = { script = "screens/start-begins-session.test.ts", outputs = [ { id = "fresh-session", name = "The fresh session confirming START opened", kind = "image" } ] }
+[[review.categories.items]]
+id = "howto-reachable"
+title = "How to play is reachable from the title"
+description = "confirm on HOW TO PLAY sets screen to howto."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/howto-reachable.test.ts", outputs = [ { id = "howto-screen", name = "The how-to screen confirm on HOW TO PLAY opened", kind = "image" } ] }
+[[review.categories.items]]
+id = "howto-confirm-returns"
+title = "confirm returns from how to play"
+description = "confirm on the howto screen sets screen to title."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/howto-confirm-returns.test.ts", outputs = [ { id = "title-after-confirm", name = "The title screen confirm returned to from howto", kind = "image" } ] }
+[[review.categories.items]]
+id = "howto-back-returns"
+title = "back returns from how to play"
+description = "back on the howto screen sets screen to title."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/howto-back-returns.test.ts", outputs = [ { id = "title-after-back", name = "The title screen back returned to from howto", kind = "image" } ] }
+[[review.categories.items]]
+id = "pause-via-back"
+title = "back pauses a live session"
+description = "back on the playing screen sets screen to paused, with the field still behind the menu."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-via-back.test.ts", outputs = [ { id = "paused-via-escape", name = "The pause menu Escape raised over the field", kind = "image" } ] }
+[[review.categories.items]]
+id = "pause-via-pause-action"
+title = "pause pauses a live session"
+description = "pause on the playing screen sets screen to paused, so the pause menu is reached with KeyP as well as with Escape."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/pause-via-pause-action.test.ts", outputs = [ { id = "paused-via-key-p", name = "The pause menu KeyP raised over the field", kind = "image" } ] }
+[[review.categories.items]]
+id = "resume-via-confirm"
+title = "Confirming RESUME returns to play"
+description = "confirm on RESUME sets screen back to playing."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "screens/resume-via-confirm.test.ts", outputs = [ { id = "resumed-via-confirm", name = "The playing screen confirm on RESUME returned to", kind = "image" } ] }
+[[review.categories.items]]
+id = "resume-via-back"
+title = "back resumes from the pause menu"
+description = "back on the paused screen does exactly what RESUME does: screen returns to playing."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/resume-via-back.test.ts", outputs = [ { id = "resumed-via-back", name = "The playing screen back resumed to", kind = "image" } ] }
+[[review.categories.items]]
+id = "resume-via-pause-action"
+title = "pause resumes from the pause menu"
+description = "pause on the paused screen does exactly what RESUME does: screen returns to playing."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/resume-via-pause-action.test.ts", outputs = [ { id = "resumed-via-key-p", name = "The playing screen KeyP resumed to", kind = "image" } ] }
+[[review.categories.items]]
+id = "quit-returns-to-title"
+title = "Confirming QUIT returns to the title"
+description = "confirm on QUIT sets screen to title."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/quit-returns-to-title.test.ts", outputs = [ { id = "title-after-quit", name = "The title screen confirm on QUIT returned to", kind = "image" } ] }
+[[review.categories.items]]
+id = "last-life-enters-gameover"
+title = "Spending the last life ends on game over"
+description = "The life loss that spends the last life sets screen to gameover."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "screens/last-life-enters-gameover.test.ts", outputs = [ { id = "last-life-burnup", name = "The burn-up that spends the last life entering game over", kind = "replay" } ] }
+[[review.categories.items]]
+id = "clearing-enters-waveclear"
+title = "The clearing event enters the interstitial"
+description = "The clearing event sets screen to waveclear."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "screens/clearing-enters-waveclear.test.ts", outputs = [ { id = "clearing", name = "The destruction that clears the field entering the interstitial", kind = "replay" } ] }
+[[review.categories.items]]
+id = "waveclear-returns-to-playing"
+title = "The interstitial returns to play by itself"
+description = "The waveclear screen returns screen to playing on its own when its 180-tick timer lapses, with no input pressed."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "screens/waveclear-returns-to-playing.test.ts", outputs = [ { id = "interstitial", name = "The interstitial running out into play", kind = "replay" } ] }
+[[review.categories.items]]
+id = "gameover-confirm-returns"
+title = "confirm leaves the game-over screen"
+description = "confirm on the gameover screen sets screen to title."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/gameover-confirm-returns.test.ts", outputs = [ { id = "title", name = "The title returned to from game over", kind = "image" } ] }
+[[review.categories.items]]
+id = "menu-wraps-at-bottom"
+title = "The menu highlight wraps past the bottom"
+description = "down on the last menu entry wraps menu.index past the end to 0."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/menu-wraps-at-bottom.test.ts", outputs = [ { id = "wrapped", name = "The highlight wrapped past the bottom to the top entry", kind = "image" } ] }
+[[review.categories.items]]
+id = "menu-wraps-at-top"
+title = "The menu highlight wraps past the top"
+description = "up on menu entry 0 wraps menu.index past the end to the last entry."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/menu-wraps-at-top.test.ts", outputs = [ { id = "wrapped", name = "The highlight wrapped past the top to the last entry", kind = "image" } ] }
+[[review.categories.items]]
+id = "menu-index-resets-on-entry"
+title = "Arriving at a menu highlights its first entry"
+description = "Entering a menu-bearing screen sets menu.index to 0, however far the highlight had moved on the last menu."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "screens/menu-index-resets-on-entry.test.ts", outputs = [ { id = "entered", name = "The freshly entered menu with its top entry highlighted", kind = "image" } ] }
+[[review.categories.items]]
+id = "title-copy"
+title = "The title screen draws its copy"
+description = "The title frame draws KESSLER and both menu entries, START and HOW TO PLAY."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/title-copy.test.ts", outputs = [ { id = "title", name = "The title screen's copy", kind = "image" } ] }
+[[review.categories.items]]
+id = "howto-names-keys"
+title = "How to play names the keys"
+description = "The howto frame draws text naming the keys specs/controls.md binds to each action, so a player reads the controls off the screen."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/howto-names-keys.test.ts", outputs = [ { id = "howto", name = "The how-to screen naming the keys", kind = "image" } ] }
+[[review.categories.items]]
+id = "pause-menu-copy"
+title = "The pause screen draws its menu"
+description = "The paused frame draws both menu entries, RESUME and QUIT."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/pause-menu-copy.test.ts", outputs = [ { id = "pause", name = "The pause menu's entries", kind = "image" } ] }
+[[review.categories.items]]
+id = "waveclear-banner"
+title = "The interstitial draws its banner"
+description = "The waveclear frame draws a banner announcing the cleared wave over the field."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "screens/waveclear-banner.test.ts", outputs = [ { id = "banner", name = "The interstitial's banner over the field", kind = "image" } ] }
+[[review.categories.items]]
+id = "gameover-copy"
+title = "The game-over screen draws its copy"
+description = "The gameover frame draws GAME OVER, the final score, and the wave the session reached."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/gameover-copy.test.ts", outputs = [ { id = "gameover", name = "The game-over copy with the score and wave", kind = "image" } ] }
+
+# --- Game States --------------------------------------------------------------
+# The freeze semantics: what a pause holds still, one aspect at a time, what a
+# resume carries forward, what QUIT throws away, and what the screens that
+# advance nothing actually advance.
+[[review.categories]]
+id = "states"
+title = "Game States"
+[[review.categories.items]]
+id = "pause-freezes-balls"
+title = "The balls freeze while paused"
+description = "While paused no ball moves however much time passes: every ball's position and velocity hold exactly as the pausing tick left them."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+validation = { script = "states/pause-freezes-balls.test.ts", outputs = [ { id = "frozen-balls", name = "Balls frozen through a pause", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pause-freezes-orbits"
+title = "The ring orbits freeze while paused"
+description = "While paused the ring angles hold however much time passes."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "states/pause-freezes-orbits.test.ts", outputs = [ { id = "frozen-orbits", name = "Ring orbits frozen through a pause", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pause-freezes-effect-timers"
+title = "The effect timers freeze while paused"
+description = "While paused a running effect timer does not fall, so an effect caught before the pause is still in force on resume however long the pause lasted."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "states/pause-freezes-effect-timers.test.ts", outputs = [ { id = "frozen-timers", name = "Effect timers frozen through a pause", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pause-freezes-pods"
+title = "The falling pods freeze while paused"
+description = "While paused a falling pod holds its position however much time passes."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "states/pause-freezes-pods.test.ts", outputs = [ { id = "frozen-pods", name = "A falling pod frozen through a pause", kind = "replay" } ] }
+[[review.categories.items]]
+id = "resume-intact"
+title = "Resuming carries the session on intact"
+description = "Resuming returns to playing with the session exactly as it stood at the pause: the score, lives, wave, deflector, every ball, every pod, and every effect timer unchanged."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "states/resume-intact.test.ts", outputs = [ { id = "resume", name = "The session carried through RESUME", kind = "replay" } ] }
+[[review.categories.items]]
+id = "quit-discards-session"
+title = "Quitting discards the session"
+description = "After confirm on QUIT, confirming START opens a fresh session at wave 1 with a score of 0 and 3 lives rather than resuming the discarded one."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "states/quit-discards-session.test.ts", outputs = [ { id = "quit-restart", name = "QUIT, then a fresh session from START", kind = "replay" } ] }
+[[review.categories.items]]
+id = "waveclear-reads-no-input"
+title = "The interstitial reads no input"
+description = "During the waveclear interstitial no input is read: rotation held through it leaves the deflector's center angle where the clearing event found it."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "states/waveclear-reads-no-input.test.ts", outputs = [ { id = "held-through-interstitial", name = "Rotation held through the interstitial", kind = "replay" } ] }
+[[review.categories.items]]
+id = "nothing-advances-on-title"
+title = "Nothing advances on the title screen"
+description = "On the title screen no part of the simulation advances however much time passes: every snapshot field other than the tick counter — the deflector, the rings and their angles, the balls, the pods, the effect timers, the shield, the score and lives — holds its value, while ticks keeps counting as specs/instrumentation.md fixes for every screen."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "states/nothing-advances-on-title.test.ts", outputs = [ { id = "title-held", name = "The title screen over passing time", kind = "replay" } ] }
+[[review.categories.items]]
+id = "nothing-advances-on-gameover"
+title = "Nothing advances on the game-over screen"
+description = "On the gameover screen no part of the simulation advances however much time passes: the field it was entered over and every snapshot field other than the tick counter — the deflector, the rings and their angles, the balls, the pods, the effect timers, the shield, the score and lives — hold their values, while ticks keeps counting as specs/instrumentation.md fixes for every screen."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "states/nothing-advances-on-gameover.test.ts", outputs = [ { id = "gameover-held", name = "The game-over screen over passing time", kind = "replay" } ] }
+
+# --- HUD ----------------------------------------------------------------------
+# The readouts specs/screens.md fixes over the playing screen, read from what
+# the build itself painted. Where each sits and how it looks is the build's,
+# rated through the domains.
+[[review.categories]]
+id = "hud"
+title = "HUD"
+[[review.categories.items]]
+id = "score-drawn"
+title = "The score is drawn"
+description = "After a score is posed, a frame of the playing screen draws that figure in digits."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "hud/score-drawn.test.ts", outputs = [ { id = "score", name = "The posed score drawn", kind = "image" } ] }
+[[review.categories.items]]
+id = "score-shows-award-tick"
+title = "The score readout lands with the award"
+description = "The score readout shows the new value on the tick an award resolves rather than counting up toward it."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "hud/score-shows-award-tick.test.ts", outputs = [ { id = "award", name = "The score readout landing with the award", kind = "replay" } ] }
+[[review.categories.items]]
+id = "lives-drawn"
+title = "The lives are drawn"
+description = "After lives are posed, a frame of the playing screen draws the lives remaining."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "hud/lives-drawn.test.ts", outputs = [ { id = "lives", name = "The posed lives drawn", kind = "image" } ] }
+[[review.categories.items]]
+id = "wave-drawn"
+title = "The wave is drawn"
+description = "After the wave is posed, a frame of the playing screen draws the number of the wave in play."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "hud/wave-drawn.test.ts", outputs = [ { id = "wave", name = "The posed wave drawn", kind = "image" } ] }
+[[review.categories.items]]
+id = "effects-indicated"
+title = "An active timed effect is indicated"
+description = "While a timed effect is in force the HUD indicates it, so a player reads what the deflector currently carries."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "hud/effects-indicated.test.ts", outputs = [ { id = "effect", name = "The pierce indicator shown", kind = "image" } ] }
+[[review.categories.items]]
+id = "shield-indicated"
+title = "An active shield is indicated"
+description = "While a shield is active the HUD indicates it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "hud/shield-indicated.test.ts", outputs = [ { id = "shield", name = "The shield indicator shown", kind = "image" } ] }
+[[review.categories.items]]
+id = "hud-clear-of-field"
+title = "The HUD stays clear of the field"
+description = "Every HUD readout is drawn near the top of the stage and clear of the containment field, so nothing the HUD draws crosses the field of play."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "hud/hud-clear-of-field.test.ts", outputs = [ { id = "hud", name = "The full HUD over the field", kind = "image" } ] }
+
+# --- Visibility ---------------------------------------------------------------
+# Whether a player reads the field off the screen: each element the playing
+# screen shows stands apart from what lies behind it, and the states the specs
+# call visibly distinct are. Nothing here judges the look; that is the
+# presentation domain's rating.
+[[review.categories]]
+id = "visibility"
+title = "Visibility"
+[[review.categories.items]]
+id = "deflector-apart-from-field"
+title = "The deflector stands apart from the field"
+description = "The deflector, drawn on its track between radii 170 and 186, stands apart from the field behind it, so its position is read at a glance."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "visibility/deflector-apart-from-field.test.ts", outputs = [ { id = "scene", name = "The empty posed field the deflector was sampled against", kind = "image" } ] }
+[[review.categories.items]]
+id = "ball-separates-from-field"
+title = "The ball separates from the field anywhere"
+description = "A ball stands apart from what lies behind it at any position on the stage: over open field, over a ring, and near the planet alike."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "visibility/ball-separates-from-field.test.ts", outputs = [ { id = "open-field", name = "The ball posed over open field", kind = "image" }, { id = "over-ring", name = "The ball posed over a live ring target", kind = "image" }, { id = "near-planet", name = "The ball posed near the planet", kind = "image" } ] }
+[[review.categories.items]]
+id = "targets-apart-from-field"
+title = "A live target stands apart from the field"
+description = "A live target's arc stands apart from the open field around its ring, so the derelicts to sweep are read off the screen."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "visibility/targets-apart-from-field.test.ts", outputs = [ { id = "scene", name = "The lone live target sampled against its empty ring", kind = "image" } ] }
+[[review.categories.items]]
+id = "damaged-target-distinct"
+title = "A damaged ring 2 target reads as damaged"
+description = "A ring 2 target that has taken a hit is drawn visibly distinct from an undamaged one, so a player reads its state at a glance."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "visibility/damaged-target-distinct.test.ts", outputs = [ { id = "undamaged", name = "The ring 2 target at full hit points", kind = "image" }, { id = "damaged", name = "The same slot's target after a hit", kind = "image" } ] }
+[[review.categories.items]]
+id = "pods-told-apart-in-flight"
+title = "The five pod kinds are told apart in flight"
+description = "The five pod kinds are pairwise distinguishable on falling pods at their 24-pixel size, without reading a label, so a player decides whether to catch one from its look alone."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "visibility/pods-told-apart-in-flight.test.ts", outputs = [ { id = "pod-widen", name = "The falling widen pod at the sampled spot", kind = "image" }, { id = "pod-multiball", name = "The falling multiball pod at the sampled spot", kind = "image" }, { id = "pod-shield", name = "The falling shield pod at the sampled spot", kind = "image" }, { id = "pod-pierce", name = "The falling pierce pod at the sampled spot", kind = "image" }, { id = "pod-narrow", name = "The falling narrow pod at the sampled spot", kind = "image" } ] }
+[[review.categories.items]]
+id = "containment-extent-reads"
+title = "The containment field's extent reads"
+description = "The containment field's circle of radius 480 is drawn so its extent reads at a glance against the field."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/containment-extent-reads.test.ts", outputs = [ { id = "scene", name = "The empty field the containment circle was sampled on", kind = "image" } ] }
+[[review.categories.items]]
+id = "shield-drawn-while-active"
+title = "An active shield ring is drawn"
+description = "While a shield is active the shield ring is drawn at radius 92 around the planet."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/shield-drawn-while-active.test.ts", outputs = [ { id = "shield-active", name = "The field with the shield raised", kind = "image" } ] }
+[[review.categories.items]]
+id = "shield-absent-while-inactive"
+title = "No shield ring is drawn without a shield"
+description = "With no shield active no shield ring is drawn, so a player never reads protection that is not there."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/shield-absent-while-inactive.test.ts", outputs = [ { id = "shield-inactive", name = "The field with no shield active", kind = "image" } ] }
+[[review.categories.items]]
+id = "parked-ball-drawn"
+title = "A parked ball is drawn like any other"
+description = "A parked ball is drawn like any other ball, sitting at radius 194 at the deflector's center angle."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/parked-ball-drawn.test.ts", outputs = [ { id = "scene", name = "The parked ball at the serve point beside a free ball", kind = "image" } ] }
+[[review.categories.items]]
+id = "screen-text-legible"
+title = "Every piece of screen text is legible"
+description = "Every piece of text a screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "visibility/screen-text-legible.test.ts", outputs = [ { id = "title", name = "The title screen whose text was read", kind = "image" }, { id = "howto", name = "The howto screen whose text was read", kind = "image" }, { id = "playing", name = "The playing screen whose HUD text was read", kind = "image" }, { id = "waveclear", name = "The waveclear banner whose text was read", kind = "image" }, { id = "paused", name = "The pause menu whose text was read", kind = "image" }, { id = "gameover", name = "The gameover screen whose text was read", kind = "image" } ] }
+
+# --- Presentation -------------------------------------------------------------
+# Whether the build draws what it produced: the stage fit, the sprites painted
+# at native size from image draws, the ball's spin on simulation time, and each
+# particle system playing at its event. How the art looks is the presentation
+# domain's aesthetic rating, not a point here.
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "stage-fits-window"
+title = "Window fit"
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the complete 1000 x 1000 stage is on screen with its aspect ratio preserved, filling the window's short side with even letterboxing."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/stage-fits-window.test.ts", outputs = [ { id = "fit", name = "Stage fit", kind = "image" } ] }
+[[review.categories.items]]
+id = "letterbox-matches-background"
+title = "The letterbox bars match the stage"
+description = "The letterbox bars around the stage carry the stage's background color."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "presentation/letterbox-matches-background.test.ts", outputs = [ { id = "bars", name = "Letterbox bars", kind = "image" } ] }
+[[review.categories.items]]
+id = "planet-drawn-from-sprite"
+title = "The planet is drawn from its sprite"
+description = "A frame of the playing screen paints the planet from the produced planet sprite with an image draw centered on the stage center, rather than a disc drawn in code."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/planet-drawn-from-sprite.test.ts", outputs = [ { id = "planet", name = "Planet sprite", kind = "image" } ] }
+[[review.categories.items]]
+id = "pods-drawn-from-sprites"
+title = "A falling pod is drawn from its kind's sprite"
+description = "A falling pod is painted from its kind's produced sprite with an image draw, so each kind shows its own image in flight."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/pods-drawn-from-sprites.test.ts", outputs = [ { id = "pods", name = "Pod sprites", kind = "image" } ] }
+[[review.categories.items]]
+id = "ball-drawn-from-sheet"
+title = "Every ball is drawn from the ball sheet"
+description = "Every ball, the parked ball included, is painted from the produced ball sheet with an image draw rather than a shape drawn in code."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/ball-drawn-from-sheet.test.ts", outputs = [ { id = "balls", name = "Ball sheet frames", kind = "image" } ] }
+[[review.categories.items]]
+id = "sprites-drawn-at-native-size"
+title = "Sprites are drawn at native size"
+description = "Each sprite is drawn at its authored canvas size in logical units, centered on its object, so nothing is scaled at draw time: the planet covers 160 units and a pod and a ball frame cover 24."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/sprites-drawn-at-native-size.test.ts", outputs = [ { id = "native", name = "Native-size sprites", kind = "image" } ] }
+[[review.categories.items]]
+id = "ball-frames-cycle-on-sim-time"
+title = "The ball's frames cycle on simulation time"
+description = "A ball's frames play 0 through 5 in order and wrap, advancing one frame per 5 ticks of simulation time."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/ball-frames-cycle-on-sim-time.test.ts", outputs = [ { id = "cycle", name = "Spin cycle", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ball-phase-from-spawn-tick"
+title = "Each ball spins from its own spawn tick"
+description = "Each ball's frame phase is counted from its own spawn tick, so two balls spawned on different ticks spin out of step."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "presentation/ball-phase-from-spawn-tick.test.ts", outputs = [ { id = "out-of-step", name = "Out-of-step spins", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ball-spin-holds-while-paused"
+title = "The spin holds its frame while paused"
+description = "The ball sprite's animation runs on simulation time, so a ball keeps the frame the pause caught it on however much real time passes behind the pause menu."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "presentation/ball-spin-holds-while-paused.test.ts", outputs = [ { id = "paused-spin", name = "Spin held while paused", kind = "replay" } ] }
+[[review.categories.items]]
+id = "burst-at-destruction"
+title = "The burst plays at a destruction"
+description = "The destruction burst system plays at the destroyed target's arc center, as the ring stood posed on the destruction tick."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/burst-at-destruction.test.ts", outputs = [ { id = "burst", name = "Destruction burst", kind = "replay" } ] }
+[[review.categories.items]]
+id = "spark-at-reflections"
+title = "The spark plays at a reflection"
+description = "The impact spark system plays at the contact point of a deflector bounce, a containment reflection, and a shield reflection."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/spark-at-reflections.test.ts", outputs = [ { id = "spark-paddle", name = "Deflector spark", kind = "replay" }, { id = "spark-field", name = "Containment spark", kind = "replay" }, { id = "spark-shield", name = "Shield spark", kind = "replay" } ] }
+[[review.categories.items]]
+id = "burnup-at-burn-up"
+title = "The burn-up plays at a burn-up"
+description = "The burn-up system plays at a ball, and at a pod, whose center radius reaches 78 against the planet."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/burnup-at-burn-up.test.ts", outputs = [ { id = "burnup-ball", name = "Ball burn-up", kind = "replay" }, { id = "burnup-pod", name = "Pod burn-up", kind = "replay" } ] }
+
+# --- Audio --------------------------------------------------------------------
+# Each cue confirmed to be asked for on the tick its event resolves, and each
+# bed on the screens it loops under. What the sounds sound like is rated
+# through the presentation domain; the produced files themselves are measured
+# under assets.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "paddle-bounce-cue"
+title = "The paddle-bounce cue plays on the bounce"
+description = "The paddle-bounce cue is played exactly once on the tick a deflector bounce resolves, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/paddle-bounce-cue.test.ts", outputs = [ { id = "bounce", name = "The cued deflector bounce", kind = "replay" } ] }
+[[review.categories.items]]
+id = "field-bounce-cue"
+title = "The field-bounce cue plays on the containment"
+description = "The field-bounce cue is played exactly once on the tick a ball reflects off the containment field, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/field-bounce-cue.test.ts", outputs = [ { id = "reflect", name = "The cued containment reflection", kind = "replay" } ] }
+[[review.categories.items]]
+id = "target-hit-cue"
+title = "The target-hit cue plays on a surviving hit"
+description = "The target-hit cue is played exactly once on the tick a hit leaves a target's hit points above zero, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/target-hit-cue.test.ts", outputs = [ { id = "hit", name = "The cued surviving hit", kind = "replay" } ] }
+[[review.categories.items]]
+id = "target-break-cue"
+title = "The target-break cue plays on a destruction"
+description = "The target-break cue is played exactly once on the tick a target is destroyed, a pierce destruction included."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/target-break-cue.test.ts", outputs = [ { id = "break", name = "The cued destruction", kind = "replay" }, { id = "pierce-break", name = "The cued pierce destruction", kind = "replay" } ] }
+[[review.categories.items]]
+id = "one-cue-per-hit"
+title = "A hit plays exactly one of the two cues"
+description = "A hit plays exactly one of target-hit and target-break: the destroying hit plays target-break alone, never both."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/one-cue-per-hit.test.ts", outputs = [ { id = "destroying-hit", name = "The destroying hit's one cue", kind = "replay" } ] }
+[[review.categories.items]]
+id = "shield-reflect-cue"
+title = "The shield-reflect cue plays on the shield"
+description = "The shield-reflect cue is played exactly once on the tick the shield reflects a ball, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/shield-reflect-cue.test.ts", outputs = [ { id = "reflect", name = "The cued shield reflection", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pod-catch-cue"
+title = "The pod-catch cue plays on a catch"
+description = "The pod-catch cue is played exactly once on the tick a widen, multiball, shield, or pierce pod is caught."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/pod-catch-cue.test.ts", outputs = [ { id = "catches", name = "The four cued catches", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pod-catch-narrow-cue"
+title = "A narrow catch plays its own cue"
+description = "Catching a narrow pod plays pod-catch-narrow rather than pod-catch, so a bad catch is heard as bad news."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/pod-catch-narrow-cue.test.ts", outputs = [ { id = "narrow-catch", name = "The cued narrow catch", kind = "replay" } ] }
+[[review.categories.items]]
+id = "pod-burn-cue"
+title = "The pod-burn cue plays on a pod burn-up"
+description = "The pod-burn cue is played exactly once on the tick a pod burns up against the planet, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/pod-burn-cue.test.ts", outputs = [ { id = "burn", name = "The cued pod burn-up", kind = "replay" } ] }
+[[review.categories.items]]
+id = "ball-lost-cue"
+title = "The ball-lost cue plays on a ball burn-up"
+description = "The ball-lost cue is played exactly once on the tick a ball burns up against the planet, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/ball-lost-cue.test.ts", outputs = [ { id = "burnup", name = "The ball-lost cue on the burn-up tick", kind = "replay" } ] }
+[[review.categories.items]]
+id = "wave-clear-cue"
+title = "The wave-clear cue plays on the clearing event"
+description = "The wave-clear cue is played exactly once on the tick the clearing event resolves, and on no tick before it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/wave-clear-cue.test.ts", outputs = [ { id = "clearing", name = "The wave-clear cue on the clearing tick", kind = "replay" } ] }
+[[review.categories.items]]
+id = "game-over-cue"
+title = "The game-over cue plays on entering game over"
+description = "The game-over cue is played exactly once on entering the gameover screen, and not before."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/game-over-cue.test.ts", outputs = [ { id = "last-life", name = "The game-over cue on entering game over", kind = "replay" } ] }
+[[review.categories.items]]
+id = "menu-move-cue"
+title = "The menu-move cue plays on a highlight move"
+description = "Each move of the menu highlight plays the menu-move cue exactly once."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/menu-move-cue.test.ts", outputs = [ { id = "moves", name = "Two highlight moves, one cue each", kind = "replay" } ] }
+[[review.categories.items]]
+id = "menu-select-cue"
+title = "The menu-select cue plays on a confirm"
+description = "confirm accepting a menu entry plays the menu-select cue exactly once."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/menu-select-cue.test.ts", outputs = [ { id = "confirmed", name = "The accepted confirm", kind = "image" } ] }
+[[review.categories.items]]
+id = "title-bed-on-title-and-howto"
+title = "The title bed loops under title and how to play"
+description = "The music-title bed loops on the title and howto screens."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/title-bed-on-title-and-howto.test.ts", outputs = [ { id = "title", name = "The title screen under the title bed", kind = "image" }, { id = "howto", name = "The how-to screen under the title bed", kind = "image" } ] }
+[[review.categories.items]]
+id = "play-bed-on-play-screens"
+title = "The play bed loops under play"
+description = "The music-play bed loops on the playing, waveclear, and paused screens."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/play-bed-on-play-screens.test.ts", outputs = [ { id = "playing", name = "The live field under the play bed", kind = "image" }, { id = "paused", name = "The pause menu under the play bed", kind = "image" }, { id = "waveclear", name = "The interstitial under the play bed", kind = "image" } ] }
+[[review.categories.items]]
+id = "no-bed-on-gameover"
+title = "No bed runs under game over"
+description = "The gameover screen runs no bed, so the game-over cue rings out over silence."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/no-bed-on-gameover.test.ts", outputs = [ { id = "gameover", name = "The game-over screen over silence", kind = "image" } ] }
+[[review.categories.items]]
+id = "quit-swaps-beds"
+title = "Quitting swaps the beds"
+description = "confirm on QUIT stops the play bed, and the title bed resumes on the title screen."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/quit-swaps-beds.test.ts", outputs = [ { id = "quit", name = "QUIT confirmed, the beds swapped", kind = "replay" } ] }
+
+# --- Produced Assets ----------------------------------------------------------
+# The production contract of specs/assets.md, row by row: the files exist on
+# the built workspace at their named paths, measure what the contract fixes,
+# and are consumed the way it wires them in. How the art and sound come across
+# is the presentation domain's rating.
+[[review.categories]]
+id = "assets"
+title = "Produced Assets"
+[[review.categories.items]]
+id = "planet-sprite-produced"
+title = "The planet sprite is produced"
+description = "assets/sprites/planet.png exists, is 160 x 160, and carries non-transparent paint across the 140-pixel disc footprint."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "assets/planet-sprite-produced.test.ts", outputs = [ { id = "sprite", name = "The produced planet sprite", kind = "image" } ] }
+[[review.categories.items]]
+id = "pod-sprites-produced"
+title = "The five pod sprites are produced"
+description = "assets/sprites/pods/widen.png, narrow.png, multiball.png, shield.png, and pierce.png all exist, are each 24 x 24, and each carries non-transparent paint."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "assets/pod-sprites-produced.test.ts", outputs = [ { id = "sprites", name = "The five produced pod sprites", kind = "image" } ] }
+[[review.categories.items]]
+id = "pod-sprites-distinct"
+title = "The five pod sprites differ from one another"
+description = "No two of the five pod sprites are the same image: each pair differs on a measurable share of its pixels, so one sprite has not been shipped five times."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/pod-sprites-distinct.test.ts", outputs = [ { id = "sprites", name = "The five pod sprites side by side", kind = "image" } ] }
+[[review.categories.items]]
+id = "ball-frames-produced"
+title = "The ball sheet ships six frames"
+description = "assets/sprites/ball/0.png through 5.png all exist as separate files, are each 24 x 24, and each carries non-transparent paint."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "assets/ball-frames-produced.test.ts", outputs = [ { id = "sheet", name = "The six produced ball frames", kind = "image" } ] }
+[[review.categories.items]]
+id = "ball-frames-distinct"
+title = "The six ball frames differ from one another"
+description = "No two of the six ball frames are the same image: each pair differs on a measurable share of its pixels, so the sheet is a spin rather than one frame repeated."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/ball-frames-distinct.test.ts", outputs = [ { id = "sheet", name = "The six ball frames side by side", kind = "image" } ] }
+[[review.categories.items]]
+id = "burst-system-produced"
+title = "The destruction burst system is produced"
+description = "assets/particles/burst.json exists and parses as a particle system @test-cabinet/particle-runtime accepts."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/burst-system-produced.test.ts", outputs = [ { id = "system", name = "The burst system simulated by the runtime", kind = "image" } ] }
+[[review.categories.items]]
+id = "spark-system-produced"
+title = "The impact spark system is produced"
+description = "assets/particles/spark.json exists and parses as a particle system @test-cabinet/particle-runtime accepts."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/spark-system-produced.test.ts", outputs = [ { id = "system", name = "The spark system simulated by the runtime", kind = "image" } ] }
+[[review.categories.items]]
+id = "burnup-system-produced"
+title = "The burn-up system is produced"
+description = "assets/particles/burnup.json exists and parses as a particle system @test-cabinet/particle-runtime accepts."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/burnup-system-produced.test.ts", outputs = [ { id = "system", name = "The burn-up system simulated by the runtime", kind = "image" } ] }
+[[review.categories.items]]
+id = "cue-files-produced"
+title = "All thirteen cues ship produced sounds"
+description = "All thirteen cue files exist under assets/audio/ at exactly their cue names, and each decodes as a WAV of non-zero length carrying audible signal rather than silence."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "assets/cue-files-produced.test.ts", outputs = [ { id = "cues", name = "The thirteen cue files as read", kind = "image" } ] }
+[[review.categories.items]]
+id = "beds-produced"
+title = "Both music beds ship produced tracks"
+description = "assets/audio/music-title.wav and assets/audio/music-play.wav both exist, decode as WAVs, and carry audible signal rather than silence."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "assets/beds-produced.test.ts", outputs = [ { id = "title-bed", name = "The produced title bed's waveform", kind = "image" }, { id = "play-bed", name = "The produced play bed's waveform", kind = "image" } ] }
+[[review.categories.items]]
+id = "beds-at-least-12s"
+title = "Each bed runs at least twelve seconds"
+description = "Each of the two beds runs at least 12 seconds."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/beds-at-least-12s.test.ts", outputs = [ { id = "title-length", name = "The title bed against the 12 s floor", kind = "image" }, { id = "play-length", name = "The play bed against the 12 s floor", kind = "image" } ] }
+[[review.categories.items]]
+id = "beds-loop-seamlessly"
+title = "Each bed loops without an audible seam"
+description = "Each bed's end runs into its start with no click, no gap, and no jump in level, so the loop carries no audible seam."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/beds-loop-seamlessly.test.ts", outputs = [ { id = "title-seam", name = "The title bed's loop junction", kind = "image" }, { id = "play-seam", name = "The play bed's loop junction", kind = "image" } ] }
+[[review.categories.items]]
+id = "sprites-on-transparent-ground"
+title = "The sprites are authored on transparency"
+description = "Each produced sprite is authored on a transparent, straight-alpha canvas, so none of them relies on a background behind it."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "assets/sprites-on-transparent-ground.test.ts", outputs = [ { id = "checkerboard", name = "Every sprite over a checkerboard", kind = "image" } ] }
+[[review.categories.items]]
+id = "particles-played-through-runtime"
+title = "The particle systems play through the runtime"
+description = "The build plays its particle systems through @test-cabinet/particle-runtime's ./canvas binding, imported by its bare name, rather than through a simulator of its own."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "assets/particles-played-through-runtime.test.ts", outputs = [ { id = "burst", name = "A burst composited by the runtime", kind = "replay" } ] }
+[[review.categories.items]]
+id = "build-self-contained"
+title = "The build invokes no asset tool"
+description = "npm ci followed by npm run build completes without invoking a generation tool, and the built dist/ fetches nothing from outside itself."
+domains = ["gameplay", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "assets/build-self-contained.test.ts", outputs = [ { id = "built-game", name = "The committed build running", kind = "image" } ] }
+[[review.categories.items]]
+id = "asset-urls-page-relative"
+title = "Asset URLs resolve against the page"
+description = "Every URL the build emits or constructs at runtime resolves against the page rather than the origin root, so the built site runs unchanged mounted under a sub-path."
+domains = ["gameplay", "presentation"]
+failure_cap = "passable"
+validation = { script = "assets/asset-urls-page-relative.test.ts", outputs = [ { id = "resolved", name = "The game with every URL resolved", kind = "image" } ] }
+[[review.categories.items]]
+id = "missing-asset-leaves-game-running"
+title = "A missing file costs polish, not playability"
+description = "With a produced file unavailable at load, the game still initializes, still ticks, still takes input, and still draws a legible field."
+domains = ["gameplay", "presentation"]
+failure_cap = "passable"
+validation = { script = "assets/missing-asset-leaves-game-running.test.ts", outputs = [ { id = "degraded", name = "The game running without its planet sprite", kind = "image" } ] }

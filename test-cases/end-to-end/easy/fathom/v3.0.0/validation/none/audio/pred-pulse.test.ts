@@ -41,7 +41,12 @@ import {
   startPlaying,
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
-import { soundsBeforeEvent, soundsOnEvent, watchForEvent } from "./cues";
+import {
+  LEAD_POLL,
+  soundsBeforeEvent,
+  soundsOnEvent,
+  watchForEvent,
+} from "./cues";
 
 /**
  * How far the hunter's sealed ring sits from the forager's room, in tiles.
@@ -67,7 +72,16 @@ const TAIL_TICKS = ticksFor(1);
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // ARMED, because this check reads what the build SOUNDED: an engineless build
+  // owns its own audio layer and is entitled to open it on the player's first
+  // interaction alone (`specs/progression.md`), so a cue driven before one would
+  // leave a perfectly good build silent. The harness makes that interaction — a
+  // real press of the key this case arms with, which is bound to nothing — before
+  // its opening `reset`, so it is spent and behind the restore by the time the
+  // check is handed the game, while the user activation it bought is not state
+  // and no reset undoes it. Asked for here rather than handed to every harness,
+  // so a fault in the gesture can only reach the points that are about sound.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -75,10 +89,6 @@ afterEach(async () => {
 });
 
 it("sounds on the tick a Gloamfin casts its own ping, and not before", async () => {
-  // A real, browser-trusted gesture first: an engineless build owns its own audio
-  // layer and is entitled to open it on the player's first interaction alone
-  // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
-  await h.armAudio();
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES);
   // The ping is cast by its mind on its own cadence, so its mind runs and its
@@ -95,6 +105,14 @@ it("sounds on the tick a Gloamfin casts its own ping, and not before", async () 
       h,
       (s) => s.pulses.some((pulse) => pulse.source === "gloamfin"),
       PING_TICKS,
+      // The ping is its mind's own timer running down and nothing in
+      // `specs/state.md` reports how far along it is, so there is no state to
+      // hand the fine watch over at — the whole wait runs at the lead's grain.
+      // `validation/audio/cues.ts` states what that reads and what it does not:
+      // a step that sounded before the ping is still a violation and a ping that
+      // arrived in silence is still a violation, and what is given up is telling
+      // a cue on the ping's own tick from one a fifteenth of a second beside it.
+      { lead: { poll: LEAD_POLL } },
     );
     // Past the reading, so the clip shows the ping crossing its ring. Nothing
     // after this line can reach an assertion.
@@ -113,9 +131,10 @@ it("sounds on the tick a Gloamfin casts its own ping, and not before", async () 
   assertEqual(
     soundsBeforeEvent(watch),
     0,
-    `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
-      "ping, on a board where nothing else is happening — a cue is played on the " +
-      "tick its event happens (specs/progression.md)",
+    `sounds the build emitted over every step before the one the ping entered ` +
+      `flight on, which is the first ${String(watch.at - 1)} ticks of the watch, ` +
+      "on a board where nothing else is happening — a cue is played on the tick " +
+      "its event happens (specs/progression.md)",
   );
   assertGreaterThanOrEqual(
     soundsOnEvent(watch),

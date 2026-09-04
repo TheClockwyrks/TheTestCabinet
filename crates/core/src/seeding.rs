@@ -1026,11 +1026,23 @@ fn seed_audio_tool(
         "preview": preview,
         "wav": crate::test_case::AUDIO_CLIP_WAV_DEST,
     });
-    if let Some(pack) = &audio.sample_pack {
-        config["sample_pack"] = serde_json::json!(pack);
-    }
-    if let Some(bank) = &audio.instrument_bank {
-        config["instrument_bank"] = serde_json::json!(bank);
+    // The seeded config pins the pack the binary must load, under the key that
+    // binary reads. A case's declaration lives in one ordered list for every test
+    // type (`audio_packs`), so the pin is its first entry routed by the asset kind:
+    // `sfx-sample` plays a sample pack, `music` an instrument bank, and `sfx-synth`
+    // neither. The pin is what `check_identity` holds the loaded pack against, so a
+    // staged pack that is not the declared one fails at load rather than rendering
+    // the wrong sound.
+    if let Some(pack) = test_case.audio_packs.first() {
+        match test_case.asset_kind {
+            crate::test_case::AssetKind::SfxSample => {
+                config["sample_pack"] = serde_json::json!(pack);
+            }
+            crate::test_case::AssetKind::Music => {
+                config["instrument_bank"] = serde_json::json!(pack);
+            }
+            _ => {}
+        }
     }
     if test_case.asset_kind.emits_midi() {
         config["mid"] = serde_json::json!(crate::test_case::AUDIO_CLIP_MID_DEST);
@@ -1353,6 +1365,21 @@ pub(crate) fn package_store_dir() -> PathBuf {
     std::env::var_os("TCAB_PACKAGE_STORE")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(crate::test_case::TCAB_PACKAGES_DIR))
+}
+
+/// The host audio store a run's declared packs are staged out of: the
+/// `TCAB_AUDIO_STORE` override when set, otherwise the baked-image default
+/// ([`TCAB_AUDIO_STORE_DIR`](crate::test_case::TCAB_AUDIO_STORE_DIR)).
+///
+/// The same override shape as [`package_store_dir`], and for the same reason: the
+/// driver image bakes one store, and a local checkout points at a fetched one
+/// (`scripts/fetch-audio-store.sh`) rather than needing a credential of its own.
+/// Unlike the package store, nothing here is vendored into the run repository —
+/// [`crate::audio_stage`] materializes it in the container, outside the workspace.
+pub(crate) fn audio_store_dir() -> PathBuf {
+    std::env::var_os("TCAB_AUDIO_STORE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(crate::test_case::TCAB_AUDIO_STORE_DIR))
 }
 
 /// The `@test-cabinet/*` dependency names declared in a staged package's

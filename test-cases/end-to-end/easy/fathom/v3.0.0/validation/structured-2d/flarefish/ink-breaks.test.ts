@@ -54,7 +54,7 @@ import {
   LANTERN_RANGE_GAIN,
   LINGER_TIME,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { poseInkStandoff, spawnPredator } from "../fixtures";
 import {
   captureReplay,

@@ -3,46 +3,44 @@
 
 import { describe, expect, it } from "vitest";
 import { TRAIL_TIME } from "./constants";
-import { createInitialState } from "./game";
+import { createBall } from "./entities";
 import { pruneTrail, recordTrail, ribbon } from "./trail";
 import type { TrailSample } from "./game";
 
 describe("recordTrail", () => {
   it("appends the ball's position, oldest first", () => {
-    const state = createInitialState();
-    state.ball.x = 100;
-    state.ball.y = 200;
-    state.simTime = 1;
-    recordTrail(state);
-    state.ball.x = 110;
-    state.simTime = 1 + TRAIL_TIME / 2;
-    recordTrail(state);
+    const ball = createBall();
+    ball.x = 100;
+    ball.y = 200;
+    recordTrail(ball, 1);
+    ball.x = 110;
+    recordTrail(ball, 1 + TRAIL_TIME / 2);
 
-    expect(state.trail).toHaveLength(2);
-    expect(state.trail[0]).toEqual({ x: 100, y: 200, t: 1 });
-    expect(state.trail[1].x).toBe(110);
+    expect(ball.trail).toHaveLength(2);
+    expect(ball.trail[0]).toEqual({ x: 100, y: 200, t: 1 });
+    expect(ball.trail[1].x).toBe(110);
   });
 
   it("drops samples older than the trail window", () => {
-    const state = createInitialState();
+    const ball = createBall();
+    let now = 0;
     for (let i = 0; i < 200; i++) {
-      state.simTime = i * (1 / 60);
-      state.ball.x = i;
-      recordTrail(state);
+      now = i * (1 / 60);
+      ball.x = i;
+      recordTrail(ball, now);
     }
-    expect(state.trail.length).toBeGreaterThan(1);
-    for (const sample of state.trail) {
-      expect(state.simTime - sample.t).toBeLessThanOrEqual(TRAIL_TIME);
+    expect(ball.trail.length).toBeGreaterThan(1);
+    for (const sample of ball.trail) {
+      expect(now - sample.t).toBeLessThanOrEqual(TRAIL_TIME);
     }
   });
 
   it("caps what it retains however fast the frames arrive", () => {
-    const state = createInitialState();
+    const ball = createBall();
     for (let i = 0; i < 1000; i++) {
-      state.simTime = i * 0.0001; // 10 kHz: the whole run fits the window
-      recordTrail(state);
+      recordTrail(ball, i * 0.0001); // 10 kHz: the whole run fits the window
     }
-    expect(state.trail.length).toBeLessThanOrEqual(256);
+    expect(ball.trail.length).toBeLessThanOrEqual(256);
   });
 });
 

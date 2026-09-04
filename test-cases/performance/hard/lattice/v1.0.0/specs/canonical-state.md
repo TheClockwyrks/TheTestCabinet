@@ -7,6 +7,21 @@ bytes, **not** over the JSON text, so JSON formatting differences can never
 affect correctness. This is Factorio's own desync-detection model — each engine
 checksums its state and a mismatch means a simulation diverged.
 
+**The host hashes the `entities` you return, and compares that.** The `checksum`
+field you send is not taken on trust: for every snapshot the host re-serializes
+the `entities` beside it to canonical bytes, hashes those, and requires the
+result to equal both the `checksum` you reported and the reference's. So a
+snapshot passes only when its state *is* the reference's state — reporting the
+right checksum next to state that does not hash to it is a wrong answer, and so
+is naming an item the prototype table does not define. Two consequences worth
+planning for:
+
+- The `entities` you emit at each scheduled snapshot must be your real state, in
+  full. You cannot skip materializing it and report a checksum computed some
+  cheaper way.
+- Because the state is what is graded, it is also what browser playback draws.
+  The factory a reviewer watches is the factory you were scored on.
+
 If you write your engine in Rust over `lattice-sdk`, you get this for free:
 `Snapshot::new(tick, entities)` builds a snapshot and computes its checksum over
 exactly these bytes. This document specifies the rule so a non-Rust engine can
@@ -52,6 +67,7 @@ The kind tags are:
 | assembler | `3`        |
 | source    | `4`        |
 | sink      | `5`        |
+| furnace   | `6`        |
 
 ### Entity bodies
 
@@ -60,12 +76,13 @@ The kind tags are:
   - `item_count: u32`, then for each item **from the output end backward**
     (ascending `pos`): `pos: u32` (units from the output end), `item: u16` (the
     item index).
-- **splitter** (`kind = 1`): `out_pref: u16` (little-endian) — the per-(item-type,
-  lane) output preference cursor, bit `t*2 + L` being the output belt (`0`/`1`) the
-  next item of item type `t` on lane `L` (`L = 0` left, `L = 1` right) prefers — then
-  `in_first: u8`, which of the two input belts (`0`/`1`) the splitter tries first this
-  tick; see `specs/rules.md`. (A base splitter holds no items between ticks, so those
-  two cursors are all that is serialized.)
+- **splitter** (`kind = 1`): `out_pref: u16` (little-endian) — the per-lane,
+  item-agnostic output-preference cursor, bit `L` being the output belt (`0`/`1`) the
+  next item on lane `L` (`L = 0` left, `L = 1` right) prefers, whatever the item's type
+  (only the two low bits are ever set) — then `in_first: u8`, which of the two input
+  belts (`0`/`1`) the splitter tries first this tick; see `specs/rules.md`. (A base
+  splitter holds no items between ticks, so those two cursors are all that is
+  serialized.)
 - **inserter** (`kind = 2`): `phase: u8` (`idle = 0`, `swing = 1`, `return = 2`);
   `held_present: u8` (`0`/`1`); if `held_present == 1`, `held: u16` (the item
   index) — **omitted entirely** when `held_present == 0` (that is, in both the
@@ -77,6 +94,11 @@ The kind tags are:
 - **source** (`kind = 4`): `emit_phase: u32` (= `tick % period`).
 - **sink** (`kind = 5`): `kinds: u8`, then `kinds` × { `item: u16`, `count: u64`
   } **sorted by item index ascending**.
+- **furnace** (`kind = 6`): identical body layout to the assembler — the input
+  buffer then the output buffer, each a count map (`kinds: u8`, then `kinds` ×
+  { `item: u16`, `count: u16` } **sorted by item index ascending**), then
+  `craft_left: u16`. Only the `kind` tag distinguishes a furnace from an assembler
+  in the byte stream.
 
 Two engines that produce an identical entity list at an identical tick build a
 byte-identical buffer and therefore an identical checksum. Note the sort and

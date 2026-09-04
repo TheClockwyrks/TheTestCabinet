@@ -38,7 +38,7 @@
 // only the labelling.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SET_LABELS } from "../../src/constants";
+import { SET_LABELS } from "../constants";
 import { fail } from "../assert";
 import {
   captureStill,

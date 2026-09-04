@@ -72,10 +72,13 @@
 # Full-stack reference-impl DESIGN/ASSETS/README (holdfast, hollowdeep, midway).
 # Full-stack test cases (hollowdeep, holdfast, junction, midway): case + variant
 # Game-jam vocabulary.
+# Gantry showcase capture driver: the Chromium GL backend, the VP9 encoder and the prober it shells out to, all named verbatim on a command line.
 # Gantry v1.0.0 authoring notes and manifest prose: the load model — static
 # Generic asset-pack test-case prose (2D / particle / music briefs) and the
+# in — a cell with no pose, a tape row not shown, a machine with no set sigil.
 # Includes graphics/particle jargon and bold-prefix markup fragments the tokenizer
 # Junction reference-impl DESIGN/README (Rust→wasm city builder).
+# Kessler (kessler) orbital-demolition full-stack case: the screen id, pod kinds, and asset names.
 # Klondike solitaire (Cascade) test case vocabulary.
 # Lattice (lattice) renderer asset sprites.
 # Lattice (lattice) simulation & spec vocabulary.
@@ -84,6 +87,7 @@
 # Meltdown (meltdown) domain terms.
 # Meltdown (meltdown) reference mockup class names.
 # Models
+# Orrery v1.0.0 review checklist: the coinages the per-item behaviors are stated
 # Orrery v1.0.0: the case's own vocabulary — arm variants, fault names, the
 # Project-specific words accepted by cspell. One word per line, case-insensitive.
 # R2 sample-pack publish/presign tooling (scripts/lib/r2.mjs, build.sh).
@@ -125,6 +129,7 @@ Aegis
 Aetherfall
 aimable
 alikes
+amortised
 anglerfish
 arcnode
 argenite
@@ -139,6 +144,7 @@ automatable
 automove
 autoplay
 autorepeat
+autorepeats
 autotile
 autotiled
 autotiles
@@ -149,6 +155,7 @@ Backquote
 Balatro
 Bastion
 battlespace
+BAYFILL
 beatability
 bezelled
 biarm
@@ -161,6 +168,7 @@ bitcrush
 bitfield
 blightcoil
 blit
+blits
 blitted
 blobbiness
 blockwork
@@ -177,6 +185,7 @@ buildables
 buildkit
 Bulwark
 burnhit
+burnup
 bylight
 camo
 Capturable
@@ -206,6 +215,9 @@ corroder
 corruptors
 counterline
 counterplay
+craftable
+crafter
+crafters
 crenellated
 criss
 criticals
@@ -234,10 +246,13 @@ despawning
 despawns
 dests
 desync
+detuned
 Devstral
 difficultyselect
 diggable
 dischargerig
+disjointness
+distinguishability
 dmgboard
 dodgeable
 dogfighter
@@ -253,6 +268,8 @@ erator
 eyelessness
 Factorio
 ferron
+ffprobe
+fielddraw
 fingerpicked
 fingerpicking
 firemode
@@ -262,7 +279,6 @@ Flakhound
 Flarefish
 flarefish
 flyin
-forcings
 forcings
 foregrip
 forkarray
@@ -324,6 +340,7 @@ ironward
 jetpack
 jetpacking
 jetpacks
+kessler
 keybinds
 keyframing
 keypress
@@ -339,12 +356,15 @@ Lattice
 lerp
 letterboxed
 letterboxing
+levelclear
 levelup
 levelups
+libvpx
 loadouts
 locomotivation
 lofi
 loopable
+lowpass
 Lumen
 Macromass
 mand
@@ -364,6 +384,7 @@ midwave
 Mirrorwright
 misattributed
 misrotated
+mktemp
 modeselect
 Monatom
 Monatoms
@@ -373,6 +394,7 @@ mothwing
 mothwings
 mouselook
 mult
+multiball
 multiplicatively
 multiset
 multishot
@@ -380,7 +402,10 @@ multishots
 muteable
 napi
 needbar
+neighbour
 neighbours
+nobuild
+nonblank
 nonfiring
 nonking
 nostack
@@ -407,6 +432,7 @@ pbullet
 peekable
 Perlin
 permadeath
+pickable
 pickupable
 platformer
 playables
@@ -415,9 +441,12 @@ playfield
 playstyle
 playtest
 playtesting
+playthrough
 pointerdown
+poseless
 presign
 presigned
+pressable
 prio
 PRNG
 prowed
@@ -427,6 +456,7 @@ railgun
 rangerate
 reactorpile
 readback
+realpath
 rebalances
 reband
 recenters
@@ -440,7 +470,10 @@ regen
 reharmonize
 rehit
 Reliquary
+relocks
 repath
+repathed
+repaths
 replayability
 reskin
 reskinned
@@ -457,6 +490,7 @@ retargets
 retuned
 retunes
 rgba
+ringmod
 rity
 rlib
 roadline
@@ -464,6 +498,7 @@ rockbed
 roguelike
 roselite
 roughterrain
+rowless
 royale
 rquickjs
 rrggbb
@@ -486,7 +521,9 @@ Sela
 Sentinel
 serp
 serpentines
+setless
 setmaze
+setpoints
 sideload
 sideloaded
 sideloading
@@ -498,6 +535,7 @@ skyshard
 Skyworks
 slagdriver
 slingshotting
+slowability
 slowable
 slowhit
 splitter
@@ -521,10 +559,12 @@ Sunfront
 Sunhawk
 supercover
 svgl
+swiftshader
 synthwave
 taiko
 tankier
 tanky
+tappable
 targ
 targetable
 tcab
@@ -550,6 +590,7 @@ triplanar
 tunables
 twohit
 unbonded
+unbuffed
 unbuildable
 uncurated
 undeclarable
@@ -557,30 +598,46 @@ underglow
 undertune
 undertuned
 undoable
+undos
 undrawn
 undrillable
 undrilled
+unflawed
+unfuelled
 unfun
 unheld
+unhighlighted
 unioned
 unioning
 unitless
+unlaunched
+unmarks
 unminable
 unmined
 unmute
 unmuted
+unmutes
+unmuting
 unoccluded
+unparked
+unperformable
+unpermitted
 unpossessed
 unpowered
 unpremultiplied
 unpressured
 unranked
 unrigged
+unscrolled
 unseeable
 unslowed
+unspends
 unstaffed
 untargetable
+untargeted
+unthinned
 untimed
+unzipper
 varint
 verdite
 vhera
@@ -593,7 +650,9 @@ WASD
 wasi
 wasip
 wasmtime
+waveclear
 wavefronts
+webgl
 wgpu
 worley
 xtal

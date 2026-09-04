@@ -42,7 +42,14 @@ export interface Surface {
   cssHeight(): number;
   /** Device pixels per CSS pixel. */
   dpr(): number;
-  /** The target key events are listened for on. */
+  /**
+   * The drawing surface's top-left corner, in the page's CSS pixels.
+   *
+   * A pointer arrives addressed to the page, so the map from a pointer position
+   * into logical units starts by taking the surface's own corner off it.
+   */
+  origin(): { x: number; y: number };
+  /** The target key and pointer events are listened for on. */
   events(): EventTarget;
 }
 
@@ -98,6 +105,32 @@ export function fitViewport(
   };
 }
 
+/**
+ * Where a point in the page's CSS pixels lands in the field's logical units:
+ * the inverse of the fit above, so a pointer the player moves and a region the
+ * game reports lie in one coordinate space (specs/overview.md).
+ *
+ * `origin` is the drawing surface's own top-left corner in the page, and `dpr`
+ * is what turns the viewport's device-pixel figures back into CSS ones. A
+ * degenerate fit — the zero-sized element a canvas reports before layout — maps
+ * everything to the field's origin rather than to a NaN.
+ */
+export function toLogical(
+  view: Viewport,
+  origin: { x: number; y: number },
+  dpr: number,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } {
+  const ratio = normalizeDpr(dpr);
+  const cssScale = view.scale / ratio;
+  if (!(cssScale > 0)) return { x: 0, y: 0 };
+  return {
+    x: (clientX - origin.x - view.offsetX / ratio) / cssScale,
+    y: (clientY - origin.y - view.offsetY / ratio) / cssScale,
+  };
+}
+
 /** The backing-store size, in whole device pixels, of a CSS dimension. */
 export function deviceSize(cssSize: number, dpr: number): number {
   return Math.round(normalizeSize(cssSize) * normalizeDpr(dpr));
@@ -114,6 +147,10 @@ export function domSurface(canvas: HTMLCanvasElement): Surface {
     cssWidth: () => canvas.clientWidth,
     cssHeight: () => canvas.clientHeight,
     dpr: () => window.devicePixelRatio,
+    origin: () => {
+      const box = canvas.getBoundingClientRect();
+      return { x: box.left, y: box.top };
+    },
     events: () => document,
   };
 }

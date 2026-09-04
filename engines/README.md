@@ -18,7 +18,9 @@ slug.
 engines/
 ├── none/engine.toml        # the baseline: the build supplies its own runtime
 ├── simple-2d/engine.toml
-└── structured-2d/engine.toml
+├── structured-2d/engine.toml
+├── simple-3d/engine.toml
+└── structured-3d/engine.toml
 ```
 
 The built-in engines are embedded into `crates/core` at build time, so a

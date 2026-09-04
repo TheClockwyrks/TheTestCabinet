@@ -30,7 +30,7 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { SONAR_WAVE_SPEED, TICK_DT, TICK_HZ } from "../../src/constants";
+import { SONAR_WAVE_SPEED, TICK_DT, TICK_HZ } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

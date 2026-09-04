@@ -8,15 +8,24 @@
 // The score must be drawn as a run whose digits read as that score — a label
 // around it and zero padding (`07`) are fine, the other score's digit in the
 // same run is not — with the run's midpoint on its side of the field's center.
+//
+// THE FIELD IS EMPTY. This point is about the two figures the HUD draws, so the
+// countdown is opened, the field is CLEARED, and `playing` is posed over it. An
+// absent ball takes no part in a frame (specs/instrumentation.md), so no shot can
+// cross a goal between the pose and the read and leave the build drawing a score
+// this check never set. Neither paddle is taken from the player: nothing here
+// presses a movement key, and a driven paddle would be scenery this point does
+// not need.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CX } from "../../src/constants";
+import { FIELD_CX } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
+  clearField,
   createHarness,
   drawnTextSpans,
-  startPlaying,
+  openCountdown,
   type Harness,
 } from "../harness";
 
@@ -34,7 +43,12 @@ afterEach(() => {
 });
 
 it("draws player two's score right of the field's center", async () => {
-  await startPlaying(h, "versus");
+  await openCountdown(h, "versus");
+  clearField(h);
+  h.debug.setScreen("playing");
+  await h.advance(1);
+  assertEqual(h.snapshot().screen, "playing");
+
   h.debug.setScore(P1_SCORE, P2_SCORE);
   h.calls.length = 0;
   await h.advance(1);

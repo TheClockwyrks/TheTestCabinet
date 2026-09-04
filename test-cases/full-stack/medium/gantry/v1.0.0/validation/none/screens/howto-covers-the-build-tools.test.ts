@@ -1,0 +1,110 @@
+// screens/howto-covers-the-build-tools — the how-to names the six build tools
+// and the parts they place.
+//
+// specs/ui.md, "How to play": "`howto` explains the game in a player's words:
+// reading a site, the build tools and the parts they place, the ring and what
+// the arm turns on, writing a tape and what each axis does, why speed loads the
+// structure and swings the load, and setting a load down inside the
+// tolerances." This point is the second item of that list.
+//
+// WHICH TOOLS THERE ARE IS FIXED ELSEWHERE, and that is what makes the point
+// decidable: specs/controls.md's action table gives exactly six — `tool-strut`,
+// `tool-cable`, `tool-rail`, `tool-ring`, `tool-counterweight` and
+// `tool-delete` — and its "The build tools" section names the part each one
+// places. So the copy is asked for those six names, and for nothing about how it
+// arranges them.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  RECORDER_GLOBAL,
+  drawnText,
+  toDrawCall,
+  type RecordedOp,
+} from "../case-harness/index";
+import { createHarness, type Harness } from "../harness";
+
+/**
+ * The six tools specs/controls.md gives, each with the words a player's own
+ * account of it would reach for. A build is free to call the counterweight a
+ * weight and the delete tool a remove tool; it is not free to leave one out.
+ */
+const TOPICS = [
+  { topic: "strut", terms: [/\bstruts?\b/i] },
+  { topic: "cable", terms: [/\bcables?\b/i] },
+  { topic: "rail", terms: [/\brails?\b/i] },
+  { topic: "ring", terms: [/\bring\b/i] },
+  { topic: "counterweight", terms: [/\bcounter-?weights?\b/i, /\bweights?\b/i] },
+  { topic: "delete", terms: [/\bdeletes?\b/i, /\bremoves?\b/i, /\berases?\b/i] },
+] as const;
+
+/* -------------------------------------------------------------------------- */
+/* Reading the copy the how-to screen drew                                    */
+/* -------------------------------------------------------------------------- */
+//
+// The how-to screen is words, so this point is decided on the words the frame
+// actually drew. The harness records every operation the build makes on its 2D
+// context — where an engineless build draws its screen layer, the yard behind it
+// being the WebGL half — and `drawnText` folds a frame's `fillText` and
+// `strokeText` runs out of it. `h.page` is the harness's own door to Playwright,
+// which that recorder is read through; the shared harness exposes no reading of
+// its own on this case's `Harness`.
+//
+// MATCHING IS BY TERM, NEVER BY SENTENCE. specs/ui.md fixes WHAT the how-to
+// screen explains and leaves every word of it to the build ("in a player's
+// words"), so a check that wanted a phrase would fail a build that explained the
+// same thing perfectly well in different words. What it looks for is the game's
+// own vocabulary — the names specs/controls.md, specs/program.md and
+// specs/structure.md give the things being explained — with the ordinary
+// synonyms a player's words would reach for.
+
+/** Every run of text the how-to screen drew, folded into one block. */
+async function howtoCopy(h: Harness): Promise<string> {
+  await h.debug.setScreen("howto");
+  await h.advance(1);
+  const ops = (await h.page.evaluate(
+    (rec) =>
+      (window as unknown as Record<string, { last(): unknown[] }>)[rec]!.last(),
+    RECORDER_GLOBAL,
+  )) as RecordedOp[];
+  return drawnText(ops.map(toDrawCall)).join("\n");
+}
+
+/** The topics the copy does not name, in the order they are listed. */
+function unnamed(
+  copy: string,
+  topics: readonly { readonly topic: string; readonly terms: readonly RegExp[] }[],
+): string {
+  return topics
+    .filter(({ terms }) => !terms.some((term) => term.test(copy)))
+    .map(({ topic }) => topic)
+    .join(", ");
+}
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("names each of the six build tools and the part it places", async () => {
+  const copy = await howtoCopy(h);
+  assertGreaterThan(
+    copy.length,
+    0,
+    "the length of the copy the how-to screen drew (specs/ui.md)",
+  );
+
+  assertEqual(
+    unnamed(copy, TOPICS),
+    "",
+    "the build tools the how-to copy leaves unnamed, of the six " +
+      "specs/controls.md gives (specs/ui.md)",
+  );
+
+  await h.capture("howto-tools", "The how-to copy on the build tools");
+});

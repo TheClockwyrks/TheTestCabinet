@@ -29,7 +29,8 @@ it("advances simulated time by the step it was given", async () => {
   const stepMs = 1000 / 240;
   const harness = await createHarness({ clock: new ConstantClock(stepMs) });
   const { engine } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(200, 0);
 
   await engine.advance(framesFor(1500, stepMs));
 
@@ -80,7 +81,8 @@ it("delivers the pattern in order and repeats it", async () => {
 it("keeps the ball inside the field across a stutter", async () => {
   const harness = await createHarness({ clock: new SequenceClock(PATTERN) });
   const { engine } = harness;
-  harness.setBall({ x: 600, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(600, 180);
+  harness.setBallVelocity(200, 0);
 
   await engine.advance(PATTERN.length * 4);
 
@@ -118,7 +120,8 @@ interface Sampled {
 async function runFor(clock: Clock, frames: number): Promise<Sampled> {
   const harness = await createHarness({ clock });
   const { engine } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(200, 0);
 
   const deltas: number[] = [];
   for (let i = 0; i < frames; i += 1) {
@@ -184,7 +187,8 @@ running it under jitter is one scenario rather than two.
 ```ts
 const harness = await createHarness({ clock: new ConstantClock(1000 / 120) });
 const { engine } = harness;
-harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+harness.setBallPosition(320, 180);
+harness.setBallVelocity(200, 0);
 await engine.advance(60);
 
 engine.setClock(new JitterClock(4, 40, 20260819));
@@ -225,7 +229,8 @@ async function runScenario(clock: Clock): Promise<Outcome> {
     played.push(cue);
   });
 
-  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(200, 0);
   await advanceMs(engine, 3000);
 
   const { ball } = harness.snapshot();

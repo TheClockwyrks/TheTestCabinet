@@ -33,9 +33,9 @@
 // rating's.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD, PAUSE_ITEMS } from "../constants";
 import { placeForager, poseApart, spawnPredator } from "../fixtures";
 
-import { BRIGHT_HOLD, PAUSE_ITEMS } from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,

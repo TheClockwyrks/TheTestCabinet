@@ -28,6 +28,10 @@ The world-to-logical pair holds with `rotation` at `0`. The device pair inverts
 as `(deviceX - offsetX) / scale`, so a pixel read off the backing store maps
 back to a logical point and then through the camera to a world one.
 
+A render component in `screen` space skips the first map: its composed
+transform is logical coordinates, and the viewport alone carries it onto the
+canvas. See `rendering.md`.
+
 ## `Camera`
 
 ```ts

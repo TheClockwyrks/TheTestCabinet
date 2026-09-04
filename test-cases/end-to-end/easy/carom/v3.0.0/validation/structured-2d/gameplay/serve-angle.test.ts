@@ -1,20 +1,32 @@
 // gameplay/serve-angle — a served ball leaves at the serve angle.
 //
-// A fresh match is started and its pre-serve hold expired; the LAUNCH itself is
-// the build's own, on the frame after, and the velocity is read the instant it
-// happens, on the launch frame, on which the ball is not advanced
-// (specs/balls.md). The serve is `vx = dir * SERVE_SPEED * cos(SERVE_ANGLE)`,
+// A fresh match is opened on its countdown and the ball's pre-serve hold is cut
+// to zero; the LAUNCH itself is the build's own, on the frame after, and the
+// velocity is read the instant it happens, on the launch frame, on which the ball
+// is not advanced (specs/balls.md). Nothing about the serve is posed: ending a
+// hold says nothing about the direction the ball leaves in. The serve is
+// `vx = dir * SERVE_SPEED * cos(SERVE_ANGLE)`,
 // `vy = s * SERVE_SPEED * sin(SERVE_ANGLE)` with `s` either sign, so the angle
 // from horizontal has magnitude SERVE_ANGLE exactly; the sign is the build's.
+//
+// THE FIELD HOLDS THE ONE HELD BALL AND NOTHING ELSE. A serve is what this point
+// is about, so the obstacles come off the field: the reading is taken on the
+// launch frame, and the flight recorded after it is a serve travelling rather
+// than a serve banking off furniture the check never aimed at. Neither paddle is
+// taken from anyone — nothing here presses a key, and the launch is read before
+// the ball has travelled at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SERVE_ANGLE } from "../../src/constants";
+import { SERVE_ANGLE } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import {
   angleDeg,
   ball0,
   captureReplay,
   createHarness,
+  isolateField,
+  openCountdown,
+  reachPlay,
   type Harness,
 } from "../harness";
 
@@ -38,22 +50,14 @@ afterEach(() => {
 });
 
 it("serves the ball at SERVE_ANGLE from horizontal", async () => {
-  const { debug } = harness;
-  debug.reset();
-  await harness.advance(1);
-  debug.startMatch("versus");
-  // One advanced frame settles each screen change (specs/instrumentation.md),
-  // so everything below acts on the open match.
-  await harness.advance(1);
+  await openCountdown(harness, "versus");
+  isolateField(harness);
 
   const launched = await captureReplay(harness, "serve", async () => {
     await harness.advance(HELD_TICKS);
-    debug.serve();
-
-    const swept = await harness.until((s) => s.screen === "playing", {
-      maxFrames: 60,
-      poll: 1,
-    });
+    // The hold is cut to zero and the build's own rule launches on the frame
+    // after; `reachPlay` stops on that frame.
+    const swept = await reachPlay(harness);
     await harness.advance(FLIGHT_TICKS);
     return swept;
   });

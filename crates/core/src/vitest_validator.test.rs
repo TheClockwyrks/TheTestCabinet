@@ -13,8 +13,8 @@ use std::time::Duration;
 use super::*;
 use crate::engine::{EngineCatalog, EngineSelection};
 use crate::test_case::{
-    AssetKind, MediaKind, ReviewItem, ReviewOutput, ReviewValidation, SubReviewItem,
-    TestCaseVersion, TestType, Variant,
+    AssetDimension, AssetKind, MediaKind, ReviewItem, ReviewOutput, ReviewValidation,
+    SubReviewItem, TestCaseVersion, TestType, Variant,
 };
 
 // --- Fixtures ---------------------------------------------------------------
@@ -49,6 +49,7 @@ fn version(root: PathBuf, items: Vec<ReviewItem>) -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -56,6 +57,7 @@ fn version(root: PathBuf, items: Vec<ReviewItem>) -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,
@@ -132,6 +134,7 @@ fn validation(script_rel: &str) -> ReviewValidation {
     ReviewValidation {
         script: Some(PathBuf::from(script_rel)),
         script_rel: script_rel.to_string(),
+        engines: Vec::new(),
         outputs: Vec::new(),
     }
 }
@@ -698,6 +701,127 @@ fn a_case_with_no_validator_project_for_the_engine_reports_every_point_as_not_ru
 }
 
 #[test]
+fn a_run_that_outlives_its_cap_leaves_every_point_inconclusive_rather_than_failed() {
+    // The one budget a test can expire in milliseconds is the install's, and it is
+    // bounded by the same `run_bounded` the suite run is, so what it proves about the
+    // cap holds for both: a host too slow to finish inside the budget decides nothing.
+    //
+    // The store is seeded because the run has to get PAST staging to reach the
+    // install: a host with no shared harness to stage refuses the run as `not-run`
+    // before any budget starts running down, which is a different outcome from the
+    // one under test here.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+    let root = tempfile::tempdir().expect("a scratch case root");
+    let project = root
+        .path()
+        .join(crate::validator::VALIDATION_SCRIPT_DIR)
+        .join("simple-2d");
+    std::fs::create_dir_all(&project).expect("a scratch validator project");
+    std::fs::write(project.join(VITEST_CONFIG_FILE), "export default {};")
+        .expect("the project's config");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let items = vec![
+        item(
+            "serve-speed",
+            "validation/simple-2d/gameplay/serve-speed.test.ts",
+        ),
+        item("no-tunnel", "validation/simple-2d/ball/no-tunnel.test.ts"),
+    ];
+    let test_case = version(root.path().to_path_buf(), items.clone());
+    let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
+
+    let results = run_vitest_suites_bounded(
+        &test_case,
+        &variant(),
+        engine().slug(),
+        &artifacts,
+        "sleep 30",
+        &repo.path().join(crate::validator::VALIDATION_MEDIA_DIR),
+        Caps {
+            suite: Duration::from_millis(300),
+            install: Duration::from_millis(300),
+        },
+    );
+
+    assert_eq!(results.len(), 2, "every declared point is still reported");
+    for result in &results {
+        assert!(!result.ran);
+        assert!(
+            result.verdicts.is_empty(),
+            "an expired budget synthesizes no verdict, so nothing fails the build",
+        );
+        assert!(
+            result.precondition_unmet,
+            "an expired budget is inconclusive about the build",
+        );
+        assert_eq!(
+            result.inconclusive,
+            Some(Inconclusive::TimedOut),
+            "and it says so as a fact about the host, not an unmet precondition",
+        );
+        assert!(
+            result.detail.as_deref().unwrap_or_default().contains("cap"),
+            "the reason is recorded: {:?}",
+            result.detail,
+        );
+    }
+
+    // The scoring rule the reviewer's checklist and the automated score share: an
+    // inconclusive point is not a lost point, it is an unanswered one.
+    let score = crate::comparison::automated_only_score(&items, &results);
+    assert_eq!(
+        (score.earned, score.total),
+        (0.0, 0),
+        "a run stopped at its cap contributes to neither side of the score",
+    );
+}
+
+#[test]
+fn a_suite_that_declined_to_decide_is_held_apart_from_one_the_runner_could_not_execute() {
+    let items = vec![item(
+        "serve-speed",
+        "validation/simple-2d/gameplay/serve-speed.test.ts",
+    )];
+    let suite = suite_for(&items);
+
+    let skipped = suite.result(Some(&SuiteReport {
+        file: "validation/gameplay/serve-speed.test.ts".to_string(),
+        message: None,
+        tests: vec![TestOutcome {
+            label: "the serve leaves at the declared speed".to_string(),
+            status: TestStatus::Skipped,
+            failure: None,
+        }],
+    }));
+    assert_eq!(
+        skipped.inconclusive,
+        Some(Inconclusive::PreconditionUnmet),
+        "a suite that skipped every check declined to decide against this build",
+    );
+
+    let missing = suite.result(None);
+    assert_eq!(
+        missing.inconclusive,
+        Some(Inconclusive::NotRun),
+        "a suite the project does not contain is a fact about the case",
+    );
+}
+
+#[test]
+fn the_cap_is_the_default_until_the_environment_names_a_usable_one() {
+    assert_eq!(timeout_from(None), VITEST_TIMEOUT);
+    assert_eq!(timeout_from(Some(" 90 ")), Duration::from_secs(90));
+    for unusable in ["", "0", "-1", "ninety", "90s", "1.5"] {
+        assert_eq!(
+            timeout_from(Some(unusable)),
+            VITEST_TIMEOUT,
+            "`{unusable}` names no budget, so the default stands",
+        );
+    }
+}
+
+#[test]
 fn a_variant_whose_every_validator_belongs_to_another_engine_runs_nothing() {
     // The project for the run's engine is present, so the runner gets as far as
     // choosing what to run — and finds that nothing this variant declares names a
@@ -782,9 +906,49 @@ fn a_command_that_outlives_its_cap_is_stopped_and_reported_as_timed_out() {
         "the cap returns rather than waiting the command out",
     );
     assert!(
-        error.contains("cap"),
-        "the reason says the cap was reached: {error}",
+        error.reason.contains("cap"),
+        "the reason says the cap was reached: {}",
+        error.reason,
     );
+    assert_eq!(
+        error.inconclusive,
+        Inconclusive::TimedOut,
+        "a cap that expired is a fact about the host, not about the build",
+    );
+}
+
+#[test]
+fn a_stopped_command_takes_the_workers_it_started_with_it() {
+    // The claim the cap makes is that a suite costs the run its budget and nothing
+    // more. A `sh -c` line is a process tree, so killing the shell alone would leave
+    // node and its workers loading the host afterwards; the group kill is what makes
+    // the claim true. The background child here stands in for those workers.
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let marker = scratch.path().join("worker-survived");
+    let command = format!(
+        "(sleep 1; touch {}) & wait",
+        marker.to_string_lossy().replace('\'', ""),
+    );
+
+    run_bounded(
+        scratch.path(),
+        &command,
+        Duration::from_millis(200),
+        scratch.path(),
+        "tree",
+        &[],
+    )
+    .expect_err("the command outlives its cap");
+
+    // Past when the survivor would have written, had it survived.
+    let watch = std::time::Instant::now();
+    while watch.elapsed() < Duration::from_secs(3) {
+        assert!(
+            !marker.exists(),
+            "a worker outlived the run that stopped waiting for it",
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 #[test]
@@ -971,7 +1135,8 @@ fn a_tree_a_stage_already_installed_is_not_installed_again() {
     let artifacts = ArtifactCollection::new(repo.path().to_path_buf()).prepared_by(prepared);
 
     // `false` would fail if it were run; the tree is already prepared, so it is not.
-    ensure_dependencies(repo.path(), &artifacts, "npm ci").expect("nothing is installed again");
+    ensure_dependencies(repo.path(), &artifacts, "npm ci", VITEST_INSTALL_TIMEOUT)
+        .expect("nothing is installed again");
 }
 
 #[test]
@@ -979,11 +1144,17 @@ fn a_tree_nothing_prepared_is_installed_by_the_runner() {
     let repo = tempfile::tempdir().expect("a scratch tree");
     let artifacts = ArtifactCollection::new(repo.path().to_path_buf());
 
-    let error = ensure_dependencies(repo.path(), &artifacts, "exit 7")
+    let error = ensure_dependencies(repo.path(), &artifacts, "exit 7", VITEST_INSTALL_TIMEOUT)
         .expect_err("an install that fails leaves the tree unusable");
     assert!(
-        error.contains("exit 7") || error.contains("did not succeed"),
-        "the failure is reported as the install's: {error}",
+        error.reason.contains("exit 7") || error.reason.contains("did not succeed"),
+        "the failure is reported as the install's: {}",
+        error.reason,
+    );
+    assert_eq!(
+        error.inconclusive,
+        Inconclusive::NotRun,
+        "an install the tree refused is a fact about the tree",
     );
 }
 
@@ -1089,7 +1260,7 @@ fn a_suite_that_never_ran_reports_its_declared_outputs_absent() {
         "validation/simple-2d/gameplay/serve-speed.test.ts",
         vec![output("serve", MediaKind::Replay)],
     )];
-    let not_run = suite_for(&items).not_run("no vitest in the tree");
+    let not_run = suite_for(&items).inconclusive("no vitest in the tree", Inconclusive::NotRun);
     assert_eq!(not_run.outputs.len(), 1);
     assert!(!not_run.outputs[0].actual_present);
 
@@ -1178,4 +1349,369 @@ fn the_exported_media_directory_is_absolute() {
         "the suites are handed a path they cannot resolve differently",
     );
     assert!(Path::new(&absolute(Path::new("relative/media"))).is_absolute());
+}
+
+// --- Staging the shared harness ---------------------------------------------
+
+/// A package store carrying `@test-cabinet/case-harness` with `src/` holding
+/// `index.ts` and a `page/` subdirectory, returned with the temp dir that owns it.
+fn package_store_with_case_harness() -> tempfile::TempDir {
+    let store = tempfile::tempdir().expect("a scratch package store");
+    let src = store.path().join(CASE_HARNESS_PACKAGE).join("src");
+    std::fs::create_dir_all(src.join("page")).expect("the package's source tree");
+    std::fs::write(src.join("index.ts"), "export const kit = 1;\n").expect("the barrel");
+    std::fs::write(src.join("page/recorder-init.js"), "// recorder\n").expect("a page script");
+    store
+}
+
+/// Point `package_store_dir` at `store` for the rest of this test's process.
+///
+/// Sound because nextest runs each test in its own process, so the variable cannot
+/// leak into a test running beside this one.
+fn use_package_store(store: &Path) {
+    unsafe { std::env::set_var("TCAB_PACKAGE_STORE", store) };
+}
+
+#[test]
+fn the_shared_harness_is_staged_beside_the_cases_own_project() {
+    // The sibling placement is the whole contract: one import line has to resolve in
+    // the case's `validation/<engine>/` in the checkout and in the staged
+    // `validation/` here, which it only does if the package lands next to the case's
+    // `harness.ts` rather than anywhere else.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    std::fs::write(project.path().join("harness.ts"), "// the case's own\n").expect("the harness");
+    std::fs::create_dir_all(project.path().join("board")).expect("a suite directory");
+    std::fs::write(project.path().join("board/beams.test.ts"), "// a suite\n").expect("a suite");
+
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let dest = repo.path().join(VALIDATION_SCRIPT_DIR);
+    stage_project(project.path(), &dest).expect("the project stages");
+
+    assert!(
+        dest.join("harness.ts").is_file(),
+        "the case's own files stage"
+    );
+    assert!(dest.join("board/beams.test.ts").is_file());
+    assert!(
+        dest.join(CASE_HARNESS_DIR).join("index.ts").is_file(),
+        "the package's barrel is a sibling of the case's harness",
+    );
+    assert!(
+        dest.join(CASE_HARNESS_DIR)
+            .join("page/recorder-init.js")
+            .is_file(),
+        "the package's subdirectories stage with it",
+    );
+}
+
+#[test]
+fn only_the_packages_sources_are_staged() {
+    // The package is staged as source for vitest to transpile, not installed: its
+    // manifest and its own suite have no business in a case's validator project — and
+    // a `*.test.ts` under it would be collected by every case's `validation/**` glob.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+    let package = store.path().join(CASE_HARNESS_PACKAGE);
+    std::fs::write(package.join("package.json"), "{}\n").expect("the manifest");
+    std::fs::create_dir_all(package.join("test")).expect("the package's own suite");
+    std::fs::write(package.join("test/replay.spec.ts"), "// spec\n").expect("a spec");
+
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let dest = repo.path().join(VALIDATION_SCRIPT_DIR);
+    stage_project(project.path(), &dest).expect("the project stages");
+
+    let staged = dest.join(CASE_HARNESS_DIR);
+    assert!(staged.join("index.ts").is_file());
+    assert!(
+        !staged.join("package.json").exists(),
+        "only `src/` is staged, so nothing but source reaches the project",
+    );
+    assert!(!staged.join("test").exists());
+}
+
+#[test]
+fn a_stale_copy_in_the_case_is_replaced_by_the_package() {
+    // The package decides the case's points, so a case cannot shadow it with a copy of
+    // its own that has drifted — whatever stands at that name is replaced wholesale.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    let stale = project.path().join(CASE_HARNESS_DIR);
+    std::fs::create_dir_all(&stale).expect("the case's stale copy");
+    std::fs::write(stale.join("index.ts"), "export const kit = 0;\n").expect("a stale barrel");
+    std::fs::write(stale.join("gone.ts"), "// dropped\n").expect("a stale extra");
+
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let dest = repo.path().join(VALIDATION_SCRIPT_DIR);
+    stage_project(project.path(), &dest).expect("the project stages");
+
+    let staged = dest.join(CASE_HARNESS_DIR);
+    assert_eq!(
+        std::fs::read_to_string(staged.join("index.ts")).expect("the staged barrel"),
+        "export const kit = 1;\n",
+        "the store's copy wins over the one standing in the case",
+    );
+    assert!(
+        !staged.join("gone.ts").exists(),
+        "the stale copy is cleared rather than merged into",
+    );
+}
+
+#[test]
+fn a_host_with_no_staged_harness_is_a_runner_failure_that_names_both_fixes() {
+    // Reported as a failure of the runner rather than of the build, which is what
+    // leaves every point it backs for the reviewer. The message has to carry the two
+    // ways out, because the store is a host fact no case can do anything about.
+    let store = tempfile::tempdir().expect("an empty package store");
+    use_package_store(store.path());
+
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let message = stage_project(project.path(), &repo.path().join(VALIDATION_SCRIPT_DIR))
+        .expect_err("an empty store cannot stage the harness");
+
+    assert!(message.contains(CASE_HARNESS_PACKAGE), "{message}");
+    assert!(
+        message.contains(&store.path().display().to_string()),
+        "{message}"
+    );
+    assert!(message.contains("stage-tcab-packages.mjs"), "{message}");
+    assert!(message.contains("TCAB_PACKAGE_STORE"), "{message}");
+}
+
+#[test]
+fn the_package_store_is_preferred_over_the_checkout() {
+    // The store is what the driver image bakes and what `TCAB_PACKAGE_STORE` points
+    // at, and it is the same store the seeder vendors engine runtimes out of — so a
+    // run and its validators can never disagree about which sources they were built
+    // from. The checkout is only the fallback for a `tcab` run out of the repository.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+
+    assert_eq!(
+        case_harness_source().expect("the store carries the package"),
+        store.path().join(CASE_HARNESS_PACKAGE).join("src"),
+    );
+}
+
+#[test]
+fn a_store_without_the_package_falls_back_to_the_checkout() {
+    // With neither a store nor a checkout under the current directory there is no
+    // source at all, which is the case the error above reports. The candidates are
+    // relative to the current directory, so this asserts the fallback is consulted
+    // rather than that this test's own directory happens to be the repository root.
+    let store = tempfile::tempdir().expect("an empty package store");
+    use_package_store(store.path());
+
+    assert_eq!(
+        case_harness_source(),
+        CASE_HARNESS_CANDIDATES
+            .iter()
+            .map(PathBuf::from)
+            .find(|path| path.is_dir()),
+    );
+}
+
+// --- The staged project's lifetime ------------------------------------------
+
+/// A case root carrying a `simple-2d` validator project with one suite in it, and the
+/// checklist that names that suite. The shape `run_vitest_suites` stages from.
+fn case_with_a_project(root: &Path) -> TestCaseVersion {
+    let project = root.join(VALIDATION_SCRIPT_DIR).join("simple-2d");
+    std::fs::create_dir_all(project.join("gameplay")).expect("a scratch validator project");
+    std::fs::write(project.join(VITEST_CONFIG_FILE), "export default {};").expect("the config");
+    std::fs::write(project.join("gameplay/serve-speed.test.ts"), "// a suite\n").expect("a suite");
+    version(
+        root.to_path_buf(),
+        vec![item(
+            "serve-speed",
+            "validation/simple-2d/gameplay/serve-speed.test.ts",
+        )],
+    )
+}
+
+/// Run the case's validators over `repo` with an install that succeeds and no vitest
+/// in the tree, which is the shortest path that stages the project and then fails.
+fn run_over(test_case: &TestCaseVersion, repo: &Path) -> Vec<DebugScriptResult> {
+    run_vitest_suites(
+        test_case,
+        &variant(),
+        engine().slug(),
+        &ArtifactCollection::new(repo.to_path_buf()),
+        "true",
+        &repo.join(crate::validator::VALIDATION_MEDIA_DIR),
+    )
+}
+
+#[test]
+fn the_staged_project_is_taken_back_out_when_the_run_returns() {
+    // The tree a run collects is published verbatim and the tree `tcab validate` is
+    // pointed at is committed material, so the project the runner stages lives
+    // exactly as long as the run that needs it — including a run that got no further
+    // than finding no vitest to drive.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+    let root = tempfile::tempdir().expect("a scratch case root");
+    let test_case = case_with_a_project(root.path());
+    let repo = tempfile::tempdir().expect("a scratch tree");
+
+    let results = run_over(&test_case, repo.path());
+
+    assert_eq!(results.len(), 1, "the declared point is still reported");
+    assert!(!results[0].ran, "there was no vitest to run it with");
+    assert!(
+        results[0]
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains(VITEST_BIN),
+        "the run got as far as staging the project and looking for vitest: {:?}",
+        results[0].detail,
+    );
+    assert!(
+        !repo.path().join(VALIDATION_SCRIPT_DIR).exists(),
+        "the tree is left as validation found it",
+    );
+    assert!(
+        !repo.path().join(DISPLACED_PROJECT_DIR).exists(),
+        "nothing is held aside for a name that was free",
+    );
+}
+
+#[test]
+fn a_directory_the_build_authored_is_put_back() {
+    // The staged project needs that one name for the length of the run. What stood
+    // there is the build's own work, which the published tree and the reviewer both
+    // have a claim on, so it is held aside and put back rather than replaced.
+    let store = package_store_with_case_harness();
+    use_package_store(store.path());
+    let root = tempfile::tempdir().expect("a scratch case root");
+    let test_case = case_with_a_project(root.path());
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let authored = repo.path().join(VALIDATION_SCRIPT_DIR);
+    std::fs::create_dir_all(&authored).expect("the build's own directory");
+    std::fs::write(authored.join("mine.ts"), "// the build's own\n").expect("the build's file");
+
+    let results = run_over(&test_case, repo.path());
+
+    assert!(
+        results[0]
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains(VITEST_BIN),
+        "the run got as far as staging over the build's directory: {:?}",
+        results[0].detail,
+    );
+    assert_eq!(
+        std::fs::read_to_string(authored.join("mine.ts")).expect("the build's file is back"),
+        "// the build's own\n",
+    );
+    assert!(
+        !authored.join("gameplay/serve-speed.test.ts").exists(),
+        "the case's suites went out with the staged project",
+    );
+    assert!(
+        !authored.join(CASE_HARNESS_DIR).exists(),
+        "so did the shared harness staged beside them",
+    );
+    assert!(
+        !repo.path().join(DISPLACED_PROJECT_DIR).exists(),
+        "the holding directory is gone once what it held is back",
+    );
+}
+
+#[test]
+fn a_staging_that_could_not_finish_leaves_the_tree_as_it_found_it() {
+    // The harness comes from the host rather than the case, so a host carrying
+    // neither a store nor a checkout fails staging with the case's own files already
+    // copied in. Those go too, and what stood at the name comes back.
+    let store = tempfile::tempdir().expect("an empty package store");
+    use_package_store(store.path());
+    let project = tempfile::tempdir().expect("a scratch validator project");
+    std::fs::write(project.path().join("harness.ts"), "// the case's own\n").expect("the harness");
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let authored = repo.path().join(VALIDATION_SCRIPT_DIR);
+    std::fs::create_dir_all(&authored).expect("the build's own directory");
+    std::fs::write(authored.join("mine.ts"), "// the build's own\n").expect("the build's file");
+
+    let message = StagedProject::stage(project.path(), authored.clone())
+        .err()
+        .expect("an empty store and no checkout cannot stage the harness");
+
+    assert!(message.contains(CASE_HARNESS_PACKAGE), "{message}");
+    assert_eq!(
+        std::fs::read_to_string(authored.join("mine.ts")).expect("the build's file is back"),
+        "// the build's own\n",
+    );
+    assert!(
+        !authored.join("harness.ts").exists(),
+        "the case's files the staging did copy went back out with it",
+    );
+}
+
+#[test]
+fn a_holding_directory_an_earlier_run_left_behind_is_cleared() {
+    // A validation run killed part way through can leave the holding directory on
+    // disk. What the tree carries now is the only copy worth putting back, so the
+    // stale one goes rather than standing in the way of the displacement.
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let stale = repo.path().join(DISPLACED_PROJECT_DIR);
+    std::fs::create_dir_all(&stale).expect("the stale holding directory");
+    std::fs::write(stale.join("stale.ts"), "// an earlier run\n").expect("a stale file");
+    let at = repo.path().join(VALIDATION_SCRIPT_DIR);
+    std::fs::create_dir_all(&at).expect("the build's own directory");
+    std::fs::write(at.join("mine.ts"), "// the build's own\n").expect("the build's file");
+
+    let held = displace(&at)
+        .expect("the displacement succeeds")
+        .expect("the name was taken, so something was held aside");
+
+    assert_eq!(held, stale);
+    assert!(held.join("mine.ts").is_file(), "what the tree carries now");
+    assert!(!held.join("stale.ts").exists(), "and nothing older");
+}
+
+#[test]
+fn a_point_scoped_away_from_the_run_s_engine_names_no_suite() {
+    // A validator restricted to the engineless build decides nothing on an
+    // engine-backed run: the point leaves the checklist, so no filter names its
+    // suite and no result is reported for it.
+    let mut overlay = item("debug-overlay", "hud/overlay.test.ts");
+    overlay.validation = Some(ReviewValidation {
+        engines: vec![crate::engine::NONE_SLUG.to_string()],
+        ..validation("hud/overlay.test.ts")
+    });
+    let test_case = version(
+        PathBuf::new(),
+        vec![
+            item("serve-initial", "gameplay/serve-initial.test.ts"),
+            overlay,
+        ],
+    );
+
+    let filters_for = |engine: &str| {
+        let items = test_case.review_items_for_engine(&variant(), engine);
+        let units = drive_units(&items);
+        let suites: Vec<Suite> = units.iter().map(|unit| Suite::of(unit, engine)).collect();
+        suite_filters(&suites)
+    };
+
+    assert_eq!(
+        filters_for(crate::engine::NONE_SLUG),
+        vec![
+            "validation/gameplay/serve-initial.test.ts".to_string(),
+            "validation/hud/overlay.test.ts".to_string(),
+        ],
+    );
+    assert_eq!(
+        filters_for("simple-2d"),
+        vec!["validation/gameplay/serve-initial.test.ts".to_string()],
+        "the engine-backed run never names the suite that decides a point it does not carry",
+    );
 }

@@ -14,6 +14,7 @@ import type {
   MediaKind,
   ModelSpec,
   NineSlice,
+  PerformanceSnapshotCheck,
   RunRecord,
   RunShowcase,
   RunSubject,
@@ -951,6 +952,16 @@ export interface PerformanceScenarioView {
   scenarioUrl: string | null;
   /** The fuel the engine burned on this case. */
   fuel: number | null;
+  /**
+   * The per-snapshot checksums the engine produced when this case was GRADED, in
+   * schedule order.
+   *
+   * Playback re-steps the same module in the browser, so at a graded tick the
+   * frame it emits must carry the checksum recorded here. Handing these to the
+   * player is what lets it check that (see `PlaybackOverlay`'s `graded` prop)
+   * rather than animate whatever arrives on trust.
+   */
+  graded: PerformanceSnapshotCheck[];
 }
 
 /** A performance run's playable scenarios. */
@@ -1416,6 +1427,7 @@ export function GalleryDataProvider({
                       ? assetMediaUrl(run.id, scored.scenarioJson)
                       : null,
                     fuel: scored.fuel,
+                    graded: scored.snapshots,
                   },
                 ]
               : [],

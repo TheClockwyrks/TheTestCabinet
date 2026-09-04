@@ -1,0 +1,480 @@
+# Audio clip registry
+#
+# One entry per source clip. A clip's `id` is the sha256 of its original source bytes,
+# which is also its key in the object store (`sources/<id>` and
+# `normalized/<id>/<profile-id>.wav`). Only intrinsic facts live here; a clip's name,
+# tags and description are chosen per pack, so the same clip can be `trombone` in one
+# bank and `low_brass` in another.
+#
+# See `README.md` for the ingest path that adds a clip and uploads its bytes.
+
+[[clip]]
+id = "5e541687a9d7a2daef3ec7f8c8115e10e0e402f9b9840d59018bd90c19853c03"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/338/338869_4067257-hq.ogg"
+freesound_id = 338869
+
+[[clip]]
+id = "3a03d01411b5c37f089a10492c255b3fe31c484c8ae472b92a4b62910c7693a0"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/135/135357_872714-hq.ogg"
+freesound_id = 135357
+
+[[clip]]
+id = "1ca6a640ea159834d3ed2f7336ea62972958e97d098dee673200317969d890c4"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/184/184650_2906575-hq.ogg"
+freesound_id = 184650
+
+[[clip]]
+id = "0b8141eb3e2d284d8c0f7835eb87e31c92ec83a0bc3adfb5a92f399ccd8863f8"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/406/406562_5923045-hq.ogg"
+freesound_id = 406562
+
+[[clip]]
+id = "4584ac28d0752897ed7058a21ade9c458dabd73d4af0eb52285c9ded0cff281b"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/406/406493_5923045-hq.ogg"
+freesound_id = 406493
+
+[[clip]]
+id = "d898f61e9f02d55b190655ae9eb709bb2323ec5b0c10d333c26249c07cf2d8b1"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/435/435681_8905624-hq.ogg"
+freesound_id = 435681
+
+[[clip]]
+id = "0a663ee9ea1e9120f256f95d2c12a400f1594c18bac3ab4628aff5703ae6c850"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/429/429402_5618682-hq.ogg"
+freesound_id = 429402
+
+[[clip]]
+id = "131efca8ac41f5d0ef6c11312268ed46bf329de0b9a429a286b971b253937795"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/521/521341_11532980-hq.ogg"
+freesound_id = 521341
+
+[[clip]]
+id = "0a83742db0489f4ff48082a0c6bf689d2e36aa27414c902bdcfe6427d77290aa"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/94/94119_1554918-hq.ogg"
+freesound_id = 94119
+
+[[clip]]
+id = "33e96b3af021ac2439b62659fd09b9938d845ae7bff71adaf287b37c6c6b061f"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/94/94131_1554918-hq.ogg"
+freesound_id = 94131
+
+[[clip]]
+id = "2c1ae460c9224fb9f22ae630517f80576ea6f46029477b28ce62ae702ca9d3ed"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/94/94133_1554918-hq.ogg"
+freesound_id = 94133
+
+[[clip]]
+id = "eb8ac4dc0345f6d608dd96e517f27001e8f3ada58cca9b680f87409a3197c814"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/60/60013_71257-hq.ogg"
+freesound_id = 60013
+
+[[clip]]
+id = "cc5a3896745c35cf0b8751ef978e9aa8958fc4856aebaa085c578470140344b8"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/60/60007_71257-hq.ogg"
+freesound_id = 60007
+
+[[clip]]
+id = "12cb3020b643fe64cb22eeee620d2eb40f3a23e580dc15dbaabab11496f045a5"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/399/399934_1676145-hq.ogg"
+freesound_id = 399934
+
+[[clip]]
+id = "60d401cde74e36463086c5b0c0338ba42193c4d6a45be9e3b4ae4a1294dc671a"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/188/188038_3403708-hq.ogg"
+freesound_id = 188038
+
+[[clip]]
+id = "cca8d4161c5cf2daca229b571c7d0566953b59f8b84746f7155fc99fdb685fce"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/512/512471_7372230-hq.ogg"
+freesound_id = 512471
+
+[[clip]]
+id = "749a6f9a13dfaa1d7c4b1c15269af4b59554365f2c68918b32ffa4ca30f2e1de"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/87/87304_582374-hq.ogg"
+freesound_id = 87304
+
+[[clip]]
+id = "f79e3cc3fd7978252417219d3bbfe59e472a20af6c7fff75efc87fbe8d8646fa"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/216/216563_1654571-hq.ogg"
+freesound_id = 216563
+
+[[clip]]
+id = "8d7a36687224a04834977abf245f6829f159e971f3822fc79296caca517c37b0"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/264/264592_2884593-hq.ogg"
+freesound_id = 264592
+
+[[clip]]
+id = "77193cc902f2f8c610b43818e73356dfe39548075fd96662d92d0a57721d518c"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/68/68447_871124-hq.ogg"
+freesound_id = 68447
+root_note = 68
+
+[[clip]]
+id = "c5eda8ab1649b267db1f55007ae9dc0699168d7f85f7ef4d693d72ad85c1c3d7"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/632/632255_10403690-hq.ogg"
+freesound_id = 632255
+root_note = 48
+
+[[clip]]
+id = "c0061a44f456862d00bde52f255408df781301304b133b3077b65c03558bccd5"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/347/347422_4551235-hq.ogg"
+freesound_id = 347422
+root_note = 88
+
+[[clip]]
+id = "2707f3826f636785784d10e9e755a2d5c2a81c487b79df39749705db049a7613"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/331/331037_5675920-hq.ogg"
+freesound_id = 331037
+root_note = 57
+
+[[clip]]
+id = "5ba7b4cbfc71ae5bdc00b04ab74cd36caa013a47aa9f071fbe3292d4530d9ab2"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/616/616334_12511365-hq.ogg"
+freesound_id = 616334
+root_note = 40
+
+[[clip]]
+id = "b7c07bfbd1daf4ab34410f1982ba479a132cd717445ebe1646b31553a5358c4f"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/736/736796_14290936-hq.ogg"
+freesound_id = 736796
+root_note = 43
+
+[[clip]]
+id = "db4683c3bf9f107002232f6abf8d56e61bd60756cc9ca7650932f5327f9dd289"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/10/10658_186-hq.ogg"
+freesound_id = 10658
+root_note = 91
+
+[[clip]]
+id = "17b8466442b0cd48ebe596c9361148858d650b91f6680607a803a3513122c3d6"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/329/329777_2639130-hq.ogg"
+freesound_id = 329777
+root_note = 38
+
+[[clip]]
+id = "0050b2446c3dc6e44647278d6cfd7efc30be7c7af61a76910771436a4c807528"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/653/653762_7123687-hq.ogg"
+freesound_id = 653762
+root_note = 48
+
+[[clip]]
+id = "c77abd945055a5ef10dda32025d8d0b4ad2acba21468bda7265acda6238dae36"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/258/258107_4795809-hq.ogg"
+freesound_id = 258107
+root_note = 83
+
+[[clip]]
+id = "8c07389ce7f1f2d45f0606195694e32dbc19500fb196368f334177f9cae09f29"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/722/722898_15669152-hq.ogg"
+freesound_id = 722898
+root_note = 50
+
+[[clip]]
+id = "15fa2b7c6251b36b926e65636e4b511d491cb5e3f249db42dc8a7dec71378a44"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/682/682231_10938187-hq.ogg"
+freesound_id = 682231
+root_note = 60
+
+[[clip]]
+id = "15291c5577f896a0abecd2330652798bd986a72bcd1b617e0fa742d6003fcf6e"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/654/654712_11532701-hq.ogg"
+freesound_id = 654712
+root_note = 60
+
+[[clip]]
+id = "550e8b759c940de46b73e53c4ba0fc03099e63a80ba42d57a88202668e3b04fd"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/156/156501_2507626-hq.ogg"
+freesound_id = 156501
+root_note = 76
+
+[[clip]]
+id = "4698ac1629790915e7433d921de0a01b230839f4d3b3f6bf9be0248435ef6d44"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/608/608181_11021228-hq.ogg"
+freesound_id = 608181
+root_note = 69
+
+[[clip]]
+id = "26c02a0b08f82cbffb3bba3fc799afa1a117819af0154a8d9f697198c08375ee"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/373/373586_2475994-hq.ogg"
+freesound_id = 373586
+root_note = 79
+
+[[clip]]
+id = "8e90dc654ee95bfc0417b35568ad4a1d4634113cfda0590f6e5382246f4ffe7f"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/238/238751_1951924-hq.ogg"
+freesound_id = 238751
+root_note = 68
+
+[[clip]]
+id = "89121107981b73f90597ad087aa9f689a2aed80a32929add6ac590150c2d6088"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/661/661596_12033229-hq.ogg"
+freesound_id = 661596
+root_note = 87
+
+[[clip]]
+id = "336f90d8a2cee71238f8b4b95a9c42aec2413f097281713442f3c3b7f70c3b93"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/745/745075_14904072-hq.ogg"
+freesound_id = 745075
+root_note = 74
+
+[[clip]]
+id = "f7409a48ef8fd48bfe831ef917f2b8638be4db9372452fdd327e78eced1ab697"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/786/786468_2520418-hq.ogg"
+freesound_id = 786468
+root_note = 48
+
+[[clip]]
+id = "8deb91ebf94c7975e7f348869892e53e20552dd72857881f3f84810f1d9cb7dd"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/347/347625_1126957-hq.ogg"
+freesound_id = 347625
+root_note = 60
+
+[[clip]]
+id = "fbb86fa678e7e894c5f1c8376bcfaf104ee6ee50d79c9d3412ab2026f036431e"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/693/693178_14904072-hq.ogg"
+freesound_id = 693178
+root_note = 60
+
+[[clip]]
+id = "5a823294d4e050f3ff2490ebe3d794a6b6bec1243932173ae8e946bf4c68111a"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/685/685866_5383810-hq.ogg"
+freesound_id = 685866
+root_note = 60
+
+[[clip]]
+id = "853bf85f3913ba4d3a44f689219f76bb720201a15e1afcc4d39248364cfcc45f"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/388/388546_14360-hq.ogg"
+freesound_id = 388546
+root_note = 60
+
+[[clip]]
+id = "d5491eb45a754469403ed7f9c4426df5785f3373c6e55927b780ab2e188f4d4b"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/563/563333_2019171-hq.ogg"
+freesound_id = 563333
+root_note = 60
+
+[[clip]]
+id = "7088c7b0d2ab63e87a07b6f87f84681274352cbcb8fea7149b33e01a113037ec"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/260/260466_2127539-hq.ogg"
+freesound_id = 260466
+root_note = 60
+
+[[clip]]
+id = "fb3d66e5b988981490f864a6609b97a0da2d924877bd83d407fcf07c9e07afb0"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/374/374615_2475994-hq.ogg"
+freesound_id = 374615
+root_note = 62
+
+[[clip]]
+id = "a2801d3328e7aba0ead825e0de5d019ec89a2478a8acb61e3d06dd8254ffe55e"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/373/373050_2475994-hq.ogg"
+freesound_id = 373050
+root_note = 44
+
+[[clip]]
+id = "c6b3907301831c535ee95744546535ff5e4747ab4271779779bd9892c3e6f383"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/745/745255_7061184-hq.ogg"
+freesound_id = 745255
+root_note = 61
+
+[[clip]]
+id = "7f63248b0bcc341d70cd7a66ea9e9425c9503c1d46f71d68d954f647d77f2c3f"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/444/444491_9159316-hq.ogg"
+freesound_id = 444491
+root_note = 71
+
+[[clip]]
+id = "bf4166f406e178529d4e555c030e38a0c49f5bc808c39548e8c1a3cd51f55549"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/413/413713_2812020-hq.ogg"
+freesound_id = 413713
+root_note = 48
+
+[[clip]]
+id = "933a33ae5a6c6cd958776f32d3e48585c0a50f9d22a9eaf3491609a33b615e55"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/373/373672_2475994-hq.ogg"
+freesound_id = 373672
+root_note = 89
+
+[[clip]]
+id = "c67074fbed495e57f09c885486b6c876c6331cb29a8dc1a1963852ac844379d6"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/420/420488_7287741-hq.ogg"
+freesound_id = 420488
+root_note = 71
+
+[[clip]]
+id = "6ce332f0748ea10c3d5594da52a49227125d01488dc82f034ddd4d5140f8752e"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/722/722897_15669152-hq.ogg"
+freesound_id = 722897
+root_note = 69
+
+[[clip]]
+id = "45c56f90c2fbd45f059a9b525759e60cbc5226003a49e1a4bcaf03f494f9a52a"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/801/801829_3797507-hq.ogg"
+freesound_id = 801829
+root_note = 60
+
+[[clip]]
+id = "bef6eb69df05d87764c749f67bf968330d4198f89d662693f2be1f25a5d9c821"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/653/653766_7123687-hq.ogg"
+freesound_id = 653766
+root_note = 60
+
+[[clip]]
+id = "15a8a24f84cd80cc4ebafcac60e94f1b5b39eef631c1de091c8658b333f2d48e"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/807/807996_3797507-hq.ogg"
+freesound_id = 807996
+root_note = 60
+
+[[clip]]
+id = "151b764ca11ca2d9d80c91ec011046563b74053c6a73fbc64565ccc2ee2123c5"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/669/669745_13632374-hq.ogg"
+freesound_id = 669745
+root_note = 60
+
+[[clip]]
+id = "e34d6893f00e53d5e6149a62b70ed71f75268484b67edd2d9c3f1d5028cb22b3"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/261/261214_2297168-hq.ogg"
+freesound_id = 261214
+root_note = 48
+
+[[clip]]
+id = "f6d66ce961389406c63ca030aa7c09f704934cfef60cf7ad61ac157439f4f460"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/73/73003_377011-hq.ogg"
+freesound_id = 73003
+root_note = 35
+
+[[clip]]
+id = "14760d43779946f76dc91d5ee7c53f1dc75319764c20c230c893a54b1bb53a88"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/83/83544_377011-hq.ogg"
+freesound_id = 83544
+root_note = 36
+
+[[clip]]
+id = "ba225042d1d506f3f79864e8a46dd5163b04964a8bf2d2dfda6644a28c15fbf9"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/797/797483_2520418-hq.ogg"
+freesound_id = 797483
+root_note = 48
+
+[[clip]]
+id = "8de97c59be4e76c1501212089a3dcdcf0dd38f235dffb3feda3766c0fa1ab780"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/484/484665_2448533-hq.ogg"
+freesound_id = 484665
+root_note = 60
+
+[[clip]]
+id = "552c98aee8f969527dec4a9168878856546e9f247699aa8b25a38c5891196d3a"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/381/381927_5622625-hq.ogg"
+freesound_id = 381927
+root_note = 68
+
+[[clip]]
+id = "993f5976b9e322eafb3b5c0aa8fec8a561bc189c41737c84d1b7dd03442a5c26"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/669/669756_13632374-hq.ogg"
+freesound_id = 669756
+root_note = 72
+
+[[clip]]
+id = "1312e7061465e9addcba5b9f1d5a8a1bfd8471168f55bafe59558ab464f57341"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/351/351062_2205380-hq.ogg"
+freesound_id = 351062
+root_note = 60
+
+[[clip]]
+id = "6cd6d80ab5be9fdb89222b2e8dab3abb9c6dfdc802cfd635c037c9d2a775b41c"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/269/269719_4965320-hq.ogg"
+freesound_id = 269719
+root_note = 60
+
+[[clip]]
+id = "ba9779122d0c896e68f5f389fabd3e6445cccf9ea96dbebec02806c734d4a909"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/795/795287_17090683-hq.ogg"
+freesound_id = 795287
+root_note = 60
+
+[[clip]]
+id = "34532588ba59c7e2d5b9b1212996b4c7f3b09934fa7fa7900acab14dcd731fa3"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/509/509972_8033171-hq.ogg"
+freesound_id = 509972
+root_note = 60
+
+[[clip]]
+id = "cb66208096277351b58c511bcc1c2ba0f1a483e51d05ae092ecd5adb94e9e5bb"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/509/509984_8033171-hq.ogg"
+freesound_id = 509984
+root_note = 60
+
+[[clip]]
+id = "8310145fe2e9d8786216a19d52f241c9e05313a45a99ba11769d69f31c27d343"
+license = "CC0-1.0"
+source_url = "https://cdn.freesound.org/previews/638/638082_2305630-hq.ogg"
+freesound_id = 638082
+root_note = 60

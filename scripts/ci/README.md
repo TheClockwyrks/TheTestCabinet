@@ -38,12 +38,12 @@ and can be run from anywhere, including locally:
 | `binary-smoke.sh`    | release-build, `cargo nextest run --release` + doctests, run binary | yes |
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
-| `web-test.sh`      | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace | yes |
+| `web-test.sh`      | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace, `node --test` over `scripts/lib` | yes |
 | `desktop-build.sh` | `npm ci`, build the workspace runtime packages, type-check + `vite build` of the desktop UI, then clippy/rustdoc/build/test `crates/desktop` | yes |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
-| `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package, and every tree the workspace bakes in with `include_str!` — survives every `.dockerignore` allowlist that can apply to it | yes |
+| `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package, every tree the workspace bakes in with `include_str!`, and every package `stage-tcab-packages.mjs` bakes into the host package store — survives every `.dockerignore` allowlist that can apply to it | yes |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
@@ -148,6 +148,12 @@ from `web-build.sh` for two reasons. A failing assertion should report as a fail
 test rather than as a failing build; and the two need different things, so they
 run in parallel — the tests need only the small workspace runtime packages built
 (`npm run build:packages`), never the app bundles.
+
+It also runs the repository scripts' own `node:test` suites, through the root
+`test:scripts`. `scripts/` is not an npm workspace, so `npm run test --workspaces`
+cannot reach it: a suite there would otherwise be executed by no gate. The suites are
+hermetic — no network, no ffmpeg, no object store — so they cost this job under a
+second and need nothing the job does not already have.
 
 `desktop-build.sh` covers the Tauri desktop app —
 both its React UI (`apps/desktop`) and its Rust shell (`crates/desktop`). It exists

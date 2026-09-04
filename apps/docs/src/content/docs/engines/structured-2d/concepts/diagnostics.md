@@ -23,6 +23,22 @@ visible, so a source belongs in the cheap, side-effect-free half of the game's
 code. A source that throws is contained: its line carries the error message and
 the remaining lines draw normally.
 
+## An enumerable set of values
+
+A source reports a string, a number, or a boolean. Those three are what a panel
+line can say and what a check can compare, and keeping the set small is what
+lets the engine own the formatting for every value a game can register.
+
+A framework object is reduced to one of the three by the source that reports it,
+which is the place that knows what is worth seeing. An actor becomes its
+position as a formatted string, its tag, or its count, and a collection becomes
+its length.
+
+A source always reports something, so where the thing it names is absent it
+reports a short placeholder string in the game's own vocabulary. The name keeps
+its line, and the word on that line is one the game chose rather than one the
+engine invented for it.
+
 ## Two registries, two lifetimes
 
 There are two registries because the framework has two lifetimes. The instance's
@@ -80,6 +96,17 @@ values never requires switching on a piece of human-facing chrome, and a person
 pressing the toggle sees the values that read returns, with no second code path
 to keep in step.
 
+A caller holding the engine reads every registered source and what it reports
+now, in the panel's own order. Registering the values is the game's part, and
+drawing them is the engine's, so a case's checks read what a build registered. A
+check that instead read the drawn panel would be grading the engine's overlay in
+place of the build.
+
+Each reading carries either a value or the failure its source threw, never both.
+A failure is a defect in the game's own source, so it stays distinguishable from
+every value a working source could report rather than arriving as a string a
+check might accept as a legitimate reading.
+
 ## Chrome over the finished picture
 
 The overlay draws last, after the pipeline has rendered the frame, with the
@@ -115,10 +142,10 @@ in a monospace face so columns of numbers line up and a value changing width
 leaves the line where it was.
 
 The engine owns the formatting, so a raw float is not a line of noise the reader
-re-parses every frame and a small state bag is legible without the game
-pre-formatting it. The exact mapping is specified in
+re-parses every frame and every build's overlay reads the same way. The exact
+mapping is specified in
 [the diagnostics API](/engines/structured-2d/apis/diagnostics/).
 
-Because a line is the unit, a source is expected to return about a line's worth
-of information. A large object serializes to a line wider than the panel, which
-is clamped to the surface.
+Because a line is the unit, a source is expected to report about a line's worth
+of information. A longer string draws a line wider than the panel, which is
+clamped to the surface.

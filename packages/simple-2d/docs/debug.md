@@ -32,14 +32,21 @@ Nothing holds a writable state, so a surface's operations are written in the
 shape of `update`: each takes the current state and returns something from it.
 
 - A pose takes the current state and returns the next one. It is a
-  `Transition<State>` plus whatever arguments the pose needs, such as
-  `serve(state) => State` or `setBall(state, index, patch) => State`.
+  `Transition<State>` plus the scalar arguments the pose needs, such as
+  `setBallPosition(state, x, y) => State` or
+  `setBallVelocity(state, vx, vy) => State`.
 - A reading takes the current state and returns what it read, such as
   `snapshot(state) => Snapshot`.
 
 A caller drives a pose through `engine.apply` and a reading through
 `engine.state`, so the surface itself holds no state and reports the state the
 engine holds at the instant it is called.
+
+A pose sets one element of the state and takes scalars or a small fixed tuple.
+Keeping each element on its own operation lets a caller arrange exactly the part
+of the world its scenario is about, and it leaves the game free to store that
+element however it likes, because an operation that took an object of fields
+would make the game's layout part of the surface.
 
 ## Returning it
 
@@ -59,7 +66,8 @@ interface State {
 }
 
 interface Debug {
-  place(state: DeepReadonly<State>, x: number, vx: number): State;
+  setPosition(state: DeepReadonly<State>, x: number): State;
+  setVelocity(state: DeepReadonly<State>, vx: number): State;
   bounces(state: DeepReadonly<State>): number;
 }
 
@@ -68,7 +76,8 @@ const game: Game<State, Debug> = {
     const state: State = { x: 320, vx: 0, bounces: 0 };
 
     const debug: Debug = {
-      place: (s, x, vx) => ({ ...s, x, vx }),
+      setPosition: (s, x) => ({ ...s, x }),
+      setVelocity: (s, vx) => ({ ...s, vx }),
       bounces: (s) => s.bounces,
     };
 
@@ -95,8 +104,10 @@ const game: Game<State, Debug> = {
 };
 ```
 
-Offer the operations a scenario is written in, such as placing a piece, forcing
-an outcome, or reading a score, rather than the raw fields of the state.
+Offer one operation for each element of the world a scenario arranges, such as
+placing a piece, giving it a velocity, or reading a score. A sequence that
+arranges several of them at once, such as opening a match or staging a rally,
+belongs to the caller, which composes it from these operations.
 
 The surface's implementation may live wherever the game likes, inline as above
 or in its own module that `initialize` builds and returns, so long as the pair
@@ -123,7 +134,8 @@ const engine = createEngine({
 
 await engine.initialize();
 
-engine.apply((s) => engine.debug.place(s, 320, 480));
+engine.apply((s) => engine.debug.setPosition(s, 320));
+engine.apply((s) => engine.debug.setVelocity(s, 480));
 await engine.advance(120);
 
 console.log(engine.debug.bounces(engine.state));

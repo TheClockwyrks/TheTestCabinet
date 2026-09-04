@@ -29,8 +29,8 @@ drawn in code** (below):
 | `draw-sheet` | a sprite sheet, **one PNG per frame** | animated signals/crossings, construction, vehicle cycles |
 | `particle-2d` | a particle system → a `system.json` | pollution haze, construction dust, milestone fireworks |
 | `sfx-synth` | a procedural sound → a `.wav` | build / chime / alert cues from raw synthesis |
-| `sfx-sample` | a sampled sound over a baked pack → a `.wav` | richer build / notification / alert cues |
-| `music` | sequenced music over a baked bank → a `.wav` (+ `.mid`) | the ambient city music bed |
+| `sfx-sample` | a sampled sound over the sample pack → a `.wav` | richer build / notification / alert cues |
+| `music` | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the ambient city music bed |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is the
@@ -51,9 +51,9 @@ initialize / operate / render commands and how to name the output path.
   particles or bake frames.
 - `sfx-synth` / `sfx-sample` / `music` record synth voices, sampled layers, or sequenced
   notes and `render` a PCM `.wav`; `music` also emits a portable `.mid` score alongside
-  its `.wav`. `sfx-sample` and `music` draw on a **baked sample pack / instrument bank**
-  already in the image (browse it via `list-samples` / the tool's help); a synth from
-  `sfx-synth` needs no pack.
+  its `.wav`. `sfx-sample` draws on the `combat-core` sample pack and `music` on the
+  `gm-lite` instrument bank, both present in the container (browse them with
+  `list-samples` and `list-instruments`); a synth from `sfx-synth` needs no pack.
 
 ## Loading rule — page-relative, so it works under any base path
 
@@ -180,8 +180,8 @@ Audio API. Land them under, for example, `assets/audio/`.
   player lays a road or building), a **notification chime** (a milestone or a completed
   development), and an **alert** (budget or utility trouble) with `sfx-synth` and/or
   `sfx-sample`, and a soft **ambient city hum** loop. `sfx-synth` builds a
-  sound from synth voices alone; `sfx-sample` layers over the baked sample pack (browse
-  it via `list-samples`) for a richer result — use whichever suits each cue.
+  sound from synth voices alone; `sfx-sample` layers over the `combat-core` sample pack
+  (browse it with `list-samples`) for a richer result — use whichever suits each cue.
 - **Music** — produce a **calm ambient city music bed** with `music`: a slow, warm,
   low-key loop under the city — unobtrusive, the kind of bed a builder plays for hours.
   `music` emits both a `.wav` (the ready asset you play) and a `.mid` score alongside it;

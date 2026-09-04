@@ -85,13 +85,46 @@ export const BLOOM_MAX = 3;
 export const NEXT_FLARE_MAX = 10;
 
 /**
- * How often a flare sweep reads the game, in ticks: a sixtieth of a second.
+ * How often a flare sweep reads the game, in ticks: a thirtieth of a second.
  *
  * Every beat these checks time is at least `FLARE_CHARGE` (`0.5 s`) long and the
- * tightest band any of them states is a tenth of a second, so a sixtieth resolves
- * each edge to a sixth of the tolerance it is judged against.
+ * tightest band any of them states is a tenth of a second. An edge is seen at the
+ * first sample at or after it, so a beat measured between two edges BOTH read at
+ * this grain is under one sample out either way — a third of that band, leaving
+ * the other two thirds as room for the build's own rounding.
+ *
+ * THIS IS NOT THE ONLY GRAIN IN THE THREE CHECKS, so it is not on its own the
+ * budget any of them leaves. `flarefish/flare-cadence` reads its two charge-ups —
+ * a whole `FLARE_INTERVAL` of wandering apart, and so the two most expensive edges
+ * in the three — on a coarser sweep of its own, and states there what the spans
+ * measured against that sweep leave the build. A span with one edge on each grain
+ * is out by the difference between how late each of the two was seen, not by one
+ * sample, and only the check that measures it can say which grains its edges came
+ * from.
+ *
+ * WHY NOT FINER. `specs/instrumentation.md` has `advance` REDRAW, so every sample
+ * costs the build a whole frame of its own rendering — a few milliseconds on an
+ * idle machine and tens of times that on a busy one. A flare cycle is `8.5 s` of
+ * game and these checks watch two of them, so a sixtieth of a second would be a
+ * thousand renders spent on a measurement that reads none of them, which turns a
+ * cadence a build either keeps or does not into a reading of how busy the host was.
+ * A pure WAIT — reaching a flare rather than timing one — takes
+ * {@link FLARE_WAIT_POLL} instead.
  */
-export const FLARE_POLL = 2;
+export const FLARE_POLL = 4;
+
+/**
+ * How often a sweep that is only WAITING reads the game, in ticks: a fifth of a
+ * second.
+ *
+ * A wait for a flare to arrive at all decides nothing about when it arrived: the
+ * checks that use this read `hit` off it and nothing else, and every beat they go
+ * on to time is sampled at {@link FLARE_POLL}. What this has to be fine enough for
+ * is only to land INSIDE the phase it is waiting for, and the shortest of those is
+ * a `FLARE_CHARGE` (`0.5 s`) charge-up — two and a half times this, so a wait
+ * stops at most a fifth of a second into a phase that lasts half of one.
+ */
+export const FLARE_WAIT_POLL = 24;
 
 /** The room, its hallway, and the Flarefish standing in it. */
 export interface FlareRoom {

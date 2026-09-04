@@ -552,19 +552,18 @@ validation = { script = "instrumentation/reset.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "overlay"
-title = "The debug overlay reports the game"
-description = "Toggling the debug overlay over a posed 7x6 board carrying all three channels draws the diagnostics specs/instrumentation.md asks for — lines reporting the current screen and mode and the board's cols and rows, and, read one channel at a time by drawing a segment on that channel alone and then emptying it, a line reporting each channel's beam length — and the snapshot is identical before and after, so watching the overlay leaves the game as it is."
+title = "The game names its diagnostics, and reading them changes nothing"
+description = "The game names the diagnostics specs/instrumentation.md asks for — the current screen and mode, the board's cols and rows, and each channel's beam length — and each reports the posed board. Reading them leaves the game exactly as it was."
 domains = ["campaign", "cascade", "tracing", "presentation"]
 failure_cap = "passable"
-# Automated validation: toggle the overlay (the Backquote key in Chromium under
-# `none`; the engine's overlay key through its input under an engine), read the
-# new text draws off the recorder, and compare snapshots across the toggle. The
-# beam-length half is read per channel — its wording is the build's, so what is
-# asserted is that moving one channel's beam, and nothing else in the game,
-# changes a panel line that two idle frames showed holding still. See
-# validation/<engine>/instrumentation/overlay.test.ts.
+# Automated validation: pose a board, then read the diagnostics the game named and
+# hold each against what the pose implies. Under `none` the overlay is the runtime
+# layer the model wrote, so the check toggles it and reads the lines it draws.
+# Under an engine the panel is the engine's, so the check reads the sources back
+# off the engine instead: what the game is graded on is naming them, not the
+# drawing. See validation/<engine>/instrumentation/overlay.test.ts.
 validation = { script = "instrumentation/overlay.test.ts", outputs = [
-  { id = "overlay", name = "The overlay reporting the posed board", kind = "image" },
+  { id = "overlay", name = "The posed board the diagnostics report", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "deterministic-core"
@@ -1417,15 +1416,6 @@ validation = { script = "screens/howto-back.test.ts", outputs = [
   { id = "title", name = "The title after leaving how-to", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "pointer-ignores-menus"
-title = "The pointer does not operate menus"
-description = "A press and release on the title menu's drawn items changes nothing — screen and menuIndex are unchanged — because the pointer draws beams and the menus are driven by the registered actions alone."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "screens/pointer-ignores-menus.test.ts", outputs = [
-  { id = "title", name = "The title unchanged by the pointer", kind = "image" },
-] }
-[[review.categories.items]]
 id = "mute"
 title = "Mute works from any screen"
 description = "The mute action flips the snapshot's muted flag from the title and from playing, and the game still accepts a trace while muted, so it stays fully playable with sound off."
@@ -1442,6 +1432,153 @@ domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "screens/playing-clear-hint.test.ts", outputs = [
   { id = "playing", name = "The playing screen naming the clear key", kind = "image" },
+] }
+
+# --- Pointer and touch --------------------------------------------------------
+# Every screen is worked from the pointer as well as from the keyboard, and the
+# pointer is a mouse, a pen, or a finger. The targets a screen carries are
+# reported by the debug surface, so the geometry a player aims at is checked
+# directly rather than inferred from what happened to be drawn: a build whose
+# targets are the right size, do not overlap, and sit where its own hit test
+# looks is a build a finger can work. The behavioral points then drive those
+# targets through the real input path, once from a mouse and once from a touch.
+[[review.categories]]
+id = "pointer"
+title = "Pointer and touch"
+[[review.categories.items]]
+id = "targets-listed-per-screen"
+title = "Every screen reports the pointer targets it carries"
+description = "The snapshot's targets list carries exactly the ids specs/controls.md fixes for the screen, in that order: menu-0 through menu-2 on title, back on howto, board-1 through board-24 then back on select, and clear then back on playing."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/targets-listed-per-screen.test.ts", outputs = [
+  { id = "title", name = "The title screen and its targets", kind = "image" },
+] }
+[[review.categories.items]]
+id = "targets-are-finger-sized"
+title = "Every target is at least TARGET_MIN_W by TARGET_MIN_H"
+description = "On every screen that carries targets, each reported target is at least 96 wide and 72 tall and lies wholly within the 1280 by 720 stage, so a fingertip lands on it."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/targets-are-finger-sized.test.ts", outputs = [
+  { id = "select", name = "The select grid and its targets", kind = "image" },
+] }
+[[review.categories.items]]
+id = "targets-do-not-overlap"
+title = "No two targets on a screen overlap"
+description = "On every screen that carries targets, no two reported target rectangles intersect, so a pointer position lies in at most one target."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/targets-do-not-overlap.test.ts", outputs = [
+  { id = "select", name = "The select grid's separated targets", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hover-highlights-a-title-item"
+title = "Moving the pointer over a title item highlights it"
+description = "With the pointer holding nothing, a move to the center of the title's menu-2 target sets menuIndex to 2, and a move to menu-0's center sets it back to 0."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "pointer/hover-highlights-a-title-item.test.ts", outputs = [
+  { id = "menu", name = "The title item under the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-takes-a-title-item"
+title = "A press and release on a title item takes it"
+description = "A press at the center of the title's menu-2 target followed by a release at that same point sets screen to howto, which is what confirm on HOW TO PLAY does."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-takes-a-title-item.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen reached with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "press-highlights-before-release"
+title = "A press moves the highlight to the target it lands in"
+description = "A press at the center of the title's menu-1 target sets menuIndex to 1 before any release, which is what gives a touch, that has no hover, the same feedback a mouse gets."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "pointer/press-highlights-before-release.test.ts", outputs = [
+  { id = "menu", name = "The title item under a held press", kind = "image" },
+] }
+[[review.categories.items]]
+id = "release-outside-takes-nothing"
+title = "A release outside the pressed target takes nothing"
+description = "A press at the center of the title's menu-2 target followed by a release outside every target leaves screen at title, and the highlight stays where the press put it."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "pointer/release-outside-takes-nothing.test.ts", outputs = [
+  { id = "title", name = "The title after a release off the target", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-takes-a-title-item"
+title = "A touch works the title menu exactly as a mouse does"
+description = "A press and release at the center of the title's menu-2 target, driven from a touch, sets screen to howto, and the snapshot reports the pointer's device as touch."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/touch-takes-a-title-item.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen reached by touch", kind = "image" },
+] }
+[[review.categories.items]]
+id = "touch-draws-a-beam"
+title = "A touch draws a beam exactly as a mouse does"
+description = "A press on an emitter, a move to an adjacent node, and a release, all driven from a touch, leave that channel's beam carrying the same one segment the same route drawn from a mouse leaves."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "pointer/touch-draws-a-beam.test.ts", outputs = [
+  { id = "drawn", name = "A beam drawn by touch", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-enters-a-board"
+title = "A press and release on a select grid cell enters that board"
+description = "On select, a press and release at the center of the board-1 target sets screen to playing with boardIndex 0, which is what confirm on the first board does."
+domains = ["campaign"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-enters-a-board.test.ts", outputs = [
+  { id = "playing", name = "The first board entered with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-leaves-howto"
+title = "Taking the back target leaves the how-to screen"
+description = "On howto, a press and release at the center of the back target returns to title with menuIndex 0, which is what the back action does."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-leaves-howto.test.ts", outputs = [
+  { id = "title", name = "The title reached from how-to with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-clears-the-board"
+title = "Taking the clear target empties every beam"
+description = "On playing with segments drawn, a press and release at the center of the clear target leaves every beam carrying no cells, which is what the clear action does."
+domains = ["tracing"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-clears-the-board.test.ts", outputs = [
+  { id = "cleared", name = "The board cleared with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-leaves-the-board"
+title = "Taking the back target leaves the board"
+description = "On playing in campaign, a press and release at the center of the back target returns to select, which is what the back action does."
+domains = ["campaign"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-leaves-the-board.test.ts", outputs = [
+  { id = "select", name = "The grid reached from the board with the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "a-target-press-begins-no-trace"
+title = "A press inside a playing target begins no trace"
+description = "On playing, a press at the center of the clear target leaves tracing null, so the two controls are resolved before the board and never grab a node behind them."
+domains = ["tracing"]
+failure_cap = "great"
+validation = { script = "pointer/a-target-press-begins-no-trace.test.ts", outputs = [
+  { id = "playing", name = "The board untraced by a press on a control", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-takes-a-solved-choice"
+title = "A press and release takes a choice on the solved screen"
+description = "On the solved screen, a press and release at the center of the menu-0 target takes the first choice, which is what confirm with menuIndex 0 does."
+domains = ["cascade"]
+failure_cap = "scuffed"
+validation = { script = "pointer/pointer-takes-a-solved-choice.test.ts", outputs = [
+  { id = "next", name = "The next board reached with the pointer", kind = "image" },
 ] }
 
 # --- Audio --------------------------------------------------------------------

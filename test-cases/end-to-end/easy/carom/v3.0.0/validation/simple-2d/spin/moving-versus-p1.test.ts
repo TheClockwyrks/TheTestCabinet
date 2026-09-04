@@ -9,9 +9,14 @@
 // full-speed paddle covers 360 px, and it starts that far DOWNstream to arrive as
 // the ball does. Aimed at mid-field that start would fall below the field edge,
 // where the clamp would pin it still.
+//
+// The field holds that ball alone: both obstacles are removed, so nothing on
+// the approach can turn the ball before it reaches the paddle. Only the struck
+// paddle is taken from the player — `setPaddleDriven` changes one side — and
+// the far one, which cannot be removed, is driven out of the lane.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   LEAD_TICKS,
@@ -19,7 +24,7 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
+  enterPlaying,
   type Harness,
 } from "../harness";
 
@@ -61,7 +66,7 @@ afterEach(() => {
 });
 
 it("curves the ball the other way off an upward swing", async () => {
-  await startPlaying(harness, "versus");
+  enterPlaying(harness, "versus");
   arrangePaddleHit(harness, "left", {
     cy: CONTACT_CY,
     vy: -PADDLE_SPEED,

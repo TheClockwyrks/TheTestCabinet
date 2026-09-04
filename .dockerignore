@@ -201,6 +201,19 @@
 # by a case, so each appears in that script's list and in no case manifest.
 !/packages/simple-2d
 !/packages/structured-2d
+!/packages/simple-3d
+!/packages/structured-3d
+# The shared engineless (`none`) validator harness and canvas recorder. Nothing
+# bundles it and no COPY names it: scripts/stage-tcab-packages.mjs bakes it into the
+# package store beside the engine runtimes, and crates/core's vitest validator
+# (vitest_validator.rs, `stage_case_harness`) later copies its sources out of that
+# store into a case's staged validator project. So the driver image must carry its
+# sources, and a build context missing them fails inside the staging script
+# ("shippable package @test-cabinet/case-harness not found under packages/"), taking
+# every service image on services.Dockerfile down with it. scripts/ci/build-context.sh
+# asserts every name in that script's SHIPPABLE list survives this allowlist, because
+# a `COPY . .` stage is invisible to the COPY-source checks.
+!/packages/case-harness
 # The run-container BASE image (containers/base/Dockerfile) reuses this same npm
 # slice: its builder stage `npm ci`s the workspace and runs the staging script to
 # bake the shippable @test-cabinet packages — and the simple-2d engine runtime —
@@ -455,3 +468,22 @@
 # This is not hypothetical here: the primary development host is macOS running the tree
 # through a Linux VM's shared mount, so Finder and the builder see the same directories.
 **/.DS_Store
+
+# The staged AUDIO STORE, and the one thing under dist/ that belongs in this context.
+# The audio clips are not committed to this repository: they live in the private audio
+# object store, and `containers/build.sh` runs scripts/stage-audio-store.mjs, which
+# downloads and verifies every published pack into dist/audio-store/tree.
+# containers/audio-store/Dockerfile then `COPY`s that directory (named through the
+# AUDIO_STAGE_DIR build arg) to /opt/tcab-audio, which is the ONE image that carries
+# audio: no RUN image bakes a pack any more, a run is staged with the packs its test
+# case declares. The blanket `**/dist/` re-exclusion above would keep it out, so
+# re-include just this subtree — and only it, so every OTHER dist/ (a local
+# `npm run build`'s output) stays out as before. This re-inclusion has to come after
+# `**/dist/` to win, which is why it lives here rather than with the allowlist proper.
+#
+# The pattern names the `tree` directory rather than the whole `dist/audio-store` root,
+# which is as narrow as this file's format goes: it is exactly what the COPY reads, so
+# the stager's content-addressed DOWNLOAD CACHE at dist/audio-store/.cache — a second
+# copy of every clip it has ever verified, which no image reads — stays out, and so does
+# anything else that ends up beside the tree.
+!/dist/audio-store/tree

@@ -24,7 +24,7 @@ The engine owns:
 - The Web Audio graph, cue synthesis, looping, mute, and the first-gesture
   unlock.
 - Asset URL resolution under the fixed `assets/` root.
-- The diagnostics overlay and its toggle key.
+- The diagnostics registries, the overlay they are drawn on, and its toggle key.
 - The draw-command recorder over the context the pipeline draws through.
 - The debug surface the game instance returned, held for a caller to read back.
 
@@ -105,7 +105,7 @@ interface InitApi {
     resolve(path: string): string;
   };
   readonly diagnostics: {
-    register(name: string, source: () => unknown): void;
+    register(name: string, source: () => DiagnosticValue): void;
   };
   readonly events: EngineEvents;
   viewport(): Viewport;
@@ -126,6 +126,7 @@ interface EngineOptions<D = unknown> {
   height: number;
   game: GameDefinition<D>;
   background?: string;
+  imageSmoothing?: boolean;
   layout?: string;
   clock?: Clock;
   surface?: SurfaceMetrics;
@@ -140,6 +141,7 @@ interface EngineOptions<D = unknown> {
 | `height` | — | The logical design height the camera projects into. Finite and positive. |
 | `game` | — | The game definition, bound for the engine's lifetime. `D` is inferred from it. |
 | `background` | — | A CSS color cleared to before every frame. Absent, the frame clears to transparency. |
+| `imageSmoothing` | `true` | Whether an image the fit scales is resampled bilinearly. `false` samples nearest-neighbor, which keeps pixel art crisp. See `rendering.md`. |
 | `layout` | — | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`. |
 | `clock` | `new WallClock()` | The clock supplying each frame's delta. See `frame.md`. |
 | `surface` | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its listeners. |
@@ -171,6 +173,7 @@ interface Engine<D = unknown> {
   setClock(clock: Clock): void;
   frame(): FrameInfo;
   viewport(): Viewport;
+  diagnostics(): readonly DiagnosticReading[];
   recording(): boolean;
   startRecording(): void;
   stopRecording(): Recording;
@@ -191,6 +194,7 @@ interface Engine<D = unknown> {
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
+| `diagnostics` | Every registered diagnostic source and what it reports now, the instance registry's first and then the world's. See `diagnostics.md`. |
 | `recording` | Whether draw-command recording is currently capturing. See `recording.md`. |
 | `startRecording` | Arm the recorder. Capture begins at the next frame. |
 | `stopRecording` | Disarm and return everything captured since `startRecording`. |
@@ -363,6 +367,6 @@ happens.
 | `input.md` | Actions, key bindings, edges, the pointer, and the touch layout catalogue. |
 | `audio.md` | Cue definition, file-backed cues, playback, looping, mute, and the unlock. |
 | `assets.md` | The asset root, the loaders, the path rules, and the load events. |
-| `diagnostics.md` | The overlay, the two registries, frame metrics, and the display formatting. |
+| `diagnostics.md` | The two registries, reading them back, the overlay, and frame metrics. |
 | `debug.md` | Declaring a debug surface, returning it from `initialize`, and driving it through `engine.debug`. |
 | `recording.md` | Arming the recorder, the recording format, and replaying a frame. |

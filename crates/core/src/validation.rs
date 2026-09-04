@@ -631,9 +631,15 @@ pub struct PerformanceCaseResult {
     ///
     /// Recorded so [browser playback](crate::validation) can *prove* what it is
     /// drawing: playback loads the run's **own** engine module and steps it, and at
-    /// each scheduled snapshot tick can compare the module's checksum against the one
-    /// recorded here — a cheap assertion that the wasm it is animating is the engine
-    /// the run graded, not a stand-in.
+    /// each graded tick inside the played window it compares the module's checksum
+    /// against the one recorded here, warning when they differ — a cheap assertion
+    /// that the wasm it is animating is the engine the run graded, not a stand-in.
+    ///
+    /// The checksums are worth comparing against because the grader *derived* them
+    /// from state rather than accepting them as reported: the host re-serializes each
+    /// returned snapshot to canonical bytes and rejects a checksum that is not its
+    /// own state's. A run recorded before that gate existed carries checksums that
+    /// were taken on trust.
     ///
     /// `#[serde(default)]` because run records written before this field existed
     /// must still load.
@@ -673,6 +679,30 @@ fn default_true() -> bool {
     true
 }
 
+/// Why a validator's negative answer decided nothing about the build.
+///
+/// Each of these leaves the point unanswered, and they are held apart so a reviewer
+/// reads the real reason rather than one that sounds like a fact about the build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum Inconclusive {
+    /// The check ran and declined to decide: it could not pose its scenario in the
+    /// world this build invented, though every call it made was answered correctly. A
+    /// [vitest validator](crate::vitest_validator) says this by skipping every check
+    /// in its suite.
+    PreconditionUnmet,
+    /// The check could not be executed. A validator project the run's engine has none
+    /// of, a tree with no vitest to run one, a suite the project does not contain, or
+    /// a report that would not parse are facts about the case or the produced tree.
+    NotRun,
+    /// The run exceeded its wall-clock cap and was stopped, which is a fact about the
+    /// host. A machine busy enough to stretch a conforming build's suites past the
+    /// budget must never turn that build into a failing one, so the points the run
+    /// left undecided stay undecided rather than failing.
+    TimedOut,
+}
+
 /// The outcome of driving one review item's **debug script** against the build's
 /// [instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side
 /// automation a case authors to decide an objective review item without a human.
@@ -691,9 +721,9 @@ fn default_true() -> bool {
 /// is synthesized for it, pre-filled into the review like any auto verdict and
 /// overridable by the reviewer — rather than failing the whole run: a build with a
 /// broken debug API is still reviewed, and is scored down by exactly the points its
-/// checks could not answer. A check the host could not run *at all* decided nothing
-/// about the build and is held apart by
-/// [`precondition_unmet`](Self::precondition_unmet).
+/// checks could not answer. A check that decided nothing about the build is held apart
+/// by [`precondition_unmet`](Self::precondition_unmet), which
+/// [`inconclusive`](Self::inconclusive) then qualifies.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -736,23 +766,19 @@ pub struct DebugScriptResult {
     /// Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather
     /// than a contract failure the build earned.
     ///
-    /// Two outcomes set it, and both leave the point unanswered: no failed verdict is
+    /// An inconclusive result leaves the point unanswered: no failed verdict is
     /// synthesized, [scoring](crate::comparison::automated_only_score) skips the point
-    /// entirely, and the reviewer decides it by hand.
-    ///
-    /// The first is an UNMET PRECONDITION. A check often searches the model's own
-    /// world for a spot to pose its scenario — a blind corner in an invented maze, a
-    /// legal build tile. That search can come up empty against a fully conformant
-    /// build: every call was answered correctly, there was simply no such spot. A
-    /// [vitest validator](crate::vitest_validator) says the same thing by skipping
-    /// every check in its suite.
-    ///
-    /// The second is a check the host could not execute at all, such as a validator
-    /// project with no vitest to run it or a suite run that exceeded its cap. The
-    /// [`detail`](Self::detail) names the reason. Only ever `true` alongside
+    /// entirely, and the reviewer decides it by hand. Which inconclusive outcome it
+    /// was is carried by [`inconclusive`](Self::inconclusive), and the
+    /// [`detail`](Self::detail) names the reason in prose. Only ever `true` alongside
     /// `ran == false`.
     #[serde(default)]
     pub precondition_unmet: bool,
+    /// Which inconclusive outcome this is, set exactly when
+    /// [`precondition_unmet`](Self::precondition_unmet) is. `None` on a result
+    /// recorded before the outcomes were told apart.
+    #[serde(default)]
+    pub inconclusive: Option<Inconclusive>,
     /// Detail about a failed or degraded script (the handle was missing, a call
     /// threw, an output was not produced), or `None` when it ran clean.
     #[serde(default)]

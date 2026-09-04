@@ -26,8 +26,11 @@ There are two binaries, one per `asset_kind`:
 They are built from `crates/particle-2d` and `crates/particle-3d` over the shared
 `crates/particle-core` library, which owns the system model, the simulator, and
 the [F-curve](/testing/asset-generation/voxel-binaries/#f-curves) reuse from
-`model-core`. Each is baked into its own run-container image, so a run carries
-only the tool it uses.
+`model-core`. Each has its own asset-generation run-container image, so a
+particle asset-generation run carries only the tool its `asset_kind` names. The
+[full-stack](/testing/full-stack/overview/) images carry a particle binary
+alongside the rest of the asset-generation set: `particle-2d` in both, and
+`particle-3d` in the one an `asset_dimension = "3d"` case selects.
 
 The two binaries share the whole operation vocabulary and the simulator. They
 differ in dimensionality (`particle-2d` is planar and rejects `--z`, `--size-z`,

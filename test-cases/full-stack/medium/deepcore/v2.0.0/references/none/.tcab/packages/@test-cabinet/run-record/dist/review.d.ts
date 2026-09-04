@@ -1,0 +1,302 @@
+/**
+ * A reviewer's subjective quality rating for a finished implementation.
+ *
+ * Assigned by hand while playing the build, ordered best to worst. It is a
+ * per-run signal shown alongside a run, never an aggregate or a ranking across
+ * runs (see `docs/site.md`).
+ */
+export type Rating = "flawless" | "great" | "passable" | "scuffed" | "broken";
+/**
+ * A reviewer's **aesthetic** rating for a finished implementation — the second
+ * rating channel, separate from the functional [`Rating`].
+ *
+ * On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run
+ * behaviour is decided by the validators, so the reviewer rates how the build
+ * looks, sounds, and feels — one tier for the **whole run**, not one per scoring
+ * domain. Ordered best to worst. [`Amazing`](Self::Amazing)
+ * is the normal maximum; [`Legendary`](Self::Legendary) is exceptional and reserved,
+ * and its badge carries a special look so a viewer sees at once that it is rare.
+ * A legacy run (one on a case version that is not validator-rated) never carries
+ * one. Mirrored as `AESTHETIC_RATINGS` in `packages/run-stats/src/scoring.ts`.
+ */
+export type AestheticRating = "legendary" | "amazing" | "good" | "okay" | "slop";
+/**
+ * The **failure cap** a review item declares: the highest functional [`Rating`]
+ * the item's [domains](crate::test_case::SubReviewItem::domains) may reach while
+ * the item's validator fails.
+ *
+ * On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) case
+ * version every graded point declares one (manifest key `failure_cap`), so the
+ * functional rating is decided by the validators alone: a domain starts
+ * `flawless` and each failing point lowers it to `min(current, cap)`, so the
+ * build gets the *lowest* cap among its failures (two failures capped at `great`
+ * and `scuffed` → `scuffed`). `flawless` is deliberately not a cap — a failure
+ * always costs something. Mirrored as `FAILURE_CAPS` / `FAILURE_CAP_RATING` in
+ * `packages/run-stats/src/scoring.ts`.
+ */
+export type FailureCap = "broken" | "scuffed" | "passable" | "great";
+/**
+ * A reviewer's verdict on one declared checklist item.
+ *
+ * A test case declares the checklist (see [`crate::test_case::ReviewItem`]); the
+ * reviewer records one of these per item while judging the build.
+ *
+ * Most case types grade an item **binary** — [`Pass`](VerdictStatus::Pass) or
+ * [`Fail`](VerdictStatus::Fail) — and the item earns all its weight or none. A
+ * [game jam](crate::test_case::TestType::GameJam) instead grades each of its
+ * review categories on a five-level **graded** scale worth a fixed number of
+ * points ([`Broken`](VerdictStatus::Broken) 0 → [`Incredible`](VerdictStatus::Incredible)
+ * 10); the same graded scale carries the reviewer's whole-game
+ * [`OVERALL_VERDICT_ID`] mark. Which scale an item uses is declared on the item
+ * ([`crate::test_case::ReviewItem::graded`]); the two never mix within a case.
+ * Keep the tiers and their point values in lockstep with the TypeScript
+ * `VERDICT_META` in `packages/ui/src/ratings.ts`.
+ */
+export type VerdictStatus = "pass" | "fail" | "broken" | "poor" | "neutral" | "great" | "incredible";
+/**
+ * A reviewer's recorded verdict on one declared checklist item.
+ */
+export type ReviewVerdict = {
+    /**
+     * The declared item's stable id (see [`crate::test_case::ReviewItem::id`]).
+     */
+    id: string;
+    /**
+     * The reviewer's verdict on the item.
+     */
+    status: VerdictStatus;
+    /**
+     * An optional one-line note recording what the reviewer observed. `None`
+     * when the reviewer left no note.
+     */
+    note?: string;
+};
+/**
+ * A reviewer's quality [`Rating`] for one of a case's scoring domains.
+ */
+export type DomainRating = {
+    /**
+     * The declared domain's stable id (see [`crate::test_case::Domain::id`]).
+     */
+    domain: string;
+    /**
+     * The reviewer's rating for this domain.
+     */
+    rating: Rating;
+};
+/**
+ * **Legacy:** a reviewer's [`AestheticRating`] for one of a case's scoring
+ * domains, from when the aesthetic channel was rated per domain. The channel is
+ * now **run-wide** (see [`Writeup::aesthetic`]); this type survives only so old
+ * stored rows (the backend's `review.aesthetics` JSON column and the snapshot's
+ * legacy `aesthetics` field) keep deserializing. A legacy review's run-wide tier
+ * is the worst across its per-domain entries. Never written by new reviews.
+ */
+export type DomainAesthetic = {
+    /**
+     * The declared domain's stable id (see [`crate::test_case::Domain::id`]).
+     */
+    domain: string;
+    /**
+     * The reviewer's aesthetic rating for this domain.
+     */
+    rating: AestheticRating;
+};
+/**
+ * One per-domain rating change between two versions of a review (see
+ * [`ReviewDiff`]). A newly rated domain has `from = None`; a domain whose rating
+ * was dropped has `to = None`.
+ */
+export type RatingChange = {
+    /**
+     * The scoring domain whose rating changed.
+     */
+    domain: string;
+    /**
+     * The rating before the edit, or `None` if the domain was newly rated.
+     */
+    from?: Rating;
+    /**
+     * The rating after the edit, or `None` if the domain's rating was removed.
+     */
+    to?: Rating;
+};
+/**
+ * The run-wide aesthetic rating change between two versions of a review (see
+ * [`ReviewDiff::aesthetics`]) — the same shape as [`RatingChange`] on the
+ * aesthetic channel. A newly rated review has `from = None`; a review whose tier
+ * was dropped has `to = None`.
+ */
+export type AestheticChange = {
+    /**
+     * **Legacy:** the scoring domain whose aesthetic rating changed, from when
+     * the channel was rated per domain. `None` on every new diff — the aesthetic
+     * rating is run-wide, so a change is a single domainless entry — and kept
+     * only so old stored revision rows (domain present) still deserialize.
+     */
+    domain?: string;
+    /**
+     * The aesthetic rating before the edit, or `None` if the review was newly rated.
+     */
+    from?: AestheticRating;
+    /**
+     * The aesthetic rating after the edit, or `None` if the rating was removed.
+     */
+    to?: AestheticRating;
+};
+/**
+ * One checklist verdict change between two versions of a review (see
+ * [`ReviewDiff`]). A newly recorded verdict has `from = None`; a verdict that was
+ * withdrawn has `to = None`. [`note_changed`](Self::note_changed) flags a change to
+ * the verdict's own note text even when its pass/fail/grade status held.
+ */
+export type VerdictChange = {
+    /**
+     * The declared item's verdict id (an item id or a composite `<item>.<sub>`).
+     */
+    id: string;
+    /**
+     * The status before the edit, or `None` if the verdict was newly recorded.
+     */
+    from?: VerdictStatus;
+    /**
+     * The status after the edit, or `None` if the verdict was withdrawn.
+     */
+    to?: VerdictStatus;
+    /**
+     * Whether the verdict's note text changed (independently of its status).
+     */
+    noteChanged: boolean;
+};
+/**
+ * The writeup body change between two versions of a review, present in a
+ * [`ReviewDiff`] only when the prose actually changed.
+ */
+export type WriteupChange = {
+    /**
+     * The writeup body before the edit.
+     */
+    from: string;
+    /**
+     * The writeup body after the edit.
+     */
+    to: string;
+};
+/**
+ * The autogenerated, structured difference between two versions of a review: which
+ * per-domain functional and aesthetic ratings changed, which checklist verdicts
+ * flipped, and whether the writeup prose changed. Computed by [`diff_reviews`] when a reviewer edits their
+ * review and stored on the resulting [`ReviewRevision`], so the edit history can
+ * show *what* changed alongside the reviewer's note on *why*.
+ */
+export type ReviewDiff = {
+    /**
+     * The per-domain rating changes, in the new review's domain order followed by
+     * any domains whose rating was removed.
+     */
+    ratings?: Array<RatingChange>;
+    /**
+     * The run-wide **aesthetic** rating change: at most one (domainless) entry
+     * on a new diff, kept as a `Vec` so old stored diffs — written when the
+     * channel was rated per domain — still deserialize. Empty on a legacy run's
+     * review, which carries no aesthetic channel, and when the tier held.
+     */
+    aesthetics?: Array<AestheticChange>;
+    /**
+     * The checklist verdict changes, in the new review's verdict order followed by
+     * any verdicts that were withdrawn.
+     */
+    verdicts?: Array<VerdictChange>;
+    /**
+     * The writeup change, or `None` when the prose was untouched.
+     */
+    writeup?: WriteupChange;
+};
+/**
+ * One superseded version of a review, recorded when the reviewer edits it: the note
+ * the reviewer wrote explaining the change, when the edit was made, and the
+ * autogenerated [`ReviewDiff`] from the prior content to the new. A review's
+ * revisions are newest-last, so replaying their diffs from the original walks the
+ * review forward to its current state.
+ */
+export type ReviewRevision = {
+    /**
+     * RFC 3339 of when this edit was made.
+     */
+    editedAt: string;
+    /**
+     * The reviewer's note explaining what changed and why. Required on every edit.
+     */
+    note: string;
+    /**
+     * The autogenerated diff from the content before this edit to the content after.
+     */
+    diff: ReviewDiff;
+};
+/**
+ * One published review on a run: the reviewer's public identity, their per-domain
+ * ratings, the writeup, and their checklist verdicts. This is the canonical
+ * review wire shape (`backend-api/review.schema.json`), referenced by the per-run
+ * snapshot document.
+ */
+export type Review = {
+    /**
+     * The reviewing account's id (stable across their reviews).
+     */
+    reviewerId: string;
+    /**
+     * The reviewer's display name, shown beside their review.
+     */
+    reviewer: string;
+    /**
+     * The reviewer's functional rating for each scoring domain. This review's
+     * overall rating is the worst across them. Empty on a review of a
+     * validator-rated run, whose functional rating the validators decide.
+     */
+    ratings: Array<DomainRating>;
+    /**
+     * **Legacy:** the reviewer's per-domain aesthetic ratings, from when the
+     * channel was rated per scoring domain. No longer emitted — a stored
+     * legacy row's tiers are collapsed into [`aesthetic`](Self::aesthetic)
+     * instead — but kept in the contract so a freshly deployed site can still
+     * read a not-yet-regenerated snapshot (resolve a review's tier as
+     * `aesthetic ?? worst(aesthetics)`).
+     */
+    aesthetics?: Array<DomainAesthetic>;
+    /**
+     * The reviewer's **run-wide** aesthetic tier, on a review of a
+     * validator-rated run (a legacy per-domain row is already collapsed to its
+     * worst tier); the run's aesthetic rating is the worst across its reviews'
+     * tiers. Absent on a legacy run's review, which has no aesthetic channel.
+     */
+    aesthetic?: AestheticRating | null;
+    writeup: string;
+    checklist: Array<ReviewVerdict>;
+    /**
+     * RFC 3339 of when the review was **first** submitted (unchanged by later
+     * edits — see [`Self::edited_at`]).
+     */
+    reviewedAt: string;
+    /**
+     * RFC 3339 of when the review was last edited, or `None` if it has never been
+     * edited since it was first submitted. The newest [`Self::revisions`] entry
+     * carries the same timestamp.
+     */
+    editedAt?: string | null;
+    /**
+     * The review's edit history, oldest first: one entry per edit, each with the
+     * reviewer's note and the autogenerated diff of what changed. Empty for a
+     * review that has never been edited. Public, so a reader can see how a review
+     * evolved.
+     */
+    revisions?: Array<ReviewRevision>;
+    /**
+     * The snapshot-relative object key of the reviewer's profile picture
+     * (`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The
+     * bytes are exported once per reviewer under the content-stable top-level
+     * `pfp/` prefix (like run media under `MEDIA_PREFIX`); the site resolves the
+     * key against the snapshot base into an absolute avatar URL.
+     */
+    pictureKey?: string | null;
+};
+//# sourceMappingURL=review.d.ts.map

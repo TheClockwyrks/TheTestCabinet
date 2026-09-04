@@ -6,9 +6,11 @@ cannot reach the host or other runs' work (see
 `../apps/docs/src/content/docs/components/core/execution.md`).
 
 There is **one image per run kind**, selected by a run's
-[test type](../apps/docs/src/content/docs/testing/) and — for asset-generation —
-its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md).
-The full set is whatever [`build.sh`](#building) builds; the notable ones:
+[test type](../apps/docs/src/content/docs/testing/), by — for asset-generation — its
+[`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md),
+and by — for full-stack — its
+[`asset_dimension`](../apps/docs/src/content/docs/testing/full-stack/manifests.md). The
+full set is whatever [`build.sh`](#building) builds; the notable ones:
 
 - the **base** image, the shared Node foundation every other image is built `FROM`
   (directly, or via **base-wasm**) except the self-contained blender image; it is
@@ -21,8 +23,25 @@ The full set is whatever [`build.sh`](#building) builds; the notable ones:
   ship it as a **committed wasm build input** (the toolchain is present only while
   the run is live — a build's `npm ci && npm run build` must consume the committed
   `.wasm`, never invoke `cargo`/`wasm-pack`, exactly as it must not shell out to
-  `draw`). It is the parent of the full-stack-2d, adversarial, and performance
-  images;
+  `draw`). It is the parent of the two full-stack images, the adversarial image, and
+  the performance image;
+- the **full-stack-2d** and **full-stack-3d** images, which every
+  [full-stack](../apps/docs/src/content/docs/testing/full-stack/overview.md) run
+  executes in — **base-wasm** plus the asset-generation binaries the model produces
+  the game's own assets with during the run. Neither bakes audio: `sfx-sample` and
+  `music` read the packs the case declares in `[audio] packs`, staged into
+  `/opt/audio` when the container starts (see
+  [the audio store](#the-audio-store)). The case's
+  [`asset_dimension`](../apps/docs/src/content/docs/testing/full-stack/manifests.md)
+  picks between them: `"2d"` (the default) resolves **full-stack-2d**, which carries
+  `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample` and `music`; `"3d"`
+  resolves **full-stack-3d**, which carries those six *plus* `voxel`, `voxel-anim`
+  and `particle-3d`, and the Mesa software-Vulkan runtime those three render their
+  preview PNGs through. The 3D image is a **sibling** of the 2D one rather than
+  built `FROM` it — both are `FROM` base-wasm — so a 2D run carries neither the 3D
+  binaries nor the Mesa stack. The meshing families (`mc`/`sn`/`dc` and their
+  `-anim`/`-skin` siblings) and Blender are deliberately in neither: they are a far
+  heavier toolchain and no full-stack case needs one yet;
 - the **sprite** image, which every single-sprite
   [asset-generation](../apps/docs/src/content/docs/testing/asset-generation/overview.md)
   run (`asset_kind = "sprite"`) executes in — the base image plus the baked-in
@@ -83,11 +102,11 @@ The full set is whatever [`build.sh`](#building) builds; the notable ones:
   `sfx-synth` binary;
 - the **sfx-sample** image, which every sample-library sound-effect run
   (`asset_kind = "sfx-sample"`) executes in — the base image plus the baked-in
-  `sfx-sample` binary **and the baked-in sample pack** (see
-  [the sample library](#the-sample-library-and-instrument-bank) below);
+  `sfx-sample` binary. The sample pack it mixes over arrives at container start
+  (see [the audio store](#the-audio-store) below);
 - the **music** image, which every music run (`asset_kind = "music"`) executes in
-  — the base image plus the baked-in `music` binary and the baked-in instrument
-  bank;
+  — the base image plus the baked-in `music` binary. The instrument bank it plays
+  arrives at container start;
 - the **adversarial** image, which every
   [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
   run executes in — **base-wasm** (which supplies the Rust + `wasm32-unknown-unknown`
@@ -106,7 +125,7 @@ harness's CLI into the image at run time, by running the harness's `install`
 command (see [`../harnesses/README.md`](../harnesses/README.md)). Installing at
 run time is what lets a run always pick up the harness's most recently published
 version, rather than whatever was current when an image was last built. The
-runner picks the image by test type and asset kind via
+runner picks the image by test type, asset kind, and asset dimension via
 [`harness::resolve_run_image`](../crates/core/src/harness.rs).
 
 ### The exception: the `-gg` variants
@@ -149,7 +168,10 @@ containers/
 ├── tools/Dockerfile            # the shared asset-tooling BUILDER: every asset binary compiled in ONE
 │                               #   cargo pass, exported as a `scratch` image. Not a run image and never
 │                               #   published — the asset images below `COPY --from` it (see Building)
-├── full-stack-2d/Dockerfile    # the full-stack run image: base-wasm plus the six 2D asset binaries + audio packs
+├── full-stack-2d/Dockerfile    # the 2D full-stack run image: base-wasm plus the six 2D asset binaries
+├── full-stack-3d/Dockerfile    # the 3D full-stack run image: full-stack-2d's contents plus `voxel`,
+│                               #   `voxel-anim`, `particle-3d` and the Mesa software-Vulkan runtime those
+│                               #   three render their previews through. A SIBLING of full-stack-2d, not FROM it
 ├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
 ├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
 │                               #   responses-as-code programs may need, under /opt/gg (purs+esbuild,
@@ -185,11 +207,14 @@ containers/
 ├── particle-2d/Dockerfile      # the base image plus the baked-in `particle-2d` binary
 ├── particle-3d/Dockerfile      # the base image plus the baked-in `particle-3d` binary
 ├── sfx-synth/Dockerfile        # the base image plus the baked-in `sfx-synth` binary
-├── sfx-sample/Dockerfile       # the base image plus the baked-in `sfx-sample` binary + sample pack
-├── music/Dockerfile            # the base image plus the baked-in `music` binary + instrument bank
-├── sample-packs/               # per-pack manifests (name/tags/license/sha256); the audio
-│                               #   files are NOT committed — a pack is a content-addressed
-│                               #   artifact the sfx-sample/music image builds pin by digest
+├── sfx-sample/Dockerfile       # the base image plus the baked-in `sfx-sample` binary
+├── music/Dockerfile            # the base image plus the baked-in `music` binary
+├── audio-store/Dockerfile      # the AUDIO STORE image: a `scratch` image carrying every published
+│                               #   pack under /opt/tcab-audio, which the driver image copies in and a
+│                               #   run's declared packs are staged out of. Not a run image (see Building)
+├── sample-packs/               # the clip registry (clips.toml), one <pack>.toml per pack, and
+│                               #   objects.lock.json; the audio is NOT committed — clip bytes live
+│                               #   in the audio object store and are staged into the audio store
 ├── adversarial/                # the base image plus the wasm toolchain + Foray tooling
 │   ├── Dockerfile              #   (foray CLI, references + map, controller buildkit)
 │   └── buildkit/Cargo.toml     #   de-workspaced root for the baked buildkit crates
@@ -246,12 +271,12 @@ the image that seeds runs.
 ## Rust/wasm base image (`base-wasm`)
 
 `base-wasm/` is the base image plus the shared **Rust → WebAssembly toolchain**, and
-it is the image **every end-to-end run executes in** (and the parent the full-stack-2d,
-adversarial, and performance images are each built `FROM`). It exists as its own layer,
-rather than folding the toolchain into the base, so the asset-generation images — which
-never compile Rust — do not carry it; and it is shared, rather than installed per
-dependent image, so the adversarial and performance images no longer install a Rust
-toolchain of their own.
+it is the image **every end-to-end run executes in** (and the parent the two full-stack
+images, the adversarial image, and the performance image are each built `FROM`). It
+exists as its own layer, rather than folding the toolchain into the base, so the
+asset-generation images — which never compile Rust — do not carry it; and it is shared,
+rather than installed per dependent image, so the adversarial and performance images no
+longer install a Rust toolchain of their own.
 
 It bakes on top of the base:
 
@@ -264,7 +289,7 @@ It bakes on top of the base:
   pinned and **must match** the `wasm-bindgen` crate a build depends on, so a case that
   uses it pins its crate to the same version; and
 - **`wasm-pack`** plus **`binaryen`** (`wasm-opt`), the conventional build/optimize
-  pipeline, present so an offline run never needs to fetch a matching optimizer.
+  pipeline, present so a run never has to fetch a matching optimizer.
 
 The toolchain is installed system-wide and made world-readable so the unprivileged run
 user can invoke `cargo`/`rustc`/`wasm-bindgen`/`wasm-pack` and the wasm target without
@@ -343,8 +368,14 @@ design: the script's shippable list is everything staged into the store, while t
 `SHIPPABLE_PACKAGES` allowlist in
 [`crates/core/src/test_case.rs`](../crates/core/src/test_case.rs) is the smaller
 set a case may declare with `packages`. An engine package appears in the staging
-list alone, because a run selects it. Every name in the allowlist must appear in
-the staging list, so a case only ever names a package the image carries.
+list alone, because a run selects it. So does `@test-cabinet/case-harness`, the
+shared harness a case's engineless validators are written over: nothing seeds it
+into a run repository at all, the reporter copying it out of the store into the
+staged validator project once the container is gone (see
+[Validation](../apps/docs/src/content/docs/components/core/validation.md)). A case
+able to declare it would be handed the suites it is measured by. Every name in the
+allowlist must appear in the staging list, so a case only ever names a package the
+image carries.
 
 ### Adding a package to the shippable set
 
@@ -355,8 +386,8 @@ To add one:
    `exports` map and a `files` field listing what to publish (as
    `packages/particle-runtime` and `packages/voxel-runtime` already do). It should
    be framework-agnostic and MIT-licensed; a peer dependency the *game* provides
-   (for example `three`) is fine — the game installs it — but a hard dependency on
-   an npm-published package the run container cannot reach offline is not.
+   (for example `three`) is fine, since the game installs it, but a hard dependency
+   on an npm-published package is not.
 2. **Add it to the shippable list** in
    [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs). Any
    `@test-cabinet/*` package it depends on is staged and rewritten automatically;
@@ -420,9 +451,9 @@ a single-sprite case draws with `draw`, a sprite-sheet case draws with
 - `sfx-synth/`, `sfx-sample/`, and `music/` are the base image plus exactly the
   **`sfx-synth`** / **`sfx-sample`** / **`music`** binary, the
   [audio](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
-  tool a run uses to render a `.wav`. The `sfx-sample` and `music` images
-  additionally bake in a **sample pack** / **instrument bank** — the tool's fixed
-  palette (see [the sample library](#the-sample-library-and-instrument-bank)).
+  tool a run uses to render a `.wav`. An `sfx-sample` or `music` run reads its
+  palette from `/opt/audio`, which is staged when the container starts (see
+  [the audio store](#the-audio-store)).
 
 Each meshing image bakes in its one binary the same way `sprite`/`voxel` do; the
 `-animation` images add the rigging/F-curve authoring that
@@ -489,39 +520,88 @@ Docker's cache-key error, and it reads as a broken arm. That is how
 landed, so the same gate now asserts every one of those directories survives the
 allowlist too.
 
-## The sample library and instrument bank
+## The audio store
 
 The [`sfx-sample`](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
-tool mixes over a **sample library** and the `music` tool plays a **instrument
-bank** — the fixed audio palette each ships with, exactly as `draw` ships with its
-drawing logic. Because a run container is isolated and offline, the palette is
-**baked into the image at build time**; nothing is fetched at run time.
+tool mixes over a sample library and the `music` tool plays an instrument bank. A
+test case declares the packs it draws from in `[audio] packs`, and its run
+container is given those packs and no others.
 
 The audio files themselves are **not committed to this repository**. What lives
-here is a per-pack **manifest** under `sample-packs/` (one `<pack>.toml` per pack)
-that lists each sample's stable `name`, `tags`, `description`, **`license`** — which
-must be CC0 or otherwise permissive so a produced clip is freely usable in a test
-case and a published run — its source URL, and a **`sha256`** content hash. The
-pack itself is a **separately-versioned, content-addressed artifact** (an
-object-storage tarball / OCI artifact) assembled by
-[`scripts/build-sample-pack.mjs`](../scripts/build-sample-pack.mjs), which fetches
-the sources the manifest names, verifies each hash, normalizes them (sample rate,
-loudness, trim, format), and packs them. The `sfx-sample` and `music` image builds
-**pin a pack version by digest** and bake it in, so updating the palette is a new
-pack version plus an image rebuild — versioned immutably with the image, and a case
-names the pack it expects (`sample_pack` / `instrument_bank`) rather than any path
-in this repo.
+under `sample-packs/` is the metadata: `clips.toml`, the registry naming every
+ingested audio clip by the sha256 of its source bytes and recording its license
+(CC0 or otherwise permissive, so a produced clip is freely usable in a test case
+and a published run); one `<pack>.toml` per pack, listing the clip ids that pack
+exposes with the `name`, `tags`, and `description` a model browses; and
+`objects.lock.json`, pinning the published bytes. The clip bytes live in a private
+audio object store, both as originals and as the normalized output of each pack's
+normalization profile, so a consumer downloads finished audio rather than
+re-normalizing it. See [`sample-packs/README.md`](sample-packs/README.md) for the
+registry, manifest, and publishing details.
 
-The **`music` image bakes every instrument bank** (`gm-lite`, plus the
-domain-tailored **`cinematic`** and **`synthwave`** banks) as a per-name
-subdirectory under `/opt/instrument-banks/`, so a case's
-`instrument_bank = "<name>@<version>"` **selects** which palette the run plays
-(resolved by `select_pack_dir` in `crates/audio-core/src/config.rs`);
-`build.sh`'s `build_music_image` presigns and passes each bank. An `sfx-sample`
-image still bakes its single sample pack. Adding a bank is: extend the `BANKS`
-registry in [`scripts/curate-instrument-bank.mjs`](../scripts/curate-instrument-bank.mjs),
-curate + publish it, then add its build args + subdir to `music/Dockerfile` and
-`build_music_image`.
+### The store
+
+[`scripts/stage-audio-store.mjs`](../scripts/stage-audio-store.mjs) presigns and
+downloads every object `objects.lock.json` pins, verifies each against its
+recorded digest and size, and materializes the audio store: every published pack,
+at every published version.
+
+```
+/opt/tcab-audio/
+  objects.lock.json                     every published object, by digest and byte length
+  clips/<clip-id>.<profile-id>.wav      one file per clip + profile, shared across packs
+  packs/<name>@<version>/pack.toml      the loader manifest; entries point into clips/
+```
+
+Packs share clip files instead of each carrying its own copy, and an unpublished
+clip is a staging error rather than a silently empty palette. Keying a pack
+directory by `name@version` lets two versions of one pack sit in the store
+together.
+
+The lock travels with the tree so the store stays verifiable wherever it was
+fetched from. Staging a run's declared packs checks every clip it carries into
+the container against the recorded sha256 and byte length. A store with no lock,
+and one whose bytes disagree with it, each fail the run.
+
+That tree ships as the `audio-store` image. The driver image copies it in at
+`/opt/tcab-audio`, and a local checkout fetches it with
+[`scripts/fetch-audio-store.sh`](../scripts/fetch-audio-store.sh), which pulls the
+published image and extracts the tree. `TCAB_AUDIO_STORE` points core at a store
+elsewhere on the host.
+
+### What a run receives
+
+Core stages a run's declared packs out of the store and materializes them at
+`/opt/audio` when the container starts, before the harness runs:
+
+```
+/opt/audio/
+  .tcab-audio-contract                  baked by the base image; the staging contract version
+  packs.json                            the packs this run was given, and its per-kind defaults
+  packs/<name>@<version>/pack.toml      one per declared pack
+  clips/<clip-id>.<profile-id>.wav      the union of those packs' clips
+```
+
+The store and the container share one layout, so a `pack.toml` is byte-copied and
+its relative `file` entries resolve unchanged. Nothing lands under `/work`: only
+audio a model produced belongs in a run's output tree.
+
+[`base/Dockerfile`](base/Dockerfile) creates `/opt/audio`, gives it to the run
+user, and writes `.tcab-audio-contract`, which is the run image's statement of
+which staging contract it accepts. Every run image inherits that from the base,
+so no image carries a pack of its own. A run that stages audio reads the marker
+back out of its started container, so an image that accepts a different contract
+fails the run at container start rather than part-way through a session.
+
+The staging rules and the `packs.json` shape are in
+[`components/core/execution.md`](../apps/docs/src/content/docs/components/core/execution.md),
+and how the audio tools resolve a pack out of it is in
+[`audio-binaries.md`](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md#the-sample-library).
+
+Adding a bank is: extend the `BANKS` registry in
+[`scripts/curate-instrument-bank.mjs`](../scripts/curate-instrument-bank.mjs),
+ingest and publish it, then name it from a test case. Publishing a pack version
+needs no run-image rebuild.
 
 ## Adversarial image
 
@@ -638,18 +718,28 @@ installs it (created container, copied to `/tmp/gg`, `exec`ed as the unprivilege
 `docker build` and `push_and_pin`**, so a variant with a dead arm cannot reach the
 registry.
 
-It runs in four **environment representatives** — `sprite-gg`, `base-wasm-gg`,
-`voxel-gg` and `blender-gg` — and not in all twenty-six. `/opt/gg` is byte-identical on
-every variant, so what can differ is the environment that tree has to run in. That is not
-the same as the parent, which is what this list first said and got wrong: there are two
-external parents, but a dozen run images `apt-get install` packages of their own on top of
-`base`, and apt brings each package's whole dependency closure with it. Probed with the C#
-arm's own missing library, `sprite-gg` and `base-wasm-gg` carry no ICU at all, `voxel-gg`
-carries `libicu72` because `mesa-vulkan-drivers` pulled it in, and `blender-gg` carries
-`libicu78` because Blender did — three answers where the parent count says two.
+It runs in five **environment representatives** — `sprite-gg`, `base-wasm-gg`, `voxel-gg`,
+`full-stack-3d-gg` and `blender-gg` — and not in all twenty-seven. `/opt/gg` is
+byte-identical on every variant, so what can differ is the environment that tree has to
+run in. That is not the same as the parent, which is what this list first said and got
+wrong: there are two external parents, but a dozen run images `apt-get install` packages
+of their own on top of `base`, and apt brings each package's whole dependency closure with
+it. Probed with the C# arm's own missing library, `sprite-gg` and `base-wasm-gg` carry no
+ICU at all, `voxel-gg` carries `libicu72` because `mesa-vulkan-drivers` pulled it in, and
+`blender-gg` carries `libicu78` because Blender did — three answers where the parent count
+says two.
 
-Grouping the variants by root **and** by every package installed along the way gives four
-groups, and those four images are one of each. The argument is only as good as its last
+`full-stack-3d-gg` is the fifth, and it is the one that looks redundant: it carries the
+same `libicu72`, from the same `mesa-vulkan-drivers`, that `voxel-gg` does. What makes it
+a distinct environment is everything *else* in the image — it is the only run image that
+is `FROM` base-wasm **and** installs the mesa stack, because it is the only one that both
+compiles Rust to wasm and renders a preview — and the grouping is the whole package set,
+not the one library the original bug happened to be about. A representative that were
+genuinely redundant could not be added by mistake anyway: `assert_gg_environments` refuses
+a gated build if two entries in the list are the same environment.
+
+Grouping the variants by root **and** by every package installed along the way gives five
+groups, and those five images are one of each. The argument is only as good as its last
 clause, so `build.sh` re-derives both halves: `assert_gg_lineages` reads the final `FROM`
 of every run image's Dockerfile and fails a gated build if the set of external parents is
 not exactly the two it knows, and `assert_gg_environments` re-derives the grouping and
@@ -743,10 +833,11 @@ runs in this **builder** stage — which `apt-get install`s the arm's own depend
 and then exports `/opt/gg` without them, so a pass here says nothing about the image
 the tree is copied *into*. The gate that does is
 [`gg selfcheck`](../apps/docs/src/content/docs/gg/languages/selfcheck.md), run inside
-a **built** `-gg` variant of each environment — `sprite-gg`, `base-wasm-gg`, `voxel-gg`
-and `blender-gg` — before any is published. A dependency satisfied by whatever the image
-happens to contain is not satisfied: it is an arm that works on some run images and dies
-on others, and moves between the two whenever an unrelated package does.
+a **built** `-gg` variant of each environment — `sprite-gg`, `base-wasm-gg`, `voxel-gg`,
+`full-stack-3d-gg` and `blender-gg` — before any is published. A dependency satisfied by
+whatever the image happens to contain is not satisfied: it is an arm that works on some
+run images and dies on others, and moves between the two whenever an unrelated package
+does.
 
 Self-containment is a **floor and not an override**, and the difference matters when
 reading a green check. What the vendored set guarantees is that the compiler starts on an
@@ -864,16 +955,36 @@ PureScript's library set is not.
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner
-resolves (by test type and asset
-kind) when its `TCAB_CONTAINER_REGISTRY` is set to an empty string, so a
-locally-built image is used for offline development without pulling anything.
-Override `IMAGE_TAG` / `IMAGE_NAME_PREFIX` to change the tag or name prefix.
+resolves (by test type, asset kind, and asset dimension) when its
+`TCAB_CONTAINER_REGISTRY` is set to an empty string, so a locally-built image is used
+for offline development without pulling anything. Override `IMAGE_TAG` /
+`IMAGE_NAME_PREFIX` to change the tag or name prefix.
 
 With `PUSH=1` and `IMAGE_REGISTRY` set (e.g. `ghcr.io/theclockwyrks`), each image
 is pushed and its pinned `repo@sha256:…` digest printed. Runners resolve the
 published image directly from their own registry configuration; the script does
 **not** register anything with the backend, which plays no part in container
 distribution (see `../apps/docs/src/content/docs/components/core/execution.md`).
+
+### The audio store image
+
+[`audio-store/Dockerfile`](audio-store/Dockerfile) is a data-only `scratch` image
+carrying the staged [audio store](#the-audio-store) at `/opt/tcab-audio`. It is
+what puts every published pack on a machine that has no repository checkout and no
+R2 credential: the driver image resolves it through an `AUDIO_STORE_IMAGE` build
+arg and `COPY --from`s the tree out, and `scripts/fetch-audio-store.sh` pulls the
+same published image for a local `tcab run`.
+
+Like the gg toolchain builder it is **not** a run image and never appears in
+`image-names.sh` — that list is the set of images a *run resolves*, and `build.sh`'s
+`build_one` dispatches on it by name. It **is** pushed under `PUSH=1`, and the
+`manifest` job in `build-containers.yml` fuses its one arch pair by name beside the
+`gg-toolchains` block.
+
+Staging it reads the audio object store, so it is built only when named explicitly
+(`./containers/build.sh audio-store`) or under `PUSH=1`. A plain local
+`./containers/build.sh` skips it with a note, so a contributor without the presign
+credentials still builds every run image.
 
 ### The gg CI toolchain image
 

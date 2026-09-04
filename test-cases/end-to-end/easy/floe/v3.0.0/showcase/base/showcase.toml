@@ -1,0 +1,22 @@
+# The `base` variant's carousel, in the order it is presented.
+#
+# The replay LEADS. It is the entry the catalog's preview stage plays, and it is
+# sustained real play — half a minute of level one, driven with real key input
+# against the game's own rules — rather than a moment arranged to make a point.
+# The two stills follow it: the first is a frame of that same take, and the
+# second is the title screen the take opened from, drawn by the same reference
+# implementation at the same seed.
+#
+# `showcase/capture/README.md` records how each file was produced.
+
+[[media]]
+file = "crossing.json.gz"
+name = "Half a minute on the strait, four bays filled"
+
+[[media]]
+file = "mid-crossing.png"
+name = "The last water row, a bear swimming up behind"
+
+[[media]]
+file = "title.png"
+name = "The title screen"

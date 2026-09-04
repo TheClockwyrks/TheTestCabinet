@@ -292,6 +292,7 @@ describe("event merging", () => {
       { ...NO_EVENTS, retract: true },
     );
     expect(merged).toEqual({
+      cleared: false,
       connect: true,
       retract: true,
       channelComplete: false,

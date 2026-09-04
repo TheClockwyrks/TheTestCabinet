@@ -27,6 +27,7 @@ fn spec() -> ContainerSpec {
         secrets: std::collections::BTreeMap::new(),
         env: std::collections::BTreeMap::new(),
         files: Vec::new(),
+        dirs: Vec::new(),
         network_enabled: true,
         add_hosts: Vec::new(),
     }
@@ -123,6 +124,33 @@ fn host_mappings_become_add_host_flags() {
     let args = run_args(&spec, None);
     let index = args.iter().position(|arg| arg == "--add-host").unwrap();
     assert_eq!(args[index + 1], "host.docker.internal:host-gateway");
+}
+
+// ── materialize_dirs ────────────────────────────────────────────────────────
+
+#[test]
+fn a_staged_tree_is_copied_in_by_contents_and_handed_to_the_run_user() {
+    // A run's audio palette is dozens of files and tens of megabytes. It travels as a
+    // host tree and is copied in with two calls rather than the three per file a
+    // credential costs, and the trailing `/.` is what lands the tree's CONTENTS at the
+    // destination instead of nesting the host directory under it.
+    assert_eq!(
+        copy_dir_args("abc123", "/tmp/staged", "/opt/audio"),
+        vec!["cp", "/tmp/staged/.", "abc123:/opt/audio"],
+    );
+    assert_eq!(
+        chown_dir_args("abc123", "/opt/audio"),
+        vec![
+            "exec",
+            "--user",
+            "0",
+            "abc123",
+            "chown",
+            "--recursive",
+            "node:node",
+            "/opt/audio",
+        ],
+    );
 }
 
 // ── artifact salvage ────────────────────────────────────────────────────────

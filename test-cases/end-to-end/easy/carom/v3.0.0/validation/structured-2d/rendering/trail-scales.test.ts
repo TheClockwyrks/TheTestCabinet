@@ -6,6 +6,11 @@
 // behind the ball is read off the canvas each time; the fast streak must be the
 // longer. This is the reading a single drive cannot give: a build drawing a
 // fixed-length tail passes every absolute bound and fails here.
+//
+// Each drive poses the field from scratch — cleared, then the one ball this point
+// is about spawned back, with the paddles held out of the lane — so the two
+// readings differ in the ball's speed and in nothing else, and neither lane can
+// hold an obstacle the other's did not.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";

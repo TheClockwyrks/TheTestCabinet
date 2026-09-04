@@ -1,0 +1,25 @@
+{
+  "name": "@test-cabinet/case-harness",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "The shared engineless (none) validation harness and canvas recorder a test case's validator project is built on: the browser lifecycle, the driven-frame loop, the injected draw-command recorder, and the readings a check makes over them.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "lint": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "playwright": "1.61.0",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}

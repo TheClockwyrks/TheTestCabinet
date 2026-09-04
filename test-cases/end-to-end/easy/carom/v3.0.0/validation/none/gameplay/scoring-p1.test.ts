@@ -1,8 +1,9 @@
 // gameplay/scoring-p1 — a ball crossing the RIGHT goal edge scores for player one.
 //
-// The ball is aimed at the right goal down the lane that clears both obstacles;
+// The field is emptied to the one ball and that ball is aimed at the right goal;
 // the real simulation carries it across the edge and the build's own scoring code
-// increments the score, which is read back. The left goal is the sibling
+// increments the score, which is read back. Nothing else is on the field, so
+// nothing but the goal edge can decide the shot. The left goal is the sibling
 // `scoring-p2` check, so a build that scores on only one edge fails the side it
 // gets wrong rather than passing on an average.
 

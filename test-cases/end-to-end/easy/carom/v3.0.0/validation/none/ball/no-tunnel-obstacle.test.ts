@@ -7,15 +7,28 @@
 // `./no-tunnel.ts`) the ball is never on the far side; a build that integrates
 // a whole coarse frame at once puts it there. Every frame is sampled, so the
 // earliest frame the ball was travelling back is the one read.
+//
+// The field is emptied and obstacle A alone is spawned back, so the body the
+// ball must not pass through is the only body it can reach. The paddles cannot
+// be removed, so they are parked out of the lane.
 
 import { afterEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { BALL_R, OBSTACLES, OBSTACLE_CENTERS, SPEED_CAP } from "../constants";
-import { ball0, captureReplay, clearPaddles, type Harness } from "../harness";
+import {
+  ball0,
+  captureReplay,
+  clearPaddles,
+  isolateBall,
+  placeBall,
+  type Harness,
+} from "../harness";
 import { DEPARTURE_MS, framesFor, harnessAt, STEPS_MS } from "./no-tunnel";
 
-const FACE_X = OBSTACLES[0].x0;
-const LANE_Y = OBSTACLE_CENTERS[0].y;
+/** Obstacle A: the one body the field is left holding beside the ball. */
+const OBSTACLE = 0;
+const FACE_X = OBSTACLES[OBSTACLE].x0;
+const LANE_Y = OBSTACLE_CENTERS[OBSTACLE].y;
 const RUN_UP = 360;
 
 const live: Harness[] = [];
@@ -27,13 +40,12 @@ afterEach(async () => {
 it("rebounds off an obstacle at the ceiling speed", async () => {
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs, live);
+    await isolateBall(harness, 0, [OBSTACLE]);
     await clearPaddles(harness);
-    await harness.debug.setBall(0, {
+    await placeBall(harness, {
       x: FACE_X - RUN_UP,
       y: LANE_Y,
       vx: SPEED_CAP,
-      vy: 0,
-      spin: 0,
     });
 
     // Both probes are recorded under the one output, so the coarse step, the

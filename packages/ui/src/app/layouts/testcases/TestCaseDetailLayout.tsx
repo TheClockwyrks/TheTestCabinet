@@ -7,6 +7,7 @@ import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCase } from "../../data/useTestCase";
 import { tabOf } from "../../data/testCaseTabs";
+import { hasReferencePlayback } from "../../data/testCaseReference";
 import { DEFAULT_ENGINE_SLUG, engineName } from "../../data/engines";
 import type { TestCaseDetail, VariantSummary } from "../../data/testCases";
 import { useCaseVariant } from "../../data/useRunVariant";
@@ -182,18 +183,28 @@ export function TestCaseDetailLayout({
       to: routes.testCaseArena(testCase.slug),
     });
   }
-  // The Reference tab is shown only when the ANCHORED coordinate's variant has
-  // published reference FRAMES (`referenceSheet` — asset-generation cases),
-  // which have no page to embed and so are rendered natively from the snapshot
-  // bucket. A deployed reference BUILD (`referenceBuilds`) no longer earns its
-  // own tab: it folds into the landing tab's Play surface, whose label above
-  // already advertises it.
+  // The Reference tab is shown for either of the two reference shapes that still
+  // earn a tab of their own. Neither is a superset of the other:
   //
-  // A reference is published per (version, variant), so switching either adds
-  // or removes the tab; a coordinate without frames (the common case) shows no
-  // tab at all. While the coordinate is still resolving the tab is simply not
-  // offered yet — the strip below renders only once the resolution settles.
-  if (resolved.variant?.referenceSheet) {
+  //   • `referenceSheet` — the published reference FRAMES (asset-generation cases),
+  //     which have no page to embed and so are rendered natively from the snapshot
+  //     bucket.
+  //   • a bundled reference PLAYBACK (the performance case), whose reference is its
+  //     scored factories stepped through the authoritative engine — see
+  //     `hasReferencePlayback`.
+  //
+  // A deployed reference BUILD (`referenceBuilds`) no longer earns its own tab: it
+  // folds into the landing tab's Play surface, whose label above already advertises
+  // it.
+  //
+  // The sheet keys off the ANCHORED coordinate, because a reference is published per
+  // (version, variant) — switching either adds or removes the tab, and while the
+  // coordinate is still resolving the tab is simply not offered yet (the strip below
+  // renders only once the resolution settles). The playback keys off the CASE,
+  // because it ships with the UI bundle rather than being published per coordinate,
+  // so every host can show it — no console-only capability is required. A case with
+  // neither (the common case) shows no tab at all.
+  if (resolved.variant?.referenceSheet || hasReferencePlayback(testCase)) {
     tabs.push({
       key: "reference",
       label: "Reference",

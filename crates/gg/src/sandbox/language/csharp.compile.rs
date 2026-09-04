@@ -76,7 +76,7 @@
 //! `libicuuc.so.<v>` and `libicui18n.so.<v>` — and `libicudata` behind the first of them — while the
 //! runtime is still starting, and a process that cannot find them does not fail to compile. It
 //! `FailFast`s before any managed code runs: SIGABRT, an empty stdout, and a sentence on stderr
-//! nobody was reading. The `node:24-bookworm-slim` run image twenty-five of the twenty-six `-gg`
+//! nobody was reading. The `node:24-bookworm-slim` run image twenty-six of the twenty-seven `-gg`
 //! variants are built over ships no ICU at all, so that is what `csc` did there on **every C# turn**
 //! until this arm started carrying its own copy.
 //!
@@ -85,11 +85,13 @@
 //! no ELF header. The installer's own verification compile passed, because it ran in a builder stage
 //! that had `apt-get install`ed `libicu72` for exactly that purpose and then exported `/opt/gg`
 //! without it. And the arm compiled perfectly in *some* of those images the whole time — the Ubuntu
-//! `blender-gg`, because Blender's package closure pulls in `libicu78`, and every mesa render image
-//! (`voxel-gg`, `mc-gg`, `material-gg`, …), because `mesa-vulkan-drivers` pulls in `libicu72`. Not
-//! one of those Dockerfiles asks for an ICU. An image that satisfies a dependency by accident
-//! satisfies nothing: the same tree is copied to the same absolute path into all twenty-six, and
-//! none of them was ever asked.
+//! `blender-gg`, because Blender's package closure pulls in `libicu78`, and every image that
+//! installs the mesa stack, because `mesa-vulkan-drivers` pulls in `libicu72` — the render kinds
+//! (`voxel-gg`, `mc-gg`, `material-gg`, …) and `full-stack-3d-gg`, which renders a 3D full-stack
+//! run's asset previews through Mesa's software Vulkan exactly as they do. Not one of those
+//! Dockerfiles asks for an ICU.
+//! An image that satisfies a dependency by accident satisfies nothing: the same tree is copied to
+//! the same absolute path into all twenty-seven, and none of them was ever asked.
 //!
 //! So the toolchain carries the three libraries under [`lib/`](LIBRARY_DIRECTORY) and **every**
 //! `dotnet` gg spawns names that directory on `LD_LIBRARY_PATH` — which is why [`dotnet`] exists as

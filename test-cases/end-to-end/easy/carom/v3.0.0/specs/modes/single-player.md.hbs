@@ -1,60 +1,23 @@
 # Carom — Single player (Solo)
 
 Solo is one of the two ways to play Carom, reached from `SOLO` on the main menu.
-It pits player one, the left paddle controlled by the human, against the AI on the
-right. Solo and Versus differ in who controls the right paddle: the AI here, a
-second human there.
+Player one controls the left paddle and the AI controls the right.
 
 Every figure below carries the name this specification gives it.
 
 ## Controls
 
-Keyboard only. The controls are registered actions on the `LAYOUT`
-(`dual-vertical`) touch layout. Register exactly the eight names in `ACTIONS`, in
-that order, each bound to the keys `BINDINGS` gives it:
-
-| Action | Keys | Does |
-| --- | --- | --- |
-| `p1-up` | `KeyW` | Moves the human's (left) paddle up. |
-| `p1-down` | `KeyS` | Moves the human's (left) paddle down. |
-| `p2-up` | `ArrowUp` | Also moves it up: Solo has one human player. |
-| `p2-down` | `ArrowDown` | Also moves it down: Solo has one human player. |
-| `confirm` | `Enter`, `Space` | Accepts the selected menu item. |
-| `back` | `Escape` | Goes back a screen. |
-| `pause` | `KeyP`, `Escape` | Pauses at any time. |
-| `mute` | `KeyM` | Toggles mute. |
-
-- `W`/`S` and `Up`/`Down` therefore both move the human's paddle, which moves at
-  `PADDLE_SPEED` while a movement action is held and is otherwise stationary.
-- `back` and `pause` share the `Escape` key. Read `pause` while a match is live
-  and `back` on the menus, so `Escape` pauses in a match and goes back on a menu.
-
-The AI drives the right paddle in Solo.
-
-## HUD
-
-During a match the two scores are drawn near the top of the field, player one's
-left of center and player two's right of center, and a label naming Solo is drawn
-on the field. The label's copy, and the placement and type of all three, are
-yours.
-
-## Input
-
-- With `up` being `1` while `p1-up` or `p2-up` is held and `0` otherwise, and
-  `down` being `1` while `p1-down` or `p2-down` is held and `0` otherwise, the
-  human's paddle takes `vy = (down - up) * PADDLE_SPEED` and is then integrated
-  and clamped as the playfield specification states.
-- Both paddles move on every `countdown` and `playing` frame, the human's from
-  input and the right paddle from the AI. The pre-serve countdown is not an
-  exception: a movement action held while the ball waits moves the human's
-  paddle at `PADDLE_SPEED`, and the AI moves its paddle by its rule. A build
-  whose paddles cannot be moved until the ball is served breaks this rule.
+`specs/ui.md` states the eight actions the game reads, the keys each one is bound
+to, and which screens read them. Solo has one human player, and all four movement
+actions drive that player's left paddle: `up` is `1` while `p1-up` or `p2-up` is
+held and `0` otherwise, and `down` is `1` while `p1-down` or `p2-down` is held
+and `0` otherwise. Those two values drive the human's paddle through the
+movement, integration, and clamp `specs/playfield.md` states.
 
 ## AI opponent
 
-The AI controls the right paddle in Solo. It holds no state of its own: each
-frame it computes its velocity from the state below and integrates the paddle
-exactly as a human-controlled paddle is integrated.
+The AI controls the right paddle and holds no state of its own. Each frame it
+computes its velocity from the values below.
 
 | Name | Value | Role |
 | --- | --- | --- |
@@ -79,8 +42,4 @@ no defended ball when no ball qualifies.
 {{/if}}
 2. `diff = target - cy`. If `|diff| <= deadzone` then `vy = 0`; otherwise
    `vy = sign(diff) * min(AI_SPEED, |diff| / dt)`.
-3. Integrate and clamp the paddle as the playfield specification states.
-
-`AI_SPEED` is below the human's `PADDLE_SPEED` (`720`), and the target is the
-ball's present position offset by its present velocity rather than where a
-curving or banking flight will arrive.
+3. Integrate and clamp the paddle as `specs/playfield.md` states.

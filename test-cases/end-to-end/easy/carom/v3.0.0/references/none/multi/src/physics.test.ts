@@ -17,7 +17,7 @@ import {
   SPIN_FROM_PADDLE,
   SPIN_HALFLIFE,
 } from "./constants";
-import { ballSpeed } from "./entities";
+import { ballSpeed, createObstacles } from "./entities";
 import { step } from "./physics";
 import type { BallState, PaddleState } from "./game";
 
@@ -25,6 +25,7 @@ const FRAME = 1 / 60;
 
 function ball(patch: Partial<BallState> = {}): BallState {
   return {
+    index: 0,
     x: 640,
     y: 360,
     vx: 0,
@@ -39,16 +40,26 @@ function ball(patch: Partial<BallState> = {}): BallState {
 
 function paddles(leftCy = 360, rightCy = 360): [PaddleState, PaddleState] {
   return [
-    { cy: leftCy, vy: 0 },
-    { cy: rightCy, vy: 0 },
+    { cy: leftCy, vy: 0, driven: false, drivenVy: 0 },
+    { cy: rightCy, vy: 0, driven: false, drivenVy: 0 },
   ];
 }
+
+/**
+ * The field as `step` is handed it here: both obstacles present, which is the
+ * world every check below but the last one plays on.
+ *
+ * Which obstacles are on the field is state (specs/state.md), so `step` is told
+ * rather than assuming — and a check about a field with NO obstacle simply hands
+ * it none.
+ */
+const FIELD_OBSTACLES = createObstacles();
 
 describe("free flight", () => {
   it("advances the ball by velocity times the elapsed time", () => {
     const b = ball({ x: 300, vx: 240, vy: 120 });
     const [left, right] = paddles();
-    const events = step([b], left, right, 0.5);
+    const events = step([b], FIELD_OBSTACLES, left, right, 0.5);
     expect(b.x).toBeCloseTo(420, 6);
     expect(b.y).toBeCloseTo(420, 6);
     expect(events).toEqual({
@@ -64,8 +75,8 @@ describe("free flight", () => {
     const many = ball({ x: 300, vx: 240, vy: 120 });
     const [l1, r1] = paddles();
     const [l2, r2] = paddles();
-    step([once], l1, r1, 0.5);
-    for (let i = 0; i < 30; i++) step([many], l2, r2, FRAME);
+    step([once], FIELD_OBSTACLES, l1, r1, 0.5);
+    for (let i = 0; i < 30; i++) step([many], FIELD_OBSTACLES, l2, r2, FRAME);
     expect(many.x).toBeCloseTo(once.x, 6);
     expect(many.y).toBeCloseTo(once.y, 6);
   });
@@ -74,7 +85,8 @@ describe("free flight", () => {
     const at = (hz: number): BallState => {
       const b = ball({ x: 300, vx: 400, vy: 120, spin: 300 });
       const [left, right] = paddles();
-      for (let i = 0; i < hz / 2; i++) step([b], left, right, 1 / hz);
+      for (let i = 0; i < hz / 2; i++)
+        step([b], FIELD_OBSTACLES, left, right, 1 / hz);
       return b;
     };
     const slow = at(30);
@@ -91,7 +103,7 @@ describe("walls", () => {
   it("reflects off the top wall and keeps its speed", () => {
     const b = ball({ y: 15, vy: -600 });
     const [left, right] = paddles();
-    const events = step([b], left, right, FRAME);
+    const events = step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(events.wall).toBe(true);
     expect(b.vy).toBe(600);
     expect(ballSpeed(b)).toBeCloseTo(600, 9);
@@ -101,7 +113,7 @@ describe("walls", () => {
   it("reflects off the bottom wall", () => {
     const b = ball({ y: FIELD_H - 15, vy: 600 });
     const [left, right] = paddles();
-    const events = step([b], left, right, FRAME);
+    const events = step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(events.wall).toBe(true);
     expect(b.vy).toBe(-600);
     expect(b.y).toBeLessThanOrEqual(FIELD_H - BALL_R);
@@ -112,7 +124,7 @@ describe("the paddle bounce", () => {
   it("sends a center hit straight back at 1.04x the speed", () => {
     const b = ball({ x: 76, vx: -400 });
     const [left, right] = paddles();
-    const events = step([b], left, right, FRAME);
+    const events = step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(events.paddle).toBe(true);
     expect(b.vx).toBeCloseTo(400 * SPEED_MULT, 6);
     expect(b.vy).toBeCloseTo(0, 9);
@@ -121,7 +133,7 @@ describe("the paddle bounce", () => {
   it("takes the outgoing angle from the contact point", () => {
     const b = ball({ x: 76, y: 400, vx: -400 });
     const [left, right] = paddles();
-    step([b], left, right, FRAME);
+    step([b], FIELD_OBSTACLES, left, right, FRAME);
     // (400 - 360) / 55 of the way to the 55deg maximum.
     const theta = (40 / 55) * MAX_BOUNCE_ANGLE;
     const speed = 400 * SPEED_MULT;
@@ -132,14 +144,14 @@ describe("the paddle bounce", () => {
   it("caps the speed", () => {
     const b = ball({ x: 76, vx: -970 });
     const [left, right] = paddles();
-    step([b], left, right, FRAME);
+    step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(ballSpeed(b)).toBeCloseTo(SPEED_CAP, 6);
   });
 
   it("turns the ball back toward the other goal off the right paddle", () => {
     const b = ball({ x: 1280 - 76, vx: 400 });
     const [left, right] = paddles();
-    const events = step([b], left, right, FRAME);
+    const events = step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(events.paddle).toBe(true);
     expect(b.vx).toBeCloseTo(-400 * SPEED_MULT, 6);
   });
@@ -148,7 +160,7 @@ describe("the paddle bounce", () => {
     const b = ball({ x: 76, vx: -400 });
     const [left, right] = paddles();
     left.vy = 300;
-    step([b], left, right, FRAME);
+    step([b], FIELD_OBSTACLES, left, right, FRAME);
     // Imparted mid-frame, so the remainder of the frame's decay has applied.
     const imparted = 300 * SPIN_FROM_PADDLE;
     expect(b.spin).toBeLessThanOrEqual(imparted);
@@ -158,7 +170,7 @@ describe("the paddle bounce", () => {
   it("imparts no spin from a stationary paddle", () => {
     const b = ball({ x: 76, vx: -400 });
     const [left, right] = paddles();
-    step([b], left, right, FRAME);
+    step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(b.spin).toBe(0);
   });
 
@@ -166,14 +178,14 @@ describe("the paddle bounce", () => {
     const b = ball({ x: 76, vx: -400, spin: SPIN_CLAMP });
     const [left, right] = paddles();
     left.vy = 900;
-    step([b], left, right, FRAME);
+    step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(b.spin).toBeLessThanOrEqual(SPIN_CLAMP);
   });
 
   it("reflects like a wall off a paddle's top cap", () => {
     const b = ball({ x: 56, y: 292, vy: 300 });
     const [left, right] = paddles();
-    const events = step([b], left, right, FRAME);
+    const events = step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(events.wall).toBe(true);
     expect(events.paddle).toBe(false);
     expect(b.vy).toBe(-300);
@@ -182,7 +194,7 @@ describe("the paddle bounce", () => {
   it("never tunnels through a paddle, even at the speed cap and 5 fps", () => {
     const b = ball({ x: 260, vx: -SPEED_CAP });
     const [left, right] = paddles();
-    const events = step([b], left, right, 0.2);
+    const events = step([b], FIELD_OBSTACLES, left, right, 0.2);
     expect(events.paddle).toBe(true);
     expect(b.vx).toBeGreaterThan(0);
     expect(b.x).toBeGreaterThan(64);
@@ -201,7 +213,7 @@ describe("obstacles", () => {
       spin: 100,
     });
     const [left, right] = paddles();
-    const events = step([b], left, right, FRAME);
+    const events = step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(events.obstacle).toBe(true);
     expect(b.vx).toBeLessThan(0);
     expect(ballSpeed(b)).toBeCloseTo(300, 6);
@@ -216,7 +228,7 @@ describe("obstacles", () => {
       vy: 300,
     });
     const [left, right] = paddles();
-    const events = step([b], left, right, FRAME);
+    const events = step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(events.obstacle).toBe(true);
     expect(b.vy).toBe(-300);
     expect(b.y).toBeLessThanOrEqual(obstacle.y0 - BALL_R);
@@ -225,9 +237,28 @@ describe("obstacles", () => {
   it("never tunnels through an obstacle", () => {
     const b = ball({ x: obstacle.x0 - 120, y: insideY, vx: SPEED_CAP });
     const [left, right] = paddles();
-    const events = step([b], left, right, 0.2);
+    const events = step([b], FIELD_OBSTACLES, left, right, 0.2);
     expect(events.obstacle).toBe(true);
     expect(b.x).toBeLessThan(obstacle.x0);
+  });
+
+  it("has no collision at all where the obstacle is off the field", () => {
+    // The same shot on an empty field: it flies straight through the place the
+    // obstacle used to be (specs/instrumentation.md).
+    const b = ball({ x: obstacle.x0 - 120, y: insideY, vx: 600 });
+    const [left, right] = paddles();
+    const events = step([b], [], left, right, 0.5);
+    expect(events.obstacle).toBe(false);
+    expect(b.x).toBeCloseTo(obstacle.x0 - 120 + 300, 6);
+  });
+
+  it("resolves only the obstacles it is handed", () => {
+    // Obstacle B alone: a shot at A's face crosses A's place untouched.
+    const only = createObstacles().filter((o) => o.index === 1);
+    const b = ball({ x: obstacle.x0 - 120, y: insideY, vx: 600 });
+    const [left, right] = paddles();
+    const events = step([b], only, left, right, 0.5);
+    expect(events.obstacle).toBe(false);
   });
 });
 
@@ -235,14 +266,14 @@ describe("spin", () => {
   it("loses half its magnitude every SPIN_HALFLIFE seconds", () => {
     const b = ball({ spin: 800 });
     const [left, right] = paddles();
-    step([b], left, right, SPIN_HALFLIFE);
+    step([b], FIELD_OBSTACLES, left, right, SPIN_HALFLIFE);
     expect(b.spin).toBeCloseTo(400, 6);
   });
 
   it("curves the flight without changing the speed", () => {
     const b = ball({ x: 300, vx: 520, spin: 400 });
     const [left, right] = paddles();
-    step([b], left, right, FRAME);
+    step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(ballSpeed(b)).toBeCloseTo(520, 6);
     // Positive spin turns the velocity toward +y (down the screen).
     expect(b.vy).toBeGreaterThan(0);
@@ -251,7 +282,7 @@ describe("spin", () => {
   it("curves the opposite way for the opposite sign", () => {
     const b = ball({ x: 300, vx: 520, spin: -400 });
     const [left, right] = paddles();
-    step([b], left, right, FRAME);
+    step([b], FIELD_OBSTACLES, left, right, FRAME);
     expect(b.vy).toBeLessThan(0);
   });
 });
@@ -262,7 +293,7 @@ describe("ball-to-ball collision", () => {
     const b = ball({ x: 600 + BALL_COLLIDE_DIST + 1, vx: -300 });
     const [left, right] = paddles();
 
-    const events = step([a, b], left, right, FRAME);
+    const events = step([a, b], FIELD_OBSTACLES, left, right, FRAME);
 
     expect(events.ball).toBe(true);
     // A head-on pair of equal masses swaps velocities outright.
@@ -275,7 +306,7 @@ describe("ball-to-ball collision", () => {
     const b = ball({ x: 600 + BALL_COLLIDE_DIST + 1, vx: -300, vy: 120 });
     const [left, right] = paddles();
 
-    step([a, b], left, right, FRAME);
+    step([a, b], FIELD_OBSTACLES, left, right, FRAME);
 
     expect(a.vy).toBeCloseTo(120, 6);
     expect(b.vy).toBeCloseTo(120, 6);
@@ -286,7 +317,7 @@ describe("ball-to-ball collision", () => {
     const b = ball({ x: 600 + BALL_COLLIDE_DIST + 1, vx: -300 });
     const [left, right] = paddles();
 
-    step([a, b], left, right, FRAME);
+    step([a, b], FIELD_OBSTACLES, left, right, FRAME);
 
     // Only the per-step decay touched it.
     expect(a.spin).toBeCloseTo(200 * Math.pow(0.5, FRAME / SPIN_HALFLIFE), 6);
@@ -298,7 +329,7 @@ describe("ball-to-ball collision", () => {
     const b = ball({ x: 600 + BALL_COLLIDE_DIST - 6, vx: 0 });
     const [left, right] = paddles();
 
-    step([a, b], left, right, FRAME);
+    step([a, b], FIELD_OBSTACLES, left, right, FRAME);
 
     expect(b.x - a.x).toBeCloseTo(BALL_COLLIDE_DIST, 6);
   });
@@ -308,7 +339,7 @@ describe("ball-to-ball collision", () => {
     const moving = ball({ x: 500, y: 360, vx: 600 });
     const [left, right] = paddles();
 
-    const events = step([waiting, moving], left, right, 0.4);
+    const events = step([waiting, moving], FIELD_OBSTACLES, left, right, 0.4);
 
     expect(events.ball).toBe(true);
     expect(moving.vx).toBeLessThan(0);
@@ -325,7 +356,7 @@ describe("ball-to-ball collision", () => {
     const b = ball({ x: 840, y: 360, vx: -SPEED_CAP });
     const [left, right] = paddles();
 
-    step([a, b], left, right, 0.2);
+    step([a, b], FIELD_OBSTACLES, left, right, 0.2);
 
     // Whatever else happened, neither passed through the other.
     expect(a.x).toBeLessThan(b.x);
@@ -341,8 +372,8 @@ describe("ball-to-ball collision", () => {
     const [l1, r1] = paddles();
     const [l2, r2] = paddles();
 
-    step([together, other], l1, r1, FRAME);
-    step([alone], l2, r2, FRAME);
+    step([together, other], FIELD_OBSTACLES, l1, r1, FRAME);
+    step([alone], FIELD_OBSTACLES, l2, r2, FRAME);
 
     expect(together.x).toBeCloseTo(alone.x, 9);
     expect(together.y).toBeCloseTo(alone.y, 9);

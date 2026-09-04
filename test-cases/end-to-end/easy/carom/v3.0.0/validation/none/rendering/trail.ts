@@ -8,23 +8,27 @@
 // it, so that whatever static furniture the build draws there (the net, a mode
 // label) is not mistaken for the trail.
 //
-// The ball is driven down a lane near the bottom of the field, clear of the
-// paddles, both obstacles and the net, for longer than `TRAIL_TIME`, so the
-// trail is full when it is read. The reading is of the pixels the build PAINTED
-// along the lane on the frame the drive ends on, and nothing else: how the
-// trail reached the canvas — a path of its own, a Path2D, a transformed
-// sprite, an offscreen image — is the build's, and none of those name the
-// trail's coordinates in the calls a recorder sees.
+// The field is emptied and one ball is spawned back onto it, so both obstacles
+// are off the field entirely rather than shot around; the paddles cannot be
+// removed — they are furniture the game always has — so they are stood out of the
+// lane, and neither is taken from the player, because a trail is about a ball's
+// own travel and needs no driven paddle. That ball is then driven down the lane
+// for longer than `TRAIL_TIME`, so the trail is full when it is read. The reading
+// is of the pixels the build PAINTED along the lane on the frame the drive ends
+// on, and nothing else: how the trail reached the canvas — a path of its own, a
+// Path2D, a transformed sprite, an offscreen image — is the build's, and none of
+// those name the trail's coordinates in the calls a recorder sees.
 
 import { BALL_R } from "../constants";
 import {
   arrangeLiveBall,
   ball0,
   colorDistance,
+  placeBall,
   type Harness,
 } from "../harness";
 
-/** The lane the ball is driven down: clear of both obstacles and the paddles. */
+/** The lane the ball is driven down: clear of the parked paddles and of the net. */
 export const LANE_Y = 650;
 
 /** Where the drive starts. */
@@ -88,13 +92,10 @@ export async function readTrail(
   const bareRead = await h.pixels(laneXs.map((x) => ({ x, y: LANE_Y })));
   const bare = new Map(laneXs.map((x, i) => [x, bareRead[i]]));
 
-  await h.debug.setBall(0, {
-    x: START_X,
-    y: LANE_Y,
-    vx: speed,
-    vy: 0,
-    spin: 0,
-  });
+  // Posed with the five atomic ball operations `placeBall` sequences, in the order
+  // that leaves nothing for the next frame to undo: the hold is ended before the
+  // position is written, so the build's own home point cannot overwrite it.
+  await placeBall(h, { x: START_X, y: LANE_Y, vx: speed, vy: 0 });
   await h.advance(FILL_TICKS);
   const ball = ball0(await h.snapshot());
   const at = { x: ball.x, y: ball.y };

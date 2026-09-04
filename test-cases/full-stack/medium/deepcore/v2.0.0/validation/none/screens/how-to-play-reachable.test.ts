@@ -1,0 +1,58 @@
+// screens/how-to-play-reachable — the how-to screen is reachable from the title,
+// and it comes back.
+//
+// specs/ui.md: `HOW TO PLAY` on the title "goes to `how-to-play`", and the
+// how-to-play screen "Returns to `title`". It is the one screen the file lists
+// with no menu items of its own, so what returns from it is the build's choice
+// between the two keys specs/controls.md gives a menu screen: `activate`, which
+// chooses whatever the screen offers, and `pause`, which goes back where a screen
+// has a back. Both are conformant, so the check accepts either — what it decides
+// is that the screen is reached and that it returns.
+//
+// ISOLATION. The title reached directly with the slot cleared, so `HOW TO PLAY`
+// is the entry specs/ui.md puts last with no save banked.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
+import { TITLE_ITEMS_NO_SAVE } from "../constants";
+import {
+  ACTION_KEY,
+  captureStill,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("opens the how-to screen from the title and returns from it", async () => {
+  await h.debug.setAutoStep(false);
+  await h.debug.clearSave();
+  await h.debug.reset();
+  await h.debug.setScreen("title");
+
+  await h.debug.setMenuIndex(TITLE_ITEMS_NO_SAVE.indexOf("HOW TO PLAY"));
+  await h.tap(ACTION_KEY.activate);
+  await captureStill(h, "howto");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "how-to-play",
+    "specs/ui.md: HOW TO PLAY goes to how-to-play",
+  );
+
+  await h.tap(ACTION_KEY.activate);
+  if ((await h.snapshot()).screen !== "title") await h.tap(ACTION_KEY.pause);
+
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "specs/ui.md: the how-to-play screen returns to the title",
+  );
+});

@@ -120,6 +120,18 @@ Three consequences follow:
   frame indices, playing the case's declared sequences and showing the
   individual frames.
 
+### Bundled references (performance)
+
+A [performance](/testing/performance/overview/) case produces neither a site nor
+an image but an engine, so its reference is what the authoritative engine does:
+the case's scored scenarios, simulated in the browser. That takes no
+`reference_implementation` key and no publish step at all. The reference engine
+and the scenarios are vendored into the UI bundle from the case's replay bundle,
+so the tab needs no backend, no snapshot bucket, and no per-variant signal. It
+is offered off the case rather than the selected variant, and it is the only
+reference shape that is not published out of band. See [The Reference
+tab](/testing/performance/lattice/architecture/#the-reference-tab).
+
 A reference implementation is distinct from a reference visual mockup, the
 [`[[reference]]`](/testing/end-to-end/manifests/) views. A mockup is a rendered
 screenshot of a single view, seeded into the run as a static target the model

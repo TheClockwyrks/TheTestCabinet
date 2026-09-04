@@ -74,13 +74,31 @@ BLADE_EDGE=1
 CHEVRON_LEN=4
 
 # --- Palette (the brief's table, and nothing else) -----------------------------
+#
+# The shared metal body is identical in every tier: the same dark outline, the
+# same metal base and mid, the same rail. ONLY the movers — the chevrons — carry
+# the tier's accent, and the tier-3 energy glow is the one tone that appears in a
+# single tier. `set_tier` below swaps the mover trio (and nothing else) so a
+# higher tier is unmistakably the same belt, only its accent recoloured.
 OUTLINE='#1b1d21'
 BASE='#34383d'
 MID='#4a4f55'
 RAIL='#6b7178'
-AMBER='#e6b329'
-AMBER_HI='#f6d96b'
-AMBER_LO='#b88410'
+GLOW='#bfeeff' # tier-3 energy glow only
+
+# Select the mover trio (chevron / highlight / shadow) for the tier being drawn.
+# The metal tones above never change; that is what keeps the three tiers one
+# family. Amber, then red-orange, then blue-cyan — a glance at the accent alone
+# tells the tiers apart.
+set_tier() {
+	case $1 in
+	1) MOVER='#e6b329' MOVER_HI='#f6d96b' MOVER_LO='#b88410' ;;
+	2) MOVER='#e6602a' MOVER_HI='#f59a5a' MOVER_LO='#b8400f' ;;
+	3) MOVER='#2ab0e6' MOVER_HI='#7fd8f6' MOVER_LO='#1069b8' ;;
+	esac
+	# Rebuild the chevron stroke table from this tier's mover trio (see below).
+	CHEVRON_STROKES="10 14 $MOVER_HI 11 15 $MOVER 20 16 $MOVER 21 17 $MOVER_LO"
+}
 
 # The chevron, as four strokes in belt coordinates: `t_back t_tip tone`. Each
 # stroke runs from an arm's back end — CHEVRON_LEN upstream, at across-position
@@ -89,9 +107,13 @@ AMBER_LO='#b88410'
 # so the arrowhead reads with a little depth. Straddling t = 15.5, it sits on the
 # centre line of the SURF_IN..SURF_OUT band.
 #
-# This one table is the whole chevron. Both halves iterate it, so the curve
-# cannot drift into a different arrowhead than the straight belt's.
-CHEVRON_STROKES="10 14 $AMBER_HI 11 15 $AMBER 20 16 $AMBER 21 17 $AMBER_LO"
+# This one table is the whole chevron, and `set_tier` rebuilds it from the current
+# tier's mover trio — the GEOMETRY (the four `t_back t_tip` pairs) is identical in
+# every tier, only the tones change. Both halves iterate it, so the curve cannot
+# drift into a different arrowhead than the straight belt's, and a tier cannot
+# drift into a different chevron shape than tier 1's. It is set by `set_tier`
+# before either half runs; the placeholder here keeps `set -u` happy if read early.
+CHEVRON_STROKES=""
 
 # ==============================================================================
 # The straight belt — frames 0..7
@@ -153,10 +175,76 @@ rails_straight() {
 		--width "$TILE" --height "$RAIL_T" --color "$RAIL"
 }
 
+# --- Higher-tier reinforcement, straight belt ----------------------------------
+#
+# Tiers 2 and 3 are the SAME belt with more mechanical detail worked onto it — the
+# body, the cross-section, and the pitches are untouched, so the extra marks obey
+# every rule the base belt does: they stay inside the rail band, they tile
+# horizontally, and any mark on the surface scrolls with the offset.
+
+# A line of bolt studs worked into each rail: a dark tick across the rail band at
+# a fixed pitch, structural so it holds still frame to frame. Tier 2 studs the
+# rail at the blade pitch; tier 3 doubles the density. The pitch divides the tile
+# evenly, so the studs tile edge-to-edge like everything else.
+rail_studs_straight() {
+	sf=$1
+	spitch=$BLADE_PITCH
+	[ "$2" -ge 3 ] && spitch=$((BLADE_PITCH / 2))
+	c=0
+	while [ "$c" -lt "$TILE" ]; do
+		draw-sheet fill-rect --frame "$sf" --x "$c" --y 0 \
+			--width 1 --height "$RAIL_T" --color "$OUTLINE"
+		draw-sheet fill-rect --frame "$sf" --x "$c" --y "$((TILE - RAIL_T))" \
+			--width 1 --height "$RAIL_T" --color "$OUTLINE"
+		c=$((c + spitch))
+	done
+}
+
+# A finer secondary tread mark on each blade, on the SAME blade pitch: a light
+# catch-light down the leading face (tier 2), plus a fine shadow groove across the
+# face (tier 3), so the tread reads denser and more refined without changing its
+# pitch or the belt's cross-section. It sits on the surface, so it scrolls by the
+# same offset as the blades and stays locked to them.
+tread_detail_straight() {
+	tf=$1
+	tt=$2
+	toff=$3
+	surfh=$((SURF_OUT - SURF_IN + 1))
+	base=$((-TILE))
+	while [ "$base" -le "$TILE" ]; do
+		draw-sheet fill-rect --frame "$tf" --x="$((base + toff))" --y "$SURF_IN" \
+			--width 1 --height "$surfh" --color "$RAIL"
+		if [ "$tt" -ge 3 ]; then
+			draw-sheet fill-rect --frame "$tf" --x="$((base + toff + 2))" \
+				--y "$SURF_IN" --width 1 --height "$surfh" --color "$BASE"
+		fi
+		base=$((base + BLADE_PITCH))
+	done
+}
+
+# Tier 3 only: a subtle energy glow along the chevron row — a thin bloom of pale
+# cyan leading each chevron tip down the centre line. Kept to two pixels a chevron
+# so it stays a bloom, not a stripe. It scrolls with the chevrons it leads.
+glow_straight() {
+	gf=$1
+	goff=$2
+	base=$((-TILE))
+	while [ "$base" -le "$TILE" ]; do
+		draw-sheet set-pixel --frame "$gf" --x="$((base + goff + 1))" --y 15 --color "$GLOW"
+		draw-sheet set-pixel --frame "$gf" --x="$((base + goff + 1))" --y 16 --color "$GLOW"
+		base=$((base + CHEVRON_PITCH))
+	done
+}
+
+# $2 is the frame's position 0..7 within its tier's loop, $3 the tier. The mover
+# trio is already selected by `set_tier`; the loop position (not the absolute
+# frame) drives the scroll, so every tier's loop is in phase with tier 1's.
 straight_frame() {
 	frame=$1
+	loop=$2
+	tier=$3
 	# How far the whole surface pattern has advanced east in this frame.
-	offset=$((frame * STEP))
+	offset=$((loop * STEP))
 
 	# 1. The belt body: the metal base across the whole tile. The mid tone that
 	#    keeps this from reading as a flat fill arrives with the blades below,
@@ -174,8 +262,14 @@ straight_frame() {
 		base=$((base + BLADE_PITCH))
 	done
 
+	# 2b. Higher tiers: the finer secondary tread, on the same pitch and scroll.
+	[ "$tier" -ge 2 ] && tread_detail_straight "$frame" "$tier" "$offset"
+
 	# 3. The rails, drawn after the surface so they stay crisp.
 	rails_straight "$frame"
+
+	# 3b. Higher tiers: the bolt-stud reinforcement worked into each rail.
+	[ "$tier" -ge 2 ] && rail_studs_straight "$frame" "$tier"
 
 	# 4. The chevrons, painted last so they sit on top of the tread blades they
 	#    share a surface with — one central row at the chevron pitch, wrapped the
@@ -186,6 +280,10 @@ straight_frame() {
 		chevron_straight "$frame" "$((base + offset))"
 		base=$((base + CHEVRON_PITCH))
 	done
+
+	# 4b. Tier 3 only: the energy glow leading the chevrons.
+	[ "$tier" -ge 3 ] && glow_straight "$frame" "$offset"
+	return 0 # a false trailing `&&` must not fail the function under `set -e`
 }
 
 # ==============================================================================
@@ -354,6 +452,13 @@ blade_curved() {
 		spoke "$1" "$2" "$d" "$OUTLINE" "$R_BLADE_MID"
 		d=$((d + 1))
 	done
+	# $3 is the tier: tiers 2 and 3 carry the same finer catch-light the straight
+	# belt's blades do, a light ray down the cleat's trailing edge (only the outer
+	# half, so it never smears the pivot). Same recipe, so a straight tile and a
+	# curve tile of the tier read as one denser tread through the join.
+	if [ "${3:-1}" -ge 2 ]; then
+		spoke "$1" "$2" 0 "$RAIL" "$R_BLADE_MID"
+	fi
 }
 
 # Draw one chevron on the belt's centre line a whole pixel of arc $2 along, in
@@ -399,12 +504,46 @@ chevron_curved() {
 	done
 }
 
+# Higher-tier bolt studs worked into the curve's outer rail, the curved twin of
+# `rail_studs_straight`: a dark tick every `spitch` px of arc along the convex
+# rim. Structural, so it holds still; the binary clips the ticks that fall past
+# the South mouth.
+rail_studs_curved() {
+	sf=$1
+	spitch=$BLADE_PITCH
+	[ "$2" -ge 3 ] && spitch=$((BLADE_PITCH / 2))
+	a=0
+	while [ "$a" -le "$OUTER_T" ]; do
+		polar "$a" "$((OUTER_T * SUB))" 0
+		draw-sheet set-pixel --frame "$sf" --x="$PX" --y="$PY" --color "$OUTLINE"
+		a=$((a + spitch))
+	done
+}
+
+# Tier 3 only: the energy-glow bloom leading each chevron round the arc — the
+# curved twin of `glow_straight`, one pale-cyan pixel just downstream of each
+# chevron along the centre line.
+glow_curved() {
+	gf=$1
+	goff=$2
+	arc=$((goff - CHEVRON_PITCH))
+	while [ "$arc" -le "$((goff + TILE))" ]; do
+		polar "$arc" "$R_BLADE_MID" "$((SUB / 2))"
+		draw-sheet set-pixel --frame "$gf" --x="$PX" --y="$PY" --color "$GLOW"
+		arc=$((arc + CHEVRON_PITCH))
+	done
+}
+
 curved_frame() {
 	frame=$1
+	loop=$2
+	tier=$3
 	# How far the whole surface pattern has advanced around the bend — measured
 	# along the belt's centre line, and by the SAME step as the straight belt, so
 	# a straight tile feeding this curve stays in phase with it frame for frame.
-	offset=$(((frame - CURVE_FRAME) * STEP))
+	# The loop position (not the absolute frame) drives it, so every tier's curve
+	# loop is in phase with tier 1's.
+	offset=$((loop * STEP))
 
 	# 1. The belt's fixed structure, as nested discs about the corner: each disc
 	#    paints over the one before it, so what survives of each is a band. The
@@ -432,7 +571,7 @@ curved_frame() {
 	#    blades fall outside the tile and the binary clips them.
 	arc=$((offset - 2 * BLADE_PITCH))
 	while [ "$arc" -le "$((offset + TILE))" ]; do
-		blade_curved "$frame" "$arc"
+		blade_curved "$frame" "$arc" "$tier"
 		arc=$((arc + BLADE_PITCH))
 	done
 
@@ -456,19 +595,43 @@ curved_frame() {
 		chevron_curved "$frame" "$arc"
 		arc=$((arc + CHEVRON_PITCH))
 	done
+
+	# 3b/4b as on the straight belt: the outer-rail bolt studs (tiers 2-3) and the
+	#      tier-3 chevron glow, so a straight tile and a curve tile of the same
+	#      tier carry the same reinforcement.
+	[ "$tier" -ge 2 ] && rail_studs_curved "$frame" "$tier"
+	[ "$tier" -ge 3 ] && glow_curved "$frame" "$offset"
+	return 0 # a false trailing `&&` must not fail the function under `set -e`
 }
 
 # ==============================================================================
 # The sheet
 # ==============================================================================
+#
+# Three tiers of sixteen frames each: a straight loop then a curve loop. Every
+# tier is drawn by the SAME two functions above from the SAME per-frame geometry
+# — only `set_tier` (the mover accent) and the tier-gated detail passes differ,
+# which is exactly what the brief asks the three tiers to be. `loop` (0..7) is the
+# position within each eight-frame loop and drives the scroll, so all three tiers
+# stay in phase; the renderer plays the higher tiers back faster.
 
-frame=0
-while [ "$frame" -lt "$CURVE_FRAME" ]; do
-	straight_frame "$frame"
-	frame=$((frame + 1))
-done
+tier=1
+while [ "$tier" -le 3 ]; do
+	set_tier "$tier"
+	straight_base=$(((tier - 1) * 2 * SEQ_FRAMES)) # 0, 16, 32
+	curve_base=$((straight_base + CURVE_FRAME))    # 8, 24, 40
 
-while [ "$frame" -lt "$((CURVE_FRAME + SEQ_FRAMES))" ]; do
-	curved_frame "$frame"
-	frame=$((frame + 1))
+	loop=0
+	while [ "$loop" -lt "$SEQ_FRAMES" ]; do
+		straight_frame "$((straight_base + loop))" "$loop" "$tier"
+		loop=$((loop + 1))
+	done
+
+	loop=0
+	while [ "$loop" -lt "$SEQ_FRAMES" ]; do
+		curved_frame "$((curve_base + loop))" "$loop" "$tier"
+		loop=$((loop + 1))
+	done
+
+	tier=$((tier + 1))
 done

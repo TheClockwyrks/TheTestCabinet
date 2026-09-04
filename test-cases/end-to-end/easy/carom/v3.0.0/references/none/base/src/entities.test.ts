@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  HOLD_TIME,
   PADDLE_MAX_CY,
   PADDLE_MIN_CY,
   P1_X0,
@@ -20,9 +21,14 @@ import {
   paddleBounds,
   paddleFrontX,
   paddleRect,
-  parkBall,
 } from "./entities";
-import type { BallState, PaddleState } from "./game";
+import { createBall, createPaddle, parkBall } from "./state";
+import type { PaddleState } from "./state";
+
+/** A paddle at `cy`, moving at `vy`, under whoever holds it. */
+function paddleAt(cy: number, vy: number): PaddleState {
+  return { ...createPaddle(), cy, vy };
+}
 
 describe("clamp", () => {
   it("passes a value inside the range through", () => {
@@ -58,14 +64,14 @@ describe("paddle geometry", () => {
 
 describe("integratePaddle", () => {
   it("advances by the velocity over the elapsed time", () => {
-    const paddle: PaddleState = { cy: 360, vy: 720 };
+    const paddle = paddleAt(360, 720);
     integratePaddle(paddle, 0.25);
     expect(paddle.cy).toBeCloseTo(540, 9);
     expect(paddle.vy).toBe(720);
   });
 
   it("clamps to the field and reports the velocity actually achieved", () => {
-    const paddle: PaddleState = { cy: PADDLE_MAX_CY - 6, vy: 720 };
+    const paddle = paddleAt(PADDLE_MAX_CY - 6, 720);
     integratePaddle(paddle, 1 / 60);
     expect(paddle.cy).toBe(PADDLE_MAX_CY);
     // 6 px of the 12 px it asked for, over 1/60 s.
@@ -73,14 +79,14 @@ describe("integratePaddle", () => {
   });
 
   it("reports zero for a paddle already pinned against a bound", () => {
-    const paddle: PaddleState = { cy: PADDLE_MIN_CY, vy: -720 };
+    const paddle = paddleAt(PADDLE_MIN_CY, -720);
     integratePaddle(paddle, 1 / 60);
     expect(paddle.cy).toBe(PADDLE_MIN_CY);
     expect(paddle.vy).toBe(0);
   });
 
   it("leaves the velocity alone across a zero-length frame", () => {
-    const paddle: PaddleState = { cy: PADDLE_MIN_CY, vy: -720 };
+    const paddle = paddleAt(PADDLE_MIN_CY, -720);
     integratePaddle(paddle, 0);
     expect(paddle.cy).toBe(PADDLE_MIN_CY);
     expect(paddle.vy).toBe(-720);
@@ -89,12 +95,26 @@ describe("integratePaddle", () => {
 
 describe("the ball", () => {
   it("derives speed from the velocity", () => {
-    expect(ballSpeed({ x: 0, y: 0, vx: 3, vy: 4, spin: 0 })).toBe(5);
+    expect(ballSpeed({ ...createBall(), vx: 3, vy: 4 })).toBe(5);
   });
 
-  it("parks at the field center with no motion and no spin", () => {
-    const ball: BallState = { x: 1, y: 2, vx: 3, vy: 4, spin: 5 };
+  it("parks at the field center, held, with a full hold and no trail", () => {
+    const ball = createBall();
+    Object.assign(ball, { x: 1, y: 2, vx: 3, vy: 4, spin: 5, held: false });
+    ball.holdTimer = 0.25;
+    ball.trail.push({ x: 1, y: 2, t: 0 });
+
     parkBall(ball);
-    expect(ball).toEqual({ x: 640, y: 360, vx: 0, vy: 0, spin: 0 });
+
+    expect(ball).toEqual({
+      x: 640,
+      y: 360,
+      vx: 0,
+      vy: 0,
+      spin: 0,
+      held: true,
+      holdTimer: HOLD_TIME,
+      trail: [],
+    });
   });
 });

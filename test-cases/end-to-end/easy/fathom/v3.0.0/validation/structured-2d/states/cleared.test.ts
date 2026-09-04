@@ -36,8 +36,8 @@
 // that it gives way inside its own window.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TICK_HZ } from "../../src/constants";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
+import { TICK_HZ } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
   captureStill,

@@ -44,7 +44,7 @@ import {
   assertLessThan,
   fail,
 } from "../assert";
-import { FLARE_RADIUS, TILE } from "../../src/constants";
+import { FLARE_RADIUS, TILE } from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

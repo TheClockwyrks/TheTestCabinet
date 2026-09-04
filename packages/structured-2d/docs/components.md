@@ -74,10 +74,13 @@ while its actor stays where the level placed it.
 ## `RenderComponent`
 
 ```ts
+type RenderSpace = "world" | "screen";
+
 class RenderComponent extends Component {
   layer: number;
   visible: boolean;
   opacity: number;
+  space: RenderSpace;
 }
 ```
 
@@ -86,6 +89,7 @@ class RenderComponent extends Component {
 | `layer` | `0` | Orders the pipeline. Lower layers draw first. |
 | `visible` | `true` | Whether the pipeline collects the component. |
 | `opacity` | `1` | Clamped to `0..1`. |
+| `space` | `"world"` | The space the component draws in. `"screen"` draws through the viewport alone, in logical units. |
 
 `RenderComponent` is the base every drawing component extends. The pipeline
 sorts the collection by `layer` ascending, then by the owning actor's spawn
@@ -94,6 +98,15 @@ order, then by attachment order, and the sort is stable. See `rendering.md`.
 `visible` takes a component out of the picture and leaves it ticking. The
 component's own `enabled` is the wider switch: a disabled component skips its
 tick, draws nothing, and takes no part in collision.
+
+A `world` component draws through the camera and then the viewport, so its
+transform, its sizes, and its font size are world units. A `screen` component
+draws through the viewport alone: its composed transform, its sizes, and its
+font size are logical units measured from the top-left of the design field, so
+it holds its place on the canvas whatever the camera does. Every quantity the
+tables below state in world units is a logical unit under `screen`. One sort
+orders both spaces, so a `screen` component's `layer` places
+it among the `world` components. See `rendering.md`.
 
 ## `SpriteComponent`
 
@@ -134,6 +147,9 @@ The anchor defaults center the sprite on its transform. An image is loaded
 through the asset loader before the component is constructed — a level's `load`
 is awaited before any of its actors exist — so a sprite reads its bitmap as a
 plain value. See `assets.md`.
+
+The image is sampled as `EngineOptions.imageSmoothing` states: bilinearly by
+default, nearest-neighbor when it is `false`. See `rendering.md`.
 
 A sheet is one image with a `source` region selecting the frame, and the region
 is a field the actor writes:
@@ -218,8 +234,9 @@ class TextComponent extends RenderComponent {
 | `align` | `"center"` | Horizontal alignment against the component's transform. |
 | `baseline` | `"middle"` | Vertical alignment against the component's transform. |
 
-The font size is world units, scaled by the camera like every other drawn
-quantity. A scoreboard that shows live figures writes `text` from a tick:
+The font size is in the component's space: world units under `world`, scaled
+by the camera like every other drawn quantity, and logical units under
+`screen`. A scoreboard that shows live figures writes `text` from a tick:
 
 ```ts
 export class Scoreboard extends Actor {
@@ -246,6 +263,7 @@ export class Scoreboard extends Actor {
 interface DrawApi {
   readonly ctx: CanvasRenderingContext2D;
   readonly mode: RenderMode;
+  readonly space: RenderSpace;
   frame(): FrameInfo;
   viewport(): Viewport;
   camera(): CameraSnapshot;
@@ -258,8 +276,10 @@ abstract class DrawComponent extends RenderComponent {
 
 `DrawComponent` is the direct-drawing path, for a picture the built-in
 components cannot state. The engine calls `draw` in the component's place in the
-layer order, with the context already carrying the world-to-device transform, so
-the component draws in world units. Render modes belong to the declarative
+layer order, with the context already carrying the transform of the component's
+`space`: the world-to-device transform under `world`, so the component draws in
+world units, and the viewport alone under `screen`, so it draws in logical
+units. `api.space` names which. Render modes belong to the declarative
 pipeline, so a `DrawComponent` reads `api.mode` and supplies its own. See
 `rendering.md` for a worked example.
 

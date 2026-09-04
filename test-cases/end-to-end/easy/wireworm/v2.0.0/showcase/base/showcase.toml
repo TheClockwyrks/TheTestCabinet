@@ -1,0 +1,17 @@
+# The carousel, in the order it is presented. The first entry is what the
+# catalog's preview stage plays, so it leads with sustained play and the stills
+# follow it. Every file here was captured from `references/none` by
+# `showcase/capture/base.showcase-capture.test.ts`, which records that build
+# being played through the keyboard; its README says how each one was produced.
+
+[[media]]
+file = "gameplay.json.gz"
+name = "A descent from level one, charging the field into a chain-arc discharge"
+
+[[media]]
+file = "mid-level.png"
+name = "Level two enters over the field level one left behind"
+
+[[media]]
+file = "title.png"
+name = "The title screen"

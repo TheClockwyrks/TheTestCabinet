@@ -9,17 +9,20 @@
  *    target's world transform and zoom, then the result is clamped to
  *    `camera.bounds`.
  * 2. The canvas is cleared to `background`, or to transparency when none was
- *    given.
+ *    given, and the context's image smoothing is set from `imageSmoothing`, so
+ *    every image this frame draws samples the way the option states.
  * 3. Every enabled, visible `RenderComponent` on every live actor is
  *    collected — a destroyed actor stops rendering immediately, before the
  *    end-of-frame flush removes it from the world.
  * 4. The collection is sorted by `layer` ascending, then by the owning actor's
  *    spawn order, then by attachment order. The sort is stable, so a redraw
  *    with no change reproduces the previous order exactly.
- * 5. Each component is drawn with the context carrying the world-to-device
- *    transform — the camera composed onto the viewport, so a component states
- *    every coordinate, size, and font size in world units. A `DrawComponent`
- *    receives `DrawApi` and draws itself.
+ * 5. Each component is drawn with the context carrying the transform of its
+ *    `space`. A `world` component draws under the world-to-device transform —
+ *    the camera composed onto the viewport, so it states every coordinate,
+ *    size, and font size in world units; a `screen` component draws under the
+ *    viewport alone, in logical units, wherever the camera is. A
+ *    `DrawComponent` receives `DrawApi` and draws itself.
  * 6. The collision overlay draws, when it is enabled: every enabled collider's
  *    shape over the finished picture, in a color per response, independent of
  *    the mode.
@@ -33,12 +36,13 @@
  * Two design points worth stating once:
  *
  * - **The transform is replaced, never composed across components.** Each
- *   component starts from `setTransform(viewport)` with the camera pushed on
- *   top; its world *position* stays in each operation's own arguments (only a
- *   rotation or scale adds a pivot transform), so a `DrawComponent` that
- *   forgets a `restore` costs the components after it nothing but leaked style
- *   properties — and every declarative component sets the styles it paints with
- *   before painting, so even those cannot leak into the built-in picture.
+ *   component starts from `setTransform(viewport)`, with the camera pushed on
+ *   top for a `world` component; its *position* stays in each operation's own
+ *   arguments (only a rotation or scale adds a pivot transform), so a
+ *   `DrawComponent` that forgets a `restore` costs the components after it
+ *   nothing but leaked style properties — and every declarative component sets
+ *   the styles it paints with before painting, so even those cannot leak into
+ *   the built-in picture.
  * - **The pipeline never reads a pixel and never keeps one.** The whole
  *   picture is a function of the world at the moment `render` runs, which is
  *   what lets a validator read a pixel back and assert on it, and what lets two
@@ -62,6 +66,7 @@ import type {
   DrawApi,
   FrameInfo,
   RenderMode,
+  RenderSpace,
   Renderer,
   Shape,
   Transform,
@@ -129,6 +134,11 @@ export interface RenderScene {
   frame: FrameInfo;
   /** The color the canvas clears to, or `null` for transparency. */
   background: string | null;
+  /**
+   * Whether an image the fit scales is resampled bilinearly, or sampled
+   * nearest-neighbor when `false`.
+   */
+  imageSmoothing: boolean;
   /** The logical design width, for the camera's projection center. */
   width: number;
   /** The logical design height, for the camera's projection center. */
@@ -225,6 +235,7 @@ export class RenderPipeline implements Renderer {
   render(scene: RenderScene): void {
     this.updateCamera(scene);
     this.clear(scene);
+    this.applySampling(scene);
 
     const collected = this.collect(scene.world);
     // A stable sort by layer alone: the collection is already in spawn order
@@ -237,11 +248,18 @@ export class RenderPipeline implements Renderer {
     const camera = scene.world.camera.snapshot();
     // The mode is captured once per frame: a `setMode` issued mid-pipeline
     // (from a `DrawComponent.draw`, say) waits for the next frame, and
-    // `api.mode` agrees with every draw this frame makes.
+    // `api.mode` agrees with every draw this frame makes. One API per space,
+    // so `api.space` names the transform the context arrived under.
     const mode = this.renderMode;
-    const api = this.drawApi(scene, camera, mode);
+    const apis: Record<RenderSpace, DrawApi> = {
+      world: this.drawApi(scene, camera, mode, "world"),
+      screen: this.drawApi(scene, camera, mode, "screen"),
+    };
     for (const entry of collected) {
-      this.drawOne(scene, camera, entry.component, api, mode);
+      const component = entry.component;
+      // Anything but `screen` is world space, matching the transform applied.
+      const api = component.space === "screen" ? apis.screen : apis.world;
+      this.drawOne(scene, camera, component, api, mode);
     }
 
     if (this.overlayEnabled) this.drawCollisionOverlay(scene, camera);
@@ -312,6 +330,19 @@ export class RenderPipeline implements Renderer {
   }
 
   /**
+   * Step 2, second half: the context's image smoothing, set from the option
+   * once per frame and before any component draws.
+   *
+   * Once rather than per blit, so a frame records one `set` for it: the
+   * pipeline never `save`/`restore`s, so the value holds for every component
+   * of the frame, and a `DrawComponent` that changes it is expected to restore
+   * it, as it is every other style the pipeline handed over.
+   */
+  private applySampling(scene: RenderScene): void {
+    scene.ctx.imageSmoothingEnabled = scene.imageSmoothing;
+  }
+
+  /**
    * Step 3: every enabled, visible `RenderComponent` on every live actor, in
    * spawn order and then attachment order.
    *
@@ -336,17 +367,22 @@ export class RenderPipeline implements Renderer {
     return collected;
   }
 
-  /** The API a `DrawComponent`'s `draw` receives, built once per frame. */
+  /**
+   * The API a `DrawComponent`'s `draw` receives, built once per frame and per
+   * space.
+   */
   private drawApi(
     scene: RenderScene,
     camera: CameraSnapshot,
     mode: RenderMode,
+    space: RenderSpace,
   ): DrawApi {
     const frame: FrameInfo = { ...scene.frame };
     const viewport: Viewport = { ...scene.viewport };
     return {
       ctx: scene.ctx,
       mode,
+      space,
       // Snapshots the caller owns: a held one keeps this frame's values.
       frame: (): FrameInfo => ({ ...frame }),
       viewport: (): Viewport => ({ ...viewport }),
@@ -374,6 +410,23 @@ export class RenderPipeline implements Renderer {
     ctx.translate(-camera.x, -camera.y);
   }
 
+  /**
+   * Point the context at the space a component draws in: world space is the
+   * camera composed onto the viewport, screen space the viewport alone.
+   */
+  private applySpaceTransform(
+    ctx: CanvasRenderingContext2D,
+    viewport: Viewport,
+    camera: CameraSnapshot,
+    space: RenderSpace,
+  ): void {
+    if (space === "screen") {
+      applyViewport(ctx, viewport);
+      return;
+    }
+    this.applyWorldTransform(ctx, viewport, camera);
+  }
+
   /** Step 5: one component, in its place in the layer order. */
   private drawOne(
     scene: RenderScene,
@@ -383,26 +436,28 @@ export class RenderPipeline implements Renderer {
     mode: RenderMode,
   ): void {
     const { ctx } = scene;
-    this.applyWorldTransform(ctx, scene.viewport, camera);
+    this.applySpaceTransform(ctx, scene.viewport, camera, component.space);
 
-    // The direct-drawing path: the context carries the world-to-device
-    // transform and nothing else, so the component draws at absolute world
-    // coordinates and reads `api.mode` to supply its own render modes.
+    // The direct-drawing path: the context carries the transform of the
+    // component's space and nothing else, so the component draws at absolute
+    // coordinates in that space and reads `api.mode` to supply its own render
+    // modes.
     if (component instanceof DrawComponent) {
       component.draw(api);
       return;
     }
 
     // The position stays in each operation's own arguments — the stream
-    // records the world coordinates the game asked for, not a chain of
-    // translates — so only a rotation or a scale earns a transform, and it
-    // pivots about the component's world position to leave those arguments in
-    // world coordinates too.
+    // records the coordinates the game asked for, not a chain of translates —
+    // so only a rotation or a scale earns a transform, and it pivots about the
+    // component's position to leave those arguments in the space's
+    // coordinates too. A `screen` component's composed transform is read as
+    // logical units, so the same arithmetic serves both spaces.
     const at = component.worldTransform();
     this.applyLocalTransform(ctx, at);
 
     if (component instanceof SpriteComponent) {
-      this.drawSprite(ctx, component, at, mode);
+      this.drawSprite(ctx, component, at, mode, scene.imageSmoothing);
     } else if (component instanceof ShapeComponent) {
       this.drawShape(ctx, component, at, mode);
     } else if (component instanceof TextComponent) {
@@ -485,12 +540,13 @@ export class RenderPipeline implements Renderer {
     }
   }
 
-  /** A sprite, under the frame's mode. */
+  /** A sprite, under the frame's mode and the frame's sampling. */
   private drawSprite(
     ctx: CanvasRenderingContext2D,
     component: SpriteComponent,
     at: Transform,
     mode: RenderMode,
+    smoothing: boolean,
   ): void {
     const width = component.width;
     const height = component.height;
@@ -500,7 +556,16 @@ export class RenderPipeline implements Renderer {
     switch (mode) {
       case "shaded": {
         ctx.globalAlpha = clampOpacity(component.opacity);
-        this.blitSprite(ctx, component, dx, dy, width, height, component.tint);
+        this.blitSprite(
+          ctx,
+          component,
+          dx,
+          dy,
+          width,
+          height,
+          component.tint,
+          smoothing,
+        );
         return;
       }
       case "wireframe": {
@@ -513,7 +578,7 @@ export class RenderPipeline implements Renderer {
       }
       case "unlit": {
         ctx.globalAlpha = 1;
-        this.blitSprite(ctx, component, dx, dy, width, height, null);
+        this.blitSprite(ctx, component, dx, dy, width, height, null, smoothing);
         return;
       }
       case "silhouette": {
@@ -534,9 +599,10 @@ export class RenderPipeline implements Renderer {
     width: number,
     height: number,
     tint: string | null,
+    smoothing: boolean,
   ): void {
     const source = component.source;
-    const tinted = tint === null ? null : this.tint(component, tint);
+    const tinted = tint === null ? null : this.tint(component, tint, smoothing);
     if (tinted !== null) {
       // The scratch holds the selected region already flattened to the tint,
       // so it blits whole.
@@ -566,11 +632,14 @@ export class RenderPipeline implements Renderer {
    *
    * The scratch is a canvas of its own, so its preparation stays outside the
    * recording; the recorded operation is the `drawImage` that blits it, whose
-   * source is a mutable canvas the recorder captures by content.
+   * source is a mutable canvas the recorder captures by content. The scratch
+   * samples as the frame does, so a tinted sprite and an untinted one are
+   * drawn the same way.
    */
   private tint(
     component: SpriteComponent,
     tint: string,
+    smoothing: boolean,
   ): HTMLCanvasElement | null {
     this.tintScratch ??= this.buildTintScratch();
     const scratch = this.tintScratch;
@@ -583,6 +652,7 @@ export class RenderPipeline implements Renderer {
     // needs.
     scratch.canvas.width = sw;
     scratch.canvas.height = sh;
+    scratch.imageSmoothingEnabled = smoothing;
     if (source === null) {
       scratch.drawImage(component.image, 0, 0);
     } else {

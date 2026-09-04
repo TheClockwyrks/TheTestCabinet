@@ -1,0 +1,48 @@
+# The default Shatter variant: a rock is destroyed by a single hit and the ship
+# carries only its gun. Listed first in the case manifest's `variants`, so it is
+# the default. Every path here resolves against the version folder, exactly like
+# the main manifest.
+slug = "base"
+name = "Base"
+description = "The endless arcade game — one hit destroys a rock, and the ship carries its gun alone."
+
+# The rules that vary between variants live in the common `.hbs` specs, which
+# branch on this variant's slug when rendered: base is told a single hit destroys
+# a rock and there is no secondary weapon, and is never told that another mode
+# exists. So base declares no `spec` of its own — and no `[[domain]]`, since every
+# point rolls up to the case's own four.
+
+# Curated demo media for this variant, captured from the reference build below.
+showcase = "showcase/base"
+
+# The authored, *correct* static build of this variant — the case-variant analogue
+# of a run's `links.playableBuild`. It names a directory (resolved against the
+# version folder) holding a buildable web project; it is built out-of-band with
+# this case's `[build]` install/build commands run from that directory (its static
+# output landing in `dist/`, exactly like a run's build) and deployed like a
+# published run build via `tcab publish-reference`, then shown on the case's
+# "Reference" tab. It is **never seeded into a run** — handing a model the finished
+# game would defeat the test — so it takes no part in this variant's seed set.
+#
+# The key is a table keyed by engine slug, because the build a reference
+# demonstrates differs under each: `references/none/base` carries its own runtime
+# layer, `references/simple-2d/base` hands the same surfaces to the engine package
+# resolved from the repository's `packages/simple-2d`, and
+# `references/structured-2d/base` builds the same game inside the framework of the
+# engine package resolved from `packages/structured-2d`. The game every one
+# implements is identical, which is what makes a run on one engine comparable with
+# a run on another. The table must name every engine the case supports and nothing
+# else.
+#
+# This is also what `tcab capture-baselines` drives to produce the baseline half of
+# this variant's validation media: the same vitest validator suites that decide a
+# run's points, run against the authored answer. The validators are written from
+# the specs, never from the reference; the reference only demonstrates them passing.
+[reference_implementation]
+none = "references/none/base"
+"simple-2d" = "references/simple-2d/base"
+"structured-2d" = "references/structured-2d/base"
+
+# Base declares no `[workspaces]`: the case manifest's table is base's own. It
+# declares no `[[review.categories]]` either — every point a base run is rated on
+# is a common one, and a base run is rated on all 207 of them.

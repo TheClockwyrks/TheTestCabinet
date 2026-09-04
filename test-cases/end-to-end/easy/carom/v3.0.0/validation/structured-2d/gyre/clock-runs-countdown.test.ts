@@ -4,13 +4,19 @@
 // specs/playfield.md: the obstacle clock advances by the frame's delta time on
 // every frame of a live match, the countdown included, and
 // `theta(t) = OBSTACLE_SPIN_RATE * t`. A match is started from the title with
-// the menu keys alone, so no control operation holds the clock, and both
-// obstacles' rotations are read at two countdown frames a known number of
-// frames apart. The turn between them is the rate times that span, within the
-// same 0.01 radians `obstacles-spin` allows.
+// the menu keys alone, so nothing here poses the clock — `setObstacleClock` and
+// `setObstacleClockRunning` are exactly the two operations a check about the
+// clock RUNNING must not touch — and both obstacles' rotations are read at two
+// countdown frames a known number of frames apart. The turn between them is the
+// rate times that span, within the same 0.01 radians `obstacles-spin` allows.
+//
+// The field is left exactly as the build's own match start made it: the two
+// obstacles this point reads, and the ball whose waiting IS the countdown the
+// clock is being watched through. Taking the ball off would take the screen with
+// it, so there is no bystander here to remove.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OBSTACLE_SPIN_RATE } from "../../src/constants";
+import { OBSTACLE_SPIN_RATE } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
@@ -19,7 +25,7 @@ import {
   startWithKeys,
   type Harness,
 } from "../harness";
-import { angleDelta, readObstacles } from "./harness";
+import { angleDelta, obstacleAt, readObstacles } from "./harness";
 
 /** Frames advanced between the two readings, well inside the hold. */
 const SPAN_TICKS = 30; // 0.25 s of a 1 s countdown
@@ -49,12 +55,13 @@ it("turns the obstacles while the countdown runs", async () => {
   assertEqual(harness.snapshot().screen, "countdown");
   const later = readObstacles(harness);
   const expectedTurn = OBSTACLE_SPIN_RATE * seconds(SPAN_TICKS);
-  for (const [i, before] of opening.entries()) {
-    const after = later[i]!;
+  for (const before of opening) {
+    const after = obstacleAt(later, before.index);
     assertLessThanOrEqual(
       Math.abs(angleDelta(after.theta, before.theta + expectedTurn)),
       ANGLE_TOLERANCE,
-      `obstacle ${i} turned OBSTACLE_SPIN_RATE * elapsed during the countdown`,
+      `obstacle ${before.index} turned OBSTACLE_SPIN_RATE * elapsed during ` +
+        `the countdown`,
     );
   }
 });

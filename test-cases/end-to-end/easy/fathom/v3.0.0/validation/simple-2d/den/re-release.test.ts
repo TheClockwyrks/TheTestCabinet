@@ -34,9 +34,9 @@
 // the catch: `specs/progression.md` sets the SAME maze up for another attempt.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
 import { placeForager } from "../fixtures";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
-import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
 import { indexOfKind, requireSceneHeld, sceneGuard } from "../scene";
 import {

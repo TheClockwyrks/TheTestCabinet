@@ -36,5 +36,12 @@ export default defineConfig({
     // several times that on a loaded one, so the ceiling is set well clear of both:
     // it exists to stop a build that never terminates, not to time the host.
     testTimeout: 300_000,
+    // The same ceiling on a hook as on a check, rather than vitest's own 10 s
+    // default. `beforeEach` here constructs the engine, loads every seeded sheet
+    // and runs the build's `initialize` — real work, and work that competes with
+    // whatever else the host is running. A hook budget sized for a quiet machine
+    // fails a perfectly good build as "hook timed out", which says nothing about
+    // the build at all.
+    hookTimeout: 300_000,
   },
 });

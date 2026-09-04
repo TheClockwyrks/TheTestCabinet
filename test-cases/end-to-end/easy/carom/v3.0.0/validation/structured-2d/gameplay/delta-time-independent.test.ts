@@ -31,14 +31,16 @@ import {
   SequenceClock,
   type Clock,
 } from "@test-cabinet/structured-2d";
-import { FIELD_CY, FIELD_H } from "../../src/constants";
+import { FIELD_CY, FIELD_H } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertNotNull } from "../assert";
 import {
   ball0,
+  ballOps,
   captureReplay,
   createHarness,
-  PARKED_CY,
-  startPlaying,
+  drivePaddle,
+  openIsolatedPlay,
+  parkPaddle,
   TICK_MS,
   type BallView,
   type Harness,
@@ -60,8 +62,9 @@ import {
  *
  * Every step stays inside 2–16 ms (62–500 Hz), the range of real frame rates and
  * no wider. The point is to change the step size legitimately, not to hunt for
- * chaos: a 40 ms step would move the ball far enough between frames to start
- * deciding which side of an obstacle it passes, which says nothing about a build.
+ * chaos: a 40 ms step would move the ball most of a paddle's height between
+ * frames, so which end of the face it landed on would be the step's doing rather
+ * than the build's, which says nothing about a build.
  */
 const SCHEDULES: { name: string; clock: () => Clock; replay?: string }[] = [
   { name: "a steady step", clock: () => new ConstantClock(TICK_MS) },
@@ -83,9 +86,16 @@ const SCHEDULES: { name: string; clock: () => Clock; replay?: string }[] = [
 /**
  * The posed approach: the ball starts low on the right travelling down and left,
  * banks off the bottom wall almost at once, then climbs the length of the field
- * into the left paddle's face, arriving in the mid-field lane that clears both
- * obstacles. The paddle waits there, still and centred on that arrival, so the
- * ball is returned down the same clear lane and out the right goal.
+ * into the left paddle's face, arriving in the mid-field lane. The paddle waits
+ * there, still and centred on that arrival, so the ball is returned down that
+ * same lane and out the right goal.
+ *
+ * The field holds that one ball and nothing else: this point is about a bank, a
+ * paddle contact and a goal, so the obstacles are taken off rather than left
+ * standing where a step-size difference could decide which side of one the ball
+ * passed. The struck paddle is held still and centred and the far one is held out
+ * of the lane, because a paddle that moved would make the contact point a
+ * function of when the frames fell rather than of where the ball arrived.
  *
  * The approach is shallow on purpose. Every quantity compared here traces back to
  * WHERE on the paddle the ball landed, and that contact point is the one thing a
@@ -97,9 +107,20 @@ const SCHEDULES: { name: string; clock: () => Clock; replay?: string }[] = [
  */
 const BALL_START = { x: 1150, y: FIELD_H - 30, vx: -600, vy: 205, spin: 0 };
 
-/** How far a drive may run, and how often it is sampled. */
+/** How far a drive may run. */
 const MAX_FRAMES = 1400;
-const POLL_FRAMES = 3;
+/**
+ * Frames between samples.
+ *
+ * A sample is what detects the point, so it is also what sets how late a drive's
+ * elapsed game time can be read: at most one poll of it, which is 78 ms at the
+ * coarsest schedule below. The scenario is the ball crossing the field and coming
+ * back, several seconds of game time, so that is a couple of per cent of what
+ * {@link ELAPSED_TOLERANCE} allows eight of. A sweep sampling twice as often buys
+ * one more per cent of that margin and costs twice as much to decide the same
+ * things.
+ */
+const POLL_FRAMES = 6;
 
 /**
  * Vertical speeds below this count as travelling level rather than up or down, in
@@ -163,11 +184,13 @@ async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
   const harness = await createHarness({ clock });
   live.push(harness);
 
-  await startPlaying(harness);
-  harness.debug.setScore(0, 0);
-  harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  harness.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
-  harness.debug.setBall(0, BALL_START);
+  await openIsolatedPlay(harness, { mode: "versus" });
+  drivePaddle(harness, "left", { cy: FIELD_CY, vy: 0 });
+  parkPaddle(harness, "right");
+  const ops = ballOps(harness);
+  ops.setBallPosition(BALL_START.x, BALL_START.y);
+  ops.setBallVelocity(BALL_START.vx, BALL_START.vy);
+  ops.setBallSpin(BALL_START.spin);
 
   const opening = harness.snapshot();
   const startScore = opening.score;

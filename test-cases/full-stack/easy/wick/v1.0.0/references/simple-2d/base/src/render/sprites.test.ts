@@ -1,0 +1,355 @@
+// The renderer over the produced sprites: every file decoded and drawn,
+// the lamplighter's sprite at the center and mirrored by facing, the slash
+// mirrored to its side, and each effect drawn over its hitbox.
+
+import { createCanvas, loadImage } from "@napi-rs/canvas";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  clearSprites,
+  producedImages,
+  putSprite,
+  spriteCount,
+  spriteImage,
+} from "../assets";
+import {
+  LAMPLIGHTER_IDLE_PATH,
+  STAGE_CX,
+  STAGE_CY,
+  STAGE_H,
+  STAGE_W,
+  WALK_FRAME_TIME,
+} from "../constants";
+import { freshRun, initialState, type Draft, type Zone } from "../state";
+import { spawnEnemy } from "../sim/enemies";
+import { drawZone } from "./effects";
+import { renderGame } from "./render";
+import { drawLamplighterAt } from "./world";
+
+type Context = CanvasRenderingContext2D;
+
+/** Every produced image, decoded once from disk. */
+const decoded = new Map<string, ImageBitmap>();
+
+beforeAll(async () => {
+  for (const image of producedImages()) {
+    const bitmap = await loadImage(
+      new URL(`../../assets/${image.path}`, import.meta.url),
+    );
+    decoded.set(image.path, bitmap as unknown as ImageBitmap);
+  }
+});
+
+/** Put every decoded image in the table the renderer reads. */
+function install(): void {
+  clearSprites();
+  for (const [path, image] of decoded) putSprite(path, image);
+}
+
+beforeEach(install);
+
+function blank(width = STAGE_W, height = STAGE_H): Context {
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d") as unknown as Context;
+  ctx.imageSmoothingEnabled = false;
+  return ctx;
+}
+
+function frame(state: Draft): Context {
+  const ctx = blank();
+  renderGame(ctx, state);
+  return ctx;
+}
+
+function pixel(ctx: Context, x: number, y: number): number[] {
+  return [...ctx.getImageData(x, y, 1, 1).data];
+}
+
+/** Whether any pixel in the box differs from the same box of `other`. */
+function differs(
+  a: Context,
+  b: Context,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): boolean {
+  const da = a.getImageData(x, y, w, h).data;
+  const db = b.getImageData(x, y, w, h).data;
+  return da.some((v, i) => v !== db[i]);
+}
+
+function playingState(): Draft {
+  const state = initialState(1);
+  state.run = freshRun();
+  state.screen = "playing";
+  return state;
+}
+
+function zone(partial: Partial<Zone> & Pick<Zone, "weapon" | "kind">): Zone {
+  return {
+    id: 100,
+    x: 0,
+    y: 0,
+    radius: 0,
+    damage: 1,
+    ttl: null,
+    hits: [],
+    bornTick: 0,
+    ...partial,
+  };
+}
+
+describe("the produced sprites in the frame", () => {
+  it("decodes every produced image", () => {
+    expect(spriteCount()).toBe(producedImages().length);
+    expect(spriteImage(LAMPLIGHTER_IDLE_PATH)).not.toBeNull();
+  });
+
+  it("draws the lamplighter's sprite at the stage center, not the stand-in", () => {
+    const state = playingState();
+    const withSprites = frame(state);
+    clearSprites();
+    const standIn = frame(state);
+    expect(
+      differs(withSprites, standIn, STAGE_CX - 12, STAGE_CY - 16, 24, 32),
+    ).toBe(true);
+    expect(pixel(withSprites, STAGE_CX, STAGE_CY)[3]).toBe(255);
+  });
+
+  it("mirrors the lamplighter's sprite across the center by facing", () => {
+    const run = freshRun();
+    const right = blank(64, 64);
+    drawLamplighterAt(right, run, 32, 32);
+    run.player.facing = "left";
+    const left = blank(64, 64);
+    drawLamplighterAt(left, run, 32, 32);
+    expect(pixel(right, 32, 32)[3]).toBe(255);
+    for (let y = 16; y < 48; y += 1) {
+      for (let x = 20; x < 44; x += 1) {
+        expect(pixel(left, 63 - x, y)).toEqual(pixel(right, x, y));
+      }
+    }
+  });
+
+  it("advances the walk sheet with the moved ticks and holds the idle sprite at rest", () => {
+    const state = playingState();
+    const idle = frame(state);
+    state.run.moving = true;
+    state.run.movedTicks = 0;
+    const walk0 = frame(state);
+    state.run.movedTicks = 6;
+    const walk1 = frame(state);
+    const box = [STAGE_CX - 12, STAGE_CY - 16, 24, 32] as const;
+    expect(differs(idle, walk0, ...box)).toBe(true);
+    expect(differs(walk0, walk1, ...box)).toBe(true);
+  });
+
+  it("draws a slash sprite on the side of the lamplighter it extends to", () => {
+    const run = freshRun();
+    const slash = zone({
+      weapon: "taper",
+      kind: "slash",
+      x: 60,
+      width: 120,
+      height: 40,
+    });
+    const rightSide = blank(160, 60);
+    drawZone(rightSide, run, slash, 80, 30);
+    slash.x = -60;
+    const leftSide = blank(160, 60);
+    drawZone(leftSide, run, slash, 80, 30);
+    expect(differs(rightSide, leftSide, 20, 10, 120, 40)).toBe(true);
+    for (let y = 10; y < 50; y += 1) {
+      for (let x = 20; x < 140; x += 1) {
+        expect(pixel(leftSide, 159 - x, y)).toEqual(pixel(rightSide, x, y));
+      }
+    }
+  });
+
+  it("draws every enemy, effect, gem, and pickup sprite without throwing", () => {
+    const state = playingState();
+    const { run } = state;
+    const types = [
+      "moth",
+      "bat",
+      "rat",
+      "gnat",
+      "beetle",
+      "wisp",
+      "spider",
+      "crow",
+      "shade",
+      "hound",
+      "mothwing",
+      "owl",
+      "dark",
+    ] as const;
+    types.forEach((type, i) => spawnEnemy(run, type, -300 + i * 50, -200));
+    run.enemies[0].age = 0.15;
+    run.enemies[1].heading.x = -1;
+    run.gems.push(
+      { id: 20, tier: "small", x: -100, y: 100, attracted: false, bornTick: 0 },
+      { id: 21, tier: "medium", x: -80, y: 100, attracted: false, bornTick: 0 },
+      { id: 22, tier: "large", x: -60, y: 100, attracted: false, bornTick: 0 },
+    );
+    run.pickups.push(
+      { id: 23, kind: "chest", x: 0, y: 150 },
+      { id: 24, kind: "bread", x: 40, y: 150 },
+      { id: 25, kind: "draft", x: 80, y: 150 },
+    );
+    run.puffs.push({ x: 120, y: 150, bornTick: 0 });
+    const projectiles = [
+      "ember",
+      "beacon",
+      "pin",
+      "hail",
+      "shard",
+      "sconce",
+    ] as const;
+    projectiles.forEach((weapon, i) => {
+      run.projectiles.push({
+        id: 30 + i,
+        weapon,
+        x: -200 + i * 40,
+        y: 200,
+        vx: i % 2 === 0 ? 100 : -100,
+        vy: i === 2 ? 0 : 50,
+        ax: 0,
+        ay: 0,
+        radius: 8,
+        damage: 1,
+        ttl: 1,
+        pierce: 0,
+        hits: [],
+        bornTick: 0,
+      });
+    });
+    run.zones.push(
+      zone({ weapon: "halo", kind: "aura", radius: 80 }),
+      zone({ weapon: "corona", kind: "aura", radius: 150, x: 300, y: 300 }),
+      zone({
+        weapon: "oil-splash",
+        kind: "puddle",
+        radius: 50,
+        x: -300,
+        y: 200,
+        pulse: 0.1,
+      }),
+      zone({
+        weapon: "blaze",
+        kind: "puddle",
+        radius: 70,
+        x: -400,
+        y: 200,
+        pulse: 0.2,
+      }),
+      zone({
+        weapon: "lantern",
+        kind: "lantern",
+        radius: 14,
+        x: 90,
+        y: 0,
+        angle: 0,
+        orbit: 90,
+      }),
+      zone({
+        weapon: "chandelier",
+        kind: "lantern",
+        radius: 20,
+        x: -90,
+        y: 0,
+        angle: 180,
+        orbit: 90,
+      }),
+      zone({
+        weapon: "spark",
+        kind: "strike",
+        radius: 40,
+        x: 200,
+        y: -100,
+        ttl: 0.2,
+      }),
+      zone({ weapon: "flare", kind: "burst", radius: 640, ttl: 0.4 }),
+      zone({
+        weapon: "pyre",
+        kind: "slash",
+        x: 100,
+        width: 200,
+        height: 60,
+        ttl: 0.1,
+      }),
+    );
+    run.weapons.push(
+      { id: "halo", level: 2, cooldown: 0.5, cooldownSet: 1 },
+      { id: "corona", level: 1, cooldown: 0.5, cooldownSet: 0.5 },
+    );
+    run.passives.push({ id: "wick", level: 3 });
+    run.tick = 6;
+    const ctx = frame(state);
+    // The aura sits on the ground under the lamplighter; its ring lies at
+    // radius 80 and the pulse glow fills within it, so a pixel just inside
+    // the ring is warmer than the bare ground far outside it.
+    const inside = pixel(ctx, STAGE_CX + 70, STAGE_CY);
+    const outside = pixel(ctx, STAGE_CX + 300, STAGE_CY - 300);
+    expect(inside).not.toEqual(outside);
+    for (const screen of [
+      "levelup",
+      "chest",
+      "paused",
+      "fallen",
+      "dawn",
+      "title",
+      "howto",
+    ] as const) {
+      state.screen = screen;
+      if (screen === "levelup") run.offers = ["ember", "brass", "lamp-oil"];
+      if (screen === "chest")
+        run.chestResult = { kind: "evolve", weapon: "chandelier" };
+      expect(() => frame(state)).not.toThrow();
+    }
+  });
+
+  it("draws the almanac's pictures from the produced files", () => {
+    const state = initialState(1);
+    state.screen = "almanac";
+    // The detail pane's picture box, where every tab draws its picture.
+    const box = [782, 282, 132, 132] as const;
+    const tools = frame(state);
+    clearSprites();
+    const withoutSprites = frame(state);
+    install();
+    expect(differs(tools, withoutSprites, ...box)).toBe(true);
+    // The tool's icon sits beside its effect, left of the box.
+    expect(differs(tools, withoutSprites, 712, 312, 72, 72)).toBe(true);
+  });
+
+  it("animates the almanac's enemy over its walk sheet", () => {
+    const state = initialState(1);
+    state.screen = "almanac";
+    state.almanacTab = 2;
+    const box = [782, 282, 132, 132] as const;
+    const first = frame(state);
+    state.simTime = WALK_FRAME_TIME;
+    expect(differs(first, frame(state), ...box)).toBe(true);
+  });
+
+  it("draws every icon in the HUD's slots", () => {
+    const state = playingState();
+    const empty = frame(state);
+    state.run.weapons.push({
+      id: "spark",
+      level: 4,
+      cooldown: 0,
+      cooldownSet: 2,
+    });
+    state.run.passives.push({ id: "lure", level: 1 });
+    const filled = frame(state);
+    // The second weapon slot and the first passive slot changed; the held
+    // items fill their slots from the first.
+    const slotsY = STAGE_H - 24 - 44;
+    const passivesX = STAGE_W - 24 - 6 * 52 + 8;
+    expect(differs(empty, filled, 24 + 52, slotsY, 44, 44)).toBe(true);
+    expect(differs(empty, filled, passivesX, slotsY, 44, 44)).toBe(true);
+    expect(differs(empty, filled, passivesX + 52, slotsY, 44, 44)).toBe(false);
+  });
+});

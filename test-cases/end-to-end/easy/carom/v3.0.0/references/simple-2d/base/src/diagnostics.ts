@@ -19,6 +19,9 @@ function fixed(value: number): string {
   return value.toFixed(1);
 }
 
+/** What a line reads while the ball has been cleared out of the field. */
+const ABSENT = "—";
+
 /** Register every diagnostic source, each a read of the state it is given. */
 export function registerDiagnostics(api: InitApi<CaromState>): void {
   api.diagnostics.register("screen", (state) => state.screen);
@@ -27,17 +30,18 @@ export function registerDiagnostics(api: InitApi<CaromState>): void {
     "score",
     (state) => `${state.score.p1} - ${state.score.p2}`,
   );
-  api.diagnostics.register(
-    "ball pos",
-    (state) => `${fixed(state.ball.x)}, ${fixed(state.ball.y)}`,
+  api.diagnostics.register("ball pos", (state) =>
+    state.ball ? `${fixed(state.ball.x)}, ${fixed(state.ball.y)}` : ABSENT,
   );
-  api.diagnostics.register(
-    "ball vel",
-    (state) =>
-      `${fixed(state.ball.vx)}, ${fixed(state.ball.vy)} ` +
-      `(${fixed(ballSpeed(state.ball))})`,
+  api.diagnostics.register("ball vel", (state) =>
+    state.ball
+      ? `${fixed(state.ball.vx)}, ${fixed(state.ball.vy)} ` +
+        `(${fixed(ballSpeed(state.ball))})`
+      : ABSENT,
   );
-  api.diagnostics.register("ball spin", (state) => fixed(state.ball.spin));
+  api.diagnostics.register("ball spin", (state) =>
+    state.ball ? fixed(state.ball.spin) : ABSENT,
+  );
   api.diagnostics.register(
     "paddle L",
     (state) =>

@@ -2,18 +2,21 @@
 // where it was suspended, at the velocity it was suspended with.
 //
 // The fault this catches is a build that treats resuming as a fresh start: a
-// re-serve, or a jump back to the centre. The ball is posed in mid-flight,
-// frozen, confirmed still, and then resumed, and where it is a known number of
-// frames later is compared against where its own preserved velocity carries it
-// from the paused position: `x += vx * h` each sub-step (specs/balls.md), with
-// no spin and nothing to strike, is `vx * elapsed` over the whole span.
+// re-serve, or a jump back to the centre. The ball is posed in mid-flight over a
+// field holding that ball ALONE — both obstacles are off it, and the two paddles,
+// the one piece of furniture no operation removes, are held out of the lane at
+// PARKED_CY — then frozen, confirmed still, and resumed. Where it is a known
+// number of frames later is compared against where its own preserved velocity
+// carries it from the paused position: `x += vx * h` each sub-step
+// (specs/balls.md), with no spin and nothing to strike, is `vx * elapsed` over
+// the whole span.
 //
 // The resume frame counts. Each update reads input first and then advances the
 // screen it left (specs/ui.md), so the frame that consumed the resume is a
 // frame of flight. The margin is one sub-step of travel, MAX_SUBSTEP units.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { MAX_SUBSTEP } from "../../src/constants";
+import { MAX_SUBSTEP } from "../constants";
 import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeLiveBall,

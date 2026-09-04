@@ -5,7 +5,14 @@
 // that always fires flat at the player who was just scored on would produce a
 // perfectly respectable one. So the match is opened under a series of seeds and
 // every ball's launch is read, giving a sample of the distribution rather than a
-// point on it.
+// point on it. The seed is set AFTER the match is opened, because opening one
+// restores every declared field including the seed and the generator's state.
+//
+// Each match is posed the same way: the field cleared back to the three balls
+// this point is about, each on its own home with a full timer, and every hold cut
+// short so the build's own rule performs the three launches. Nothing else is on
+// the field, so what the recording shows is three balls leaving three home points
+// on three unrelated headings and nothing they could have been deflected by.
 //
 // What the sample is held to is what `specs/balls.md` fixes and nothing more: the
 // angle is uniform over the WHOLE circle, so launches go both ways across the
@@ -18,11 +25,18 @@ import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
+  assertLength,
   assertLessThanOrEqual,
 } from "../assert";
-import { SERVE_SPEED } from "../constants";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { launchAngleDeg, readBalls } from "./harness";
+import { BALL_COUNT, SERVE_SPEED } from "../constants";
+import {
+  captureReplay,
+  createMultiHarness,
+  endHolds,
+  openCountdown,
+  type MultiHarness,
+} from "../harness";
+import { isolateBalls, launchAngleDeg, readBalls } from "./harness";
 
 /** The seeds the sample is drawn under, one match each. */
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -60,29 +74,37 @@ const SHARED_DEG = 0.01;
 /** Frames of the launched flight recorded for the reviewer's clip. */
 const FLIGHT_TICKS = 90; // 0.75 s
 
-let h: Harness;
+let h: MultiHarness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createMultiHarness();
 });
 
 afterEach(async () => {
   await h.dispose();
 });
 
-/** Open a match under `seed`, cut the hold short, and read all three launches. */
+/** Open a match under `seed` on a field holding the three balls alone. */
+async function openSeededMatch(seed: number): Promise<void> {
+  await openCountdown(h, "versus");
+  await h.debug.setSeed(seed);
+  await isolateBalls(h);
+}
+
+/** Open a match under `seed`, cut the holds short, and read all three launches. */
 async function launchesUnder(
   seed: number,
 ): Promise<{ speed: number; vx: number; angle: number }[]> {
-  await h.debug.reset({ seed });
-  await h.debug.startMatch("versus");
-  await h.debug.serve();
+  await openSeededMatch(seed);
+  await endHolds(h);
   const launched = await h.until((s) => readBalls(s).every((b) => !b.held), {
     maxFrames: 20,
     poll: 1,
   });
   assertEqual(launched.hit, true);
-  return readBalls(launched.snapshot).map((ball) => ({
+  const balls = readBalls(launched.snapshot);
+  assertLength(balls, BALL_COUNT);
+  return balls.map((ball) => ({
     speed: ball.speed,
     vx: ball.vx,
     angle: launchAngleDeg(ball),
@@ -131,14 +153,11 @@ it("draws every launch over the whole circle rather than aiming it", async () =>
     EACH_WAY_MIN,
   );
 
-  // And each is drawn afresh rather than cycled through a fixed set.
-
   // One opening, kept for the reviewer: three balls leaving their home points on
   // three unrelated headings.
-  await h.debug.reset({ seed: SEEDS[0] });
-  await h.debug.startMatch("versus");
+  await openSeededMatch(SEEDS[0]);
   await captureReplay(h, "launch", async () => {
-    await h.debug.serve();
+    await endHolds(h);
     await h.advance(FLIGHT_TICKS);
   });
 });

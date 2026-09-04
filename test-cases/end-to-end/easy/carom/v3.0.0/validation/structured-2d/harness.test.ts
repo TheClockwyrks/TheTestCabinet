@@ -23,7 +23,7 @@ import {
   captureReplay,
   createHarness,
   retable,
-  startPlaying,
+  openPlaying,
   type Harness,
 } from "./harness";
 
@@ -208,7 +208,7 @@ it("hands the scenario's own value back", async () => {
 it("keeps the whole of an over-long section, at a lower frame rate", async () => {
   // Far more frames than a written recording holds. What comes back covers the
   // whole section — the last frame driven is in it — rather than its opening.
-  await startPlaying(h);
+  await openPlaying(h);
   await captureReplay(h, "long", () => h.advance(1500));
 
   const recording = readBack("long.json.gz");
@@ -247,7 +247,7 @@ it("spends the budget on the section, never one frame past it", async () => {
   // check's sweep stopped at. So the last frame takes the place of the frame the
   // stride stopped on rather than being written beside it, and the three lengths
   // driven here are that multiple and one frame either side of it.
-  await startPlaying(h);
+  await openPlaying(h);
   for (const length of [599, 600, 601]) {
     const at = `edge-${length}`;
     await captureReplay(h, at, () => h.advance(length));

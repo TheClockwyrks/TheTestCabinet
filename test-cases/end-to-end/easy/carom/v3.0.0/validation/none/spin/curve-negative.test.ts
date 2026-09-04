@@ -13,6 +13,10 @@
 // 0.2 s flown here differs from that integral by under a tenth of a degree; two
 // degrees is the room allowed. One percent on the speed is rounding room, since
 // the rotation preserves it exactly.
+//
+// The field is emptied to this ball alone and both paddles are parked off the
+// flight, so the arc read at the end of the flight is the spin's doing and
+// nothing the ball met on the way.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThan, assertLessThanOrEqual } from "../assert";
@@ -56,8 +60,7 @@ afterEach(async () => {
 });
 
 it("turns a level flight counterclockwise on screen under negative spin, keeping its speed", async () => {
-  await arrangeLiveBall(harness, BALL);
-  await harness.debug.setBall(0, { spin: SPIN });
+  await arrangeLiveBall(harness, { ...BALL, spin: SPIN });
   const posed = ball0(await harness.snapshot());
 
   const flown = await captureReplay(harness, "curve", async () => {

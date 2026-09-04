@@ -48,7 +48,13 @@ export function framesFor(distance: number, stepMs: number): number {
  */
 export const DEPARTURE_MS = 350;
 
-/** A live match driven at `stepMs` frames, registered for disposal in `live`. */
+/**
+ * A live match driven at `stepMs` frames, registered for disposal in `live`.
+ *
+ * The match and nothing more: each probe empties the field for itself and
+ * spawns back the one kind of body its own requirement is about, since the
+ * three want three different worlds.
+ */
 export async function harnessAt(
   stepMs: number,
   live: Harness[],

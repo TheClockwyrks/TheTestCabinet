@@ -1100,6 +1100,96 @@ describe("the frame's own work", () => {
   });
 });
 
+describe("engine.diagnostics", () => {
+  it("reports every registered source against the current state, in registration order", async () => {
+    const game = testGame({
+      initialize: (api) => {
+        api.diagnostics.register("phase", () => "rally");
+        api.diagnostics.register("updates", (state) => state.updates);
+        api.diagnostics.register("started", (state) => state.updates > 0);
+      },
+    });
+    const { engine } = build({ game });
+    await engine.initialize();
+
+    expect(engine.diagnostics()).toEqual([
+      { name: "phase", value: "rally" },
+      { name: "updates", value: 0 },
+      { name: "started", value: false },
+    ]);
+
+    // The state each source is handed is the one the most recent frame left,
+    // not the object `initialize` built.
+    await engine.advance(2);
+    expect(engine.diagnostics()).toEqual([
+      { name: "phase", value: "rally" },
+      { name: "updates", value: 2 },
+      { name: "started", value: true },
+    ]);
+
+    engine.apply((state) => ({ ...state, updates: 50 }));
+    expect(engine.diagnostics()).toEqual([
+      { name: "phase", value: "rally" },
+      { name: "updates", value: 50 },
+      { name: "started", value: true },
+    ]);
+  });
+
+  it("reads a hidden overlay, and reading draws nothing and advances nothing", async () => {
+    const game = testGame({
+      initialize: (api) => api.diagnostics.register("updates", (state) => state.updates),
+    });
+    const { engine, stub } = build({ game });
+    await engine.initialize();
+    await engine.advance(3);
+
+    const before = engine.frame();
+    const state = engine.state;
+    stub.ops.length = 0;
+
+    expect(engine.diagnostics()).toEqual([{ name: "updates", value: 3 }]);
+    expect(engine.diagnostics()).toEqual([{ name: "updates", value: 3 }]);
+
+    // The overlay was never switched on, and a read neither switches it on nor
+    // draws: what a check reads is what the game registered, not what a panel
+    // happened to draw.
+    expect(stub.ops).toEqual([]);
+    expect(engine.frame()).toEqual(before);
+    expect(engine.state).toEqual(state);
+  });
+
+  it("reports a throwing source as an error with no value, and reads the rest", async () => {
+    const game = testGame({
+      initialize: (api) => {
+        api.diagnostics.register("ok", () => "fine");
+        api.diagnostics.register("boom", () => {
+          throw new Error("no ball yet");
+        });
+        api.diagnostics.register("after", (state) => state.updates);
+      },
+    });
+    const { engine } = build({ game });
+    await engine.initialize();
+
+    const readings = engine.diagnostics();
+
+    expect(readings).toEqual([
+      { name: "ok", value: "fine" },
+      { name: "boom", error: "no ball yet" },
+      { name: "after", value: 0 },
+    ]);
+    expect(readings[1]).not.toHaveProperty("value");
+  });
+
+  it("reports nothing for a game that registered nothing", async () => {
+    const { engine } = build();
+    await engine.initialize();
+    await engine.advance(1);
+
+    expect(engine.diagnostics()).toEqual([]);
+  });
+});
+
 describe("run", () => {
   it("drives one frame per host callback and resolves when the signal aborts", async () => {
     const { engine } = build();

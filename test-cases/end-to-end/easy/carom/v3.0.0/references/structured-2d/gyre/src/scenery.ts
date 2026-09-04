@@ -1,28 +1,29 @@
 // Carom (Gyre) — the field furniture: the decorative net and the two LIVE
 // obstacles.
 //
-// Both are placed by the level definitions (`src/levels.ts`). The net never
-// ticks: it is decoration with no collision (specs/playfield.md). The
-// obstacles sway and rotate, and their whole motion is a pure function of the
-// match's obstacle clock (`src/obstacles.ts`): each frame every obstacle
-// REPOSES its transform from the clock rather than integrating anything, so a
-// posed clock and a match that has been running that long face the identical
-// field. The transform — position AND rotation — is the live pose the
-// oriented collision resolves against (`src/ball.ts` reads it), the pose
-// `snapshot().obstacles` reports, and the pose the body below draws, so the
-// picture and the collision cannot drift apart.
+// The net is placed by the level definitions (`src/levels.ts`) and never ticks:
+// it is decoration with no collision (specs/playfield.md). The obstacles are
+// placed by the game instance as it dresses each incoming world
+// (`src/carry.ts`), because WHICH OBSTACLES ARE PRESENT IS STATE: `clearWorld`
+// destroys them and `spawnObstacle(index)` places one back
+// (specs/instrumentation.md), so an absent obstacle is not drawn and has no
+// collision without a flag anywhere saying so.
 //
-// WHO WINDS THE CLOCK. The clock is one figure shared by the pair, kept on the
-// match's game state (`src/state.ts`), and advanced exactly once per frame: by
-// obstacle A (index 0), which ticks first — the level spawns the obstacles in
-// `OBSTACLE_CENTERS` order and actors tick in spawn order — so by the time B
-// poses, and later the ball resolves its flight, both read the frame's settled
-// clock. It advances only on the live screens (the pre-serve countdown
-// included, so the obstacles are already moving when the ball is served),
-// freezes while the game is paused, and is held still while the debug driver
-// holds the paddles (specs/instrumentation.md). In the title level's world
-// there is no match state and no clock: the obstacles stand upright on their
-// base centers, exactly the clock-zero pose a match opens with.
+// An obstacle holds no motion of its own. Its whole pose — center AND rotation
+// — is a pure function of the match's obstacle clock (`src/obstacles.ts`), and
+// `poseAt` writes that function's answer onto its transform. The transform is
+// then the one pose everything reads: the oriented rectangle the collision
+// resolves against (`src/ball.ts`), the pose `snapshot().obstacles` reports,
+// and the pose the body below draws, so the picture and the collision cannot
+// drift apart.
+//
+// WHO WINDS THE CLOCK. The match mode does, once per frame, AFTER every actor
+// has ticked and so after the ball has taken every sub-step — which is what
+// specs/playfield.md means by all of a frame's sub-steps facing one pose. It
+// winds only on the live screens (the pre-serve countdown included, so the
+// obstacles are already moving when the ball is served), holds still while the
+// game is paused, and holds still while `setObstacleClockRunning(false)` has
+// stopped it (specs/instrumentation.md).
 
 import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
 import type { DrawApi } from "@test-cabinet/structured-2d";
@@ -30,7 +31,7 @@ import { FIELD_H, NET_X, OBSTACLE_HH, OBSTACLE_HW } from "./constants";
 import { glowRect, type Ctx } from "./draw";
 import { obstaclePose } from "./obstacles";
 import type { ObstaclePose } from "./sim";
-import { isLiveScreen, MatchState, screenOf } from "./state";
+import { screenOf } from "./state";
 import { COLOR, FURNITURE_ALPHA, LAYER } from "./theme";
 
 /** The dashed center net, drawn at `NET_X`. Decoration only: no collision. */
@@ -69,25 +70,6 @@ export class Obstacle extends Actor {
   constructor() {
     super();
     this.attach(new ObstacleBody()).layer = LAYER.obstacles;
-  }
-
-  tick(dt: number): void {
-    const state = this.world.state;
-    // The title level has no clock: its obstacles stand in the upright,
-    // clock-zero pose the level placed them in.
-    if (!(state instanceof MatchState)) return;
-
-    // Obstacle A winds the shared clock, once, for the pair. Held still while
-    // the debug driver holds the paddles, so a posed scenario faces the
-    // orientation it chose (specs/instrumentation.md).
-    if (
-      this.index === 0 &&
-      isLiveScreen(state.screen) &&
-      !state.game.driver.holding
-    ) {
-      state.obstacleClock += dt;
-    }
-    this.poseAt(state.obstacleClock);
   }
 
   /** Repose the transform — center and rotation — from the clock. */

@@ -1,0 +1,59 @@
+// turning/reversal-discarded — a request naming the opposite of the current
+// heading is discarded at step 1.
+//
+// specs/movement.md: "A request that repeats the current direction and a request
+// that reverses it are both discarded at step 1, and the snake keeps its
+// direction. The snake therefore never reverses into its own neck."
+//
+// WHY THE CHAIN MATTERS HERE. The posed chain trails directly behind the head, so
+// the cell a reversal would send the head into is the neck: a build that applies
+// the reversal does not merely turn, it drives the head into its own second
+// segment on that same tick and ends the round. Both outcomes are caught by the
+// same two readings, because a heading of `right` and a head one cell further
+// right is the only thing the rule permits.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { KEY, type Cell } from "../constants";
+import {
+  ahead,
+  arrangeStep,
+  captureReplay,
+  createHarness,
+  type Harness,
+} from "../harness";
+
+/** Where the chain is posed: a clear run to its right, and its neck to its left. */
+const HEAD: Cell = { col: 10, row: 8 };
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("keeps the heading when the request reverses it", async () => {
+  const posed = await arrangeStep(h, { head: HEAD, dir: "right", length: 3 });
+  assertDeepEqual(
+    posed.snapshot.snake[1],
+    ahead(HEAD, "left"),
+    "the neck a reversal would enter",
+  );
+
+  const after = await captureReplay(h, "reversal", async () => {
+    await h.tap(KEY.left);
+    return h.tick();
+  });
+
+  assertEqual(after.dir, "right", "dir after a reversing request");
+  assertDeepEqual(
+    after.snake[0],
+    ahead(HEAD, "right"),
+    "the head after a reversing request",
+  );
+  assertEqual(after.screen, "playing", "the round after a reversing request");
+});

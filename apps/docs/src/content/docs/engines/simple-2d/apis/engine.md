@@ -61,6 +61,9 @@ interface SurfaceMetrics {
   dpr(): number;
   events(): EventTarget;
   origin?(): { x: number; y: number };
+  claimGestures?(): () => void;
+  capturePointer?(pointerId: number): void;
+  releasePointerCapture?(pointerId: number): void;
 }
 ```
 
@@ -76,9 +79,25 @@ before mapping a pointer position onto the stage. Absent, the origin reads
 `(0, 0)`, so a dispatched pointer event's client position is read as CSS pixels
 from the canvas's corner.
 
+`claimGestures()` takes the browser's own pointer gestures on the surface, and
+returns the function that gives them back. Those gestures are panning,
+pinch-zoom, double-tap zoom, text selection, the wheel's page scroll, and the
+context menu, and while they are claimed a drag, a wheel, and a press of the
+secondary button all reach the game instead. The engine calls it once as the
+pointer attaches and calls the returned function when the pointer detaches.
+
+`capturePointer(pointerId)` routes every later event for that pointer to the
+surface until `releasePointerCapture(pointerId)`, so a drag that leaves the
+canvas keeps delivering moves and its release is seen. The engine captures each
+pointer as it comes into contact and releases it as it leaves.
+
+The three are optional, and a surface with no element behind it supplies none of
+them. The default surface implements all three against the canvas element.
+
 Absent entirely, the engine reads `clientWidth`, `clientHeight`, the owning
 window's `devicePixelRatio`, and the canvas's bounding rectangle for the origin,
-and listens on the canvas's owning document.
+listens on the canvas's owning document, and claims and captures pointers on the
+canvas element.
 
 ## `Engine`
 
@@ -94,6 +113,7 @@ interface Engine<S, D = unknown> {
   setClock(clock: Clock): void;
   frame(): FrameInfo;
   viewport(): Viewport;
+  diagnostics(): readonly DiagnosticReading[];
   recording(): boolean;
   startRecording(): void;
   stopRecording(): Recording;
@@ -117,6 +137,7 @@ interface RunOptions {
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
+| `diagnostics` | Every registered [diagnostic](/engines/simple-2d/apis/diagnostics/) source and what it reports now, in registration order. |
 | `recording` | Whether draw-command [recording](/engines/simple-2d/apis/recording/) is currently capturing. |
 | `startRecording` | Arm the recorder. Capture begins at the next frame. |
 | `stopRecording` | Disarm the recorder and return everything captured since `startRecording`. |
@@ -158,7 +179,8 @@ and returns that state as `DeepReadonly<S>`. It is how a caller poses a game
 between frames: the next frame's `update` receives the state the transition
 left, so the collision, the serve, or the spawn a scenario is about is still
 computed by the game's own `update`. A debug surface's poses are transitions,
-and a caller drives one as `engine.apply((state) => engine.debug.serve(state))`.
+and a caller drives one as
+`engine.apply((state) => engine.debug.setBallVelocity(state, 240, 0))`.
 
 Calling it before `initialize` resolves throws, naming the ordering, exactly as
 reading `state` does. A transition that returns `undefined` is refused with an

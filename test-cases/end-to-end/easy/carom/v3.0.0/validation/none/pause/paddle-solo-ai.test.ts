@@ -4,9 +4,21 @@
 // The AI is part of the simulation, so pausing must stop it exactly as it stops a
 // held key and the ball. This poses the one situation in which a frozen AI and a
 // running one look different — a ball crossing the field toward it, far from
-// where its paddle is — and hands the right paddle back to the real opponent with
-// `setAiControl`, so what is frozen is the build's own AI rather than a driver's
-// held velocity.
+// where its paddle is.
+//
+// THE AI IS THE REAL ONE, AND ITS PADDLE IS ITS OWN. `arrangeAiChase` gives the
+// opponent both of its faculties (`setAiTracking` and `setAiMovement`) and takes
+// neither paddle: the AI moves the right paddle only while that paddle is the
+// AI's, so what is frozen below is the build's own opponent rather than a driven
+// paddle standing still because its `drivenVy` is zero.
+//
+// THE FIELD HOLDS THE ONE BALL THE AI IS CHASING. `arrangeAiChase` empties it and
+// spawns that ball back, so both obstacles are off it: the chase this point
+// watches is the AI against one shot, and that is also what the replay shows.
+//
+// The pause itself is POSED, with `setScreen`. The key that opens the pause menu
+// is `navigation/pause-escape`'s point and `ui/state-pause`'s; a build whose
+// Escape did nothing should fail those rather than this one.
 //
 // The chase is watched running first. Without that, a build whose AI never moved
 // at all would pass the freeze for the wrong reason.
@@ -59,7 +71,7 @@ it("holds the AI paddle still while paused", async () => {
     await h.advance(CHASING_TICKS);
     const chasing = (await h.snapshot()).paddles.right.cy;
 
-    await h.tap("Escape");
+    await h.debug.setScreen("paused");
     const atPause = await h.snapshot();
     const screen = atPause.screen;
     const paused = atPause.paddles.right.cy;

@@ -7,31 +7,34 @@
 // stays where it was. The second half is what catches the common fault of a key
 // driving both paddles at once, and both are read from the one hold.
 //
-// The match is started from the title with real key events dispatched at the
-// target the runtime listens on, so the game stays under normal player control:
-// nothing here calls a control operation, and the paddle moves only because the
-// build read the action the runtime raised from the key the case binds. The
-// title route is load-bearing, not a preference: every posing operation
-// (`startMatch` included) hands both paddles to the debug driver and only
-// `reset` gives them back, so a match posed open would leave this key dead.
+// A match is opened on its countdown through the debug surface, which sets the
+// mode and the screen and takes NOTHING from the player: the paddles are still
+// the player's, so the key below moves one only because the build read the action
+// the runtime raised from the key the case binds. The key event is dispatched at
+// the target the runtime listens on — a real key, not an action reached into —
+// held for a known span, and the displacement read back off the game's own state,
+// which is what makes this a check of the CONTROL rather than of the simulation.
+// The menus are the navigation checks' surface, not this one's: a build with a
+// broken title and a working control must fail those and pass this.
+//
+// The field is emptied outright — no ball, no obstacles — because which paddle
+// this key moves, and which way, is the whole of what it decides. With no ball to
+// serve, the countdown simply runs on, and the paddles move on a `countdown`
+// frame exactly as they do on a `playing` one (specs/balls.md).
 //
 // The direction is the whole point here, not the rate: how fast a held paddle
 // travels is the `paddle-movement` category's, and asserting it in both places
 // would cost one build two items for one fault.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertContains,
-  assertEqual,
-  assertLessThan,
-} from "../assert";
+import { assertCloseTo, assertEqual, assertLessThan } from "../assert";
 import {
   MOVE_MIN,
   captureReplay,
   createHarness,
   holdMove,
-  startWithKeys,
+  openCountdown,
+  poseWorld,
   type Harness,
 } from "../harness";
 
@@ -64,8 +67,9 @@ afterEach(() => {
 });
 
 it("moves player two's right paddle up while ArrowUp is held, and stops on release", async () => {
-  await startWithKeys(h, "versus");
-  assertContains(["countdown", "playing"], h.snapshot().screen);
+  openCountdown(h, "versus");
+  poseWorld(h, { balls: [] });
+  assertEqual(h.snapshot().screen, "countdown");
 
   const moved = await captureReplay(h, "move", async () => {
     await h.advance(REST_TICKS);

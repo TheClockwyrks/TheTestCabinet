@@ -4,16 +4,21 @@
 // REAL point is driven across the goal: the win rule resolves through the build's
 // own scoring code rather than a fabricated end state, taking the match to the
 // narrowest score that satisfies it.
+//
+// The point runs down an isolated lane. `arrangeGoal` empties the field and
+// spawns back the one ball it fires, so both obstacles are gone rather than
+// dodged, and it drives both paddles out of the mid-field lane — the paddles are
+// the one thing on the field a check cannot remove.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { WIN_LEAD, WIN_SCORE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureStill,
   createHarness,
   driveGoal,
-  startPlaying,
+  enterPlaying,
   type Harness,
 } from "../harness";
 
@@ -32,7 +37,7 @@ afterEach(() => {
 });
 
 it("ends the match on the winning point and names the winner", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   harness.debug.setScore(P1_BEFORE, P2_BEFORE);
   arrangeGoal(harness, "right");
 

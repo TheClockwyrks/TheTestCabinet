@@ -22,11 +22,11 @@
 #
 # EVERY run image has one. A program's language is resolved per agent, so a gg run on
 # any case at all may drive a compiled-language agent, and there is no combination of
-# test type and asset kind for which gg may be handed an image with no compilers in it.
-# `ImageSpec::gg_variant` in crates/core derives the name the same way rather than
-# consulting a list, and `every_resolvable_image_is_one_the_build_publishes` fails the
-# build if what it resolves and what this publishes ever disagree — so a new run image
-# is TWO lines here, its own and its variant's.
+# test type, asset kind, and asset dimension for which gg may be handed an image with no
+# compilers in it. `ImageSpec::gg_variant` in crates/core derives the name the same way
+# rather than consulting a list, and `every_resolvable_image_is_one_the_build_publishes`
+# fails the build if what it resolves and what this publishes ever disagree — so a new
+# run image is TWO lines here, its own and its variant's.
 #
 # `base` is the exception, and the only one: it is the build-time parent of the images
 # below it, never a run image, so nothing resolves it and it needs no variant.
@@ -41,6 +41,8 @@ base-wasm
 base-wasm-gg
 full-stack-2d
 full-stack-2d-gg
+full-stack-3d
+full-stack-3d-gg
 game-jam
 game-jam-gg
 sprite

@@ -82,6 +82,19 @@ by every operation that could invalidate it. A build that caches a trail,
 remembers which screen a pause returns to, or latches input holds that data in
 a form that a single-field operation leaves consistent.
 
+### A build reports the layout a spec leaves loose
+
+A case that validates a behavior over a layout it leaves to the build carries a
+read reporting what the build chose. A case whose menus take pointer input
+specifies a read returning a menu item's hit region in logical units, so a
+validator moves the pointer onto the item as the build drew it and asserts the
+selection that follows.
+
+Such a read is a reading operation like `snapshot()`, enumerated in the
+specification by name, signature, and effect. It reports position, and the
+pointer's effect on the menu stays in the game's own input handling, which is
+what the validator decides.
+
 ### Operations stay on the precondition side
 
 Atomic operations are setup verbs, and the
@@ -113,6 +126,99 @@ change first. Decide whether the behavior is a requirement. If it is, state it
 in the specs, designed around the behavior rather than around an engine or the
 reference's architecture, and assert the now-stated behavior. If it is not,
 the validator has nothing to assert.
+
+### Validators own the figures they assert
+
+Every figure a validator compares against is stated by the validator. Each
+engine's validator project carries a `constants.ts` at its root that transcribes
+those figures from the rendered specs under the names the specs use, and a suite
+imports each figure it asserts from there: `./constants` from the project root,
+`../constants` from a suite one directory down.
+
+Under an engine the case seeds the build a `src/constants.ts`, so a suite can
+reach the build's own copy of the same figures. A suite that reaches it grades
+nothing. The comparison becomes "does the build do what the build says it does",
+which holds for every build, including one whose figure is wrong.
+
+Meltdown's `surge/walks-at-its-speed` is the pair that shows it. The suite in
+each project computes the same expression:
+
+```ts
+const expected = SURGE_DEFS[type].speed * WINDOW_SECONDS;
+```
+
+The `none` project imports `SURGE_DEFS` from `../constants`, which spells out
+`mote: { speed: 60 }` from `specs/surge.md`. An engine project that imports it
+from `../../src/constants` reads the build's own table instead. A build that
+walks Motes at 66 fails the first suite and passes the second, because its table
+says 66 too. A run selects one engine, so that build buys itself a clean sheet on
+whichever engine it draws.
+
+### The build's module has one import site
+
+A specification leaves some values to the build: which touch layout it
+registers, which key it binds an action to where the specs name none, where it
+places a decoration the specs require only to exist. A validator reads such a
+value to drive the build or to locate what the build drew, and grades nothing by
+it.
+
+`constants.ts` is the file that reads them. It re-exports each value under a
+heading saying why that value is the build's to choose, and the suites, the
+harness and the surface all import from `constants.ts`. One import site per
+project is what makes the rule mechanical.
+
+```ts
+// validation/simple-2d/constants.ts
+
+/** The paddle's travel speed, in units per second (specs/paddles.md). */
+export const PADDLE_SPEED = 720;
+
+/* ---- What the specification leaves to the build ------------------------- */
+//
+// Read to drive the build, never compared against. `specs/controls.md` requires
+// a touch layout carrying the four movement actions and names no layout, so
+// which one the build registers is the build's own choice and the harness has
+// to ask for it.
+
+export { LAYOUT } from "../src/constants";
+```
+
+Each engine's project holds its own copy of `constants.ts`. A run stages one
+project, copying `validation/<engine>/` whole into the produced tree at
+`validation/`, so a module the projects shared from outside them is absent when
+the suites run. That is why a project resolves everything it needs from inside
+itself and from the build beside it.
+
+### What a project may reach for
+
+A project makes three kinds of reference to the build, and no others:
+
+| File           | May take                                             |
+| -------------- | ---------------------------------------------------- |
+| `constants.ts` | named bindings from any module of the build          |
+| `harness.ts`   | named bindings from the build's entry, `../src/game` |
+| any file       | a type-only clause from any module of the build      |
+
+A type is erased before anything runs, so `import type { State } from
+"../src/game"` carries no figure and any suite may take one.
+
+The form matters as much as the module. `export { LAYOUT } from
+"../src/constants"` is a boundary a reader can count; `export * from
+"../src/constants"` names the same module and hands every suite in the project
+the build's whole figure table. So `constants.ts` takes what it takes BY NAME,
+one binding at a time, and a namespace binding, a default binding, a bare
+side-effect import, `import()` and `require()` are all the same reach in a shape
+review cannot read at a glance.
+
+Configuration reopens the route without a suite naming it: a `paths` alias in the
+project's `tsconfig.json`, a `file:` dependency in its `package.json`, and a
+`resolve.alias` in its `vitest.config.ts` each redirect an import that reads
+correctly in the source. A project resolves everything from inside itself and
+from the build beside it, so it carries none of them.
+
+The names a project takes from the build are worth reading as a list, and worth
+keeping short: a list that grows is the signal that a case is drifting back
+toward grading the build against itself.
 
 ### One requirement per validator
 
@@ -236,8 +342,15 @@ When designing or revising a case's debug API and validators:
 - The shared harness owns every compound sequence, built from atomic
   operations.
 - `snapshot()` reports every field an operation can set.
+- A layout a spec leaves to the build, such as a menu item's hit region, is
+  reported by a read the validators drive.
 - Each assertion traces to a statement in the specs, not to the reference
   implementation, and every spec-honoring design passes.
+- Every figure a suite asserts comes from the project's own `constants.ts`,
+  transcribed from the specs.
+- `constants.ts` re-exports only what the specs leave to the build, `harness.ts`
+  takes only the build's entry, and every other reference the project makes
+  resolves inside the project.
 - Each validator decides one requirement in one direction, and each edge case
   has its own validator.
 - Each validator reaches its scenario through the debug API alone and drives

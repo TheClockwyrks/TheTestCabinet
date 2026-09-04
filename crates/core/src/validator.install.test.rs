@@ -8,7 +8,9 @@
 use super::BuildValidator;
 use crate::execution::{ArtifactCollection, PreparedInstall};
 use crate::post_run::PostRunReport;
-use crate::test_case::{AssetKind, BuildCommands, TestCaseVersion, TestType, Variant};
+use crate::test_case::{
+    AssetDimension, AssetKind, BuildCommands, TestCaseVersion, TestType, Variant,
+};
 use crate::toolchain::{ToolchainCommandResult, ToolchainSummary};
 use crate::validation::{StepResult, Validator};
 
@@ -70,6 +72,7 @@ fn version() -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -77,6 +80,7 @@ fn version() -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,

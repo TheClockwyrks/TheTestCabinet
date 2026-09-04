@@ -9,10 +9,11 @@
  * dropped when the world closes) — and the engine owns everything around them.
  *
  * A source is a zero-argument function invoked on each read, never sampled at
- * registration. `read()` evaluates every source in both registries — instance
- * first, then world, each in registration order — and never throws: a source
- * that throws contributes its error message as a string. Re-registering a name
- * replaces its source and retains the name's original position.
+ * registration. `read()` evaluates every source in both registries, instance
+ * first and then world, each in registration order, returning one reading each
+ * and never throwing: a source that throws yields a reading carrying its
+ * message and no value. Re-registering a name replaces its source and retains
+ * the name's original position.
  *
  * The metrics window is the last 10 seconds of frames measured against
  * simulated time, in a ring buffer capped at 2048 samples; percentiles are
@@ -23,14 +24,19 @@
  *
  * Three rules follow from the overlay being *read-only* chrome, and all three
  * are enforced here rather than left to the game's good behaviour: a throwing
- * source yields its message and the rest of the panel draws normally,
+ * source draws its message in the value's place and the rest of the panel
+ * draws normally,
  * {@link Diagnostics.draw} saves and restores the 2D context around everything
  * it does (a leaked `fillStyle` would silently restyle the next frame's
  * drawing), and nothing here grows with the length of a run — the registries
  * are bounded by the names the game registers and the metrics by the ring.
  */
 
-import type { FrameMetrics } from "./contract";
+import type {
+  DiagnosticReading,
+  DiagnosticValue,
+  FrameMetrics,
+} from "./contract";
 
 /**
  * How long the metrics window reaches back, in *simulated* milliseconds.
@@ -107,27 +113,29 @@ export interface DiagnosticsOptions {
  * Render one source's value as a single overlay line.
  *
  * Non-integer numbers are fixed to three decimals because a raw float is
- * seventeen characters of noise the reader has to re-parse every frame;
- * objects go through `JSON.stringify` so a vector or a small state bag is
- * legible without the game pre-formatting it. The `stringify` is guarded: a
- * cyclic value is a perfectly ordinary thing to hand a debug view, and it must
- * not throw — and a bare `undefined` (which `stringify` yields nothing for)
- * falls back to its `String` form.
+ * seventeen characters of noise the reader has to re-parse every frame. Every
+ * other value the union admits reads as itself.
  */
-function formatValue(value: unknown): string {
+function formatValue(value: DiagnosticValue): string {
   if (typeof value === "string") return value;
   if (typeof value === "number") {
     return Number.isInteger(value) ? String(value) : value.toFixed(3);
   }
-  if (value === null || value === undefined) return String(value);
-  if (typeof value === "object") {
-    try {
-      return JSON.stringify(value) ?? String(value);
-    } catch {
-      return String(value);
-    }
-  }
   return String(value);
+}
+
+/**
+ * One reading as the panel's value column: the value formatted, or the message
+ * of the source that failed to produce one.
+ *
+ * The empty string is unreachable — a reading carries exactly one of the two —
+ * and stands here because that invariant lives in the type's documentation
+ * rather than in a shape the compiler can narrow.
+ */
+function readingText(reading: DiagnosticReading): string {
+  return reading.value === undefined
+    ? (reading.error ?? "")
+    : formatValue(reading.value);
 }
 
 /** The message to show for a source that threw, from whatever it threw. */
@@ -259,8 +267,8 @@ export class Diagnostics {
    * value the game re-registers mid-run should not make every line below it
    * jump.
    */
-  private readonly instanceSources = new Map<string, () => unknown>();
-  private readonly worldSources = new Map<string, () => unknown>();
+  private readonly instanceSources = new Map<string, () => DiagnosticValue>();
+  private readonly worldSources = new Map<string, () => DiagnosticValue>();
   private readonly window = new SampleWindow();
   private readonly world: () => WorldStatus | null;
   private on = false;
@@ -275,7 +283,7 @@ export class Diagnostics {
    * called on every read, not sampled at registration, so it always reports
    * the live state.
    */
-  registerInstance(name: string, source: () => unknown): void {
+  registerInstance(name: string, source: () => DiagnosticValue): void {
     this.instanceSources.set(name, source);
   }
 
@@ -283,7 +291,7 @@ export class Diagnostics {
    * Registers `source` under `name` in the world registry, which lives as
    * long as the world.
    */
-  registerWorld(name: string, source: () => unknown): void {
+  registerWorld(name: string, source: () => DiagnosticValue): void {
     this.worldSources.set(name, source);
   }
 
@@ -308,24 +316,28 @@ export class Diagnostics {
   }
 
   /**
-   * Evaluates every source in both registries and returns the values,
-   * instance registry first, each in registration order, unformatted. A
-   * source that throws contributes its error message as a string; `read`
+   * Evaluates every source in both registries and returns one reading each,
+   * instance registry first, each in registration order, unformatted.
+   *
+   * A sequence rather than a record, because that order is what the panel
+   * draws in and what a check asserting the panel's column reads, and because
+   * a name registered in both registries keeps a reading in each. A source
+   * that throws yields a reading carrying its message and no value; `read`
    * itself never throws, and it is independent of `enabled()`, so a hidden
    * overlay is still readable.
    */
-  read(): Record<string, unknown> {
-    const values: Record<string, unknown> = {};
+  read(): readonly DiagnosticReading[] {
+    const readings: DiagnosticReading[] = [];
     for (const registry of [this.instanceSources, this.worldSources]) {
       for (const [name, source] of registry) {
         try {
-          values[name] = source();
+          readings.push({ name, value: source() });
         } catch (error) {
-          values[name] = failureText(error);
+          readings.push({ name, error: failureText(error) });
         }
       }
     }
-    return values;
+    return readings;
   }
 
   /**
@@ -366,8 +378,8 @@ export class Diagnostics {
         `level: ${status.level}  phase: ${status.phase}  actors: ${status.actors}`,
       );
     }
-    for (const [name, value] of Object.entries(this.read())) {
-      lines.push(`${name}: ${formatValue(value)}`);
+    for (const reading of this.read()) {
+      lines.push(`${reading.name}: ${readingText(reading)}`);
     }
     const metrics = this.metrics();
     lines.push(

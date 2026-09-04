@@ -1,0 +1,503 @@
+# Kessler — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Kessler carries a small debugging and automation surface, `window.__kessler`, so
+the game can be driven and inspected from code without pressing a key or waiting
+on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__kessler` as soon as the game
+has initialized. Every scenario driven from code reaches the game through it, so
+it is present and exactly as specified here.
+
+Each operation is a read of the game's state or a pose of one part of it. A pose
+sets one thing, and the game's own tick, paddle motion, ring orbits,
+reflections, pod draws, and scoring run from there exactly as they do in play,
+so a scenario driven from code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Kessler carries a small debugging and automation surface so the game can be
+driven and inspected from code without pressing a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `KesslerState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<KesslerState>`,
+and returns the next `KesslerState`; a reading takes the state the same way and
+returns what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.setScore(s, 500))`, and a reading against the
+engine's current state, as `debug.snapshot(engine.state)`. A pose sets one
+thing, and the game's own tick, paddle motion, ring orbits, reflections, pod
+draws, and scoring run from there exactly as they do in play, so a scenario
+driven from code behaves exactly like one played by hand. `src/game.ts` declares
+and exports its type, `KesslerDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Kessler carries a small debugging and automation surface so the game can be
+driven and inspected from code without pressing a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it
+and returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes
+only the parameters its heading names, arranges the running game through the
+same systems play uses, and returns nothing; a reading takes no parameters,
+returns plain data built at the call, and changes nothing. A pose sets one
+thing, and the game's own tick, paddle motion, ring orbits, reflections, pod
+draws, and scoring run from there exactly as they do in play, so a scenario
+driven from code behaves exactly like one played by hand. Kessler runs in one
+level for the whole session and every screen is a value of the state's screen
+field, so a pose that changes the screen takes effect at the call rather than
+riding a level transition. `src/game.ts` declares and exports its type,
+`KesslerDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic and steppable. Three
+properties make it so.
+
+- A fixed timestep, decoupled from rendering. The simulation advances only in
+  whole ticks of `TICK_DT` (`1 / 60`) seconds, `TICK_HZ` (`60`) of them per
+  second of game time: each frame's delta time accumulates, whole ticks are
+  consumed, and the remainder waits for the next frame. An interval of game time
+  therefore reaches the same state however it was divided into frames, and
+  drawing advances nothing.
+- Simulation-owned contacts. Every contact is decided from the state's own polar
+  figures under the crossing rules of `specs/deflector-and-ball.md` and
+  `specs/rings.md`, so what a tick resolves follows from the state alone.
+- Seeded randomness. The game holds one pseudo-random generator, seeded by
+  `reset` and consumed only by the pod draws `specs/pods.md` states, so
+  reseeding and replaying the same calls reproduces the same pod sequence
+  exactly.
+
+Given the same seed and the same sequence of operations and elapsed ticks, the
+game reproduces identical snapshots every time.
+
+Audio belongs to the ticks. A pose changes the state alone and sounds nothing;
+the cues a scenario hears come from the ticks run after it.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard and the overlay belong to the runtime layer beneath the game, and
+the surface carries no operation for either. That layer delivers the key
+bindings `specs/controls.md` fixes, so a dispatched keyboard event turns the
+deflector, launches the ball, and works the menus exactly as a player's key
+does, and it draws and toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `step` below.
+{{else}}
+The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
+which documents them in the `engine/` directory at the root of this repository,
+and the surface carries no operation for any of them. The engine advances the
+game frame by frame, and a clock that supplies its own deltas takes it off real
+time: a scenario pairs a `ConstantClock` of `1000 / 60` milliseconds with
+`engine.advance`, so one frame consumes exactly one tick. The engine drives the
+actions the game registers, so a dispatched keyboard event turns the deflector,
+launches the ball, and works the menus exactly as a player's key does, and it
+draws and toggles the debug overlay.
+{{/if}}
+
+What the overlay shows is Kessler's, under Diagnostics below.
+
+## The driver switches
+
+Two switches give a scenario a hold on the game's two autonomous consequences,
+so it can watch one behavior without another arriving on top of it. Each is on
+when the game is played, each is restored by `reset`, each is set by its own
+operation below, and each is reported by the snapshot.
+
+| Switch | While it is on | While it is off |
+| --- | --- | --- |
+| `waveAdvance` | A ball-caused destruction that leaves zero live targets is the clearing event: the field empties, the interstitial runs, and the next wave begins, as `specs/rings.md` states. | The clearing event does not fire. Play carries on in `playing` over an empty field, and destructions keep scoring. |
+| `podSpawn` | Each destruction makes the pod draw `specs/pods.md` states, consuming the generator. | No draw is made and the generator is not consumed, so no pod spawns and the seeded sequence stays where it stands. |
+
+A switch changes only what it names. Turning one back on resumes that
+consequence from the next event onward, with no catching up for the events it
+missed.
+
+## The operations
+
+The surface carries the operations below. Values are plain numbers, strings, and
+booleans. Positions and velocities are in the stage's logical units and logical
+units per second, angles are in degrees under the polar mapping
+`specs/field.md` fixes, and durations are in whole ticks.
+
+Each pose sets one thing and leaves the rest of the game as it stands, so a
+caller that wants several things arranged makes several calls, in the order it
+wants them. No pose decides an outcome: every bounce, hit, destruction, catch,
+burn-up, life loss, and clearing comes from the ticks run after the pose, so a
+scenario reads what happened from the snapshot.
+{{#if (eq engine.slug "simple-2d")}}
+
+Each operation's first parameter is the current state,
+`DeepReadonly<KesslerState>`. A pose returns the next `KesslerState`, built from
+the one it was handed, which it leaves as it was; a reading returns what it
+read. The headings below name the parameters that follow the state.
+{{/if}}
+
+An argument outside the domain its operation states is invalid, and the call
+fails loudly rather than guessing what was meant, except where an operation
+states that it normalizes or ignores the call.
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(auto)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop feeding the wall clock's delta time into the tick accumulator, so no
+tick runs until `step` runs one. `setAutoStep(true)` returns the game to
+advancing itself, which is how a build starts and how it is played. It changes
+no game state.
+
+Drawing and input are unaffected either way: the loop keeps rendering and keeps
+reading the keys, so a menu still answers a key press while the simulation is
+held. The snapshot reports the switch as `autoStep`.
+
+### `step(ticks)`
+
+Runs `ticks` whole simulation ticks, immediately and in order, each the full
+tick of `specs/field.md` followed by a render, so contacts resolve, cues fire,
+and the canvas reflects the result. `ticks` is a whole number of at least `1`
+and defaults to `1`.
+
+Stepping while the game is still stepping automatically adds to what the wall
+clock is already doing, so a reproducible scenario calls `setAutoStep(false)`
+first.
+
+{{/if}}
+{{#if (eq engine.slug "simple-2d")}}
+### `reset(state, options)`
+{{else}}
+### `reset(options)`
+{{/if}}
+
+Restores the game to its boot state: the `title` screen
+with `menu.index` at `0`, the score at `0`, `3` lives, wave `1`, `ticks` at `0`,
+the deflector at angle `90` with span `48`, every ring slot filled at its full
+hit points with every ring angle at `0` and each ring's speed from the wave-1
+formulas, no balls, no pods, no timed effect, no shield, and both driver
+switches on. `options` is optional, and `options.seed` seeds the pod generator,
+defaulting to `DEFAULT_SEED` (`1`).
+{{#if (eq engine.slug "none")}}
+
+Whether the simulation advances on its own each frame is untouched.
+`setAutoStep` belongs to the caller driving the game rather than to the session
+being played, so a `reset` inside a stepped scenario leaves the game off the
+wall clock and the scenario stays reproducible.
+{{/if}}
+
+A reset leaves the game indistinguishable from a freshly started session, so
+anything else the build keeps across frames is derived from what a reset
+restores.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `snapshot(state)`
+
+A pure reading of `state`, returned as the plain object under Snapshot shape
+below. It returns no state, because it poses nothing.
+
+### `setScreen(state, name)`
+{{else}}
+### `snapshot()`
+
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
+
+### `setScreen(name)`
+{{/if}}
+
+Enters the screen `name`, one of the six values `specs/screens.md` names,
+exactly as the real transition into it enters it, with the entering menu
+highlighting its top entry. No cue sounds at the call, as the deterministic core
+above states.
+
+| `name` | What the call does |
+| --- | --- |
+| `playing` | Starts a fresh session exactly as confirming START does: score `0`, `3` lives, wave `1`, every slot filled, ring angles at `0`, the wave-1 figures in force, and a ball parked on the deflector. |
+| `waveclear` | Enters the interstitial exactly as the clearing event enters it: balls, pods, timed effects, and the shield are removed and a fresh interstitial begins for the wave the counter holds. The score stays as it stands, and the interstitial runs out into the next wave exactly as a played one does. |
+| `paused` | Enters the pause overlay exactly as `Escape` does during play, freezing the simulation intact. |
+| `gameover` | Enters the game-over screen exactly as losing the last life enters it, showing the score and wave as they stand. |
+| `title` | Discards the session exactly as QUIT does. |
+| `howto` | Enters the how-to screen exactly as confirming HOW TO PLAY does. |
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setScore(state, n)`, `setLives(state, n)`
+{{else}}
+### `setScore(n)`, `setLives(n)`
+{{/if}}
+
+Set the score, and the lives, to `n`, a whole number of at least `0`. Play
+carries on from the posed figure: the next scoring event adds to the posed
+score, and a life loss at posed lives `1` ends the game.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setWave(state, n)`
+{{else}}
+### `setWave(n)`
+{{/if}}
+
+Sets the wave counter to `n`, a whole number of at least `1`, and puts the
+wave-`n` figures in force: each ring's speed is set from the wave formulas of
+`specs/rings.md`, overwriting any `setRingSpeed`, and the wave ball speed used
+by a serve, a launch, and a paddle bounce becomes the wave-`n` figure of
+`specs/deflector-and-ball.md`. The rings keep their targets and their angles,
+every ball keeps the velocity it holds, and the effects, pods, score, lives,
+and screen stay as they stand.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setPaddleAngle(state, deg)`
+{{else}}
+### `setPaddleAngle(deg)`
+{{/if}}
+
+Sets the deflector's center angle to `deg`, normalized into `[0, 360)`. A
+parked ball follows it to the new angle, and the span is untouched.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `launchBall(state)`
+{{else}}
+### `launchBall()`
+{{/if}}
+
+Acts exactly as `Space` does on a parked ball: the parked ball launches
+radially outward at the current wave's ball speed. With no parked ball the call
+changes nothing.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `clearBalls(state)`
+{{else}}
+### `clearBalls()`
+{{/if}}
+
+Removes every ball, parked included, leaving `balls` empty. Nothing burns up,
+so no life is lost, no cue plays, and no particle fires; the field simply
+stands without a ball until one is spawned or parked.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `spawnBall(state, x, y, vx, vy)`
+{{else}}
+### `spawnBall(x, y, vx, vy)`
+{{/if}}
+
+Adds one unparked ball at `(x, y)` with velocity `(vx, vy)`, appended in spawn
+order. The ball is piercing exactly when `pierceTicks` is above `0` at the
+call, and it keeps its posed speed until a rule of
+`specs/deflector-and-ball.md` changes it. At the 6-ball cap the call changes
+nothing.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `parkBall(state)`
+{{else}}
+### `parkBall()`
+{{/if}}
+
+Parks one ball on the deflector, at the serve position
+`specs/deflector-and-ball.md` fixes, following the deflector until launched.
+While a parked ball exists, or at the 6-ball cap, the call changes nothing.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `clearTargets(state)`
+{{else}}
+### `clearTargets()`
+{{/if}}
+
+Removes every target from all three rings. It is not a destruction and not a
+clearing: nothing scores, no pod draw is made, no cue plays, and the screen
+stays where it stands, so a field emptied this way plays on in `playing`.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `spawnTarget(state, ring, slot, hp)`
+{{else}}
+### `spawnTarget(ring, slot, hp)`
+{{/if}}
+
+Places a target with `hp` hit points in slot `slot` of ring `ring`, replacing
+whatever the slot holds. `ring` is `1` to `3`, `slot` is `0` to that ring's
+slot count minus `1`, and `hp` is a whole number of at least `1`. The target
+occupies its slot's arc under the ring's current angle, exactly as a wave-start
+target does.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setRingAngle(state, ring, deg)`
+{{else}}
+### `setRingAngle(ring, deg)`
+{{/if}}
+
+Sets ring `ring`'s angle to `deg`, normalized into `[0, 360)`. Every target on
+the ring moves with it, and the ring's speed is untouched.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setRingSpeed(state, ring, degPerSec)`
+{{else}}
+### `setRingSpeed(ring, degPerSec)`
+{{/if}}
+
+Sets ring `ring`'s orbital speed to `degPerSec`, signed as `specs/rings.md`
+signs it. The posed speed holds until the next `setWave` or wave transition
+restores the wave formula, and the ring kick of `specs/deflector-and-ball.md`
+follows the posed speed at once.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `clearPods(state)`
+{{else}}
+### `clearPods()`
+{{/if}}
+
+Removes every falling pod, leaving `pods` empty. Nothing is caught and nothing
+burns, so no score, cue, effect, or particle comes of it.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `spawnPod(state, kind, x, y)`
+{{else}}
+### `spawnPod(kind, x, y)`
+{{/if}}
+
+Adds one pod of `kind`, one of the five kinds `specs/pods.md` names, at
+`(x, y)`. It falls radially inward at the fall speed `specs/pods.md` fixes,
+from the call onward, and catching or burning it resolves exactly as for a
+drawn pod. The generator is
+not consumed, so the seeded sequence stays where it stands.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setEffectTicks(state, kind, ticks)`
+{{else}}
+### `setEffectTicks(kind, ticks)`
+{{/if}}
+
+Sets the timer of the timed effect `kind`, one of `widen`, `narrow`, and
+`pierce`, to `ticks`, a whole number of at least `0`. A `ticks` above `0` puts
+the effect in force exactly as catching its pod would, with the same span
+change and the same mutual cancel between `widen` and `narrow`, and the timer
+at exactly `ticks`; the catch score is not added. A `ticks` of `0` ends the
+effect and restores the baseline exactly as its expiry does.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setShield(state, active)`
+{{else}}
+### `setShield(active)`
+{{/if}}
+
+`setShield(true)` raises the shield ring exactly as catching a shield pod
+raises it, and `setShield(false)` removes it. Neither scores, and a raised
+shield is consumed by its first reflection exactly as `specs/pods.md` states.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setWaveAdvance(state, on)`, `setPodSpawn(state, on)`
+{{else}}
+### `setWaveAdvance(on)`, `setPodSpawn(on)`
+{{/if}}
+
+Set the two driver switches, as the driver section above describes. Each is on
+by default and a `reset` restores both.
+
+## Snapshot shape
+
+{{#if (eq engine.slug "simple-2d")}}
+`snapshot` returns:
+{{else}}
+`snapshot()` returns:
+{{/if}}
+
+```js
+{
+  screen: "title" | "howto" | "playing" | "waveclear" | "paused" | "gameover",
+  ticks: <number>,          // ticks resolved since the last reset, on
+                            // every screen; frozen screens still count them
+  wave: <number>,
+  score: <number>,
+  lives: <number>,
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,      // whether the frame loop advances the simulation
+{{/if}}
+  waveAdvance: <boolean>,   // driver switch
+  podSpawn: <boolean>,      // driver switch
+  paddle: { angleDeg: <number>, spanDeg: <number> },
+  balls: [                  // spawn order, oldest first
+    { x: <number>, y: <number>, vx: <number>, vy: <number>,
+      parked: <boolean>, piercing: <boolean> },
+  ],
+  rings: [                  // entry 0 is ring 1, the innermost
+    { angleDeg: <number>, speedDegPerSec: <number>,
+      targets: [{ slot: <number>, hp: <number> }] },
+  ],
+  pods: [                   // spawn order, oldest first
+    { kind: <string>, x: <number>, y: <number> },
+  ],
+  effects: {
+    widenTicks: <number>,   // whole ticks remaining; 0 is not in force
+    narrowTicks: <number>,
+    pierceTicks: <number>,
+    shieldActive: <boolean>,
+  },
+  menu: { index: <number> }, // the highlighted item, 0 on a screen with no menu
+}
+```
+
+The shape is fixed and every field is present on every screen. `balls` lists
+every live ball, the parked ball included, in spawn order. `rings` always holds
+three entries, ring 1 first, and each ring's `targets` lists its live targets
+by `slot` with the hit points each has left, so a slot with no entry holds no
+target. `paddle.angleDeg` and every ring's `angleDeg` are normalized into
+`[0, 360)`, and the three effect timers count down in whole ticks.
+{{#if (eq engine.slug "none")}}
+
+`autoStep` is `true` while the frame loop advances the simulation from the wall
+clock, which is how a build starts and how it is played, and `false` while
+`setAutoStep(false)` holds the simulation off it.
+{{/if}}
+
+Every field is read straight off the game's state, so what the snapshot reports
+is what the game holds.
+
+## Diagnostics
+
+{{#if (eq engine.slug "none")}}
+The runtime's debug overlay shows the values the game registers with it as
+diagnostic sources.
+{{else}}
+The engine's debug overlay shows the values the game registers with it as
+diagnostic sources.
+{{/if}}
+Register at least the current `screen`, the score, the lives, the wave, the
+deflector's angle and span, the count of live balls, the count of live targets,
+the count of falling pods, the three effect timers, and the shield state, the
+same facts the snapshot reports. Keep each one short enough to read on a line,
+and keep every source a pure read, so watching the overlay leaves the game as
+it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, the backtick key (`KeyboardEvent.code` `Backquote`) shows and hides
+it, it is off when the game starts, and it reads the game without changing it.
+It is a diagnostic layer rather than part of the game's presentation, so keep
+it visually plain and clearly separate from the HUD.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Kessler's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the
+read, as `DeepReadonly<KesslerState>`, and reads off that argument. Drawing the
+panel, toggling it with the backtick key (`KeyboardEvent.code` `Backquote`),
+and keeping it read-only are the engine's.
+{{else}}
+Registering those values is the whole of Kessler's part, through
+`world.diagnostics` in the game mode's `beginPlay`. Each source is a function
+of no arguments, called at each read; read the live state at the call, through
+the world the mode holds, so the panel reports the frame being drawn. Drawing
+the panel, toggling it with the backtick key (`KeyboardEvent.code`
+`Backquote`), and keeping it read-only are the engine's.
+{{/if}}

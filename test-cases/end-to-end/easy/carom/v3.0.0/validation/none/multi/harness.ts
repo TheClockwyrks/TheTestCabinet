@@ -2,35 +2,39 @@
 //
 // `validation/harness.ts` is shared by every variant, so it can only know what
 // every variant has. Multi's specification puts three balls on the field instead
-// of one, each with its own hold, its own launch and its own respawn, and this
-// module is where the checks below reach that.
+// of one, each under its own INDEX, with its own hold, its own launch and its
+// own respawn, and this module is where the checks below reach that.
 //
-// The shared harness already reads the ball a shared scenario drives through
-// `ball0`, and already puts the other two out of the way through `parkSpares`,
-// so what is left here is what only a multi check needs: the whole array, the
-// home points, a pair of parks on the other side of the field for the one
-// scenario that sends a ball out of the LEFT goal, and the sweep a hold is
-// measured with.
+// The shared harness already hands out `createMultiHarness` and `MultiHarness`,
+// whose six ball operations take that index, and `clearField` already empties
+// the field. What is left here is what only a multi check needs.
+//
+// A BALL IS REACHED BY ITS INDEX, NEVER BY ARRAY POSITION. `snapshot().balls`
+// carries only the balls PRESENT, each entry under its own `index`
+// (specs/instrumentation.md), and a scenario that clears the field back to the
+// one or two balls its requirement is about therefore reads a shorter array
+// whose entries are not where a three-ball array would have put them. So the
+// count is asserted by the checks that spawn all three, and every read goes
+// through {@link ballAt}.
 //
 // The narrowing is safe by construction: these checks only ever run against a
 // multi build, whose specification requires exactly what is read here.
 
-import { assertEqual, assertLength } from "../assert";
-import {
-  BALL_COUNT,
-  BALL_HOMES,
-  BALL_R,
-  FIELD_H,
-  FIELD_W,
-  HOLD_TIME,
-} from "../constants";
+import { assertEqual, assertTruthy } from "../assert";
+import { BALL_HOMES, HOLD_TIME } from "../constants";
 import {
   TICK_HZ,
   allBalls,
+  clearField,
   type BallView,
   type CaromSnapshot,
-  type Harness,
+  type MultiHarness,
 } from "../harness";
+
+/** Every ball of a full field, in play order: the indices a match is played with. */
+export const BALLS_IN_PLAY: readonly number[] = BALL_HOMES.map(
+  (_home, index) => index,
+);
 
 /** The hold, in frames of the harness's clock. */
 export const HOLD_TICKS = HOLD_TIME * TICK_HZ;
@@ -45,29 +49,58 @@ export const HOLD_TICKS = HOLD_TIME * TICK_HZ;
  */
 export const HOLD_TOLERANCE_TICKS = 1;
 
-/**
- * Where a scenario that drives a ball out of the LEFT goal parks the spares.
- *
- * The shared harness's `SPARE_PARKS` puts them in the left goal channel, which
- * is the corner of the field nothing crosses — until a check deliberately sends
- * a ball out of that goal. These are the same two corners on the other side.
- */
-export const RIGHT_PARKS: readonly { x: number; y: number }[] = [
-  { x: FIELD_W - BALL_R - 2, y: BALL_R + 2 },
-  { x: FIELD_W - BALL_R - 2, y: FIELD_H - BALL_R - 2 },
-];
-
-/** Every ball a snapshot reports, checked for count before a check reads them. */
+/** Every ball a snapshot reports, checked for shape before a check reads them. */
 export function readBalls(snapshot: CaromSnapshot): BallView[] {
-  const balls = allBalls(snapshot);
   assertEqual(
     Array.isArray(snapshot.balls),
     true,
-    "multi requires snapshot().balls, the three balls in play order " +
+    "multi requires snapshot().balls, every ball present in play order " +
       "(specs/instrumentation.md)",
   );
-  assertLength(balls, BALL_COUNT);
-  return balls;
+  return allBalls(snapshot);
+}
+
+/**
+ * The ball carrying `index`, failing by name when the field does not report it.
+ *
+ * Found by its `index` rather than taken from position `index`, because the
+ * array holds what the scenario left on the field: a check that cleared back to
+ * balls zero and one reads two entries, and asking for ball one by position
+ * would answer with a two-entry array's second element whatever index it
+ * carries.
+ */
+export function ballAt(snapshot: CaromSnapshot, index: number): BallView {
+  const ball = readBalls(snapshot).find(
+    (candidate) => candidate.index === index,
+  );
+  assertTruthy(
+    ball,
+    `snapshot().balls must report ball ${index}, which spawnBall(${index}) placed ` +
+      "(specs/instrumentation.md)",
+  );
+  return ball as BallView;
+}
+
+/**
+ * Empty the field and spawn back exactly the named balls, and nothing else.
+ *
+ * Multi's counterpart of the shared harness's {@link isolateBall}: each ball
+ * comes back the way `spawnBall(index)` places it — on its own home point, held,
+ * with a full hold timer and an empty trail, which is the arrangement a match
+ * opens on. A scenario about a launch or a hold leaves them exactly so and lets
+ * the build count them down; one about a ball in flight poses it with
+ * `placeBall`.
+ *
+ * The obstacles do not come back, because no check in this category is about
+ * one. A check that needs an obstacle names it through the shared
+ * `spawnObstacles`.
+ */
+export async function isolateBalls(
+  h: MultiHarness,
+  indices: readonly number[] = BALLS_IN_PLAY,
+): Promise<void> {
+  await clearField(h);
+  for (const index of indices) await h.debug.spawnBall(index);
 }
 
 /** What a hold sweep found: whether the ball launched, and after how many frames. */
@@ -86,22 +119,23 @@ export interface LaunchResult {
  * report the hold as however long the sweep happened to overshoot it by.
  */
 export async function driveLaunch(
-  h: Harness,
+  h: MultiHarness,
   index: number,
   maxFrames = 300,
 ): Promise<LaunchResult> {
-  const swept = await h.until((s) => readBalls(s)[index].held === false, {
+  const swept = await h.until((s) => ballAt(s, index).held === false, {
     maxFrames,
     poll: 1,
   });
   return { hit: swept.hit, frames: swept.frames, snapshot: swept.snapshot };
 }
 
-/** Whether every ball is waiting at its own home point, motionless. */
+/** Whether every ball present is waiting at its own home point, motionless. */
 export function waitingAtHomes(balls: readonly BallView[]): boolean {
-  return balls.every((ball, index) => {
-    const home = BALL_HOMES[index];
+  return balls.every((ball, position) => {
+    const home = BALL_HOMES[ball.index ?? position];
     return (
+      home !== undefined &&
       Math.abs(ball.x - home.x) <= 1 &&
       Math.abs(ball.y - home.y) <= 1 &&
       Math.abs(ball.vx) <= 1 &&

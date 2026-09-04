@@ -1,4 +1,4 @@
-// CASE-PROVIDED. Do not edit.
+// Supplied with the project. Do not edit.
 //
 // This config names the BUILD'S OWN tests: the `*.test.ts` files written beside
 // the sources under `src/`. They run in process, in Node, with no browser and no
@@ -8,33 +8,26 @@
 // The engine's documentation, seeded at `engine/`, carries a complete worked
 // example of that shape.
 //
-// Coverage is measured over `src/` alone, so it reports the code this build
-// actually ships. `passWithNoTests` keeps a build that has not written its tests
-// yet reporting an honest zero rather than a runner error.
+// The suite's results and its coverage are read back off two report files this
+// config writes, never off what the command printed, so the recorded figures do
+// not move when a runner restyles its terminal output. `coverage/` holds both:
+// it is the one directory the project ignores in git AND in Prettier, which
+// keeps a report out of the commit and out of `prettier --check`.
 //
-// Both reporters write a FILE as well as the table, into `coverage/`, which this
-// project already ignores in git and in Prettier. The Test Cabinet reads the
-// recorded test results and coverage figures out of those two files and never
-// out of what the command printed, so a change to a reporter's terminal layout
-// can no longer change a recorded figure.
+//   coverage/test-report.json       the totals, a row per test file, and each
+//                                   failure with its message
+//   coverage/coverage-summary.json  istanbul's four metrics, whole and per file
 //
-// Coverage is measured by ISTANBUL, not by v8. Istanbul instruments the source,
-// so a branch is an `if`, a ternary, a logical operator, a default parameter or a
-// switch case, located in this project's own TypeScript — which is what a reader
-// of a branch-coverage figure believes they are being told. The v8 provider
-// derives its branches from V8's block counters remapped through source maps;
-// those numbers do not correspond to logical branches in TypeScript, and they can
-// shift with a V8 or vitest upgrade through the remap alone, with no change to
-// this code. Istanbul's instrumentation is deterministic given the source and the
-// plugin version, and it emits the JSON format that is stored natively rather
-// than through a remap. Its one real cost is that instrumented code runs slower,
-// and that is the cost this architecture does not pay: these commands run
-// host-side after the run's container is gone, so a slow suite costs the run none
-// of its runtime budget.
+// Neither is a terminal summary: nothing reads what this command prints.
 //
-// `src/constants.ts` and `src/main.ts` are supplied with the project and must not
-// be edited, so they are excluded from coverage: they are not this build's work
-// and counting them would put case-authored lines in the build's denominator.
+// `reportOnFailure` is what makes a red suite write its coverage at all, which
+// is the suite whose coverage is most worth having.
+//
+// Coverage is measured over the code THIS BUILD WROTE. `src/constants.ts` and
+// `src/main.ts` are supplied with the project and may not be edited, so counting
+// them would put lines the build never chose into its denominator.
+// `passWithNoTests` keeps a build that has not written its tests yet reporting
+// an honest zero rather than a runner error.
 
 import { defineConfig } from "vitest/config";
 
@@ -44,16 +37,11 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     environment: "node",
     passWithNoTests: true,
-    // `default` keeps the human-readable run in the log; `json` writes the
-    // machine-readable report The Test Cabinet reads the recorded figures out of.
-    // Nothing is ever scraped back out of the terminal output.
     reporters: ["default", "json"],
     outputFile: { json: "coverage/test-report.json" },
     coverage: {
       provider: "istanbul",
-      reporter: ["text", "json-summary"],
-      // A failing suite is exactly the build whose coverage is most worth having,
-      // and vitest writes no coverage report on failure without this.
+      reporter: ["json-summary"],
       reportOnFailure: true,
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts", "src/constants.ts", "src/main.ts"],

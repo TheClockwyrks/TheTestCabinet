@@ -114,6 +114,25 @@ It is a single asset built on the `x86_64` leg alone, with no triple in its name
 because the content is JSON projected from data compiled into gg and is identical
 on every platform.
 
+### The audio store a released driver needs
+
+A driver stages each run's declared [audio packs](/components/core/execution/#staged-audio)
+into the run container out of a host audio store, so a `tcab-driver` (or `tcab`)
+deployed from these tarballs rather than from the driver image needs one on disk:
+
+```sh
+scripts/fetch-audio-store.sh /srv/test-cabinet/audio-store
+# then, in the driver's environment:
+TCAB_AUDIO_STORE=/srv/test-cabinet/audio-store
+```
+
+The script pulls the public `test-cabinet-audio-store` image and copies the tree
+out of it, so it needs no audio credential. Without a store, a run whose case
+declares packs fails at container start naming both the path and the script;
+end-to-end, adversarial, and performance runs are unaffected. The `tcab-driver`
+container image needs none of this: it copies the same tree in at
+`/opt/tcab-audio`, which is where the driver looks by default.
+
 ### macOS code signing
 
 The macOS `.dmg` is neither code-signed nor notarized: the Release workflow

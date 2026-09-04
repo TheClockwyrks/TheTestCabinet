@@ -1,27 +1,43 @@
 // Carom — the ball: the one actor whose tick runs the match's physics.
 //
-// The actor carries the ball's motion (`vx`, `vy`, `spin`; the position is its
-// transform) and its trail, and each `playing` frame it hands the whole flight
-// to the pure `step()` in `src/physics.ts`: the spin's curve and decay, the
-// sub-stepped integration, and every collision against the walls, the two
-// paddles, and the two obstacles, in the fixed order specs/balls.md states.
-// The paddles are read from the world by their case-fixed tags, AFTER they have
-// ticked — the mode spawns the ball last, and actors tick in spawn order — so
-// a contact reads each paddle's integrated velocity for this frame, which is
-// what drives the spin mechanic.
+// The actor carries everything specs/state.md says the ball carries — its
+// motion (`vx`, `vy`, `spin`; the position is its transform), whether it is
+// held and for how much longer, and its trail — and each `playing` frame it
+// hands the whole flight to the pure `step()` in `src/physics.ts`: the spin's
+// curve and decay, the sub-stepped integration, and every collision against the
+// walls, the two paddles, and the obstacles PRESENT ON THE FIELD, in the fixed
+// order specs/balls.md states. The paddles are read from the world by their
+// case-fixed tags, AFTER they have ticked — the mode spawns the ball last, and
+// actors tick in spawn order — so a contact reads each paddle's integrated
+// velocity for this frame, which is what drives the spin mechanic.
+//
+// WHETHER THE BALL IS PRESENT IS STATE (specs/state.md), so the ball is an
+// actor the debug surface's `clearWorld` destroys and `spawnBall` puts back:
+// an absent ball is simply an actor that is not in the world, which is what
+// makes "not advanced, not drawn, collides with nothing, scores no point" fall
+// out of the framework rather than out of a flag every rule has to remember.
 //
 // The cues the flight raised play here, one per event per frame, through the
-// world's audio bus. What the ball does NOT do is score: judging a rally is
-// the match rules' job, and the mode's tick runs after every actor's
-// (src/match-mode.ts).
+// world's audio bus. What the ball does NOT do is score, or serve itself:
+// judging a rally and launching a serve are the match rules' job, and the
+// mode's tick runs after every actor's (`src/carom-mode.ts`).
 
 import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
-import { BALL_R, CUES, OBSTACLES, TAGS } from "./constants";
+import type { DrawApi, World } from "@test-cabinet/structured-2d";
+import {
+  BALL_R,
+  CUES,
+  FIELD_CX,
+  FIELD_CY,
+  HOLD_TIME,
+  TAGS,
+  type Rect,
+} from "./constants";
 import { glowCircle, type Ctx } from "./draw";
 import { step } from "./physics";
+import { obstacleRects } from "./scenery";
 import { parkedBall, type BallSim, type Side } from "./sim";
-import { screenOf } from "./state";
+import { caromState, type Screen } from "./state";
 import { Paddle } from "./paddle";
 import { COLOR, LAYER } from "./theme";
 import { recordSample, ribbon, type TrailSample } from "./trail";
@@ -31,22 +47,17 @@ export class Ball extends Actor {
   vy = 0;
   /** The signed lateral-curvature scalar (specs/balls.md). */
   spin = 0;
+  /** True while the ball waits at its home point rather than flying. */
+  held = true;
+  /** Seconds remaining of that wait. */
+  holdTimer = HOLD_TIME;
   /** Recent positions, oldest first, for the motion trail. */
   trail: readonly TrailSample[] = [];
-
-  private paddles: { left: Paddle; right: Paddle } | null = null;
 
   constructor() {
     super();
     this.attach(new TrailStreak()).layer = LAYER.trail;
     this.attach(new BallBody()).layer = LAYER.ball;
-  }
-
-  beginPlay(): void {
-    this.paddles = {
-      left: this.sidePaddle(TAGS.paddleLeft, "left"),
-      right: this.sidePaddle(TAGS.paddleRight, "right"),
-    };
   }
 
   /** The ball's motion as the physics reads it. */
@@ -66,6 +77,17 @@ export class Ball extends Actor {
     this.trail = [];
   }
 
+  /**
+   * The arrangement `spawnBall` and a fresh match both put the ball in
+   * (specs/instrumentation.md, specs/ui.md): at its home point, held, with a
+   * full hold, zero velocity, zero spin, and an empty trail.
+   */
+  home(): void {
+    this.park();
+    this.held = true;
+    this.holdTimer = HOLD_TIME;
+  }
+
   /** Write a computed motion back onto the actor. */
   pose(sim: BallSim): void {
     this.transform.x = sim.x;
@@ -76,49 +98,89 @@ export class Ball extends Actor {
   }
 
   tick(dt: number): void {
-    const screen = screenOf(this.world);
+    const state = caromState(this.world);
+    const screen = state.screen;
 
-    if (screen === "playing" && this.paddles !== null) {
-      const { ball, events } = step(
-        this.sim(),
-        { cy: this.paddles.left.transform.y, vy: this.paddles.left.vy },
-        { cy: this.paddles.right.transform.y, vy: this.paddles.right.vy },
-        OBSTACLES,
-        dt,
-      );
-      this.pose(ball);
-      // One cue per event that actually happened. A frame long enough to
-      // contain two different kinds of bounce plays both, because each is its
-      // own event and each has its own cue (specs/ui.md).
-      if (events.paddle) this.world.audio.play(CUES.paddleHit);
-      if (events.wall) this.world.audio.play(CUES.wallBounce);
-      if (events.obstacle) this.world.audio.play(CUES.obstacleBounce);
+    if (screen === "countdown") {
+      // Every countdown frame subtracts dt from the hold; the mode's own tick,
+      // which runs after every actor's, serves on the first frame the result
+      // is <= 0 (specs/balls.md).
+      this.holdTimer -= dt;
+    } else if (screen === "playing" && !this.held) {
+      this.advance(dt);
     }
 
     // On every countdown or playing frame, after the ball has been advanced,
     // its position and the simulation time are appended to the trail and the
     // window is pruned (specs/state.md). Held at the center, the trail
     // collapses to nothing within TRAIL_TIME.
-    if (screen === "playing" || screen === "countdown") {
+    if (screen === "countdown" || screen === "playing") {
       this.trail = recordSample(this.trail, {
         x: this.transform.x,
         y: this.transform.y,
-        t: this.world.frame().timeMs / 1000,
+        t: state.game.simTime,
       });
     }
   }
 
-  private sidePaddle(tag: string, side: Side): Paddle {
+  /** One frame of real flight, with every cue the collisions raised. */
+  private advance(dt: number): void {
+    const left = this.sidePaddle("left");
+    const right = this.sidePaddle("right");
+    if (left === null || right === null) return;
+
+    const { ball, events } = step(
+      this.sim(),
+      { cy: left.transform.y, vy: left.vy },
+      { cy: right.transform.y, vy: right.vy },
+      this.obstacles(),
+      dt,
+    );
+    this.pose(ball);
+    // One cue per event that actually happened. A frame long enough to contain
+    // two different kinds of bounce plays both, because each is its own event
+    // and each has its own cue (specs/audio.md).
+    if (events.paddle) this.world.audio.play(CUES.paddleHit);
+    if (events.wall) this.world.audio.play(CUES.wallBounce);
+    if (events.obstacle) this.world.audio.play(CUES.obstacleBounce);
+  }
+
+  /** The rectangles of the obstacles PRESENT on the field, in index order. */
+  private obstacles(): readonly Rect[] {
+    return obstacleRects(this.world);
+  }
+
+  private sidePaddle(side: Side): Paddle | null {
+    const tag = side === "left" ? TAGS.paddleLeft : TAGS.paddleRight;
     const found = this.world.byTag(tag)[0];
-    if (!(found instanceof Paddle)) {
-      throw new Error(`Carom: no ${side} paddle carries the "${tag}" tag`);
-    }
-    return found;
+    return found instanceof Paddle ? found : null;
   }
 }
 
+/** The one ball on the field, or `null` while none is present. */
+export function ballOf(world: World): Ball | null {
+  const found = world.byTag(TAGS.ball)[0];
+  return found instanceof Ball ? found : null;
+}
+
+/**
+ * Place a ball at its home point, in the arrangement `spawnBall` fixes.
+ *
+ * Spawning is what "the ball is present" MEANS here, so this is the one place
+ * a ball enters the world: the mode opens a match with it and the debug
+ * surface's `spawnBall` calls it again.
+ */
+export function spawnBallActor(world: World): Ball {
+  const ball = world.spawn(Ball, {
+    transform: { x: FIELD_CX, y: FIELD_CY },
+    tags: [TAGS.ball],
+  });
+  ball.home();
+  return ball;
+}
+
 /** True on the screens the ball itself is part of the picture. */
-function ballVisible(screen: ReturnType<typeof screenOf>): boolean {
+function ballVisible(screen: Screen): boolean {
   return screen === "countdown" || screen === "playing" || screen === "paused";
 }
 
@@ -126,7 +188,7 @@ function ballVisible(screen: ReturnType<typeof screenOf>): boolean {
 class BallBody extends DrawComponent {
   draw(api: DrawApi): void {
     const ball = this.actor as Ball;
-    if (!ballVisible(screenOf(ball.world))) return;
+    if (!ballVisible(caromState(ball.world).screen)) return;
     glowCircle(
       api.ctx as Ctx,
       api.mode,
@@ -151,7 +213,7 @@ class BallBody extends DrawComponent {
 class TrailStreak extends DrawComponent {
   draw(api: DrawApi): void {
     const ball = this.actor as Ball;
-    if (!ballVisible(screenOf(ball.world))) return;
+    if (!ballVisible(caromState(ball.world).screen)) return;
 
     // Newest first, and the newest sample IS where the ball is: the tick
     // records the ball's position at the end of every frame, and the frame the

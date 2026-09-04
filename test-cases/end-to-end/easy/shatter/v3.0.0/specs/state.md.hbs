@@ -1,0 +1,421 @@
+# Shatter — Game state
+
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the game's state entirely.
+
+The one contract fixed over the state is the debugging and automation surface
+specified for this build. Every operation that surface carries is a read or a pose
+of the running game, so the state holds what those operations read, honors what
+they write, and returns to its title-screen values when the surface's `reset` is
+called. Beyond satisfying that surface, how the state is organized is yours to
+decide.
+
+Whatever its shape, the state carries the following.
+
+## The screen and the run
+
+- The screen the game is showing, one of `title`, `howto`, `playing`, `paused`,
+  and `gameover`.
+- The entry highlighted on whichever vertical menu the current screen shows,
+  counted from `0`.
+- The score, the ships the run has left counting the one being flown, the wave
+  being played, and the seconds left on the `WAVE N` banner.
+
+## The field
+
+- The ship: its centre, its velocity, its facing, whether thrust is being applied
+  this tick, the seconds of respawn grace left, whether its lethal contact test is
+  running, and the whole ticks until its gun may fire again.
+- Every bullet the ship has in flight, each with a distinct id, its centre, its
+  velocity, and the seconds of its life left.
+- Every rock on the field, each with a distinct id, its centre, its velocity, its
+  size, and its drawn spin.
+{{#if (eq variant.slug "warhead")}}
+  Each rock also carries its remaining health and the seconds of hit flash left on
+  it.
+{{/if}}
+- The saucer, when one is up: a distinct id, its centre, its velocity, its three
+  faculty gates, its fire clock, its weave clock, and the seconds it has been on
+  the field. There is one slot, which is empty when no saucer is up.
+- Every saucer bullet in flight, each with a distinct id, its centre, its
+  velocity, and the seconds of its life left.
+{{#if (eq variant.slug "warhead")}}
+- Every torpedo in flight, each with a distinct id, its centre, its velocity, its
+  heading, the seconds of its life left, and whether its guidance is running.
+- The stored torpedo charge, from `0` to `1`.
+{{/if}}
+
+## The game's own spawners
+
+- Whether the game's own wave loop is running, and whether the game's own arrival
+  of a saucer is running. Both are on when a game begins.
+- The saucer cadence's clock: how far the game is toward the next arrival, and
+  what it must reach for that arrival to happen.
+
+## The rest
+
+- The fraction of a tick carried over from the previous frame, in seconds.
+- The simulation time, in seconds, which every tick adds `TICK_DT` to whatever the
+  screen.
+- Whether sound is muted, refreshed from the runtime's mute bit in every update.
+- The state of the seeded random generator, which every draw `specs/simulation.md`
+  lists comes from.
+- Whatever the game needs to hand a fresh id to the next rock, bullet, saucer
+  bullet, or saucer it creates, so no two entities live at one moment share an id.
+{{else if (eq engine.slug "simple-2d")}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is a value the engine holds and every frame replaces, so every
+field and every array is declared `readonly`: a frame builds the next state from
+the current one rather than writing into it, and every reader is handed the state
+as `DeepReadonly<ShatterState>` in any case.
+
+`RockSize` comes from `src/constants.ts`.
+
+```ts
+export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+
+export interface ShipState {
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly angle: number;
+  readonly thrusting: boolean;
+  readonly invuln: number;
+  readonly collision: boolean;
+  readonly fireCooldown: number;
+}
+
+export interface BulletState {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly life: number;
+}
+
+export interface RockState {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly size: RockSize;
+  readonly spin: number;
+{{#if (eq variant.slug "warhead")}}
+  readonly health: number;
+  readonly flash: number;
+{{/if}}
+}
+
+export interface SaucerState {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly mind: boolean;
+  readonly gun: boolean;
+  readonly travel: boolean;
+  readonly fireClock: number;
+  readonly weaveClock: number;
+  readonly age: number;
+}
+{{#if (eq variant.slug "warhead")}}
+
+export interface TorpedoState {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly heading: number;
+  readonly life: number;
+  readonly homing: boolean;
+}
+{{/if}}
+
+export interface ShatterState {
+  readonly screen: Screen;
+  readonly menuIndex: number;
+
+  readonly score: number;
+  readonly lives: number;
+  readonly wave: number;
+  readonly waveBanner: number;
+
+  readonly ship: ShipState;
+  readonly bullets: readonly BulletState[];
+  readonly rocks: readonly RockState[];
+  readonly saucer: SaucerState | null;
+  readonly enemyBullets: readonly BulletState[];
+{{#if (eq variant.slug "warhead")}}
+  readonly torpedoes: readonly TorpedoState[];
+  readonly torpedoCharge: number;
+{{/if}}
+
+  readonly waveSpawning: boolean;
+  readonly saucerSpawning: boolean;
+  readonly saucerClock: number;
+  readonly saucerDue: number;
+
+  readonly tickClock: number;
+  readonly nextId: number;
+  readonly simTime: number;
+  readonly muted: boolean;
+  readonly rngState: number;
+}
+```
+{{else}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is the world's game state: a class extending the engine's
+`GameState`, named by the game mode as its `gameStateClass`, so the engine builds
+one instance of it when the world opens and `engine.world.state` is that instance.
+Wherever this specification writes `state.foo`, it means a field of that instance.
+
+The game runs in one world for the whole session. The game definition registers a
+single level, the game never opens another, and every screen is a value of
+`screen`, so the state below is built once and lives until the page closes. The
+framework's states are live objects: a tick writes the fields it advances in
+place, and each field initializer below is that field's title-screen value, the
+same value the debug surface's `reset` restores. `GameState` comes from the
+engine's package, and `RockSize`, `START_LIVES`, `SAFE_X`, `SAFE_Y`, `FACE_UP`,
+`SAUCER_FIRST_DELAY`, and `DEFAULT_SEED` from `src/constants.ts`.
+
+```ts
+export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+
+export interface ShipState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  angle: number;
+  thrusting: boolean;
+  invuln: number;
+  collision: boolean;
+  fireCooldown: number;
+}
+
+export interface BulletState {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+}
+
+export interface RockState {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: RockSize;
+  spin: number;
+{{#if (eq variant.slug "warhead")}}
+  health: number;
+  flash: number;
+{{/if}}
+}
+
+export interface SaucerState {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  mind: boolean;
+  gun: boolean;
+  travel: boolean;
+  fireClock: number;
+  weaveClock: number;
+  age: number;
+}
+{{#if (eq variant.slug "warhead")}}
+
+export interface TorpedoState {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  heading: number;
+  life: number;
+  homing: boolean;
+}
+{{/if}}
+
+export class ShatterState extends GameState {
+  screen: Screen = "title";
+  menuIndex = 0;
+
+  score = 0;
+  lives = START_LIVES;
+  wave = 0;
+  waveBanner = 0;
+
+  ship: ShipState = {
+    x: SAFE_X,
+    y: SAFE_Y,
+    vx: 0,
+    vy: 0,
+    angle: FACE_UP,
+    thrusting: false,
+    invuln: 0,
+    collision: true,
+    fireCooldown: 0,
+  };
+  bullets: BulletState[] = [];
+  rocks: RockState[] = [];
+  saucer: SaucerState | null = null;
+  enemyBullets: BulletState[] = [];
+{{#if (eq variant.slug "warhead")}}
+  torpedoes: TorpedoState[] = [];
+  torpedoCharge = 1;
+{{/if}}
+
+  waveSpawning = true;
+  saucerSpawning = true;
+  saucerClock = 0;
+  saucerDue = SAUCER_FIRST_DELAY;
+
+  tickClock = 0;
+  nextId = 1;
+  simTime = 0;
+  muted = false;
+  rngState = DEFAULT_SEED;
+}
+```
+{{/if}}
+{{#if (ne engine.slug "none")}}
+
+## The screen and the run
+
+- `screen` — the screen currently shown, one of the five `specs/ui.md` defines.
+- `menuIndex` — the highlighted entry on whichever vertical menu `screen` is
+  showing, counted from `0`. It rests at `0` on `playing`.
+- `score`, `lives`, `wave` — the run's figures. `lives` counts every ship left
+  including the one being flown, so a fresh game holds `3`. `wave` is `0` before
+  the first wave.
+- `waveBanner` — the seconds left on the `WAVE N` banner, counting down against
+  each tick and resting at `0` when no banner is showing.
+
+## `ShipState`
+
+- `x`, `y` — the ship's centre.
+- `vx`, `vy` — its velocity, in logical units per second.
+- `angle` — its facing, in radians, measured clockwise from the positive `x` axis.
+- `thrusting` — whether thrust is being applied this tick.
+- `invuln` — the seconds of respawn grace left, `0` for none.
+- `collision` — whether the ship's lethal contact test runs, which the debug
+  surface poses. It is `true` for a ship the game itself put up.
+- `fireCooldown` — the whole ticks until the gun may fire again.
+
+## `RockState`
+
+- `id` — distinct among every entity live at that moment, and kept for as long as
+  the rock exists.
+- `x`, `y`, `vx`, `vy` — its centre and its velocity.
+- `size` — `"large"`, `"medium"`, or `"small"`.
+- `spin` — its drawn rotation, in radians. It affects nothing but the drawing.
+{{#if (eq variant.slug "warhead")}}
+- `health` — the hits it has left, from `1` to the full health of its size.
+- `flash` — the seconds of hit flash left on it, `0` for none.
+{{/if}}
+
+`rocks` lists every rock on the field, and a rock added through the debug surface
+is appended to it.
+
+## `BulletState`
+
+One round in flight, in `bullets` for the ship's gun and in `enemyBullets` for the
+saucer's. Each carries an `id` distinct among every entity live at that moment,
+its centre, its velocity, and `life`, the seconds of its lifetime that remain.
+
+## `SaucerState`
+
+The one saucer slot, `null` when none is up.
+
+- `id` — fresh on each arrival, distinct among every entity live at that moment,
+  and not reused while a live entity holds it.
+- `x`, `y`, `vx`, `vy` — its centre and its velocity.
+- `mind`, `gun`, `travel` — its three faculty gates, which the debug surface
+  poses. Each is `true` for a saucer the game itself brought in.
+- `fireClock` — the seconds until its next shot.
+- `weaveClock` — the seconds until its next weave reroll.
+- `age` — the seconds it has been on the field, against `SAUCER_LIFETIME`.
+{{#if (eq variant.slug "warhead")}}
+
+## `TorpedoState`
+
+One torpedo in flight, carrying an `id` distinct among every entity live at that
+moment, its centre, its velocity, `heading` in radians, `life`, the seconds of its
+lifetime that remain, and `homing`, whether its guidance runs, which the debug
+surface poses.
+
+`torpedoCharge` is the stored charge, from `0` to `1`.
+{{/if}}
+
+## The game's own spawners
+
+- `waveSpawning` — whether the game's own wave loop runs, which the debug surface
+  poses.
+- `saucerSpawning` — whether the game's own arrival of a saucer runs, which the
+  debug surface poses.
+- `saucerClock` — how far the current cadence has run, in seconds.
+- `saucerDue` — what `saucerClock` must reach for the next saucer to arrive. It is
+  `SAUCER_FIRST_DELAY` at the start of a game and a fresh draw from
+  `SAUCER_GAP_MIN` to `SAUCER_GAP_MAX` after each saucer leaves.
+
+## The rest
+
+- `tickClock` — the fraction of a tick, in seconds, carried over from the previous
+  frame.
+- `nextId` — the id the next entity takes, so no two entities live at one moment
+  share one.
+- `simTime` — accumulated simulation time, in seconds. Every tick adds `TICK_DT`,
+  whatever the screen.
+- `muted` — the game's readable copy of the runtime's mute bit, refreshed in every
+  update. The runtime owns muting, and this field is what the debug surface
+  reports.
+- `rngState` — the state of the game's seeded random generator, which every draw
+  `specs/simulation.md` lists comes from.
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+{{#if (eq engine.slug "simple-2d")}}
+- `initialize` builds the whole state in one go, so every field is present by the
+  time a frame can observe it, and none of them is optional.
+- The state handed to `update` is the whole of the game, and the state `update`
+  returns is the whole of the next frame. Every value the game carries from one
+  frame to the next lives in it or in a field added beside it; nothing is kept in
+  a module-level variable or a closure.
+- The state is handed over read-only, as `DeepReadonly<ShatterState>`, to
+  `update`, to `render`, to every diagnostic source, and to every operation of the
+  debug surface. `update` and the surface's poses return a new `ShatterState`
+  built from the one they received; `render`, the sources, and `snapshot` return
+  no state.
+{{else}}
+- The engine builds the state when the world opens, through the mode's
+  `gameStateClass`, so every field is present by the time a frame can observe it,
+  and none of them is optional.
+- The state is the whole of the authoritative game. Every value the game carries
+  from one frame to the next lives in it or in a field added beside it; nothing is
+  kept in a module-level variable or a closure.
+- The state is written only through the paths play runs on: the player controller
+  resolves the frame's input into it, the game mode's tick advances it, and the
+  debug surface's poses arrange it at the call. Rendering reads it and writes
+  nothing.
+{{/if}}
+- Fields you add beside the declared ones are yours. A `reset` restores the
+  declared fields to the title-screen values `specs/instrumentation.md` lists, and
+  leaves every field you added consistent with them.
+{{/if}}

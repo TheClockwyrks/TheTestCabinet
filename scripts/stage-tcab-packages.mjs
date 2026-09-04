@@ -29,13 +29,19 @@
 // crates/core/src/test_case.rs. That allowlist is what a case's manifest `packages`
 // names are validated against, so every name a case may request must appear in both
 // lists. The extra entries here are ENGINE runtimes (@test-cabinet/simple-2d,
-// @test-cabinet/structured-2d).
+// @test-cabinet/structured-2d, @test-cabinet/simple-3d, @test-cabinet/structured-3d) and the shared validator harness
+// (@test-cabinet/case-harness).
 // They are staged into the same store, but an engine is a run dimension selected
 // per run (`tcab run --engine <slug>`) rather than something a case declares, and
 // it is seeded into `.tcab/engine/` rather than `.tcab/packages/`. So an engine
 // runtime belongs in this list and must NOT be added to SHIPPABLE_PACKAGES —
 // adding it there would let a case request the engine through `packages`, which
-// is exactly what that allowlist exists to refuse.
+// is exactly what that allowlist exists to refuse. The validator harness is out of
+// that allowlist for a sharper reason still: nothing seeds it into a run repository
+// at all. It is read from this store AFTER the container is gone, by crates/core's
+// vitest validator, which copies its sources into the staged validator project — so
+// a case able to name it through `packages` would put the tests it is measured by in
+// front of the model.
 
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -46,9 +52,12 @@ import { fileURLToPath } from "node:url";
  * Everything staged into the package store. The first two are the packages a test
  * case may request via its manifest `packages` key, and those two MUST also appear
  * in SHIPPABLE_PACKAGES in crates/core/src/test_case.rs. The rest are engine
- * runtimes: selected per run via `--engine`, seeded into `.tcab/engine/`, and never
- * nameable by a case — so they are staged from here and are deliberately absent
- * from that Rust allowlist.
+ * runtimes and the shared validator harness: never nameable by a case — so they are
+ * staged from here and are deliberately absent from that Rust allowlist.
+ *
+ * Every name here must also survive the root .dockerignore ALLOWLIST, or the
+ * services image's package-store stage (`COPY . .`, then this script) dies on a
+ * package that is not in the build context. scripts/ci/build-context.sh asserts it.
  */
 const SHIPPABLE = [
   "@test-cabinet/particle-runtime",
@@ -56,6 +65,14 @@ const SHIPPABLE = [
   // Engine runtimes — staged, but not `packages` names. See above.
   "@test-cabinet/simple-2d",
   "@test-cabinet/structured-2d",
+  "@test-cabinet/simple-3d",
+  "@test-cabinet/structured-3d",
+  // The shared engineless (`none`) validator harness and canvas recorder. It has no
+  // build step and publishes `"files": ["src"]`, so what lands in the store is its
+  // TypeScript source — which is what the vitest validator copies into a staged
+  // validator project for vitest to transpile, exactly as it transpiles the case's
+  // own suites. Read post-container by the reporter; never seeded into a run.
+  "@test-cabinet/case-harness",
 ];
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");

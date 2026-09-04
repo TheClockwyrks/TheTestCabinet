@@ -1,16 +1,23 @@
 // multi/independent-respawn — a scored ball respawns on its own, and the field
 // never stops for it.
 //
-// Two of the three balls are set bouncing between the top and bottom walls in
-// lanes on the LEFT half of the field, where the third ball never goes; the third
-// is aimed down the mid-field lane at the right goal. When it crosses, the frame
-// the score turns over is read: the ball that crossed must be back on its own
-// home point and holding, the other two must still be in flight, and the screen
-// must still be `playing` — the whole of what makes multi's scoring different
-// from a single ball's.
+// The field is cleared back to the three balls, which is what this point is
+// about and all it is about. Two of them are set bouncing between the top and
+// bottom walls in lanes on the LEFT half of the field, where the third never
+// goes; the third is aimed down the mid-field lane at the right goal. When it
+// crosses, the frame the score turns over is read: the ball that crossed must be
+// back on its own home point and holding, the other two must still be in flight,
+// and the screen must still be `playing` — the whole of what makes multi's
+// scoring different from a single ball's.
 //
 // Then the sweep runs on until the respawned ball leaves again, which is the hold
 // it took for itself while the other two carried on.
+//
+// The obstacles come off the field with everything else, so the two lanes no
+// longer have to be chosen to miss them and nothing but a wall is left for
+// either ball to meet. The paddles cannot be removed — a paddle is field
+// furniture the game always has — so both are moved out of the lanes, which is
+// the only way a shot reaches a goal edge at all.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -18,21 +25,24 @@ import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
+  assertLength,
   assertLessThanOrEqual,
 } from "../assert";
-import { BALL_HOMES } from "../constants";
+import { BALL_COUNT, BALL_HOMES, FIELD_CX, FIELD_CY } from "../constants";
 import {
-  arrangeGoal,
-  ball0,
   captureReplay,
-  createHarness,
+  clearPaddles,
+  createMultiHarness,
+  placeBall,
   startPlaying,
-  type Harness,
+  type MultiHarness,
 } from "../harness";
 import {
   HOLD_TICKS,
   HOLD_TOLERANCE_TICKS,
+  ballAt,
   driveLaunch,
+  isolateBalls,
   readBalls,
 } from "./harness";
 
@@ -41,18 +51,21 @@ import {
  *
  * Both are on the left half of the field, and the ball being driven starts at the
  * center travelling right, so it never crosses either lane. Both clear the
- * paddles' x range and both obstacles, so each simply bounces between the top and
- * bottom walls for the whole scenario — moving, visibly, and reaching nothing.
+ * paddles' x range, so each simply bounces between the top and bottom walls for
+ * the whole scenario — moving, visibly, and reaching nothing.
  */
 const LANES = [
   { x: 200, y: 240, vy: 320 },
   { x: 340, y: 480, vy: -320 },
 ];
 
-let h: Harness;
+/** How fast the scored ball is driven at the goal, in units per second. */
+const GOAL_SPEED = 600;
+
+let h: MultiHarness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createMultiHarness();
 });
 
 afterEach(async () => {
@@ -61,17 +74,12 @@ afterEach(async () => {
 
 it("returns the scored ball to its own home while the other two play on", async () => {
   await startPlaying(h);
+  await isolateBalls(h);
+  await clearPaddles(h);
   await h.debug.setScore(0, 0);
-  for (const [index, lane] of LANES.entries()) {
-    await h.debug.setBall(index + 1, {
-      x: lane.x,
-      y: lane.y,
-      vx: 0,
-      vy: lane.vy,
-      spin: 0,
-    });
-  }
-  await arrangeGoal(h, "right");
+  for (const [position, lane] of LANES.entries())
+    await placeBall(h, { x: lane.x, y: lane.y, vy: lane.vy }, position + 1);
+  await placeBall(h, { x: FIELD_CX, y: FIELD_CY, vx: GOAL_SPEED }, 0);
 
   const point = await captureReplay(h, "respawn", async () => {
     const scored = await h.until((s) => s.score.p1 > 0, {
@@ -81,7 +89,7 @@ it("returns the scored ball to its own home while the other two play on", async 
     // Read HERE, on the frame the point landed: what the other two balls were
     // doing at that instant is the question, and a frame later they would have
     // moved on whatever the build did.
-    const atPoint = readBalls(scored.snapshot);
+    const atPoint = scored.snapshot;
     const relaunch = await driveLaunch(h, 0);
     return { scored, atPoint, relaunch };
   });
@@ -92,13 +100,15 @@ it("returns the scored ball to its own home while the other two play on", async 
   assertEqual(point.scored.snapshot.screen, "playing");
 
   // The ball that crossed, and only it: back on its OWN home point, holding.
-  const [scoredBall, ...others] = point.atPoint;
+  assertLength(readBalls(point.atPoint), BALL_COUNT);
+  const scoredBall = ballAt(point.atPoint, 0);
   assertEqual(scoredBall.held, true);
   assertCloseTo(scoredBall.x, BALL_HOMES[0].x, 0);
   assertCloseTo(scoredBall.y, BALL_HOMES[0].y, 0);
 
   // The other two carried straight on, still in flight and still moving.
-  for (const ball of others) {
+  for (const index of [1, 2]) {
+    const ball = ballAt(point.atPoint, index);
     assertEqual(ball.held, false);
     assertGreaterThan(ball.speed, 1);
   }
@@ -109,5 +119,5 @@ it("returns the scored ball to its own home while the other two play on", async 
     Math.abs(point.relaunch.frames - HOLD_TICKS),
     HOLD_TOLERANCE_TICKS,
   );
-  assertGreaterThan(ball0(point.relaunch.snapshot).speed, 1);
+  assertGreaterThan(ballAt(point.relaunch.snapshot, 0).speed, 1);
 });

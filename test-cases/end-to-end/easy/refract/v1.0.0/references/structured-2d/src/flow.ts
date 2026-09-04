@@ -43,6 +43,7 @@ export function resetState(state: RefractState, seed: number): void {
   state.solvedCount = fresh.solvedCount;
   state.tier = fresh.tier;
   state.pointer = fresh.pointer;
+  state.armedTarget = fresh.armedTarget;
   state.simTime = fresh.simTime;
   state.rngState = seed;
 }
@@ -50,6 +51,13 @@ export function resetState(state: RefractState, seed: number): void {
 /** Back to the title, with its first item highlighted. */
 export function toTitle(state: RefractState): void {
   state.screen = "title";
+  state.menuIndex = 0;
+  state.tracing = null;
+}
+
+/** Back to the grid, with the highlight where it stands. */
+function toSelect(state: RefractState): void {
+  state.screen = "select";
   state.menuIndex = 0;
   state.tracing = null;
 }
@@ -153,4 +161,88 @@ export function onSolved(state: RefractState): void {
   state.solvedCount += 1;
   state.tier = tierFor(state.solvedCount);
   state.screen = "solved";
+}
+
+// ---- What a choice does, wherever it was made ----------------------------
+//
+// The keyboard's `confirm` and `back` and the pointer's targets reach these two
+// functions and nothing else, so a choice means the same thing however it was
+// made (specs/controls.md, Operating a screen with the pointer). Each is a
+// transition over the whole state machine rather than a per-screen handler,
+// because the screen is what decides the meaning of the choice.
+
+/** What `confirm` with the highlight at `index` does on the current screen. */
+export function confirmItem(state: RefractState, index: number): void {
+  switch (state.screen) {
+    case "title":
+      if (index === 0) startMode(state, "campaign");
+      else if (index === 1) startMode(state, "cascade");
+      else {
+        state.screen = "howto";
+        state.menuIndex = 0;
+      }
+      return;
+    case "select":
+      state.selectIndex = index;
+      enterSelected(state);
+      return;
+    case "solved":
+      if (state.mode === "campaign") takeCampaignSolved(state, index);
+      else if (index === 0) nextCascadeBoard(state);
+      else restartCascade(state);
+      return;
+    case "complete":
+      if (index === 0) toSelect(state);
+      else toTitle(state);
+      return;
+    case "howto":
+    case "playing":
+      return;
+  }
+}
+
+/**
+ * Enter the highlighted board, which a locked board refuses: `confirm` on one
+ * does nothing and leaves the highlight where it is (specs/modes/campaign.md).
+ */
+export function enterSelected(state: RefractState): void {
+  if (state.selectIndex >= state.unlockedCount) return;
+  enterCampaignBoard(state, state.selectIndex);
+}
+
+/** The campaign's solved menu, in the order `campaignSolvedItems` lists. */
+function takeCampaignSolved(state: RefractState, index: number): void {
+  const item = campaignSolvedItems(state.boardIndex)[index];
+  if (item === "NEXT BOARD") enterCampaignBoard(state, state.boardIndex + 1);
+  else if (item === "REPLAY") enterCampaignBoard(state, state.boardIndex);
+  else toSelect(state);
+}
+
+/** What `back` does on the current screen. */
+export function goBack(state: RefractState): void {
+  switch (state.screen) {
+    case "title":
+      return;
+    case "howto":
+    case "select":
+      toTitle(state);
+      return;
+    case "playing":
+      // The beams drawn on the board are discarded either way
+      // (specs/modes/campaign.md, Leaving a board).
+      if (state.mode === "campaign") {
+        for (const beam of state.beams) beam.cells = [];
+        toSelect(state);
+      } else {
+        toTitle(state);
+      }
+      return;
+    case "solved":
+      if (state.mode === "campaign") toSelect(state);
+      else toTitle(state);
+      return;
+    case "complete":
+      toSelect(state);
+      return;
+  }
 }

@@ -187,6 +187,7 @@ fn manifest() -> StoredManifest {
         r#match: None,
         replay: None,
         asset_kind: test_cabinet_core::AssetKind::Sprite,
+        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -194,6 +195,7 @@ fn manifest() -> StoredManifest {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         prompt_template: "build it".to_string(),
         common_specs: vec![StoredSpec {
             source: "specs/overview.hbs".to_string(),

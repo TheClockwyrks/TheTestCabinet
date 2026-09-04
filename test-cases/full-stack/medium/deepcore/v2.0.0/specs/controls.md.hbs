@@ -1,0 +1,83 @@
+# Deepcore — Controls
+
+This file defines the actions the game is driven by, the keys bound to them, and
+what each does on each screen. Every action name and key below carries the name
+this specification gives it.
+
+{{#if (eq engine.slug "none")}}
+Keyboard input belongs to the runtime layer you write. It reads
+`KeyboardEvent.code`, so the bindings are layout-independent, and it reports for
+each action whether it is held now and whether it went down this frame. The mouse
+belongs to that layer too, reporting the pointer's position in the stage's logical
+units along with its press and release.
+{{else if (eq engine.slug "simple-2d")}}
+Input belongs to the {{engine.name}} engine. The game registers each action below
+by name against the codes bound to it, and the engine reports whether the action
+is held and whether it went down this frame. Actions are read anywhere in the
+game's update. The engine also reports the pointer's position in the stage's
+logical units along with its press and release edges.
+{{else}}
+Input belongs to the {{engine.name}} engine. The game registers each action below
+by name against the codes bound to it, and the engine reports whether the action
+is held and whether it went down this frame. Actions are read inside the player
+controller alone. The engine also hands the game the pointer's ordered samples in
+the stage's logical units, with its press and release edges.
+{{/if}}
+
+## The actions
+
+`ACTIONS` binds each action name to the `KeyboardEvent.code` values that drive it.
+
+| Action | Codes |
+| --- | --- |
+| `left` | `KeyA`, `ArrowLeft` |
+| `right` | `KeyD`, `ArrowRight` |
+| `down` | `KeyS`, `ArrowDown` |
+| `up` | `KeyW`, `ArrowUp`, `Space` |
+| `activate` | `KeyE`, `Enter` |
+| `inventory` | `KeyI` |
+| `pause` | `Escape` |
+| `mute` | `KeyM` |
+| `jettison` | `KeyJ` |
+| `supply1` through `supply6` | `Digit1` through `Digit6` |
+
+## In the mine
+
+Movement is continuous: an action drives the miner for as long as it is held.
+
+| Action | Effect |
+| --- | --- |
+| `left`, `right` | Walk that way. Once the miner's box is flush against a minable cell on that side and the miner is grounded, cut into it and then move into the tunnel it leaves. |
+| `down` | While grounded, cut the cell below and sink into it. With open space below, nothing; the miner simply falls. |
+| `up` | Fire the jetpack. |
+| `activate` | At a surface building, open its panel, or save at the Save Pad. |
+| `inventory` | Open and close the inventory overlay. |
+| `pause` | Open the pause menu, or close an open panel. |
+| `mute` | Toggle all audio. |
+| `jettison` | Drop a carried Core Sample onto the miner's cell. |
+| `supply1` through `supply6` | Use the field supply of that number. |
+
+The miner faces the direction of the last `left` or `right` held, and its sprite
+mirrors to match.
+
+## On a menu screen
+
+| Action | Effect |
+| --- | --- |
+| `up`, `down` | Move the highlighted item up and down, wrapping at the ends. |
+| `activate` | Choose the highlighted item. |
+| `pause` | Go back, where the screen has a back. |
+
+## With the mouse
+
+Every menu item, panel control, and status-bar control is clickable. Clicking a
+surface building activates it, exactly as `activate` does while standing at it.
+The first-time hazard notice card is dismissed by a click on it.
+
+A control is drawn as operable only where it acts. Where the game cannot act on a
+control in the state it is in, that control is drawn disabled or is not drawn at
+all, and it neither highlights under the pointer nor answers a click.
+
+The game is fully playable with the keyboard for movement, drilling, and thrust,
+and the mouse for the panels and menus. No control beyond those listed here is
+required.

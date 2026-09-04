@@ -1,20 +1,16 @@
 // Carom — the figures this case's specification fixes. CASE-PROVIDED.
 //
-// Under an engine the same numbers reach a validator from `src/constants.ts`,
-// which is SEEDED into the run: the case hands the build the module and the
-// checks import it back. An engineless run seeds no `src/` at all — the build
-// writes every module it has, including whichever one it chooses to name these
-// figures in — so there is nothing for a check to import, and the values have to
-// live on the validator's side of the line.
+// A validator grades a build, so nothing it asserts may come from that build.
+// Every value below is stated by the seeded specification the build was given,
+// under the name that specification uses, and this module is the validators'
+// own copy of it. A check that read a figure out of the build's own tree would
+// compare the build against itself and grade nothing: a build free to change or
+// mis-define the number would move the target rather than fail the point.
 //
-// So this file is that side. Every value below is stated by the seeded
-// specification the build was given, under the name that specification uses, and
-// nothing here is read from a build: a check that compared a build's own constant
-// against itself would grade nothing. The pairing is deliberate — `SERVE_SPEED`
-// here is `specs/balls.md`'s serve speed, and a build that serves at some other
-// speed fails the point rather than moving the target.
+// The pairing is deliberate. `SERVE_SPEED` here is `specs/balls.md`'s serve
+// speed, and a build that serves at some other speed fails the point.
 //
-// Every value is in the fixed 1280x720 logical-pixel coordinate space defined by
+// Every value is in the fixed 1280x720 logical coordinate space defined by
 // `specs/overview.md` (origin top-left, x right, y down), every rate is per
 // second, and every duration is in seconds.
 

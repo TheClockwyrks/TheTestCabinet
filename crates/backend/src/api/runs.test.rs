@@ -208,6 +208,7 @@ fn detail_record(verdicts: &[(&str, bool)]) -> RunRecord {
             gates: true,
             ran: true,
             precondition_unmet: false,
+            inconclusive: None,
             detail: None,
             verdicts: vec![AutoVerdict {
                 id: point.to_string(),

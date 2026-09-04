@@ -22,14 +22,14 @@ Exactly these six binaries are on your `PATH`, no others (there is no `ui`,
 `paint`, `texture`, voxel, or mesh tool in this image), so all HUD, build-panel,
 and menu chrome is drawn in code (below):
 
-| Tool          | Produces                                                | Used for                                                        |
-| ------------- | ------------------------------------------------------- | --------------------------------------------------------------- |
-| `draw`        | one sprite → a PNG                                      | the path tracks, inlet/collector, towers, matter, and HUD icons |
-| `draw-sheet`  | a sprite sheet, one PNG per frame                       | the orbiting-electron, tower-fire, and boss animations          |
-| `particle-2d` | a particle system → a `system.json`                     | the decomposition bursts and muzzle effects                     |
-| `sfx-synth`   | a procedural sound → a `.wav`                           | shot / strip / snap / alarm cues from raw synthesis             |
-| `sfx-sample`  | a sampled sound over a baked pack → a `.wav`            | richer strip / nuclear / neutralize / build cues                |
-| `music`       | sequenced music over a baked bank → a `.wav` (+ `.mid`) | the reactor music bed                                           |
+| Tool          | Produces                                                       | Used for                                                        |
+| ------------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
+| `draw`        | one sprite → a PNG                                             | the path tracks, inlet/collector, towers, matter, and HUD icons |
+| `draw-sheet`  | a sprite sheet, one PNG per frame                              | the orbiting-electron, tower-fire, and boss animations          |
+| `particle-2d` | a particle system → a `system.json`                            | the decomposition bursts and muzzle effects                     |
+| `sfx-synth`   | a procedural sound → a `.wav`                                  | shot / strip / snap / alarm cues from raw synthesis             |
+| `sfx-sample`  | a sampled sound over the sample pack → a `.wav`                | richer strip / nuclear / neutralize / build cues                |
+| `music`       | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the reactor music bed                                           |
 
 Each is a command-line tool. Run `<tool> --help` to learn its operations (and
 `<tool> <operation> --help` for one operation's flags); the operation vocabulary
@@ -50,9 +50,10 @@ how to name the output path.
   is the asset. You do not place individual particles or bake frames.
 - `sfx-synth` / `sfx-sample` / `music` record synth voices, sampled layers, or
   sequenced notes and render a PCM `.wav`; `music` also emits a portable `.mid`
-  score alongside its `.wav`. `sfx-sample` and `music` draw on a baked sample
-  pack / instrument bank already in the image (browse it via the tool's help); a
-  synth from `sfx-synth` needs no pack.
+  score alongside its `.wav`. `sfx-sample` draws on the `combat-core` sample
+  pack and `music` on the `synthwave` instrument bank, both present in the
+  container (browse them with `list-samples` and `list-instruments`); a synth
+  from `sfx-synth` needs no pack.
 
 ## Loading rule — page-relative, so it works under any base path
 
@@ -209,8 +210,8 @@ via the Web Audio API. Land them under, for example, `assets/audio/`.
   broken down), a build/place cue, and a leak alarm when a unit reaches the
   collector, with `sfx-synth` and/or `sfx-sample` (a reveal blip is a welcome
   extra). `sfx-synth` builds a sound from synth voices alone; `sfx-sample`
-  layers over the baked sample pack (browse it via its `--help`) for a richer
-  result; use whichever suits each cue.
+  layers over the `combat-core` sample pack (browse it with `list-samples`) for
+  a richer result; use whichever suits each cue.
 - Music, produce a tense reactor music bed with `music`: a driving, low,
   atmospheric loop under the board. `music` emits both a `.wav` (the ready asset
   you play) and a `.mid` score alongside it; play the `.wav` (the `.mid` is a

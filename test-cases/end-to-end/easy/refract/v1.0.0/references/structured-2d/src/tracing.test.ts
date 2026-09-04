@@ -298,6 +298,7 @@ describe("event merging", () => {
       connect: true,
       retract: true,
       channelComplete: false,
+      cleared: false,
       solved: false,
     });
   });

@@ -16,9 +16,10 @@ name: Build containers
 # (plus the performance image — the base plus the wasm toolchain and the Lattice
 # tooling). All are built by containers/build.sh in one invocation (the sprite,
 # sprite-sheet, adversarial, and performance images are built FROM the base built
-# alongside them). Runners resolve the image for a run's test type and asset kind
-# directly from their own registry configuration (default ghcr.io/theclockwyrks on
-# the latest tag); the backend plays no part — see docs/components/core/execution.md.
+# alongside them). Runners resolve the image for a run's test type, asset kind, and
+# asset dimension directly from their own registry configuration (default
+# ghcr.io/theclockwyrks on the latest tag); the backend plays no part — see
+# docs/components/core/execution.md.
 #
 # Each image is published MULTI-ARCH (linux/amd64 + linux/arm64): the `build` job
 # below runs build.sh once per architecture on a native runner (pushing an
@@ -51,9 +52,16 @@ name: Build containers
 # visibility to Public in the org's GHCR package settings so unauthenticated runners
 # can pull them — one `test-cabinet-<name>` package per name in containers/image-names.sh
 # (base, every asset-generation kind including blender, adversarial, and performance),
-# PLUS `test-cabinet-gg-toolchains`, which build.sh pushes but that list deliberately does
-# not name (see the manifest job at the bottom for why).
-# A newly-added image needs this the first time it is published.
+# PLUS the two packages build.sh pushes that this list deliberately does not name (see the
+# manifest job at the bottom for why): `test-cabinet-gg-toolchains` and
+# `test-cabinet-audio-store`. The audio store's visibility is load-bearing rather than a
+# convenience — `scripts/fetch-audio-store.sh` and the driver image build both pull it
+# unauthenticated, which is what keeps the R2 credentials to this one workflow.
+# A newly-added image needs this the first time it is published — and it is two packages
+# per image, not one, because every run image has a `-gg` variant with a package of its
+# own. `test-cabinet-full-stack-3d` and `test-cabinet-full-stack-3d-gg` are the most
+# recent pair; both default to Private on their first push, and a run scheduled onto a
+# Private package fails at pull time with a 403 that says nothing about visibility.
 on:
   # DELIBERATELY UNFILTERED, for the same reason as build-service-images.yml: every
   # push to master/staging must leave a COMPLETE `:<git-sha>` run-image set behind,
@@ -122,14 +130,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Node serves two things here. `build.sh` runs `scripts/presign-sample-pack.mjs`
-      # (node-only) to mint the R2 download URL for the sfx-sample/music audio packs; and
-      # building `gg` below reflects the TypeScript and JavaScript arms' signature
-      # catalogues with the workspace's PINNED `typescript`, which is a devDependency, so
-      # `npm ci` is a build prerequisite for two of the eleven arms. The version matches
-      # ci.yml's and release.yml's rather than the 20.x this step used to pin for the
-      # presign script alone — one Node for the job, and the one the rest of CI builds gg
-      # with.
+      # Node serves two things here. `build.sh` runs `scripts/stage-audio-store.mjs`
+      # (node-only) to download and verify every published audio pack for the one
+      # data-only `audio-store` image; and building `gg` below reflects the TypeScript and
+      # JavaScript arms' signature catalogues with the workspace's PINNED `typescript`,
+      # which is a devDependency, so `npm ci` is a build prerequisite for two of the
+      # eleven arms. The version matches ci.yml's and release.yml's rather than the 20.x
+      # this step used to pin for the audio stager alone — one Node for the job, and the
+      # one the rest of CI builds gg with.
       - uses: actions/setup-node@v6
         with:
           node-version: 22.23.1
@@ -206,7 +214,7 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/build-gg-static.sh "$RUNNER_TEMP/gg"
-          # And then give the disk back. This job builds twenty-six `-gg` variants after
+          # And then give the disk back. This job builds twenty-seven `-gg` variants after
           # this step, on a runner whose image store and whose `target/` share one
           # filesystem; a release build of gg leaves several gigabytes of intermediate
           # artifacts behind and the binary itself has already been copied out to
@@ -225,26 +233,34 @@ jobs:
       # architecture, pushes them to IMAGE_REGISTRY under the arch-suffixed tag, and
       # prints their pinned digests. Both build.sh and the `manifest` job below take
       # their image set from containers/image-names.sh, so each built image is
-      # guaranteed to get fused into its multi-arch `:latest`/`:<sha>`.
+      # guaranteed to get fused into its multi-arch `:latest`/`:<sha>`. Under PUSH it also
+      # builds the two images that list deliberately omits, because neither is resolved
+      # for a run: the gg toolchain builder and the audio store.
       # The registry namespace is the repository owner, lowercased (GHCR requires
       # lowercase), which is the resolver's default for the canonical repo. Only the
       # arch tag is written here; the bare `:latest` manifest list is created by the
       # manifest job, so a half-finished matrix never leaves `:latest` single-arch.
       #
-      # The CLOUDFLARE_AUDIO_R2_* values let build.sh presign a READ-only download of
-      # the sfx-sample and music images' audio packs (see build_audio_image). They are
-      # read-scoped — CI never writes the bucket; publishing is a local step. They are
-      # REQUIRED: a pack that is not pinned (or that cannot be presigned) fails the
-      # build rather than shipping an image with an empty palette, so these must be set.
+      # The CLOUDFLARE_AUDIO_R2_* values let scripts/stage-audio-store.mjs presign a
+      # READ-only download of every published clip for the `audio-store` image, verifying
+      # each against containers/sample-packs/objects.lock.json as it lands (see
+      # build_audio_store). NO RUN IMAGE READS THEM: since a run is staged with the packs
+      # its test case declares rather than being handed a palette its image baked, this is
+      # the only build in the repository that touches the audio object store, and the
+      # driver image and a contributor's checkout get the store by pulling the public
+      # image it produces. They are read-scoped — CI never writes the bucket; publishing a
+      # clip is a local step. They are REQUIRED here: a clip that is unpublished,
+      # unrecorded in the lock, or that fails its digest check fails the build rather than
+      # publishing a store a case could declare a pack out of and not receive.
       #
       # `--gg-selfcheck` is what makes this job a gate on the `-gg` variants rather than
       # only a publisher of them: build.sh drives every language arm's real bootstrap turn
       # inside each environment representative it builds — as the unprivileged run user,
       # from this static binary — BETWEEN that image's build and its push, so a variant
-      # carrying a dead arm cannot reach the registry. Four images cover all twenty-six
+      # carrying a dead arm cannot reach the registry. Five images cover all twenty-seven
       # variants: `/opt/gg` is byte-identical across them, so what differs is the
       # environment it runs in — the image the lineage is rooted at plus every package the
-      # run images install on the way down, which is four groups and not the two parents it
+      # run images install on the way down, which is five groups and not the two parents it
       # looks like. build.sh's GG_SELFCHECK_IMAGES carries the argument and its
       # `assert_gg_environments` re-derives the grouping from the Dockerfiles on every
       # gated build.
@@ -286,7 +302,7 @@ jobs:
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/build-containers.log"
-          for image in sprite-gg base-wasm-gg voxel-gg blender-gg; do
+          for image in sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg; do
             if ! grep -Fq "gg selfcheck ok: $image" "$log"; then
               echo "::error::containers/build.sh published without running gg selfcheck in $image." >&2
               echo "The images built here carry gg's eleven language toolchains, and building one" >&2
@@ -344,20 +360,36 @@ jobs:
             docker buildx imagetools inspect "$repo:$GIT_SHA"
           done < <(./containers/image-names.sh)
 
-          # And the one image build.sh pushes that image-names.sh does not list: the gg
-          # LANGUAGE-TOOLCHAIN builder. It is not a run image — nothing resolves it, nothing
+          # And the two images build.sh pushes that image-names.sh does not list. First the
+          # gg LANGUAGE-TOOLCHAIN builder. It is not a run image — nothing resolves it, nothing
           # executes in it, it is only ever a `COPY --from` source for the `-gg` variants — and
           # image-names.sh is the set of images a run resolves. The Rust suite would tolerate an
           # entry (`every_resolvable_image_is_one_the_build_publishes` keeps a NOT_A_RUN_IMAGE
           # list, which already holds `base`); build.sh would not, because `build_one` dispatches
-          # on that list by name. So the loop above stays special-case-free and this one image is
-          # fused by name. See containers/gg-toolchains/Dockerfile's header.
+          # on that list by name. So the loop above stays special-case-free and these two images
+          # are fused by name. See containers/gg-toolchains/Dockerfile's header.
           #
           # It is fused rather than left as two arch tags for the same reason everything above is:
           # a `:latest` that is single-arch is a pull that either 404s or silently hands somebody
           # the wrong architecture's compilers. Why it is published at all is argued where
           # GG_TOOLCHAINS_IMAGE is defined in containers/build.sh.
           repo="$registry/test-cabinet-gg-toolchains"
+          echo "==> assembling $repo:latest + $repo:$GIT_SHA from :latest-amd64 + :latest-arm64"
+          docker buildx imagetools create \
+            -t "$repo:latest" \
+            -t "$repo:$GIT_SHA" \
+            "$repo:latest-amd64" "$repo:latest-arm64"
+          docker buildx imagetools inspect "$repo:$GIT_SHA"
+
+          # And the AUDIO STORE: every published audio pack as data, which a run's declared
+          # packs are staged out of. It is not a run image either — nothing executes in it
+          # and nothing resolves it — so it is absent from image-names.sh for the same
+          # reason and fused here by name. Its two arch tags carry byte-identical content
+          # (the clips are downloaded, not built), but it is still fused rather than left
+          # as two tags, because its consumers pull one reference on whatever architecture
+          # they run on: the driver stage in deployments/images/services.Dockerfile, and
+          # scripts/fetch-audio-store.sh.
+          repo="$registry/test-cabinet-audio-store"
           echo "==> assembling $repo:latest + $repo:$GIT_SHA from :latest-amd64 + :latest-arm64"
           docker buildx imagetools create \
             -t "$repo:latest" \

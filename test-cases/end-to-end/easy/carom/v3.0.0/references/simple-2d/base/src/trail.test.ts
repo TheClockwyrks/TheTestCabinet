@@ -1,36 +1,23 @@
 // The trail is a slice of TIME, not a number of samples: that is what makes the
-// comet stretch with speed and collapse while the ball is held.
+// comet stretch with speed and collapse while the ball is held. It belongs to the
+// ball, so it is emptied when a ball is spawned and written by the game alone
+// (specs/state.md).
 
 import { describe, expect, it } from "vitest";
 import { TRAIL_TIME } from "./constants";
-import { createInitialState } from "./match";
+import { homeBall } from "./entities";
 import { pruneTrail, recordTrail, ribbon } from "./trail";
-import type { CaromState, TrailSample } from "./game";
+import type { BallState, TrailSample } from "./game";
 
-/** The state with the ball moved and the clock set, as a frame would leave it. */
-function at(
-  state: CaromState,
-  patch: { x?: number; y?: number; simTime: number },
-): CaromState {
-  return {
-    ...state,
-    simTime: patch.simTime,
-    ball: {
-      ...state.ball,
-      x: patch.x ?? state.ball.x,
-      y: patch.y ?? state.ball.y,
-    },
-  };
+/** The ball moved, as a frame would leave it just before recording. */
+function at(ball: BallState, patch: { x?: number; y?: number }): BallState {
+  return { ...ball, x: patch.x ?? ball.x, y: patch.y ?? ball.y };
 }
 
 describe("recordTrail", () => {
   it("appends the ball's position, oldest first", () => {
-    const first = recordTrail(
-      at(createInitialState(), { x: 100, y: 200, simTime: 1 }),
-    );
-    const second = recordTrail(
-      at(first, { x: 110, simTime: 1 + TRAIL_TIME / 2 }),
-    );
+    const first = recordTrail(at(homeBall(), { x: 100, y: 200 }), 1);
+    const second = recordTrail(at(first, { x: 110 }), 1 + TRAIL_TIME / 2);
 
     expect(second.trail).toHaveLength(2);
     expect(second.trail[0]).toEqual({ x: 100, y: 200, t: 1 });
@@ -38,28 +25,30 @@ describe("recordTrail", () => {
   });
 
   it("drops samples older than the trail window", () => {
-    let state = createInitialState();
+    let ball = homeBall();
+    let now = 0;
     for (let i = 0; i < 200; i++) {
-      state = recordTrail(at(state, { x: i, simTime: i * (1 / 60) }));
+      now = i * (1 / 60);
+      ball = recordTrail(at(ball, { x: i }), now);
     }
-    expect(state.trail.length).toBeGreaterThan(1);
-    for (const sample of state.trail) {
-      expect(state.simTime - sample.t).toBeLessThanOrEqual(TRAIL_TIME);
+    expect(ball.trail.length).toBeGreaterThan(1);
+    for (const sample of ball.trail) {
+      expect(now - sample.t).toBeLessThanOrEqual(TRAIL_TIME);
     }
   });
 
   it("caps what it retains however fast the frames arrive", () => {
-    let state = createInitialState();
+    let ball = homeBall();
     for (let i = 0; i < 1000; i++) {
       // 10 kHz: the whole run fits the window.
-      state = recordTrail(at(state, { simTime: i * 0.0001 }));
+      ball = recordTrail(ball, i * 0.0001);
     }
-    expect(state.trail.length).toBeLessThanOrEqual(256);
+    expect(ball.trail.length).toBeLessThanOrEqual(256);
   });
 
-  it("leaves the state and the trail it was given alone", () => {
-    const before = at(createInitialState(), { x: 100, simTime: 1 });
-    const after = recordTrail(before);
+  it("leaves the ball and the trail it was given alone", () => {
+    const before = at(homeBall(), { x: 100 });
+    const after = recordTrail(before, 1);
     expect(before.trail).toHaveLength(0);
     expect(after.trail).toHaveLength(1);
   });

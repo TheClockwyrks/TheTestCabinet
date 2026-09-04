@@ -31,9 +31,9 @@ display name and its max level.
 
 The lamplighter has `PASSIVE_SLOTS` (`6`) passive slots, and each slot holds
 one passive at one level. A passive enters a slot at level `1` and rises one
-level at a time, up to its max level, through the level-up overlay, a chest, or
-the debug surface. A passive at its max level is never offered again. A run
-starts with every passive slot empty.
+level at a time, up to its max level, through the level-up overlay or a chest.
+A passive at its max level is never offered again. A run starts with every
+passive slot empty.
 
 In every formula below, a passive's name stands for its level as held: a passive
 not held is level `0`, so every multiplier starts at `1`, armor and amount
@@ -86,13 +86,17 @@ exactly as a base weapon's table row does.
 
 A weapon's damage per hit is its table `damage` times `damageMul`. The result
 is a real number, and enemy health is a real number, so a hit removes exactly
-that amount. Contact damage the lamplighter takes is governed by armor alone,
+that amount. A shape's damage per hit is fixed when the shape is created, from
+the level and `damageMul` in force on that tick, with one exception: the aura
+of Halo or Corona and each Chandelier lantern have their damage recomputed on
+every tick. A Wick level gained later leaves every other live shape's damage
+as it was. Contact damage the lamplighter takes is governed by armor alone,
 under Armor below.
 
 ### Cooldown
 
 A weapon's cooldown is its table `cooldown` times `cooldownMul`, floored at
-`MIN_COOLDOWN` (`0.1`) seconds: `cooldown = max(MIN_COOLDOWN, table cooldown ×
+`MIN_COOLDOWN` (`0.2`) seconds: `cooldown = max(MIN_COOLDOWN, table cooldown ×
 cooldownMul)`. For Halo and Corona the table `cooldown` is the pulse interval
 of the aura, and for Flare it is the interval between bursts; both scale the
 same way. Chandelier has no cooldown, so cooldownMul reads nothing from it.

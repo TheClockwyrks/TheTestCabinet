@@ -12,6 +12,11 @@
 // field, most of them are nowhere near horizontal, and each is drawn afresh. The
 // bounds below are generous against a uniform draw and unreachable by a build
 // that aims its launches.
+//
+// Each match is the one the build's own match start builds, and the launch is its
+// own too: `openCountdown` opens the countdown, `setSeed` fixes the generator the
+// draw comes from, and `stageServe` only sets each waiting ball's hold timer to
+// `0`. Nothing here poses a velocity, so every angle read back was drawn.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -19,7 +24,13 @@ import {
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { captureReplay, createHarness, type Harness } from "../harness";
+import {
+  captureReplay,
+  createHarness,
+  openCountdown,
+  stageServe,
+  type Harness,
+} from "../harness";
 import { launchAngleDeg, readBalls } from "./harness";
 
 /** The seeds the sample is drawn under, one match each. */
@@ -65,13 +76,13 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** Open a match under `seed`, cut the hold short, and read all three launches. */
+/** Open a match under `seed`, cut every hold short, and read all three launches. */
 async function launchesUnder(
   seed: number,
 ): Promise<{ speed: number; vx: number; angle: number }[]> {
-  h.debug.reset({ seed });
-  h.debug.startMatch("versus");
-  h.debug.serve();
+  openCountdown(h, "versus");
+  h.debug.setSeed(seed);
+  stageServe(h);
   const launched = await h.until((s) => readBalls(s).every((b) => !b.held), {
     maxFrames: 20,
     poll: 1,
@@ -120,10 +131,10 @@ it("draws every launch over the whole circle rather than aiming it", async () =>
 
   // One opening, kept for the reviewer: three balls leaving their home points on
   // three unrelated headings.
-  h.debug.reset({ seed: SEEDS[0] });
-  h.debug.startMatch("versus");
+  openCountdown(h, "versus");
+  h.debug.setSeed(SEEDS[0]);
   await captureReplay(h, "launch", async () => {
-    h.debug.serve();
+    stageServe(h);
     await h.advance(FLIGHT_TICKS);
   });
 });

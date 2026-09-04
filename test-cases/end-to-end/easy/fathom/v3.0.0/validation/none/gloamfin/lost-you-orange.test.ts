@@ -80,10 +80,22 @@ const AFTER_TICKS = Math.round(3.5 * TICK_HZ);
  * How far the guaranteed ping may sit from `GLOAMFIN_SEARCH_DELAY`, in seconds.
  *
  * A tenth of a second, the tolerance this case states for its other timed pings.
- * The watch samples every two ticks and both the search's opening and the ping are
- * read off those samples, so the grain contributes at most a thirtieth of this.
+ * The PING's own moment is exact — it is read off the wavefront's `front` rather
+ * than off the sample that caught it (`validation/gloamfin/pings.ts`) — but the
+ * SEARCH's opening is a state change and is only ever seen at a sample, so the
+ * delay between them carries one sample of grain.
  */
 const DELAY_TOLERANCE = 0.1;
+
+/**
+ * Ticks between two samples of this watch, finer than the shared default.
+ *
+ * A thirtieth of a second, so the one grained reading here — where the search
+ * began — costs at most a third of {@link DELAY_TOLERANCE}. The watches that time
+ * one ping against another take the shared `SWEEP_POLL`, because a gap between two
+ * wavefronts carries no grain at all.
+ */
+const WATCH_POLL = 4;
 
 let h: Harness;
 
@@ -123,8 +135,10 @@ it("A lost chase casts one orange ping", async () => {
     }
   };
 
-  await captureReplay(h, "orange", () => sweep(h, RECORDED_TICKS, watch));
-  await sweep(h, AFTER_TICKS, watch);
+  await captureReplay(h, "orange", () =>
+    sweep(h, RECORDED_TICKS, watch, WATCH_POLL),
+  );
+  await sweep(h, AFTER_TICKS, watch, WATCH_POLL);
   const ending = await h.snapshot();
 
   requireSceneHeld(ending, guard);

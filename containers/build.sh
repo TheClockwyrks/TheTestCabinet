@@ -29,6 +29,15 @@
 #     binary (`mc`/`mc-anim`/`sn`/`sn-anim`/`dc`/`dc-anim`) and the Mesa
 #     software-Vulkan (lavapipe) runtime the previews render with (each
 #     `<name>/Dockerfile` is `FROM` the base); and
+#   - the two full-stack images, which every full-stack run executes in — base-wasm plus
+#     the asset-generation binaries the model produces the game's own assets with (the
+#     audio those tools reach is staged per run, not baked in). Which of the two a run
+#     resolves is the case's
+#     `asset_dimension`: full-stack-2d (the default) carries the 2D six — `draw`,
+#     `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music` — and full-stack-3d
+#     carries those plus `voxel`, `voxel-anim` and `particle-3d` and the Mesa
+#     software-Vulkan runtime those three render their previews through (each
+#     `full-stack-*/Dockerfile` is `FROM` base-wasm here); and
 #   - the adversarial image, which every adversarial run executes in — base-wasm
 #     (which supplies the Rust + `wasm32-unknown-unknown` toolchain a model's
 #     controller builds to wasm with) plus the Foray tooling compiled from
@@ -61,24 +70,30 @@
 #                             #   image is named but no base image is present locally yet. This is
 #                             #   how deployments/local/Makefile rebuilds one test type — or one
 #                             #   asset-generation kind — without paying for the whole set.
+#   ./build.sh audio-store    # build the data-only AUDIO STORE image: every published audio
+#                             #   pack, which a run's declared packs are staged out of. Not a run
+#                             #   image, so it is absent from image-names.sh and a plain
+#                             #   `./build.sh` skips it — staging it downloads the clips from the
+#                             #   audio object store and needs the presign credentials. Under
+#                             #   PUSH=1 a full build includes it.
 #   ./build.sh --gg-selfcheck <PATH-TO-GG> [<name>...]
 #                             #   additionally drive `gg selfcheck` inside each environment
 #                             #   representative it builds, BEFORE that image is pushed. See
 #                             #   "Gating the `-gg` variants" below.
 #
-# The images are distributed via a registry and pulled by the runner, which
-# resolves the one for a run's test type and asset kind from its own registry
-# configuration (TCAB_CONTAINER_REGISTRY / TCAB_CONTAINER_TAG, or a per-image
-# override TCAB_CONTAINER_IMAGE_BASE_WASM (end-to-end) / TCAB_CONTAINER_IMAGE_SPRITE /
+# The images are distributed via a registry and pulled by the runner, which resolves
+# the one for a run's test type, its asset kind, and — for a full-stack case — its
+# asset dimension, from its own registry configuration (TCAB_CONTAINER_REGISTRY /
+# TCAB_CONTAINER_TAG, or a per-image override TCAB_CONTAINER_IMAGE_BASE_WASM
+# (end-to-end) / TCAB_CONTAINER_IMAGE_FULL_STACK_2D /
+# TCAB_CONTAINER_IMAGE_FULL_STACK_3D / TCAB_CONTAINER_IMAGE_SPRITE /
 # TCAB_CONTAINER_IMAGE_SPRITE_SHEET / TCAB_CONTAINER_IMAGE_VOXEL /
 # TCAB_CONTAINER_IMAGE_VOXEL_ANIMATION / TCAB_CONTAINER_IMAGE_MC /
 # TCAB_CONTAINER_IMAGE_MC_ANIMATION / TCAB_CONTAINER_IMAGE_SN /
 # TCAB_CONTAINER_IMAGE_SN_ANIMATION / TCAB_CONTAINER_IMAGE_DC /
 # TCAB_CONTAINER_IMAGE_DC_ANIMATION / TCAB_CONTAINER_IMAGE_ADVERSARIAL /
-# TCAB_CONTAINER_IMAGE_PERFORMANCE; see
-# docs/components/core/execution.md). The
-# backend plays no part in container distribution, so this script never talks to
-# it.
+# TCAB_CONTAINER_IMAGE_PERFORMANCE; see docs/components/core/execution.md). The
+# backend plays no part in container distribution, so this script never talks to it.
 #
 # With PUSH=1 the script pushes each built image to IMAGE_REGISTRY and prints its
 # pushed digest reference. Without PUSH it just builds locally (the offline
@@ -214,14 +229,14 @@ if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
 fi
 readonly GG_SELFCHECK_BIN
 
-# THE FOUR IMAGES THE GATE RUNS IN, AND WHY IT IS FOUR AND NOT TWENTY-SIX.
+# THE FIVE IMAGES THE GATE RUNS IN, AND WHY IT IS FIVE AND NOT TWENTY-SEVEN.
 #
 # Every `-gg` variant carries the SAME toolchain tree: `containers/gg/Dockerfile` copies
 # `/opt/gg` with `--link`, which builds the layer rooted at `scratch` rather than as a diff
-# against each parent — so all twenty-six variants get the identical digest for identical
+# against each parent — so all twenty-seven variants get the identical digest for identical
 # bytes (that COPY's comment carries the measurement). What can differ between two variants
 # is therefore not the toolchain but the ENVIRONMENT it has to run in, and the question this
-# list answers is how many distinct environments the twenty-six are.
+# list answers is how many distinct environments the twenty-seven are.
 #
 # IT IS NOT "THE NUMBER OF PARENTS", which is what this list first said and got wrong. There
 # are two external parents — the Debian `node:*-bookworm-slim` and `blender`'s `ubuntu:26.04`
@@ -229,31 +244,46 @@ readonly GG_SELFCHECK_BIN
 # own on top of `base`, and a package brings its whole dependency closure with it. Measured
 # on the local store, with the C# arm's own missing library as the probe:
 #
-#   test-cabinet-sprite-gg      no libicu at all
-#   test-cabinet-base-wasm-gg   no libicu at all
-#   test-cabinet-voxel-gg       libicu{uc,i18n,data}.so.72, dragged in by mesa-vulkan-drivers
-#   test-cabinet-blender-gg     libicu{uc,i18n,data}.so.78, dragged in by blender
+#   test-cabinet-sprite-gg         no libicu at all
+#   test-cabinet-base-wasm-gg      no libicu at all
+#   test-cabinet-voxel-gg          libicu{uc,i18n,data}.so.72, dragged in by mesa-vulkan-drivers
+#   test-cabinet-full-stack-3d-gg  libicu{uc,i18n,data}.so.72, by the same mesa install — but
+#                                  on top of base-wasm's packages, which voxel-gg has none of
+#   test-cabinet-blender-gg        libicu{uc,i18n,data}.so.78, dragged in by blender
 #
 # So `base-wasm-gg` alone did not answer for `voxel-gg`: in one the vendored ICU is what the
 # runtime opens and in the other the image's own copy is there to be found instead, and
 # "satisfied by a package something unrelated pulled in" is the exact failure class this
-# whole gate exists to end. Grouping the twenty-six by the environment their Dockerfiles
+# whole gate exists to end. Grouping the twenty-seven by the environment their Dockerfiles
 # build — the external reference the lineage is rooted at, plus every package `apt` installs
-# anywhere along the chain — gives FOUR groups, and these are one of each:
+# anywhere along the chain — gives FIVE groups, and these are one of each:
 #
-#   sprite-gg     node:*-bookworm-slim + the shared base's packages
-#   base-wasm-gg  …and base-wasm's binaryen, libssl-dev, pkg-config
-#   voxel-gg      …and the mesa stack (libvulkan1, mesa-vulkan-drivers) the render images add
-#   blender-gg    ubuntu:26.04 + blender's packages
+#   sprite-gg         node:*-bookworm-slim + the shared base's packages
+#   base-wasm-gg      …and base-wasm's binaryen, libssl-dev, pkg-config
+#   voxel-gg          the base's packages and the mesa stack (libvulkan1,
+#                     mesa-vulkan-drivers) the render images add, but NOT base-wasm's
+#   full-stack-3d-gg  …base-wasm's AND the mesa stack: the 3D full-stack image is the only
+#                     run image that is `FROM` base-wasm and installs mesa, because it is
+#                     the only one that both compiles Rust to wasm and renders a preview
+#   blender-gg        ubuntu:26.04 + blender's packages
+#
+# THE FOURTH GROUP IS THE ONE THAT LOOKS REDUNDANT AND IS NOT. `full-stack-3d-gg` carries the
+# same `libicu72` `voxel-gg` does, from the same package, so the C# arm's original bug would
+# be answered identically in both — but the grouping is not "which ICU is present", it is the
+# whole package set, and an arm that resolves a library differently because binaryen's or
+# libssl-dev's closure is also there is exactly the accident nobody would predict in advance.
+# That is the reason this list is derived from the Dockerfiles rather than reasoned about:
+# `assert_gg_environments` would refuse the build if two entries here were the same
+# environment, so a redundant representative cannot be added by mistake either.
 #
 # `base` itself is in no group: it has no `-gg` variant, so no arm ever runs there.
 #
-# That is the whole argument, and it is only as good as "four groups" — which is why
+# That is the whole argument, and it is only as good as "five groups" — which is why
 # `assert_gg_environments` re-derives the grouping from the Dockerfiles on every gated build
 # instead of trusting this comment, and `assert_gg_lineages` separately pins the two external
 # references the grouping is rooted at. The C# bug was in the ENVIRONMENT (a missing ICU),
 # and `--link` says nothing whatever about what a variant is layered onto.
-readonly GG_SELFCHECK_IMAGES=(sprite-gg base-wasm-gg voxel-gg blender-gg)
+readonly GG_SELFCHECK_IMAGES=(sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg)
 
 # The external images the run images' lineages are rooted at, and the exact references they
 # name. `assert_gg_lineages` requires the set derived from `containers/*/Dockerfile` to be
@@ -262,7 +292,7 @@ readonly GG_SELFCHECK_IMAGES=(sprite-gg base-wasm-gg voxel-gg blender-gg)
 # image works today only because Ubuntu's own package closure happens to drag in an ICU,
 # which is precisely the kind of accident a new base image silently withdraws.
 #
-# This is a PIN and not the coverage argument. What makes four images answer for twenty-six
+# This is a PIN and not the coverage argument. What makes five images answer for twenty-seven
 # is `assert_gg_environments`, which groups the variants by root *and* by the packages each
 # one installs; a root that never moves while a run image gains a package is a change this
 # list cannot see and that one can.
@@ -293,13 +323,14 @@ readonly GG_SELFCHECK_USER="node"
 # base, adversarial, and performance tags are referenced by name here.
 readonly BASE_IMAGE="${IMAGE_NAME_PREFIX}base:${IMAGE_TAG}"
 # The Rust/wasm middle layer built `FROM` the base: the base plus the shared Rust →
-# WebAssembly toolchain. End-to-end runs resolve this image, and the full-stack-2d,
-# adversarial, and performance images are each built `FROM` it (they no longer install
-# a Rust toolchain of their own), so it stays in lockstep with the base within a build.
+# WebAssembly toolchain. End-to-end runs resolve this image, and the two full-stack
+# images (2d/3d), adversarial, and performance are each built `FROM` it (they no longer
+# install a Rust toolchain of their own), so it stays in lockstep with the base within
+# a build.
 readonly BASE_WASM_IMAGE="${IMAGE_NAME_PREFIX}base-wasm:${IMAGE_TAG}"
 # The full-stack-2d image tag. Referenced by name because the game-jam image is built
-# `FROM` it (it inherits the six asset binaries, the audio packs, and the Rust/wasm
-# toolchain), so the jam image stays in lockstep with full-stack-2d within a build.
+# `FROM` it (it inherits the six asset binaries and the Rust/wasm toolchain), so the
+# jam image stays in lockstep with full-stack-2d within a build.
 readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
 # The shared asset-tooling BUILDER image. Not a run image and never pushed: it exists
 # only as a `COPY --from` source, holding every asset-generation binary compiled in a
@@ -331,14 +362,29 @@ readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 #
 # THAT LAST SENTENCE IS TRUE ONLY BECAUSE `containers/gg/Dockerfile` COPIES THE TREE WITH
 # `--link`. Identical content is not enough: a plain `COPY` is diffed against each
-# variant's own parent, which gave the twenty-six variants twenty-six DIFFERENT digests for
-# the same bytes and defeated every layer of sharing there is — registry storage, node
-# pulls, and the `docker save` a local import feeds on. Read the comment on that `COPY`
-# before touching it; it is the line this paragraph depends on.
+# variant's own parent, which gave the twenty-seven variants twenty-seven DIFFERENT
+# digests for the same bytes and defeated every layer of sharing there is — registry
+# storage, node pulls, and the `docker save` a local import feeds on. Read the comment on
+# that `COPY` before touching it; it is the line this paragraph depends on.
 #
 # Because it is not in image-names.sh, the `manifest` job in build-containers.yml — which
 # is driven by that list — fuses this one by name, immediately after its loop. See there.
 readonly GG_TOOLCHAINS_IMAGE="${IMAGE_NAME_PREFIX}gg-toolchains:${IMAGE_TAG}"
+# The AUDIO STORE image: every published audio pack, as data. Like GG_TOOLCHAINS_IMAGE it
+# is not a RUN image — nothing executes in it and nothing resolves it for a run; it is a
+# `FROM scratch` tree that the DRIVER image copies in at `/opt/tcab-audio` and that
+# `scripts/fetch-audio-store.sh` pulls onto a local checkout. And like it, it IS pushed,
+# and it is deliberately absent from image-names.sh for the same mechanical reason:
+# `build_one` dispatches on that list by name, so an entry there would route it through
+# `build_asset_image`. The manifest job in build-containers.yml fuses this one by name too.
+#
+# A run container is given the packs its test case declares in `[audio] packs`, staged out
+# of this store when the container starts (`crates/core/src/audio_stage.rs`). Publishing
+# the store as its own image is what keeps the R2 presign credentials to ONE build: the
+# driver image, `make -C deployments/local images` and a contributor's `./build.sh` all
+# obtain the store by pulling a public image, so none of them needs a credential and a
+# clean clone can build every run image. See containers/audio-store/Dockerfile.
+readonly AUDIO_STORE_IMAGE="${IMAGE_NAME_PREFIX}audio-store:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 
@@ -441,6 +487,56 @@ build_gg_toolchains() {
 		local reference
 		reference="$(push_and_pin "${GG_TOOLCHAINS_IMAGE}" gg-toolchains)"
 		echo "==> gg-toolchains reference: ${reference}"
+	fi
+}
+
+# The path, within the build context, that the audio store is staged to. The stager owns
+# the tree under it (`tree/` beside a content-addressed download cache in `.cache/`), and
+# the root `.dockerignore` re-includes exactly this directory so the cache never enters a
+# build context. Written out here rather than read from the stager's stdout: the tree is
+# the same one every time, so a fixed path is one fewer contract between the two.
+readonly AUDIO_STORE_OUT="dist/audio-store"
+readonly AUDIO_STORE_STAGE_DIR="${AUDIO_STORE_OUT}/tree"
+
+# Build the audio store: every published audio pack, as a data-only image.
+#
+# This is NOT a run image (see where AUDIO_STORE_IMAGE is defined, and
+# containers/audio-store/Dockerfile). It is the one build in this repository that reads
+# the private audio object store: `scripts/stage-audio-store.mjs` presigns a SHORT-LIVED
+# read-only GET for every published object and verifies each against
+# `containers/sample-packs/objects.lock.json` before it lands, so no credential ever
+# enters an image layer and the build has no path to the original source.
+#
+# EVERY published pack must be complete: a clip missing from the registry, an object with
+# no record in the lock, a failed download, or a digest mismatch aborts the stager, and
+# that is a hard error here rather than a skip — a partial store would stage a run with a
+# palette its case declared and did not get. Publish with
+# `node scripts/build-sample-pack.mjs <pack> --publish` and commit the updated
+# `objects.lock.json` before building this image.
+build_audio_store() {
+	echo "==> staging the audio store into ${AUDIO_STORE_STAGE_DIR}"
+	if ! node "${SCRIPT_DIR}/../scripts/stage-audio-store.mjs" \
+		--out "${SCRIPT_DIR}/../${AUDIO_STORE_OUT}"; then
+		echo "ERROR: cannot build ${AUDIO_STORE_IMAGE}: staging the audio store failed." >&2
+		echo "       Every published pack must be complete (node scripts/build-sample-pack.mjs <pack> --publish)," >&2
+		echo "       and this build needs node plus the CLOUDFLARE_AUDIO_R2_PRESIGN credentials." >&2
+		echo "       No other image build needs them: the store travels as this image." >&2
+		# `return 1` under `set -e` ends the build here, which is the point: an image
+		# published from a partial store would stage a run with a palette its case
+		# declared and did not get.
+		return 1
+	fi
+
+	echo "==> building ${AUDIO_STORE_IMAGE} (FROM scratch; the published audio packs)"
+	"$DOCKER" build \
+		--build-arg "AUDIO_STAGE_DIR=${AUDIO_STORE_STAGE_DIR}" \
+		-t "${AUDIO_STORE_IMAGE}" \
+		-f "${SCRIPT_DIR}/audio-store/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${AUDIO_STORE_IMAGE}" audio-store)"
+		echo "==> audio-store reference: ${reference}"
 	fi
 }
 
@@ -613,7 +709,7 @@ gg_environment_key() {
 #
 # THIS IS THE ASSERTION THE FIRST VERSION OF THE GATE DID NOT HAVE, and its absence was the
 # same mistake in miniature as the one the gate exists to catch. The claim was "two images
-# cover twenty-six, because /opt/gg is byte-identical and there are two parents", and
+# cover twenty-seven, because /opt/gg is byte-identical and there are two parents", and
 # `assert_gg_lineages` was written to keep the "two parents" half honest — which it does, and
 # which was never the half that could go wrong quietly. A run image is not its parent: a
 # dozen of them `apt-get install` a package on top of `base`, apt brings the package's closure
@@ -759,7 +855,7 @@ build_gg_variant() {
 	# cannot run in it must never reach a registry, and `set -euo pipefail` plus the `exit 1`
 	# inside `gg_selfcheck` is what makes a broken arm end the build here rather than one
 	# image later. Only the environment representatives are driven — see GG_SELFCHECK_IMAGES
-	# for why four answer for twenty-six, and `assert_gg_environments` for what keeps that true.
+	# for why five answer for twenty-seven, and `assert_gg_environments` for what keeps that true.
 	if [[ -n "${GG_SELFCHECK_BIN}" ]] && gg_selfcheck_covers "${name}"; then
 		gg_selfcheck "${name}" "${image}"
 	fi
@@ -788,11 +884,11 @@ build_base() {
 
 # Build the Rust/wasm base image `FROM` the base built above plus the shared Rust →
 # WebAssembly toolchain (Rust + the `wasm32-unknown-unknown` target + wasm-bindgen +
-# wasm-pack + binaryen). End-to-end runs resolve this image directly, and the
-# full-stack-2d, adversarial, and performance images are built `FROM` it. Building
-# from the local base tag avoids a registry round-trip and keeps this image pinned to
-# the base produced in this same invocation. The context is the repository root only
-# for `.dockerignore` parity with the other images; this image compiles nothing from
+# wasm-pack + binaryen). End-to-end runs resolve this image directly, and the two
+# full-stack images, adversarial, and performance are built `FROM` it. Building from
+# the local base tag avoids a registry round-trip and keeps this image pinned to the
+# base produced in this same invocation. The context is the repository root only for
+# `.dockerignore` parity with the other images; this image compiles nothing from
 # `crates/` (it installs the public toolchain), so the context is otherwise unused.
 build_base_wasm() {
 	echo "==> building ${BASE_WASM_IMAGE} (FROM ${BASE_IMAGE})"
@@ -833,50 +929,40 @@ build_asset_image() {
 	fi
 }
 
-# Build an audio image (sfx-sample / music) that bakes a content-addressed audio
-# pack. Unlike a plain asset image, the pack is fetched from the private R2 bucket at
-# build time: this resolves the pack's pinned digest + object key from
-# `containers/sample-packs/packs.lock.json`, mints a SHORT-LIVED presigned R2 GET URL
-# for it (needs the read-only PRESIGN credentials in the environment — see
-# `scripts/lib/r2.mjs`), and passes the pack ref, that URL, and the digest as build
-# args. The Dockerfile's `ADD --checksum` then pulls + verifies the tarball; no
-# credential ever enters an image layer.
+# Build a full-stack image: base-wasm plus the asset-generation binaries a full-stack run
+# produces the game's own assets with. The argument is the case's asset DIMENSION — `2d` or
+# `3d` — which is both the image's name suffix and the directory holding its Dockerfile,
+# exactly as `build_asset_image`'s argument is: full-stack-2d bakes the six 2D binaries
+# (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) and full-stack-3d bakes
+# those plus `voxel`, `voxel-anim`, `particle-3d` and the Mesa software-Vulkan runtime those
+# three render their preview PNGs through. A case picks between them with `asset_dimension`
+# (see the crate's `harness::resolve_run_image`); each Dockerfile says what is in its image
+# and, for the 3D one, what (the meshing families, Blender) is deliberately left out.
 #
-# The pack MUST be published: a missing pin, or a presign that fails (missing creds,
-# no node), is a HARD error that fails the build — an audio image is never shipped
-# with an empty palette. Publish a pack with `node scripts/build-sample-pack.mjs
-# <pack> --publish` and commit the pin before building its image.
+# ONE FUNCTION BUILDS BOTH BECAUSE THE TWO ARE SIBLINGS. The 3D image is a superset of the
+# 2D one by CONTENT, but it is built `FROM` base-wasm rather than `FROM` the 2D tag:
+# layering it there would make every 2D run pay for a rebuild of the 3D one, and would put
+# the two images in a dependency order that says nothing true about them. Being siblings,
+# they differ only in which binaries their Dockerfile copies out of the tooling builder —
+# same base, same build args — so what varies between them is the argument below and
+# nothing else.
 #
-# Arguments: <image-name> <pack-ref> <pack-arg> <url-arg> <sha-arg>.
-build_audio_image() {
-	local name="$1" pack_ref="$2" pack_arg="$3" url_arg="$4" sha_arg="$5"
+# Both are `FROM` base-wasm rather than the base, so a full-stack build may author its
+# simulation core in Rust; that is why neither goes through `build_asset_image`.
+#
+# NEITHER BAKES ANY AUDIO. `sfx-sample` and `music` read the packs the run's test case
+# declares in `[audio] packs`, staged into `/opt/audio` when the container starts, so
+# neither build needs audio object-store credentials and publishing a new pack version
+# rebuilds neither of them.
+build_full_stack() {
+	local dimension="$1"
+	local name="full-stack-${dimension}"
 	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
-	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
 
-	# A missing pin is a hard error (not a skip): the pack must be published first.
-	if [[ ! -f "${lock}" ]] || ! grep -q "\"${pack_ref}\"" "${lock}"; then
-		echo "ERROR: cannot build ${image}: pack ${pack_ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
-		echo "       Publish it with: node scripts/build-sample-pack.mjs <pack> --publish" >&2
-		exit 1
-	fi
-
-	# Presign a download URL from the pin. The helper prints two lines: URL, then digest.
-	local presign
-	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${pack_ref}")"; then
-		echo "ERROR: ${pack_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
-		exit 1
-	fi
-	local lines
-	mapfile -t lines <<<"${presign}"
-	local url="${lines[0]}" sha="${lines[1]}"
-
-	echo "==> building ${image} (FROM ${BASE_IMAGE}) with ${pack_arg}=${pack_ref}"
+	echo "==> building ${image} (FROM ${BASE_WASM_IMAGE})"
 	"$DOCKER" build \
-		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "BASE_IMAGE=${BASE_WASM_IMAGE}" \
 		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
-		--build-arg "${pack_arg}=${pack_ref}" \
-		--build-arg "${url_arg}=${url}" \
-		--build-arg "${sha_arg}=${sha}" \
 		-t "${image}" \
 		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
 
@@ -887,126 +973,13 @@ build_audio_image() {
 	fi
 }
 
-# Build the music image, which bakes EVERY instrument bank as a per-name subdirectory
-# so a `music` case's `instrument_bank` selects which palette it plays (see
-# `select_pack_dir` in crates/audio-core/src/config.rs and containers/music/Dockerfile).
-# Each bank is a separately-pinned, content-addressed pack presigned from the private R2
-# bucket at build time; a missing pin or a failed presign for ANY bank is a HARD error
-# (the image is never shipped with a missing palette). The FIRST bank is the default
-# recorded in TCAB_INSTRUMENT_BANK. Each bank's build-arg prefix pairs with the matching
-# ARG block in the Dockerfile, and each name must match its per-name subdir there.
-build_music_image() {
-	local image="${IMAGE_NAME_PREFIX}music:${IMAGE_TAG}"
-	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
-	# The banks baked into the music image, and the Dockerfile ARG prefix each maps to.
-	local banks=("gm-lite@0.1.0" "cinematic@0.1.0" "synthwave@0.1.0")
-	local prefixes=("INSTRUMENT_BANK" "INSTRUMENT_BANK_CINEMATIC" "INSTRUMENT_BANK_SYNTHWAVE")
-
-	local build_args=(
-		--build-arg "BASE_IMAGE=${BASE_IMAGE}"
-		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}"
-	)
-	local i ref presign lines
-	for i in "${!banks[@]}"; do
-		ref="${banks[$i]}"
-		if [[ ! -f "${lock}" ]] || ! grep -q "\"${ref}\"" "${lock}"; then
-			echo "ERROR: cannot build ${image}: bank ${ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
-			echo "       Publish it with: node scripts/build-sample-pack.mjs <bank> --publish" >&2
-			exit 1
-		fi
-		if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${ref}")"; then
-			echo "ERROR: ${ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
-			exit 1
-		fi
-		mapfile -t lines <<<"${presign}"
-		build_args+=(
-			--build-arg "${prefixes[$i]}=${ref}"
-			--build-arg "${prefixes[$i]}_URL=${lines[0]}"
-			--build-arg "${prefixes[$i]}_SHA256=${lines[1]}"
-		)
-	done
-
-	echo "==> building ${image} (FROM ${BASE_IMAGE}) with banks: ${banks[*]}"
-	"$DOCKER" build "${build_args[@]}" \
-		-t "${image}" \
-		-f "${SCRIPT_DIR}/music/Dockerfile" "${SCRIPT_DIR}/.."
-
-	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${image}" music)"
-		echo "==> music reference: ${reference}"
-	fi
-}
-
-# Build the 2D full-stack image: base-wasm plus the six 2D asset-generation binaries
-# (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the two audio packs
-# those tools need (the combat-core sample pack for `sfx-sample`, the gm-lite instrument
-# bank for `music`). It is the union of a plain asset image and BOTH audio images, so it
-# presigns two content-addressed packs from the private R2 bucket at build time (see
-# build_audio_image for the mechanism and credentials) and passes both — plus the base —
-# to the one Dockerfile. Like the audio images, a missing pin or a failed presign for
-# EITHER pack is a HARD error: a full-stack image is never shipped with an empty audio
-# palette. Publish a pack with `node scripts/build-sample-pack.mjs <pack> --publish` and
-# commit the pin before building this image.
-build_full_stack_2d() {
-	local image="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
-	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
-	local sample_ref="combat-core@0.1.0" bank_ref="gm-lite@0.1.0"
-
-	# Both packs must be pinned (not a skip): the image bakes both.
-	local ref
-	for ref in "${sample_ref}" "${bank_ref}"; do
-		if [[ ! -f "${lock}" ]] || ! grep -q "\"${ref}\"" "${lock}"; then
-			echo "ERROR: cannot build ${image}: pack ${ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
-			echo "       Publish it with: node scripts/build-sample-pack.mjs <pack> --publish" >&2
-			exit 1
-		fi
-	done
-
-	# Presign a download URL + digest for each pack (two lines each: URL, then digest).
-	local presign lines
-	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${sample_ref}")"; then
-		echo "ERROR: ${sample_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
-		exit 1
-	fi
-	mapfile -t lines <<<"${presign}"
-	local sample_url="${lines[0]}" sample_sha="${lines[1]}"
-	if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${bank_ref}")"; then
-		echo "ERROR: ${bank_ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
-		exit 1
-	fi
-	mapfile -t lines <<<"${presign}"
-	local bank_url="${lines[0]}" bank_sha="${lines[1]}"
-
-	echo "==> building ${image} (FROM ${BASE_WASM_IMAGE}) with ${sample_ref} + ${bank_ref}"
-	"$DOCKER" build \
-		--build-arg "BASE_IMAGE=${BASE_WASM_IMAGE}" \
-		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
-		--build-arg "SAMPLE_PACK=${sample_ref}" \
-		--build-arg "SAMPLE_PACK_URL=${sample_url}" \
-		--build-arg "SAMPLE_PACK_SHA256=${sample_sha}" \
-		--build-arg "INSTRUMENT_BANK=${bank_ref}" \
-		--build-arg "INSTRUMENT_BANK_URL=${bank_url}" \
-		--build-arg "INSTRUMENT_BANK_SHA256=${bank_sha}" \
-		-t "${image}" \
-		-f "${SCRIPT_DIR}/full-stack-2d/Dockerfile" "${SCRIPT_DIR}/.."
-
-	if [[ -n "${PUSH}" ]]; then
-		local reference
-		reference="$(push_and_pin "${image}" full-stack-2d)"
-		echo "==> full-stack-2d reference: ${reference}"
-	fi
-}
-
 # Build the game-jam image: the full-stack-2d image plus nothing but its own
 # identity (see containers/game-jam/Dockerfile). A game jam is a full-stack-style
 # build but not a full-stack test case, so it resolves its own image; giving it a
 # dedicated tag lets a deployment pin it independently. It is built `FROM` the
 # full-stack-2d image built alongside it (passed as the BASE_IMAGE build arg, the
-# local tag), so it inherits the six asset binaries, the baked audio packs, and the
-# Rust/wasm toolchain — and needs NO R2 credentials of its own (those packs are
-# already baked into the parent). The build context is the repository root like the
-# others.
+# local tag), so it inherits the six asset binaries and the Rust/wasm toolchain. The
+# build context is the repository root like the others.
 build_game_jam() {
 	local image="${IMAGE_NAME_PREFIX}game-jam:${IMAGE_TAG}"
 	echo "==> building ${image} (FROM ${FULL_STACK_2D_IMAGE})"
@@ -1089,32 +1062,28 @@ build_performance() {
 	fi
 }
 
-# Build one image by its short name, dispatching to the right builder: the sfx-sample
-# image carries its pack ref + build-arg names; music bakes every instrument bank
-# (build_music_image); base, adversarial, and performance have dedicated builders;
-# everything else is a plain asset-generation image built `FROM` the base.
+# Build one image by its short name, dispatching to the right builder: base,
+# adversarial, performance, the two full-stack images, game-jam and blender have dedicated
+# builders; everything else — sfx-sample and music included, since neither carries a
+# palette of its own any more — is a plain asset-generation image built `FROM` the base.
 build_one() {
 	case "$1" in
 		base)         build_base ;;
 		base-wasm)    build_base_wasm ;;
 		adversarial)  build_adversarial ;;
 		performance)  build_performance ;;
-		# The full-stack-2d image bakes six binaries AND two content-addressed audio
-		# packs pulled from the private R2 bucket at build time (see
-		# build_full_stack_2d). Both packs must be published + pinned first.
-		full-stack-2d) build_full_stack_2d ;;
+		# The two full-stack images are `FROM` base-wasm rather than the base and bake
+		# their asset binaries out of the shared tooling builder, so they share a builder
+		# of their own (see build_full_stack — the argument is the dimension a case
+		# selects with `asset_dimension`). Neither may fall through to `*)`, which would
+		# build it `FROM` the plain base: an image that builds, resolves, and has no Rust
+		# toolchain in it.
+		full-stack-2d) build_full_stack 2d ;;
+		full-stack-3d) build_full_stack 3d ;;
 		# The game-jam image is built `FROM` the full-stack-2d image (see
 		# build_game_jam); the layered build below ensures full-stack-2d is present
 		# first when only game-jam is selected.
 		game-jam)     build_game_jam ;;
-		# The sfx-sample and music images bake a content-addressed audio pack pulled
-		# from the private R2 bucket at build time (see build_audio_image). Each pack
-		# ref must match the SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and
-		# be published + pinned in packs.lock.json first.
-		sfx-sample)   build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256 ;;
-		# The music image bakes ALL instrument banks (one per-name subdir) so a case's
-		# `instrument_bank` selects its palette — see build_music_image.
-		music)        build_music_image ;;
 		# The Blender character image is self-contained (FROM ubuntu:26.04, NOT the base),
 		# so it has its own builder and takes no BASE_IMAGE arg — see build_blender.
 		blender)      build_blender ;;
@@ -1138,7 +1107,7 @@ mapfile -t ALL_NAMES < <("${SCRIPT_DIR}/image-names.sh")
 
 # Before anything is built: if this build is claiming to gate the `-gg` variants, the claim
 # has to still be true. Both halves of it — the two external references the lineages are
-# rooted at, and the four environments those roots plus the images' own packages make. Cheap
+# rooted at, and the five environments those roots plus the images' own packages make. Cheap
 # (they read the Dockerfiles), and they run first so an uncovered variant is a message rather
 # than an hour of building followed by one.
 if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
@@ -1164,25 +1133,33 @@ readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-j
 image_present() { "$DOCKER" image inspect "$1" >/dev/null 2>&1; }
 
 # Resolve the selection: no args → everything; otherwise exactly the named images.
+# `BUILD_EVERYTHING` records which of the two it was, for the one rule below that turns on
+# the absence of a selection rather than on a name in it (the audio store).
 if [[ $# -eq 0 ]]; then
 	selected=("${ALL_NAMES[@]}")
+	readonly BUILD_EVERYTHING=1
 else
 	selected=("$@")
+	readonly BUILD_EVERYTHING=""
 fi
 
 # Reject an unknown name up front with a clear message, so a mistyped selection
 # (e.g. `voxel-anim` for `voxel-animation`) fails fast instead of building nothing.
 for name in "${selected[@]}"; do
 	found=""
-	# `tools` is accepted although it is not in ALL_NAMES: it is the shared tooling
-	# BUILDER, not a published run image, so `./build.sh tools` is a way to rebuild
-	# just it. The layer-0 rule below is what actually builds it (which is also why
-	# the main build loop skips it).
-	for known in "${ALL_NAMES[@]}" tools; do
+	# `tools` and `audio-store` are accepted although they are not in ALL_NAMES:
+	# neither is a published RUN image (that list is the set a run resolves), and both
+	# are built by a rule of their own, so `./build.sh tools` and
+	# `./build.sh audio-store` are the ways to rebuild just one of them. The layer
+	# rules below are what actually build them, which is also why the main build loop
+	# skips both.
+	for known in "${ALL_NAMES[@]}" tools audio-store; do
 		[[ "$name" == "$known" ]] && { found=1; break; }
 	done
 	if [[ -z "${found}" ]]; then
 		echo "unknown image '${name}'. Known images: ${ALL_NAMES[*]}" >&2
+		echo "       plus the two that are not run images: tools (the shared tooling builder)" >&2
+		echo "       and audio-store (the published audio packs)." >&2
 		exit 1
 	fi
 done
@@ -1193,7 +1170,7 @@ done
 # bake the variant on top of yesterday's sprite. `tools` sorts first — it is the builder
 # everything else copies out of.
 ordered=()
-for known in tools "${ALL_NAMES[@]}"; do
+for known in tools audio-store "${ALL_NAMES[@]}"; do
 	for name in "${selected[@]}"; do
 		if [[ "$name" == "$known" ]]; then
 			ordered+=("$known")
@@ -1240,7 +1217,12 @@ select_has() { local x; for x in "${selected[@]}"; do [[ "$x" == "$1" ]] && retu
 gg_parents=()
 targets=()
 for name in "${selected[@]}"; do
-	if [[ "$name" == *-gg ]]; then
+	if [[ "$name" == audio-store ]]; then
+		# Data only, `FROM scratch`: it is layered onto nothing, bakes no binary out of
+		# the tooling builder, and no image is built `FROM` it — so it contributes
+		# nothing to any rule below and must not drag a base build in behind it.
+		continue
+	elif [[ "$name" == *-gg ]]; then
 		parent="${name%-gg}"
 		if ! select_has "${parent}" && ! image_present "${IMAGE_NAME_PREFIX}${parent}:${IMAGE_TAG}"; then
 			gg_parents+=("${parent}")
@@ -1264,14 +1246,14 @@ select_needs_base() {
 }
 
 # Whether anything to be built is built `FROM` base-wasm (the Rust/wasm middle layer):
-# the full-stack-2d, adversarial, and performance images. `game-jam` is `FROM`
+# the two full-stack images, adversarial, and performance. `game-jam` is `FROM`
 # full-stack-2d (which is `FROM` base-wasm), so it needs base-wasm present too. Such a
 # selection needs base-wasm present, which in turn needs base — all handled below.
 select_needs_base_wasm() {
 	local x
 	for x in "${targets[@]}"; do
 		case "$x" in
-			full-stack-2d | game-jam | adversarial | performance) return 0 ;;
+			full-stack-2d | full-stack-3d | game-jam | adversarial | performance) return 0 ;;
 		esac
 	done
 	return 1
@@ -1335,6 +1317,22 @@ if select_needs_gg_toolchains; then
 	build_gg_toolchains
 fi
 
+# Layer 0c — the audio store, which depends on nothing and which nothing depends on.
+# Built when it is NAMED, and on a full build only under PUSH: staging it needs node and
+# the audio object store's presign credentials, which a contributor does not have and now
+# does not need, so a plain local `./build.sh` skips it with a note and still builds every
+# run image. Nothing is lost by skipping it — no run image reads it, and a local `tcab
+# run` gets the store from the published image with scripts/fetch-audio-store.sh.
+if select_has audio-store; then
+	build_audio_store
+elif [[ -n "${BUILD_EVERYTHING}" ]]; then
+	if [[ -n "${PUSH}" ]]; then
+		build_audio_store
+	else
+		echo "==> skipping ${AUDIO_STORE_IMAGE} (staging it needs the CLOUDFLARE_AUDIO_R2_PRESIGN credentials; build it with ./build.sh audio-store)"
+	fi
+fi
+
 # Layer 1 — the base. `select_needs_base` is true whenever base-wasm or any of its
 # dependents is selected (none of them is `base`/`blender`), so this also covers the
 # base that base-wasm is `FROM`.
@@ -1349,7 +1347,7 @@ fi
 if select_has base-wasm; then
 	build_base_wasm
 elif select_needs_base_wasm && ! image_present "${BASE_WASM_IMAGE}"; then
-	echo "==> base-wasm image ${BASE_WASM_IMAGE} not present; building it first (full-stack-2d/adversarial/performance are FROM it)"
+	echo "==> base-wasm image ${BASE_WASM_IMAGE} not present; building it first (full-stack-2d/full-stack-3d/adversarial/performance are FROM it)"
 	build_base_wasm
 fi
 
@@ -1357,8 +1355,7 @@ fi
 # selected it is built in the main loop below; but when only game-jam is selected we
 # must build its parent first so the `FROM ${FULL_STACK_2D_IMAGE}` resolves. An
 # existing full-stack-2d is reused untouched — select `full-stack-2d` explicitly to
-# rebuild it. (Building it needs the R2 pack credentials; a bare game-jam rebuild
-# against an already-present full-stack-2d does not.)
+# rebuild it.
 if ! select_has full-stack-2d \
 	&& select_needs_full_stack_2d \
 	&& ! image_present "${FULL_STACK_2D_IMAGE}"; then
@@ -1367,7 +1364,7 @@ if ! select_has full-stack-2d \
 	# selection did not trigger the layer-0 rule (game-jam inherits its binaries and
 	# needs no tooling of its own), so build the tooling here before its parent.
 	build_tools
-	build_full_stack_2d
+	build_full_stack 2d
 fi
 
 # Layer 4 — the parent of every selected `-gg` variant that is still missing. Selecting
@@ -1384,7 +1381,7 @@ done
 # handled above. The canonical order in image-names.sh places full-stack-2d before
 # game-jam, so a full build builds the parent before the jam image.
 for name in "${selected[@]}"; do
-	[[ "$name" == base || "$name" == base-wasm || "$name" == tools ]] && continue
+	[[ "$name" == base || "$name" == base-wasm || "$name" == tools || "$name" == audio-store ]] && continue
 	build_one "$name"
 done
 echo "==> done"

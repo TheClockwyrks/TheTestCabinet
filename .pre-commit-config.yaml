@@ -39,9 +39,13 @@ repos:
         # capture-baselines` (draw-command recordings, clips, and stills);
         # `reference/screenshots/` holds the per-variant reference
         # renders of a case's authored mockups (a full-detail gameplay frame is a
-        # large PNG). `reference-impl/<variant>/assets/` holds the sprites, particle
-        # systems, and audio the reference build produced with the asset-generation
-        # tools (a music bed is several MB of WAV). A case version's `showcase/`
+        # large PNG). `reference-impl/<variant>/assets/` and the per-engine layouts that
+        # replaced it — `references/<engine>/assets/` and
+        # `references/<engine>/<variant>/assets/` — hold the sprites, models, particle
+        # systems, and audio the reference build produced with the asset-generation tools
+        # (a music bed is several MB of WAV); all three spellings are named because the
+        # older cases still carry the first and the newer ones use whichever of the other
+        # two their workspace shape calls for. A case version's `showcase/`
         # dirs hold the per-variant showcase media captured from the reference
         # implementation (a solve video is over a megabyte). All are generated
         # wholesale and tracked deliberately.
@@ -68,7 +72,7 @@ repos:
         # there and ignores everything else, plus a whole-directory ignore for
         # `guests/`. That one is about WHETHER a generated artifact may be committed at
         # all; this one is about how big anything may be, anywhere.
-        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/|^test-cases/.*/showcase/'
+        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/|(^|/)references/[^/]+(/[^/]+)?/assets/|^test-cases/.*/showcase/'
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
@@ -161,6 +165,23 @@ repos:
         # the allowlist while no Dockerfile mentions it. Staging the new package is the
         # only moment anything can notice.
         files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^packages/gg-sandbox'
+        pass_filenames: false
+
+      - id: audio-packs
+        name: audio pack declarations
+        description: Reject a version whose [audio] packs is missing, or names a pack that does not resolve against containers/sample-packs/.
+        entry: scripts/ci/audio-packs-check.mjs
+        language: script
+        # Points straight at the CI checker rather than a wrapper under
+        # scripts/hooks/, the way build-context does: the only thing
+        # scripts/ci/audio-packs-lint.sh adds is the `npm ci` a clean CI checkout
+        # needs, and a working tree already has node_modules.
+        #
+        # It reads EVERY version, not the staged ones, so it takes no file
+        # arguments — and it has to, because the rule it enforces is that a
+        # declaration EXISTS: publishing a pack, or retiring one, re-judges every
+        # manifest in the repository rather than only the file that changed.
+        files: '^(test-cases|game-jams)/.*/(test-case|game-jam)\.toml$|^containers/sample-packs/'
         pass_filenames: false
 
       - id: rust-fmt

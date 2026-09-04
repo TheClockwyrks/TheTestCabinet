@@ -7,13 +7,15 @@
 // after one half-life, and `0.5 ^ 2.5`, under a fifth, after two seconds.
 //
 // The decay is measured on a ball IN FLIGHT, the only state real play ever has.
-// To read the decaying spin without the strongly curving shot leaving the field,
-// the paddles are cleared and the ball's POSITION is re-centred between chunks
-// while its velocity and spin carry through untouched; only the elapsed
-// simulation time acts on the spin.
+// The field holds that ball alone — both obstacles removed, both paddles driven
+// out of the mid-field lane — so the two seconds of flight meet nothing that
+// could change the spin, and what is read back is the decay by itself. To keep
+// the strongly curving shot from leaving the field over that time, the ball's
+// POSITION is put back at the centre between chunks while its velocity and spin
+// carry through untouched; only the elapsed simulation time acts on the spin.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CX, FIELD_CY, SPIN_HALFLIFE } from "../../src/constants";
+import { FIELD_CX, FIELD_CY, SPIN_HALFLIFE } from "../constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -25,6 +27,8 @@ import {
   ball0,
   captureReplay,
   createHarness,
+  placeBall,
+  spinBall,
   TICK_HZ,
   type Harness,
 } from "../harness";
@@ -59,13 +63,13 @@ afterEach(() => {
 async function flyFor(h: Harness, ticks: number): Promise<void> {
   for (let done = 0; done < ticks; done += RECENTER_CHUNK) {
     await h.advance(Math.min(RECENTER_CHUNK, ticks - done));
-    h.debug.setBall(0, { x: FIELD_CX, y: FIELD_CY });
+    placeBall(h, FIELD_CX, FIELD_CY);
   }
 }
 
 it("halves the spin every half-life without changing its sign", async () => {
-  await arrangeLiveBall(harness, { x: FIELD_CX, y: FIELD_CY, vx: 400 });
-  harness.debug.setBall(0, { spin: POSED_SPIN });
+  arrangeLiveBall(harness, { x: FIELD_CX, y: FIELD_CY, vx: 400 });
+  spinBall(harness, POSED_SPIN);
   assertCloseTo(ball0(harness.snapshot()).spin, POSED_SPIN, 6);
 
   await captureReplay(harness, "decay", async () => {

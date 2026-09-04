@@ -4,6 +4,13 @@
 // The mirror of `serve-after-p1`, driven out the RIGHT goal so player one
 // scores. Kept as its own check so a build that always serves one way fails the
 // side it gets wrong rather than averaging out across the two.
+//
+// THE FIELD HOLDS ONE BALL AND NOTHING ELSE. `arrangeGoal` clears it and spawns
+// that ball back, with both paddles held out of the lane, so the flight to the
+// goal is a straight line and the point that decides `receiver` is the one this
+// check aimed. `receiver` itself is never posed: `setBallHoldTimer` is the only
+// thing touched between the point and the launch, and it says nothing about
+// which way a serve goes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
@@ -13,7 +20,7 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
-  startPlaying,
+  reachPlay,
   type Harness,
 } from "../harness";
 
@@ -39,9 +46,9 @@ afterEach(() => {
 });
 
 it("serves toward player two after player one scores", async () => {
-  await startPlaying(harness);
-  harness.debug.setScore(0, 0);
-  arrangeGoal(harness, "right");
+  // Opening a match sets both scores to zero (specs/ui.md), so the point below
+  // is the first of the match.
+  await arrangeGoal(harness, "right");
 
   // The point and the serve that answers it, as one continuous section: the
   // direction only means anything beside the point that decided it.
@@ -51,11 +58,9 @@ it("serves toward player two after player one scores", async () => {
     assertEqual(point.snapshot.score.p1, 1);
     assertEqual(point.snapshot.screen, "countdown");
 
-    harness.debug.serve();
-    const launched = await harness.until((s) => s.screen === "playing", {
-      maxFrames: 60,
-      poll: 1,
-    });
+    // The hold the point reopened is cut to zero; the LAUNCH is the build's own,
+    // on the frame after, and `reachPlay` stops on it.
+    const launched = await reachPlay(harness);
     await harness.advance(FLIGHT_TICKS);
 
     assertEqual(launched.hit, true);

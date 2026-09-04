@@ -19,6 +19,13 @@
 // resolves the contact leaves in where the normal is taken. A build that
 // reflects against the upright box whatever it draws passes the first and fails
 // the second.
+//
+// THE FIELD HOLDS ONE BALL AND OBSTACLE A. A bank shot is about the one body it
+// strikes, and the other obstacle sways across the field at every clock value,
+// so there is no geometry that would keep it clear of a shot fired at two
+// different orientations — it comes off the field instead. The clock is stopped
+// at each posed value, so the face the ball meets holds the orientation the
+// reading is taken against for the whole crossing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -32,10 +39,15 @@ import {
   ball0,
   captureReplay,
   createHarness,
+  isolateBall,
+  placeBall,
   startPlaying,
   type Harness,
 } from "../harness";
-import { poseObstacles, type ObstaclePose } from "./harness";
+import { obstacleAt, poseObstacles, type ObstaclePose } from "./harness";
+
+/** The obstacle the shot is fired at: A, the first of the two. */
+const OBSTACLE = 0;
 
 /** The clock at which the obstacles have turned a quarter turn. */
 const TILT_T = Math.PI / 4 / OBSTACLE_SPIN_RATE;
@@ -71,12 +83,10 @@ async function shootLevelAt(
   h: Harness,
   obstacle: ObstaclePose,
 ): Promise<{ hit: boolean; vx: number; vy: number; speed: number }> {
-  await h.debug.setBall(0, {
+  await placeBall(h, {
     x: obstacle.cx - RUN_UP,
     y: obstacle.cy,
     vx: SERVE_SPEED,
-    vy: 0,
-    spin: 0,
   });
   // The contact has resolved once the velocity is no longer the posed one.
   const r = await h.until(
@@ -99,9 +109,10 @@ afterEach(async () => {
 
 it("reflects about the face's normal at its current orientation", async () => {
   await startPlaying(harness);
+  await isolateBall(harness, 0, [OBSTACLE]);
 
   // 1. Upright. A vertical face returns a level shot level.
-  const upright = (await poseObstacles(harness, 0))[0]!;
+  const upright = obstacleAt(await poseObstacles(harness, 0), OBSTACLE);
   const straight = await shootLevelAt(harness, upright);
   assertEqual(straight.hit, true, "the upright shot reaches the obstacle");
   assertLessThanOrEqual(
@@ -112,7 +123,7 @@ it("reflects about the face's normal at its current orientation", async () => {
   assertCloseTo(straight.speed, SERVE_SPEED, 3);
 
   // 2. The same shot against the face turned a quarter turn.
-  const tilted = (await poseObstacles(harness, TILT_T))[0]!;
+  const tilted = obstacleAt(await poseObstacles(harness, TILT_T), OBSTACLE);
   const deflected = await captureReplay(harness, "oriented", async () => {
     const shot = await shootLevelAt(harness, tilted);
     await harness.advance(DEPARTURE_TICKS);

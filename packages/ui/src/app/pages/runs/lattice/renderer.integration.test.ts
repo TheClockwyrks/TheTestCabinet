@@ -2,8 +2,21 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { Engine, Renderer, type Atlas, type Board, type Sheet, type Snapshot } from "./renderer";
-import { matchItems, placeItems } from "./interpolate";
+import {
+  Engine,
+  Renderer,
+  type Atlas,
+  type Board,
+  type Sheet,
+  type Snapshot,
+} from "./renderer";
+import {
+  matchItems,
+  placeItems,
+  tweenItems,
+  TILE,
+  type ItemPoint,
+} from "./interpolate";
 
 // End-to-end check that the three pieces actually compose: the real vendored
 // `lattice-core.wasm` (the authoritative engine), the real packed atlas, and the
@@ -26,6 +39,8 @@ interface DrawCall {
   sh: number;
   dx: number;
   dy: number;
+  dw: number;
+  dh: number;
 }
 function recordingContext() {
   const draws: DrawCall[] = [];
@@ -63,10 +78,12 @@ function recordingContext() {
       sh: number,
       dx: number,
       dy: number,
+      dw: number,
+      dh: number,
     ) => {
       // Record the destination in world space (the stub only ever translates and
       // rotates, and rotation never moves the centre we care about).
-      draws.push({ sx, sy, sw, sh, dx: cur.x + dx, dy: cur.y + dy });
+      draws.push({ sx, sy, sw, sh, dx: cur.x + dx, dy: cur.y + dy, dw, dh });
     },
   };
   return { ctx: ctx as unknown as CanvasRenderingContext2D, draws, rotations };
@@ -78,7 +95,15 @@ const SCENARIO = {
   ticks: 300,
   snapshots: [150, 300],
   entities: [
-    { type: "source", x: 0, y: 1, dir: "E", item: "iron-ore", lane: "both", period: 6 },
+    {
+      type: "source",
+      x: 0,
+      y: 1,
+      dir: "E",
+      item: "iron-ore",
+      lane: "both",
+      period: 6,
+    },
     { type: "belt", x: 1, y: 1, dir: "E", tier: "fast" },
     { type: "belt", x: 2, y: 1, dir: "E", tier: "fast" },
     { type: "splitter", x: 3, y: 1, dir: "E" },
@@ -95,7 +120,9 @@ let board: Board;
 
 beforeAll(async () => {
   atlas = JSON.parse(readFileSync(join(ASSETS, "sheet.json"), "utf8")) as Atlas;
-  engine = await Engine.instantiate(readFileSync(join(ASSETS, "lattice-core.wasm")));
+  engine = await Engine.instantiate(
+    readFileSync(join(ASSETS, "lattice-core.wasm")),
+  );
   expect(engine.load(SCENARIO)).toBe(true);
   board = engine.board();
 });
@@ -153,7 +180,9 @@ describe("lattice playback stack", () => {
     new Renderer(ctx, sheet()).draw(board, null, snap, 0, 0);
     // The one north-facing belt turns a quarter anticlockwise; everything else
     // here faces east (no turn) and the assembler is non-rotatable.
-    expect(rotations.filter((r) => Math.abs(r + Math.PI / 2) < 1e-9)).toHaveLength(1);
+    expect(
+      rotations.filter((r) => Math.abs(r + Math.PI / 2) < 1e-9),
+    ).toHaveLength(1);
   });
 
   it("draws items once they are riding the belts", () => {
@@ -163,7 +192,7 @@ describe("lattice playback stack", () => {
     const { ctx, draws } = recordingContext();
     new Renderer(ctx, sheet()).draw(board, null, snap!, 0, 0);
     // Item icons are the only 16x16 draws.
-    const items = draws.filter((d) => d.sw === 16 && d.sh === 16);
+    const items = draws.filter((d) => d.dw === 16 && d.dh === 16);
     expect(items.length).toBeGreaterThan(0);
     for (const it of items) {
       expect(it.dx).toBeGreaterThanOrEqual(0);
@@ -190,7 +219,15 @@ describe("lattice playback stack", () => {
         ticks: 400,
         snapshots: [400],
         entities: [
-          { type: "source", x: 0, y: 1, dir: "E", item: "iron-ore", lane: "both", period: 2 },
+          {
+            type: "source",
+            x: 0,
+            y: 1,
+            dir: "E",
+            item: "iron-ore",
+            lane: "both",
+            period: 2,
+          },
           { type: "belt", x: 1, y: 1, dir: "E", tier: "fast" },
           { type: "belt", x: 2, y: 1, dir: "E", tier: "fast" },
         ],
@@ -214,6 +251,139 @@ describe("lattice playback stack", () => {
     }
   });
 
+  it("glides an item consumed at the sink forward instead of freezing it short", async () => {
+    // A leaving item — matched with a `from` but no `to` — is one the engine
+    // consumed at a sink this tick. Its last belt position is one belt step short
+    // of the sink, so it must slide FORWARD into the sink over the tween rather than
+    // sit frozen and pop. Uses its own short belt→sink so the leaving pair is easy
+    // to find.
+    const line = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    expect(
+      line.load({
+        version: 1,
+        grid: { width: 8, height: 4 },
+        ticks: 400,
+        snapshots: [400],
+        entities: [
+          {
+            type: "source",
+            x: 0,
+            y: 1,
+            dir: "E",
+            item: "iron-ore",
+            lane: "both",
+            period: 4,
+          },
+          { type: "belt", x: 1, y: 1, dir: "E", tier: "fast" },
+          { type: "belt", x: 2, y: 1, dir: "E", tier: "fast" },
+          { type: "sink", x: 3, y: 1, dir: "W" },
+        ],
+      }),
+    ).toBe(true);
+    const lineBoard = line.board();
+
+    // Scan for a tick that actually consumes an item (a from-only pair).
+    let leaving: { from: ItemPoint } | null = null;
+    let prev: Snapshot | null = line.step();
+    for (let i = 0; i < 300 && !leaving; i++) {
+      const next = line.step();
+      if (!next) break;
+      const pairs = matchItems(
+        placeItems(lineBoard, prev!, atlas.cellSize),
+        placeItems(lineBoard, next, atlas.cellSize),
+      );
+      const gone = pairs.find((p) => p.from && !p.to);
+      if (gone) leaving = { from: gone.from! };
+      prev = next;
+    }
+    expect(
+      leaving,
+      "expected some tick where an item is consumed at the sink",
+    ).not.toBeNull();
+
+    const { from } = leaving!;
+    // The item advances along its own travel vector across the tween — forward at
+    // the midpoint, a full step by the end — rather than holding `from` the whole way.
+    const step = Math.hypot(from.stepX, from.stepY);
+    expect(step).toBeGreaterThan(0);
+    const dist = (t: number) => {
+      const [d] = tweenItems([{ from, to: null }], t);
+      return Math.hypot(d!.x - from.x, d!.y - from.y);
+    };
+    expect(dist(0)).toBeCloseTo(0);
+    expect(dist(0.5)).toBeCloseTo(step * 0.5);
+    expect(dist(1)).toBeCloseTo(step);
+  });
+
+  it("keeps a DENSE belt flowing into a sink instead of freezing it", async () => {
+    // The bug the glide alone did NOT fix. A PACKED belt draining into a sink is in
+    // steady state — the same item positions each tick — so the count-first matcher
+    // pins every item to a same-position slot and the run FREEZES at the sink, items
+    // visibly stacking (the gap to the item behind shrinking) while still being
+    // consumed. A sink-bound line must instead be seen flowing, its front item leaving
+    // each tick. Source period 1 keeps the belt fully packed — the case a period-4
+    // (sparse) belt never exercises.
+    const packed = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    expect(
+      packed.load({
+        version: 1,
+        grid: { width: 8, height: 4 },
+        ticks: 600,
+        snapshots: [600],
+        entities: [
+          {
+            type: "source",
+            x: 0,
+            y: 1,
+            dir: "E",
+            item: "iron-ore",
+            lane: "both",
+            period: 1,
+          },
+          { type: "belt", x: 1, y: 1, dir: "E", tier: "fast" },
+          { type: "belt", x: 2, y: 1, dir: "E", tier: "fast" },
+          { type: "belt", x: 3, y: 1, dir: "E", tier: "fast" },
+          { type: "sink", x: 4, y: 1, dir: "W" },
+        ],
+      }),
+    ).toBe(true);
+    const packedBoard = packed.board();
+
+    // Warm up until the line is packed and in steady state.
+    let prev: Snapshot | null = packed.step();
+    for (let i = 0; i < 200; i++) prev = packed.step();
+
+    // Over many consecutive tick-pairs: no item on a sink-bound line is ever frozen
+    // (matched to a same-position slot), and items really are consumed over the span.
+    let frozenOnSink = 0;
+    let leftTotal = 0;
+    for (let t = 0; t < 100; t++) {
+      const next = packed.step();
+      if (!prev || !next) break;
+      const a = placeItems(packedBoard, prev, atlas.cellSize);
+      const c = placeItems(packedBoard, next, atlas.cellSize);
+      const sinkLines = new Set(a.filter((p) => p.toSink).map((p) => p.line));
+      for (const p of matchItems(a, c)) {
+        if (p.from && !p.to) leftTotal++;
+        if (
+          p.from &&
+          p.to &&
+          sinkLines.has(p.from.line) &&
+          Math.abs(p.to.along - p.from.along) < 1e-6
+        ) {
+          frozenOnSink++;
+        }
+      }
+      prev = next;
+    }
+    expect(frozenOnSink).toBe(0); // never frozen on a belt draining into a sink
+    expect(leftTotal).toBeGreaterThan(0); // items really are consumed
+  });
+
   it("moves items smoothly between two ticks rather than snapping", () => {
     // Scan for a tick where items are actually flowing: a belt can be stalled at
     // any given tick, so pinning the assertion to a fixed tick would test the
@@ -228,7 +398,9 @@ describe("lattice playback stack", () => {
         placeItems(board, prev!, atlas.cellSize),
         placeItems(board, next, atlas.cellSize),
       );
-      const moving = pairs.findIndex((p) => p.from && p.to && p.to.along - p.from.along > 1);
+      const moving = pairs.findIndex(
+        (p) => p.from && p.to && p.to.along - p.from.along > 1,
+      );
       if (moving >= 0) found = { prev: prev!, next, index: moving };
       prev = next;
     }
@@ -236,8 +408,14 @@ describe("lattice playback stack", () => {
 
     const at = (alpha: number) => {
       const { ctx, draws } = recordingContext();
-      new Renderer(ctx, sheet()).draw(board, found!.prev, found!.next, alpha, 0);
-      return draws.filter((d) => d.sw === 16 && d.sh === 16).map((d) => d.dx);
+      new Renderer(ctx, sheet()).draw(
+        board,
+        found!.prev,
+        found!.next,
+        alpha,
+        0,
+      );
+      return draws.filter((d) => d.dw === 16 && d.dh === 16).map((d) => d.dx);
     };
     const start = at(0);
     const mid = at(0.5);
@@ -260,7 +438,6 @@ describe("lattice playback stack", () => {
     }
   });
 
-
   it("replays identically after a reset", () => {
     engine.reset();
     const a: string[] = [];
@@ -282,7 +459,15 @@ describe("inserter animation", () => {
     ticks: 600,
     snapshots: [600],
     entities: [
-      { type: "source", x: 0, y: 1, dir: "E", item: "iron-ore", lane: "both", period: 3 },
+      {
+        type: "source",
+        x: 0,
+        y: 1,
+        dir: "E",
+        item: "iron-ore",
+        lane: "both",
+        period: 3,
+      },
       { type: "belt", x: 1, y: 1, dir: "E", tier: "fast" },
       { type: "inserter", x: 2, y: 1, dir: "E", tier: "base" },
       { type: "sink", x: 3, y: 1, dir: "W" },
@@ -312,7 +497,9 @@ describe("inserter animation", () => {
     const belt = b.entities.find((e) => e.type === "belt")!;
     expect(belt.speed).toBeGreaterThan(0);
     // Only belts carry it.
-    expect(b.entities.find((e) => e.type === "inserter")!.speed).toBeUndefined();
+    expect(
+      b.entities.find((e) => e.type === "inserter")!.speed,
+    ).toBeUndefined();
   });
 
   it("holds a rest frame while idle and uses delivery frames while carrying", async () => {
@@ -322,7 +509,10 @@ describe("inserter animation", () => {
     expect(engine.load(INSERTER_SCENARIO)).toBe(true);
     const b = engine.board();
     const insIndex = b.entities.findIndex((e) => e.type === "inserter");
-    const total = atlas.entities.inserter!.frames.length;
+    // The renderer draws the inserter's tier-1 swing (the first 12 of the 36 frames);
+    // the arc is measured over that one cycle, not the whole three-tier row.
+    const total = (atlas.entities.inserter as { tiers: { loop: number[] }[] })
+      .tiers[0]!.loop.length;
     const half = Math.floor(total / 2);
 
     // The frame drawn for the inserter is the only 64x64 blit.
@@ -368,19 +558,25 @@ describe("inserter animation", () => {
       grid: { width: 3, height: 1 },
       ticks: 1,
       snapshots: [1],
-      entities: [{ type: "inserter", x: 1, y: 0, dir: "E", tiles: [[1, 0]], swing: 10 }],
+      entities: [
+        { type: "inserter", x: 1, y: 0, dir: "E", tiles: [[1, 0]], swing: 10 },
+      ],
     };
     // Tile (1,0)'s centre is (48,16); a 16x16 icon centred there lands at dx=40.
     const centreDx = 40;
     const carrying = (swingLeft: number): Snapshot => ({
       tick: 1,
       checksum: "",
-      entities: [{ inserter: { phase: "swing", held: "iron-ore", swing_left: swingLeft } }],
+      entities: [
+        {
+          inserter: { phase: "swing", held: "iron-ore", swing_left: swingLeft },
+        },
+      ],
     });
     const itemDx = (snap: Snapshot): number => {
       const { ctx, draws } = recordingContext();
       new Renderer(ctx, sheet()).draw(hand, null, snap, 0, 0);
-      return draws.find((d) => d.sw === 16 && d.sh === 16)!.dx;
+      return draws.find((d) => d.dw === 16 && d.dh === 16)!.dx;
     };
     // Swing full (swing_left = total): claw at the pickup tile, west of the pivot.
     expect(itemDx(carrying(10))).toBeLessThan(centreDx);
@@ -399,19 +595,295 @@ describe("inserter animation", () => {
       grid: { width: 3, height: 3 },
       ticks: 1,
       snapshots: [1],
-      entities: [{ type: "inserter", x: 1, y: 1, dir: "S", tiles: [[1, 1]], swing: 10 }],
+      entities: [
+        { type: "inserter", x: 1, y: 1, dir: "S", tiles: [[1, 1]], swing: 10 },
+      ],
     };
     const snap: Snapshot = {
       tick: 1,
       checksum: "",
-      entities: [{ inserter: { phase: "swing", held: "iron-ore", swing_left: 10 } }],
+      entities: [
+        { inserter: { phase: "swing", held: "iron-ore", swing_left: 10 } },
+      ],
     };
     const { ctx, draws } = recordingContext();
     new Renderer(ctx, sheet()).draw(board, null, snap, 0, 0);
-    const item = draws.find((d) => d.sw === 16 && d.sh === 16)!;
+    const item = draws.find((d) => d.dw === 16 && d.dh === 16)!;
     // Tile (1,1)'s centre is (48,48); a centred icon lands at (40,40). North of the
     // pivot means dy well above that, with barely any horizontal shift.
     expect(item.dy).toBeLessThan(40);
     expect(Math.abs(item.dx - 40)).toBeLessThan(2);
   });
+
+  it("draws a bending belt with its curve frames, straight belts with straight frames", () => {
+    // A belt whose SOLE feeder is a perpendicular belt is a curve; the renderer must
+    // draw it from the belt sheet's curve frames, not the straight loop. Here the
+    // fast belt at (1,0) faces south but is fed from the WEST by the east belt at
+    // (0,0) — a 90° turn — while (1,1) is fed straight-through from the north.
+    const board: Board = {
+      version: 1,
+      grid: { width: 4, height: 4 },
+      ticks: 1,
+      snapshots: [1],
+      entities: [
+        { type: "belt", x: 0, y: 0, dir: "E", tier: "fast", tiles: [[0, 0]] },
+        { type: "belt", x: 1, y: 0, dir: "S", tier: "fast", tiles: [[1, 0]] },
+        { type: "belt", x: 1, y: 1, dir: "S", tier: "fast", tiles: [[1, 1]] },
+      ],
+    };
+    const empty = { belt: { left: [], right: [] } };
+    const snap: Snapshot = {
+      tick: 1,
+      checksum: "",
+      entities: [empty, empty, empty],
+    };
+    const { ctx, draws } = recordingContext();
+    new Renderer(ctx, sheet()).draw(board, null, snap, 0, 0);
+
+    // Fast-tier belt frames: straight loop starts at sheet x=512, curve loop at x=768.
+    const beltDraws = draws.filter((d) => d.sw === 32 && d.sh === 32);
+    // The curve belt at (1,0) lands at dest (32,0) and must use a CURVE frame.
+    const curve = beltDraws.find(
+      (d) => Math.abs(d.dx - 32) < 1 && Math.abs(d.dy) < 1,
+    )!;
+    expect(curve.sx).toBeGreaterThanOrEqual(768);
+    // The straight belt at (0,0) lands at (0,0) and must use a STRAIGHT frame.
+    const straight = beltDraws.find(
+      (d) => Math.abs(d.dx) < 1 && Math.abs(d.dy) < 1,
+    )!;
+    expect(straight.sx).toBeGreaterThanOrEqual(512);
+    expect(straight.sx).toBeLessThan(768);
+    // The through-fed belt at (1,1) is NOT a curve (straight frame).
+    const through = beltDraws.find(
+      (d) => Math.abs(d.dx - 32) < 1 && Math.abs(d.dy - 32) < 1,
+    )!;
+    expect(through.sx).toBeGreaterThanOrEqual(512);
+    expect(through.sx).toBeLessThan(768);
+  });
+
+  it("draws a side-load junction (two perpendicular feeders) straight, not as a curve", () => {
+    // Belt (1,1) faces east and is fed by TWO perpendicular belts — (1,0) from the
+    // north and (1,2) from the south — with no straight feed. That is a side-load
+    // junction, not a curve, so it must draw a STRAIGHT frame (the engine likewise
+    // treats it as a merge, not a run continuation).
+    const board: Board = {
+      version: 1,
+      grid: { width: 4, height: 4 },
+      ticks: 1,
+      snapshots: [1],
+      entities: [
+        { type: "belt", x: 1, y: 0, dir: "S", tier: "fast", tiles: [[1, 0]] },
+        { type: "belt", x: 1, y: 2, dir: "N", tier: "fast", tiles: [[1, 2]] },
+        { type: "belt", x: 1, y: 1, dir: "E", tier: "fast", tiles: [[1, 1]] },
+      ],
+    };
+    const empty = { belt: { left: [], right: [] } };
+    const snap: Snapshot = {
+      tick: 1,
+      checksum: "",
+      entities: [empty, empty, empty],
+    };
+    const { ctx, draws } = recordingContext();
+    new Renderer(ctx, sheet()).draw(board, null, snap, 0, 0);
+    const junction = draws
+      .filter((d) => d.sw === 32 && d.sh === 32)
+      .find((d) => Math.abs(d.dx - 32) < 1 && Math.abs(d.dy - 32) < 1)!;
+    expect(junction.sx).toBeGreaterThanOrEqual(512);
+    expect(junction.sx).toBeLessThan(768); // straight frame, NOT the curve loop at 768
+  });
+
+  it("rides an item through a curve on the arc, not straight across the tile", () => {
+    // Same E→S curve at (1,0). An item mid-tile on the LEFT (outer) lane must sit on
+    // the arc — bowed toward the tile's far corner — not on the straight vertical line
+    // an ordinary south belt would draw it on.
+    const board: Board = {
+      version: 1,
+      grid: { width: 4, height: 4 },
+      ticks: 1,
+      snapshots: [1],
+      entities: [
+        {
+          type: "belt",
+          x: 0,
+          y: 0,
+          dir: "E",
+          tier: "fast",
+          speed: 64,
+          tiles: [[0, 0]],
+        },
+        {
+          type: "belt",
+          x: 1,
+          y: 0,
+          dir: "S",
+          tier: "fast",
+          speed: 64,
+          tiles: [[1, 0]],
+        },
+      ],
+    };
+    const cell = sheet().atlas.cellSize;
+    const mid = [{ pos: TILE / 2, item: "iron-ore" }];
+    const from = placeItems(
+      board,
+      {
+        tick: 1,
+        checksum: "",
+        entities: [
+          { belt: { left: [], right: [] } },
+          { belt: { left: mid, right: [] } },
+        ],
+      },
+      cell,
+      (x, y) => (x === 1 && y === 0 ? "E" : undefined),
+    );
+    const p = from.find((i) => i.item === "iron-ore")!;
+    // Radial center is the SW corner of (1,0) = (cell, cell). A straight south belt
+    // would place a left-lane item on the vertical line x = cell/4; the arc pushes it
+    // out toward +x (bowing toward the NE), so its x clears the tile's centre line.
+    expect(p.x).toBeGreaterThan(cell / 2);
+    expect(Math.hypot(p.x - cell, p.y - cell)).toBeCloseTo((cell / 2) * 1.5); // outer radius
+  });
+
+  it("bridges every perpendicular hand-off so no item is drawn on two belts at once", async () => {
+    // A real chain that exercises both seam kinds: a source feeds two E belts, an
+    // E→S→E double curve, then a straight belt that side-loads onto a south belt with
+    // its own (coal) feed. Stepping the authoritative engine, every tick where an item
+    // crosses a curve or side-load must come out of the matcher as ONE gliding pair,
+    // never a leaving copy AND an entering copy of the same item — the double image.
+    const eng = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    const scenario = {
+      version: 1,
+      grid: { width: 10, height: 8 },
+      ticks: 80,
+      snapshots: [80],
+      entities: [
+        {
+          type: "source",
+          x: 0,
+          y: 0,
+          dir: "E",
+          item: "iron-ore",
+          lane: "left",
+          period: 4,
+        },
+        {
+          type: "source",
+          x: 0,
+          y: 0,
+          dir: "E",
+          item: "copper-ore",
+          lane: "right",
+          period: 4,
+        },
+        { type: "belt", x: 1, y: 0, dir: "E", tier: "fast" },
+        { type: "belt", x: 2, y: 0, dir: "E", tier: "fast" },
+        { type: "belt", x: 3, y: 0, dir: "S", tier: "fast" }, // curve E→S
+        { type: "belt", x: 3, y: 1, dir: "E", tier: "fast" }, // curve S→E
+        { type: "belt", x: 4, y: 1, dir: "E", tier: "fast" }, // side-loads onto (5,1)
+        {
+          type: "source",
+          x: 5,
+          y: 0,
+          dir: "S",
+          item: "coal",
+          lane: "both",
+          period: 8,
+        },
+        { type: "belt", x: 5, y: 1, dir: "S", tier: "fast" }, // target: own feed + side-load
+        { type: "belt", x: 5, y: 2, dir: "S", tier: "fast" },
+        { type: "sink", x: 5, y: 3, dir: "N" },
+      ],
+    };
+    expect(eng.load(scenario)).toBe(true);
+    const brd = eng.board();
+    const cell = atlas.cellSize;
+    const AX: Record<string, [number, number]> = {
+      E: [1, 0],
+      W: [-1, 0],
+      S: [0, 1],
+      N: [0, -1],
+    };
+
+    let prev: Snapshot | null = null;
+    let bridgedCount = 0; // matched pairs whose ends are on different lines = a seam
+    for (let i = 0; i < 60; i++) {
+      const next = eng.step();
+      if (!next) break;
+      if (prev) {
+        const pairs = matchItems(
+          placeItems(brd, prev, cell),
+          placeItems(brd, next, cell),
+        );
+        const fromOnly = pairs
+          .filter((p) => p.from && !p.to)
+          .map((p) => p.from!);
+        const toOnly = pairs.filter((p) => !p.from && p.to).map((p) => p.to!);
+        for (const f of fromOnly) {
+          for (const t of toOnly) {
+            const bridged =
+              f.item === t.item &&
+              f.bx + AX[f.dir]![0] === t.bx &&
+              f.by + AX[f.dir]![1] === t.by;
+            expect(
+              bridged,
+              `tick ${next.tick}: unbridged ${f.item} crossing ` +
+                `(${f.bx},${f.by})→(${t.bx},${t.by}) would draw two copies`,
+            ).toBe(false);
+          }
+        }
+        bridgedCount += pairs.filter(
+          (p) => p.from && p.to && p.from.line !== p.to.line,
+        ).length;
+      }
+      prev = next;
+    }
+    // Non-vacuous: items really did cross the curves and side-load, and were bridged.
+    expect(bridgedCount).toBeGreaterThan(0);
+  });
+});
+
+// The Reference tab hands each of these committed scenarios to the vendored engine
+// and draws what comes back. Everything about that path is checked elsewhere except
+// the one thing only the real engine can answer: does it ACCEPT them? A windowed
+// scenario is a hand-edited file — its snapshot schedule is rewritten to fit the cut
+// timeline — and `playback_load` reports a rejection as a bare `false`, which the
+// player can only surface as "the engine rejected this scenario". So load each one
+// for real, and confirm it produces the factory the tab promises.
+describe("reference playback scenarios", () => {
+  for (const name of ["small", "medium", "large"]) {
+    it(`${name} loads into the reference engine and steps its factory`, async () => {
+      const scenario = JSON.parse(
+        readFileSync(join(ASSETS, `reference-${name}.json`), "utf8"),
+      ) as { grid: { width: number; height: number }; entities: unknown[] };
+      const engine = await Engine.instantiate(
+        readFileSync(join(ASSETS, "lattice-core.wasm")),
+      );
+      expect(engine.load(scenario)).toBe(true);
+
+      const board = engine.board();
+      expect(board.grid).toEqual(scenario.grid);
+      expect(board.entities).toHaveLength(scenario.entities.length);
+
+      // Step past the sources' first emissions. A factory that loaded but never put
+      // an item on a belt would play as a still life, which is exactly the failure a
+      // bad window (or a layout cropped to nothing) produces.
+      let carried = false;
+      for (let i = 0; i < 200; i++) {
+        const frame = engine.step();
+        expect(frame).not.toBeNull();
+        carried ||= frame!.entities.some(
+          (state) =>
+            "belt" in state &&
+            (state.belt.left.length > 0 || state.belt.right.length > 0),
+        );
+      }
+      expect(
+        carried,
+        `${name} never moved an item in its first 200 ticks`,
+      ).toBe(true);
+    });
+  }
 });

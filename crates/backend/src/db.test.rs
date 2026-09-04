@@ -5363,6 +5363,7 @@ fn auto_validated_record(id: &str) -> RunRecord {
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![AutoVerdict {
             id: "a".to_string(),
@@ -7208,6 +7209,7 @@ fn validator_manifest() -> crate::store::StoredManifest {
         validation: Some(StoredReviewValidation {
             script: format!("gameplay/{id}"),
             per_engine: true,
+            engines: vec![],
             outputs: vec![],
         }),
         failure_cap: Some(cap),
@@ -7244,6 +7246,7 @@ fn validator_manifest() -> crate::store::StoredManifest {
         r#match: None,
         replay: None,
         asset_kind: test_cabinet_core::AssetKind::Sprite,
+        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -7251,6 +7254,7 @@ fn validator_manifest() -> crate::store::StoredManifest {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         prompt_template: "build it".to_string(),
         common_specs: vec![],
         workspace: Default::default(),
@@ -7298,6 +7302,7 @@ fn validator_record(id: &str, verdicts: &[(&str, bool)]) -> RunRecord {
             gates: true,
             ran: true,
             precondition_unmet: false,
+            inconclusive: None,
             detail: None,
             verdicts: vec![AutoVerdict {
                 id: point.to_string(),

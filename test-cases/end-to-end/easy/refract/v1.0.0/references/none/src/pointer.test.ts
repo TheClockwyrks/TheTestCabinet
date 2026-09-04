@@ -34,9 +34,9 @@ describe("samples", () => {
     target.dispatchEvent(new PointerEvt("pointermove", 30, 40));
     target.dispatchEvent(new PointerEvt("pointerup", 30, 40));
     expect(input.samples()).toEqual([
-      { type: "down", x: 10, y: 20 },
-      { type: "move", x: 30, y: 40 },
-      { type: "up", x: 30, y: 40 },
+      { type: "down", x: 10, y: 20, device: "mouse", primary: true },
+      { type: "move", x: 30, y: 40, device: "mouse", primary: true },
+      { type: "up", x: 30, y: 40, device: "mouse", primary: true },
     ]);
   });
 
@@ -54,7 +54,7 @@ describe("samples", () => {
   it("maps every sample through the stage map it was given", () => {
     const { target, input } = pointer((x, y) => ({ x: x / 2, y: y / 2 }));
     target.dispatchEvent(new PointerEvt("pointerdown", 100, 200));
-    expect(input.samples()).toEqual([{ type: "down", x: 50, y: 100 }]);
+    expect(input.samples()).toEqual([{ type: "down", x: 50, y: 100, device: "mouse", primary: true }]);
   });
 
   it("treats pointercancel as the release it is", () => {
@@ -80,11 +80,18 @@ describe("samples", () => {
     ]);
   });
 
-  it("ignores a non-primary pointer entirely", () => {
+  it("lists a non-primary pointer but leaves the position and the hold alone", () => {
     const { target, input } = pointer();
     target.dispatchEvent(new PointerEvt("pointerdown", 9, 9, false));
-    expect(input.samples()).toEqual([]);
-    expect(input.current().down).toBe(false);
+    // The game acts on the primary pointer alone, so the sample is listed and
+    // the snapshot the game mirrors does not move (specs/controls.md).
+    expect(input.samples().map((sample) => sample.primary)).toEqual([false]);
+    expect(input.current()).toEqual({
+      x: 0,
+      y: 0,
+      down: false,
+      device: "mouse",
+    });
   });
 
   it("ignores an event carrying no client coordinates", () => {
@@ -97,12 +104,12 @@ describe("samples", () => {
 describe("current", () => {
   it("tracks the mapped position and the pressed bit", () => {
     const { target, input } = pointer();
-    expect(input.current()).toEqual({ x: 0, y: 0, down: false });
+    expect(input.current()).toEqual({ x: 0, y: 0, down: false, device: "mouse" });
     target.dispatchEvent(new PointerEvt("pointerdown", 10, 20));
-    expect(input.current()).toEqual({ x: 10, y: 20, down: true });
+    expect(input.current()).toEqual({ x: 10, y: 20, down: true, device: "mouse" });
     target.dispatchEvent(new PointerEvt("pointermove", 30, 40));
     target.dispatchEvent(new PointerEvt("pointerup", 30, 40));
-    expect(input.current()).toEqual({ x: 30, y: 40, down: false });
+    expect(input.current()).toEqual({ x: 30, y: 40, down: false, device: "mouse" });
   });
 
   it("holds its position while the map is degenerate, keeping the edges", () => {
@@ -112,8 +119,8 @@ describe("current", () => {
     input.endFrame();
     broken = true;
     target.dispatchEvent(new PointerEvt("pointerdown", 999, 999));
-    expect(input.samples()).toEqual([{ type: "down", x: 50, y: 60 }]);
-    expect(input.current()).toEqual({ x: 50, y: 60, down: true });
+    expect(input.samples()).toEqual([{ type: "down", x: 50, y: 60, device: "mouse", primary: true }]);
+    expect(input.current()).toEqual({ x: 50, y: 60, down: true, device: "mouse" });
   });
 });
 
@@ -128,14 +135,17 @@ describe("detach", () => {
 });
 
 describe("asPointerEvent", () => {
-  it("narrows structurally on client coordinates and primariness", () => {
+  it("narrows structurally on client coordinates, and reports the device", () => {
     expect(asPointerEvent(new PointerEvt("pointerdown", 1, 2))).toEqual({
       clientX: 1,
       clientY: 2,
+      pointerId: 0,
+      device: "mouse",
+      primary: true,
     });
-    expect(asPointerEvent(new PointerEvt("pointerdown", 1, 2, false))).toBe(
-      null,
-    );
+    expect(
+      asPointerEvent(new PointerEvt("pointerdown", 1, 2, false))?.primary,
+    ).toBe(false);
     expect(asPointerEvent(new Event("pointerdown"))).toBeNull();
   });
 });

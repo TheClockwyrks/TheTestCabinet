@@ -19,8 +19,8 @@
 # This image inherits everything from the base — the toolchain, the unprivileged
 # `node` run user, the `/work` working directory, and the keep-alive CMD — so it
 # only adds `draw`. End-to-end runs use the base image directly; the image a run
-# resolves is selected by its test type and asset kind (see crate
-# `harness::resolve_run_image`).
+# resolves is selected by its test type, asset kind, and asset dimension (see
+# crate `harness::resolve_run_image`).
 
 # `BASE_IMAGE` is the base image to extend. It is declared here, BEFORE the first
 # `FROM`, so it is a global build arg the `FROM` for the run image below can

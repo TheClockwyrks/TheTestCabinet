@@ -87,7 +87,8 @@ the game is being played, and the choices it offers below are the campaign's.
 | `complete` | Confirmation that all `24` boards are solved. | The solve that leaves no board unsolved. | A choice is taken: `select` for the grid, `title` for the main menu. |
 
 Every menu on these screens is driven by the registered actions `up`, `down`,
-`left`, `right`, `confirm`, and `back`, which `specs/controls.md` defines.
+`left`, `right`, `confirm`, and `back`, and by the pointer targets these screens
+carry, both of which `specs/controls.md` defines.
 
 ## The select screen
 
@@ -113,7 +114,9 @@ Every menu on these screens is driven by the registered actions `up`, `down`,
   column, wrapping between the top row and the bottom row.
 - `confirm` on an unlocked or solved board enters it and goes to `playing`.
   `confirm` on a locked board does nothing and leaves the highlight where it is.
-- `back` returns to `title`.
+- Each board in the grid carries its own `board-<n>` pointer target, and the
+  screen draws a `BACK_LABEL` (`BACK`) control carrying the `back` target.
+- `back`, and taking the `back` target, return to `title`.
 
 The three board states read without relying on hue alone, since none of them
 carries a channel's hue. Presentation is otherwise the build's to design, within
@@ -141,6 +144,9 @@ the legibility requirements in `specs/overview.md`.
 - The first choice is highlighted on arriving at the screen. `up` and `down` move
   the highlight, wrapping at both ends, `confirm` takes the highlighted choice,
   and `back` goes to `select`.
+- Each choice carries its own `menu-<i>` pointer target, counted from `0` in the
+  order the screen offers them, so the screen carries three targets when a next
+  board is offered and two when it is not.
 - The wording of the three choices is the build's own. Their order and their
   effects are not.
 
@@ -153,16 +159,17 @@ the legibility requirements in `specs/overview.md`.
 - It offers two choices, in this order: back to `select`, and back to `title`. The
   first is highlighted on arriving at the screen, `up` and `down` move the
   highlight, wrapping at both ends, `confirm` takes it, and `back` goes to
-  `select`.
+  `select`. Each choice carries its own `menu-<i>` pointer target.
 - Every board stays unlocked and solved afterward, so the player can return to the
   grid and replay any of them.
 
 ## Leaving a board
 
-- `back` during `playing` returns to `select`. The beams drawn on the board are
-  discarded, and the board is unchanged the next time it is entered.
-- The `clear` action empties every beam on the current board and leaves the player
-  on it. `specs/controls.md` defines it, along with the pointer input a trace runs
-  on.
+- `back` during `playing`, and taking that screen's `back` target, return to
+  `select`. The beams drawn on the board are discarded, and the board is
+  unchanged the next time it is entered.
+- The `clear` action, and that screen's `clear` target, empty every beam on the
+  current board and leave the player on it. `specs/controls.md` defines both,
+  along with the pointer input a trace runs on.
 - No board is in play on `select`, `solved`, or `complete`, so `clear` changes
   nothing on those three screens.

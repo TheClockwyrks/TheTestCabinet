@@ -1,0 +1,25 @@
+# The base variant's carousel, in the order it is presented.
+#
+# The video leads: it is the entry the catalog's preview stage plays, and it is
+# a whole lift played out rather than a moment of one. Gantry is a 3D game and
+# its subject is motion — the trolley running out, the arm coming around, the
+# load riding under the jib, the members coloring as they take the strain — so
+# the leading entry is video rather than a draw-command recording, which would
+# carry the flat readouts and none of the yard. The three stills are frames of
+# that same take, each framed at the pose the video's own camera held there.
+
+[[media]]
+file = "gameplay.webm"
+name = "Over the Wall: one crate hoisted, carried around the tower, and set on its pad"
+
+[[media]]
+file = "the-crane.png"
+name = "The finished crane on the build screen, checked and standing inside budget"
+
+[[media]]
+file = "over-the-wall.png"
+name = "The crate up at the jib clearing the wall, the truss colored by member load"
+
+[[media]]
+file = "setting-down.png"
+name = "The last of the lift: the crate low on a long cable, closing on its pad"

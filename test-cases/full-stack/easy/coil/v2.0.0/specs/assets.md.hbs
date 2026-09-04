@@ -1,0 +1,167 @@
+# Coil — The assets this build produces
+
+Coil ships with no art and no sound, and this build makes both. The snake is
+drawn from a produced sprite set and the game plays produced audio, and every one
+of those files is generated during this build, committed to the repository, and
+bundled by it. Everything else the game shows stays drawn in code, and the last
+section of this file lists it.
+
+Producing the assets is a one-time step. `npm run build` bundles the committed
+files and nothing more: it does not run the generation binaries, which are on the
+`PATH` while this build is being made and absent when the project is built again
+from its committed source. A build that shells out to a generation binary fails
+wherever those binaries are absent, even though the game is complete.
+
+## The binaries
+
+Six asset-generation binaries are on the `PATH`, and Coil uses four of them.
+
+| Binary | Produces | Used for |
+| --- | --- | --- |
+| `draw` | one sprite, as a PNG | The straight body, corner, and tail cells |
+| `draw-sheet` | a sprite sheet, one PNG per frame | The snake's head and its bite |
+| `sfx-synth` | a synthesized sound, as a `.wav` | The eat, combo, and death cues |
+| `sfx-sample` | a sound layered over the sample pack, as a `.wav` | The same three cues, where a sampled layer suits one better |
+| `music` | sequenced music over the instrument bank, as a `.wav` and a `.mid` | The music bed |
+| `particle-2d` | a particle system, as a `system.json` | Nothing Coil requires. It is available for a flourish of your own. |
+
+Each is a command-line tool, and its own `--help` is its contract; run
+`<binary> --help` for its operations and `<binary> <operation> --help` for one
+operation's flags. Each records the operations it is given and then renders the
+finished file, which you write into the repository at the path this file names.
+
+Produce these files with these binaries. Pre-made art, a downloaded sound, or a
+bundled font standing in for a produced file does not meet this contract.
+
+## Where the files land, and how they are loaded
+
+Every produced file sits under `assets/` at the root of this repository, at the
+path named below, and is committed.
+
+{{#if (eq engine.slug "none")}}
+The build loads them itself. Every URL it requests resolves against the page
+rather than against the origin root, so the site runs unchanged whether it is
+served from the root of a static host or mounted under a sub-path. A
+root-absolute URL such as `/assets/snake/body.png` does not meet this: it
+resolves against the origin and fails under a sub-path.
+{{else}}
+The {{engine.name}} engine provides the asset loader and the audio cue bus, both
+documented in the `engine/` directory at the root of this repository. The loader
+resolves every path under one root, `assets/`, relative to the page the build is
+served from, so the build asks it for a path written relative to that root, such
+as `snake/body.png` and `audio/eat.wav`, rather than constructing a URL of its
+own. Each audio cue in `specs/ui.md` is bound to its produced file through the
+cue bus.
+{{/if}}
+
+A load that fails leaves the game running. The game still initializes, still
+ticks, still takes input, and still draws a legible board when a sprite or a
+sound is unavailable, so a missing file costs the game its polish rather than its
+playability.
+
+## The snake sprite set
+
+The snake is drawn from produced sprites rather than from shapes drawn in code.
+Each is pixel art on a transparent, straight-alpha canvas of `CELL x CELL`
+(`32 x 32`), so one sprite covers exactly one board cell. They are drawn at that
+native size and sampled without smoothing, so the pixel art stays sharp at every
+scale the stage is fitted to.
+
+| Sprite | Files | Binary | Authored facing |
+| --- | --- | --- | --- |
+| Head | `assets/snake/head/0.png` to `3.png` | `draw-sheet` | Facing right |
+| Straight body | `assets/snake/body.png` | `draw` | A horizontal run |
+| Corner body | `assets/snake/corner.png` | `draw` | The bend whose two neighbors lie to the right and below |
+| Tail | `assets/snake/tail.png` | `draw` | Its one neighbor lying to the right |
+
+Each sprite is authored in the one orientation the table names and rotated in
+quarter turns when it is drawn, so no sprite is produced twice for a second
+direction.
+
+### The head sheet
+
+`HEAD_FRAMES` (`4`) frames, one PNG per frame, produced with `draw-sheet` and
+emitted as separate files rather than as regions of one image.
+
+| Frame | Pose |
+| --- | --- |
+| `0` | At rest, mouth closed |
+| `1` | Mouth opening |
+| `2` | Mouth wide |
+| `3` | Mouth closing |
+
+Frame `0` is what the head shows at all times except during a bite. The tick that
+eats a pellet starts a bite, which plays frames `1`, `2`, and `3` in order over
+`BITE_SECONDS` (`0.25`) and then returns the head to frame `0`. The bite is drawn
+only; it changes no rule of the simulation and no timing in `specs/movement.md`.
+It runs on the round's own time, so it holds the frame it is on while the game is
+paused and carries on from there when the round resumes.
+
+### How a cell picks its sprite
+
+| Board cell | Drawn with |
+| --- | --- |
+| The head | The head sheet's current frame, turned to the snake's direction |
+| A body cell whose two neighbors lie opposite each other | The straight sprite, turned to that run's axis |
+| A body cell whose two neighbors lie perpendicular to each other | The corner sprite, turned to that bend |
+| The last cell of the chain | The tail sprite, turned toward its one neighbor |
+
+A body cell is never drawn as a bare square, and a turning snake reads as one
+continuous coil rather than as a staircase.
+
+### The art bar
+
+- The head is the strongest silhouette on the board. It reads as a head at a
+  glance, at one cell, and its facing is unmistakable without reference to the
+  body behind it.
+- The bite is legible at eight ticks a second. Frame `2` is a visibly open mouth
+  rather than a shifted pixel, and the three frames read as one motion.
+- The head is clearly brighter or otherwise stronger than the body, so the
+  leading cell separates from the trail at any length.
+- The straight, corner, and tail sprites join without a seam or a gap, so a
+  continuous snake looks continuous where two cells meet.
+- Every sprite reads on a dark field, and none of them relies on a background
+  behind it.
+
+## The audio
+
+Coil plays four produced sounds, and `specs/ui.md` fixes the events they play on.
+
+| Cue | File | Binary |
+| --- | --- | --- |
+| `eat` | `assets/audio/eat.wav` | `sfx-synth` or `sfx-sample` |
+| `combo-up` | `assets/audio/combo-up.wav` | `sfx-synth` or `sfx-sample` |
+| `death` | `assets/audio/death.wav` | `sfx-synth` or `sfx-sample` |
+| `music` | `assets/audio/music.wav` | `music` |
+
+`sfx-synth` builds a sound from synth voices alone, and `sfx-sample` layers over
+the `combat-core` sample pack, which `list-samples` browses. Use whichever suits
+each cue. `music` sequences the `synthwave` instrument bank, browsed with
+`list-instruments`, synth waveforms, or both. `music` writes a `.wav` and a `.mid` beside it; the `.wav` is what the game
+plays, and keeping the `.mid` is optional.
+
+### The sound bar
+
+- `eat` is short and dry, well under a tick, so eight of them in a second stay
+  distinct rather than smearing into one tone.
+- `combo-up` is brighter and higher than `eat`, so a player hears the multiplier
+  rise on a tick that also plays `eat`.
+- `death` is the one heavy sound in the game, clearly longer and lower than the
+  other two, and unmistakable as the end of a round.
+- `music` is a loop that sits under the game rather than over it. It loops
+  without an audible seam and carries no part that competes with the three cues.
+- The four together sound like one game, sharing a palette of timbres.
+
+## What stays drawn in code
+
+No produced file covers the following. Each is rendered by the build, and the
+file named beside it fixes its behavior and what a player must read.
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| The board field, its per-cell ruling, and the wall border | `specs/board.md` |
+| The obstacle cells, where the mode places them | `specs/mode.md` |
+| The pellet | `specs/board.md` |
+| The HUD, its readouts, the combo bar, and the mute indicator | `specs/ui.md` |
+| Every screen, menu, and panel, and all text | `specs/ui.md` |
+| The debug overlay | `specs/instrumentation.md` |

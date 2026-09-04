@@ -27,12 +27,12 @@
 // end of the window would miss one that slipped through and came back.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
+import { TILE } from "../constants";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,

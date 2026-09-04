@@ -114,13 +114,26 @@ How the build looks is what the reviewer's
 [domain ratings](/testing/end-to-end/evaluation/#review) judge. A validator
 asserting appearance checks presence and distinguishability, never a hex value.
 
+### Showcase media exists and is reviewed
+
+A case that requires the build to produce showcase media carries one review item
+for it. That item's validator confirms the showcase is present and checks
+nothing further, and no other item asserts anything about the media. What the
+showcase says and how well it presents the game are the reviewer's to judge,
+like the rest of the build's presentation.
+
+The item declares a `weight` above the default an ordinary item carries. The
+case picks the figure.
+
 ### Every review item carries a validator
 
 Every review item declares a
-[validation script](/testing/end-to-end/manifests/#automated-validation), for
-every engine the case supports. The checklist is decided by the validators and
-the reviewer overrides a verdict only as the exception; behavior is never
-something a reviewer is asked to decide.
+[validation script](/testing/end-to-end/manifests/#automated-validation). The
+script covers every engine the case supports unless the item's validation names
+`engines`, which scopes the item to the engines where the behavior is the
+build's own work rather than the engine's. The checklist is decided by the
+validators and the reviewer overrides a verdict only as the exception; behavior
+is never something a reviewer is asked to decide.
 
 ### One observable behavior per item
 
@@ -145,6 +158,38 @@ an engine a validator drives the build through its
 process. The hard rule is that the seeded workspace supplies configuration only:
 a `package.json`, tool configuration, and an `index.html`, with no source code.
 The model owns as much of the code as possible.
+
+## Menus and screens
+
+A case whose build presents menus specifies how they are driven, how they lead
+to one another, and what is selected on the way back.
+
+### Menus take pointer and touch
+
+Every menu a case specifies is navigable with a mouse and with touch as well as
+with the keyboard. The spec states the effect of each: a pointer moved onto an
+item's region selects that item, a press and release inside the region confirms
+it, and a touch contact landing and lifting inside the region selects and
+confirms it.
+
+Menu layout stays the build's, so the spec requires the build to report an
+item's hit region through its debug API, as
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/#a-build-reports-the-layout-a-spec-leaves-loose)
+covers. A validator drives the pointer at the region the build reports.
+
+### Every transition is stated
+
+The spec names each transition between screens: the screen it starts on, the
+input that causes it, and the screen it reaches. A case with an in-game pause
+menu specifies that the menu opens on Escape and on `P`, and that either key
+resumes the game while the menu is open.
+
+### Returning selects the entry left from
+
+Navigating back to a menu selects the entry that led away from it. A build
+leaving a How To Play screen returns to the main menu with the How To Play entry
+selected, and a match left for the menu returns with the entry that started that
+match selected.
 
 ## Edge cases
 
@@ -227,9 +272,16 @@ When you finish revising a case's specs or prompt, confirm each of the following
   behavior written as a concrete number or an explicit bound.
 - Appearance is specified as what must be visible or present, leaving palette,
   type, layout, and styling to the build.
+- Every menu is navigable by pointer and touch as well as by the keyboard, and
+  the build reports each item's hit region through its debug API.
+- Every transition between screens is stated, and a pause menu opens on Escape
+  and on `P` and resumes on either.
+- Navigating back to a menu selects the entry that led away from it.
 - Every review item asserts one observable behavior and carries a validation
-  script for every supported engine, with every threshold derived from the
-  spec.
+  script for each engine it covers, with every threshold derived from the spec.
+- A required showcase carries one review item whose validator checks only that
+  the showcase exists, weighted above the default, with no other item asserting
+  anything about the media.
 - The spec requires clean, maintainable code and names the checks that must
   pass, without listing the practices that produce it.
 - The specs carry no coaching: nothing states how to build the game or how to
@@ -254,6 +306,6 @@ output rather than the sources. The seeded tree is what the model receives.
 - [Authoring an end-to-end case](/guides/authoring/authoring-an-end-to-end-test-case/)
   gives the structural procedure for a playable case.
 - [Authoring a full-stack case](/guides/authoring/authoring-a-full-stack-test-case/)
-  does the same for a case that also produces its own 2D assets.
+  does the same for a case that also produces its own assets.
 - [Instrumentation](/testing/end-to-end/instrumentation/) covers the debug API
   and deterministic core that validation scripts drive.

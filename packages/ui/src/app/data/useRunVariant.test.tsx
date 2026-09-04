@@ -153,6 +153,56 @@ describe("useReviewModel", () => {
     expect(result.current.domains.map((d) => d.id)).toEqual(["single-player"]);
   });
 
+  // A point whose validator names a set of engines is decided only under those, so
+  // a run built on any other engine does not carry it: the validators never drove
+  // it, the backend's checklist (`review_items_for_engine`) drops it, and a
+  // verdict recorded against it here would be refused as an override of a point
+  // the run's checklist does not carry.
+  it("drops a point whose validator does not cover the run's engine", async () => {
+    const items = [
+      { id: "gameplay" },
+      { id: "overlay", validation: { engines: ["none"] } },
+      { id: "menus", validation: { engines: ["none", "simple-2d"] } },
+    ];
+    const { wrapper } = hostResolving(
+      () => ({ slug: "base", reviewItems: items, domains: [] }) as unknown as VariantSummary,
+    );
+
+    const { result } = renderHook(
+      () => useReviewModel(subject({ engineSlug: "simple-2d" })),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.items.map((i) => i.id)).toEqual([
+      "gameplay",
+      "menus",
+    ]);
+  });
+
+  // The same run on the engine the point IS scoped to carries it, so the scoping
+  // narrows a checklist rather than retiring a point.
+  it("keeps the point on the engine its validator names", async () => {
+    const items = [
+      { id: "gameplay" },
+      { id: "overlay", validation: { engines: ["none"] } },
+    ];
+    const { wrapper } = hostResolving(
+      () => ({ slug: "base", reviewItems: items, domains: [] }) as unknown as VariantSummary,
+    );
+
+    const { result } = renderHook(
+      () => useReviewModel(subject({ engineSlug: "none" })),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.items.map((i) => i.id)).toEqual([
+      "gameplay",
+      "overlay",
+    ]);
+  });
+
   // A model from the wrong version is worse than no model, so an unresolvable
   // version reports empty and lets `status` say why, rather than substituting
   // another version's domains the way the old fall back to the case's did.

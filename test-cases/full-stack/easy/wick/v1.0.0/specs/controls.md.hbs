@@ -1,11 +1,11 @@
 # Wick — Controls
 
 This file defines how a player operates the game: the eight actions, the keys
-bound to each, and what each screen reads of them. The movement vector and
-`facing` the held directions drive are in `specs/world.md`, the weapons that
-aim by facing are in `specs/weapons.md`, and what each screen shows is in
-`specs/ui.md`. Every figure below carries the name this specification gives
-it.
+bound to each, what each screen reads of them, and what the pointer does. The
+movement vector and `facing` the held directions drive are in `specs/world.md`,
+the weapons that aim by facing are in `specs/weapons.md`, and what each screen
+shows is in `specs/ui.md`. Every figure below carries the name this
+specification gives it. Every menu also answers the mouse.
 
 ## Where input comes from
 
@@ -18,12 +18,9 @@ its keys is down and `0` otherwise, and as a press edge, true once for the frame
 in which the held value went from `0` to `1`. A key event whose `repeat` flag is
 set arms no edge. `LAYOUT` (`dpad-4`) names the control scheme: a four-way pad
 whose vocabulary is the four movement actions, with the menu actions beside
-them.
-
-While the debug surface's `setInput` holds a set of directions, that set stands
-in for the keyboard's held movement values; `specs/instrumentation.md` states
-it. The diagnostics overlay toggles on `Backquote`, outside the action registry.
-{{else}}
+them. The diagnostics overlay toggles on `Backquote`, outside the action
+registry.
+{{else if (eq engine.slug "simple-2d")}}
 The {{engine.name}} engine delivers the input, and its documentation defines
 the API. `src/main.ts` builds the engine with `LAYOUT` (`dpad-4`), so the four
 movement actions are the layout's own vocabulary and the menu actions come with
@@ -31,6 +28,15 @@ it, and `initialize` registers every name in `ACTIONS` against its keys in
 `BINDINGS`. `update` reads a held value with `value` and a press edge with
 `pressed`, once per frame. The diagnostics overlay's toggle, the backtick, is
 the engine's own.
+{{else}}
+The {{engine.name}} engine delivers the input, and its documentation defines
+the API. `src/main.ts` builds the engine with `LAYOUT` (`dpad-4`), so the four
+movement actions are the layout's own vocabulary and the menu actions come with
+it, and the instance's `initialize` registers every name in `ACTIONS` against
+its keys in `BINDINGS`. The player controller the game mode adds is the one
+place they are read: a held value with `value` and a press edge with `pressed`,
+once per frame. The diagnostics overlay's toggle, the backtick, is the engine's
+own.
 {{/if}}
 
 ## Actions and bindings
@@ -42,12 +48,21 @@ to the `KeyboardEvent.code` values that fire it.
 | --- | --- | --- | --- |
 | `up` | `ArrowUp`, `KeyW` | held on `playing`, edge elsewhere | moves the lamplighter up; moves a menu highlight up |
 | `down` | `ArrowDown`, `KeyS` | held on `playing`, edge elsewhere | moves the lamplighter down; moves a menu highlight down |
-| `left` | `ArrowLeft`, `KeyA` | held | moves the lamplighter left |
-| `right` | `ArrowRight`, `KeyD` | held | moves the lamplighter right |
+| `left` | `ArrowLeft`, `KeyA` | held on `playing`, edge on `almanac` | moves the lamplighter left; moves the almanac's tab left |
+| `right` | `ArrowRight`, `KeyD` | held on `playing`, edge on `almanac` | moves the lamplighter right; moves the almanac's tab right |
 | `confirm` | `Enter`, `Space` | edge | accepts the highlighted item; closes the chest overlay |
-| `back` | `Escape` | edge | leaves the screen, as the screen table below states |
+| `back` | `Escape` | edge | leaves the screen, as the screen table states |
 | `pause` | `KeyP` | edge | pauses on `playing`; resumes on `paused` |
 | `mute` | `KeyM` | edge | toggles sound, on every screen |
+
+The two keys bound to an action are interchangeable: `KeyW` does exactly what
+`ArrowUp` does wherever `up` is read. All of a frame's edges are read against
+the screen the frame began on, so a press that changes screens never also acts
+on the screen it lands in. The frame's update then runs on the screen the
+edges left: a frame whose press enters `playing`, from the title, an end
+screen, `paused`, or an overlay, runs that frame's ticks, so a frame of
+`TICK_DT` whose press lights the lamp leaves the run at tick `1`; a frame
+whose press leaves `playing` ticks nothing and discards the accumulator.
 
 ## Moving the lamplighter
 
@@ -57,18 +72,71 @@ do, the movement vector and `facing`, is in `specs/world.md`. Movement is the
 only thing the player steers; every weapon fires on its own rhythm, as
 `specs/weapons.md` states.
 
+## The pointer
+
+The pointer is read in the stage's own coordinates, `0` to `STAGE_W` across and
+`0` to `STAGE_H` down, whatever the canvas's size on the page and wherever the
+letterbox bars fall, and wheel travel is read in those same units.
+{{#if (eq engine.slug "none")}}
+The runtime layer you write maps both the event's client position and the
+event's wheel travel through the same fit it draws under.
+{{else}}
+The {{engine.name}} engine delivers the position and the wheel travel already
+in those units, and its documentation defines the API.
+{{/if}}
+
+Every screen that shows a vertical menu answers the pointer: `title`, `almanac`,
+`levelup`, `paused`, `fallen`, and `dawn`. Each item the menu currently shows
+occupies a rectangle on the stage, and no two of a screen's rectangles overlap.
+On `title`, `levelup`, `paused`, `fallen`, and `dawn` that is every item of the
+menu, and the rectangle at position `i` belongs to the item at `menuIndex` `i`.
+On `almanac` it is the visible entry rows, at most `ALMANAC_ROWS` of them, and
+the rectangle at position `i` belongs to the entry at `menuIndex`
+`almanacScroll + i`. On `almanac` each tab of the tab bar occupies a rectangle
+as well, disjoint from every entry rectangle.
+
+Three rules, applied on every frame, after that frame's press edges and before
+its update:
+
+1. Hover. The pointer inside the rectangle of the item at `menuIndex` `i`, with
+   `menuIndex` not `i`, sets `menuIndex` to `i` and plays `menu-move`. The
+   pointer inside no rectangle changes nothing.
+2. Click. A primary press edge inside the rectangle of the item at `menuIndex`
+   `i` sets `menuIndex` to `i`, playing `menu-move` if that changed it, and then
+   takes that item exactly as `confirm` on it does. A primary press edge inside
+   no rectangle does nothing. On `almanac` an entry carries no `confirm`, so a
+   click on an entry only moves the highlight; a click inside the rectangle of a
+   tab the almanac is not showing selects that tab exactly as `right` reaching
+   it does, and a click inside the shown tab's rectangle changes nothing.
+3. The wheel. On `almanac`, wheel travel moves the list. A frame's travel is
+   that frame's wheel deltas summed in stage units, divided by `WHEEL_ROW`
+   (`100`) and truncated toward zero to give the number of rows `almanacScroll`
+   moves, downward travel moving it toward the end of the list; the remainder is
+   discarded, and `almanacScroll` is held within `0` and
+   `max(0, count − ALMANAC_ROWS)`, `count` being the number of entries the shown
+   tab holds. `menuIndex` is untouched by the wheel. On every other screen the
+   wheel does nothing.
+
 ## What each screen reads
 
 | Screen | Held | Press edges |
 | --- | --- | --- |
-| `title` | — | `up`, `down` move the highlight, wrapping at both ends; `confirm` takes the highlighted item; `mute` |
-| `howto` | — | `back` returns to `title`; `mute` |
-| `playing` | `up`, `down`, `left`, `right` | `pause` opens `paused`; `mute` |
-| `levelup` | — | `up`, `down` move the highlight, wrapping at both ends; `confirm` accepts the highlighted offer; `mute` |
-| `chest` | — | `confirm` closes the overlay; `mute` |
-| `paused` | — | `pause` resumes `playing`; `back` abandons the run and returns to `title`; `mute` |
-| `fallen`, `dawn` | — | `up`, `down` move the highlight, wrapping at both ends; `confirm` takes the highlighted item; `back` returns to `title`; `mute` |
+| `title` | none | `up`, `down` move the highlight, wrapping; `confirm` takes the highlighted item; `mute` |
+| `howto` | none | `back` returns to `title`; `mute` |
+| `almanac` | none | `up`, `down` move the entry highlight, wrapping; `left`, `right` move the tab, wrapping; `back` returns to `title`; `mute` |
+| `playing` | `up`, `down`, `left`, `right` | `pause` opens `paused`; `back` opens `paused`; `mute` |
+| `levelup` | none | `up`, `down` move the highlight, wrapping; `confirm` accepts the highlighted offer; `mute` |
+| `chest` | none | `confirm` closes the overlay; `mute` |
+| `paused` | none | `up`, `down` move the highlight, wrapping; `confirm` takes the highlighted item; `pause` resumes; `back` resumes; `mute` |
+| `fallen`, `dawn` | none | `up`, `down` move the highlight, wrapping; `confirm` takes the highlighted item; `back` returns to `title`; `mute` |
 
-An action a row omits does nothing on that screen. `menuIndex` is `0` on
-entering every screen, and on a screen with no highlight it stays `0`. Where
-each `confirm` leads is in `specs/ui.md`.
+An action a row omits does nothing on that screen, so `confirm` on `almanac`
+changes nothing, and `back` on `playing` does exactly what `pause` on `playing`
+does. `menuIndex` is `0` on entering every screen, and on a screen with no
+highlight it stays `0`. Where each `confirm` leads is in `specs/ui.md`.
+
+## Out of scope
+
+- Touch and gamepad input. The keyboard and the pointer are the whole of the
+  game's input.
+- Rebinding. The bindings are fixed and the game offers no way to change them.

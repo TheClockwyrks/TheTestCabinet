@@ -15,14 +15,23 @@ import {
 } from "./constants";
 import {
   ballSpeed,
+  centerPaddle,
   clamp,
+  createBall,
+  createPaddle,
   integratePaddle,
   paddleBounds,
   paddleFrontX,
   paddleRect,
-  parkBall,
+  restBall,
 } from "./entities";
-import type { BallState, PaddleState } from "./game";
+import { FIELD_CX, FIELD_CY, HOLD_TIME } from "./constants";
+import type { PaddleState } from "./game";
+
+/** A paddle at `cy` moving at `vy`, under nobody's control. */
+function paddleAt(cy: number, vy: number): PaddleState {
+  return { ...createPaddle(), cy, vy };
+}
 
 describe("clamp", () => {
   it("passes a value inside the range through", () => {
@@ -58,14 +67,14 @@ describe("paddle geometry", () => {
 
 describe("integratePaddle", () => {
   it("advances by the velocity over the elapsed time", () => {
-    const paddle: PaddleState = { cy: 360, vy: 720 };
+    const paddle = paddleAt(360, 720);
     integratePaddle(paddle, 0.25);
     expect(paddle.cy).toBeCloseTo(540, 9);
     expect(paddle.vy).toBe(720);
   });
 
   it("clamps to the field and reports the velocity actually achieved", () => {
-    const paddle: PaddleState = { cy: PADDLE_MAX_CY - 6, vy: 720 };
+    const paddle = paddleAt(PADDLE_MAX_CY - 6, 720);
     integratePaddle(paddle, 1 / 60);
     expect(paddle.cy).toBe(PADDLE_MAX_CY);
     // 6 px of the 12 px it asked for, over 1/60 s.
@@ -73,14 +82,14 @@ describe("integratePaddle", () => {
   });
 
   it("reports zero for a paddle already pinned against a bound", () => {
-    const paddle: PaddleState = { cy: PADDLE_MIN_CY, vy: -720 };
+    const paddle = paddleAt(PADDLE_MIN_CY, -720);
     integratePaddle(paddle, 1 / 60);
     expect(paddle.cy).toBe(PADDLE_MIN_CY);
     expect(paddle.vy).toBe(0);
   });
 
   it("leaves the velocity alone across a zero-length frame", () => {
-    const paddle: PaddleState = { cy: PADDLE_MIN_CY, vy: -720 };
+    const paddle = paddleAt(PADDLE_MIN_CY, -720);
     integratePaddle(paddle, 0);
     expect(paddle.cy).toBe(PADDLE_MIN_CY);
     expect(paddle.vy).toBe(-720);
@@ -89,12 +98,65 @@ describe("integratePaddle", () => {
 
 describe("the ball", () => {
   it("derives speed from the velocity", () => {
-    expect(ballSpeed({ x: 0, y: 0, vx: 3, vy: 4, spin: 0 })).toBe(5);
+    expect(ballSpeed({ ...createBall(), vx: 3, vy: 4 })).toBe(5);
   });
 
-  it("parks at the field center with no motion and no spin", () => {
-    const ball: BallState = { x: 1, y: 2, vx: 3, vy: 4, spin: 5 };
-    parkBall(ball);
-    expect(ball).toEqual({ x: 640, y: 360, vx: 0, vy: 0, spin: 0 });
+  it("spawns at its home point, held, with a full hold and no trail", () => {
+    expect(createBall()).toEqual({
+      x: FIELD_CX,
+      y: FIELD_CY,
+      vx: 0,
+      vy: 0,
+      spin: 0,
+      held: true,
+      holdTimer: HOLD_TIME,
+      trail: [],
+    });
+  });
+
+  it("rests a ball in flight back into that same arrangement", () => {
+    const ball = createBall();
+    ball.x = 1;
+    ball.y = 2;
+    ball.vx = 3;
+    ball.vy = 4;
+    ball.spin = 5;
+    ball.held = false;
+    ball.holdTimer = 0;
+    ball.trail.push({ x: 1, y: 2, t: 0.5 });
+    const trail = ball.trail;
+
+    restBall(ball);
+
+    expect(ball).toEqual(createBall());
+    // The array itself is kept: the renderer and the surface hold it for a frame.
+    expect(ball.trail).toBe(trail);
+  });
+});
+
+describe("createPaddle", () => {
+  it("starts centered, still, and under nobody's control", () => {
+    expect(createPaddle()).toEqual({
+      cy: FIELD_CY,
+      vy: 0,
+      drivenVy: 0,
+      driven: false,
+    });
+  });
+
+  it("centers a paddle without handing it back from its driver", () => {
+    const paddle: PaddleState = {
+      cy: 100,
+      vy: -720,
+      drivenVy: -720,
+      driven: true,
+    };
+    centerPaddle(paddle);
+    expect(paddle).toEqual({
+      cy: FIELD_CY,
+      vy: 0,
+      drivenVy: -720,
+      driven: true,
+    });
   });
 });

@@ -1,0 +1,901 @@
+import type { GgAgentStatus, GgCapabilitySet, GgContextSource, GgLimitBreach } from "./gg";
+/**
+ * Which build of gg wrote a record — the *explanatory* half of the record's
+ * [three-part identity](self#identity-and-what-a-reader-may-branch-on).
+ *
+ * Carried once on the record rather than per turn: it is a property of the capture, not
+ * of any individual input. Both members are optional because a build that cannot state
+ * its own version or commit reports "unknown" rather than inventing one.
+ */
+export type GgSessionRecorder = {
+    /**
+     * The `gg --version` of the build that captured this record (for example `0.7.0`).
+     * Explanatory only — never the compatibility gate.
+     */
+    ggVersion?: string;
+    /**
+     * The exact commit the capturing build was made from, when it is known. The only
+     * thing that can tell an uncommitted prompt edit *within* one version from the
+     * released build of that version, so it is the only thing that identifies exactly which gg
+     * wrote a record.
+     */
+    commit?: string;
+};
+/**
+ * Which input modalities a bound model slot was resolved to accept.
+ */
+export type GgSessionModalities = {
+    /**
+     * Whether the slot's model accepts image input. `false` once a provider has
+     * refused an image for this model and the loop has stripped images from the
+     * context.
+     */
+    vision: boolean;
+};
+/**
+ * The **fixed identity** a recorded session started from: everything a reader
+ * needs before it consumes its first [entry](GgSessionEntry).
+ *
+ * Recording the seed is what makes a record self-contained rather than only meaningful
+ * beside the run tree it came from.
+ */
+export type GgSessionSeed = {
+    /**
+     * The commit gg observed the seeded workspace at, in the container, before the
+     * session made any change.
+     *
+     * Deliberately kept alongside — not merged with — the host-side
+     * [`RunRecord::seed_commit`](crate::run_record::RunRecord::seed_commit). The host's
+     * value is harness-agnostic and authoritative; this one is gg's own observation.
+     * They should be equal, and a mismatch is a *diagnostic* rather than redundancy.
+     */
+    baselineCommit?: string;
+    /**
+     * The build prompt the session was invoked with — the rendered test-case
+     * instruction the root agent was given.
+     */
+    prompt: string;
+    /**
+     * The context window, in tokens, resolved for each bound model slot. Recorded
+     * because the window is what the fullness signal and compaction thresholds are
+     * computed against, so a reader that guessed it would compact at a
+     * different turn than the run did.
+     */
+    modelWindows?: {
+        [key in string]: number;
+    };
+    /**
+     * The **final, resolved** modality state of each bound slot.
+     *
+     * Resolved, not initial, and that distinction is load-bearing: vision recovery can
+     * call the model twice for one turn and only the successful stripped call is
+     * recorded, so a reader that started from an un-denied vision state would
+     * send images on the first image turn and drift for a reason that has nothing to do
+     * with any real change.
+     */
+    modelModalities?: {
+        [key in string]: GgSessionModalities;
+    };
+};
+/**
+ * One distinct message body in the [message pool](GgSessionRecord::messages).
+ *
+ * A single message is typically re-sent on every turn it survives — the measured
+ * redundancy on a 12-turn single-agent session was 6.4× — so pooling it is the largest
+ * single win in the format after the toolset.
+ */
+export type GgSessionMessage = {
+    /**
+     * The message's [content address](fingerprint_exact), computed over the body **including
+     * its exact image payloads** — before those payloads were reduced to descriptors.
+     *
+     * Addressing the message as it was *sent* is what keeps two different pictures of the same
+     * media type and decoded size two different messages. Addressing the stored body instead
+     * would collide them, and the pool would then serve one turn's window in place of
+     * another's.
+     */
+    id: string;
+    /**
+     * The message as the client sent it — the `gg` binary's `Message`, camelCase, with
+     * every inline image payload replaced by a
+     * [descriptor](GgSessionImage). Carried as free-form JSON because its
+     * concrete shape is owned by the `gg` binary rather than by this contract crate.
+     */
+    body: Record<string, unknown>;
+};
+/**
+ * One distinct offered tool-definition array in the
+ * [toolset pool](GgSessionRecord::toolsets).
+ *
+ * The finding that reshaped this format: on a real record the re-serialized tool array
+ * was **52%** of the bytes — larger than the messages — and its redundancy is exactly
+ * the turn count, because a run's offered toolset almost never changes. Pooling
+ * collapses `N` copies to one.
+ */
+export type GgSessionToolset = {
+    /**
+     * The toolset's [content address](fingerprint_exact) over the serialized array.
+     * What the pool dedups on, so a run's one offered toolset is written once rather than
+     * once per turn.
+     */
+    id: string;
+    /**
+     * The tool definitions offered, in the order they were offered — the `gg` binary's
+     * `ToolDefinition[]`, camelCase.
+     */
+    tools: Record<string, unknown>[];
+};
+/**
+ * One pooled text that is a **clip** of the payload the session actually saw, rather than the
+ * whole of it.
+ *
+ * A capture clips a payload past [its ceiling](GG_SESSION_STREAM_MAX_BYTES). The clip has
+ * to be self-describing, and the
+ * text pool is a bare `Vec<String>` with nowhere to say so — a reader handed a 32 KiB string
+ * cannot tell a command that printed exactly that much from one that printed forty megabytes, and
+ * the difference is the whole of whether a reader comparing its own output against it is
+ * entitled to call a mismatch drift. Hence this table, keyed by pool index, holding what the
+ * stored string is missing.
+ *
+ * # Why the whole payload's content address is on it
+ *
+ * [`original_id`](Self::original_id) is what makes a clipped record still *checkable*: a
+ * reader holding the whole output can hash it and answer "is this the same output?" exactly,
+ * from a record that kept 32 KiB of it. Without that the clip would be evidence of nothing — a
+ * matching tail proves very little about a payload whose head was dropped.
+ *
+ * It is also what makes the pool's dedup unambiguous. Interning keys on the address of the
+ * **original** rather than of the stored clip, so two different payloads that happen to share a
+ * tail occupy two pool entries with two clip rows, instead of collapsing into one entry whose
+ * single row could only describe one of them.
+ */
+export type GgSessionTextClip = {
+    /**
+     * The index into [`texts`](GgSessionRecord::texts) whose entry is a clip.
+     */
+    text: number;
+    /**
+     * How many bytes the whole payload had.
+     */
+    originalBytes: number;
+    /**
+     * The [content address](fingerprint_exact) of the whole payload.
+     */
+    originalId: string;
+};
+/**
+ * How an [agent](GgSessionAgent) was created, carrying the keys that identify it
+ * deterministically.
+ *
+ * Every variant's payload is a key that is a function of the run's own structure — a parent's
+ * ordered turn loop, or board state — and never of the global agent counter, whose values say
+ * only what order agents happened to reach their spawn in.
+ *
+ * The three board-dispatched variants are why this is an enum rather than a flat
+ * `(parent, ordinal)` pair: an [issue attempt](Self::IssueAttempt), a
+ * [reviewer](Self::Reviewer) and a [merge agent](Self::Merge) are all created with **no
+ * parent**, and a reviewer needs three keys rather than two, so a parent-keyed scheme
+ * leaves every one of them unbindable — and an unbound agent dies on its first turn.
+ */
+export type GgSessionAgentOrigin = {
+    type: "root";
+} | {
+    type: "spawn";
+    /**
+     * The [`agent_id`](GgSessionAgent::agent_id) of the spawner.
+     */
+    parent: string;
+    /**
+     * The spawn's position in the parent's own strictly-ordered turn loop, counted
+     * across **all** spawn kinds rather than per profile — a fork runs the forker's
+     * own profile, so a fork child and a same-profile delegated subagent from one
+     * parent would otherwise compete for the same queue.
+     */
+    ordinal: number;
+} | {
+    type: "succession";
+    /**
+     * The [`agent_id`](GgSessionAgent::agent_id) of the agent it succeeded.
+     */
+    predecessor: string;
+    /**
+     * The succession's position within that predecessor.
+     */
+    ordinal: number;
+} | {
+    type: "issue_attempt";
+    /**
+     * The issue's id.
+     */
+    issue: string;
+    /**
+     * **Which dispatch of that issue this agent is** — 0 for the first, 1 for the
+     * next, and so on — a function of board state, not of the agent counter.
+     *
+     * Every dispatch, not only every *retry*. The distinction is load-bearing and was
+     * learned the hard way: a review that requests changes re-dispatches the issue to a
+     * fresh agent while deliberately **not** charging the retry budget (rework asked
+     * for by a reviewer is not a failed attempt), so keying on the retry count gave two
+     * different agents one identical origin, which is a provenance table that cannot tell
+     * two agents apart.
+     */
+    attempt: number;
+} | {
+    type: "reviewer";
+    /**
+     * The issue's id.
+     */
+    issue: string;
+    /**
+     * The review round.
+     */
+    round: number;
+    /**
+     * The reviewer's position within that round, so two reviewers of one round are
+     * distinguishable.
+     */
+    position: number;
+} | {
+    type: "merge";
+    /**
+     * The issue's id.
+     */
+    issue: string;
+    /**
+     * Which merge of that issue this is.
+     */
+    ordinal: number;
+};
+/**
+ * One agent the record captured, and how it came to exist — the table that tells a reader
+ * which agent every [entry](GgSessionEntry) belongs to, and where that agent came from.
+ * **One row per agent, not per turn**: repeating a provenance tuple on every entry would
+ * defeat the pooling thesis outright.
+ */
+export type GgSessionAgent = {
+    /**
+     * The id the recorded run minted for this agent (`"root"` for the root agent).
+     * Every [entry](GgSessionEntry::agent_id) is stamped with it.
+     */
+    agentId: string;
+    /**
+     * The [id](crate::gg::GgAgentConfig::id) of the agent profile it ran under — what joins
+     * this row to the run's capability set, and to every telemetry event the agent emitted.
+     */
+    profileId: string;
+    /**
+     * The [display name](crate::gg::GgCapabilitySet::agent_name) that profile carried at launch,
+     * so a record read on its own still says which agent this was. Display text: two profiles may
+     * share a [name](crate::gg::GgAgentConfig::name), and nothing joins on this.
+     */
+    profile: string;
+    /**
+     * How the agent came to exist, carrying the keys that explain it. This — not
+     * [`agent_id`](Self::agent_id) — is what identifies an agent across runs, because
+     * subagent ids come off a global counter in the order agents reach their spawn, so two
+     * concurrent agents take different ids from one run to the next.
+     */
+    origin: GgSessionAgentOrigin;
+    /**
+     * The status the agent's turn loop ended in, when it ended. Absent for an agent that
+     * never reached an ending — one parked behind the parallelism cap when the run was
+     * killed, which is exactly the row a salvaged record is opened for.
+     */
+    terminalStatus?: GgAgentStatus;
+    /**
+     * The ceiling that stopped this agent, when one did — and *which* ceiling, which
+     * [`terminal_status`](Self::terminal_status) cannot answer on its own.
+     */
+    limitHit?: GgLimitBreach;
+};
+/**
+ * Which of gg's two model clients issued a request.
+ *
+ * The discriminator is what makes a **second queue** representable. Without it a
+ * [handoff-compaction](https://docs.testcabinet.ai/gg/compaction/) summarizer call and
+ * the agent's own next turn interleave into one indistinguishable queue, and a reader would
+ * attribute the compaction's turn to the agent.
+ */
+export type GgClientRole = "agent" | "compaction";
+/**
+ * Which model-client call shape a [request](GgSessionRequest) was issued under.
+ *
+ * Recorded because the two shapes are not interchangeable: `complete_requiring` forces
+ * the model to call the one offered tool, and a reader that cannot tell the two apart
+ * reads a forced call as a choice the model made freely — which is the opposite of what
+ * happened, and exactly the thing a stalled run is diagnosed on.
+ */
+export type GgSessionRequestShape = "complete" | "complete_requiring";
+/**
+ * One model request, as pool references: the conversation that was sent and the toolset
+ * that was offered.
+ */
+export type GgSessionRequest = {
+    /**
+     * Which client issued it.
+     */
+    role: GgClientRole;
+    /**
+     * Whether the offered tool was required.
+     */
+    shape: GgSessionRequestShape;
+    /**
+     * The conversation sent this turn, as ordered indices into
+     * [`messages`](GgSessionRecord::messages).
+     */
+    messages: Array<number>;
+    /**
+     * The offered tool definitions, as an index into
+     * [`toolsets`](GgSessionRecord::toolsets). `None` for a call that offered no tools
+     * at all.
+     */
+    toolset?: number;
+};
+/**
+ * The class of a recorded [model error](GgSessionModelError) — a mirror of the `gg`
+ * binary's `ModelError` variants, carried in the contract because the *class* is what
+ * the turn loop branches on.
+ */
+export type GgSessionModelErrorKind = "missing_api_key" | "fatal" | "retry_exhausted" | "vision_unsupported" | "parse" | "response_loop" | "timeout";
+/**
+ * Why a model call failed.
+ *
+ * A failed call is an input like any other: a vision refusal strips images and re-runs the
+ * turn, and a retry exhaustion counts against an error ceiling, so **both change control
+ * flow** — and a record that dropped them would be blank precisely where a developer is
+ * most likely to be looking.
+ */
+export type GgSessionModelError = {
+    /**
+     * The error's class — what the loop branched on.
+     */
+    kind: GgSessionModelErrorKind;
+    /**
+     * The message the loop saw, which for a provider error is a truncated copy of its
+     * body.
+     */
+    message: string;
+    /**
+     * The HTTP status, for an error that carried one.
+     */
+    status?: number;
+    /**
+     * How many attempts were made before giving up, for a retry exhaustion.
+     */
+    attempts?: number;
+    /**
+     * The model that produced the error, for an error that names one (a vision
+     * refusal).
+     */
+    modelId?: string;
+};
+/**
+ * Where a recorded command ran, expressed **relative to the workspace** wherever
+ * possible.
+ *
+ * An absolute path says nothing a reader can use: the workspace root is an implementation
+ * detail of the container the run happened in, so `/work/impl/web` and `/work` differ by the
+ * only part worth recording. Storing the *relationship* is what makes the recorded directory
+ * comparable across runs — and the same command in a different tree really is a different
+ * command.
+ */
+export type GgShellCwd = {
+    type: "workspace";
+} | {
+    type: "relative";
+    /**
+     * The workspace-relative path, with `/` separators and no leading `./`.
+     */
+    path: string;
+} | {
+    type: "absolute";
+    /**
+     * The absolute path.
+     */
+    path: string;
+};
+/**
+ * Which of gg's three command paths issued a recorded shell command.
+ *
+ * All three reach one command line, and the only thing they share is the tool context —
+ * which is why the seam belongs there. Recording *which* path asked is what keeps the commands gg
+ * runs *without the model asking* — an [agent-stop hook](https://docs.testcabinet.ai/gg/hooks/)'s
+ * ending gate, say — distinguishable from the ones it ran because the model asked.
+ */
+export type GgShellOrigin = "tool" | "program" | "hook";
+/**
+ * One subprocess gg ran, with its bulky streams pooled.
+ */
+export type GgSessionCommand = {
+    /**
+     * The command line, inline rather than pooled: it is short, and it is the **check**
+     * half of a recorded-command lookup (position is the key), so it is worth being able
+     * to read without resolving a pool.
+     */
+    command: string;
+    /**
+     * Where it ran.
+     */
+    cwd: GgShellCwd;
+    /**
+     * The exit status it returned.
+     */
+    exitCode: number;
+    /**
+     * Its standard output, as an index into [`texts`](GgSessionRecord::texts).
+     */
+    stdout: number;
+    /**
+     * Its standard error, as an index into [`texts`](GgSessionRecord::texts).
+     */
+    stderr: number;
+};
+/**
+ * One image a recorded call produced, as a **descriptor**: what it was and how big it was,
+ * never its bytes.
+ *
+ * The same shape the [telemetry stream](crate::gg::GgLoggedImage) carries, deliberately — the
+ * two are the same fact about the same turn, and a record that carried more would be a record
+ * nobody could afford to keep on every run.
+ */
+export type GgSessionImage = {
+    /**
+     * The IANA media type (`image/png`, `image/jpeg`, …).
+     */
+    mediaType: string;
+    /**
+     * The decoded size in bytes.
+     */
+    bytes: number;
+};
+/**
+ * A tool call the agent (or a [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE)
+ * program) made.
+ */
+export type GgSessionToolCall = {
+    /**
+     * The call id the loop minted. A program-composed call arrives under a synthetic id
+     * carrying the program prefix, which is the only thing distinguishing the two.
+     */
+    id: string;
+    /**
+     * The tool's name.
+     */
+    name: string;
+    /**
+     * The call's arguments — free-form JSON, since each tool owns its own schema.
+     */
+    arguments: Record<string, unknown>;
+    /**
+     * The directory the call was dispatched in, for a tool that runs a subprocess.
+     * Typed rather than an absolute path string, so what is recorded is the part that says
+     * something — see [`GgShellCwd`].
+     */
+    cwd?: GgShellCwd;
+};
+/**
+ * The exact outcome a tool dispatch returned, with its bulky payloads pooled.
+ *
+ * Interning the output against the [text pool](GgSessionRecord::texts) is not merely a
+ * size win: a tool's output is quoted **verbatim** into the `tool` message that carries
+ * it into the window, so the outcome and the message body are duplicates of one another.
+ * One table collapses the pair.
+ */
+export type GgSessionToolOutcome = {
+    /**
+     * Whether the call succeeded.
+     */
+    ok: boolean;
+    /**
+     * The text fed back to the model, as an index into
+     * [`texts`](GgSessionRecord::texts).
+     */
+    output: number;
+    /**
+     * The short human-readable summary, when the call recorded one, as an index into
+     * [`texts`](GgSessionRecord::texts).
+     */
+    summary?: number;
+    /**
+     * The images the call produced, as **descriptors** — media type and decoded size,
+     * never the bytes.
+     *
+     * The same thing the [telemetry stream](crate::gg::GgTelemetryKind::ContextMessage)
+     * records, and for the same reason: a picture's payload is the one thing in a session
+     * large enough to dominate everything that explains it, and a record that carried them
+     * would be a record nobody could afford to keep on every run.
+     */
+    images?: Array<GgSessionImage>;
+    /**
+     * The structured facts a responses-as-code program branches on, when the tool
+     * produced them — with the one unbounded text field lifted out into
+     * [`data_text`](Self::data_text).
+     */
+    data?: Record<string, unknown>;
+    /**
+     * The bulky text lifted out of [`data`](Self::data), as an index into
+     * [`texts`](GgSessionRecord::texts).
+     *
+     * Two of gg's structured tool payloads carry the *whole* of what the tool returned a second
+     * time: a `read_file`'s `contents` (up to 256 KiB) and a `shell`'s `body`. Left inline they
+     * would be the largest thing in the record and the one thing in it that is neither pooled nor
+     * clipped — five reads of the same 100 KB file would store it five times, uncompressed, in a
+     * format whose entire premise is that a payload is stored once. Worse, an inline copy
+     * disagrees with a clipped [`output`](Self::output), leaving the entry with two answers to
+     * what the tool returned.
+     *
+     * Pooling it fixes all three at once: the bytes are stored once, under the same ceiling
+     * `output` is clipped at, and — because a `read_file`'s `contents` and its `output` are
+     * usually the identical string — they normally dedup to the *same* pool entry, so the second
+     * copy costs nothing at all.
+     *
+     * Which field it belongs to is determined by `data`'s own variant, so nothing has to be
+     * recorded twice to say. Absent on a record whose tool produced no such payload.
+     */
+    dataText?: number;
+    /**
+     * Why the call failed, when it failed and the failure was classified.
+     */
+    failure?: Record<string, unknown>;
+};
+/**
+ * Which slot of gg's window model a [prompt item](GgSessionPromptItem) came from.
+ *
+ * The window is not a flat list: every position but the thread is a *slot* that is
+ * assigned rather than appended, precisely so it cannot accumulate duplicates.
+ */
+export type GgSessionPromptSlot = "system" | "thread" | "context_usage";
+/**
+ * Whether a [prompt item](GgSessionPromptItem) is retained verbatim across a compaction
+ * boundary or is ephemeral thread material.
+ */
+export type GgSessionRetention = "pinned" | "ephemeral";
+/**
+ * The `offset`/`limit` window a paged file view covers.
+ */
+export type GgSessionFileRegion = {
+    /**
+     * The 1-based first line the read returned.
+     */
+    offset: number;
+    /**
+     * How many lines it returned.
+     */
+    limit: number;
+};
+/**
+ * One item of an agent's context window as it stood for a recorded turn.
+ *
+ * These four typed fields exist in gg's window model and are recoverable from
+ * **nowhere else** — not the telemetry stream, not the raw output. The
+ * [`slot`](Self::slot) matters more than it looks: a system prompt and a rebuilt
+ * context-usage signal are otherwise indistinguishable on the wire, since both are
+ * [`System`](GgContextSource::System)-sourced, unlabelled and pinned.
+ */
+export type GgSessionPromptItem = {
+    /**
+     * The item's message, as an index into [`messages`](GgSessionRecord::messages).
+     */
+    message: number;
+    /**
+     * Which slot of the window model it came from.
+     */
+    slot: GgSessionPromptSlot;
+    /**
+     * The band it is attributed to in the per-source breakdown.
+     */
+    source: GgContextSource;
+    /**
+     * Whether it survives a compaction boundary verbatim.
+     */
+    retention: GgSessionRetention;
+    /**
+     * The session turn it was pushed on. `0` for everything seeded before the first
+     * turn, which is why the turn numbering the model sees starts at `1`.
+     */
+    turn: number;
+    /**
+     * The item's selector tag, when it carries one — a file view's workspace path, or
+     * the fullness signal's sentinel.
+     */
+    label?: string;
+    /**
+     * For a file view produced by a **paged** read, the window it covers.
+     */
+    region?: GgSessionFileRegion;
+};
+/**
+ * Which non-deterministic input one [entry](GgSessionEntry) pins.
+ *
+ * The vocabulary is enumerated exhaustively on purpose: every category here **changes
+ * control flow**, and a capture that dropped one would leave the record blank exactly where
+ * a developer is most likely to be looking.
+ */
+export type GgSessionEntryKind = {
+    type: "model_io";
+    /**
+     * What was sent.
+     */
+    request: GgSessionRequest;
+    /**
+     * The response the turn yielded — the `gg` binary's `ModelResponse` (`text`,
+     * `toolCalls`, `finishReason`, `usage`, `cost`), carried as free-form JSON
+     * because its shape is owned by the binary. Its recorded `usage` is what makes a
+     * cost ceiling trip when it did.
+     */
+    response: Record<string, unknown>;
+    /**
+     * How long the call took, in milliseconds. Absent for a call whose latency was not
+     * measured.
+     */
+    durationMs?: number;
+} | {
+    type: "model_error";
+    /**
+     * What was sent.
+     */
+    request: GgSessionRequest;
+    /**
+     * Why it failed.
+     */
+    error: GgSessionModelError;
+    /**
+     * How long the failed call took, in milliseconds. Worth as much as the successful
+     * path's and sometimes more: a retry exhaustion's latency is the whole of the backoff
+     * the run paid for nothing.
+     */
+    durationMs?: number;
+} | {
+    type: "tool_result";
+    /**
+     * The call.
+     */
+    call: GgSessionToolCall;
+    /**
+     * The outcome.
+     */
+    outcome: GgSessionToolOutcome;
+} | {
+    type: "prompt_frame";
+    /**
+     * The window's items, in the order they were rendered to the client.
+     */
+    items: Array<GgSessionPromptItem>;
+} | {
+    type: "shell";
+    /**
+     * Which of the three command paths issued it.
+     */
+    origin: GgShellOrigin;
+    /**
+     * The command and its result.
+     */
+    command: GgSessionCommand;
+} | {
+    type: "git";
+    /**
+     * The command and its result.
+     */
+    command: GgSessionCommand;
+} | {
+    type: "cancel_probe";
+    /**
+     * Whether the probe found the session canceled.
+     */
+    canceled: boolean;
+} | {
+    type: "clock";
+    /**
+     * Milliseconds elapsed since the session began, as the run observed them.
+     */
+    elapsedMs: number;
+    /**
+     * Milliseconds remaining before the run's ceiling, when one was configured.
+     */
+    remainingMs?: number;
+};
+/**
+ * One entry in the input log: a single pinned non-deterministic input, tagged so the
+ * multi-agent interleaving recovers deterministically.
+ */
+export type GgSessionEntry = {
+    /**
+     * The [agent](GgSessionAgent::agent_id) whose loop consumed this input.
+     */
+    agentId: string;
+    /**
+     * The globally monotonic sequence number this entry was recorded at, minted across
+     * **all** agents from one counter.
+     *
+     * It is not merely an ordering hint: because a gg run holds run-global mutable state
+     * (the [board](https://docs.testcabinet.ai/gg/project-management/), inter-agent
+     * messages, collected subagent results) that is rendered into every agent's pinned
+     * prompt each turn, the recorded interleaving **is** part of what each agent was shown.
+     * Two agents' entries read in `seq` order are the windows the run actually built; read in
+     * any other order they are windows nobody saw.
+     */
+    seq: number;
+} & ({
+    type: "model_io";
+    /**
+     * What was sent.
+     */
+    request: GgSessionRequest;
+    /**
+     * The response the turn yielded — the `gg` binary's `ModelResponse` (`text`,
+     * `toolCalls`, `finishReason`, `usage`, `cost`), carried as free-form JSON
+     * because its shape is owned by the binary. Its recorded `usage` is what makes a
+     * cost ceiling trip when it did.
+     */
+    response: Record<string, unknown>;
+    /**
+     * How long the call took, in milliseconds. Absent for a call whose latency was not
+     * measured.
+     */
+    durationMs?: number;
+} | {
+    type: "model_error";
+    /**
+     * What was sent.
+     */
+    request: GgSessionRequest;
+    /**
+     * Why it failed.
+     */
+    error: GgSessionModelError;
+    /**
+     * How long the failed call took, in milliseconds. Worth as much as the successful
+     * path's and sometimes more: a retry exhaustion's latency is the whole of the backoff
+     * the run paid for nothing.
+     */
+    durationMs?: number;
+} | {
+    type: "tool_result";
+    /**
+     * The call.
+     */
+    call: GgSessionToolCall;
+    /**
+     * The outcome.
+     */
+    outcome: GgSessionToolOutcome;
+} | {
+    type: "prompt_frame";
+    /**
+     * The window's items, in the order they were rendered to the client.
+     */
+    items: Array<GgSessionPromptItem>;
+} | {
+    type: "shell";
+    /**
+     * Which of the three command paths issued it.
+     */
+    origin: GgShellOrigin;
+    /**
+     * The command and its result.
+     */
+    command: GgSessionCommand;
+} | {
+    type: "git";
+    /**
+     * The command and its result.
+     */
+    command: GgSessionCommand;
+} | {
+    type: "cancel_probe";
+    /**
+     * Whether the probe found the session canceled.
+     */
+    canceled: boolean;
+} | {
+    type: "clock";
+    /**
+     * Milliseconds elapsed since the session began, as the run observed them.
+     */
+    elapsedMs: number;
+    /**
+     * Milliseconds remaining before the run's ceiling, when one was configured.
+     */
+    remainingMs?: number;
+});
+/**
+ * Why a record stops short of the session it observed.
+ *
+ * Capture **degrades, it never fails the run it observes** — so every one of these is a
+ * recorded fact rather than an error, and the record is still served.
+ */
+export type GgSessionTruncationReason = "byte_ceiling" | "session_killed" | "corrupt_journal" | "write_failed";
+/**
+ * What a record is missing, when it is missing something.
+ */
+export type GgSessionTruncation = {
+    /**
+     * Why capture stopped.
+     */
+    reason: GgSessionTruncationReason;
+    /**
+     * The [`seq`](GgSessionEntry::seq) of the last entry that made it into the record.
+     */
+    lastSeq?: number;
+    /**
+     * How many bytes had been written when capture stopped, for a ceiling breach.
+     */
+    bytes?: number;
+};
+/**
+ * A gg run's **session record**: the fixed seed, four content-addressed pools, the agent
+ * provenance table, and the ordered log of every non-deterministic input the session
+ * consumed.
+ *
+ * See the [module documentation](self) for the shape and for how a
+ * record from a newer gg is refused rather than read on a partial understanding of it.
+ */
+export type GgSessionRecord = {
+    /**
+     * The format **this document** is in. The compatibility contract, and the only
+     * identity a reader may branch on.
+     *
+     * [`GG_SESSION_FORMAT_VERSION`] is the one version this build reads; a record stating any
+     * other is refused rather than read on a partial understanding of its entry kinds.
+     * Required: a record that states no format is malformed, not a record to be guessed at.
+     */
+    formatVersion: number;
+    /**
+     * Which build captured it. Explanatory; never a gate.
+     */
+    recorder: GgSessionRecorder;
+    /**
+     * The gg session this record is of — the run id, matching the
+     * [telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.
+     */
+    sessionId: string;
+    /**
+     * The [capability set](GgCapabilitySet) the run was configured with, so a
+     * reader has the configuration the run was launched with rather than one assembled to
+     * suit the record.
+     */
+    capabilitySet: GgCapabilitySet;
+    /**
+     * The fixed identity the session started from.
+     */
+    seed: GgSessionSeed;
+    /**
+     * Every agent the session created, and how. One row per agent.
+     */
+    agents: Array<GgSessionAgent>;
+    /**
+     * The message pool. [Entries](GgSessionEntry) reference it by index.
+     */
+    messages: Array<GgSessionMessage>;
+    /**
+     * The offered-toolset pool.
+     */
+    toolsets: Array<GgSessionToolset>;
+    /**
+     * The text pool: every large string payload — a tool outcome's output, a `git`
+     * invocation's stdout, a probe body.
+     */
+    texts: Array<string>;
+    /**
+     * Which [texts](Self::texts) are [clips](GgSessionTextClip) rather than whole payloads, in
+     * ascending pool order. Empty for a record whose payloads all fit.
+     *
+     * A sparse side table rather than a field on each pooled text: the overwhelming majority of
+     * payloads are not clipped, and widening every entry of the pool to say so would cost more
+     * than the clipping saves. Always serialized, like the pools it annotates rather than like
+     * [`truncation`](Self::truncation) — an empty table is the positive statement "nothing was
+     * clipped", which is exactly what a reader of a standard record needs to hear.
+     */
+    clips: Array<GgSessionTextClip>;
+    /**
+     * Every pinned non-deterministic input, in globally monotonic
+     * [`seq`](GgSessionEntry::seq) order.
+     */
+    entries: Array<GgSessionEntry>;
+    /**
+     * What the record is missing, when it is missing something. Absent on a complete
+     * capture.
+     */
+    truncation?: GgSessionTruncation;
+};
+//# sourceMappingURL=gg-session-record.d.ts.map

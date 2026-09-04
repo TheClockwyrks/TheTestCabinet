@@ -1,0 +1,253 @@
+# Deepcore — The assets you produce
+
+Deepcore ships no pre-made art, effects, or sound. Six asset-generation tools sit
+on the `PATH` while this build is being made, and every sprite, animation,
+particle system, and sound the game plays is produced with them, committed to this
+repository, and loaded by the game at runtime. This file is the contract: what to
+produce, which tool makes it, where the file lands, and how it is wired in.
+
+The animated prospector is the headline. Its cycles carry as much of the finished
+game as the simulation does.
+
+## The six tools
+
+| Tool | Produces | Used for |
+| --- | --- | --- |
+| `draw` | One sprite, as a PNG | Tiles, ore, materials, hazards, buildings, the rocket, icons |
+| `draw-sheet` | A sprite sheet, one PNG per frame | The miner's cycles, the lava shimmer, the crack overlay, the rocket assembly |
+| `particle-2d` | A particle system, as a `system.json` | Every effect |
+| `sfx-synth` | A synthesized sound, as a `.wav` | Cues built from synth voices |
+| `sfx-sample` | A sampled sound over the sample pack, as a `.wav` | Richer impact, pickup, and confirm cues |
+| `music` | Sequenced music over an instrument bank, as a `.wav` and a `.mid` | The music bed |
+
+Each is a command-line tool. Run `<tool> --help` for its operations, and
+`<tool> <operation> --help` for one operation's flags. In outline, each records
+the operations run against it and then renders the finished file. `draw-sheet` is
+`draw` with a `--frame <index>` on every operation, emitting one separate PNG per
+frame; frames are separate files rather than regions of one image. `particle-2d`
+authors a system of emitters, forces, and per-particle curves that is simulated
+live, rather than baking frames. `sfx-sample` draws on the `combat-core` sample
+pack and `music` on the `gm-lite` and `synthwave` instrument banks, all present in
+the container and browsed with `list-samples` and `list-instruments`; `sfx-synth`
+needs neither.
+
+## The build is self-contained
+
+Producing the assets is a one-time step of this build. `npm run build` bundles the
+committed files and never invokes the tools, which are not present when the built
+site is rebuilt from the committed source.
+
+## Loading
+
+The built site is served from an arbitrary base path, so no asset is referenced by
+a root-absolute URL. Every produced file is referenced relative to the document or
+the module that loads it, and the bundler's base is relative.
+
+{{#if (eq engine.slug "none")}}
+Loading the produced files is part of the runtime layer you write.
+{{else}}
+The {{engine.name}} engine loads assets from a root you give it and reports
+progress and failures as it goes; read its documentation in `engine/` for its
+loader and use it rather than fetching the files yourself.
+{{/if}}
+
+## The layout
+
+Every produced file lands under `assets/` at these exact paths.
+
+| Path | Holds |
+| --- | --- |
+| `assets/miner/<state>/frameNN.png` | One frame of a miner cycle, numbered from `frame00.png`. |
+| `assets/tiles/<band>-<n>.png` | A rock variant for `topsoil`, `rockbed`, `deepstone`, or `coreshell`. |
+| `assets/tiles/bedrock.png` | The bedrock border. |
+| `assets/tiles/stone-<n>.png` | An unbreakable boulder variant. |
+| `assets/tiles/tunnel.png` | The carved-tunnel interior fill. |
+| `assets/tiles/crack/frameNN.png` | One frame of the drill-damage overlay. |
+| `assets/hazards/lava/frameNN.png` | One frame of the lava shimmer. |
+| `assets/ore/<name>.png` | The overlay for one ore or gemstone, named in lower case. |
+| `assets/materials/<name>.png` | `resonite`, `cryenite`, `core`, and `core-sample`. |
+| `assets/surface/<id>.png` | One of the six buildings, by its id, plus `cave-mouth`, `ground`, and `sky`. |
+| `assets/rocket/stageN.png` | The rocket with `N` components installed, `stage0` through `stage5`. |
+| `assets/icons/<name>.png` | A status-bar icon. |
+| `assets/fx/<name>.json` | One produced particle system. |
+| `assets/audio/<name>.wav` | One produced sound or the music bed. |
+
+Tiles, ore and gemstone overlays, material nodes, hazard cells, and the crack
+overlay are authored at `TILE` (`80`) by `TILE` and drawn at that size. The miner
+is authored to fit within `MINER_SPRITE` (`80`) by `MINER_SPRITE`. Icons are
+`ICON_SIZE` (`24`) square. Overlays are authored on a transparent canvas with
+straight alpha and sampled nearest-neighbor so they stay crisp.
+
+## The miner
+
+Produce one `draw-sheet` cycle per animation state, one PNG per frame, under
+`assets/miner/<state>/`. The state names are the miner's
+animation states.
+The game plays the cycle matching the miner's current state, advancing frames at
+`ANIM_FPS` (`12`) frames per second, looping every cycle but `hurt`, which plays
+once.
+
+| State | Minimum frames | The frame must carry |
+| --- | --- | --- |
+| `idle` | `2` | Standing at rest, with a breathing bob and a lamp flicker so the miner is alive. |
+| `walk` | `4` | A readable walk on the ground, legs and drill swinging. |
+| `drill-down` | `3` | Braced downward, the drill biting the floor, the body shaking with the cut. |
+| `drill-side` | `3` | Braced sideways, the drill biting the wall ahead. |
+| `jetpack` | `3` | Thrusting, the body lifted, the flame flickering at the nozzle. |
+| `fall` | `2` | Dropping through open space, arms and legs trailing. |
+| `hurt` | `2` | A sharp flinch and recoil at the instant of damage. |
+| `fuel-out` | `2` | Slumped and powerless, the jetpack dead. |
+
+Draw the miner facing one canonical direction and mirror it in the game to face
+the other, so the silhouette, the suit, the drill, and the jetpack are identical
+in both facings and across every cycle. The effort escalates across the set: the
+idle is gentle, the drill shakes, the jetpack strains, the fall is limp, and the
+hurt snaps.
+
+## Environment sprites
+
+Produce each of the following with `draw`.
+
+- Band rock, at least `TILE_VARIANTS` (`3`) interchangeable variants per band,
+  chosen per cell so a wall of one band never repeats a single stamp. Variants
+  share the band's color and differ only in the grain. The grain is fine and even
+  across the whole tile rather than a few large blotches.
+- The bedrock border tile.
+- Unbreakable stone, at least two variants, reading as a smooth, cold, harder
+  material against the grainy band rock, with a distinct silhouette rather than a
+  re-tinted dirt tile.
+- The carved-tunnel interior fill, which the game paints inside the shaped tunnel.
+- One overlay per ore, drawn as a smear of mineral run through the dirt: a streak
+  spreading across much of the cell, feathering into the rock at the edges so the
+  band rock shows through, and reaching the cell's edges so adjacent ore cells read
+  as one continuous vein. An ore is never a discrete nugget sitting on the rock.
+- One overlay per gemstone, drawn as a cut, faceted jewel with a flat table,
+  angled facets, and a bright glint, unmistakably unlike the ore smear.
+- Resonite and Cryenite nodes, as raw crystal embedded in rock, distinct from both
+  ore and gemstones; the glowing Core in its chamber; and the Core Sample.
+- The six surface buildings, each reading clearly as what it is, the cave mouth,
+  the camp ground, and the sky backdrop above it.
+- The rocket at each of its six assembly states, from the bare pad to the
+  launch-ready rocket, so the player reads the win progress from the pad.
+- The status-bar icons for fuel, hull, cargo, Credits, depth, and each material.
+
+## Produced animations
+
+- The lava shimmer: a looping cycle for a lava cell's molten interior, so lava
+  glows and churns rather than sitting flat.
+- The drill-damage crack overlay: at least `CRACK_FRAMES` (`4`) transparent frames
+  running front to back from faint hairlines to a shattered, about-to-break face.
+  The game picks the frame from a cell's damage fraction, `1 - health /
+  BAND_HEALTH`, and draws it over every visible damaged cell, not only the one
+  being cut.
+- The rocket assembly, if the six states are produced as a sheet rather than as
+  separate sprites.
+
+## Particle systems
+
+Author each effect with `particle-2d` and play it live, so it varies shot to shot.
+A flat opacity flash or a hand-coded loop in place of a produced system does not
+satisfy this contract.
+
+| File | Fires when | Must carry |
+| --- | --- | --- |
+| `gas-seep.json` | Ambient, over each on-screen gas pocket in turn | A faint wisp of pale gas rising from the cell, from varied points across its face. Subtle enough that a hurried dig misses it, opaque enough to read against the rock when watched. |
+| `drill-debris.json` | The miner is cutting a cell | A spray of chips and dust off the bit, tinted to the band. |
+| `jetpack-exhaust.json` | The miner is thrusting | A downward plume of hot exhaust and sparks, pulsing with the hold. |
+| `ore-sparkle.json` | An ore or gemstone is collected | A brief bright glint at the pickup, tinted to the ore. |
+| `material-shimmer.json` | A material node is collected | A richer, distinct shimmer that reads as a prize rather than routine ore. |
+| `gas-explosion.json` | A gas pocket detonates | A violent burst larger than the cell: a hard flash, a fast shockwave ring, an outward shell, and flying debris. |
+| `lava-embers.json` | The miner touches lava | A sizzle of embers and smoke at the contact point. |
+| `impact-dust.json` | The miner lands above the safe speed | A puff of dust at the touchdown. |
+| `core-extract.json` | A Core Sample is taken | An ominous pulse of energy off the Core as the timer starts. |
+| `core-detonation.json` | A Core Sample detonates | A huge explosion, much larger than a gas blast. |
+| `launch-exhaust.json` | The rocket launches | A roaring column of exhaust and smoke under the rising rocket. |
+| `death-burst.json` | The miner dies | A burst of venting suit and debris. |
+
+Spawn an instance of the matching system at the event's position and let it play
+out: the debris at the bit, the exhaust under the jetpack, the sparkle at the
+pickup, the blast at the pocket, the launch exhaust under the rocket.
+
+`@test-cabinet/particle-runtime` is already a dependency of this project, resolved
+by a `file:` entry in `package.json`. Import it like any other dependency and do
+not fetch or reimplement it. Its `/canvas` binding plays a parsed `system.json`
+into a 2D drawing context, advanced by the frame's delta time; its own types are
+the authoritative description of that API.
+
+{{#if (eq engine.slug "none")}}
+The context is the one your renderer draws into.
+{{else if (eq engine.slug "simple-2d")}}
+The context is the one the engine hands the game to draw into.
+{{else}}
+The engine's declarative pipeline does not draw particles, so the systems are
+played through a component that draws directly with the context the engine hands
+it, at the layer the effects belong on.
+{{/if}}
+
+The explosives and a jettisoned Sample's ground detonation reuse
+`gas-explosion.json` and `core-detonation.json`; the teleporters and the repair
+supplies reuse the extraction, shimmer, and confirm cues. The field supplies need
+no produced asset of their own.
+
+## Audio
+
+Produce every sound with `sfx-synth` or `sfx-sample`, and the music bed with
+`music`. `music` emits a `.wav` alongside a `.mid`; the `.wav` is what plays.
+
+| Cue | File | Plays |
+| --- | --- | --- |
+| `drill` | `assets/audio/drill.wav` | Looping while the miner is cutting. |
+| `thrust` | `assets/audio/thrust.wav` | Looping while the jetpack fires. |
+| `ore-pickup` | `assets/audio/ore-pickup.wav` | An ore or gemstone is banked. |
+| `material-chime` | `assets/audio/material-chime.wav` | A material is banked. Richer than the ore pickup. |
+| `gas-explosion` | `assets/audio/gas-explosion.wav` | A gas pocket detonates. |
+| `lava-sizzle` | `assets/audio/lava-sizzle.wav` | The miner touches lava. |
+| `impact` | `assets/audio/impact.wav` | The miner lands above the safe speed. |
+| `fabricate` | `assets/audio/fabricate.wav` | A purchase or a fabrication succeeds. |
+| `launch` | `assets/audio/launch.wav` | The rocket launches. |
+| `death` | `assets/audio/death.wav` | The miner dies. |
+| `alarm-fuel` | `assets/audio/alarm-fuel.wav` | Fuel is below `LOW_FUEL_FRACTION`. |
+| `alarm-core` | `assets/audio/alarm-core.wav` | A Core Sample's timer runs, escalating as it nears zero. |
+| `music` | `assets/audio/music.wav` | Looping under the whole game. A lonely, industrial descent bed. |
+
+{{#if (eq engine.slug "none")}}
+Decode and play each file through the Web Audio API. Do not start audio before
+the player has interacted with the page, since browsers block it, and provide the
+mute toggle the status bar carries.
+{{else}}
+Define each cue by the name above with the engine's audio and play it by that
+name; read its documentation in `engine/`. The engine holds the mute toggle and
+the unlock on first interaction.
+{{/if}}
+
+## What the game draws in code
+
+There is no tool for interface art, so all of the following are drawn in code:
+
+- The whole status bar: the gauges, the readouts, the layout, and the text. Its
+  icons are produced sprites; everything around them is code.
+- Every menu, panel, and overlay screen.
+- The scanner indicator and the Core Sample countdown.
+- The field-supply icons.
+- The faint tile grid over the produced rock.
+- The carved-tunnel shaping and the lava fringe. A carved cell is drawn inset with
+  a lip of the band's dirt and rounded corners, so a tunnel is narrower than a full
+  cell; orthogonally adjacent open cells join into one passage and cells touching
+  only at a corner stay separate. An exterior corner rounds convex; at an L-bend or
+  a T-junction, where solid rock pokes diagonally into the bend, the dirt keeps a
+  convex nub bulging into the tunnel rather than a scooped-out notch. A lava cell
+  is fringed with the same dirt border, and adjacent lava cells flow together into
+  one pool.
+- The screen shake: a short render-space jitter of the world on a gas detonation,
+  an explosives blast, a hard landing, or the Core Sample's detonation, scaled to
+  the event and decaying out. It is purely visual and never moves the simulation.
+- The first-time hazard notice card.
+
+## The bar
+
+Every produced asset is genuinely produced with these tools. A build that ships
+placeholder rectangles, code-drawn shapes in place of a produced sprite, a single
+static frame in place of a miner cycle, a flat flash in place of a produced
+particle system, downloaded art, or silence has not done this work, however good
+the simulation is. Everything the game shows and plays traces either to a file
+produced here or to the interface drawn in code above.

@@ -7,74 +7,71 @@
 // installed on the page, it holds no state of its own, and it is inert during
 // normal play: nothing below runs until something calls it.
 //
-// Every operation is a method acting on the LIVE game. A POSE takes only the
-// arguments its heading names and returns nothing: it reads
-// `game.engine.world` at the moment of the call and arranges it through the
-// same systems play uses — it drives the game mode, patches the tagged actors,
-// or opens the level a menu choice would open — and the frames that follow run
-// the real collision, the real launches, and the real AI from there. A READING
-// takes nothing and returns plain data read off the world at the call.
+// EVERY OPERATION IS ATOMIC. A POSE takes only the arguments its heading names,
+// returns nothing, and sets ONE field, places or removes ONE entity, or clears
+// the field — it reads `game.engine.world` at the moment of the call and
+// arranges it through the same systems play uses, and the frames that follow
+// run the real collisions, the real launches, and the real AI from there. A
+// READING takes only its own arguments and returns plain data read off the
+// world at the instant of the call. `reset` is the one exception, and it is a
+// lifecycle verb rather than a pose: it restores every declared field at once,
+// which is how a caller gets back to a known start.
 //
-// ONE WRINKLE IS CROSSING A LEVEL TRANSITION. `startMatch` starts a match
-// exactly as the menu does: `world.open` on the match level, which the engine
-// performs on the next frame. A scenario typically follows it with more poses
-// before advancing — `startMatch`, then `setPaddle` and `setBall`, then a few
-// frames — so a pose made while that transition is pending is held and applied
-// the moment the match's world has begun play (`CaromGame.worldOpened`), in
-// call order, against the live actors of the world it was aimed at. From the
-// caller's side the sequencing is unchanged: pose, advance, read.
+// Nothing here knows about level transitions. `setScreen` sets the screen and
+// hands the instance the job of making sure the level that hosts it is the one
+// that will be open (`followScreen`, src/game.ts), which is also what carries
+// the world across when that level has to change. From a caller's side the
+// discipline is the one specs/instrumentation.md states: pose, advance one
+// frame, then pose or read again.
 //
 // Everything about DRIVING A BROWSER GAME rather than about Carom belongs to
 // the engine and is deliberately absent: there is no `step` (the engine's
 // scripted clocks and `engine.advance` own time), no `keyDown` or `press` (the
-// engine's registered actions are driven at its input seam), and no overlay
-// drawing or toggle (the engine draws the panel and owns the backtick key).
+// engine's registered actions and pointer are driven at its input seam), and no
+// overlay drawing or toggle (the engine draws the panel and owns the backtick
+// key).
 
 import type { World } from "@test-cabinet/structured-2d";
-import { ballAt, ballsOf } from "./ball";
+import { CAROM_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
 import {
-  BALL_COUNT,
-  CAROM_DEBUG_VERSION,
-  DEFAULT_SEED,
-  FIELD_CY,
-  LEVELS,
-  TAGS,
-} from "./constants";
+  ballAt,
+  ballsOf,
+  clearField,
+  isBallIndex,
+  isObstacleIndex,
+  obstaclesOf,
+  paddleOf,
+  spawnBall as spawnBallOn,
+  spawnObstacle as spawnObstacleOn,
+} from "./field";
 import type { CaromGame } from "./game";
-import { Paddle } from "./paddle";
+import { menuItemRect as rectOfItem, type MenuRect } from "./menus";
 import type { Side } from "./sim";
 import {
-  MatchState,
   screenOf,
-  TitleState,
+  stateOf,
   type Mode,
+  type ResumeScreen,
   type Screen,
 } from "./state";
+import type { TrailSample } from "./trail";
 
-/** The fields `setPaddle` may set. Anything omitted is left as it is. */
-export interface PaddlePatch {
-  /** Center y, in logical pixels. */
-  cy?: number;
-  /**
-   * Vertical velocity in units per second. It is written to the paddle AND
-   * held by the driver for that side, so it PERSISTS across frames and the
-   * paddle is still moving when it strikes a ball, which is what drives the
-   * spin mechanic.
-   */
-  vy?: number;
+/** One paddle, as a snapshot reports it. */
+export interface PaddleSnapshot {
+  /** Center y, in logical units. */
+  cy: number;
+  /** The velocity the last frame integrated, in units per second. */
+  vy: number;
+  /** The velocity `setPaddleVy` last set for that side, held across frames. */
+  drivenVy: number;
+  /** Whether the surface is moving that paddle rather than the player or AI. */
+  driven: boolean;
 }
 
-/** The fields `setBall` may set. Anything omitted is left as it is. */
-export interface BallPatch {
-  x?: number;
-  y?: number;
-  vx?: number;
-  vy?: number;
-  spin?: number;
-}
-
-/** The plain, JSON-serializable view of one ball `snapshot()` returns. */
+/** One ball, as a snapshot reports it. */
 export interface BallSnapshot {
+  /** This ball's index in play order. */
+  index: number;
   x: number;
   y: number;
   vx: number;
@@ -84,110 +81,278 @@ export interface BallSnapshot {
   spin: number;
   /** True while the ball waits at its home point for its own hold to elapse. */
   held: boolean;
+  /** Seconds remaining of that wait. */
+  holdTimer: number;
+  /** That ball's trail samples, oldest first. */
+  trail: TrailSample[];
 }
 
+/** One obstacle, as a snapshot reports it. */
+export interface ObstacleSnapshot {
+  /** Its index in the order of `OBSTACLE_CENTERS`. */
+  index: number;
+  cx: number;
+  cy: number;
+}
+
+/** The plain, JSON-serializable view `snapshot()` returns. */
 export interface CaromSnapshot {
   version: number;
   screen: Screen;
   mode: Mode;
+  /** The highlighted item on whichever menu the current screen shows. */
+  menuIndex: number;
+  /** The title menu's remembered selection. */
+  titleIndex: number;
+  /** The screen a pause resumes to. */
+  resumeScreen: ResumeScreen;
   score: { p1: number; p2: number };
+  /** The winning side once the match is over. */
   winner: Side | null;
   /** The engine's own mute bit, read live from the audio bus. */
   muted: boolean;
-  paddles: {
-    left: { cy: number; vy: number };
-    right: { cy: number; vy: number };
-  };
-  /** All three balls, in play order. */
+  /** The seed the generator was last seeded from. */
+  seed: number;
+  /** That generator's current state, as a single number. */
+  rngState: number;
+  paddles: { left: PaddleSnapshot; right: PaddleSnapshot };
+  /** The AI's two faculties, each gated on its own. */
+  ai: { tracking: boolean; movement: boolean };
+  /** Every ball present, in play order. */
   balls: BallSnapshot[];
-  /** The frame clock's accumulated simulated time, in seconds. */
+  /** Every obstacle present, each entry under its own index. */
+  obstacles: ObstacleSnapshot[];
+  /** Accumulated simulation time, in seconds. */
   simTime: number;
 }
 
 /**
  * The surface, as `specs/instrumentation.md` fixes it: a pose takes only its
- * own arguments and returns nothing, and the one reading returns what it read.
+ * own arguments and returns nothing, and a reading returns what it read.
  */
 export interface CaromDebug {
   version: number;
-  reset(options?: { seed?: number }): void;
-  snapshot(): CaromSnapshot;
-  startMatch(mode: Mode): void;
-  serve(): void;
-  setScore(p1: number, p2: number): void;
-  setPaddle(side: Side, patch?: PaddlePatch): void;
-  setBall(index: number, patch?: BallPatch): void;
-  setAiControl(enabled: boolean): void;
-}
 
-/** The side's tagged paddle actor, in whichever level is open. */
-function paddleOf(world: World, side: Side): Paddle {
-  const tag = side === "left" ? TAGS.paddleLeft : TAGS.paddleRight;
-  const found = world.byTag(tag)[0];
-  if (!(found instanceof Paddle)) {
-    throw new Error(`Carom: no ${side} paddle carries the "${tag}" tag`);
-  }
-  return found;
+  /* The world. */
+  clearWorld(): void;
+  spawnBall(index: number): void;
+  spawnObstacle(index: number): void;
+  reset(): void;
+  setSeed(seed: number): void;
+
+  /* Screens and menus. */
+  setScreen(screen: Screen): void;
+  setMode(mode: Mode): void;
+  setMenuIndex(index: number): void;
+  setTitleIndex(index: number): void;
+  setResumeScreen(screen: ResumeScreen): void;
+
+  /* Match state. */
+  setScore(p1: number, p2: number): void;
+  setWinner(side: Side | null): void;
+
+  /* Paddles. */
+  setPaddleCy(side: Side, cy: number): void;
+  setPaddleVy(side: Side, vy: number): void;
+  setPaddleDriven(side: Side, driven: boolean): void;
+
+  /* Balls: `index` first, in play order from 0 to BALL_COUNT - 1. */
+  setBallPosition(index: number, x: number, y: number): void;
+  setBallVelocity(index: number, vx: number, vy: number): void;
+  setBallSpin(index: number, spin: number): void;
+  setBallHeld(index: number, held: boolean): void;
+  setBallHoldTimer(index: number, seconds: number): void;
+
+  /* The AI opponent: one operation per faculty. */
+  setAiTracking(enabled: boolean): void;
+  setAiMovement(enabled: boolean): void;
+
+  /* Readings. */
+  snapshot(): CaromSnapshot;
+  menuItemRect(index: number): MenuRect | null;
 }
 
 /** Build the surface over the game instance. It holds no state of its own. */
 export function createDebugSurface(game: CaromGame): CaromDebug {
+  /** The world every operation acts on: the one open at the call. */
+  const open = (): World => game.engine.world;
+
   return {
     version: CAROM_DEBUG_VERSION,
 
-    /**
-     * The title screen, with the paddles handed back to the player and (in
-     * Solo) the AI, and the game's randomness reseeded. `muted` is
-     * deliberately untouched (the engine owns it), and so is `simTime`: the
-     * frame clock belongs to the engine and runs whatever the screen.
-     */
-    reset(options) {
-      game.reseed(options?.seed ?? DEFAULT_SEED);
-      game.releaseControl();
-      const wasOpening = game.cancelPendingMatch();
-      const world = game.engine.world;
-      if (world.state instanceof MatchState || wasOpening) {
-        // Quitting to the menu, exactly as the pause and match-over menus do
-        // it: the transition builds the title's world fresh.
-        world.open(LEVELS.title);
-        return;
-      }
-      // Already on the title level: pose it back to its opening state.
-      if (world.state instanceof TitleState) {
-        world.state.screen = "title";
-        world.state.menuIndex = 0;
-      }
-      for (const side of ["left", "right"] as const) {
-        const paddle = paddleOf(world, side);
-        paddle.transform.y = FIELD_CY;
-        paddle.vy = 0;
-      }
-      // Each ball parked on its own home point, not held, hold timer 0.
-      for (const ball of ballsOf(world)) ball.park(0);
+    // ---- The world -------------------------------------------------------
+
+    /** Every ball and every obstacle off the field. The paddles stay. */
+    clearWorld() {
+      clearField(open());
     },
+
+    /**
+     * Ball `index` at its home point, held, with a full hold timer, zero
+     * velocity, zero spin, and an empty trail. A ball already there is
+     * returned to that arrangement; an index this variant does not have is
+     * left alone.
+     */
+    spawnBall(index) {
+      if (!isBallIndex(index)) return;
+      spawnBallOn(open(), index);
+    },
+
+    /** Obstacle `index` at `OBSTACLE_CENTERS[index]`. */
+    spawnObstacle(index) {
+      if (!isObstacleIndex(index)) return;
+      spawnObstacleOn(open(), index);
+    },
+
+    /**
+     * The title-screen state, whole (specs/state.md). The mute bit is
+     * deliberately untouched: it is the runtime's, and `reset` leaves it alone.
+     */
+    reset() {
+      game.reseed(DEFAULT_SEED);
+      game.simTime = 0;
+      game.titleIndex = 0;
+      game.goToTitle(0);
+    },
+
+    /** The generator seeded: `seed` and `rngState` both become `seed`. */
+    setSeed(seed) {
+      game.reseed(seed);
+    },
+
+    // ---- Screens and menus -----------------------------------------------
+
+    setScreen(screen) {
+      stateOf(open()).screen = screen;
+      game.followScreen(screen);
+    },
+
+    setMode(mode) {
+      game.mode = mode;
+    },
+
+    setMenuIndex(index) {
+      stateOf(open()).menuIndex = index;
+    },
+
+    setTitleIndex(index) {
+      game.titleIndex = index;
+    },
+
+    setResumeScreen(screen) {
+      stateOf(open()).resumeScreen = screen;
+    },
+
+    // ---- Match state -----------------------------------------------------
+
+    /**
+     * Both scores, as a precondition. The win and deuce rules still resolve
+     * through real play, so drive a real point to end a match.
+     */
+    setScore(p1, p2) {
+      stateOf(open()).score = { p1, p2 };
+    },
+
+    setWinner(side) {
+      stateOf(open()).winner = side;
+    },
+
+    // ---- Paddles ---------------------------------------------------------
+
+    setPaddleCy(side, cy) {
+      paddleOf(open(), side).transform.y = cy;
+    },
+
+    /**
+     * That side's `drivenVy`, the velocity it travels at while driven. The
+     * paddle's own `vy` is left as it is: it is the integrated figure the next
+     * frame produces, not the one written here.
+     */
+    setPaddleVy(side, vy) {
+      game.driver[side].drivenVy = vy;
+    },
+
+    /** That side alone taken from the player and the AI, or handed back. */
+    setPaddleDriven(side, driven) {
+      game.driver[side].driven = driven;
+    },
+
+    // ---- Balls -----------------------------------------------------------
+
+    setBallPosition(index, x, y) {
+      const ball = ballAt(open(), index);
+      if (ball === null) return;
+      ball.transform.x = x;
+      ball.transform.y = y;
+    },
+
+    setBallVelocity(index, vx, vy) {
+      const ball = ballAt(open(), index);
+      if (ball === null) return;
+      ball.vx = vx;
+      ball.vy = vy;
+    },
+
+    setBallSpin(index, spin) {
+      const ball = ballAt(open(), index);
+      if (ball !== null) ball.spin = spin;
+    },
+
+    setBallHeld(index, held) {
+      const ball = ballAt(open(), index);
+      if (ball !== null) ball.held = held;
+    },
+
+    /**
+     * The seconds remaining of that ball's hold. `0` ends it: the game's own
+     * rule launches the ball on the next advanced frame (specs/balls.md).
+     */
+    setBallHoldTimer(index, seconds) {
+      const ball = ballAt(open(), index);
+      if (ball !== null) ball.holdTimer = seconds;
+    },
+
+    // ---- The AI opponent -------------------------------------------------
+
+    setAiTracking(enabled) {
+      game.ai.tracking = enabled;
+    },
+
+    setAiMovement(enabled) {
+      game.ai.movement = enabled;
+    },
+
+    // ---- Readings --------------------------------------------------------
 
     /** A pure reading of the running game. It changes nothing. */
     snapshot() {
-      const engine = game.engine;
-      const world = engine.world;
-      const match = world.state instanceof MatchState ? world.state : null;
-      const left = paddleOf(world, "left");
-      const right = paddleOf(world, "right");
+      const world = open();
+      const state = stateOf(world);
+      const paddle = (side: Side): PaddleSnapshot => {
+        const actor = paddleOf(world, side);
+        return {
+          cy: actor.transform.y,
+          vy: actor.vy,
+          drivenVy: game.driver[side].drivenVy,
+          driven: game.driver[side].driven,
+        };
+      };
       return {
         version: CAROM_DEBUG_VERSION,
-        screen: screenOf(world),
+        screen: state.screen,
         mode: game.mode,
-        score: {
-          p1: match?.players[0]?.score ?? 0,
-          p2: match?.players[1]?.score ?? 0,
-        },
-        winner: match?.winner ?? null,
+        menuIndex: state.menuIndex,
+        titleIndex: game.titleIndex,
+        resumeScreen: state.resumeScreen,
+        score: { ...state.score },
+        winner: state.winner,
         muted: world.audio.muted(),
-        paddles: {
-          left: { cy: left.transform.y, vy: left.vy },
-          right: { cy: right.transform.y, vy: right.vy },
-        },
+        seed: game.seed,
+        rngState: game.rngState,
+        paddles: { left: paddle("left"), right: paddle("right") },
+        ai: { tracking: game.ai.tracking, movement: game.ai.movement },
         balls: ballsOf(world).map((ball) => ({
+          index: ball.index,
           x: ball.transform.x,
           y: ball.transform.y,
           vx: ball.vx,
@@ -195,102 +360,24 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
           speed: Math.hypot(ball.vx, ball.vy),
           spin: ball.spin,
           held: ball.held,
+          holdTimer: ball.holdTimer,
+          trail: ball.trail.map((sample) => ({ ...sample })),
         })),
-        simTime: engine.frame().timeMs / 1000,
+        obstacles: obstaclesOf(world).map((obstacle) => ({
+          index: obstacle.index,
+          cx: obstacle.transform.x,
+          cy: obstacle.transform.y,
+        })),
+        simTime: game.simTime,
       };
     },
 
     /**
-     * The opening of a real match, exactly as choosing it from the menu
-     * would pose it: the match level opens fresh, on the countdown, with all
-     * three balls waiting out a full hold on their own home points.
+     * The hit region of item `index` on the menu the current screen shows, in
+     * logical units — the build's own layout (src/menus.ts), reported.
      */
-    startMatch(mode) {
-      game.takeControl();
-      game.openMatch(mode);
-    },
-
-    /**
-     * Every waiting ball's hold ended now instead of waited out: each such
-     * ball's timer is set to `0`, a ball already in flight is left as it is,
-     * and on any screen but the two live ones nothing is posed. The launch
-     * itself is the game's own: on the next advanced frame each ball whose
-     * timer has elapsed leaves at SERVE_SPEED along a fresh random angle
-     * (src/ball.ts).
-     */
-    serve() {
-      game.takeControl();
-      game.poseMatch((state) => {
-        if (state.screen !== "countdown" && state.screen !== "playing") return;
-        for (const ball of ballsOf(state.world)) {
-          if (ball.held) ball.holdTimer = 0;
-        }
-      });
-    },
-
-    /**
-     * The two scores set directly, as a precondition. The win and deuce rules
-     * still resolve through real play, so drive a real point to end a match.
-     */
-    setScore(p1, p2) {
-      game.takeControl();
-      game.poseMatch((state) => {
-        const [one, two] = state.players;
-        if (one !== undefined) one.score = p1;
-        if (two !== undefined) two.score = p2;
-      });
-    },
-
-    /**
-     * A paddle posed or set moving. A `vy` set here is the driver's held
-     * velocity rather than a one-frame nudge, so it persists until `reset`.
-     */
-    setPaddle(side, patch) {
-      game.takeControl();
-      if (patch?.vy !== undefined) game.driver.vy[side] = patch.vy;
-      game.poseField((world) => {
-        const paddle = paddleOf(world, side);
-        if (patch?.cy !== undefined) paddle.transform.y = patch.cy;
-        if (patch?.vy !== undefined) paddle.vy = patch.vy;
-      });
-    },
-
-    /**
-     * One of the three balls placed and aimed, `index` numbering them in play
-     * order from 0. Posing a ball takes it into live play — `held` cleared
-     * and its hold timer spent — so a scenario can drive one ball while
-     * parking the other two out of the way. An index this variant does not
-     * have is refused before anything is posed.
-     */
-    setBall(index, patch) {
-      if (!Number.isInteger(index) || index < 0 || index >= BALL_COUNT) {
-        throw new RangeError(
-          `Carom: setBall index ${index} — this variant has ${BALL_COUNT} ` +
-            `balls, indices 0 to ${BALL_COUNT - 1}`,
-        );
-      }
-      game.takeControl();
-      game.poseField((world) => {
-        const ball = ballAt(world, index);
-        if (patch?.x !== undefined) ball.transform.x = patch.x;
-        if (patch?.y !== undefined) ball.transform.y = patch.y;
-        if (patch?.vx !== undefined) ball.vx = patch.vx;
-        if (patch?.vy !== undefined) ball.vy = patch.vy;
-        if (patch?.spin !== undefined) ball.spin = patch.spin;
-        ball.release();
-      });
-    },
-
-    /**
-     * The AI-controlled (right) paddle handed back to the computer opponent
-     * for the rest of the driven scenario, so advancing the game runs the
-     * real AI against the posed balls while the left paddle and the balls
-     * stay under the caller's control. Solo only; `false` is the default, and
-     * `reset()` clears it.
-     */
-    setAiControl(enabled) {
-      game.takeControl();
-      game.driver.ai = Boolean(enabled);
+    menuItemRect(index) {
+      return rectOfItem(screenOf(open()), index);
     },
   };
 }

@@ -65,7 +65,7 @@ describe("registerDiagnostics", () => {
     state.score.p2 = 7;
     state.balls[1].x = 123.456;
     state.balls[1].spin = -250;
-    state.balls[2].held = true;
+    state.balls[1].held = false;
 
     const values = read();
     expect(values["screen"]).toBe("playing");
@@ -74,6 +74,18 @@ describe("registerDiagnostics", () => {
     expect(values["ball 1 pos"]).toBe("123.5, 360.0");
     expect(values["ball 1 spin"]).toBe("-250.0");
     expect(values["ball 2 pos"]).toBe("640.0, 540.0 held");
+  });
+
+  it("reports a ball that is not on the field as absent", () => {
+    const state = createInitialState();
+    const { api, read } = collector();
+    registerDiagnostics(api, state);
+    state.balls.length = 0;
+
+    const values = read();
+    expect(values["ball 0 pos"]).toBe("—");
+    expect(values["ball 0 vel"]).toBe("—");
+    expect(values["ball 0 spin"]).toBe("—");
   });
 
   it("changes nothing it reads", () => {

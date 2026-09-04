@@ -5,44 +5,57 @@ specification under `specs/` describes. Read `specs/overview.md` first; it says
 how the rest of the specification is organized.
 
 This build runs on **no engine**. Nothing here supplies a frame loop, input,
-audio, or an overlay, and there is no game code to start from. What the project
-supplies is the toolchain, already configured and installed: TypeScript, Vite,
-Vitest, ESLint and Prettier, wired to the commands below, plus `three` for the
-3D scene and `@test-cabinet/voxel-runtime` for loading the models you produce.
+audio, asset loading, or an overlay, and there is no game code to start from.
+What the project supplies is the toolchain, already configured and installed:
+TypeScript, Vite, Vitest, ESLint and Prettier, wired to the commands below, plus
+`three` for the 3D scene.
 
 ## What you own
 
-**Everything under `src/`.** The directory does not exist yet; create it.
+**Everything under `src/`, and everything under `assets/`.** Neither directory
+exists yet; create them.
 
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours. You write the runtime a
-browser game needs — the frame loop and the delta time it measures, fitting the
-fixed logical stage onto the canvas, pointer and keyboard input, audio, and the
-diagnostics overlay — and you write the game itself on top of it: the editor,
-the tape, the solver, the rigging, and the 3D scene.
+browser game needs — the frame loop and the delta time it measures, fitting
+the fixed logical stage onto the canvas, pointer and keyboard input, audio,
+loading the produced files, and the diagnostics overlay — and you write the
+game itself on top of it.
+
+The yard is built and orbited with the pointer, so the pointer path is part of
+what you build: taking the cursor off the page and delivering its position in
+the game's logical units, with its press and release edges, to the game.
+`specs/controls.md` states what Gantry does with them.
 
 You also write the `window.__gantry` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how
 the game is driven from code, so it is present and exactly as specified.
 
-You also produce the game's models and audio with the asset tools on this
-machine's `PATH` and commit the produced files under `assets/`;
-`specs/assets.md` is the contract. The tools are absent when the build is
-installed and rebuilt elsewhere, so the build bundles the committed files and
-invokes no tool.
+**You produce the game's models and audio during this build.**
+`specs/assets.md` is the contract: which of the four tools on this container's
+`PATH` produces each model and sound, and the bar it meets. Commit the produced
+files under `assets/` and load them at run time. The finished repository builds
+and runs with those tools absent, so nothing is generated at build time.
+`@test-cabinet/voxel-runtime` is already a dependency, vendored under `.tcab/`,
+and it is what decodes a produced `.glb` into a mesh and builds the geometry the
+scene draws.
 
 Every figure the specification fixes — the lattice and materials, the axis
-rates, the tolerances, the camera, the cue names — is stated in `specs/`. Name
-each one once in your own module and read from it, rather than restating a
-number at each use.
+rates, the tolerances, the six sites, the camera, the action names, the cue
+names, and the screen copy — is stated in `specs/`, and the value stated there
+is authoritative.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
-runs them in process, in Node, with coverage over `src/`, and they need no
-browser and no WebGL: the simulation is render-free by specification.
+runs them in process, in Node, with coverage over `src/`, and with no browser
+and no DOM, so nothing that needs a `webgl2` context runs there.
+`@napi-rs/canvas` is installed for a test that wants a real 2D context to draw
+through.
 
 ## What you must not edit
 
 - **`index.html`** — the page and the canvas.
+- **`.tcab/`** — the vendored packages `package.json` resolves the voxel
+  runtime from.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`,
   `.prettierignore`, and `.gitignore`.
@@ -67,7 +80,8 @@ entries and scripts alone.
   directory runs as-is on any static host, from a sub-path included.
 - `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all
   pass. The same four commands are run over the repository you leave behind.
-- The produced files under `assets/` are committed alongside your source.
+- The produced files under `assets/` are committed alongside your source, and
+  the build loads them without running any of the asset tools.
 - **Replace this file** with the `README.md` `specs/overview.md` asks the
   finished build to ship: what the game is, how to install it, how to run it in
   development, how to produce the production build, and the controls.

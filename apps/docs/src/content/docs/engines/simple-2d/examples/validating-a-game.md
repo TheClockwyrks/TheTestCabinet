@@ -45,7 +45,8 @@ export interface Snapshot {
 }
 
 export interface Debug {
-  setBall(state: DeepReadonly<State>, ball: Partial<Ball>): State;
+  setBallPosition(state: DeepReadonly<State>, x: number, y: number): State;
+  setBallVelocity(state: DeepReadonly<State>, vx: number, vy: number): State;
   setPaddle(state: DeepReadonly<State>, y: number): State;
   snapshot(state: DeepReadonly<State>): Snapshot;
 }
@@ -53,14 +54,24 @@ export interface Debug {
 export declare const game: Game<State, Debug>;
 ```
 
-The build's own implementation of the surface is three pure functions.
+Each operation sets one element of the world and takes scalars, so a check
+arranges only what its requirement concerns and the build stays free to store
+that element however it likes. The build's own implementation of the surface is
+four pure functions.
 
 ```ts
 // src/debug.ts, as the build writes it
 import type { Debug } from "./game";
 
 export const debug: Debug = {
-  setBall: (state, ball) => ({ ...state, ball: { ...state.ball, ...ball } }),
+  setBallPosition: (state, x, y) => ({
+    ...state,
+    ball: { ...state.ball, x, y },
+  }),
+  setBallVelocity: (state, vx, vy) => ({
+    ...state,
+    ball: { ...state.ball, vx, vy },
+  }),
   setPaddle: (state, y) => ({ ...state, paddle: { y } }),
   snapshot: (state) => ({ ball: { ...state.ball }, paddle: { ...state.paddle } }),
 };
@@ -74,6 +85,7 @@ export const debug: Debug = {
 | Paddle | `12 × 60` at `x = 24`, drawn in `#e8e8e8`, moving at `240` units per second and clamped to the field |
 | Actions | `up` bound to `KeyW` and `ArrowUp`, `down` bound to `KeyS` and `ArrowDown` |
 | Cues | `bounce`, played on the frame a wall reflects the ball |
+| Diagnostics | `ball`, reporting `` `${x}, ${y}` `` in whole units, and `paddle`, reporting the paddle's `y` |
 
 ## Layout
 
@@ -95,6 +107,7 @@ src/
 validation/
   vitest.config.ts
   tsconfig.json
+  constants.ts
   harness.ts
   simulation.test.ts
   audio.test.ts
@@ -172,6 +185,31 @@ The canvas and the runner are devDependencies of the seeded workspace.
 }
 ```
 
+## The figures
+
+The project states the figures its checks name in `constants.ts`, transcribed
+from the case's specification. Every suite and the harness import them from
+there.
+
+```ts
+// validation/constants.ts — transcribed from the specification
+export const FIELD_WIDTH = 640;
+export const FIELD_HEIGHT = 360;
+export const BACKGROUND = "#101018";
+export const BALL_RADIUS = 8;
+export const BALL_COLOR = "#f45b69";
+export const PADDLE_X = 24;
+export const PADDLE_WIDTH = 12;
+export const PADDLE_HEIGHT = 60;
+export const PADDLE_COLOR = "#e8e8e8";
+```
+
+The build is seeded a `src/constants.ts` holding the same figures under the same
+names. A check that imported `BALL_RADIUS` from it would compare the build with
+its own table, which every build matches, so the figure a check grades by is
+transcribed on this side of the line instead; see
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
+
 ## The harness
 
 Every validator builds its engine through one helper. It creates a canvas with
@@ -179,8 +217,9 @@ Every validator builds its engine through one helper. It creates a canvas with
 measurement from the harness instead of from a document, wraps the 2D context in
 a recording proxy, subscribes to `asset:failed` before any game code runs, and
 then initializes. It also wraps the build's pure surface over the engine, so a
-check writes `harness.setBall(…)` and `harness.snapshot()` and the harness
-routes the pose through `engine.apply` and the reading through `engine.state`.
+check writes `harness.setBallPosition(…)` and `harness.snapshot()` and the
+harness routes the pose through `engine.apply` and the reading through
+`engine.state`.
 
 ```ts
 // validation/harness.ts
@@ -193,18 +232,8 @@ import {
   type SurfaceMetrics,
   type Viewport,
 } from "@test-cabinet/simple-2d";
-import { game, type Ball, type Debug, type Snapshot, type State } from "../src/game";
-
-// The figures the case's specification fixes.
-export const FIELD_WIDTH = 640;
-export const FIELD_HEIGHT = 360;
-export const BACKGROUND = "#101018";
-export const BALL_RADIUS = 8;
-export const BALL_COLOR = "#f45b69";
-export const PADDLE_X = 24;
-export const PADDLE_WIDTH = 12;
-export const PADDLE_HEIGHT = 60;
-export const PADDLE_COLOR = "#e8e8e8";
+import { BACKGROUND, FIELD_HEIGHT, FIELD_WIDTH } from "./constants";
+import { game, type Debug, type Snapshot, type State } from "../src/game";
 
 export type DrawCall =
   | { kind: "call"; method: string; args: unknown[] }
@@ -222,7 +251,8 @@ export interface Harness {
   readonly ctx: SKRSContext2D;
   readonly calls: DrawCall[];
   readonly assetFailures: string[];
-  setBall(ball: Partial<Ball>): void;
+  setBallPosition(x: number, y: number): void;
+  setBallVelocity(vx: number, vy: number): void;
   setPaddle(y: number): void;
   snapshot(): Snapshot;
   hold(code: string): void;
@@ -328,7 +358,10 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     ctx,
     calls,
     assetFailures,
-    setBall: (ball) => engine.apply((s) => engine.debug.setBall(s, ball)),
+    setBallPosition: (x, y) =>
+      engine.apply((s) => engine.debug.setBallPosition(s, x, y)),
+    setBallVelocity: (vx, vy) =>
+      engine.apply((s) => engine.debug.setBallVelocity(s, vx, vy)),
     setPaddle: (y) => engine.apply((s) => engine.debug.setPaddle(s, y)),
     snapshot: () => engine.debug.snapshot(engine.state),
     hold: (code) => dispatch("keydown", code),
@@ -365,8 +398,9 @@ recording proxy onto the canvas. The engine sizes the backing store and reads
 pixels through the real canvas, and every drawing operation lands in `calls` on
 its way to it.
 
-`setBall`, `setPaddle`, and `snapshot` are the surface wrapped over the engine.
-A pose is `engine.apply((s) => engine.debug.setBall(s, ball))`: the engine hands
+`setBallPosition`, `setBallVelocity`, `setPaddle`, and `snapshot` are the
+surface wrapped over the engine. A pose is
+`engine.apply((s) => engine.debug.setBallPosition(s, x, y))`: the engine hands
 the current state to the transition, keeps the state it returns, and the next
 frame's `update` receives it. A reading is
 `engine.debug.snapshot(engine.state)`, a plain value taken from the state the
@@ -391,7 +425,8 @@ through the surface, advances, and reads a snapshot back.
 // validation/simulation.test.ts
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { BALL_RADIUS, FIELD_WIDTH, createHarness, type Harness } from "./harness";
+import { BALL_RADIUS, FIELD_WIDTH } from "./constants";
+import { createHarness, type Harness } from "./harness";
 
 let harness: Harness;
 
@@ -405,7 +440,8 @@ afterEach(() => {
 
 it("carries the ball at 200 units per second", async () => {
   const { engine } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(200, 0);
 
   await engine.advance(30);
 
@@ -418,7 +454,8 @@ it("carries the ball at 200 units per second", async () => {
 
 it("reflects the ball off the right wall", async () => {
   const { engine } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(200, 0);
 
   await engine.advance(120);
 
@@ -464,7 +501,8 @@ it("plays the bounce cue when the ball meets a wall", async () => {
     if (cue === "bounce") bounces.push({ t, gain });
   });
 
-  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(200, 0);
   await engine.advance(120);
   off();
 
@@ -481,6 +519,47 @@ count exactly, which is the part a step size cannot move.
 
 `t` is the frame loop's simulated time, so the timestamp a check asserts against
 is the time the clock delivered rather than the real time the suite took to run.
+
+## Asserting the diagnostics a build registered
+
+Registering the values the case names is the build's part. Drawing the panel,
+toggling it, and keeping it read-only are the engine's, so a check reads
+`engine.diagnostics()` and asserts the names the build registered and what each
+one reports for a posed state.
+
+```ts
+// validation/diagnostics.test.ts
+import { ConstantClock } from "@test-cabinet/simple-2d";
+import { afterEach, beforeEach, expect, it } from "vitest";
+import { createHarness, type Harness } from "./harness";
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness({ clock: new ConstantClock(1000 / 60) });
+});
+
+afterEach(() => {
+  harness.dispose();
+});
+
+it("registers the diagnostics the case names", () => {
+  const { engine } = harness;
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(0, 0);
+  harness.setPaddle(120);
+
+  expect(engine.diagnostics()).toEqual([
+    { name: "ball", value: "320, 180" },
+    { name: "paddle", value: 120 },
+  ]);
+});
+```
+
+The readings arrive in registration order, so one comparison covers the names,
+their order, and what each source reports. Reading evaluates the sources and
+changes nothing else, so a check reads them at any point in a scenario, and the
+overlay stays hidden throughout.
 
 ## Asserting what was drawn
 
@@ -508,11 +587,8 @@ import {
   PADDLE_HEIGHT,
   PADDLE_WIDTH,
   PADDLE_X,
-  callsTo,
-  createHarness,
-  setsOf,
-  type Harness,
-} from "./harness";
+} from "./constants";
+import { callsTo, createHarness, setsOf, type Harness } from "./harness";
 
 let harness: Harness;
 
@@ -526,7 +602,8 @@ afterEach(() => {
 
 it("fills the ball and the paddle in their own colors", async () => {
   const { engine } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 0, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(0, 0);
   harness.setPaddle(180);
 
   await engine.advance(1);
@@ -540,7 +617,8 @@ it("fills the ball and the paddle in their own colors", async () => {
 
 it("draws the paddle as one rect and the ball as one arc", async () => {
   const { engine, calls } = harness;
-  harness.setBall({ x: 320, y: 180, vx: 0, vy: 0 });
+  harness.setBallPosition(320, 180);
+  harness.setBallVelocity(0, 0);
   harness.setPaddle(180);
 
   calls.length = 0;
@@ -582,7 +660,8 @@ specification states.
 // validation/input.test.ts
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_HEIGHT, createHarness, type Harness } from "./harness";
+import { PADDLE_HEIGHT } from "./constants";
+import { createHarness, type Harness } from "./harness";
 
 let harness: Harness;
 

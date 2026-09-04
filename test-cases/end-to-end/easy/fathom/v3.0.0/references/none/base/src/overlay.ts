@@ -27,14 +27,6 @@ const PANEL = {
   color: "#9fd9e8",
 } as const;
 
-/** What the heading line reports about the frame the panel is drawn over. */
-export interface TickPosition {
-  /** Simulation ticks run since the runtime started. */
-  count: number;
-  /** Accumulated simulated time, in seconds. */
-  time: number;
-}
-
 export class Diagnostics {
   /** Insertion-ordered, so the panel's lines keep the order they were named in. */
   private readonly sources = new Map<string, () => unknown>();
@@ -55,12 +47,12 @@ export class Diagnostics {
     this.shown = !this.shown;
   }
 
-  /** Every line the panel would draw, heading first. A pure read. */
-  lines(tick: TickPosition): string[] {
-    return [
-      `tick ${tick.count}  t ${tick.time.toFixed(2)}s`,
-      ...[...this.sources].map(([name, source]) => `${name} ${read(source)}`),
-    ];
+  /**
+   * Every line the panel would draw: one per registered source, in the order
+   * they were registered. A pure read.
+   */
+  lines(): string[] {
+    return [...this.sources].map(([name, source]) => `${name} ${read(source)}`);
   }
 
   /**
@@ -70,9 +62,12 @@ export class Diagnostics {
    * hands over a context carrying the game's logical transform and gets it back
    * exactly as it was.
    */
-  draw(ctx: CanvasRenderingContext2D, tick: TickPosition): void {
+  draw(ctx: CanvasRenderingContext2D): void {
     if (!this.shown) return;
-    const lines = this.lines(tick);
+    const lines = this.lines();
+    // Nothing registered is nothing to draw: a shown panel with no sources
+    // leaves the frame alone rather than laying down an empty box.
+    if (lines.length === 0) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.font = `${PANEL.fontPx}px monospace`;

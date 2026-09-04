@@ -1,24 +1,31 @@
 // Carom — audio/obstacle-bounce: the `obstacle-bounce` cue plays on the frame the
 // ball bounces off a mid-field obstacle.
 //
-// The ball is fired level with obstacle A, straight at its left face, from far
-// enough out that nothing else is in the lane. The real collision reverses its
-// horizontal velocity, and the frame that happens on is the frame the cue must
-// carry.
+// The field is emptied and holds obstacle A and the struck ball alone, so the
+// only collision that can happen is the one this point is about: obstacle B is
+// REMOVED rather than dodged, and the paddles — the one thing on the field a
+// check cannot remove — are driven out of the lane. The ball is then fired level
+// with A, straight at its left face, from far enough out to be visibly
+// approaching. The real collision reverses its horizontal velocity, and the frame
+// that happens on is the frame the cue must carry.
+//
+// Live play is POSED rather than served into: this point is about the cue on a
+// bounce, so the countdown and the serve are no part of it, and `enterPlaying`
+// reaches the playing screen without running either.
 //
 // An obstacle bounce and a paddle hit are different events with different cues,
 // and this is the check that says so: the name asserted here is the obstacle's,
 // and a build that reuses one blip for every bounce fails it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { CUES, OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeObstacleBounce,
   captureReplay,
   createHarness,
   driveObstacleBounce,
-  startPlaying,
+  enterPlaying,
   watchCues,
   type Harness,
 } from "../harness";
@@ -49,8 +56,9 @@ afterEach(() => {
 });
 
 it("plays the obstacle-bounce cue on the frame of the bounce", async () => {
-  await startPlaying(h, "versus");
+  enterPlaying(h, "versus");
   arrangeObstacleBounce(h, {
+    obstacle: 0,
     faceX: OBSTACLES[0].x0,
     y: OBSTACLE_CENTERS[0].y,
     from: "left",

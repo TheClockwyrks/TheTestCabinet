@@ -47,7 +47,8 @@ it("credits the left player when the ball crosses the right edge", async () => {
   await engine.initialize();
 
   engine.debug.startMatch("versus");
-  engine.debug.placeBall({ x: 560, y: 180, vx: 240, vy: 0 });
+  engine.debug.setBallPosition(560, 180);
+  engine.debug.setBallVelocity(240, 0);
   await engine.advance(30);
 
   engine.startRecording();
@@ -131,6 +132,31 @@ Once vitest returns, the runner moves each declared output to the flat
 and records whether it was there. An output that is not there is recorded absent
 rather than failing anything: the assertions decide the point, and media is the
 evidence beside the verdict.
+
+## Capping a capture
+
+A recording is one operation log per frame, so a long section is thinned
+rather than cut short. Every nth frame is kept up to a fixed count, the last
+frame always among them, and each kept frame's `deltaMs` is restated as the
+time since the frame kept before it, so a player pacing itself off the deltas
+runs the section at the speed the game ran at. The frame `count` is left as
+the engine reported it, so a reader sees that frames were skipped.
+
+Dropping a frame drops the last reference to whatever only that frame drew
+with, so the tables in front of the kept frames are rebuilt from what those
+frames name: every entry reached from a kept frame is carried over, every
+reference inside one is rewritten as it is reached, and what is deduplicated is
+the rewritten entry. Each kept frame stays drawable on its own.
+
+## Stills
+
+A verdict unit whose evidence is one picture declares its output as
+`kind = "image"`, and the suite writes the frame on the canvas as a PNG at
+`$TCAB_VALIDATION_MEDIA_DIR/<its own staged path>/<output id>.png`, through the
+canvas's `toBuffer("image/png")`. What is written is whatever the last frame
+that ran left behind, so a suite writes it after the frame that poses the
+situation under test and before the assertions, and a failing check still
+leaves the picture that shows why.
 
 ## The baseline
 

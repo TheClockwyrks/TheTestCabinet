@@ -20,6 +20,7 @@ fn spec(image: &str) -> ContainerSpec {
         secrets: BTreeMap::new(),
         env: BTreeMap::new(),
         files: Vec::new(),
+        dirs: Vec::new(),
         network_enabled: true,
         add_hosts: Vec::new(),
     }
@@ -402,6 +403,45 @@ fn the_salvage_read_command_streams_one_file_without_a_shell() {
     assert!(
         !cmd.iter().any(|arg| arg == "sh" || arg == "-c"),
         "the salvage must not go through a shell: {cmd:?}",
+    );
+}
+
+#[test]
+fn a_staged_tree_extracts_at_its_own_absolute_path() {
+    // A run's audio palette travels as a host tree and is streamed in with ONE exec,
+    // exactly as the seeded `/work` is: entries relative to the tree's root, extracted
+    // at the destination directory rather than at `/`, and bounded by the byte count
+    // so a truncated stream is a non-zero exit rather than a hung read.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("packs/combat-core@0.1.0")).expect("pack dir");
+    std::fs::write(dir.path().join("packs.json"), b"{}").expect("write");
+    std::fs::write(dir.path().join("packs/combat-core@0.1.0/pack.toml"), b"x").expect("write");
+
+    let archive = tar_dir_contents(dir.path()).expect("archive");
+    let mut names: Vec<String> = tar::Archive::new(std::io::Cursor::new(archive.clone()))
+        .entries()
+        .expect("entries")
+        .map(|e| {
+            e.expect("entry")
+                .path()
+                .expect("path")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    assert!(names.iter().any(|n| n == "packs.json"), "{names:?}");
+    assert!(
+        names
+            .iter()
+            .any(|n| n == "packs/combat-core@0.1.0/pack.toml"),
+        "{names:?}",
+    );
+
+    let cmd = extract_tar_command("/opt/audio", archive.len(), false);
+    assert_eq!(
+        cmd[2],
+        format!("head -c {} | tar -x -f - -C '/opt/audio'", archive.len()),
     );
 }
 

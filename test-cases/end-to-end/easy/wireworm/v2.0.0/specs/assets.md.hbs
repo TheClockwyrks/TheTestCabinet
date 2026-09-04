@@ -1,0 +1,113 @@
+# Wireworm — The sprite art
+
+Wireworm's art is supplied with the project, under `assets/`. Six folders cover
+the node, the data-worm, the cursor, and the three foes, and the build draws each
+of those elements from its folder rather than from art of its own. Everything
+else the game shows is drawn in code, and the last section of this file lists it.
+
+## How the folders are organized
+
+Each folder under `assets/` holds one PNG per frame, named by its frame index
+(`0.png`, `1.png`, and so on). Every PNG is `SPRITE_SIZE` (`32`) by `SPRITE_SIZE`
+with a transparent background in straight alpha, so only its drawn pixels are
+opaque and each frame composites cleanly over the dark board.
+
+| Element | Folder | Frames | Constant |
+| --- | --- | --- | --- |
+| Node | `assets/node/` | 5 (`0`–`4`) | `NODE_FRAMES` |
+| Data-worm | `assets/worm/` | 6 (`0`–`5`) | `WORM_FRAMES` |
+| Cursor | `assets/cursor/` | 1 (`0`) | `CURSOR_FRAMES` |
+| Glitch | `assets/glitch/` | 4 (`0`–`3`) | `GLITCH_FRAMES` |
+| Dropper | `assets/dropper/` | 1 (`0`) | `DROPPER_FRAMES` |
+| Corruptor | `assets/corruptor/` | 4 (`0`–`3`) | `CORRUPTOR_FRAMES` |
+
+A tile is `32` units square, so a frame maps onto one tile at a scale of one. The
+frames are pixel art and stay crisp at every scale the stage is fitted to.
+
+## How they are loaded
+
+{{#if (eq engine.slug "none")}}
+The build loads the frames itself. Every URL it requests resolves against the
+page rather than against the origin root, so the produced site runs unchanged
+whether it is served from the root of a static host or mounted under a sub-path.
+`vite.config.ts` serves the `assets/` tree from the project root in development
+and copies the same tree into `dist/assets/` when the site is built, so a frame
+reaches the produced site under the folder and file name this file gives it.
+{{else}}
+The {{engine.name}} engine provides the asset loader, documented in the `engine/`
+directory at the root of this repository. It resolves every path under one root,
+`assets/`, relative to the page the build is served from, and it fetches and
+decodes the file. The build loads each frame through that loader rather than
+requesting a URL of its own, writing the path relative to that root:
+`node/0.png`, `worm/3.png`.
+
+The produced site serves every seeded frame under that root, so a path the loader
+resolves reaches the seeded file at whatever base path the site is served from.
+{{/if}}
+
+## The node: `assets/node/`
+
+Five frames: one per charge state, plus a second critical frame.
+
+| Frame | Drawn for |
+| --- | --- |
+| `0` | A node at charge `0` |
+| `1` | A node at charge `1` |
+| `2` | A node at charge `2` |
+| `3` | A node at charge `3` |
+| `4` | The alternate critical frame |
+
+Every node on the board is drawn from this folder, centered on its tile. A node
+at charge `3` alternates frames `3` and `4` at `NODE_PULSE_FPS` (`6`) frames per
+second, so a critical node visibly pulses. A node below charge `3` holds the
+single frame for its charge.
+
+## The data-worm: `assets/worm/`
+
+Six frames: a two-frame pair for each of the three parts of a chain.
+
+| Frames | Part | Drawn on | Rate |
+| --- | --- | --- | --- |
+| `0`, `1` | Head | The leading segment of a worm | `WORM_HEAD_FPS` (`5`) |
+| `2`, `3` | Body | Every segment between the head and the tail | `WORM_BODY_FPS` (`6`) |
+| `4`, `5` | Tail | The trailing segment | `WORM_BODY_FPS` (`6`) |
+
+Each pair alternates at its rate while the worm is on the board. A worm of one
+segment is a head, and it is drawn from the head pair alone.
+
+The art faces right. A segment of a worm whose horizontal heading is left is
+drawn mirrored horizontally, so the same frame serves both directions.
+
+## The cursor: `assets/cursor/`
+
+One frame, drawn centered on the cursor's position in the player band. It points
+up and is drawn upright, never rotated.
+
+## The glitch: `assets/glitch/`
+
+Four frames, played as a loop at `GLITCH_FPS` (`10`) frames per second while the
+glitch is on the board, so it reads as unstable. The loop runs whichever way the
+glitch is darting.
+
+## The dropper: `assets/dropper/`
+
+One frame, drawn centered on the dropper's position as it falls.
+
+## The corruptor: `assets/corruptor/`
+
+Four frames, played as a loop at `CORRUPTOR_FPS` (`8`) frames per second while
+the corruptor crawls. The art faces right, and a corruptor crawling left is drawn
+mirrored horizontally.
+
+## What is drawn in code
+
+No folder covers the following. Each is rendered by the build, and the spec named
+beside it fixes its behavior.
+
+| Drawn in code | Fixed by |
+| --- | --- |
+| The board, its background, and the tinted player band | `specs/board.md`, `specs/overview.md` |
+| A bolt in flight | `specs/cursor.md` |
+| The arcs of a discharge | `specs/discharge.md` |
+| The HUD, every screen, every menu, the level banner, and all text | `specs/ui.md` |
+| The debug overlay | `specs/instrumentation.md` |

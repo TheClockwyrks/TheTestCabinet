@@ -35,7 +35,7 @@
 import type { DeepReadonly } from "ts-essentials";
 
 /** The surface's version, reported as `version` (REFRACT_DEBUG_VERSION). */
-export const REFRACT_DEBUG_VERSION = 1;
+export const REFRACT_DEBUG_VERSION = 2;
 
 /** The seed `reset()` restores when the caller names none (DEFAULT_SEED). */
 export const DEFAULT_SEED = 1;
@@ -52,6 +52,21 @@ export type Channel = "triangle" | "square" | "diamond";
 
 /** The three kinds of node specs/board.md defines. */
 export type NodeKind = "emitter" | "lens" | "crystal";
+
+/** Which device drove the pointer, as `specs/controls.md` names them. */
+export type PointerDevice = "mouse" | "pen" | "touch";
+
+/**
+ * One pointer target: the rectangle a screen is worked through, in the stage's
+ * logical units, under the id `specs/controls.md` fixes for it.
+ */
+export interface TargetSnapshot {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 /** One cell address, `col` and `row` zero-indexed from the top-left. */
 export interface CellRef {
@@ -121,7 +136,10 @@ export interface RefractSnapshot {
   /** Derived from R9 in specs/beams.md. */
   solved: boolean;
   tracing: TracingSnapshot | null;
-  pointer: { x: number; y: number; down: boolean };
+  pointer: { x: number; y: number; down: boolean; device: PointerDevice };
+  /** The current screen's pointer targets, under the ids and in the order
+   * specs/controls.md fixes for that screen. */
+  targets: TargetSnapshot[];
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
@@ -147,9 +165,19 @@ export interface RefractDebugApi<S = unknown> {
   startMode(state: DeepReadonly<S>, mode: Mode): S;
   /** `board` is the board notation specs/board.md defines, one string per row. */
   loadBoard(state: DeepReadonly<S>, board: readonly string[]): S;
-  pointerDown(state: DeepReadonly<S>, x: number, y: number): S;
-  pointerMove(state: DeepReadonly<S>, x: number, y: number): S;
-  pointerUp(state: DeepReadonly<S>): S;
+  pointerDown(
+    state: DeepReadonly<S>,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): S;
+  pointerMove(
+    state: DeepReadonly<S>,
+    x: number,
+    y: number,
+    device?: PointerDevice,
+  ): S;
+  pointerUp(state: DeepReadonly<S>, device?: PointerDevice): S;
   /** Sugar over the three pointer operations: press at the first cell's
    * center, a move to each remaining center in turn, then a release. A list
    * the limits refuse part way through leaves the beam ending at the last

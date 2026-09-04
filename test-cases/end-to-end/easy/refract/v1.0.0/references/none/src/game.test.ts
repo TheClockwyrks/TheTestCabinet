@@ -17,7 +17,13 @@
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cellCenter } from "./board";
-import { CUES, DEFAULT_SEED, STAGE_H, STAGE_W } from "./constants";
+import {
+  CUES,
+  DEFAULT_SEED,
+  REFRACT_DEBUG_VERSION,
+  STAGE_H,
+  STAGE_W,
+} from "./constants";
 import { generateBoardWithSolution } from "./cascade";
 import {
   REFRACT_HANDLE,
@@ -229,7 +235,7 @@ describe("initialization", () => {
 
   it("publishes the surface on window.__refract, versioned", () => {
     expect(h.api).toBeDefined();
-    expect(h.api.version).toBe(1);
+    expect(h.api.version).toBe(REFRACT_DEBUG_VERSION);
     expect(h.api.snapshot().screen).toBe("title");
   });
 
@@ -385,7 +391,12 @@ describe("drawing a beam with the pointer", () => {
   it("mirrors the pointer into the state every frame", () => {
     h.pointer("pointermove", 333, 222);
     h.step(1);
-    expect(h.state.pointer).toEqual({ x: 333, y: 222, down: false });
+    expect(h.state.pointer).toEqual({
+      x: 333,
+      y: 222,
+      down: false,
+      device: "mouse",
+    });
   });
 
   it("plays channel-complete when a beam closes without solving", () => {

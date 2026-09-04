@@ -35,7 +35,7 @@
 // bloom every tile of it is in the same visibility state and two samples taken
 // from it are comparable.
 
-import { FLARE_RADIUS } from "../../src/constants";
+import { FLARE_RADIUS } from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import { parkForager } from "../scene";
 import type { Harness } from "../harness";

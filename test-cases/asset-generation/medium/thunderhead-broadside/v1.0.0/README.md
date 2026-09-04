@@ -15,15 +15,15 @@ image. See `specs/brief.md` for the full brief.
 
 ## The sample pack
 
-The `[audio]` table names `sample_pack = "combat-core@0.1.0"`, the baked
+The `[audio]` table declares `packs = ["combat-core@0.1.0"]`, the
 [sample library](../../../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
-the model layers over. It is a `name@version` baked into the run-container image
-at build time, not a path in this repo, and its manifest lives at
-`containers/sample-packs/combat-core.toml`. The run is scheduled onto the image
-carrying that pack, and the model browses it at run time with `sfx-sample
-list-samples` and `sfx-sample sample-info`. The brief points at real pack samples
-as ingredients to composite, among them `cannon_body_heavy`, `boom_sub_rumble`,
-`impact_metal_dry`, `impact_metal_hollow`, `clang_metal`, and `debris_rubble`.
+the model layers over. It is a `name@version` ref, not a path in this repo, and
+its manifest lives at `containers/sample-packs/combat-core.toml`. The run
+container is staged with that pack and nothing else, and the model browses it at
+run time with `sfx-sample list-samples` and `sfx-sample sample-info`. The brief
+points at real pack samples as ingredients to composite, among them
+`cannon_body_heavy`, `boom_sub_rumble`, `impact_metal_dry`,
+`impact_metal_hollow`, `clang_metal`, and `debris_rubble`.
 
 ## Files
 
@@ -37,8 +37,8 @@ as ingredients to composite, among them `cannon_body_heavy`, `boom_sub_rumble`,
 | `README.md` | no | This human overview. |
 
 Only `specs/brief.md` reaches a run, alongside the seeded `sfx-sample.config.json`
-the binary writes into and the baked `combat-core` library on the image.
-Everything else is authoring- or site-side.
+the binary writes into and the staged `combat-core` library the container is
+given. Everything else is authoring- or site-side.
 
 ## Validate
 

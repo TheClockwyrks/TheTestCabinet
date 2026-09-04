@@ -53,6 +53,7 @@ fn validated_item(id: &str, script_rel: &str) -> crate::test_case::ReviewItem {
         validation: Some(crate::test_case::ReviewValidation {
             script: None,
             script_rel: script_rel.to_string(),
+            engines: Vec::new(),
             outputs: Vec::new(),
         }),
     }
@@ -415,8 +416,8 @@ fn score_of_identical_pngs_is_one() {
 
 use super::AssetGenValidator;
 use crate::test_case::{
-    AssetKind, CanvasSpec, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion, TestType,
-    ToolSpec,
+    AssetDimension, AssetKind, CanvasSpec, OutputSpec, SheetSequence, SheetSpec, TestCaseVersion,
+    TestType, ToolSpec,
 };
 use crate::validation::Validator;
 
@@ -477,6 +478,7 @@ fn asset_version() -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -484,6 +486,7 @@ fn asset_version() -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,
@@ -728,6 +731,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -735,6 +739,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,

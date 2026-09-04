@@ -3,9 +3,9 @@ title: Diagnostics and Overlay
 ---
 
 A build that names the values a reviewer would otherwise read off the pixels: a
-phase, a score, a position, and a derived speed. Each is registered once during
-initialization as a function over the state, and the same values are readable
-from outside the page while the game runs.
+phase, a score, a position, a derived speed, and a frame rate. Each is
+registered once during initialization as a function over the state, and the same
+values are readable from outside the page while the game runs.
 
 ## index.html
 
@@ -100,7 +100,10 @@ export const rally: Game<RallyState, null> = {
 
     api.diagnostics.register("phase", (s) => s.phase);
     api.diagnostics.register("score", (s) => `${s.score.left} - ${s.score.right}`);
-    api.diagnostics.register("ball", (s) => ({ x: s.ball.x, y: s.ball.y }));
+    api.diagnostics.register(
+      "ball",
+      (s) => `${s.ball.x.toFixed(0)}, ${s.ball.y.toFixed(0)}`,
+    );
     api.diagnostics.register("speed", (s) => Math.hypot(s.ball.vx, s.ball.vy));
     api.diagnostics.register("fps", (s) => s.fps);
 
@@ -164,8 +167,9 @@ reports what the game holds at that instant rather than the opening value
 `initialize` returned. `InitApi<RallyState>` is what types the argument.
 
 The five sources cover the shapes the overlay formats. A string prints as
-itself, an integer prints whole, a non-integer prints to three decimal places,
-and a small object prints as JSON.
+itself, an integer prints whole, and a non-integer prints to three decimal
+places. A source reports a string, a number, or a boolean, so the position is
+formatted inside the source rather than handed over as a pair.
 
 `fps` comes from the frame counter, so `update` carries it in the state it
 returns and the source reads the field. `api.frame()` belongs to the frame the
@@ -179,5 +183,24 @@ bindings.
 
 A check reads the same values by holding the engine rather than the page. It
 constructs the engine over this build's `rally` module, steps it with
-`engine.advance`, and reads `engine.state`, so what it asserts on is the value
-the sources are handed.
+`engine.advance`, and reads `engine.diagnostics()`, which returns one reading
+per source in registration order.
+
+```ts
+await engine.advance(60);
+
+const readings = engine.diagnostics();
+
+expect(readings.map((r) => r.name)).toEqual([
+  "phase",
+  "score",
+  "ball",
+  "speed",
+  "fps",
+]);
+expect(readings[0]).toEqual({ name: "phase", value: "rally" });
+expect(readings[1]).toEqual({ name: "score", value: "0 - 0" });
+```
+
+That asserts what the build registered, which is the build's whole part in the
+overlay. Drawing the panel and toggling it belong to the engine.

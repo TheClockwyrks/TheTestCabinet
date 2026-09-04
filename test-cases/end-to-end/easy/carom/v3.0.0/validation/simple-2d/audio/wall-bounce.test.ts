@@ -10,9 +10,15 @@
 // The cue's NAME is asserted as well as its arrival: the four cues exist so the
 // four events are told apart by ear (specs/ui.md), and a build that plays the
 // wrong one on a wall bounce has broken exactly that.
+//
+// The field is emptied down to the climbing ball: both obstacles are REMOVED
+// rather than dodged, and the paddles — the single body a check cannot remove —
+// are driven out of the mid-field lane, well clear of the centre column the ball
+// rises up. So a wall is the only thing the ball can reach, and a build whose
+// obstacles are wrong cannot make this point report their defect.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FIELD_CX } from "../../src/constants";
+import { CUES, FIELD_CX } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeLiveBall,
@@ -28,9 +34,9 @@ import {
  *
  * Far enough below the top wall for half a second of approach, so the clip opens
  * on a ball climbing rather than on one already touching what it reflects off.
- * The column it rises up is clear of both obstacles and of both paddles, so the
- * flight is a straight line and the reflection is the same one a shorter run-up
- * produces — only later, and with something to watch first.
+ * The field holds nothing else, so the flight is a straight line and the
+ * reflection is the same one a shorter run-up produces — only later, and with
+ * something to watch first.
  */
 const START_Y = 280;
 
@@ -56,7 +62,7 @@ afterEach(() => {
 });
 
 it("plays the wall-bounce cue on the frame of the reflection", async () => {
-  await arrangeLiveBall(h, { x: FIELD_CX, y: START_Y, vx: 0, vy: -500 });
+  arrangeLiveBall(h, { x: FIELD_CX, y: START_Y, vx: 0, vy: -500 });
 
   const played = watchCues(h);
   const bounce = await captureReplay(h, "bounce", async () => {

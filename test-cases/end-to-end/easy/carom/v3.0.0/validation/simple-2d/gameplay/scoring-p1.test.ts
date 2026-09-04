@@ -1,10 +1,15 @@
 // gameplay/scoring-p1 — a ball crossing the RIGHT goal edge scores for player one.
 //
-// The ball is aimed at the right goal down the lane that clears both obstacles;
+// The ball is aimed at the right goal down the mid-field lane;
 // the real simulation carries it across the edge and the build's own scoring code
 // increments the score, which is read back. The left goal is the sibling
 // `scoring-p2` check, so a build that scores on only one edge fails the side it
 // gets wrong rather than passing on an average.
+//
+// The point runs down an isolated lane. `arrangeGoal` empties the field and
+// spawns back the one ball it fires, so both obstacles are gone rather than
+// dodged, and it drives both paddles out of the mid-field lane — the paddles are
+// the one thing on the field a check cannot remove.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -13,8 +18,8 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
+  enterPlaying,
   receiver0,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -43,7 +48,7 @@ afterEach(() => {
 });
 
 it("gives player one the point when the ball leaves the right goal", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   harness.debug.setScore(0, 0);
   arrangeGoal(harness, "right");
 

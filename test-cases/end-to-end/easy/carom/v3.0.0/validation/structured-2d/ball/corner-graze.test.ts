@@ -14,6 +14,17 @@
 // returns down the path it arrived on instead of banking off the face. Only the
 // component normal to the struck face may reverse, so `vy` KEEPING ITS SIGN
 // through the contact is the property under test.
+//
+// EACH GRAZE RUNS OVER ITS OWN ISOLATED FIELD. The three cover both
+// obstacles, so each is posed over a field holding one ball and the obstacle
+// it grazes and nothing else: the other obstacle is ABSENT rather than parked
+// out of the way, and a shot that missed the corner it was aimed at cannot
+// bank off it and read as this check's graze. Re-posing costs the few frames
+// of the countdown each isolation opens with, which the recording carries
+// between the three flights. The obstacle clock is held at 0 and a frame
+// advanced before each shot is aimed, so under `gyre` the corner is standing
+// where `OBSTACLES` puts it rather than partway through a sway; under the
+// other two variants the clock does not exist and the obstacles never move.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -22,14 +33,16 @@ import {
   OBSTACLE_CENTERS,
   OBSTACLE_HH,
   SERVE_SPEED,
-} from "../../src/constants";
+} from "../constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   ball0,
+  ballOps,
   captureReplay,
-  clearPaddles,
   createHarness,
-  startPlaying,
+  holdObstacleClock,
+  openIsolatedPlay,
+  parkPaddles,
   type Harness,
 } from "../harness";
 
@@ -75,6 +88,8 @@ const DEPARTURE_TICKS = 30; // 0.25 s
 
 interface Graze {
   label: string;
+  /** The obstacle grazed, and the only one on the field for that graze. */
+  obstacle: number;
   faceX: number;
   endY: number;
   fromLeft: boolean;
@@ -91,6 +106,7 @@ interface Graze {
 const GRAZES: Graze[] = [
   {
     label: "obstacle A, top-left corner",
+    obstacle: 0,
     faceX: OBSTACLES[0].x0,
     endY: OBSTACLE_CENTERS[0].y - OBSTACLE_HH,
     fromLeft: true,
@@ -98,6 +114,7 @@ const GRAZES: Graze[] = [
   },
   {
     label: "obstacle A, bottom-left corner",
+    obstacle: 0,
     faceX: OBSTACLES[0].x0,
     endY: OBSTACLE_CENTERS[0].y + OBSTACLE_HH,
     fromLeft: true,
@@ -105,6 +122,7 @@ const GRAZES: Graze[] = [
   },
   {
     label: "obstacle B, top-right corner",
+    obstacle: 1,
     faceX: OBSTACLES[1].x1,
     endY: OBSTACLE_CENTERS[1].y - OBSTACLE_HH,
     fromLeft: false,
@@ -144,18 +162,27 @@ afterEach(() => {
 });
 
 it("reverses only the component normal to the face it grazed", async () => {
-  await startPlaying(harness);
   // The corner zone is one ball radius deep, which is what makes the inset above
   // land inside it; stated here so a change to either is read against the other.
   assertLessThan(INSET, BALL_R);
 
-  // All three grazes as one section: each is posed instantaneously and then
-  // played out, so the recording is the three flights back to back.
+  // All three grazes as one section: each is posed over its own isolated field
+  // and then played out, so the recording is the three flights back to back.
   await captureReplay(harness, "graze", async () => {
     for (const graze of GRAZES) {
       const shot = shotFor(graze);
-      clearPaddles(harness);
-      harness.debug.setBall(0, { ...shot, spin: 0 });
+      await openIsolatedPlay(harness, {
+        contents: { balls: 1, obstacles: [graze.obstacle] },
+      });
+      holdObstacleClock(harness, 0);
+      // One frame, so a gyre build has recomputed the obstacle's pose from the
+      // held clock before the shot is aimed at the corner the case puts there.
+      await harness.advance(1);
+      parkPaddles(harness);
+      const ops = ballOps(harness);
+      ops.setBallPosition(shot.x, shot.y);
+      ops.setBallVelocity(shot.vx, shot.vy);
+      ops.setBallSpin(0);
 
       const banked = await harness.until(
         (s) => Math.sign(ball0(s).vx) !== Math.sign(shot.vx),

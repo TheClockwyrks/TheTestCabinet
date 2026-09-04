@@ -6,11 +6,13 @@ registers its sources into one of two registries; the engine owns everything
 around them.
 
 ```ts
+type DiagnosticValue = string | number | boolean;
+
 // On the instance, in initialize:
-api.diagnostics.register(name: string, source: () => unknown): void;
+api.diagnostics.register(name: string, source: () => DiagnosticValue): void;
 
 // On the world, from anywhere that holds it:
-world.diagnostics.register(name: string, source: () => unknown): void;
+world.diagnostics.register(name: string, source: () => DiagnosticValue): void;
 ```
 
 ## The two registries
@@ -25,10 +27,11 @@ game holds at that instant.
 | World | `world.diagnostics` | The life of the world. Its sources are dropped when the world closes. |
 
 Re-registering a name replaces its source and retains the name's original
-position in its registry.
+position in its registry. A name registered in both registries keeps a line in
+each.
 
 A value that spans levels is registered on the instance, in `initialize`, which
-closes each source over the instance — the one framework object that outlives a
+closes each source over the instance, the one framework object that outlives a
 transition:
 
 ```ts
@@ -60,7 +63,9 @@ export class RallyMode extends GameMode {
     world.diagnostics.register("elapsed", () => this.state.elapsed);
     world.diagnostics.register("ball", () => {
       const ball = world.find(Ball);
-      return ball ? { x: ball.transform.x, y: ball.transform.y } : "none";
+      return ball === null
+        ? "none"
+        : `${ball.transform.x.toFixed(0)}, ${ball.transform.y.toFixed(0)}`;
     });
   }
 }
@@ -74,23 +79,60 @@ source of its own in `beginPlay` the same way, through `this.world.diagnostics`.
 
 A source reads and returns, leaving the world exactly as it found it. It runs on
 every frame the overlay is visible, so keep it cheap: read a field, count a tag,
-build a small object. Prefer values the simulation already holds — a diagnostic
-that derives something the game never computed is a second implementation able
-to disagree with the first.
+format a pair of coordinates.
 
-Guard a source against the object it reports being absent, so the game stays
-free of guards around the diagnostic:
+A source reports one of three types: a `string` where the presentation matters,
+a `number` where the magnitude is the point, and a `boolean` for a flag. A
+framework object such as an actor is reduced to one of the three inside the
+source, so report its position as a formatted string, its tag as a string, or
+its count as a number.
+
+A source always returns a value. Where the thing it names is absent, it returns
+a short placeholder string in the game's own vocabulary, such as `"none"` or
+`"-"`, so the name keeps its line and the reader sees a word the game chose:
 
 ```ts
 world.diagnostics.register("pawn", () => world.players()[0]?.pawn?.id ?? "none");
 ```
 
-A source that throws contributes its error message as a string value rather than
-failing the read, so one careless source costs nothing but its own line.
+Prefer values the simulation already holds. A diagnostic that derives something
+the game never computed is a second implementation able to disagree with the
+first.
 
 The engine already draws the open level, the match phase, and the live actor
 count on its own line, so a source that repeats one of the three costs a line
 and adds nothing.
+
+## Reading the values back
+
+```ts
+interface DiagnosticReading {
+  readonly name: string;
+  readonly value?: DiagnosticValue;
+  readonly error?: string;
+}
+
+engine.diagnostics(): readonly DiagnosticReading[];
+```
+
+`engine.diagnostics()` evaluates every source in both registries and returns one
+reading per source, the instance registry's first and then the world registry's,
+each in registration order. That is the order the panel draws them in. Exactly
+one of `value` and `error` is present on each reading.
+
+Reading is pure. It evaluates the sources and changes nothing else: the world,
+the frame counter, and the overlay's visibility are the same after a read as
+before it, so a hidden overlay reads exactly as a visible one does.
+
+A source that throws yields a reading carrying `error` and no `value`. The
+message is the `message` of a thrown `Error`, and the `String` form of anything
+else thrown. A failure therefore stays distinguishable from a reading of any
+type, and `engine.diagnostics()` itself always returns.
+
+Registering the values a case names is the game's part, so a check reads
+`engine.diagnostics()` and asserts the names the build registered and what each
+one reports for a posed world. Drawing the panel and toggling it belong to the
+engine.
 
 ## The overlay
 
@@ -112,27 +154,24 @@ coordinates are being scaled. The text is a column of lines, in order:
 
 The frame-time graph sits beside the text, to its right.
 
-| Value | Displayed as |
-| --- | --- |
-| `string` | The string itself. |
-| Integer `number` | `String(value)`. |
-| Non-integer `number` | `value.toFixed(3)`. |
-| `null`, `undefined` | `"null"`, `"undefined"`. |
-| `object`, array | `JSON.stringify(value)`, falling back to `String(value)`. |
-| Any other type | `String(value)`. |
+One line per source, formatted `` `${name}: ${value}` ``.
 
-One line per source, formatted `` `${name}: ${value}` ``. Keep each value to
-about a line: a string where the presentation matters, a number where the
-magnitude is the point, and a small object for a pair such as a position. A
-framework object such as an actor is not plain data, so report its position, its
-tag, or its count in its place.
+| Reading | Drawn as |
+| --- | --- |
+| `string` value | The string itself. |
+| Integer `number` value | `String(value)`. |
+| Non-integer `number` value | `value.toFixed(3)`. |
+| `boolean` value | `"true"` or `"false"`. |
+| A source that threw | The `error` message, in the value's place. |
+
+A number that is not finite draws as `NaN`, `Infinity`, or `-Infinity`. Keep
+each value to about a line, since a line is the unit the panel draws.
 
 ## Frame metrics
 
 The engine times each frame it runs, measuring the wall time spent in the
 frame's ticks, its collision pass, its render, and the overlay itself. One
-sample is recorded per frame that ran, so a build reports metrics without
-registering anything.
+sample is recorded per frame that ran.
 
 ```ts
 interface FrameMetrics {

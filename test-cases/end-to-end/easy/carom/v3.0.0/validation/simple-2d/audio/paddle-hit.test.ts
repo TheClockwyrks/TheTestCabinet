@@ -11,9 +11,18 @@
 // The event carries the cue's NAME, so a build that fired its scoring blip on
 // every bounce is told apart from one that plays `paddle-hit` on a paddle hit:
 // the name and the frame are both read, and the frame is the collision's own.
+//
+// The field is emptied down to the struck ball: both obstacles are REMOVED rather
+// than dodged, so the only thing the ball can meet on the way in is the paddle
+// this point is about. Both paddles are driven, for two different reasons — the
+// struck one because the requirement is a contact and it has to be where the shot
+// is aimed, the far one because a paddle is the single body a check cannot
+// remove and driving it out of the lane is the only way to keep it out of the
+// way. Live play is POSED rather than served into: the countdown and the serve
+// are no part of a cue on a contact.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FIELD_CY } from "../../src/constants";
+import { CUES, FIELD_CY } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   LEAD_TICKS,
@@ -21,7 +30,7 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
+  enterPlaying,
   watchCues,
   type Harness,
 } from "../harness";
@@ -49,7 +58,7 @@ afterEach(() => {
 });
 
 it("plays the paddle-hit cue on the frame of the contact", async () => {
-  await startPlaying(h, "versus");
+  enterPlaying(h, "versus");
   // Posed with the standard run-up rather than on the paddle's face, so the clip
   // opens on a ball approaching. The contact is the same one either way: the
   // struck paddle is still (`vy` defaults to zero, so the lead does not move it),

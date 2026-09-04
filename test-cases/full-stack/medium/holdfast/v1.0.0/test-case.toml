@@ -15,11 +15,12 @@ name = "Holdfast"
 # `PATH`, and then build a game that uses them. It is NOT the older two-run pattern
 # where a separate asset-gen run makes an asset a later game merely consumes; here
 # one model both produces the art/effects/audio and builds the game around it. The
-# `full-stack` type schedules the run onto the `test-cabinet-full-stack-2d` image,
-# which carries exactly six binaries on `PATH` — `draw`, `draw-sheet`,
-# `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — and no others; every
-# asset the game needs is produced with one of them (`specs/assets.md` is the
-# production contract). A root identity field, so it sits above the first table.
+# `full-stack` type, with `asset_dimension` left at its `2d` default, schedules the
+# run onto the `test-cabinet-full-stack-2d` image, which carries exactly six
+# binaries on `PATH` — `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`,
+# `sfx-sample`, and `music` — and no others; every asset the game needs is produced
+# with one of them (`specs/assets.md` is the production contract). A root identity
+# field, so it sits above the first table.
 type = "full-stack"
 
 # Relative difficulty (easy | medium | hard), surfaced on the site. Holdfast is
@@ -107,6 +108,21 @@ packages = ["@test-cabinet/particle-runtime"]
 variants = [
   "variants/base.toml",
 ]
+
+# The audio packs the run container is staged with, and the whole of what
+# `sfx-sample` and `music` may reach. A tool config that names no pack plays the
+# first pack of that kind.
+#
+# `combat-core` is the sample pack the colony's violence is layered from: the
+# gunshot, the hit, the build cue, and the raid alarm all have their material in
+# its cannon body, snaps, metal impacts, and clangs. The bed is asked to sit low
+# and sparse and then lift when a raid lands (`specs/assets.md`), so `cinematic`
+# leads the banks, because its tremolo strings, low brass, choir, and taiko are
+# what that lift is made of. `gm-lite` follows for the nylon guitar, violin, and
+# cello a frontier plays itself between raids. `synthwave` is not staged; nothing
+# on this map is electric.
+[audio]
+packs = ["combat-core@0.1.0", "cinematic@0.1.0", "gm-lite@0.1.0"]
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's

@@ -2360,7 +2360,11 @@ pub(crate) fn functional_rating(
     match manifest.filter(|manifest| manifest.validator_rated()) {
         Some(manifest) => {
             let variant = record.subject.variant.as_str();
-            let items = crate::snapshot::review_items_for(manifest, variant);
+            let items = crate::snapshot::review_items_for_engine(
+                manifest,
+                variant,
+                &record.subject.engine_slug,
+            );
             let domains = crate::snapshot::domains_for(manifest, variant);
             let auto =
                 test_cabinet_core::comparison::automated_verdicts(&record.validation.debug_scripts);

@@ -47,7 +47,8 @@ it("credits the left player when the ball crosses the right edge", async () => {
   const { engine } = h;
   await engine.initialize();
 
-  h.setBall({ x: 560, y: 180, vx: 240, vy: 0 });
+  h.setBallPosition(560, 180);
+  h.setBallVelocity(240, 0);
   await engine.advance(30);
 
   engine.startRecording();

@@ -4,10 +4,11 @@
 // The match is opened through the debug surface and run up to live play
 // (`startPlaying`), so the menu is raised over a match in flight rather than
 // over its countdown, and a build with a broken title menu but a working pause
-// fails only the navigation checks. The pause is a real `Escape` key event —
-// the debug driver holds only the paddles, so the key still lands — and
-// `Escape` drives both `pause` and `back`, so the build has to resolve it as
-// the pause here.
+// fails only the navigation checks. `startPlaying` drives no paddle — nothing
+// here calls `setPaddleDriven` — so the game is under ordinary player control
+// and the real `Escape` key event lands the way it does for a player. `Escape`
+// raises both `pause` and `back`, so the build has to resolve it as the pause
+// here.
 //
 // The three entries are the case's copy, from the specification. Matching is by
 // substring, because a selected entry is commonly drawn with a marker beside it.

@@ -1,72 +1,50 @@
 // Carom (Gyre) — the level registry's two entries (src/constants.ts fixes the
 // names): `title`, the menu level the engine opens first, and `match`, the
-// level a match plays in.
+// level a match plays in. Which of Carom's six screens each one hosts is
+// `src/state.ts`'s `levelOf`.
 //
-// Each level declares the actors it places. The field furniture — the net and
-// the two obstacles — is shared: the title screen shows the court dimmed
-// behind its menu, so both levels place the same pieces and the components dim
-// themselves by the screen. Each obstacle is configured with its index into
-// `OBSTACLE_CENTERS` and starts on its base center: the clock-zero, upright
-// pose, which the title keeps (its world has no obstacle clock) and which a
-// fresh match opens on before the clock starts winding (src/scenery.ts). The
-// title level also places the two paddles and a parked ball as furniture, each
-// under its case-fixed tag, so the court a player sees behind the menu is the
-// same court `world.byTag` reports; in the match level the paddles arrive
-// through possession instead — the mode spawns one per participant — and the
-// mode spawns the ball last so it ticks after them (src/match-mode.ts).
+// A level declares only what is CONSTANT about it. The net is decoration and
+// belongs to both. The paddles are the title level's furniture — the court a
+// player sees dimmed behind the menu is the same court `world.byTag` reports —
+// and the match level's pawns, which arrive through possession because the mode
+// seats their drivers (src/match-mode.ts).
+//
+// WHAT NEITHER LEVEL PLACES IS THE BALL OR THE OBSTACLES. Whether either is on
+// the field is STATE (specs/state.md): `clearWorld` removes them and
+// `spawnBall`/`spawnObstacle` put them back, and a field a scenario cleared
+// stays cleared across a level transition. So the instance places them as it
+// dresses each incoming world, from the carry that says what survived
+// (src/carry.ts) — after the mode's `beginPlay` has seated the paddles, which
+// is also what puts the ball last in spawn order so it ticks after them.
 
 import type { ActorSpec, LevelDefinition } from "@test-cabinet/structured-2d";
-import { Ball } from "./ball";
-import { FIELD_CX, FIELD_CY, OBSTACLE_CENTERS, TAGS } from "./constants";
+import { FIELD_CY, TAGS } from "./constants";
 import { Hud } from "./hud";
 import { MatchMode } from "./match-mode";
 import { Paddle } from "./paddle";
-import { Net, Obstacle } from "./scenery";
-import { paddleCenterX } from "./sim";
-import { TitleDisplay, MatchChrome } from "./screens";
+import { Net } from "./scenery";
+import { paddleCenterX, type Side } from "./sim";
+import { Chrome } from "./screens";
 import { TitleMode } from "./title-mode";
 
-/** The net and the two obstacles, in `OBSTACLE_CENTERS` order (A then B). */
-function furniture(): ActorSpec[] {
-  return [
-    { type: Net },
-    ...OBSTACLE_CENTERS.map((center, index): ActorSpec<Obstacle> => ({
-      type: Obstacle,
-      transform: { x: center.x, y: center.y },
-      tags: [TAGS.obstacle],
-      configure: (obstacle: Obstacle) => {
-        obstacle.index = index;
-      },
-    })),
-  ];
+/** A paddle standing as the title level's furniture, under its own tag. */
+function paddle(side: Side): ActorSpec<Paddle> {
+  return {
+    type: Paddle,
+    transform: { x: paddleCenterX(side), y: FIELD_CY },
+    tags: [side === "left" ? TAGS.paddleLeft : TAGS.paddleRight],
+    configure: (actor: Paddle) => {
+      actor.side = side;
+    },
+  };
 }
 
 export const title: LevelDefinition = {
   mode: TitleMode,
-  actors: [
-    ...furniture(),
-    {
-      type: Paddle,
-      transform: { x: paddleCenterX("left"), y: FIELD_CY },
-      tags: [TAGS.paddleLeft],
-      configure: (paddle: Paddle) => {
-        paddle.side = "left";
-      },
-    },
-    {
-      type: Paddle,
-      transform: { x: paddleCenterX("right"), y: FIELD_CY },
-      tags: [TAGS.paddleRight],
-      configure: (paddle: Paddle) => {
-        paddle.side = "right";
-      },
-    },
-    { type: Ball, transform: { x: FIELD_CX, y: FIELD_CY }, tags: [TAGS.ball] },
-    { type: TitleDisplay },
-  ],
+  actors: [{ type: Net }, paddle("left"), paddle("right"), { type: Chrome }],
 };
 
 export const match: LevelDefinition = {
   mode: MatchMode,
-  actors: [...furniture(), { type: Hud }, { type: MatchChrome }],
+  actors: [{ type: Net }, { type: Hud }, { type: Chrome }],
 };

@@ -26,8 +26,12 @@ const game: Game<State, null> = {
   initialize(api: InitApi<State>): [State, null] {
     api.diagnostics.register("phase", (s) => s.phase);
     api.diagnostics.register("score", (s) => `${s.score.left} - ${s.score.right}`);
-    api.diagnostics.register("ball", (s) => ({ x: s.ball.x, y: s.ball.y }));
+    api.diagnostics.register(
+      "ball",
+      (s) => `${s.ball.x.toFixed(0)}, ${s.ball.y.toFixed(0)}`,
+    );
     api.diagnostics.register("speed", (s) => Math.hypot(s.ball.vx, s.ball.vy));
+    api.diagnostics.register("rallying", (s) => s.phase === "rally");
 
     return [
       {
@@ -55,9 +59,9 @@ forever. Registration happens once and the sources need no further attention.
 
 ## What makes a good source
 
-A source reads and returns. It is handed a read-only view, runs on every frame
-the overlay is visible, so keep it cheap: read a field, compute one number,
-build a small object.
+A source reads and returns a string, a number, or a boolean. It is handed a
+read-only view and runs on every frame the overlay is visible, so keep it cheap:
+read a field, compute one number, format a pair of coordinates.
 
 Name the values a reviewer would otherwise infer from pixels. The score, the
 current phase, the number of live entities, and the position of the object under
@@ -66,9 +70,11 @@ simulation already holds make the best sources, since a diagnostic that derives
 something the game never computed is a second implementation able to disagree
 with the first.
 
-Keep each value to about a line. Return a string where the presentation matters,
-a number where the magnitude is the point, and a small object for a pair such as
-a position.
+Keep each value to about a line. Return a string where the presentation matters
+or where several figures belong together, a number where the magnitude is the
+point, and a boolean for a flag. A value the state holds in another shape is
+reduced to one of the three inside the source, so a position is formatted and a
+collection is counted.
 
 ```ts
 api.diagnostics.register("hud", (s) => `${s.lives} lives, wave ${s.wave}`);
@@ -113,6 +119,35 @@ is what a value that changes shape between phases uses.
 api.diagnostics.register("target", (s) => s.target ?? "none");
 ```
 
-A source that throws shows its message in place of its value and leaves the rest
-of the panel intact. A diagnostic therefore guards against the state it reports
-being absent, and the game stays free of guards around the diagnostic.
+A source always returns a value, so a source whose subject can be absent returns
+a placeholder such as `"-"` or `"none"` in its place. The game therefore stays
+free of guards around the diagnostic.
+
+## What a case's checks read
+
+A check holds the engine and reads `engine.diagnostics()`, which returns one
+reading per registered source, in registration order, with the name the game
+registered and what that source reports for the state the engine currently
+holds.
+
+```ts
+const readings = engine.diagnostics();
+
+expect(readings.map((r) => r.name)).toEqual([
+  "phase",
+  "score",
+  "ball",
+  "speed",
+  "rallying",
+]);
+expect(readings[0]).toEqual({ name: "phase", value: "serve" });
+```
+
+Registering the values a case names is the game's part; drawing them, toggling
+the panel and keeping it read-only are the engine's. A check therefore asserts
+what a build registered rather than what the panel drew.
+
+A source that throws shows its message in place of its value on the panel, and
+its reading carries an `error` and no `value`, so a check sees a failed source
+as a failure rather than as a reading. Reading changes nothing the engine holds,
+and a hidden overlay reads exactly as a visible one does.

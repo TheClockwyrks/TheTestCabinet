@@ -16,6 +16,14 @@
 // letter-spaces its heading, failed here for a fault that has nothing to do
 // with its set labels. The labels place themselves.
 //
+// THE COPY IS THE VALIDATOR'S OWN. SET_LABELS is read from this project's
+// `constants.ts`, which transcribes the four entries from
+// specs/modes/campaign.md, and never from the build's `src/constants.ts`. A
+// check that matches a build's labels against the build's own list grades
+// nothing: it asks whether the build draws what the build says it draws, which
+// holds for every build, including one whose labels are wrong. The
+// specification is the only authority this compares against.
+//
 // The copy is matched case-insensitively with runs of whitespace squashed on
 // both sides, because letter spacing is a font choice and a build that draws
 // its label a glyph at a time spells it with the spacing it chose.
@@ -38,8 +46,8 @@
 // only the labelling.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SET_LABELS } from "../../src/constants";
 import { fail } from "../assert";
+import { SET_LABELS } from "../constants";
 import {
   captureStill,
   createHarness,

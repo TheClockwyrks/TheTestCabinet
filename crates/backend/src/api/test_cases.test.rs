@@ -56,6 +56,7 @@ fn manifest() -> StoredManifest {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -63,6 +64,7 @@ fn manifest() -> StoredManifest {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         prompt_template: "build it".to_string(),
         common_specs: vec![],
         workspace: Default::default(),
@@ -332,6 +334,51 @@ fn a_graded_review_item_carries_its_graded_flag_to_the_wire() {
     let item = &response.common_review_items[0];
     assert_eq!(item.id, "fun");
     assert!(item.graded);
+}
+
+#[test]
+fn a_validator_s_engine_scoping_reaches_the_wire_and_an_unscoped_one_is_omitted() {
+    // A driver fetching a definition resolves the run's checklist from it, so the
+    // engines a validator decides its point on have to survive serialization. The
+    // unscoped case serializes nothing at all, which is what a client older than the
+    // field reads as "every engine the case supports".
+    let mut manifest = manifest();
+    let point = |id: &str, engines: &[&str]| StoredReviewItem {
+        id: id.to_string(),
+        title: id.to_string(),
+        text: format!("The build satisfies {id}."),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: false,
+        domain: None,
+        failure_cap: None,
+        domains: vec![],
+        sub_items: vec![],
+        validation: Some(crate::store::StoredReviewValidation {
+            script: format!("gameplay/{id}.test.ts"),
+            per_engine: true,
+            engines: engines.iter().map(|slug| (*slug).to_string()).collect(),
+            outputs: vec![],
+        }),
+    };
+    manifest.common_review_items = vec![point("overlay", &["none"]), point("serve", &[])];
+
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let json = serde_json::to_value(&response).unwrap();
+    let items = json["commonReviewItems"].as_array().unwrap();
+
+    assert_eq!(
+        items[0]["validation"]["engines"],
+        serde_json::json!(["none"])
+    );
+    assert!(
+        items[1]["validation"].get("engines").is_none(),
+        "an unscoped validator serializes no `engines` key: {}",
+        items[1]["validation"]
+    );
 }
 
 // ── run-tree artifacts: Accept-Encoding negotiation ──────────────────────────

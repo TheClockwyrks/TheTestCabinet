@@ -94,7 +94,11 @@ pub async fn add_review(
             })?;
         validate_validator_rated_review(
             &request,
-            &crate::snapshot::review_items_for(&manifest, &subject.variant),
+            &crate::snapshot::review_items_for_engine(
+                &manifest,
+                &subject.variant,
+                &subject.engine_slug,
+            ),
         )?;
         Some(manifest)
     } else {
@@ -152,9 +156,11 @@ pub async fn add_review(
 /// decision), must carry the run-wide `aesthetic` tier, and may carry a
 /// **partial** `checklist` of overrides — each entry the reviewer's verdict for
 /// one of the run's declared points (`items`, the effective checklist for its
-/// variant), binary `pass`/`fail` with an optional note. Points not listed keep
-/// the validators' verdicts, so an empty checklist is fine. Each violation is a
-/// `422` naming what is wrong.
+/// variant on its engine), binary `pass`/`fail` with an optional note. Points not
+/// listed keep the validators' verdicts, so an empty checklist is fine. A verdict
+/// naming a point the run does not carry — an unknown id, or one whose validator
+/// is scoped away from the run's engine — is refused with the rest. Each violation
+/// is a `422` naming what is wrong.
 fn validate_validator_rated_review(
     request: &ReviewRequest,
     items: &[test_cabinet_core::ReviewItem],
@@ -179,7 +185,7 @@ fn validate_validator_rated_review(
         .collect();
     if !unknown.is_empty() {
         return Err(ApiError::unprocessable(format!(
-            "review overrides a verdict the run's case version does not declare: {}",
+            "review overrides a verdict the run's checklist does not carry: {}",
             unknown.join(", ")
         )));
     }

@@ -13,6 +13,7 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
+  endHolds,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -51,7 +52,7 @@ it("serves toward player two after player one scores", async () => {
     assertEqual(point.snapshot.score.p1, 1);
     assertEqual(point.snapshot.screen, "countdown");
 
-    await harness.debug.serve();
+    await endHolds(harness);
     const launched = await harness.until((s) => s.screen === "playing", {
       maxFrames: 60,
       poll: 1,

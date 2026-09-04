@@ -48,7 +48,8 @@ describe("snapshot", () => {
       beams: {},
       solved: false,
       tracing: null,
-      pointer: { x: 0, y: 0, down: false },
+      pointer: { x: 0, y: 0, down: false, device: "mouse" },
+      targets: expect.any(Array),
       muted: false,
       simTime: 0,
     });
@@ -180,7 +181,12 @@ describe("the pointer operations", () => {
     const [x0, y0] = cellCenter({ col: 0, row: 0 }, state.board);
     state = debug.pointerDown(state, x0, y0);
     expect(state.tracing).toEqual({ channel: "triangle" });
-    expect(state.pointer).toEqual({ x: x0, y: y0, down: true });
+    expect(state.pointer).toEqual({
+      x: x0,
+      y: y0,
+      down: true,
+      device: "mouse",
+    });
 
     const [x1, y1] = cellCenter({ col: 1, row: 0 }, state.board);
     state = debug.pointerMove(state, x1, y1);

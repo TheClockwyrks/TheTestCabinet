@@ -14,10 +14,13 @@ import {
   OBSTACLE_SWAY_PERIOD,
 } from "./constants";
 import {
+  isObstacleIndex,
   obstaclePose,
   poseObstacles,
+  reposeObstacles,
   spinAngle,
   swayOffset,
+  withObstacle,
 } from "./obstacles";
 import type { ObstacleState } from "./game";
 
@@ -126,6 +129,45 @@ describe("poseObstacles", () => {
     const b = poseObstacles(0.4);
     expect(b).toEqual(a);
     expect(b).not.toBe(a);
+  });
+});
+
+describe("which obstacles stand on the field", () => {
+  it("names only the indices OBSTACLE_CENTERS has", () => {
+    expect(isObstacleIndex(0)).toBe(true);
+    expect(isObstacleIndex(1)).toBe(true);
+    expect(isObstacleIndex(2)).toBe(false);
+    expect(isObstacleIndex(-1)).toBe(false);
+    expect(isObstacleIndex(0.5)).toBe(false);
+  });
+
+  it("re-poses the ones present without spawning any back", () => {
+    const one: readonly ObstacleState[] = [obstaclePose(1, 0)];
+    const later = reposeObstacles(one, 0.9);
+    expect(later).toHaveLength(1);
+    expect(later[0]).toEqual(obstaclePose(1, 0.9));
+    expect(reposeObstacles([], 3)).toEqual([]);
+  });
+
+  it("spawns one back at the pose the clock names, in index order", () => {
+    const withB = withObstacle([], 1, 0.4);
+    expect(withB).toEqual([obstaclePose(1, 0.4)]);
+    const both = withObstacle(withB, 0, 0.4);
+    expect(both.map((o) => o.index)).toEqual([0, 1]);
+  });
+
+  it("returns an obstacle already present to its pose rather than doubling it", () => {
+    const stale: readonly ObstacleState[] = [
+      { index: 0, cx: 1, cy: 2, theta: 3 },
+    ];
+    const fresh = withObstacle(stale, 0, 0.4);
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0]).toEqual(obstaclePose(0, 0.4));
+  });
+
+  it("leaves the field alone for an index that names no obstacle", () => {
+    const both = poseObstacles(0);
+    expect(withObstacle(both, 2, 0)).toBe(both);
   });
 });
 

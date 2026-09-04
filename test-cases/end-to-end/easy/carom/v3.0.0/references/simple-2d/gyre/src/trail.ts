@@ -1,6 +1,6 @@
 // Carom — the ball's motion trail.
 //
-// The trail is `CaromState.trail`: ball positions stamped with the simulation time
+// The trail is `BallState.trail`: ball positions stamped with the simulation time
 // they were recorded at, OLDEST FIRST, one sample per frame at whatever rate the
 // engine is delivering frames. Everything older than TRAIL_TIME is dropped, so the
 // trail is a fixed slice of TIME rather than a fixed number of samples — which is
@@ -11,7 +11,7 @@
 // touched.
 
 import { TRAIL_TIME } from "./constants";
-import type { CaromState, TrailSample } from "./game";
+import type { BallState, TrailSample } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /**
@@ -23,16 +23,21 @@ import type { DeepReadonly } from "ts-essentials";
  */
 const MAX_SAMPLES = 256;
 
-/** The state with the ball's current position recorded and the window applied. */
-export function recordTrail(state: DeepReadonly<CaromState>): CaromState {
-  const sample: TrailSample = {
-    x: state.ball.x,
-    y: state.ball.y,
-    t: state.simTime,
-  };
+/**
+ * The ball with its current position recorded at `now` and the window applied.
+ *
+ * The trail belongs to the ball (specs/state.md), so this is a transition over
+ * one ball rather than over the whole state, and a field with no ball records
+ * nothing.
+ */
+export function recordTrail(
+  ball: DeepReadonly<BallState>,
+  now: number,
+): BallState {
+  const sample: TrailSample = { x: ball.x, y: ball.y, t: now };
   return {
-    ...state,
-    trail: pruneTrail([...state.trail, sample], state.simTime),
+    ...ball,
+    trail: pruneTrail([...ball.trail, sample], now),
   };
 }
 

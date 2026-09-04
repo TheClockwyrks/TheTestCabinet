@@ -1,0 +1,412 @@
+# Wireworm — Game state
+
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the game's state entirely.
+
+The one contract fixed over the state is the debugging and automation surface
+specified for this build. Every operation that surface carries is a read or a
+pose of the running game, so the state holds what those operations read, honors
+what they write, and returns to its title-screen values when the surface's
+`reset` is called. Beyond satisfying that surface, how the state is organized is
+yours to decide.
+
+Whatever its shape, the state carries the following.
+
+## The screen and the run
+
+- The screen the game is showing, one of `title`, `howto`, `playing`, `paused`,
+  `victory`, and `gameover`.
+- The sub-phase of the `playing` screen, one of `banner`, `active`, and
+  `respawn`, and the seconds left in that phase.
+- The item highlighted on whichever vertical menu the current screen shows,
+  counted from `0`.
+- The score, the lives remaining, the level being played, and the highest level
+  the run has reached.
+
+## The board
+
+- Every node standing on the board, each with the tile it occupies and its
+  charge.
+- Every worm, each with a distinct id, its segments in order from the head, its
+  horizontal and vertical headings, its diving flag, and the two faculty gates
+  the debug surface poses. Each worm also carries its own step clock, which is
+  the accumulator `specs/worm.md` describes.
+- Every foe, each with a distinct id, its kind, its center, its current velocity,
+  the dropper's taken-its-first-bolt flag, and the two faculty gates the debug
+  surface poses. A glitch also carries its own dart clock.
+- Every bolt in flight, each with a distinct id and its center.
+- The arcs of a live discharge, each naming the two tiles it joins and how much
+  of its life is left.
+- The cursor: its center, the seconds of spawn-in invulnerability left, and
+  whether its contact test is running.
+- The seconds until the cursor may fire again.
+
+## The level's own spawners
+
+- Whether the level's foe spawning is running, and whether the level's and the
+  respawn's worm entry is running. Both are on when a run begins.
+- The clocks the level's own spawners keep: the glitch's arrival interval, the
+  corruptor's arrival interval, and the dropper's sparse-field check.
+
+## The rest
+
+- The simulation time, in seconds, which every update adds its delta to whatever
+  the screen.
+- Whether sound is muted, refreshed from the runtime's mute bit in every update.
+- The state of the seeded random generator, which the starting scatter, the
+  foes' arrival intervals and entry positions, the edge a worm enters at, and the
+  arcs' drawn shapes are all drawn from.
+- Whatever the game needs to hand a fresh id to the next worm, foe, or bolt it
+  creates, so no two entities live at one moment share an id.
+
+The level's step interval and the level's worm length are derived from the level
+by the formulas in `specs/worm.md` rather than stored.
+{{else if (eq engine.slug "simple-2d")}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is a value the engine holds and every frame replaces, so every
+field and every array is declared `readonly`: a frame builds the next state from
+the current one rather than writing into it, and every reader is handed the state
+as `DeepReadonly<WirewormState>` in any case.
+
+```ts
+export type Screen =
+  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+
+export type Phase = "banner" | "active" | "respawn";
+
+export type FoeKind = "glitch" | "dropper" | "corruptor";
+
+export interface Tile {
+  readonly c: number;
+  readonly r: number;
+}
+
+export interface NodeState {
+  readonly c: number;
+  readonly r: number;
+  readonly charge: number;
+}
+
+export interface WormState {
+  readonly id: number;
+  readonly segments: readonly Tile[];
+  readonly dh: number;
+  readonly dv: number;
+  readonly diving: boolean;
+  readonly stepping: boolean;
+  readonly body: boolean;
+  readonly stepClock: number;
+}
+
+export interface FoeState {
+  readonly id: number;
+  readonly kind: FoeKind;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly hit: boolean;
+  readonly mind: boolean;
+  readonly travel: boolean;
+  readonly dartClock: number;
+}
+
+export interface BoltState {
+  readonly id: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface ArcState {
+  readonly from: Tile;
+  readonly to: Tile;
+  readonly life: number;
+}
+
+export interface CursorState {
+  readonly x: number;
+  readonly y: number;
+  readonly invulnerable: number;
+  readonly contact: boolean;
+}
+
+export interface WirewormState {
+  readonly screen: Screen;
+  readonly phase: Phase;
+  readonly phaseTimer: number;
+  readonly menuIndex: number;
+
+  readonly score: number;
+  readonly lives: number;
+  readonly level: number;
+  readonly reachedLevel: number;
+
+  readonly nodes: readonly NodeState[];
+  readonly worms: readonly WormState[];
+  readonly foes: readonly FoeState[];
+  readonly bolts: readonly BoltState[];
+  readonly arcs: readonly ArcState[];
+
+  readonly cursor: CursorState;
+  readonly fireCooldown: number;
+
+  readonly foeSpawning: boolean;
+  readonly wormEntry: boolean;
+  readonly glitchTimer: number;
+  readonly corruptorTimer: number;
+  readonly dropperTimer: number;
+
+  readonly nextId: number;
+  readonly simTime: number;
+  readonly muted: boolean;
+  readonly rngState: number;
+}
+```
+{{else}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is the world's game state: a class extending the engine's
+`GameState`, named by the game mode as its `gameStateClass`, so the engine builds
+one instance of it when the world opens and `engine.world.state` is that
+instance. Wherever this specification writes `state.foo`, it means a field of
+that instance.
+
+The game runs in one world for the whole session. The game definition registers a
+single level, the game never opens another, and every screen is a value of
+`screen`, so the state below is built once and lives until the page closes. The
+framework's states are live objects: a tick writes the fields it advances in
+place, and each field initializer below is that field's title-screen value, the
+same value the debug surface's `reset` restores. `GameState` comes from the
+engine's package, and `START_LIVES` and `DEFAULT_SEED` from `src/constants.ts`.
+
+```ts
+export type Screen =
+  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+
+export type Phase = "banner" | "active" | "respawn";
+
+export type FoeKind = "glitch" | "dropper" | "corruptor";
+
+export interface Tile {
+  c: number;
+  r: number;
+}
+
+export interface NodeState {
+  c: number;
+  r: number;
+  charge: number;
+}
+
+export interface WormState {
+  id: number;
+  segments: Tile[];
+  dh: number;
+  dv: number;
+  diving: boolean;
+  stepping: boolean;
+  body: boolean;
+  stepClock: number;
+}
+
+export interface FoeState {
+  id: number;
+  kind: FoeKind;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  hit: boolean;
+  mind: boolean;
+  travel: boolean;
+  dartClock: number;
+}
+
+export interface BoltState {
+  id: number;
+  x: number;
+  y: number;
+}
+
+export interface ArcState {
+  from: Tile;
+  to: Tile;
+  life: number;
+}
+
+export interface CursorState {
+  x: number;
+  y: number;
+  invulnerable: number;
+  contact: boolean;
+}
+
+export class WirewormState extends GameState {
+  screen: Screen = "title";
+  phase: Phase = "banner";
+  phaseTimer = 0;
+  menuIndex = 0;
+
+  score = 0;
+  lives = START_LIVES;
+  level = 1;
+  reachedLevel = 1;
+
+  nodes: NodeState[] = [];
+  worms: WormState[] = [];
+  foes: FoeState[] = [];
+  bolts: BoltState[] = [];
+  arcs: ArcState[] = [];
+
+  cursor: CursorState = { x: 640, y: 688, invulnerable: 0, contact: true };
+  fireCooldown = 0;
+
+  foeSpawning = true;
+  wormEntry = true;
+  glitchTimer = 0;
+  corruptorTimer = 0;
+  dropperTimer = 0;
+
+  nextId = 1;
+  simTime = 0;
+  muted = false;
+  rngState = DEFAULT_SEED;
+}
+```
+{{/if}}
+{{#if (ne engine.slug "none")}}
+
+## The screen and the run
+
+- `screen` — the screen currently shown, one of the six `specs/ui.md` defines.
+- `phase` — the sub-phase of the `playing` screen, as `specs/progression.md`
+  defines it. It holds `banner` on every other screen.
+- `phaseTimer` — the seconds left in the current phase, counting down against
+  each update's delta and resting at `0`.
+- `menuIndex` — the highlighted item on whichever vertical menu `screen` is
+  showing, counted from `0`. It rests at `0` on `playing`.
+- `score`, `lives`, `level` — the run's figures.
+- `reachedLevel` — the highest level the run has opened, which is what the end
+  screens report.
+
+## `NodeState`
+
+One node and the tile it occupies. Only a tile holding a node has an entry, so an
+empty tile appears nowhere.
+
+- `c`, `r` — the tile the node occupies.
+- `charge` — a whole number from `0` to `CHARGE_MAX` (`3`).
+
+`nodes` lists every node on the board in ascending row, then ascending column.
+
+## `WormState`
+
+One worm on the board.
+
+- `id` — distinct among every entity live at that moment, and kept for as long as
+  the worm exists.
+- `segments` — the tiles the worm occupies, in order from the head, so
+  `segments[0]` is the head and the last entry is the tail.
+- `dh` — the horizontal heading, `+1` for right and `-1` for left.
+- `dv` — the vertical heading, `+1` for down and `-1` for up.
+- `diving` — whether the worm is driving straight down its column.
+- `stepping` — whether the worm's step runs, which the debug surface poses. It is
+  `true` for a worm the game itself brought in.
+- `body` — whether the body's follow runs, which the debug surface poses. It is
+  `true` for a worm the game itself brought in.
+- `stepClock` — the worm's own step accumulator, in seconds, as `specs/worm.md`
+  describes it.
+
+`worms` lists every worm on the board, and a worm added through the debug surface
+is appended to it.
+
+## `FoeState`
+
+One foe on the board.
+
+- `id` — distinct among every entity live at that moment, and kept for as long as
+  the foe exists.
+- `kind` — `"glitch"`, `"dropper"`, or `"corruptor"`.
+- `x`, `y` — the foe's center.
+- `vx`, `vy` — the velocity the foe's position is changing by right now, in
+  logical units per second, including any dart. A foe whose horizontal motion
+  reverses reports a `vx` that reverses sign with it.
+- `hit` — whether a dropper has taken its first bolt. It is `false` for the other
+  two kinds.
+- `mind` — whether the foe's own behavior runs, which the debug surface poses. It
+  is `true` for a foe the game itself brought in.
+- `travel` — whether the foe's locomotion runs, which the debug surface poses. It
+  is `true` for a foe the game itself brought in.
+- `dartClock` — a glitch's own dart accumulator, in seconds. It rests at `0` for
+  the other two kinds.
+
+## `BoltState`, `ArcState`, and `CursorState`
+
+- A bolt carries an `id`, distinct among every entity live at that moment, and
+  its center.
+- An arc carries the two tiles it joins and `life`, the seconds of its
+  `ARC_LIFE` (`0.32` s) that remain.
+- The cursor carries its center, `invulnerable`, the seconds of spawn-in
+  invulnerability left, and `contact`, whether its contact test runs, which the
+  debug surface poses.
+
+## The level's own spawners
+
+- `foeSpawning` — whether the level's own spawning of foes runs, which the debug
+  surface poses.
+- `wormEntry` — whether the level's and the respawn's entry of a worm runs, which
+  the debug surface poses.
+- `glitchTimer`, `corruptorTimer`, `dropperTimer` — the clocks those spawners
+  keep, as `specs/foes.md` describes them.
+
+## The rest
+
+- `nextId` — the id the next worm, foe, or bolt takes, so no two entities live at
+  one moment share one.
+- `simTime` — accumulated simulation time, in seconds. Every update adds its
+  delta, whatever the screen.
+- `muted` — the game's readable copy of the runtime's mute bit, refreshed in
+  every update. The runtime owns muting, and this field is what the debug surface
+  reports.
+- `rngState` — the state of the game's seeded random generator. The starting
+  scatter, the foes' arrival intervals and entry positions, the edge a worm enters
+  at, and the drawn shape of an arc are all drawn from it.
+
+The level's step interval and the level's worm length are derived from `level` by
+the formulas in `specs/worm.md` rather than stored.
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+{{#if (eq engine.slug "simple-2d")}}
+- `initialize` builds the whole state in one go, so every field is present by the
+  time a frame can observe it, and none of them is optional.
+- The state handed to `update` is the whole of the game, and the state `update`
+  returns is the whole of the next frame. Every value the game carries from one
+  frame to the next lives in it; nothing is kept in a module-level variable or a
+  closure.
+- The state is handed over read-only, as `DeepReadonly<WirewormState>`, to
+  `update`, to `render`, to every diagnostic source, and to every operation of the
+  debug surface. `update` and the surface's poses return a new `WirewormState`
+  built from the one they received; `render`, the sources, and `snapshot` return
+  no state.
+{{else}}
+- The engine builds the state when the world opens, through the mode's
+  `gameStateClass`, so every field is present by the time a frame can observe it,
+  and none of them is optional.
+- The state is the whole of the authoritative game. Every value the game carries
+  from one frame to the next lives in it; nothing is kept in a module-level
+  variable or a closure, and any field an actor, component, or controller holds of
+  its own is derived data rebuilt from the declared ones.
+- The state is written only through the paths play runs on: the player controller
+  resolves the frame's input into it, the game mode's tick advances it, and the
+  debug surface's poses arrange it at the call. Rendering reads it and writes
+  nothing.
+{{/if}}
+- Fields you add hold derived data you can rebuild from the declared ones. A
+  `reset` restores the declared fields to their title-screen values, so those
+  fields are the whole of the authoritative state.
+{{/if}}

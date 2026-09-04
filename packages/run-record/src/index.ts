@@ -198,6 +198,27 @@ export type AssetKind =
   | "blender-mechanism";
 
 /**
+ * Within a full-stack case, which dimension of asset tooling the run image carries.
+ *
+ * A full-stack run builds a program *and* produces the assets it ships with, so the
+ * image it executes in has to have the authoring binaries baked in — and there are two
+ * such images, because the 3D tooling is a great deal heavier than the 2D tooling and
+ * most cases never touch it. `2d` selects `test-cabinet-full-stack-2d` (the six 2D
+ * binaries: `draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, `music`);
+ * `3d` selects `test-cabinet-full-stack-3d`, the same set plus `voxel`, `voxel-anim`
+ * and `particle-3d`. See [`crate::resolve_run_image`].
+ *
+ * Like [`AssetKind`] this is a property of the **whole version**, not a per-variant
+ * choice: every variant of a case runs in one image. It is declared by the
+ * `asset_dimension` field and defaults to [`Self::TwoD`], so every manifest written
+ * before the key existed — and every full-stack case that only draws sprites and plays
+ * sound — resolves unchanged. It is meaningful only for a full-stack case; an explicit
+ * value on any other type is rejected rather than silently ignored, because on those
+ * types nothing consults it.
+ */
+export type AssetDimension = "2d" | "3d";
+
+/**
  * The subject of a run: what was run, with what, against which model.
  */
 export type RunSubject = {
@@ -549,9 +570,9 @@ export type StepResult = {
  * is synthesized for it, pre-filled into the review like any auto verdict and
  * overridable by the reviewer — rather than failing the whole run: a build with a
  * broken debug API is still reviewed, and is scored down by exactly the points its
- * checks could not answer. A check the host could not run *at all* decided nothing
- * about the build and is held apart by
- * [`precondition_unmet`](Self::precondition_unmet).
+ * checks could not answer. A check that decided nothing about the build is held apart
+ * by [`precondition_unmet`](Self::precondition_unmet), which
+ * [`inconclusive`](Self::inconclusive) then qualifies.
  */
 export type DebugScriptResult = {
   /**
@@ -604,23 +625,20 @@ export type DebugScriptResult = {
    * Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather
    * than a contract failure the build earned.
    *
-   * Two outcomes set it, and both leave the point unanswered: no failed verdict is
+   * An inconclusive result leaves the point unanswered: no failed verdict is
    * synthesized, [scoring](crate::comparison::automated_only_score) skips the point
-   * entirely, and the reviewer decides it by hand.
-   *
-   * The first is an UNMET PRECONDITION. A check often searches the model's own
-   * world for a spot to pose its scenario — a blind corner in an invented maze, a
-   * legal build tile. That search can come up empty against a fully conformant
-   * build: every call was answered correctly, there was simply no such spot. A
-   * [vitest validator](crate::vitest_validator) says the same thing by skipping
-   * every check in its suite.
-   *
-   * The second is a check the host could not execute at all, such as a validator
-   * project with no vitest to run it or a suite run that exceeded its cap. The
-   * [`detail`](Self::detail) names the reason. Only ever `true` alongside
+   * entirely, and the reviewer decides it by hand. Which inconclusive outcome it
+   * was is carried by [`inconclusive`](Self::inconclusive), and the
+   * [`detail`](Self::detail) names the reason in prose. Only ever `true` alongside
    * `ran == false`.
    */
   preconditionUnmet: boolean;
+  /**
+   * Which inconclusive outcome this is, set exactly when
+   * [`precondition_unmet`](Self::precondition_unmet) is. `None` on a result
+   * recorded before the outcomes were told apart.
+   */
+  inconclusive: Inconclusive | null;
   /**
    * Detail about a failed or degraded script (the handle was missing, a call
    * threw, an output was not produced), or `None` when it ran clean.
@@ -640,6 +658,14 @@ export type DebugScriptResult = {
    */
   outputs: Array<DebugScriptOutput>;
 };
+
+/**
+ * Why a validator's negative answer decided nothing about the build.
+ *
+ * Each of these leaves the point unanswered, and they are held apart so a reviewer
+ * reads the real reason rather than one that sounds like a fact about the build.
+ */
+export type Inconclusive = "preconditionUnmet" | "notRun" | "timedOut";
 
 /**
  * One auto-decided checklist verdict produced by a [`DebugScriptResult`].
@@ -1608,9 +1634,15 @@ export type PerformanceCaseResult = {
    *
    * Recorded so [browser playback](crate::validation) can *prove* what it is
    * drawing: playback loads the run's **own** engine module and steps it, and at
-   * each scheduled snapshot tick can compare the module's checksum against the one
-   * recorded here — a cheap assertion that the wasm it is animating is the engine
-   * the run graded, not a stand-in.
+   * each graded tick inside the played window it compares the module's checksum
+   * against the one recorded here, warning when they differ — a cheap assertion
+   * that the wasm it is animating is the engine the run graded, not a stand-in.
+   *
+   * The checksums are worth comparing against because the grader *derived* them
+   * from state rather than accepting them as reported: the host re-serializes each
+   * returned snapshot to canonical bytes and rejects a checksum that is not its
+   * own state's. A run recorded before that gate existed carries checksums that
+   * were taken on trust.
    *
    * `#[serde(default)]` because run records written before this field existed
    * must still load.

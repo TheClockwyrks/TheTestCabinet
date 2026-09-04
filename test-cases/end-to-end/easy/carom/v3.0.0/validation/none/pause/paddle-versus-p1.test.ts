@@ -1,5 +1,5 @@
-// Carom — pause/paddle-versus-p1: while the game is paused, player one's paddle does not move, even with a
-// movement key held.
+// Carom — pause/paddle-versus-p1: while the game is paused, player one's
+// paddle does not move, even with a movement key held.
 //
 // Pausing freezes the simulation, not just the ball: a paddle under a held key is
 // as much a part of the frozen field as the ball in flight (specs/ui.md — "the
@@ -9,26 +9,32 @@
 // — which is what tells a build that stopped updating apart from one that merely
 // stopped drawing the ball.
 //
-// Everything here goes through the keyboard: the match is started from the title
-// with key events pressed through Chromium's own input pipeline, paused with one,
-// and driven with one. No control operation is involved, so the paddle is under
-// normal player control throughout. The menu route is load-bearing: every
-// posing operation (`startMatch` included) hands both paddles to the debug
-// driver, and only `reset` gives them back — posed open, the held key could
-// not move the paddle in live play at all.
+// THE PADDLES ARE THE PLAYER'S THROUGHOUT. `startPlaying` opens the match through
+// the surface and drives nothing: `setPaddleDriven` is the only pose that takes a
+// paddle, and this check makes none, so `KeyS` reaches the left paddle
+// exactly as it does for a player. Nothing has to be walked through the menus
+// to keep it that way.
+//
+// THE FIELD IS EMPTIED. What this point is about is a paddle and a key, so the
+// ball and the obstacles come off: a ball left flying could reach a goal and end
+// the point mid-check, and neither it nor an obstacle has anything to do with the
+// reading. The paddles stay, because a paddle is field furniture the game always
+// has.
+//
+// The pause itself is POSED, with `setScreen`. The key that opens the pause menu
+// is `navigation/pause-escape`'s point and `ui/state-pause`'s; a build whose
+// Escape did nothing should fail those rather than this one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   MOVE_MIN,
   captureReplay,
+  clearField,
   createHarness,
-  startWithKeys,
+  startPlaying,
   type Harness,
 } from "../harness";
-
-/** Past the 1.0 s pre-serve hold and into a live rally: 1.3 s at 120 Hz. */
-const RALLY_TICKS = 156;
 
 /**
  * The frames of live movement recorded before the pause, and the frozen ones
@@ -58,8 +64,8 @@ afterEach(async () => {
 });
 
 it("holds player one's paddle still while paused", async () => {
-  await startWithKeys(h, "versus");
-  await h.advance(RALLY_TICKS);
+  await startPlaying(h, "versus");
+  await clearField(h);
   const live = await h.snapshot();
   assertEqual(live.screen, "playing");
 
@@ -73,7 +79,7 @@ it("holds player one's paddle still while paused", async () => {
     await h.release("KeyS");
     const moving = (await h.snapshot()).paddles.left.cy;
 
-    await h.tap("Escape");
+    await h.debug.setScreen("paused");
     const atPause = await h.snapshot();
     const screen = atPause.screen;
     const paused = atPause.paddles.left.cy;

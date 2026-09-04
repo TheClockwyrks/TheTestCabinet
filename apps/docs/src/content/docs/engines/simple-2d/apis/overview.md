@@ -31,5 +31,5 @@ the surface a validator exercises is the surface the game was written against.
 | [Input](/engines/simple-2d/apis/input/) | Action registration, `ActionBinding`, the read methods, the pointer, and `TOUCH_LAYOUTS`. |
 | [Audio](/engines/simple-2d/apis/audio/) | `CueSpec`, synthesized and file-based cues, looping, and the mute and unlock calls. |
 | [Assets](/engines/simple-2d/apis/assets/) | `loadImage`, `loadAudio`, `load`, `resolve`, and the asset root. |
-| [Diagnostics](/engines/simple-2d/apis/diagnostics/) | Source registration, the overlay, and its toggle. |
+| [Diagnostics](/engines/simple-2d/apis/diagnostics/) | Source registration, the values a read returns, the overlay, and its toggle. |
 | [Recording](/engines/simple-2d/apis/recording/) | The recorder's engine members, `Recording`, `RecordedFrame`, `DrawState`, `DrawOp`, and `DrawValue`. |

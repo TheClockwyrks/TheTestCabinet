@@ -1,75 +1,70 @@
-// Carom — the match level: its game mode, and the two controllers that drive
-// the paddles.
+// Carom — the match level: its game mode, and the controller that drives a
+// paddle.
 //
 // The mode holds the match rules (specs/ui.md, specs/balls.md): the opening
 // countdown, the goals, the win and deuce rules, and the pause and match-over
-// menus. It builds the match from the classes it names — `addPlayer` seats
-// player one on the left paddle, and the right paddle goes to a second player
-// (Versus) or to the AI bot (Solo), so the two modes of play differ only in
-// who drives one pawn. The launches themselves are not here: each ball runs
-// its own hold and launches itself the moment that hold elapses
-// (`src/ball.ts`), on the opening countdown and mid-rally alike.
+// menus. It seats two participants, one per side, and each seat's controller
+// decides every frame who is actually driving its paddle — the debug surface,
+// the AI, or the keys. The launches themselves are not here: the rally counts
+// every hold down and launches each ball the moment its own hold elapses
+// (src/rally.ts), on the opening countdown and mid-rally alike.
+//
+// WHY THE AI IS A BEHAVIOUR RATHER THAN A SEAT. `setMode` sets the mode and
+// nothing else (specs/instrumentation.md), and it is called on a match already
+// open — so who drives the right paddle cannot be decided once, when the world
+// is built, and baked into the class of a controller. It is read from the
+// instance's `mode` every frame instead, which is also the honest description
+// of the two ways to play: the same match, with the right paddle answering to
+// a person or to the computer.
 //
 // INPUT ORDER. Every edge is read at the top of the frame, before anything
-// moves, because controllers tick before any actor: the primary player
-// controller routes the frame's edges into `handleInput`, and the paddles and
-// balls then advance under whatever screen the edges left. The engine consumes
-// an edge per controller on first read, so routing through ONE controller is
-// what keeps one press meaning one thing.
+// moves, because controllers tick before any actor: the primary seat routes the
+// frame's input into `handleInput`, and the paddles and balls then advance under
+// whatever screen the input left it on. The engine consumes an edge per
+// controller on first read, so routing through ONE controller is what keeps one
+// press meaning one thing.
 //
 // JUDGING ORDER. The mode's own tick runs after every actor has ticked, so the
 // countdown and the goals are judged against the frame's settled world: the
 // opening countdown ends on the frame the last ball has launched, and a point
 // lands on the frame the advanced ball is past a goal edge (specs/balls.md) —
-// parking that one ball for its own respawn while the other two carry on.
-//
-// Every way a match starts — SOLO or VERSUS on the title, RESTART on the pause
-// menu, PLAY AGAIN after a match — is one act: `world.open` on the match
-// level, whose transition rebuilds the world fresh (specs/ui.md, "Starting a
-// match").
+// parking that one ball for its own respawn while the others carry on.
 
-import {
-  AIController,
-  GameMode,
-  PlayerController,
-} from "@test-cabinet/structured-2d";
+import { GameMode, PlayerController } from "@test-cabinet/structured-2d";
 import type {
   Controller,
   InputReader,
   Transform,
 } from "@test-cabinet/structured-2d";
 import { aiVelocity, threatBall } from "./ai";
-import { Ball, ballsOf } from "./ball";
+import type { Ball } from "./ball";
 import {
-  BALL_HOMES,
   BALL_R,
   CUES,
   FIELD_CY,
   FIELD_W,
   HOLD_TIME,
-  LEVELS,
-  MATCHOVER_ITEMS,
   PADDLE_SPEED,
-  PAUSE_ITEMS,
   TAGS,
   WIN_LEAD,
   WIN_SCORE,
 } from "./constants";
-import { menuDown, menuUp, p1Axis, p2Axis, soloAxis } from "./input";
+import { ballsOf, buildStandardField } from "./field";
+import { driveMenu, p1Axis, p2Axis, readMenuFrame, soloAxis } from "./input";
 import { Paddle } from "./paddle";
 import { Rally } from "./rally";
 import { paddleCenterX, type Side } from "./sim";
-import { isLiveScreen, MatchState, type Mode } from "./state";
+import { CaromState, gameOf, isSimulating, type Mode } from "./state";
 import { PLAYER_NAME } from "./theme";
 
 export class MatchMode extends GameMode {
-  declare readonly state: MatchState;
+  declare readonly state: CaromState;
 
-  gameStateClass = MatchState;
+  gameStateClass = CaromState;
   playerControllerClass = PaddleController;
   pawnClass = Paddle;
 
-  /** The way this match is played, from the options the level was opened with. */
+  /** The way this match was opened, which the instance takes as its `mode`. */
   modeName: Mode = "solo";
 
   beginPlay(): void {
@@ -77,40 +72,22 @@ export class MatchMode extends GameMode {
 
     // The opening pose (specs/ui.md, "Starting a match"): the countdown, with
     // every ball waiting out a full hold on its own home point so all three
-    // launch together. The scores start at zero on the player states the
-    // framework builds.
+    // launch together, and both scores at zero.
     const state = this.state;
     state.screen = "countdown";
     state.resumeScreen = "playing";
     state.menuIndex = 0;
     state.winner = null;
+    state.score = { p1: 0, p2: 0 };
 
-    const left = this.addPlayer({ name: PLAYER_NAME.left });
-    this.dress(left.pawn, "left");
-    if (this.modeName === "versus") {
-      const right = this.addPlayer({ name: PLAYER_NAME.rightHuman });
-      this.dress(right.pawn, "right");
-    } else {
-      const bot = this.addBot(AiPaddleController, {
-        name: PLAYER_NAME.rightAi,
-      });
-      this.dress(bot.pawn, "right");
-    }
+    const one = this.addPlayer({ name: PLAYER_NAME.left });
+    this.dress(one.pawn, "left");
+    const two = this.addPlayer({ name: PLAYER_NAME.right });
+    this.dress(two.pawn, "right");
 
-    // The balls are spawned after the paddles, in play order — which is the
-    // order `world.byTag` lists them in, the order `setBall` addresses — and
-    // the rally LAST, so the frame's flight runs after both paddles have
-    // integrated and after every elapsed hold has launched (src/rally.ts).
-    BALL_HOMES.forEach((home, index) => {
-      this.world.spawn(Ball, {
-        transform: { x: home.x, y: home.y },
-        tags: [TAGS.ball],
-        configure: (ball: Ball) => {
-          ball.index = index;
-          ball.park(HOLD_TIME);
-        },
-      });
-    });
+    // The field after the paddles, and the rally LAST, so the frame's holds and
+    // flight run once both paddles have integrated (src/rally.ts).
+    buildStandardField(this.world);
     this.world.spawn(Rally);
 
     this.setPhase("playing");
@@ -129,11 +106,14 @@ export class MatchMode extends GameMode {
   }
 
   /**
-   * One frame's edges, routed by the screen they arrive on (specs/ui.md).
+   * One frame's input, routed by the screen it arrives on (specs/ui.md).
    * Called by the primary paddle controller at the top of the frame, once,
    * with its own reader.
    */
   handleInput(input: InputReader): void {
+    const game = gameOf(this.world);
+    if (game.frozen) return;
+
     // Mute works on every screen, so it is read before the per-screen switch.
     if (input.pressed("mute")) {
       this.world.audio.setMuted(!this.world.audio.muted());
@@ -142,44 +122,58 @@ export class MatchMode extends GameMode {
     const state = this.state;
     switch (state.screen) {
       case "countdown":
-      case "playing":
-        // A match is live, so Escape means `pause` rather than `back`.
+      case "playing": {
+        // `pause` is read here and `back` is not, so the one Escape press that
+        // raises both opens the pause menu and leaves it open (specs/ui.md).
         if (input.pressed("pause")) {
           state.resumeScreen = state.screen;
           state.screen = "paused";
           state.menuIndex = 0;
         }
         return;
-      case "paused":
-        // A menu is up, so Escape means `back` — which here is "resume". It
-        // is read before the menu edges, and a frame carrying it resumes and
-        // does nothing else (specs/ui.md).
-        if (input.pressed("back")) {
+      }
+      case "paused": {
+        // Both are read, before the menu edges, and a frame carrying either
+        // resumes and does nothing else — so the one Escape press that raises
+        // both resumes once (specs/ui.md).
+        const pause = input.pressed("pause");
+        const back = input.pressed("back");
+        if (pause || back) {
           state.screen = state.resumeScreen;
           return;
         }
-        this.menu(input, PAUSE_ITEMS.length, (index) => this.pauseItem(index));
+        driveMenu(
+          state,
+          readMenuFrame(input, state.screen, game.pressOrigins),
+          (index) => {
+            this.pauseItem(index);
+          },
+        );
         return;
-      case "matchover":
-        // A menu is up, so Escape means `back` — which here is "to the title".
+      }
+      case "matchover": {
+        const frame = readMenuFrame(input, state.screen, game.pressOrigins);
         if (input.pressed("back")) {
-          this.world.open(LEVELS.title);
+          game.goToTitle(game.titleIndex);
           return;
         }
-        this.menu(input, MATCHOVER_ITEMS.length, (index) =>
-          this.matchOverItem(index),
-        );
+        driveMenu(state, frame, (index) => {
+          this.matchOverItem(index);
+        });
+        return;
+      }
+      default:
         return;
     }
   }
 
   tick(): void {
     const state = this.state;
+    if (gameOf(this.world).frozen) return;
     if (state.screen === "countdown") {
       // The screen becomes `playing` on the first countdown frame on which no
       // ball is held, after the balls have been advanced (specs/balls.md) —
-      // and the mode ticks after every actor. Each ball ran its own hold and
-      // launch before this (src/ball.ts).
+      // and the mode ticks after every actor.
       if (ballsOf(this.world).every((ball) => !ball.held)) {
         state.screen = "playing";
       }
@@ -204,11 +198,12 @@ export class MatchMode extends GameMode {
 
   private scoreFor(scorer: Side, ball: Ball): void {
     const state = this.state;
-    const [p1, p2] = state.players;
-    (scorer === "left" ? p1 : p2).score += 1;
+    const score = state.score;
+    if (scorer === "left") score.p1 += 1;
+    else score.p2 += 1;
     this.world.audio.play(CUES.score);
 
-    const winner = decideWinner(p1.score, p2.score);
+    const winner = decideWinner(score.p1, score.p2);
     if (winner !== null) {
       state.winner = winner;
       state.screen = "matchover";
@@ -219,53 +214,31 @@ export class MatchMode extends GameMode {
     }
 
     // Only the ball that crossed is affected: it takes its own home point and
-    // a fresh hold, relaunching when that hold elapses, while the other two
-    // carry on through the respawn on a field that keeps running.
+    // a fresh hold, relaunching when that hold elapses, while the others carry
+    // on through the respawn on a field that keeps running.
     ball.park(HOLD_TIME);
   }
 
-  /**
-   * A menu's frame: all three edges are read before any is acted on, and up
-   * is applied before down, movement before confirm (specs/ui.md).
-   */
-  private menu(
-    input: InputReader,
-    count: number,
-    onConfirm: (index: number) => void,
-  ): void {
-    const up = menuUp(input);
-    const down = menuDown(input);
-    const accepted = input.pressed("confirm");
-    const state = this.state;
-    if (up) {
-      state.menuIndex = (state.menuIndex + count - 1) % count;
-      return;
-    }
-    if (down) {
-      state.menuIndex = (state.menuIndex + 1) % count;
-      return;
-    }
-    if (accepted) onConfirm(state.menuIndex);
-  }
-
   private pauseItem(index: number): void {
+    const game = gameOf(this.world);
     if (index === 0) {
       this.state.screen = this.state.resumeScreen;
       return;
     }
     if (index === 1) {
-      this.world.open(LEVELS.match, { mode: this.modeName });
+      game.startMatch(game.mode);
       return;
     }
-    this.world.open(LEVELS.title);
+    game.goToTitle(game.titleIndex);
   }
 
   private matchOverItem(index: number): void {
+    const game = gameOf(this.world);
     if (index === 0) {
-      this.world.open(LEVELS.match, { mode: this.modeName });
+      game.startMatch(game.mode);
       return;
     }
-    this.world.open(LEVELS.title);
+    game.goToTitle(game.titleIndex);
   }
 
   /** Put a freshly possessed paddle on its side, under its case-fixed tag. */
@@ -279,75 +252,62 @@ export class MatchMode extends GameMode {
 }
 
 /**
- * A human's paddle. The primary seat (index 0) also routes the frame's edges
- * into the mode before anything moves.
+ * One participant's paddle.
  *
- * Movement honors the debug driver's hold (specs/instrumentation.md): while a
- * control operation holds the paddles, each follows the velocity the driver
- * holds for its side through the same integrator, and the input actions leave
- * it alone until `reset()` hands it back.
+ * The primary seat (index 0) also routes the frame's input into the mode before
+ * anything moves. Every seat then decides who drives its own pawn this frame,
+ * in the order specs/instrumentation.md and specs/modes/ fix: the debug
+ * surface's hold on that side first, then — on the right paddle in Solo — the
+ * AI, and otherwise the movement actions.
  */
 export class PaddleController extends PlayerController {
-  tick(): void {
+  tick(dt: number): void {
     const mode = this.world.mode;
     if (!(mode instanceof MatchMode)) return;
     if (this.playerState.index === 0) mode.handleInput(this.input);
 
     const pawn = this.pawn;
     if (!(pawn instanceof Paddle)) return;
-    if (!isLiveScreen(mode.state.screen)) return;
+    if (!isSimulating(this.world)) return;
 
-    const driver = mode.state.game.driver;
-    if (driver.holding) {
-      pawn.drive(driver.vy[pawn.side]);
+    const game = gameOf(this.world);
+    const hold = game.driver[pawn.side];
+    if (hold.driven) {
+      pawn.drive(hold.drivenVy);
+      return;
+    }
+    if (pawn.side === "right" && game.mode === "solo") {
+      pawn.drive(this.aiDrive(mode, pawn, dt));
       return;
     }
 
     // Solo has no player two, so both sliders drive the one human paddle.
     const axis =
-      mode.modeName === "solo"
+      game.mode === "solo"
         ? soloAxis(this.input)
         : pawn.side === "left"
           ? p1Axis(this.input)
           : p2Axis(this.input);
     pawn.drive(axis * PADDLE_SPEED);
   }
-}
 
-/**
- * The computer opponent's seat (the right paddle in Solo). It computes the
- * drive from the world — the AI arithmetic itself is `src/ai.ts` — and hands
- * it to the same pawn interface a player drives. Of the three balls it
- * defends one at a time: the one arriving at its goal soonest.
- *
- * The debug driver's hold covers this paddle too, except when the scenario
- * flips the AI switch back on (`setAiControl`), which is exactly the real AI
- * playing against the posed balls.
- */
-export class AiPaddleController extends AIController {
-  tick(dt: number): void {
-    const mode = this.world.mode;
-    if (!(mode instanceof MatchMode)) return;
-
-    const pawn = this.pawn;
-    if (!(pawn instanceof Paddle)) return;
-    if (!isLiveScreen(mode.state.screen)) return;
-
-    const driver = mode.state.game.driver;
-    if (driver.holding && !driver.ai) {
-      pawn.drive(driver.vy.right);
-      return;
-    }
-
-    // Active only while the field is live: during the opening countdown there
-    // is nothing to track, so the paddle eases home.
+  /**
+   * The computer opponent's frame, with each of its two faculties gated on its
+   * own (specs/instrumentation.md): with `tracking` off it has no defended ball
+   * and eases home, and with `movement` off it stays where it is at `vy` of 0.
+   */
+  private aiDrive(mode: MatchMode, pawn: Paddle, dt: number): number {
+    const game = gameOf(this.world);
+    if (!game.ai.movement) return 0;
+    const threat = game.ai.tracking
+      ? threatBall(ballsOf(this.world).map((ball) => ball.rally()))
+      : null;
     const active = mode.state.screen === "playing";
-    const threat = threatBall(ballsOf(this.world).map((ball) => ball.rally()));
-    pawn.drive(aiVelocity(pawn.transform.y, threat, active, dt));
+    return aiVelocity(pawn.transform.y, threat, active, dt);
   }
 }
 
-/** First to WIN_SCORE, winning by at least WIN_LEAD (specs/ui.md). */
+/** First to WIN_SCORE, winning by at least WIN_LEAD (specs/balls.md). */
 function decideWinner(p1: number, p2: number): Side | null {
   if (p1 >= WIN_SCORE && p1 - p2 >= WIN_LEAD) return "left";
   if (p2 >= WIN_SCORE && p2 - p1 >= WIN_LEAD) return "right";

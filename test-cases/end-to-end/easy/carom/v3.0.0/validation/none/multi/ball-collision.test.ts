@@ -6,11 +6,15 @@
 // same speed. The line of centers is horizontal, so an elastic exchange between
 // equal masses swaps the two horizontal velocities exactly — each ball leaves the
 // way the other arrived, at the speed it arrived with, and neither gains any.
-// The third ball is parked in the goal channel and takes no part.
 //
-// The real resolution is what produces that: nothing here writes a post-contact
-// velocity, and the two balls are posed far enough apart that the approach is a
-// real approach across an empty lane.
+// THE FIELD HOLDS THOSE TWO BALLS AND NOTHING ELSE. The pair is what the rule is
+// about: the third ball is off the field rather than tucked into a goal channel,
+// and both obstacles come off with it, so the approach really is an empty lane
+// and the only thing either ball can meet is the other one.
+//
+// The real resolution is what produces the reading: nothing here writes a
+// post-contact velocity, and the two balls are posed far enough apart that the
+// approach is a real approach.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -21,12 +25,15 @@ import {
 import { BALL_COLLIDE_DIST, FIELD_CY } from "../constants";
 import {
   captureReplay,
-  clearPaddles,
-  createHarness,
+  createMultiHarness,
+  placeBall,
   startPlaying,
-  type Harness,
+  type MultiHarness,
 } from "../harness";
-import { readBalls } from "./harness";
+import { ballAt, isolateBalls } from "./harness";
+
+/** The two balls the contact is between, in play order. */
+const PAIR = [0, 1];
 
 /** The closing speed each ball carries into the contact, in units per second. */
 const APPROACH = 400;
@@ -45,10 +52,10 @@ const VELOCITY_TOLERANCE = APPROACH * 0.01;
 /** Frames of the departure recorded after the contact. */
 const DEPARTURE_TICKS = 45; // 0.375 s
 
-let h: Harness;
+let h: MultiHarness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createMultiHarness();
 });
 
 afterEach(async () => {
@@ -57,36 +64,25 @@ afterEach(async () => {
 
 it("exchanges the two velocities head-on and separates the pair", async () => {
   await startPlaying(h);
-  await clearPaddles(h);
-  await h.debug.setBall(0, {
-    x: LEFT_X,
-    y: FIELD_CY,
-    vx: APPROACH,
-    vy: 0,
-    spin: 0,
-  });
-  await h.debug.setBall(1, {
-    x: RIGHT_X,
-    y: FIELD_CY,
-    vx: -APPROACH,
-    vy: 0,
-    spin: 0,
-  });
+  await isolateBalls(h, PAIR);
+  await placeBall(h, { x: LEFT_X, y: FIELD_CY, vx: APPROACH }, PAIR[0]);
+  await placeBall(h, { x: RIGHT_X, y: FIELD_CY, vx: -APPROACH }, PAIR[1]);
 
   const meeting = await captureReplay(h, "collision", async () => {
-    const met = await h.until((s) => readBalls(s)[0].vx < 0, {
+    const met = await h.until((s) => ballAt(s, PAIR[0]).vx < 0, {
       maxFrames: 120,
       poll: 1,
     });
     // Read HERE, on the frame the pair came apart: the exchange is what is being
     // graded, and spin-free flight afterwards would only carry it further.
-    const balls = readBalls(met.snapshot);
+    const first = ballAt(met.snapshot, PAIR[0]);
+    const second = ballAt(met.snapshot, PAIR[1]);
     await h.advance(DEPARTURE_TICKS);
-    return { met, balls };
+    return { met, first, second };
   });
 
   assertEqual(meeting.met.hit, true);
-  const [first, second] = meeting.balls;
+  const { first, second } = meeting;
 
   // Each leaves the way the other arrived.
   assertLessThanOrEqual(Math.abs(first.vx + APPROACH), VELOCITY_TOLERANCE);

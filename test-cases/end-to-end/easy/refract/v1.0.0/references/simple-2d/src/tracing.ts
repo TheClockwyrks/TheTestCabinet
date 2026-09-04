@@ -19,7 +19,13 @@
 import { sameCell, targetNode } from "./board";
 import { onSolved } from "./flow";
 import { beamComplete, boardSolved, canExtend } from "./rules";
-import type { BeamState, Cell, Channel, RefractState } from "./game";
+import type {
+  BeamState,
+  Cell,
+  Channel,
+  PointerDevice,
+  RefractState,
+} from "./game";
 
 /** What a resolved press, move, or release did, for the frame's cues. */
 export interface TraceEvents {
@@ -27,6 +33,8 @@ export interface TraceEvents {
   readonly retract: boolean;
   readonly channelComplete: boolean;
   readonly solved: boolean;
+  /** Raised by the `clear` target, which the pointer reaches through here. */
+  readonly cleared: boolean;
 }
 
 export const NO_EVENTS: TraceEvents = {
@@ -34,6 +42,7 @@ export const NO_EVENTS: TraceEvents = {
   retract: false,
   channelComplete: false,
   solved: false,
+  cleared: false,
 };
 
 export function mergeEvents(a: TraceEvents, b: TraceEvents): TraceEvents {
@@ -42,6 +51,7 @@ export function mergeEvents(a: TraceEvents, b: TraceEvents): TraceEvents {
     retract: a.retract || b.retract,
     channelComplete: a.channelComplete || b.channelComplete,
     solved: a.solved || b.solved,
+    cleared: a.cleared || b.cleared,
   };
 }
 
@@ -97,8 +107,9 @@ export function pointerDown(
   state: RefractState,
   x: number,
   y: number,
+  device: PointerDevice = "mouse",
 ): TraceResult {
-  const base: RefractState = { ...state, pointer: { x, y, down: true } };
+  const base: RefractState = { ...state, pointer: { x, y, down: true, device } };
   if (base.screen !== "playing" || base.tracing !== null) {
     return { state: base, events: NO_EVENTS };
   }
@@ -181,10 +192,11 @@ export function pointerMove(
   state: RefractState,
   x: number,
   y: number,
+  device: PointerDevice = "mouse",
 ): TraceResult {
   const base: RefractState = {
     ...state,
-    pointer: { x, y, down: state.pointer.down },
+    pointer: { x, y, down: state.pointer.down, device },
   };
   if (base.screen !== "playing" || base.tracing === null) {
     return { state: base, events: NO_EVENTS };
@@ -232,10 +244,13 @@ export function pointerMove(
  * stays exactly as drawn. A trace that added no segment leaves its channel's
  * beam carrying none, so a later press on either emitter starts it afresh.
  */
-export function pointerUp(state: RefractState): TraceResult {
+export function pointerUp(
+  state: RefractState,
+  device: PointerDevice = "mouse",
+): TraceResult {
   const base: RefractState = {
     ...state,
-    pointer: { ...state.pointer, down: false },
+    pointer: { ...state.pointer, down: false, device },
   };
   if (base.screen !== "playing" || base.tracing === null) {
     return { state: base, events: NO_EVENTS };

@@ -6,9 +6,14 @@
 // collision are compared. Sampled every frame, so the outgoing speed is read at
 // the instant of the rebound, and the review item's 0.1 percent is a float
 // margin rather than slack.
+//
+// The field holds that ball and the struck obstacle alone. A paddle hit is the
+// one collision that multiplies speed, so a paddle the ball could reach would
+// be the very thing this point has to rule out: both are driven clear of the
+// shot and held still, and the second obstacle is removed outright.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeObstacleBounce,
@@ -16,12 +21,14 @@ import {
   captureReplay,
   createHarness,
   driveObstacleBounce,
-  startPlaying,
+  enterPlaying,
   type Harness,
 } from "../harness";
 
-const FACE_X = OBSTACLES[0].x0;
-const LANE_Y = OBSTACLE_CENTERS[0].y;
+/** Which obstacle the shot is at, and the face it strikes. */
+const OBSTACLE = 0;
+const FACE_X = OBSTACLES[OBSTACLE].x0;
+const LANE_Y = OBSTACLE_CENTERS[OBSTACLE].y;
 const APPROACH_SPEED = 600;
 /** The review item's margin: a tenth of a percent of the approach speed. */
 const SPEED_TOLERANCE = APPROACH_SPEED * 0.001;
@@ -52,8 +59,9 @@ afterEach(() => {
 });
 
 it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
-  await startPlaying(harness);
+  enterPlaying(harness);
   arrangeObstacleBounce(harness, {
+    obstacle: OBSTACLE,
     faceX: FACE_X,
     y: LANE_Y,
     from: "left",

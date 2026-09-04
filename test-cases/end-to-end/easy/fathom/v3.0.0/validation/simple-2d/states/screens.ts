@@ -33,8 +33,8 @@
 // the predator poses come from `specs/instrumentation.md`, and every key it
 // presses is one `specs/movement.md` binds.
 
-import { BINDINGS } from "../../src/constants";
 import { assertMatches } from "../assert";
+import { BINDINGS } from "../constants";
 import { holdPredators } from "../fixtures";
 import {
   DIR_KEY,

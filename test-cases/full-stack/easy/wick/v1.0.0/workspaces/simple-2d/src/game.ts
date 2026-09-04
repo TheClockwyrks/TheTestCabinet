@@ -20,33 +20,37 @@
 // (`DeepReadonly<WickState>`) and stores whatever `update` returns as the next
 // state; `render` is handed that next state, as the same read-only view, and
 // returns nothing. Nothing ever holds a writable `WickState`: `update` builds
-// the next state from the current one (spread the parts that change, `map` over
-// the arrays) rather than assigning into it, and a frame that returns
-// `undefined` is refused by the engine. The engine's own documentation, seeded
-// at `engine/`, defines all of this and the scoped APIs each function receives.
+// the next state from the current one rather than assigning into it, and a
+// frame that returns `undefined` is refused by the engine. The engine's own
+// documentation, seeded at `engine/`, defines all of this and the scoped APIs
+// each function receives.
 //
 // The engine returns the surface from `engine.debug`, exactly as `initialize`
 // handed it over, which is how the game is driven from code
 // (`specs/instrumentation.md`). Because no one holds a writable state, the
 // surface is written in the shape of `update`: a pose takes the current state
-// and returns the next (`start(state)`, `spawnEnemy(state, type, x, y)`), a
-// reading takes the state and returns what it read (`snapshot(state)`), and a
-// caller drives them through `engine.apply` and `engine.state`. Where its
-// implementation lives under `src/` is your call; the only fixed point is that
-// `initialize` returns it.
+// and returns the next (`setHp(state, 40)`, `spawnEnemy(state, "moth", x, y)`),
+// a reading takes the state and returns what it read (`snapshot(state)`), and a
+// caller drives them through `engine.apply` and `engine.state`. A pose sets one
+// thing and sounds nothing; every outcome comes from the ticks run after it.
+// Where its implementation lives under `src/` is your call; the only fixed
+// point is that `initialize` returns it.
 //
-// A run advances on the fixed tick. `update` accumulates the frame's delta time
-// and consumes whole TICK_DT-second ticks from it while `screen` is `playing`,
-// each tick the full simulation `specs/world.md` orders; nothing ticks on the
-// overlays or on any other screen. The camera stays on the lamplighter, so
-// `render` draws the world through the view centered on the player, in the
-// fixed 1280x720 logical stage.
+// A run advances on the fixed tick. `update` adds the frame's delta time to the
+// accumulator while `screen` is `playing` and consumes whole TICK_DT-second
+// ticks from it, each tick the full simulation in the order `specs/world.md`
+// fixes, the driver switches of `specs/instrumentation.md` gating the phases
+// they name. A tick that leaves `playing` is the last its frame runs, and the
+// remainder is discarded, as it is on any frame or pose that leaves `playing`;
+// no other screen ticks. The camera stays on the lamplighter, so `render` draws
+// the world through the view centered on the player, in the fixed 1280x720
+// logical stage.
 //
 // The sprites and sounds are produced, not supplied. `specs/assets.md` states
-// what you produce with the asset tools and commit under `public/assets/`;
-// `initialize` loads each image with `api.assets.loadImage` and binds each cue
-// to its file with `api.audio.load`, awaited, so every asset is decoded before
-// the first frame.
+// what you produce with the asset tools and commit under `assets/`, and
+// `src/constants.ts` names the paths. `initialize` loads each image with
+// `api.assets.loadImage` and binds each cue to its file with `api.audio.load`,
+// awaited, so every asset is decoded before the first frame.
 
 import type {
   Game,
@@ -81,8 +85,8 @@ export const game: Game<WickState, WickDebugApi> = {
    * diagnostic sources specs/instrumentation.md lists (each is handed the
    * state current at the read, so none closes over the state built here), and
    * build the complete initial state: the title screen over the idle run, with
-   * every field of WickState set exactly as specs/state.md states. Return it
-   * beside the debug surface.
+   * every field of WickState set exactly as specs/state.md states and every
+   * driver switch on. Return it beside the debug surface.
    */
   initialize(_api: InitApi<WickState>): [WickState, WickDebugApi] {
     throw new Error(NOT_IMPLEMENTED);
@@ -95,11 +99,12 @@ export const game: Game<WickState, WickDebugApi> = {
    * it on every update whatever the screen. Read the frame's actions, drive
    * the menus and the overlays, and, while `screen` is `playing`, add `dt` to
    * the accumulator and consume whole ticks of TICK_DT from it, each tick the
-   * full simulation in the order specs/world.md fixes. Play cues on their
-   * events, reconcile the two looping cues against the state, and mirror the
-   * engine's mute bit into the returned state's `muted`. The value returned is
-   * what `render` draws and what the next `update` receives; `state` itself is
-   * read-only and stays as it was.
+   * full simulation in the order specs/world.md fixes, discarding the remainder
+   * on a tick that leaves `playing`. Play cues on their events, reconcile the
+   * two looping cues against the state, and mirror the engine's mute bit into
+   * the returned state's `muted`. The value returned is what `render` draws and
+   * what the next `update` receives; `state` itself is read-only and stays as
+   * it was.
    */
   update(
     _state: DeepReadonly<WickState>,
@@ -115,8 +120,8 @@ export const game: Game<WickState, WickDebugApi> = {
    * `api.ctx` arrives cleared and already carrying the logical transform, so
    * draw in 1280x720 coordinates and never read the canvas element's size. The
    * camera is centered on the lamplighter: a world point draws at its position
-   * minus the player's plus the stage center, with the produced sprites
-   * sampled nearest-neighbor, and the HUD and the screens over the world. The
+   * minus the player's plus the stage center, with the produced sprites drawn
+   * with image smoothing off, and the HUD and the screens over the world. The
    * state arrives read-only, so the type is what guarantees that rendering
    * changes nothing.
    */

@@ -9,9 +9,14 @@
 // DISCRIMINATING. The same held velocity clear of the bound, where the paddle
 // really does move, must impart spin — so passing proves the build reads real
 // motion, not merely that it never adds spin at all.
+//
+// The field holds that ball alone: both obstacles are removed, so nothing on
+// the approach can turn the ball before it reaches the paddle. Only the struck
+// paddle is taken from the player — `setPaddleDriven` changes one side — and
+// the far one, which cannot be removed, is driven out of the lane.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PADDLE_MAX_CY, PADDLE_SPEED } from "../../src/constants";
+import { PADDLE_MAX_CY, PADDLE_SPEED } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -22,10 +27,10 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
+  enterPlaying,
   LEAD_TICKS,
   nearBallX,
   seconds,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -83,7 +88,7 @@ afterEach(() => {
 it("imparts no spin from a bound-pinned paddle, but does from a free one", async () => {
   // The pinned contact: the paddle sits on the bottom clamp with the movement
   // still driving it further down, so it cannot move at all.
-  await startPlaying(harness);
+  enterPlaying(harness);
   arrangePaddleHit(harness, "left", {
     cy: PADDLE_MAX_CY,
     vy: PADDLE_SPEED,
@@ -107,7 +112,7 @@ it("imparts no spin from a bound-pinned paddle, but does from a free one", async
   // below mid-field so the run-up starts inside the top clamp — aimed at the
   // centre the swing would have to begin above the field edge, where the clamp
   // would pin it still, which is the very condition this half is the control FOR.
-  await startPlaying(harness);
+  enterPlaying(harness);
   arrangePaddleHit(harness, "left", {
     cy: FREE_CONTACT_CY,
     vy: PADDLE_SPEED,

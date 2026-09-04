@@ -1,16 +1,27 @@
 // multi/independent-hold — every ball carries a hold of its own, and at match
 // start all three run out together.
 //
-// The match is opened through `startMatch` and then stepped ONE FRAME AT A TIME
+// The match is opened on its countdown and then stepped ONE FRAME AT A TIME
 // until any ball is seen in flight, and the state read on that same frame says
 // whether the other two left with it and the screen turned over
 // (specs/balls.md: the screen becomes `playing` on the first countdown frame on
 // which no ball is held). How long the hold lasts is `multi/hold-length`'s
 // point; the respawn a scored ball takes alone is `multi/independent-respawn`.
+//
+// The field is the one the build's own match start built, and deliberately so.
+// What is graded is that the three holds the match start set run out together,
+// so posing the world here would set those three holds itself and grade the
+// spawn instead. `openCountdown` is `reset`, the mode and the screen — three
+// poses, none of which touches a ball.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { captureReplay, createHarness, type Harness } from "../harness";
+import {
+  captureReplay,
+  createHarness,
+  openCountdown,
+  type Harness,
+} from "../harness";
 import { readBalls } from "./harness";
 
 /** Frames of the launched flight recorded after the hold runs out. */
@@ -27,8 +38,7 @@ afterEach(() => {
 });
 
 it("holds all three balls for the hold, then launches them together", async () => {
-  h.debug.reset();
-  h.debug.startMatch("versus");
+  openCountdown(h, "versus");
 
   const launch = await captureReplay(h, "launch", async () => {
     const first = await h.until((s) => readBalls(s).some((b) => !b.held), {

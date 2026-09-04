@@ -303,7 +303,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     game.render(live.value, { ctx, alpha });
     // Drawn after the game and through the same context, with the transform
     // reset: the panel is chrome over the finished picture, not part of it.
-    diagnostics.draw(ctx, { count, time });
+    diagnostics.draw(ctx);
   }
 
   /** This frame's elapsed wall clock: never negative, never past the clamp. */

@@ -21,8 +21,8 @@
 // portable property for it, so tracked copy is drawn a glyph at a time.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HUD_SOLVED_LABEL } from "../../src/constants";
 import { assertEqual } from "../assert";
+import { HUD_SOLVED_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,

@@ -7,9 +7,10 @@ title: Validation
 Validation is the automated pass over a finished implementation. It builds and
 load-checks the produced tree, then decides the objective, mechanically
 verifiable review points and synthesizes their evidence. A run under an
-[engine](/components/core/engines/) decides those points with a vitest suite run
-in process against the game the build produced. A run under no engine drives the
-build's [instrumentation](/testing/end-to-end/instrumentation/) in a browser.
+[engine](/components/core/engines/) decides those points with a vitest suite that
+imports the game the build produced, run in Node for a 2D engine and in a browser
+page for a 3D one. A run under no engine drives the build's
+[instrumentation](/testing/end-to-end/instrumentation/) in a browser.
 
 Validation assesses part of an implementation, not all of it. A game's feel and
 quality are graded by a person playing the build and writing its
@@ -58,17 +59,19 @@ verdict unit for that engine, written as a TypeScript test file and run by
 vitest. Validators live with the case, are never seeded into the run workspace,
 and run after the produced repository's dependencies are installed.
 
-A validator runs in process. It imports the engine package directly, and it
-imports the module the case requires the build to export its game from, so it
-exercises the game the model wrote rather than a page serving it. The case's
-module contract is what makes that import valid for every build.
+A validator holds the engine it checks. It imports the engine package directly,
+and it imports the module the case requires the build to export its game from,
+so it exercises the game the model wrote rather than a page serving it. The
+case's module contract is what makes that import valid for every build.
 
-A validator builds the engine itself: a canvas from `@napi-rs/canvas`, a clock
-that supplies a scripted sequence of deltas, the engine's own initialization, and
-an exact number of frames stepped one call at a time. A scenario therefore runs
-synchronously and reproducibly, with no browser, no server, and nothing to wait
-for. Setup runs the real game forward, so a validator poses a situation through
-the game's own update and reads the outcome back from the state that update left.
+A validator builds the engine itself over a canvas of its own (a 2D engine's
+from `@napi-rs/canvas` in the test process, a 3D engine's from
+`document.createElement("canvas")` in a headless Chromium page), a clock that
+supplies a scripted sequence of deltas, the engine's own initialization, and an
+exact number of frames stepped one call at a time. A scenario therefore runs
+reproducibly with nothing to wait for. Setup runs the real game forward, so a
+validator poses a situation through the game's own update and reads the outcome
+back from the state that update left.
 
 Observation has three channels:
 
@@ -76,16 +79,32 @@ Observation has three channels:
   simulated time, and the viewport.
 - The engine's events, which report each asset resolution and each cue played at
   the moment it happens.
-- The canvas. Pixel readback decides what a frame actually drew, and a recording
-  wrapper around the 2D context captures the draw-call stream where the calls
-  carry the requirement more directly than the pixels do.
+- What the engine drew: pixel readback from the canvas, a recording wrapper
+  around a 2D context where the draw calls carry the requirement more directly
+  than the pixels do, and, under a 3D engine, the retained scene, the camera's
+  projection, the stage canvas's pixels, and the recording.
 
 A validator is written against one engine's API and uses that engine's own
 vocabulary, so a case supporting several engines ships a validator per verdict
-unit per engine. A review item names its suite relative to the engine's validator
-project, and the case ships that suite under `validation/<engine>/` for every
-engine it supports. Resolution holds the declaration against each of them, so a
-point is decided the same way whichever engine ran.
+unit per engine that validator covers. Every engine the case supports has a
+validator project of its own under `validation/<engine>/`, and a review item
+names its suite relative to that project.
+
+A validation's `engines` key names the engines its validator decides its point
+on. Absent or empty, the validator covers every engine the case supports.
+Non-empty, it covers exactly the engines named, which is how a case scopes a
+point that is the model's own work under one engine and the engine's work under
+another: an engineless build draws the case's debug overlay itself, while under
+an engine the engine draws it. Each entry names an engine the case supports, a
+repeated slug is rejected, and the key is legal only on the per-engine manifest
+format, since a case naming one workspace has no engine to scope to. Resolution
+holds each declared script against the validator project of every engine its
+validation covers, and against those alone.
+
+A review point whose validator does not cover the run's engine is not part of
+that run's checklist. It is not driven, no verdict is recorded against it, the
+reviewer is not shown it, and it adds no weight to the run's score. Every graded
+point a run carries is decided by a validator.
 
 Each validator produces an auto verdict, decided from a list of assertions and
 passing only when every assertion passed.
@@ -94,10 +113,17 @@ passing only when every assertion passed.
 
 The validators for the run's engine are a vitest project of the case's own,
 separate from the build's. A case that ships one for the run's engine has its
-points decided in process, and one that ships none has its build driven in a
-browser instead. Whether the engine vendors a runtime does not enter into it: an
-engineless project is TypeScript a suite imports exactly as an engine-backed one
-is.
+points decided by that project, and one that ships none has its build driven
+through its instrumentation in a browser. An engineless project is TypeScript a
+suite imports exactly as an engine-backed one is.
+
+The project's shape follows the engine. A 2D engine's project is a Node project:
+its suites build the engine over a canvas of their own and step it in the test
+process. A 3D engine's project runs in vitest browser mode on the runner's
+headless Playwright Chromium: its suites run in the page, build the engine over a
+canvas they create, and step it there, with Chromium rendering WebGL2 in
+software. The Playwright Chromium is the one the runner's browser driver uses,
+so a host without it fails the validation stage.
 
 Deciding the run's points means running that project:
 
@@ -106,35 +132,51 @@ Deciding the run's points means running that project:
   config derives its root from its own location so a validator resolves the build's
   modules by the paths the build itself uses. Staging happens after everything that
   measures the code the model wrote has already measured it.
+- Stage the shared validator harness beside it, at `validation/case-harness/`. The
+  engineless validators of every case that has them are written over one harness,
+  which the repository holds as the `@test-cabinet/case-harness` package: the
+  browser lifecycle, the injected draw-command recorder, the assertions, and the
+  replay format. It is TypeScript source vitest transpiles rather than a dependency
+  the tree installs, so it is copied in as a sibling of the case's own harness: one
+  import line then resolves both in the case's `validation/<engine>/` directory and
+  in the staged project. It is read from the host package store the seeder vendors
+  engine runtimes out of, with a repository-checkout fallback, and a host carrying
+  neither leaves every point the validators back for the reviewer. It is not a
+  package a case may declare: nothing seeds it into a run repository, where the
+  model would read the suites it is measured by.
 - Run vitest over that project from the implementation's repository root, naming
   the project's config explicitly so the build's own config is never the one that
-  runs, naming **the suites this run's variant declares** as vitest's file filters,
+  runs, naming the suites this run's variant declares as vitest's file filters,
   and reading the outcome from the JSON reporter written to a file.
 - Reuse the dependency install the tree already carries, and install only a tree
   nothing prepared.
+- Remove the staged project once the run returns, whatever the outcome, so the
+  tree is left as validation found it. A directory already standing at that name
+  is held aside for the run and put back afterwards. The tree a run collects is
+  published verbatim, and the tree `tcab validate` and `tcab capture-baselines`
+  are pointed at is a case's committed reference implementation, so the project
+  lives exactly as long as the run that needs it.
 
 ### Only the run's own variant's suites are run
 
 A case ships one validator directory per engine, holding the suites of every
 variant, because the variants share nearly all of them. That directory is a
 superset of what any single run is rated on: a suite belonging to another variant
-would fail against a build that was never asked to satisfy it — Carom's `gyre`
-suites reach for a debug operation only `gyre`'s workspace seeds, so they fail
-every `base` build for a reason that is not the build's.
+would fail against a build that was never asked to satisfy it.
 
-The run is therefore scoped by the **checklist**, not by the directory. The
+The run is therefore scoped by the checklist, not by the directory. The
 resolved variant's review items already name exactly the suites that decide its
 points, and those staged paths are handed to vitest as its file filters, so a
-suite no item of this variant names is never loaded — it costs nothing and reports
-nothing. Nothing is asked of the case for this: the manifest's per-variant
+suite no item of this variant names is never loaded, so it costs nothing and
+reports nothing. Nothing is asked of the case for this: the manifest's per-variant
 checklist is the single declaration of which validators apply, and a
 variant-specific suite is skipped by not appearing there. The same scoping applies
 whether the validators are deciding a run's points or being run against a
 reference implementation with `tcab validate --variant`.
 
 If a variant is left with nothing to point vitest at, the run is refused outright
-rather than run unfiltered — an unfiltered run is precisely the whole-directory
-collection the filters exist to prevent — and every point is reported as not
+rather than run unfiltered, since an unfiltered run is the whole-directory
+collection the filters exist to prevent, and every point is reported as not
 having run.
 
 Each test file maps back to the review point whose `validation` path declared it,
@@ -156,19 +198,17 @@ nothing more.
 A validator captures each output its verdict unit declares, in the form the
 manifest gives it.
 
-For a `replay` it arms the engine's draw-command
+For a `replay` it arms the engine's
 [recorder](/components/core/engines/#recording) once its scenario is posed,
 disarms it once the behavior under test has happened, and writes what came back.
-The evidence is therefore the operations the build itself issued over exactly
-the stretch of the scenario the check is about, which nothing outside the suite
-knows the bounds of.
+The evidence is therefore what the build itself submitted to be drawn over
+exactly the stretch of the scenario the check is about, which nothing outside
+the suite knows the bounds of.
 
 For an `image` it encodes the surface as it stands, which is the frame that last
 ran. That is the right form for a point about one picture rather than a stretch
-of motion — which screen the game opened on, what colour it drew a paddle, where
-the letterbox bars fell. A recording of a still screen would be the same frame
-several hundred times over, and a reviewer looking at a menu wants to look at the
-menu.
+of motion: which screen the game opened on, what colour it drew a paddle, where
+the letterbox bars fell.
 
 The runner creates the media directory before the suite run starts and names it
 to the suites in an environment variable. Each suite writes its outputs into a
@@ -177,14 +217,28 @@ different directories cannot collide. Once the run returns, the runner moves
 each declared output to the flat name every consumer of validation media
 addresses and records whether it was there.
 
-A recording is stored and served gzipped, as `<verdict>__<output>.json.gz`. A
-frame names its inherited drawing state and its operations by index into tables
-the whole recording shares, so any frame can be drawn on its own, which is what
-seeking and side-by-side scrubbing are built on. Compression takes what
-repetition remains down to a fraction of its size, so a run's whole set of
-recordings costs a few megabytes. A recording is served as `application/json`
-with `Content-Encoding: gzip`, so the browser inflates the body and the player
-parses the document the recorder produced.
+A `replay` takes one of two forms, decided by the engine that recorded it.
+
+A 2D engine's recording is a draw-command recording, stored and served gzipped
+as `<verdict>__<output>.json.gz`. A frame names its inherited drawing state and
+its operations by index into tables the whole recording shares, so any frame can
+be drawn on its own, which is what seeking and side-by-side scrubbing are built
+on. Compression takes what repetition remains down to a fraction of its size, so
+a run's whole set of 2D recordings costs a few megabytes. A recording in this
+form is served as `application/json` with `Content-Encoding: gzip`, so the
+browser inflates the body and the player parses the document the recorder
+produced.
+
+A 3D engine's recording is a frame recording: the frames the engine rendered,
+one video frame per engine frame, encoded as VP9 in a WebM container and
+timestamped in the engine's simulated time. The suite writes it as
+`<output>.webm` under its staged path, the runner moves it to
+`<verdict>__<output>.webm`, and it is served as `video/webm`. The console steps
+it frame-exactly through WebCodecs rather than playing it as a clip: it decodes
+the frames with `VideoDecoder`, indexes them by timestamp, and seeks to any frame
+by decoding forward from the nearest earlier keyframe, so the reviewer lands on
+exactly the frame asked for. The recording's frame count is the length of the
+`frames` array the engine hands back beside the video bytes.
 
 An output that is not there is recorded absent rather than failing anything. The
 assertions decide the point and the media is the evidence beside the verdict, so
@@ -199,17 +253,18 @@ The baseline half is the same suites run against the variant's
 `reference_implementation` for the same engine by
 [`tcab capture-baselines`](/components/cli/overview/#commands), captured once
 into `validation-baseline/<engine>/<variant>/` and served case-scoped. Same
-suites, same scenarios, same form of output — so the difference a reviewer sees
-on screen is a difference between the two builds and nothing else. Every frame
-of a recording is drawable on its own, so the reviewer scrubs the build's
-recording and the reference's in step.
+suites, same scenarios, same form of output, so the difference a reviewer sees
+on screen is a difference between the two builds and nothing else. Both
+recordings of a scenario are indexed the same way, a 2D frame by its place in
+the recording and a 3D frame by its simulated-time timestamp, so the reviewer
+scrubs the build's recording and the reference's in step.
 
 ## Checks
 
 A check scores a screenshot of a driven view against a rendered reference
-baseline and records the similarity with the run. Checks remain supported for the
-case versions that declare them. A new case version decides its objective points
-with validators instead, which reach the state a check would have to drive a
+baseline and records the similarity with the run. A case version that declares
+checks has them scored; a case version that ships validators decides its
+objective points with them, which reach the state a check would have to drive a
 browser into and assert on it directly.
 
 ## Proofs
@@ -220,10 +275,9 @@ whether the file turned up in the produced tree and is non-empty, judges no
 proof's contents, and uploads each present proof when the run finishes to be
 served back as per-run media (see
 [run records](/components/core/run-records/)). A proof is informational, so a
-missing one leaves the run's load result and status untouched. Proofs remain
-supported for the case versions that declare them. A new case version captures
-its media from its validators, which produce it from a scenario the case
-controls.
+missing one leaves the run's load result and status untouched. A case version
+that declares proofs has them collected; a case version that ships validators
+captures its media from them, from a scenario the case controls.
 
 ## Instrumentation
 
@@ -255,21 +309,34 @@ auto verdict, and a reviewer may override it. The run itself stays reviewable: a
 build that loads is scored down by exactly the points its checks could not
 answer, and on a validator-rated run each such point applies its failure cap.
 
-Two outcomes are held apart, and both leave the point undecided rather than
-synthesizing a verdict: an undecided point lowers no rating, counts toward
-neither side of the score, and is left for a reviewer to decide.
+Three outcomes are held apart from that failure, and each leaves the point
+undecided rather than synthesizing a verdict: an undecided point lowers no rating,
+counts toward neither side of the score, and is left for a reviewer to decide. The
+result records which of the three it was, so a reviewer reads the real reason a
+point went undecided rather than one that sounds like a fact about the build.
 
-The first is an unmet precondition. A setup often searches the model's own world
-for a place to pose its scenario, such as a blind corner in an invented maze or a
-legal build tile, and that search can come up empty against a fully conformant
-build. A validator says this by skipping its checks: a suite whose checks were all
-skipped reports an unmet precondition.
+The first is an unmet precondition, which a validator states by skipping a check.
+A setup often searches the model's own world for a place to pose its scenario,
+such as a blind corner in an invented maze or a legal build tile, and that search
+can come up empty against a fully conformant build. A setup that drives the build
+in a browser has a second reason to skip: reaching the build takes a browser the
+validator project started, a page that browser hands over, and a file the
+project's own server answers with, and the build influences none of them. A suite
+whose checks were all skipped reports an unmet precondition.
 
-The second is a check that never ran at all. A validator project the run's engine
-has none of, a tree with no vitest to run one, a suite run that exceeded its cap,
-or a report that could not be read are facts about the host or the case, so every
-point they left undecided is reported as not having run, with the reason, and
-costs the build nothing.
+The second is a check that never ran. A validator project the run's engine has
+none of, a tree with no vitest to run one, a suite the project does not contain,
+or a report that could not be read are facts about the case or the produced tree.
+Each is recorded with its reason and costs the build nothing.
+
+The third is a run that exceeded its time budget. A case's validator suites are
+capped as a whole, so a suite left waiting on something costs the run a bounded
+amount of wall clock and no more, and the stopped suite's whole process tree goes
+with it. The cap defaults to forty-five minutes and is set by
+`TCAB_VITEST_TIMEOUT_SECS`. Crossing it is a fact about the host rather than about
+the build, so every point the run left undecided records that the budget expired.
+A score is a property of the build, and a host busy enough to stretch a conforming
+build past a deadline must never turn that build into a failing one.
 
 A point excluded from scoring for the version, through an
 [erratum](/testing/end-to-end/manifests/) that links its verdict id, is still
@@ -319,9 +386,9 @@ The summary therefore covers the install and the build alongside whether the
 implementation loaded. It also carries:
 
 - A validation result per verdict unit: the item and sub-item ids, the validator
-  or script that ran, whether it ran and whether a negative answer was
-  inconclusive, whether it gates, its auto verdicts and their assertions, and any
-  captured outputs.
+  or script that ran, whether it ran and, when a negative answer was inconclusive,
+  which of the three inconclusive outcomes it was, whether it gates, its auto
+  verdicts and their assertions, and any captured outputs.
 - A check result per declared check, carrying its display name as well as its
   view slug so the site can label it without re-deriving one.
 - A proof result per declared proof: its id, display name, media kind, expected

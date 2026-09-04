@@ -32,7 +32,12 @@
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
-import { Pointer, type PointerPosition, type PointerSample } from "./pointer";
+import {
+  claimGestures,
+  Pointer,
+  type PointerPosition,
+  type PointerSample,
+} from "./pointer";
 import {
   clientToStage,
   deviceSize,
@@ -186,9 +191,17 @@ export function createRuntime<S, D>(
   const { canvas, width, height, game, background } = options;
   const surface = options.surface ?? domSurface(canvas);
   const keyboard = new Keyboard(surface.events());
-  const pointer = new Pointer(surface.events(), (clientX, clientY) =>
-    clientToStage(viewport, surface.origin(), surface.dpr(), clientX, clientY),
+  const pointer = new Pointer(
+    surface.events(),
+    (clientX, clientY) =>
+      clientToStage(viewport, surface.origin(), surface.dpr(), clientX, clientY),
+    canvas,
   );
+  // The browser's own gestures on the canvas belong to the game while it runs:
+  // without the claim a touch drag is taken for a pan and cancelled part way
+  // through, and the secondary button opens a menu over the board
+  // (specs/controls.md, The pointer).
+  const releaseGestures = claimGestures(canvas);
   const audio = new AudioBus(options.audioContext);
   const diagnostics = new Diagnostics<S>();
 
@@ -298,7 +311,7 @@ export function createRuntime<S, D>(
       game.render(held.state, { ctx });
       // Drawn after the game and through the same context, with the transform
       // reset: the panel is chrome over the finished picture, not part of it.
-      diagnostics.draw(ctx, { count, dt }, held.state);
+      diagnostics.draw(ctx, held.state);
     } finally {
       // Input nothing consumed is discarded even when the frame threw, so one
       // bad frame cannot leave a press to surface later, out of order.
@@ -320,7 +333,7 @@ export function createRuntime<S, D>(
     if (live === null) return;
     const ctx = openFrame();
     game.render(live.state, { ctx });
-    diagnostics.draw(ctx, { count, dt }, live.state);
+    diagnostics.draw(ctx, live.state);
   }
 
   /** This tick's delta in seconds: never negative, never past the clamp. */
@@ -454,6 +467,7 @@ export function createRuntime<S, D>(
       surface.events().removeEventListener("keydown", onOverlayKey);
       keyboard.detach();
       pointer.detach();
+      releaseGestures();
       audio.dispose();
       live = null;
     },

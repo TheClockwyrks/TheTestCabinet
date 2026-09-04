@@ -1,0 +1,426 @@
+# Shatter
+
+## Overview
+
+{{#if (eq variant.slug "warhead")}}
+Shatter is a top-down space-rock shooter for the browser, played on one wrapping
+field of deep space. You pilot a small ship under pure momentum, turning and
+thrusting while jagged rocks drift and tumble around you. The larger rocks are
+armored and hold together under several hits before they come apart, a Large
+into two smaller ones and each of those into smaller ones still, until the last
+fragments wink out. Against the ones that will not break in time the ship
+carries a single guided torpedo on a slow recharge, which destroys any rock
+outright. Clear the field and a denser, faster wave arrives, and an enemy saucer
+wanders in to hunt you on a cadence of its own.
+{{else}}
+Shatter is a top-down space-rock shooter for the browser, played on one wrapping
+field of deep space. You pilot a small ship under pure momentum, turning and
+thrusting while jagged rocks drift and tumble around you. Firing splits a Large
+rock into two smaller ones, and each of those into smaller ones still, until the
+last fragments wink out. Clear the field and a denser, faster wave arrives, and
+an enemy saucer wanders in to hunt you on a cadence of its own.
+{{/if}}
+
+{{#if (eq variant.slug "warhead")}}
+Shatter's defining idea is the gravity well. A star fixed at the centre of the
+field pulls on everything that flies ballistically, which is every bullet, every
+saucer bullet and every rock. The ship, the saucer, and the torpedo are powered
+craft the pull never touches, so the star never wrests the ship out of the
+player's hands. Instead it shapes the board: shots bend as they cross the
+centre, so a bullet can be curved around the star to strike a rock on its far
+side, and rocks travel on curved, wrapping paths that keep the whole field
+churning.
+{{else}}
+Shatter's defining idea is the gravity well. A star fixed at the centre of the
+field pulls on everything that flies ballistically, which is every bullet, every
+saucer bullet and every rock. The ship and the saucer are powered craft the pull
+never touches, so the star never wrests the ship out of the player's hands.
+Instead it shapes the board: shots bend as they cross the centre, so a bullet
+can be curved around the star to strike a rock on its far side, and rocks travel
+on curved, wrapping paths that keep the whole field churning.
+{{/if}}
+
+The core of the star is solid. The ship slides along it rather than through it, a
+shot that reaches it is absorbed, and a rock the star swallows re-appears from the
+edge of the field, so the well stirs the board without ever emptying it.
+
+Shatter has its own name, look, and rules, and its art, branding, and design are
+original to it.
+
+## How the specification is organized
+
+The specification spans several files under `specs/`. Read all of them and build
+the game they describe as one cohesive whole.
+
+| File | What it fixes |
+| --- | --- |
+| `specs/overview.md` | This file: the premise, the requirements, the coordinate system, the screens, and the visual design. |
+| `specs/field.md` | The wrapping field and the star fixed at its centre. |
+| `specs/gravity.md` | The well: the pull law and which bodies it acts on. |
+| `specs/simulation.md` | The fixed timestep and the order of work inside one tick. |
+| `specs/ship.md` | The ship and how it flies. |
+| `specs/weapons.md` | What the ship shoots. |
+{{#if (eq variant.slug "warhead")}}| `specs/rocks.md` | The drifting rocks, the armor they carry, how they split, and how the star recycles them. |
+{{else}}| `specs/rocks.md` | The drifting rocks, how they split, and how the star recycles them. |
+{{/if}}| `specs/saucer.md` | The enemy saucer. |
+| `specs/collision.md` | Every impact and what it does. |
+| `specs/progression.md` | Lives, respawns, and the wave loop. |
+| `specs/scoring.md` | Every score figure and the extra ship. |
+| `specs/controls.md` | The keys. |
+| `specs/ui.md` | The five screens, their menus, the HUD, and the wave banner. |
+| `specs/audio.md` | The six sound cues and the mute toggle. |
+| `specs/state.md` | What the game's state carries. |
+| `specs/instrumentation.md` | The debug and automation surface, and the debug overlay. |
+| `specs/showcase.md` | The showcase the finished build ships. |
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This game stands on no engine, so the runtime under it is yours to write: the
+frame loop and the delta time it measures, the canvas fit, keyboard input, audio,
+and the debug overlay. Where this specification speaks of the runtime it means
+that layer, and it states only what Shatter needs from it. How the layer is
+structured is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and
+the delta time the game is given, the input actions the ship and the menus are
+driven by, audio cues, the canvas fit, and the debug overlay. Read its
+documentation before you start. This specification states only what is specific
+to Shatter.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework as
+much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode, actors and their components, and the controllers that
+drive them, and the engine constructs, ticks, and renders them in a fixed order.
+It owns the frame loop and the delta time the game is given, rendering and the
+camera, the canvas fit, the input actions the ship and the menus are driven by,
+audio cues, and the debug overlay. Read its documentation before you start. This
+specification states only what is specific to Shatter.
+
+The logical design field handed to the engine is Shatter's field, and the game
+leaves the camera at rest, so world units and the field's logical units coincide
+and every position in this specification is both.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its
+`README.md` describes it. It is a TypeScript project built with Vite, tested with
+Vitest, linted with ESLint, and formatted with Prettier. That toolchain is fixed
+and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`. The directory does not exist yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where your
+build starts. Beyond that the structure is yours: the frame loop and the canvas
+fit, keyboard input, audio, the debug overlay, the debug and automation surface,
+the figures this specification fixes, and the game itself.
+
+The game's state is yours to shape. `specs/state.md` states what it must carry,
+and `specs/instrumentation.md` states the one contract fixed over it.
+
+### What stays as it is
+
+- `index.html`, the page and the canvas the field is fitted into.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key, cue name, and piece of screen copy this
+specification fixes is stated here under a name. Anything this specification does
+not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test drives the game over its own clock for a counted number of ticks,
+so it needs no browser, and `@napi-rs/canvas` is installed for a test that wants a
+real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `Game<ShatterState, ShatterDebugApi>`:
+`initialize` builds the state and the debug surface once and returns them together
+as `[state, debug]`, `update` takes the current state as a read-only view
+(`DeepReadonly<ShatterState>`) and returns the next state, advanced against the
+frame's delta time in seconds, and `render` is handed that next state, read-only
+again, and draws it. The engine holds the state by value and replaces it with what
+each `update` returns, so a frame builds the next state from the current one
+rather than writing into it, and nothing but `update` and the debug surface's
+poses advances the game. All three functions throw `"not implemented"` as they
+stand. Implement them.
+
+`src/game.ts` also declares and exports `ShatterState` and the types it is built
+from, exactly as `specs/state.md` states them, and `ShatterDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the field's
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the field match the field
+itself. The seeded stub exports a placeholder; replace it with the color your
+field uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the field into.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything this
+specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over its own canvas and clock and advances the
+game a counted number of frames, so it needs no browser.
+{{else}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`. The file does
+not exist yet, and `src/main.ts` imports it, so the project does not compile until
+you create it.
+
+`src/game.ts` exports `game`, a `GameDefinition<ShatterDebugApi>`: the game
+instance class, a level registry holding the single level the game runs in, and
+`startLevel` naming it. The game opens that one level and never opens another;
+every screen is a value of the state's `screen` field, so the world and its game
+state live for the whole session. The instance's `initialize` registers the
+actions, defines the cues, and returns the debug surface. The level's game mode
+runs the screens and the rules, and it adds a single player in its `beginPlay`,
+possessing nothing; that player's controller is where the actions are read. The
+mode's `gameStateClass` is `ShatterState`, so the world's game state is the state
+`specs/state.md` declares. The actors, components, and controllers you write draw
+that state and drive it.
+
+`src/game.ts` also declares and exports `ShatterState` and the types it is built
+from, exactly as `specs/state.md` states them, and `ShatterDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the field's
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the field match the field
+itself.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the field into.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it also
+names the constant that holds it, and the constant is authoritative. Anything this
+specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over a canvas from `@napi-rs/canvas` and a
+surface and clock of its own, then advances the game a counted number of frames
+with `engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into
+`dist/` at the repository root, with an `index.html` at the root of that directory
+as the entry point. That directory runs correctly when served as-is from any
+static file server, at any base path. The scripts that do this are already in
+`package.json`.
+
+## Goal of this build
+
+Produce a complete, polished, playable game that runs entirely in a browser. Aim
+for a game a person would enjoy playing: tense, readable, and fast.
+
+{{#if (eq variant.slug "warhead")}}
+The build ships the whole game: the wrapping field and its star, inertial flight,
+the gun and the guided torpedo, the armored splitting rocks, the escalating waves,
+the hunting saucer, lives and respawns, the five screens, and the HUD. Every other
+spec file states one part of it.
+{{else}}
+The build ships the whole game: the wrapping field and its star, inertial flight,
+the gun, the splitting rocks, the escalating waves, the hunting saucer, lives and
+respawns, the five screens, and the HUD. Every other spec file states one part of
+it.
+{{/if}}
+
+### Hard requirements
+
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the
+  canvas fit, keyboard input, audio, and the debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input actions,
+  audio, and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the input
+  actions, audio, and the debug overlay from it, and writing the game inside its
+  framework of game modes, actors, components, and controllers.
+{{/if}}
+- Render real graphics on the canvas, drawn in code. There are no art files and
+  nothing is fetched at runtime.
+- Run in the browser with no backend. Everything needed to play is self-contained,
+  and no API key or credential is needed to build, run, or play.
+{{#if (eq engine.slug "none")}}
+- Hold the game's whole state in one value, the one the frame loop advances and
+  the debug surface reads.
+{{else if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `ShatterState`, as `specs/state.md` declares it.
+{{else}}
+- Hold the game's whole authoritative state in `ShatterState`, the world's game
+  state, as `specs/state.md` declares it.
+{{/if}}
+- Expose the debug and automation surface `specs/instrumentation.md` specifies,
+  and the read-only debug overlay it describes, backed by the deterministic core
+  that file requires. This is a required part of the build.
+- Ship the showcase `specs/showcase.md` describes, at the root of this repository.
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
+
+## Code quality
+
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
+
+## Coordinate system and presentation
+
+All positions, sizes, speeds, and ranges in this specification are given in the
+game's own logical units on a fixed field of `FIELD_W x FIELD_H`
+(`1280 x 720`, 16:9). The origin `(0, 0)` is the top-left; `x` increases to the
+right and `y` increases downward. Angles are measured clockwise from the positive
+`x` axis, in degrees unless stated otherwise, so straight up the field is `-90`
+degrees.
+
+An entity's position is its centre. Wherever the ship, a rock, a bullet, or the
+saucer is given, taken, or reported as an `(x, y)` pair, that pair is the centre
+of the entity rather than a corner of anything drawn for it.
+
+- `FIELD_W x FIELD_H` is the game's logical design size. Fitting it to the browser
+  window is the runtime's work: the uniform scale that preserves the aspect ratio,
+  the letterboxed centring, and the device pixel ratio. The complete field is
+  therefore on screen at every window size and at any pixel density, out to all
+  four edges, on load and before any input.
+- The letterbox bars around the field carry the field's background color.
+- Draw in logical units, and take the canvas element's own size from the runtime
+  alone.
+- Game logic operates in logical units, independent of the rendered scale.
+
+Every rate in this specification is per second and every duration is in seconds,
+with two exceptions stated in whole simulation ticks: the gun's fire gate and the
+span of a bullet's trail, both in `specs/weapons.md`.
+
+## The screens the build has
+
+The build carries five screens, and the game is on exactly one of them at a time:
+`title`, `howto`, `playing`, `paused`, and `gameover`. `specs/ui.md` defines what
+each shows and where each one leads.
+
+## What the field shows
+
+While the game is being played, the field carries the star at its centre, the
+ship, every rock drifting on it, every shot in flight, the saucer while it is
+visiting, and every saucer bullet. The HUD is drawn over the field, and the
+`WAVE N` banner appears over it at the start of a wave. `specs/ui.md` gives the
+readouts.
+
+## Visual design
+
+The field is dark. Sampled clear of every body, its background reads as deep
+space: the luminance of that background is below a quarter of full.
+
+Beyond that, choose the colors and the typography, decide how the ship, the star,
+a rock, the saucer, a bullet, and the HUD are drawn, and decide what the field
+looks like behind them.
+
+Whatever look you choose, a player reads all of the following at a glance.
+
+| What a player reads | Requirement |
+| --- | --- |
+| The ship | The ship reads apart from the field behind it and from every other body, and its facing is legible at a glance. |
+| The star | The star reads as a well: a bright core with a softer halo around it fading outward into the field. |
+| The rocks | A rock reads apart from the field and from the ship, the saucer, and the bullets. |
+| The saucer | The saucer reads apart from the rocks and from the ship, as a craft rather than as debris. |
+| A shot in flight | A bullet reads apart from the field, and each moving bullet leaves a continuous fading tail along its recent path. |
+| Thrust | While thrust is applied, a flame reads at the ship's tail, and it is absent when thrust is not. |
+| Invulnerability | A ship inside its respawn grace reads as such: its drawn appearance changes visibly while the grace runs and settles once it ends. |
+{{#if (eq variant.slug "warhead")}}
+| Damage | A rock that has taken a non-destroying hit reads as damaged, more so as its health falls, and a full-health rock reads as undamaged. |
+| The torpedo | The torpedo reads apart from the bullets at a glance, as the heavy weapon rather than a round. |
+| The HUD | The score, the ships in reserve, and the torpedo charge are each legible at the logical field size, and nothing of the HUD is drawn over the field's centre. |
+{{else}}
+| The HUD | The score and the ships in reserve are each legible at the logical field size, and nothing of the HUD is drawn over the field's centre. |
+{{/if}}
+| Text | Every readout and every screen's text is legible against its background at the logical field size. |
+
+The palette, the type, the glow, and every other aspect of the look are yours.
+
+## Out of scope
+
+- Network or online play, and any second local player. One ship is flown.
+- Pointer, touch, and gamepad input. The game is played from the keyboard.
+- Persistence of scores or settings between sessions. Each session starts fresh.
+- A hyperspace or teleport escape move.

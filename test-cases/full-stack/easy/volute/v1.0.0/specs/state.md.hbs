@@ -1,0 +1,317 @@
+# Volute — Game state
+
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the game's state entirely. Choose the types, the
+fields, and the modules that hold them to suit the implementation you write.
+
+The one contract fixed over the state is the debugging and automation surface
+specified for this build. Every operation that surface carries is a read or a
+pose of the running game, so the state holds what those operations read, honors
+what they write, and returns to its title values when the surface's `reset` is
+called. Beyond satisfying that surface, how the state is organized is yours to
+decide.
+
+Whatever its shape, the state carries the following, because the rest of this
+specification is written against them.
+
+- The screen the game is showing, one of `title`, `playing`, `paused`,
+  `cleared`, `setback`, `gameover`, or `victory`.
+- The score, the level in play from `1` to `5`, and the cells remaining.
+- The cores the inlet has yet to emit this level. How many it has emitted so far
+  is the level's quota less that count, so no second counter is authoritative.
+- The pressure, a real number from `0` to `100`.
+- The chain step, at least `1`, and the seconds left before it returns to `1`.
+- The timed machinery in force and the seconds it has left, or that none is in
+  force.
+- The train: an ordered list of the cores on the channel, head first, so arc
+  positions descend along it. Each core carries its charge, its arc position
+  from the inlet, and the machinery its mark grants or that it is unmarked.
+- The segments: an ordered list, the lead segment first, each covering a count
+  of consecutive cores of the train and carrying the seconds of recoil hold it
+  has left. The counts partition the train in order.
+- The projectiles in flight, oldest first, each with its charge, its center in
+  logical units, and the heading in degrees it was fired along.
+- The loaded charge and the queued charge, each a charge or nothing while no
+  level is open, the injector's aim in degrees, and the seconds until the
+  injector may fire again.
+- The seconds left of the interlude the `cleared` and `setback` screens hold.
+- The simulation time the run has accumulated, in seconds, which every update
+  adds its elapsed time to whatever the screen.
+- The frame time waiting for the next whole tick, at least `0` and below one
+  tick. It grows on the screens that advance the simulation, and the delta time
+  left unconsumed when the game stops advancing is discarded, so it is `0` on
+  the screens that hold still.
+- Whether the simulation advances on its own each frame.
+- Whether audio is muted.
+- The state of the seeded generator every random draw comes from. A `reset` sets
+  it from the seed it is given.
+
+On `title` the run's fields hold their opening values: score `0`, level `1`,
+three cells, the level's full quota still to emit, pressure `0`, chain step `1`,
+no machinery, an empty channel, no projectiles, an aim of `270` degrees, and
+every timer at `0`. The injector holds neither a loaded nor a queued charge
+until a level opens. The `gameover` and `victory` screens keep the run that just
+ended, since they report its score and level.
+{{else if (eq engine.slug "simple-2d")}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The three aliases `src/constants.ts` already exports are imported and
+re-exported rather than declared a second time. The state is a value the engine
+holds and every frame replaces, so every field and every array is declared
+`readonly`: a frame builds the next state from the current one rather than
+writing into it, and every reader is handed the state as
+`DeepReadonly<VoluteState>` in any case.
+
+```ts
+import type { ChargeId, MachineryKind, ScreenName } from "./constants";
+
+export type { ChargeId, MachineryKind, ScreenName };
+
+export interface CoreState {
+  readonly charge: ChargeId;
+  readonly s: number;
+  readonly mark: MachineryKind | null;
+}
+
+export interface SegmentState {
+  readonly count: number;
+  readonly hold: number;
+}
+
+export interface ProjectileState {
+  readonly charge: ChargeId;
+  readonly x: number;
+  readonly y: number;
+  readonly angle: number;
+}
+
+export interface MachineryState {
+  readonly kind: MachineryKind;
+  readonly remaining: number;
+}
+
+export interface VoluteState {
+  readonly screen: ScreenName;
+
+  readonly score: number;
+  readonly level: number;
+  readonly cells: number;
+  readonly quotaRemaining: number;
+
+  readonly pressure: number;
+  readonly chainStep: number;
+  readonly chainTimer: number;
+  readonly machinery: MachineryState | null;
+
+  readonly cores: readonly CoreState[];
+  readonly segments: readonly SegmentState[];
+  readonly projectiles: readonly ProjectileState[];
+
+  readonly loaded: ChargeId | null;
+  readonly queued: ChargeId | null;
+  readonly aim: number;
+  readonly fireCooldown: number;
+
+  readonly interlude: number;
+  readonly simTime: number;
+  readonly accumulator: number;
+  readonly muted: boolean;
+  readonly rngState: number;
+}
+```
+
+## The type aliases
+
+`ScreenName` is the top-level state machine, the seven members of `SCREENS`.
+`ChargeId` names the five charges of `CHARGE_IDS`, and `MachineryKind` the four
+kinds of `MACHINERY_KINDS`.
+
+## `CoreState`
+
+One core on the channel, in `cores`.
+
+- `charge` — the charge it carries.
+- `s` — its arc position, the distance from the inlet walked along `CHANNEL`,
+  from `0` to `PATH_LENGTH` (`5000`).
+- `mark` — the machinery extracting it grants, and `null` on an unmarked core.
+
+## `SegmentState`
+
+One segment, in `segments`.
+
+- `count` — how many consecutive cores of `cores` the segment covers, at least
+  `1`. The counts partition `cores` in order, so they sum to `cores.length` and
+  the first segment is the lead segment.
+- `hold` — the seconds of recoil hold the segment has left, `0` on a segment
+  that advances.
+
+## `ProjectileState`
+
+One projectile, in `projectiles`.
+
+- `charge` — the charge it carries and seats.
+- `x`, `y` — its center, in logical units.
+- `angle` — the heading it was fired along, in degrees, from `0` up to but not
+  including `360`. It flies along that heading at `PROJECTILE_SPEED` (`620`)
+  until it strikes or leaves the field.
+
+## `MachineryState`
+
+The timed machinery in force.
+
+- `kind` — `choke`, `backflow`, or `sightline`.
+- `remaining` — the seconds it has left, counting down to `0`, at which point
+  `machinery` becomes `null`.
+
+## `VoluteState`
+
+The whole of Volute's state. Every field is present from the moment
+`initialize` returns, and every one is plain data: numbers, strings, booleans,
+`null`, and containers of them, so a scenario is posed by building a state that
+differs in the fields posed and read back by reading them.
+
+- `screen` — the screen currently shown.
+- `score` — the run's score.
+- `level` — the level in play, from `1` to `LEVEL_COUNT` (`5`).
+- `cells` — the cells remaining, from `CELLS` (`3`) down to `0`.
+- `quotaRemaining` — how many more cores the inlet emits this level. How many
+  it has emitted so far this level is the level's `quota` less this value, so
+  nothing else counts emissions.
+- `pressure` — the pressure, from `PRESSURE_MIN` (`0`) to `PRESSURE_MAX`
+  (`100`).
+- `chainStep` — the chain step an extraction scores at, at least `1`.
+- `chainTimer` — the seconds left before `chainStep` returns to `1`. It is
+  `CHAIN_RESET` (`2.0`) on every extraction and falls with the ticks that
+  advance play; it is `0` when no extraction stands inside its window.
+- `machinery` — the timed machinery in force, and `null` when none is. `bore`
+  resolves at once, so it never appears here.
+- `cores` — the train, head first, so `s` descends along the list.
+- `segments` — the train's segments, the lead segment first.
+- `projectiles` — the projectiles, oldest first.
+- `loaded` — the charge the injector fires next, and `null` while no level is
+  open.
+- `queued` — the charge that becomes `loaded` on the next firing, and `null`
+  while no level is open.
+- `aim` — the direction the injector points, in degrees measured from `+x` and
+  increasing toward `+y`, from `0` up to but not including `360`.
+- `fireCooldown` — the seconds until the injector may fire again. It is
+  `FIRE_COOLDOWN` (`0.18`) on firing and `0` when the injector may fire.
+- `interlude` — the seconds left of the interlude the `cleared` and `setback`
+  screens hold, and `0` on every other screen.
+- `simTime` — the simulation time the run has accumulated, in seconds. Every
+  update adds its elapsed time to it, whatever the screen.
+- `accumulator` — the frame time waiting for the next whole tick, in seconds,
+  at least `0` and below `TICK_DT`. It grows on the screens that advance the
+  simulation, and the delta time left unconsumed when the game stops advancing
+  is discarded, so it is `0` on the screens that hold still.
+- `muted` — the game's readable copy of the engine's mute bit, which every
+  `update` carries into the state it returns. The engine owns muting, and this
+  field is what the debug surface reports.
+- `rngState` — the state of the game's one seeded generator. A `reset` sets it
+  from the seed it is given, and every draw advances it: an emitted core's
+  charge, a seeded core's charge, and each charge the injector loads and queues.
+
+## The title state
+
+`initialize` and a `reset` build the values below, and leaving a run for the
+title restores them. The `gameover` and `victory` screens keep the run that just
+ended, since they report its score and level.
+
+| Field | Title value |
+| --- | --- |
+| `screen` | `title` |
+| `score`, `level`, `cells` | `0`, `1`, `CELLS` |
+| `quotaRemaining` | level `1`'s `quota` |
+| `pressure` | `0` |
+| `chainStep`, `chainTimer` | `1`, `0` |
+| `machinery` | `null` |
+| `cores`, `segments`, `projectiles` | empty |
+| `loaded`, `queued` | `null` |
+| `aim` | `270` |
+| `fireCooldown`, `interlude`, `simTime`, `accumulator` | `0` |
+| `muted` | `false` |
+| `rngState` | the seed |
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+- `initialize` builds the whole state in one go, so every field is present by
+  the time a frame can observe it, and none of them is optional.
+- Fields you add hold derived data you can rebuild from the declared ones. A
+  `reset` restores the declared fields to their title values, so those fields
+  are the whole of the authoritative state.
+- The state handed to `update` is the whole of the game, and the state `update`
+  returns is the whole of the next frame. Every value the game carries from one
+  frame to the next lives in it. Loaded images, decoded audio, and prepared
+  particle systems are the one exception: `initialize` may hold them in a
+  module-level table `render` reads, since they are not game state.
+- The state is handed over read-only, as `DeepReadonly<VoluteState>`, to
+  `update`, to `render`, to every diagnostic source, and to every operation of
+  the debug surface. `update` and the surface's poses return a new `VoluteState`
+  built from the one they received; `render`, the sources, and `snapshot` return
+  no state. The type is what guarantees that rendering changes nothing and that
+  nothing but a transition advances the game.
+{{else}}
+The game's state lives in the framework objects the engine owns: the game
+instance you write, the world that is open, that world's game mode and game
+state, and the actors in it. How Volute maps onto them is yours to design,
+within the framework's own line: a value scoped to one visit to the hall lives
+on the game state or its actors, which are rebuilt with their world, and a value
+that must survive a level transition lives on the instance. Nothing lives in a
+module-level variable or a closure outside them. Loaded images, decoded audio,
+and prepared particle systems are not game state, so the instance and the level
+that loaded them may hold them for rendering.
+
+Two contracts are fixed over that state. The first is the debugging and
+automation surface specified for this build. Every operation that surface
+carries is a reading or a pose of the running game, so the state holds what the
+readings report, honors what the poses arrange, and returns to its title values
+when the surface's `reset` is called. The second is the vocabulary
+`src/constants.ts` fixes: every level is registered under its name in `WORLDS`,
+and every core, projectile, injector, and intake actor carries its tag from
+`TAGS`, so the hall's bodies can be found with `world.byTag` under the names
+this specification uses.
+
+Whatever its arrangement, the state carries the following, because the rest of
+this specification is written against them.
+
+- The screen the game is showing, one of the seven members of `SCREENS`.
+- The score, the level in play from `1` to `LEVEL_COUNT` (`5`), and the cells
+  remaining, from `CELLS` (`3`) down to `0`.
+- The cores the inlet has yet to emit this level. How many it has emitted so far
+  is the level's `quota` less that count, so nothing else counts emissions.
+- The pressure, a real number from `PRESSURE_MIN` (`0`) to `PRESSURE_MAX`
+  (`100`).
+- The chain step an extraction scores at, at least `1`, and the seconds left
+  before it returns to `1`.
+- The timed machinery in force and the seconds it has left, or that none is in
+  force. `bore` resolves at once, so it is never the machinery in force.
+- The train: the cores on the channel in one order, head first, so arc positions
+  descend along it. Each core carries its charge, its arc position from the
+  inlet walked along `CHANNEL`, and the machinery its mark grants or that it is
+  unmarked.
+- The segments: an ordered run of the train per segment, the lead segment first,
+  each covering consecutive cores and carrying the seconds of recoil hold it has
+  left. The segments partition the train in order.
+- The projectiles in flight, oldest first, each with its charge, its center in
+  logical units, and the heading in degrees it was fired along.
+- The loaded charge and the queued charge, each a charge or nothing while no
+  level is open, the injector's aim in degrees from `0` up to but not including
+  `360`, and the seconds until the injector may fire again.
+- The seconds left of the interlude the `cleared` and `setback` screens hold.
+- The simulation time the run has accumulated, in seconds, which every update
+  adds its elapsed time to whatever the screen.
+- Whether audio is muted, which the engine owns and the debug surface reports.
+- The state of the seeded generator every random draw comes from: an emitted
+  core's charge, a seeded core's charge, and each charge the injector loads and
+  queues. A `reset` sets it from the seed it is given.
+
+On `title` the run's values are score `0`, level `1`, `CELLS` cells, level 1's
+full quota still to emit, pressure `0`, chain step `1`, no machinery, an empty
+channel, no projectiles, an aim of `270` degrees, and every timer at `0`. The
+injector holds neither a loaded nor a queued charge until a level opens. The
+`gameover` and `victory` screens keep the run that just ended, since they report
+its score and level.
+{{/if}}

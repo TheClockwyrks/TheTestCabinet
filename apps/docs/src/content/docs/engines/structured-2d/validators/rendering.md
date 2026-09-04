@@ -47,7 +47,9 @@ context.
 `camera.logicalToWorld`. A world's camera starts at the center of the design
 field with a zoom of `1`, so world coordinates and logical coordinates coincide
 until the game moves the camera. Going through the camera anyway keeps a check
-correct once a level follows a view target or clamps to `camera.bounds`.
+correct once a level follows a view target or clamps to `camera.bounds`. A
+component in `screen` space skips the first stage: its composed transform is
+already logical, so a check applies the second stage alone to it.
 
 The second stage is `offsetX + x * scale` and `offsetY + y * scale`. `scale` is
 device pixels per logical unit with the device pixel ratio already folded in,
@@ -74,6 +76,91 @@ expect(sample(h, paddle.transform)).toEqual({ r: 0xf2, g: 0xf5, b: 0xf7, a: 255 
 Reach for pixels when the claim is about the picture: the background color, a
 component's fill, whether something occupies a position on screen, whether the
 letterbox bars are clear, whether an actor moved between two frames.
+
+## Serving the produced tree
+
+The [asset loader](/engines/structured-2d/apis/assets/) fetches every path
+under the asset root through the host's `fetch`, decodes an image through
+`createImageBitmap`, and decodes a sound through an `AudioContext`. Node has
+none of the three, so a harness stands each up on `globalThis` before it
+constructs an engine, once for the life of the process.
+
+```ts
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { Image, loadImage } from "@napi-rs/canvas";
+
+const servedPaths = new Map<string, string>();
+const bitmapPaths = new WeakMap<object, string>();
+const digest = (bytes: Uint8Array): string =>
+  createHash("sha1").update(bytes).digest("hex");
+
+globalThis.fetch = async (input) => {
+  const url = String(input);
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(join(WORKSPACE, url));
+  } catch {
+    return new Response(null, { status: 404, statusText: "Not Found" });
+  }
+  servedPaths.set(digest(bytes), url);
+  return new Response(new Uint8Array(bytes));
+};
+
+globalThis.createImageBitmap = async (blob: Blob) => {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const image = await loadImage(Buffer.from(bytes));
+  const path = servedPaths.get(digest(bytes));
+  if (path !== undefined) bitmapPaths.set(image, path);
+  return image;
+};
+
+globalThis.ImageBitmap = Image;
+```
+
+The `fetch` reads a path carrying no scheme from the workspace, which is where
+the build's asset root sits, and answers a missing file with a `404`, the shape
+the loader reports as `asset:failed`. The bytes each served file returns are
+digested and remembered against its path, and the image decoded from the same
+bytes is keyed to that path, so the source of a `drawImage` call resolves to
+the produced file it came from. A source the harness never served resolves to
+nothing, which is the reading for a build that drew a canvas it painted itself.
+
+The [recorder](/engines/structured-2d/concepts/recording/) decides what is a
+bitmap by testing a source against the host's image classes, `ImageBitmap`
+among them, and captures a match as an image entry rather than an opaque
+marker. Setting that global to the canvas library's `Image` class, which is
+what the `createImageBitmap` above returns, is what puts the produced sprites
+into a recording. The engine and a build name `ImageBitmap` as a type alone, so
+the game runs unchanged under it.
+
+### Blits
+
+A claim about a sprite is a claim about where its blit landed: how large it was
+drawn, whether it was mirrored, and whether smoothing was off. The proxy below
+reads the transform and `imageSmoothingEnabled` off the real context at each
+`drawImage` before forwarding the call, because the context is the authority on
+where any transform the build drew under put it. A blit is the destination
+rectangle's four corners mapped through that transform and boxed in device
+pixels; a negative determinant marks a horizontal mirror.
+
+```ts
+export interface Blit {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  smoothing: boolean;
+  mirrored: boolean;
+}
+```
+
+A sprite is attributed to the object it was drawn on by the box's center, which
+the case's asset spec fixes as the object's own position, so a check finds the
+blits within a tolerance of a world point mapped through the camera and the
+viewport and asks which produced file each came from.
 
 ## The recording proxy
 

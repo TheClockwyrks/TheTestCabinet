@@ -44,7 +44,7 @@ import {
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { GLOAMFIN_HEAR, INK_LIFE, TICK_HZ, TILE } from "../../src/constants";
+import { GLOAMFIN_HEAR, INK_LIFE, TICK_HZ, TILE } from "../constants";
 import { placePredator, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

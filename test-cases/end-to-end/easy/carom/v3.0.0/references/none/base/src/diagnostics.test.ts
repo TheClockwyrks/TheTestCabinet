@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { registerDiagnostics } from "./diagnostics";
-import { createInitialState } from "./game";
+import { createInitialState } from "./state";
 import type { InitApi } from "./runtime";
 
 /** Just enough of an `InitApi` to collect the sources a game registers. */
@@ -47,6 +47,8 @@ describe("registerDiagnostics", () => {
 
   it("reads the live state on every read", () => {
     const state = createInitialState();
+    const ball = state.ball;
+    if (ball === null) throw new Error("the title screen opens with a ball");
     const { api, read } = collector();
     registerDiagnostics(api, state);
 
@@ -57,8 +59,8 @@ describe("registerDiagnostics", () => {
     state.mode = "versus";
     state.score.p1 = 4;
     state.score.p2 = 7;
-    state.ball.x = 123.456;
-    state.ball.spin = -250;
+    ball.x = 123.456;
+    ball.spin = -250;
 
     const values = read();
     expect(values["screen"]).toBe("playing");
@@ -66,6 +68,18 @@ describe("registerDiagnostics", () => {
     expect(values["score"]).toBe("4 - 7");
     expect(values["ball pos"]).toBe("123.5, 360.0");
     expect(values["ball spin"]).toBe("-250.0");
+  });
+
+  it("reports no ball while the field has none", () => {
+    const state = createInitialState();
+    const { api, read } = collector();
+    registerDiagnostics(api, state);
+    state.ball = null;
+
+    const values = read();
+    expect(values["ball pos"]).toBe("—");
+    expect(values["ball vel"]).toBe("—");
+    expect(values["ball spin"]).toBe("—");
   });
 
   it("changes nothing it reads", () => {

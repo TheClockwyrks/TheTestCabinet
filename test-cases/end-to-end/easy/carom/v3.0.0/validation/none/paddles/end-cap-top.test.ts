@@ -11,6 +11,12 @@
 // sub-step of travel while the left and right depths are the half-span plus
 // `BALL_R`. Placement is read at the end of the contact frame, within one frame
 // of travel of `cy - PADDLE_HALF - BALL_R`, on the field side of it.
+//
+// The field is emptied to this ball alone, so the cap is the only thing the
+// climb can meet. NEITHER paddle is taken: what the check needs of the struck
+// one is that it STAND at the field center, and in a Versus match with no key
+// held it stands exactly where it was put. The far paddle is parked off the
+// lane, since a paddle cannot be removed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -23,8 +29,10 @@ import { BALL_R, FIELD_CY, P1_X0, P1_X1, PADDLE_HALF } from "../constants";
 import {
   ball0,
   captureReplay,
-  clearPaddles,
   createHarness,
+  isolateBall,
+  PARKED_CY,
+  placeBall,
   startPlaying,
   TICK_HZ,
   type Harness,
@@ -55,9 +63,10 @@ afterEach(async () => {
 
 it("reflects a ball dropping onto the paddle's top cap", async () => {
   await startPlaying(h);
-  await clearPaddles(h);
-  await h.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  await h.debug.setBall(0, { x: CAP_X, y: START_Y, vx: 0, vy: SPEED, spin: 0 });
+  await isolateBall(h);
+  await h.debug.setPaddleCy("left", FIELD_CY);
+  await h.debug.setPaddleCy("right", PARKED_CY);
+  await placeBall(h, { x: CAP_X, y: START_Y, vy: SPEED });
   const before = ball0(await h.snapshot());
 
   const bounce = await captureReplay(h, "bounce", async () => {

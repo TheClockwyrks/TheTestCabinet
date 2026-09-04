@@ -53,7 +53,7 @@ const toy: Game<ToyState, typeof TOY_DEBUG> = {
         deltas: [],
         pressed: [],
         samples: [],
-        pointer: { x: 0, y: 0, down: false },
+        pointer: { x: 0, y: 0, down: false, device: "mouse" },
       },
       TOY_DEBUG,
     ];
@@ -507,7 +507,7 @@ describe("wiring", () => {
     h.runtime.advance(1 / 60);
     expect(h.runtime.state.pressed).toEqual([true]);
     expect(h.runtime.state.samples[0]).toEqual([
-      { type: "down", x: 100, y: 100 },
+      { type: "down", x: 100, y: 100, device: "mouse", primary: true },
     ]);
   });
 
@@ -520,11 +520,16 @@ describe("wiring", () => {
     h.events.dispatchEvent(new PointerEvt("pointerup", 200, 150));
     h.runtime.advance(1 / 60);
     expect(h.runtime.state.samples[1]).toEqual([
-      { type: "down", x: 200, y: 200 },
-      { type: "move", x: 400, y: 300 },
-      { type: "up", x: 400, y: 300 },
+      { type: "down", x: 200, y: 200, device: "mouse", primary: true },
+      { type: "move", x: 400, y: 300, device: "mouse", primary: true },
+      { type: "up", x: 400, y: 300, device: "mouse", primary: true },
     ]);
-    expect(h.runtime.state.pointer).toEqual({ x: 400, y: 300, down: false });
+    expect(h.runtime.state.pointer).toEqual({
+      x: 400,
+      y: 300,
+      down: false,
+      device: "mouse",
+    });
   });
 
   it("shows and hides the overlay on the backtick key", () => {

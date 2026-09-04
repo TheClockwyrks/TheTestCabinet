@@ -10,7 +10,7 @@ import type { BallState, TrailSample } from "./game";
 
 describe("recordTrail", () => {
   it("appends the ball's position, oldest first", () => {
-    const first = recordTrail({ ...createBalls()[0], x: 100, y: 200 }, 1);
+    const first = recordTrail({ ...createBalls(0)[0], x: 100, y: 200 }, 1);
     const second = recordTrail({ ...first, x: 110 }, 1 + TRAIL_TIME / 2);
 
     expect(second.trail).toHaveLength(2);
@@ -19,7 +19,7 @@ describe("recordTrail", () => {
   });
 
   it("returns a new ball and leaves the one it was handed alone", () => {
-    const before = createBalls()[0];
+    const before = createBalls(0)[0];
     const after = recordTrail(before, 1);
     expect(before.trail).toHaveLength(0);
     expect(after.trail).toHaveLength(1);
@@ -27,7 +27,7 @@ describe("recordTrail", () => {
   });
 
   it("drops samples older than the trail window", () => {
-    let ball: BallState = createBalls()[0];
+    let ball: BallState = createBalls(0)[0];
     let now = 0;
     for (let i = 0; i < 200; i++) {
       now = i * (1 / 60);
@@ -40,7 +40,7 @@ describe("recordTrail", () => {
   });
 
   it("keeps every sample inside the window however fast the frames arrive", () => {
-    let ball: BallState = createBalls()[0];
+    let ball: BallState = createBalls(0)[0];
     for (let i = 0; i < 1000; i++) {
       ball = recordTrail(ball, i * 0.0001); // 10 kHz: the whole run fits the window
     }
@@ -48,7 +48,7 @@ describe("recordTrail", () => {
   });
 
   it("keeps each ball's trail to itself", () => {
-    const [one, two] = createBalls();
+    const [one, two] = createBalls(0);
     const recorded = recordTrail(one, 0);
     expect(recorded.trail).toHaveLength(1);
     expect(two.trail).toHaveLength(0);

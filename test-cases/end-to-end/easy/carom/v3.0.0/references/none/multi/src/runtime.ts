@@ -4,7 +4,8 @@
 // it (specs/overview.md). This file is that layer's core, and it is deliberately
 // sized for THIS game rather than for every 2D game: a frame loop, the canvas
 // fit, and the wiring that hands the game a keyboard (`src/keyboard.ts`), an
-// audio bus (`src/audio-bus.ts`), a viewport (`src/viewport.ts`), and an overlay
+// audio bus (`src/audio-bus.ts`), a pointer and touch reader
+// (`src/pointing.ts`), a viewport (`src/viewport.ts`), and an overlay
 // (`src/overlay.ts`). There is no asset loader, because Carom loads nothing, and
 // no draw recorder, because nothing in this build reads one.
 //
@@ -28,10 +29,12 @@
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";
 import { Diagnostics, OVERLAY_KEY } from "./overlay";
+import { Pointing, type PointerSample } from "./pointing";
 import {
   deviceSize,
   domSurface,
   fitViewport,
+  toLogical,
   type Surface,
   type Viewport,
 } from "./viewport";
@@ -91,6 +94,14 @@ export interface UpdateApi {
     setMuted(muted: boolean): void;
     /** Whether the bus is muted. */
     muted(): boolean;
+  };
+  readonly pointer: {
+    /**
+     * Everything the mouse and the finger did since the last frame, in arrival
+     * order and in the field's logical units. Reading it empties the queue, so
+     * each sample is spent on exactly one frame.
+     */
+    take(): PointerSample[];
   };
 }
 
@@ -171,7 +182,6 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   const keyboard = new Keyboard(surface.events());
   const audio = new AudioBus(options.audioContext);
   const diagnostics = new Diagnostics();
-
   let live: { value: S } | null = null;
   let viewport = fit();
   let context: CanvasRenderingContext2D | null = null;
@@ -185,6 +195,19 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
   let handle: number | null = null;
   let previousMs: number | null = null;
   let destroyed = false;
+
+  // The pointer is mapped through the CURRENT fit at the moment the event
+  // arrives, so a window resized between two frames cannot land a click on the
+  // pixel it used to be over.
+  const pointing = new Pointing(surface.events(), (clientX, clientY) => {
+    const origin = surface.origin();
+    return toLogical(
+      viewport,
+      clientX - origin.x,
+      clientY - origin.y,
+      surface.dpr(),
+    );
+  });
 
   function fit(): Viewport {
     return fitViewport(
@@ -253,6 +276,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       setMuted: (muted) => audio.setMuted(muted),
       muted: () => audio.muted(),
     },
+    pointer: { take: () => pointing.take() },
   };
 
   const initApi: InitApi = {
@@ -277,11 +301,13 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       game.render(state.value, { ctx });
       // Drawn after the game and through the same context, with the transform
       // reset: the panel is chrome over the finished picture, not part of it.
-      diagnostics.draw(ctx, { count, dt });
+      diagnostics.draw(ctx);
     } finally {
       // An edge nothing consumed is discarded even when the frame threw, so one
-      // bad frame cannot leave a press to surface later, out of order.
+      // bad frame cannot leave a press to surface later, out of order. The
+      // pointer queue goes the same way, and for the same reason.
       keyboard.endFrame();
+      pointing.clear();
     }
   }
 
@@ -298,7 +324,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
     if (live === null) return;
     const ctx = openFrame();
     game.render(live.value, { ctx });
-    diagnostics.draw(ctx, { count, dt });
+    diagnostics.draw(ctx);
   }
 
   /** This tick's delta in seconds: never negative, never longer than the clamp. */
@@ -416,6 +442,7 @@ export function createRuntime<S>(options: RuntimeOptions<S>): Runtime<S> {
       stopLoop();
       surface.events().removeEventListener("keydown", onOverlayKey);
       keyboard.detach();
+      pointing.detach();
       audio.dispose();
       live = null;
     },

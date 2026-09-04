@@ -26,6 +26,7 @@ workspace/
   vitest.config.ts
   src/            the build
   validation/     the case's suites
+    constants.ts
     harness.ts
     debug.ts
     gameplay/scoring-p1.test.ts
@@ -75,6 +76,47 @@ coverage.
 The environment is `node`. The engine takes every measurement it needs from the
 surface the harness supplies, so the suites need no DOM.
 
+## The figures a check asserts
+
+The project states its own figures in `constants.ts` at its root, transcribed
+from the case's rendered specifications under the names those specifications
+use. A suite imports each figure it asserts from there: `./constants` from the
+project root, `../constants` from a suite one directory down.
+
+```ts
+// validation/constants.ts
+
+/** The logical design size (specs/overview.md). */
+export const FIELD_W = 1280;
+export const FIELD_H = 720;
+
+/** The level names the case fixes (specs/overview.md). */
+export const LEVELS = { title: "title", match: "match" } as const;
+
+/** The actor tag vocabulary (specs/actors.md). */
+export const TAGS = { paddle: "paddle", ball: "ball" } as const;
+
+/** The paddle's travel speed, in units per second (specs/paddles.md). */
+export const PADDLE_SPEED = 720;
+
+/* ---- What the specification leaves to the build ------------------------- */
+//
+// Read to drive the build, never compared against. `specs/controls.md` requires
+// a touch layout carrying the four movement actions and names none, so the
+// layout the build registered is the build's own choice.
+
+export { LAYOUT } from "../src/constants";
+```
+
+The build is seeded a `src/constants.ts` of its own, holding the same figures
+under the same names. `constants.ts` is the only file in the project that
+reaches that module, and it reaches it for the values the specification leaves
+to the build, which a check reads to drive the build. A figure a check asserts is
+transcribed instead: a figure read from the build asserts the build against
+itself, which every build passes, including one whose paddle travels at some
+other speed. The rule and the reasoning behind it are in
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
+
 ## The harness
 
 The harness builds an engine headlessly: a canvas from `@napi-rs/canvas`, which
@@ -92,7 +134,7 @@ import {
   type GameDefinition,
   type SurfaceMetrics,
 } from "@test-cabinet/structured-2d";
-import { FIELD_H, FIELD_W } from "../src/constants";
+import { FIELD_H, FIELD_W } from "./constants";
 import { game } from "../src/game";
 import type { Debug } from "./debug";
 
@@ -136,6 +178,12 @@ canvas is handed to `createEngine` through a cast and the engine draws through
 it exactly as it draws in a browser. The surface reports the logical design size
 at a device pixel ratio of `1` by default, which puts one device pixel on one
 logical unit and makes a sampled coordinate readable without arithmetic.
+
+The options a harness hands `createEngine` beyond the canvas, the clock, and the
+surface are the ones the case's `src/main.ts` hands it: the design size, the
+stage `background`, `imageSmoothing`, and the touch `layout`. A suite passes the
+same set, so the build runs under the harness exactly as it runs on the page,
+and a claim about the fit or the sampling holds in both places.
 
 ## Initialization order
 
@@ -198,13 +246,6 @@ the checks decide.
 // validation/debug.ts — the surface as the case specifies it
 export type Mode = "solo" | "versus";
 
-export interface BallPatch {
-  x?: number;
-  y?: number;
-  vx?: number;
-  vy?: number;
-}
-
 export interface Snapshot {
   level: string;
   phase: string;
@@ -216,7 +257,8 @@ export interface Snapshot {
 export interface Debug {
   version: number;
   startMatch(mode: Mode): void;
-  placeBall(patch: BallPatch): void;
+  setBallPosition(x: number, y: number): void;
+  setBallVelocity(vx: number, vy: number): void;
   snapshot(): Snapshot;
 }
 ```
@@ -237,9 +279,9 @@ A suite imports the build, so a case fixes three module paths and what each one
 exports. That contract is stated in the case's specification and is what gives
 every build of the case the same shape to check.
 
-| Module | Supplied by | Holds |
+| Module | Owned by | Holds |
 | --- | --- | --- |
-| `src/constants.ts` | The case | The design size, the palette, the level names, the actor tag vocabulary, the action names with the keys they bind, the cue names, and every tunable the specification fixes. |
+| `src/constants.ts` | The build | The build's copy of the design size, the palette, the level names, the actor tag vocabulary, the action names with the keys they bind, the cue names, and every tunable the specification fixes. It is seeded with the workspace and the build imports it. |
 | `src/game.ts` | The build | The `GameDefinition` the engine drives, whose instance's `initialize` returns the debug surface to the instrumentation spec. |
 | `src/main.ts` | The case | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it. |
 
@@ -250,11 +292,12 @@ observes transitions on `engine.events`, so none of that has to be exported by
 the build. The case fixes the tag vocabulary and the level names so that a check
 names things every build of the case agrees on.
 
-A suite imports `constants.ts` for the numbers and names its assertions are
-stated in and `game.ts` for the definition it drives. `main.ts` belongs to the
-built page, and a suite constructs its own engine instead. The surface reaches a
-suite only through `engine.debug`, typed by the suite's own declaration of the
-spec, and each of its operations acts on the world the engine holds.
+A suite imports `game.ts` for the definition it drives, and takes every figure
+it asserts from the project's own
+[`constants.ts`](#the-figures-a-check-asserts). `main.ts` belongs to the built
+page, and a suite constructs its own engine instead. The surface reaches a suite
+only through `engine.debug`, typed by the suite's own declaration of the spec,
+and each of its operations acts on the world the engine holds.
 
 The build writes `game.ts` against the other two, and its instance's
 `initialize` returns the surface. It is free in where it implements the surface

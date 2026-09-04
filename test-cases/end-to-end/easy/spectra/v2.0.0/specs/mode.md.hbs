@@ -1,0 +1,88 @@
+{{#if (eq variant.slug "overload")}}
+# Spectra — Overload
+
+This file defines the mode this build ships and the one rule it settles: what a
+mismatched shot does to the drone it hits. Everything else about a mismatched shot,
+including that the bullet is consumed and destroys nothing, is in `specs/bands.md`.
+
+## The mode
+
+The build ships one playable mode, Overload. Its entry on the title menu is
+`OVERLOAD`, the first item of `TITLE_ITEMS`, and `specs/ui.md` states the menu it
+sits in.
+
+In Overload a wrong-band shot does not go to waste: it feeds the drone it hits,
+charging it toward an overload that makes it more dangerous.
+
+## Charge
+
+Every drone carries a charge, a whole number from `0` to `OVERLOAD_AT` (`3`)
+counting the mismatched shots it has taken since it last overloaded. A drone is
+created at charge `0`, and play never carries it above `OVERLOAD_AT - 1` (`2`).
+
+- A mismatched shot into a drone below `OVERLOAD_AT - 1` adds `1` charge to it.
+- A mismatched shot into a drone already at `OVERLOAD_AT - 1` or above overloads it
+  instead: it runs the reaction for its kind, below, and its charge returns to `0`.
+  The third mismatched shot a drone takes therefore overloads it.
+- A drone that has overloaded takes charge again from `0`, so it can be overloaded
+  more than once.
+- A shot whose effective band matches still destroys the drone's exposed layer,
+  whatever charge it carries.
+- A Flux struck while it shimmers takes no charge and is not destroyed. It has no
+  band to mismatch.
+- A mismatched shot, and the shot that overloads a drone, each add nothing to the
+  score and nothing to the resonance meter.
+
+## The telegraph
+
+A drone's charge is legible on the drone itself. Every drone that carries at least
+one charge draws a telegraph within its own footprint that reads how far along it
+is: the telegraph changes visibly with each charge added, so a drone at charge `1`
+and a drone at charge `2` are told apart at a glance, and a drone at charge `0`
+draws none at all. A drone that has just overloaded is back at charge `0` and draws
+none.
+
+Where on the drone the telegraph sits and how it is drawn are yours.
+
+## The reactions
+
+Each kind overloads in a way true to it.
+
+| Kind | Reaction |
+| --- | --- |
+| Shard | It enters phase `diving` in the frame it overloads and plunges down the field toward the ship's current `x`, at `OVERLOAD_DIVE_SCALE` (`1.6`) times the dive speed `specs/swarm.md` states for the stage. |
+| Flux | Its stored band flips to the opposite one and its band clock returns to `0`, ending the window it was in, and it fires `OVERLOAD_FLUX_SPREAD` (`3`) enemy bullets at once, all carrying its new band, fanned symmetrically about straight down on headings `OVERLOAD_FLUX_SPREAD_ANGLE` (`20`) degrees apart, so an odd spread puts its middle shot straight down. It then runs its rhythm on from the fresh window. |
+| Prism | Its exposed layer bursts, firing exactly two enemy bullets at once, one cyan and one magenta. If the exposed layer is the shell, it also adds `OVERLOAD_PRISM_ESCORTS` (`1`) Shard beside it, of a band drawn from the game's own generator, entering as an escort does. With only the core left it adds none. |
+
+An overload destroys nothing, takes no layer off a Prism, and leaves the drone's
+band, slot, and shell exactly as they were except where the table above changes
+them.
+
+Each overload plays the `overload` cue in the frame it happens, a distinct short
+sound beside the nine `specs/ui.md` states.
+{{else}}
+# Spectra — Sortie
+
+This file defines the mode this build ships and the one rule it settles: what a
+mismatched shot does to the drone it hits. Everything else about a mismatched shot,
+including that the bullet is consumed and destroys nothing, is in `specs/bands.md`.
+
+## The mode
+
+The build ships one playable mode, Sortie. Its entry on the title menu is `LAUNCH`,
+the first item of `TITLE_ITEMS`, and `specs/ui.md` states the menu it sits in.
+
+In Sortie the ship flies against wave after wave of the swarm, flipping bands to
+match what it fires at and to shield what fires at it, clearing each stage and
+pressing into faster ones until the last life is lost.
+
+## A mismatched shot is wasted
+
+A shot whose effective band is the opposite of the drone's leaves that drone exactly
+as it was. Its phase, its position, its slot, its stored band, its band clock, its
+shell, and its course are all unchanged, and it is neither redirected nor marked in
+any way.
+
+The shot adds nothing to the score and nothing to the resonance meter, and it plays
+no cue of its own. Sortie adds no sound beside the nine `specs/ui.md` states.
+{{/if}}

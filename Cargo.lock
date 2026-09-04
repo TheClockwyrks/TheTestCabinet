@@ -7053,6 +7053,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "test-cabinet-audio-core",
  "test-cabinet-draw",
  "test-cabinet-model-core",
  "test-cabinet-telemetry",

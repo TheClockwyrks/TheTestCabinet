@@ -4,9 +4,14 @@
 // real bounce imparts spin from that motion, curving the ball's flight. The
 // contact sits below mid-field for the same reason as its player-one sibling: the
 // swing needs room upstream to be travelling when it strikes.
+//
+// The field holds that ball alone: both obstacles are removed, so nothing on
+// the approach can turn the ball before it reaches the paddle. Only the struck
+// paddle is taken from the player — `setPaddleDriven` changes one side — and
+// the far one, which cannot be removed, is driven out of the lane.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   LEAD_TICKS,
@@ -14,7 +19,7 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
+  enterPlaying,
   type Harness,
 } from "../harness";
 
@@ -56,7 +61,7 @@ afterEach(() => {
 });
 
 it("curves the ball off a downward swing of player two's paddle", async () => {
-  await startPlaying(harness, "versus");
+  enterPlaying(harness, "versus");
   arrangePaddleHit(harness, "right", {
     cy: CONTACT_CY,
     vy: PADDLE_SPEED,

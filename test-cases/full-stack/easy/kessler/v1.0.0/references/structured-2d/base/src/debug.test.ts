@@ -1,0 +1,308 @@
+// The debug surface of specs/instrumentation.md, driven exactly as a caller
+// drives it: through `engine.debug` on a real engine, with `engine.advance`
+// running the ticks between poses. Each pose is posed and read back, the
+// domains fail loudly, and the no-op cases the spec fixes change nothing.
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { RINGS } from "./constants";
+import { ringSpeedForWave } from "./figures";
+import { createHarness, type Harness } from "./harness";
+import { pointAt, polarOf } from "./polar";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h.dispose();
+});
+
+describe("reset", () => {
+  it("restores the boot state, both switches on", async () => {
+    h.debug.setScreen("playing");
+    h.debug.setScore(500);
+    h.debug.setWaveAdvance(false);
+    await h.step(1);
+    h.debug.reset();
+    const snap = h.debug.snapshot();
+    expect(snap.screen).toBe("title");
+    expect(snap.score).toBe(0);
+    expect(snap.ticks).toBe(0);
+    expect(snap.waveAdvance).toBe(true);
+  });
+
+  it("rejects a malformed seed", () => {
+    expect(() => h.debug.reset({ seed: Number.NaN })).toThrow();
+  });
+});
+
+describe("setScreen", () => {
+  it("rejects an unknown screen", () => {
+    expect(() => h.debug.setScreen("menu" as never)).toThrow();
+  });
+
+  it("playing starts a fresh session with a parked ball, silently", async () => {
+    h.debug.setScreen("playing");
+    await h.step(1);
+    const snap = h.debug.snapshot();
+    expect(snap.screen).toBe("playing");
+    expect(snap.score).toBe(0);
+    expect(snap.lives).toBe(3);
+    expect(snap.wave).toBe(1);
+    expect(snap.balls).toHaveLength(1);
+    expect(snap.balls[0].parked).toBe(true);
+    expect(h.cues).toEqual([]);
+  });
+
+  it("title discards the session exactly as QUIT does", () => {
+    h.debug.setScreen("playing");
+    h.debug.setScore(900);
+    h.debug.setScreen("title");
+    const snap = h.debug.snapshot();
+    expect(snap.screen).toBe("title");
+    expect(snap.score).toBe(0);
+    expect(snap.balls).toEqual([]);
+  });
+
+  it("waveclear runs out into the next wave with the score intact", async () => {
+    h.debug.setScreen("playing");
+    h.debug.setScore(700);
+    h.debug.setScreen("waveclear");
+    expect(h.debug.snapshot().screen).toBe("waveclear");
+    await h.step(180);
+    const snap = h.debug.snapshot();
+    expect(snap.screen).toBe("playing");
+    expect(snap.wave).toBe(2);
+    expect(snap.score).toBe(700);
+  });
+
+  it("paused, gameover, and howto enter directly", () => {
+    for (const name of ["paused", "gameover", "howto"] as const) {
+      h.debug.setScreen(name);
+      expect(h.debug.snapshot().screen).toBe(name);
+      expect(h.debug.snapshot().menu.index).toBe(0);
+    }
+  });
+});
+
+describe("score, lives, wave", () => {
+  it("poses score and lives, rejecting anything but whole numbers >= 0", () => {
+    h.debug.setScore(12345);
+    h.debug.setLives(7);
+    expect(h.debug.snapshot().score).toBe(12345);
+    expect(h.debug.snapshot().lives).toBe(7);
+    expect(() => h.debug.setScore(-1)).toThrow();
+    expect(() => h.debug.setScore(1.5)).toThrow();
+    expect(() => h.debug.setLives(-2)).toThrow();
+  });
+
+  it("setWave puts the wave figures in force without touching the field", () => {
+    h.debug.setScreen("playing");
+    h.debug.setRingAngle(2, 77);
+    h.debug.setWave(4);
+    const snap = h.debug.snapshot();
+    expect(snap.wave).toBe(4);
+    expect(snap.rings[1].speedDegPerSec).toBe(ringSpeedForWave(RINGS[1], 4));
+    expect(snap.rings[2].speedDegPerSec).toBe(ringSpeedForWave(RINGS[2], 4));
+    // The rings keep their targets and their angles.
+    expect(snap.rings[1].angleDeg).toBe(77);
+    expect(snap.rings.map((r) => r.targets.length)).toEqual([12, 16, 20]);
+  });
+
+  it("setWave overwrites a posed ring speed", () => {
+    h.debug.setRingSpeed(1, 99);
+    h.debug.setWave(2);
+    expect(h.debug.snapshot().rings[0].speedDegPerSec).toBe(0);
+  });
+
+  it("setWave sets the ball speed a launch serves at", () => {
+    h.debug.setScreen("playing");
+    h.debug.setWave(9);
+    h.debug.launchBall();
+    const ball = h.debug.snapshot().balls[0];
+    expect(Math.hypot(ball.vx, ball.vy)).toBeCloseTo(480, 6);
+  });
+
+  it("rejects a wave under 1", () => {
+    expect(() => h.debug.setWave(0)).toThrow();
+  });
+});
+
+describe("the deflector and balls", () => {
+  it("setPaddleAngle normalizes and carries the parked ball", () => {
+    h.debug.setScreen("playing");
+    h.debug.setPaddleAngle(-90);
+    const snap = h.debug.snapshot();
+    expect(snap.paddle.angleDeg).toBe(270);
+    const at = pointAt(194, 270);
+    expect(snap.balls[0].x).toBeCloseTo(at.x, 9);
+    expect(snap.balls[0].y).toBeCloseTo(at.y, 9);
+  });
+
+  it("launchBall acts as Space and is a no-op without a parked ball", () => {
+    h.debug.setScreen("playing");
+    h.debug.launchBall();
+    expect(h.debug.snapshot().balls[0].parked).toBe(false);
+    h.debug.launchBall();
+    expect(h.debug.snapshot().balls).toHaveLength(1);
+  });
+
+  it("clearBalls empties the field without a life loss", async () => {
+    h.debug.setScreen("playing");
+    h.debug.clearBalls();
+    expect(h.debug.snapshot().balls).toEqual([]);
+    await h.step(1);
+    expect(h.debug.snapshot().lives).toBe(3);
+    expect(h.debug.snapshot().screen).toBe("playing");
+  });
+
+  it("spawnBall appends in spawn order and stops at the cap", () => {
+    h.debug.setScreen("playing");
+    for (let i = 0; i < 7; i += 1) h.debug.spawnBall(600, 500, 10 * i, 0);
+    const balls = h.debug.snapshot().balls;
+    expect(balls).toHaveLength(6);
+    expect(balls[1].vx).toBe(0);
+    expect(balls[5].vx).toBe(40);
+  });
+
+  it("spawnBall marks the ball piercing exactly when pierce is in force", () => {
+    h.debug.setScreen("playing");
+    h.debug.clearBalls();
+    h.debug.spawnBall(600, 500, 0, 0);
+    expect(h.debug.snapshot().balls[0].piercing).toBe(false);
+    h.debug.setEffectTicks("pierce", 10);
+    h.debug.spawnBall(620, 500, 0, 0);
+    expect(h.debug.snapshot().balls.map((b) => b.piercing)).toEqual([
+      true,
+      true,
+    ]);
+  });
+
+  it("parkBall parks one ball, and only one", () => {
+    h.debug.setScreen("playing");
+    h.debug.clearBalls();
+    h.debug.parkBall();
+    h.debug.parkBall();
+    const balls = h.debug.snapshot().balls;
+    expect(balls).toHaveLength(1);
+    expect(balls[0].parked).toBe(true);
+    const at = polarOf(balls[0].x, balls[0].y);
+    expect(at.r).toBeCloseTo(194, 9);
+  });
+
+  it("rejects non-finite ball figures", () => {
+    expect(() => h.debug.spawnBall(Number.NaN, 500, 0, 0)).toThrow();
+  });
+});
+
+describe("targets and rings", () => {
+  it("clearTargets empties every ring with no clearing event", () => {
+    h.debug.setScreen("playing");
+    h.debug.clearTargets();
+    const snap = h.debug.snapshot();
+    expect(snap.rings.map((r) => r.targets.length)).toEqual([0, 0, 0]);
+    expect(snap.screen).toBe("playing");
+    expect(snap.score).toBe(0);
+    expect(h.cues).toEqual([]);
+  });
+
+  it("spawnTarget places a target, replacing what the slot holds", () => {
+    h.debug.clearTargets();
+    h.debug.spawnTarget(2, 3, 5);
+    expect(h.debug.snapshot().rings[1].targets).toEqual([{ slot: 3, hp: 5 }]);
+  });
+
+  it("validates ring, slot, and hp domains", () => {
+    expect(() => h.debug.spawnTarget(0, 0, 1)).toThrow();
+    expect(() => h.debug.spawnTarget(4, 0, 1)).toThrow();
+    expect(() => h.debug.spawnTarget(1, 12, 1)).toThrow();
+    expect(() => h.debug.spawnTarget(3, 20, 1)).toThrow();
+    expect(() => h.debug.spawnTarget(1, 0, 0)).toThrow();
+    expect(() => h.debug.setRingAngle(5, 0)).toThrow();
+    expect(() => h.debug.setRingSpeed(0, 10)).toThrow();
+  });
+
+  it("setRingAngle normalizes and moves the targets with the ring", () => {
+    h.debug.setRingAngle(1, 450);
+    expect(h.debug.snapshot().rings[0].angleDeg).toBe(90);
+  });
+
+  it("setRingSpeed poses a speed that holds until setWave", () => {
+    h.debug.setRingSpeed(1, -33);
+    expect(h.debug.snapshot().rings[0].speedDegPerSec).toBe(-33);
+  });
+});
+
+describe("pods, effects, and switches", () => {
+  it("spawnPod adds a pod at the point's polar figures", () => {
+    const at = pointAt(300, 45);
+    h.debug.spawnPod("narrow", at.x, at.y);
+    const pods = h.debug.snapshot().pods;
+    expect(pods).toHaveLength(1);
+    expect(pods[0].kind).toBe("narrow");
+    expect(pods[0].x).toBeCloseTo(at.x, 9);
+    expect(pods[0].y).toBeCloseTo(at.y, 9);
+    h.debug.clearPods();
+    expect(h.debug.snapshot().pods).toEqual([]);
+  });
+
+  it("rejects an unknown pod kind", () => {
+    expect(() => h.debug.spawnPod("magnet" as never, 600, 500)).toThrow();
+  });
+
+  it("setEffectTicks puts a span effect in force with the mutual cancel", () => {
+    h.debug.setEffectTicks("widen", 100);
+    expect(h.debug.snapshot().effects.widenTicks).toBe(100);
+    expect(h.debug.snapshot().paddle.spanDeg).toBe(72);
+    h.debug.setEffectTicks("narrow", 50);
+    const effects = h.debug.snapshot().effects;
+    expect(effects.narrowTicks).toBe(50);
+    expect(effects.widenTicks).toBe(0);
+    expect(h.debug.snapshot().paddle.spanDeg).toBe(30);
+    expect(h.debug.snapshot().score).toBe(0);
+  });
+
+  it("setEffectTicks 0 ends the effect and restores the baseline", () => {
+    h.debug.setEffectTicks("narrow", 50);
+    h.debug.setEffectTicks("narrow", 0);
+    expect(h.debug.snapshot().paddle.spanDeg).toBe(48);
+    h.debug.setEffectTicks("pierce", 10);
+    h.debug.setEffectTicks("pierce", 0);
+    expect(h.debug.snapshot().effects.pierceTicks).toBe(0);
+  });
+
+  it("pierce runs alongside a span effect", () => {
+    h.debug.setEffectTicks("widen", 100);
+    h.debug.setEffectTicks("pierce", 60);
+    const effects = h.debug.snapshot().effects;
+    expect(effects.widenTicks).toBe(100);
+    expect(effects.pierceTicks).toBe(60);
+  });
+
+  it("validates the effect kind and tick count", () => {
+    expect(() => h.debug.setEffectTicks("shield" as never, 1)).toThrow();
+    expect(() => h.debug.setEffectTicks("widen", -1)).toThrow();
+    expect(() => h.debug.setEffectTicks("widen", 1.5)).toThrow();
+  });
+
+  it("setShield raises and removes the shield without scoring", () => {
+    h.debug.setShield(true);
+    expect(h.debug.snapshot().effects.shieldActive).toBe(true);
+    expect(h.debug.snapshot().score).toBe(0);
+    h.debug.setShield(false);
+    expect(h.debug.snapshot().effects.shieldActive).toBe(false);
+    expect(() => h.debug.setShield(1 as never)).toThrow();
+  });
+
+  it("poses the two driver switches", () => {
+    h.debug.setWaveAdvance(false);
+    h.debug.setPodSpawn(false);
+    expect(h.debug.snapshot().waveAdvance).toBe(false);
+    expect(h.debug.snapshot().podSpawn).toBe(false);
+    h.debug.setWaveAdvance(true);
+    expect(h.debug.snapshot().waveAdvance).toBe(true);
+    expect(() => h.debug.setPodSpawn("yes" as never)).toThrow();
+  });
+});

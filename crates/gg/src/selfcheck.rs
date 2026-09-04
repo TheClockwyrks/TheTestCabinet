@@ -30,10 +30,14 @@
 //!
 //! So this is a subcommand rather than a test, its whole input is the binary and the environment
 //! around it, and what it drives is the real thing. The gate is `gg selfcheck` inside a built `-gg`
-//! variant of each ENVIRONMENT the twenty-six variants fall into — the image a lineage is rooted at
-//! plus every package a run image installs on the way down, which is four groups and not the two
-//! parents it looks like. `containers/build.sh` names them and re-derives the grouping on every
-//! gated build; the documentation page
+//! variant of each ENVIRONMENT the twenty-seven variants fall into — the image a lineage is rooted
+//! at plus every package a run image installs on the way down, which is five groups and not the two
+//! parents it looks like. Two of the five carry the very library the failure above was about and
+//! are still not one environment: the mesa render images and the 3D full-stack image both get
+//! `libicu72` from `mesa-vulkan-drivers`, but only the second is layered onto base-wasm's Rust/wasm
+//! packages as well, and what an environment is made of is the whole package set rather than the
+//! one library that happened to be missing. `containers/build.sh` names them and re-derives the
+//! grouping on every gated build; the documentation page
 //! (`apps/docs/src/content/docs/gg/languages/selfcheck.md`) is where that placement is argued.
 //!
 //! # Why it drives the real bootstrap turn

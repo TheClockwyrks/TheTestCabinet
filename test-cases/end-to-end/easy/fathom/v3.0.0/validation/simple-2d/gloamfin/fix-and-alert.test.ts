@@ -38,7 +38,7 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { BRIGHT_HOLD, GLOAMFIN_HEAR, TICK_HZ } from "../../src/constants";
+import { BRIGHT_HOLD, GLOAMFIN_HEAR, TICK_HZ } from "../constants";
 import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

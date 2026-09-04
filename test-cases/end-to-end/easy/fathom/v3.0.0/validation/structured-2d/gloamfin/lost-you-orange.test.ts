@@ -41,7 +41,7 @@ import {
   assertNotEqual,
   fail,
 } from "../assert";
-import { GLOAMFIN_SEARCH_DELAY, TICK_HZ } from "../../src/constants";
+import { GLOAMFIN_SEARCH_DELAY, TICK_HZ } from "../constants";
 import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

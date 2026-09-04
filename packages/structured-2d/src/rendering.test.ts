@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Actor } from "./actors";
 import { WorldCamera } from "./camera";
 import { ColliderComponent } from "./collision";
@@ -116,6 +116,7 @@ function scene(
       viewport,
       frame,
       background: null,
+      imageSmoothing: true,
       width: 640,
       height: 360,
       ...overrides,
@@ -195,6 +196,77 @@ describe("the clear", () => {
     expect(stub.log.indexOf("clearRect(0,0,800,450)")).toBeLessThan(
       stub.log.indexOf("fill()"),
     );
+  });
+});
+
+describe("image smoothing", () => {
+  const image = { width: 16, height: 24 } as unknown as ImageBitmap;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sets the context's smoothing from the scene after the clear and before any component draws", () => {
+    const { scene: frame, stub } = scene(
+      [actorWith([new SpriteComponent({ image })])],
+      { imageSmoothing: false },
+    );
+    new RenderPipeline().render(frame);
+    const set = stub.log.indexOf("set:imageSmoothingEnabled=false");
+    expect(set).toBeGreaterThan(stub.log.indexOf("clearRect(0,0,800,450)"));
+    expect(set).toBeLessThan(
+      stub.log.findIndex((entry) => entry.startsWith("drawImage(")),
+    );
+  });
+
+  it("sets it every frame, whatever the frame draws", () => {
+    const { scene: frame, stub } = scene([]);
+    const pipeline = new RenderPipeline();
+    pipeline.render(frame);
+    pipeline.render(frame);
+    expect(
+      stub.log.filter((entry) => entry === "set:imageSmoothingEnabled=true"),
+    ).toHaveLength(2);
+  });
+
+  it("hands a DrawComponent the context already carrying the setting", () => {
+    let seen: boolean | null = null;
+    class Probe extends DrawComponent {
+      draw(api: DrawApi): void {
+        seen = api.ctx.imageSmoothingEnabled;
+      }
+    }
+    const { scene: frame } = scene([actorWith([new Probe()])], {
+      imageSmoothing: false,
+    });
+    new RenderPipeline().render(frame);
+    expect(seen).toBe(false);
+  });
+
+  it("samples the tint scratch the way the frame does", () => {
+    // A host with a second canvas: the scratch is a recording context of its
+    // own, so what the tint prepared on it is observable.
+    const scratch = contextStub(1, 1);
+    vi.spyOn(document, "createElement").mockReturnValue(
+      scratch.ctx.canvas as unknown as HTMLElement,
+    );
+    (scratch.ctx.canvas as unknown as Record<string, unknown>)["getContext"] =
+      (): CanvasRenderingContext2D => scratch.ctx;
+
+    const sprite = new SpriteComponent({ image, tint: "#ff0000" });
+    const { scene: frame, stub } = scene([actorWith([sprite])], {
+      imageSmoothing: false,
+    });
+    new RenderPipeline().render(frame);
+
+    const set = scratch.log.indexOf("set:imageSmoothingEnabled=false");
+    expect(set).toBeGreaterThanOrEqual(0);
+    expect(set).toBeLessThan(
+      scratch.log.findIndex((entry) => entry.startsWith("drawImage(")),
+    );
+    // The main context blits the flattened scratch, under its own setting.
+    expect(stub.log).toContain("set:imageSmoothingEnabled=false");
+    expect(stub.log).toContain("drawImage([object Object],-8,-12,16,24)");
   });
 });
 
@@ -622,6 +694,176 @@ describe("the camera and the transform", () => {
     expect(camera.x).toBe(1000 - 320);
     // The vertical extent (360) exceeds the bounds' 100, so the axis centers.
     expect(camera.y).toBe(50);
+  });
+});
+
+describe("screen space", () => {
+  /** A viewport with a fit and letterbox bars, so the two maps are told apart. */
+  const fitted: Viewport = {
+    width: 640,
+    height: 360,
+    scale: 2,
+    offsetX: 10,
+    offsetY: 20,
+  };
+
+  /** A camera moved, zoomed, and turned, so world space is nowhere near logical. */
+  function movedCamera(): WorldCamera {
+    const camera = new WorldCamera(640, 360);
+    camera.x = 5000;
+    camera.y = -300;
+    camera.zoom = 3;
+    camera.rotation = 1;
+    return camera;
+  }
+
+  function screenBox(fill = "#hud"): ShapeComponent {
+    const component = box(fill);
+    component.space = "screen";
+    return component;
+  }
+
+  it("draws a screen component under the viewport alone, at its transform in logical units", () => {
+    const hud = actorWith([screenBox()], { x: 600, y: 20 });
+    const world = fakeWorld([hud], movedCamera());
+    const { scene: frame, stub } = scene([hud], { world, viewport: fitted });
+    new RenderPipeline().render(frame);
+
+    const start = stub.log.indexOf("setTransform(2,0,0,2,10,20)");
+    expect(start).toBeGreaterThan(-1);
+    // The camera is never pushed on top: the viewport transform is followed
+    // directly by the path, in logical coordinates.
+    expect(stub.log.slice(start, start + 3)).toEqual([
+      "setTransform(2,0,0,2,10,20)",
+      "beginPath()",
+      "rect(595,15,10,10)",
+    ]);
+    expect(stub.log).not.toContain("translate(320,180)");
+  });
+
+  it("holds its place whatever the camera does, while a world component moves", () => {
+    const hud = actorWith([screenBox("#hud")], { x: 600, y: 20 });
+    const prop = actorWith([box("#prop")], { x: 100, y: 50 });
+
+    const still = new WorldCamera(640, 360);
+    const first = scene([hud, prop], { world: fakeWorld([hud, prop], still) });
+    new RenderPipeline().render(first.scene);
+
+    const moved = fakeWorld([hud, prop], movedCamera());
+    const second = scene([hud, prop], { world: moved });
+    new RenderPipeline().render(second.scene);
+
+    const rects = (log: string[]): string[] =>
+      log.filter((entry) => entry.startsWith("rect("));
+    // Both frames record the same operations, in spawn order; only the
+    // transform the world component draws under changed.
+    expect(rects(first.stub.log)).toEqual([
+      "rect(595,15,10,10)",
+      "rect(95,45,10,10)",
+    ]);
+    expect(rects(second.stub.log)).toEqual(rects(first.stub.log));
+    expect(first.stub.log).toContain("translate(-320,-180)");
+    expect(second.stub.log).toContain("translate(-5000,300)");
+    expect(second.stub.log).toContain("scale(3,3)");
+  });
+
+  it("composes the offset onto the actor, read in logical units", () => {
+    const label = screenBox();
+    label.offset.x = -10;
+    label.offset.y = 5;
+    const hud = actorWith([label], { x: 600, y: 20 });
+    const { scene: frame, stub } = scene([hud]);
+    new RenderPipeline().render(frame);
+    expect(stub.log).toContain("rect(585,20,10,10)");
+  });
+
+  it("pivots a rotated screen component about its logical position", () => {
+    const spun = screenBox();
+    const hud = actorWith([spun], { x: 600, y: 20, rotation: 0.5 });
+    const { scene: frame, stub } = scene([hud], { viewport: fitted });
+    new RenderPipeline().render(frame);
+
+    const start = stub.log.indexOf("setTransform(2,0,0,2,10,20)");
+    expect(stub.log.slice(start, start + 5)).toEqual([
+      "setTransform(2,0,0,2,10,20)",
+      "translate(600,20)",
+      "rotate(0.5)",
+      "scale(1,1)",
+      "translate(-600,-20)",
+    ]);
+    expect(stub.log).toContain("rect(595,15,10,10)");
+  });
+
+  it("keeps its layer in the one sort with world components", () => {
+    const under = box("#under");
+    const hud = screenBox("#hud");
+    hud.layer = 5;
+    const over = box("#over");
+    over.layer = 10;
+    const { scene: frame, stub } = scene([
+      actorWith([over]),
+      actorWith([hud]),
+      actorWith([under]),
+    ]);
+    new RenderPipeline().render(frame);
+    expect(fills(stub.log)).toEqual(["#under", "#hud", "#over"]);
+  });
+
+  it("draws text and sprites in logical units under the viewport alone", () => {
+    const image = { width: 16, height: 24 } as unknown as ImageBitmap;
+    const label = new TextComponent({ text: "hi", font: "24px monospace" });
+    label.space = "screen";
+    const icon = new SpriteComponent({ image });
+    icon.space = "screen";
+    const hud = actorWith([label, icon], { x: 320, y: 30 });
+    const world = fakeWorld([hud], movedCamera());
+    const { scene: frame, stub } = scene([hud], { world, viewport: fitted });
+    new RenderPipeline().render(frame);
+
+    expect(stub.log).toContain("fillText(hi,320,30)");
+    expect(stub.log).toContain("drawImage([object Object],312,18,16,24)");
+    // Each component starts from the viewport alone; the camera's zoom never
+    // reaches the context.
+    expect(stub.log).not.toContain("scale(3,3)");
+  });
+
+  it("hands a screen DrawComponent the viewport transform and names the space", () => {
+    const seen: string[] = [];
+    class Probe extends DrawComponent {
+      draw(api: DrawApi): void {
+        seen.push(api.space);
+        api.ctx.fillRect(1, 2, 3, 4);
+      }
+    }
+    const onScreen = new Probe();
+    onScreen.space = "screen";
+    const inWorld = new Probe();
+    inWorld.layer = 1;
+    const hud = actorWith([onScreen, inWorld], { x: 77, y: 88 });
+    const world = fakeWorld([hud], movedCamera());
+    const { scene: frame, stub } = scene([hud], { world, viewport: fitted });
+    new RenderPipeline().render(frame);
+
+    expect(seen).toEqual(["screen", "world"]);
+    const draws = stub.log
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => entry === "fillRect(1,2,3,4)")
+      .map(({ index }) => index);
+    expect(draws).toHaveLength(2);
+    // The screen draw follows the viewport transform directly; the world draw
+    // follows the camera composed onto it.
+    expect(stub.log[draws[0]! - 1]).toBe("setTransform(2,0,0,2,10,20)");
+    expect(stub.log[draws[1]! - 1]).toBe("translate(-5000,300)");
+  });
+
+  it("applies the render modes to a screen component as to any other", () => {
+    const pipeline = new RenderPipeline();
+    pipeline.setMode("wireframe");
+    const { scene: frame, stub } = scene([actorWith([screenBox("#hud")])]);
+    pipeline.render(frame);
+    expect(stub.log).toContain("stroke()");
+    expect(stub.log).not.toContain("fill()");
+    expect(stub.log).toContain("set:strokeStyle=#hud");
   });
 });
 

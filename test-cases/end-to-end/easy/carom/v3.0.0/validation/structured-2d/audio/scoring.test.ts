@@ -1,23 +1,24 @@
 // Carom — audio/scoring: the `score` cue plays on the frame a point is scored.
 //
-// A real ball is driven out of the right goal, down the mid-field lane that
-// clears both obstacles, so the point is scored by the build's own scoring code
-// rather than posed. The frame player one's score goes up is the frame the cue
-// must carry.
+// A real ball is driven out of the right goal, down the mid-field lane, so the
+// point is scored by the build's own scoring code rather than posed. The frame
+// player one's score goes up is the frame the cue must carry.
 //
-// Nothing else may sound on the way. The drive crosses an empty lane, so the
-// cues this collects are the point's alone — which is what tells a build that
-// announces the point apart from one that plays a bounce blip as the ball leaves
-// the field.
+// Nothing else may sound on the way. `arrangeGoal` opens live play over one ball
+// and an EMPTY field — no obstacle is on it to be banked off, and both paddles
+// are taken from the player and held out of the lane, which is the one
+// containment specs/instrumentation.md provides an operation for — so the flight
+// is a straight line and the cues this collects are the point's alone. That is
+// what tells a build that announces the point apart from one that plays a bounce
+// blip as the ball leaves the field.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../../src/constants";
+import { CUES } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
   createHarness,
-  startPlaying,
   watchCues,
   type Harness,
 } from "../harness";
@@ -44,8 +45,7 @@ afterEach(() => {
 });
 
 it("plays the score cue on the frame the point lands", async () => {
-  await startPlaying(h, "versus");
-  arrangeGoal(h, "right");
+  await arrangeGoal(h, "right");
 
   const played = watchCues(h);
   const point = await captureReplay(h, "score", async () => {

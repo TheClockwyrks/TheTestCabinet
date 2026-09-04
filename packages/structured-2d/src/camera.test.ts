@@ -278,6 +278,61 @@ describe("domSurface", () => {
 
     expect(surface.cssWidth()).toBe(900);
   });
+
+  it("claims the browser's gestures on the element, and gives them back", () => {
+    const canvas = laidOutCanvas(400, 300);
+    canvas.style.touchAction = "pan-y";
+
+    const give = domSurface(canvas).claimGestures?.();
+
+    expect(canvas.style.touchAction).toBe("none");
+    expect(canvas.style.userSelect).toBe("none");
+
+    give?.();
+
+    expect(canvas.style.touchAction).toBe("pan-y");
+    expect(canvas.style.userSelect).toBe("");
+  });
+
+  it("swallows the context menu and the wheel's page scroll while claimed", () => {
+    const canvas = laidOutCanvas(400, 300);
+    const give = domSurface(canvas).claimGestures?.();
+
+    const menu = new Event("contextmenu", { cancelable: true });
+    const wheel = new Event("wheel", { cancelable: true });
+    canvas.dispatchEvent(menu);
+    canvas.dispatchEvent(wheel);
+
+    expect(menu.defaultPrevented).toBe(true);
+    expect(wheel.defaultPrevented).toBe(true);
+
+    give?.();
+
+    const after = new Event("contextmenu", { cancelable: true });
+    canvas.dispatchEvent(after);
+
+    expect(after.defaultPrevented).toBe(false);
+  });
+
+  it("captures and releases a pointer on the element, and survives one that is gone", () => {
+    const canvas = laidOutCanvas(400, 300);
+    const captured: number[] = [];
+    const released: number[] = [];
+    canvas.setPointerCapture = (id: number): void => {
+      captured.push(id);
+    };
+    canvas.releasePointerCapture = (id: number): void => {
+      released.push(id);
+      throw new Error("no such pointer");
+    };
+    const surface = domSurface(canvas);
+
+    surface.capturePointer?.(7);
+    surface.releasePointerCapture?.(7);
+
+    expect(captured).toEqual([7]);
+    expect(released).toEqual([7]);
+  });
 });
 
 describe("syncCanvas", () => {

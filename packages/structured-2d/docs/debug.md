@@ -38,6 +38,10 @@ of the call rather than holding a world of its own.
 - A **reading** takes nothing and returns plain data, built at the call, so a
   caller compares and serializes it without holding a framework object.
 
+Each pose does one thing and takes scalars, so a caller arranges exactly the
+part of the world its scenario is about. A ball's position and its velocity are
+two operations, and a scenario that needs both calls both.
+
 Offer the operations a scenario is written in rather than the raw fields of the
 framework objects: placing a piece, starting a match, spawning a wave, reading
 the score. Each pose is an arrangement the game's own systems could have
@@ -57,13 +61,6 @@ import { Ball } from "./actors";
 import { RallyMode } from "./modes";
 import { TAG_BALL } from "./constants";
 
-export interface BallPatch {
-  x?: number;
-  y?: number;
-  vx?: number;
-  vy?: number;
-}
-
 export interface Snapshot {
   phase: string;
   ball: { x: number; y: number; vx: number; vy: number };
@@ -72,7 +69,8 @@ export interface Snapshot {
 
 export interface Debug {
   startMatch(mode: "solo" | "versus"): void;
-  placeBall(patch: BallPatch): void;
+  setBallPosition(x: number, y: number): void;
+  setBallVelocity(vx: number, vy: number): void;
   snapshot(): Snapshot;
 }
 
@@ -81,20 +79,28 @@ export class Arcade extends GameInstance<Debug> {
     api.input.register("up", { keys: ["KeyW", "ArrowUp"] });
     api.input.register("down", { keys: ["KeyS", "ArrowDown"] });
 
+    const ballActor = (): Ball => {
+      const world = this.engine.world;
+      return (
+        (world.byTag(TAG_BALL)[0] as Ball | undefined) ??
+        world.spawn(Ball, { tags: [TAG_BALL] })
+      );
+    };
+
     return {
       startMatch: (mode) => {
         const rally = this.engine.world.mode as RallyMode;
         rally.begin(mode);
       },
-      placeBall: (patch) => {
-        const world = this.engine.world;
-        const ball =
-          (world.byTag(TAG_BALL)[0] as Ball | undefined) ??
-          world.spawn(Ball, { tags: [TAG_BALL] });
-        if (patch.x !== undefined) ball.transform.x = patch.x;
-        if (patch.y !== undefined) ball.transform.y = patch.y;
-        if (patch.vx !== undefined) ball.velocity.x = patch.vx;
-        if (patch.vy !== undefined) ball.velocity.y = patch.vy;
+      setBallPosition: (x, y) => {
+        const ball = ballActor();
+        ball.transform.x = x;
+        ball.transform.y = y;
+      },
+      setBallVelocity: (vx, vy) => {
+        const ball = ballActor();
+        ball.velocity.x = vx;
+        ball.velocity.y = vy;
       },
       snapshot: () => {
         const world = this.engine.world;
@@ -139,7 +145,8 @@ const engine = createEngine({
 await engine.initialize();
 
 engine.debug.startMatch("versus");
-engine.debug.placeBall({ x: 600, y: 180, vx: 200, vy: 0 });
+engine.debug.setBallPosition(600, 180);
+engine.debug.setBallVelocity(200, 0);
 await engine.advance(60);
 
 const { score } = engine.debug.snapshot();
@@ -153,10 +160,10 @@ surface's own readings.
 
 ## A surface is not a diagnostic
 
-A diagnostic source names a value for a person reading the overlay; the surface
-names the operations a caller drives from code, and the readings it needs to
-decide what happened. The two are declared separately and neither replaces the
-other. See `diagnostics.md`.
+A diagnostic source names one value, of the types the overlay draws, for a
+person reading the panel; the surface names the operations a caller drives from
+code, and the readings it needs to decide what happened. The two are declared
+separately and neither replaces the other. See `diagnostics.md`.
 
 ## Errors
 

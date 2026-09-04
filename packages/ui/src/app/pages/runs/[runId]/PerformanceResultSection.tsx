@@ -99,8 +99,12 @@ export function PerformanceResultSection({ run }: { run: RunRecord }) {
           separate Proof tab so the run's evidence sits with its scored result. */}
       {active ? (
         <PlaybackOverlay
-          scenario={active}
+          scenarioUrl={active.scenarioUrl}
           moduleUrl={view?.moduleUrl ?? null}
+          label={active.input}
+          // What this engine checksummed at each graded tick, so the player can say
+          // so when the factory it is drawing is not the one that was scored.
+          graded={active.graded}
           onExit={() => setLaunched(null)}
         />
       ) : null}

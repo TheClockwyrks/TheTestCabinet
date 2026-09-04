@@ -4,11 +4,16 @@
 // specs/playfield.md: obstacle A's center y is
 // `220 + OBSTACLE_SWAY_AMP * sin(2*pi * t / OBSTACLE_SWAY_PERIOD)` and B's is
 // `500 - OBSTACLE_SWAY_AMP * sin(...)`, with `x` unchanged, and the live pose
-// is recomputed from the clock. `setObstacleClock` poses the clock and holds
-// it there, so each obstacle's center is read back at two posed times a quarter
-// period apart (upright at 0, and at the peak of the sway) against that
-// formula, within a unit. Nothing here computes the pose: it poses the CLOCK
-// and reads what the build's own update made of it.
+// is recomputed from the clock. `setObstacleClock` poses the clock and
+// `setObstacleClockRunning(false)` holds it there, so each obstacle's center is
+// read back at two posed times a quarter period apart (upright at 0, and at the
+// peak of the sway) against that formula, within a unit. Nothing here computes
+// the pose: it poses the CLOCK and reads what the build's own update made of it.
+//
+// The field is emptied and the two obstacles are spawned back onto it alone.
+// The anti-phase is a fact about the pair and nothing else, so nothing else is
+// on the field to be swayed, struck, or watched — the clip is two bars sliding
+// past each other on an empty field.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -21,8 +26,20 @@ import {
   OBSTACLE_SWAY_AMP,
   OBSTACLE_SWAY_PERIOD,
 } from "../constants";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { PEAK_SWAY_T, poseObstacles, type ObstaclePose } from "./harness";
+import {
+  captureReplay,
+  createHarness,
+  isolateObstacles,
+  openCountdown,
+  type Harness,
+} from "../harness";
+import {
+  BOTH_OBSTACLES,
+  PEAK_SWAY_T,
+  obstacleAt,
+  poseObstacles,
+  type ObstaclePose,
+} from "./harness";
 
 const TIMES = [0, PEAK_SWAY_T];
 const SWAY_TOLERANCE = 1;
@@ -48,9 +65,8 @@ afterEach(async () => {
 });
 
 it("sways both obstacles vertically by the formula, in anti-phase", async () => {
-  const { debug } = harness;
-  await debug.reset();
-  await debug.startMatch("versus");
+  await openCountdown(harness, "versus");
+  await isolateObstacles(harness, BOTH_OBSTACLES);
 
   const samples: ObstaclePose[][] = [];
   await captureReplay(harness, "sway", async () => {
@@ -64,7 +80,7 @@ it("sways both obstacles vertically by the formula, in anti-phase", async () => 
 
   for (const [k, t] of TIMES.entries()) {
     for (const [i, base] of OBSTACLE_CENTERS.entries()) {
-      const pose = samples[k]![i]!;
+      const pose = obstacleAt(samples[k], i);
       assertLessThanOrEqual(
         Math.abs(pose.cy - (base.y + swayAt(i, t))),
         SWAY_TOLERANCE,

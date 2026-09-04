@@ -303,12 +303,12 @@ async function blitsOfOneTick(
 ): Promise<Blit[]> {
   await h.page.evaluate(
     (design) =>
-      (window as unknown as { __fathomRec: Recorder }).__fathomRec.arm(design),
+      (window as unknown as { __tcabRec: Recorder }).__tcabRec.arm(design),
     { width: STAGE_W, height: STAGE_H, background: REPLAY_BACKGROUND },
   );
   await h.advance(1);
   const recording = (await h.page.evaluate(() =>
-    (window as unknown as { __fathomRec: Recorder }).__fathomRec.disarm(),
+    (window as unknown as { __tcabRec: Recorder }).__tcabRec.disarm(),
   )) as ReturnType<Recorder["disarm"]>;
 
   const blits: Blit[] = [];

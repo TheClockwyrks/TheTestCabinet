@@ -1,5 +1,5 @@
-// Carom — pause/paddle-solo-player: while the game is paused, the human's paddle does not move, even with a
-// movement key held.
+// Carom — pause/paddle-solo-player: while the game is paused, the human's paddle
+// does not move, even with a movement key held.
 //
 // Pausing freezes the simulation, not just the ball: a paddle under a held key is
 // as much a part of the frozen field as the ball in flight (specs/ui.md — "the
@@ -9,25 +9,33 @@
 // — which is what tells a build that stopped updating apart from one that merely
 // stopped drawing the ball.
 //
-// Everything here goes through the keyboard: the match is started from the title
-// with real key events, paused with one, and driven with one. No control
-// operation is involved, so the paddle is under normal player control throughout.
-// The menu route is load-bearing: every posing operation (`startMatch` included)
-// hands both paddles to the debug driver, and only `reset` gives them back —
-// posed open, the held key could not move the paddle in live play at all.
+// THE PADDLE IS THE PLAYER'S THROUGHOUT. Live play is posed rather than played
+// into: the countdown is opened, the field is CLEARED, and `playing` is posed
+// over it. No operation here touches `setPaddleDriven`, and none of the poses
+// that reach this screen does either, so the left paddle answers the keyboard
+// exactly as it does for a player — which is the whole of what this check is
+// about, and which only the surface's atomic operations make possible.
+//
+// THE FIELD IS EMPTY. This point concerns a paddle and the pause, so no ball and
+// no obstacle is on the field: an absent ball takes no part in a frame
+// (specs/instrumentation.md), so nothing but the pause can hold this paddle
+// still, and nothing on the field can score a point and move the screen out from
+// under the reading.
+//
+// MOVE_MIN is the suite's non-trivial displacement. At PADDLE_SPEED the 12-frame
+// hold below travels 72 units, so a build moving the paddle the right way clears
+// it comfortably and one that did not move it never does.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   MOVE_MIN,
   captureReplay,
+  clearField,
   createHarness,
-  startWithKeys,
+  openCountdown,
   type Harness,
 } from "../harness";
-
-/** Past the 1.0 s pre-serve hold and into a live rally: 1.3 s at 120 Hz. */
-const RALLY_TICKS = 156;
 
 /**
  * The frames of live movement recorded before the pause, and the frozen ones
@@ -36,12 +44,9 @@ const RALLY_TICKS = 156;
  * A clip of a still paddle is not evidence of anything on its own — it is
  * indistinguishable from a build whose paddle never moved. What makes it evidence
  * is the motion it is cut from: the same paddle, under the same key, moving in
- * live play and then not moving once the game is paused, in one recording.
- *
- * That precondition was always driven; arming the recorder before it rather than
- * after moves nothing. Every reading below is still taken on exactly the frame it
- * was taken on before — they are lifted out of the recorded section as values so
- * the assertions can stay outside it.
+ * live play and then not moving once the game is paused, in one recording. Every
+ * reading is lifted out of the recorded section as a value so the assertions can
+ * stay outside it.
  */
 const MOVING_TICKS = 12; // 0.1 s of live travel
 const FROZEN_TICKS = 96; // 0.8 s of the key held against a paused game
@@ -57,8 +62,10 @@ afterEach(() => {
 });
 
 it("holds the human's paddle still while paused", async () => {
-  await startWithKeys(h, "solo");
-  await h.advance(RALLY_TICKS);
+  await openCountdown(h, "solo");
+  clearField(h);
+  h.debug.setScreen("playing");
+  await h.advance(1);
   assertEqual(h.snapshot().screen, "playing");
 
   // The precondition: this key really does move this paddle in live play, so the

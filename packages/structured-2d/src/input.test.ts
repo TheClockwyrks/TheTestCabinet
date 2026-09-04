@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import type { SurfaceMetrics, Viewport } from "./contract";
+import { describe, expect, it, vi } from "vitest";
+import type { PointerSnapshot, SurfaceMetrics, Viewport } from "./contract";
 import { InputSystem, TOUCH_LAYOUTS } from "./input";
 
 describe("TOUCH_LAYOUTS", () => {
@@ -130,18 +130,45 @@ function key(
   target.dispatchEvent(Object.assign(new Event(type), { code, repeat }));
 }
 
+/** The fields a dispatched pointer event may carry beyond its position. */
+interface PointerFields {
+  isPrimary?: boolean;
+  pointerId?: number;
+  pointerType?: string;
+  button?: number;
+  buttons?: number;
+}
+
 /** A pointer-shaped event carrying the fields the engine reads. */
 function point(
   target: EventTarget,
   type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
   x: number,
   y: number,
-  isPrimary = true,
+  fields: PointerFields = {},
 ): void {
   target.dispatchEvent(
-    Object.assign(new Event(type), { clientX: x, clientY: y, isPrimary }),
+    Object.assign(new Event(type), { clientX: x, clientY: y, ...fields }),
   );
 }
+
+/** A wheel-shaped event carrying the fields the engine reads. */
+function scroll(
+  target: EventTarget,
+  deltaX: number,
+  deltaY: number,
+  deltaMode = 0,
+): void {
+  target.dispatchEvent(
+    Object.assign(new Event("wheel"), { deltaX, deltaY, deltaMode }),
+  );
+}
+
+/** The snapshot a mouse that has never moved reports. */
+function resting(): PointerSnapshot {
+  return { x: 0, y: 0, down: false, device: "mouse", buttons: [] };
+}
+
 
 describe("InputSystem registration", () => {
   it("defaults kind to digital and resolves it on the registered action", () => {
@@ -465,7 +492,7 @@ describe("InputSystem pointer", () => {
     const reader = system.createReader();
 
     const snapshot = reader.pointer();
-    expect(snapshot).toEqual({ x: 0, y: 0, down: false });
+    expect(snapshot).toEqual(resting());
 
     snapshot.x = 99;
     expect(reader.pointer().x).toBe(0);
@@ -481,7 +508,7 @@ describe("InputSystem pointer", () => {
     point(target, "pointerdown", 30, 40);
 
     // ((30 - 5) * 2 - 10) / 2 = 20 and ((40 - 5) * 2 - 20) / 2 = 25.
-    expect(reader.pointer()).toEqual({ x: 20, y: 25, down: true });
+    expect(reader.pointer()).toMatchObject({ x: 20, y: 25, down: true });
   });
 
   it("reads client positions as CSS pixels from the corner with no origin", () => {
@@ -490,7 +517,7 @@ describe("InputSystem pointer", () => {
 
     point(target, "pointermove", 120, 80);
 
-    expect(reader.pointer()).toEqual({ x: 120, y: 80, down: false });
+    expect(reader.pointer()).toMatchObject({ x: 120, y: 80, down: false });
   });
 
   it("arms press and release edges consumed per reader", () => {
@@ -517,13 +544,17 @@ describe("InputSystem pointer", () => {
     point(target, "pointermove", 2, 2);
     point(target, "pointerup", 3, 3);
 
+    const listed = (): unknown =>
+      reader
+        .pointerSamples()
+        .map((sample) => ({ type: sample.type, x: sample.x, y: sample.y }));
     const expected = [
       { type: "down", x: 1, y: 1 },
       { type: "move", x: 2, y: 2 },
       { type: "up", x: 3, y: 3 },
     ];
-    expect(reader.pointerSamples()).toEqual(expected);
-    expect(reader.pointerSamples()).toEqual(expected);
+    expect(listed()).toEqual(expected);
+    expect(listed()).toEqual(expected);
   });
 
   it("moves the pointer without an edge on a down while held or an up while not", () => {
@@ -533,17 +564,17 @@ describe("InputSystem pointer", () => {
     point(target, "pointerdown", 1, 1);
     expect(reader.pointerPressed()).toBe(true);
 
-    // A chorded second button: the samples keep alternating down and up.
+    // The same button pressed again: the samples keep alternating down and up.
     point(target, "pointerdown", 2, 2);
     expect(reader.pointerPressed()).toBe(false);
-    expect(reader.pointer()).toEqual({ x: 2, y: 2, down: true });
+    expect(reader.pointer()).toMatchObject({ x: 2, y: 2, down: true });
 
     point(target, "pointerup", 3, 3);
     expect(reader.pointerReleased()).toBe(true);
 
     point(target, "pointerup", 4, 4);
     expect(reader.pointerReleased()).toBe(false);
-    expect(reader.pointer()).toEqual({ x: 4, y: 4, down: false });
+    expect(reader.pointer()).toMatchObject({ x: 4, y: 4, down: false });
 
     expect(reader.pointerSamples().map((sample) => sample.type)).toEqual([
       "down",
@@ -561,24 +592,13 @@ describe("InputSystem pointer", () => {
     point(target, "pointermove", 20, 25);
     point(target, "pointercancel", 999, 999);
 
-    expect(reader.pointer()).toEqual({ x: 20, y: 25, down: false });
+    expect(reader.pointer()).toMatchObject({ x: 20, y: 25, down: false });
     expect(reader.pointerReleased()).toBe(true);
-    expect(reader.pointerSamples().at(-1)).toEqual({
+    expect(reader.pointerSamples().at(-1)).toMatchObject({
       type: "up",
       x: 20,
       y: 25,
     });
-  });
-
-  it("ignores a non-primary pointer entirely", () => {
-    const { system, target } = systemWith();
-    const reader = system.createReader();
-
-    point(target, "pointerdown", 10, 10, false);
-
-    expect(reader.pointer()).toEqual({ x: 0, y: 0, down: false });
-    expect(reader.pointerPressed()).toBe(false);
-    expect(reader.pointerSamples()).toEqual([]);
   });
 
   it("drops a down or move over a degenerate fit but still ends a hold", () => {
@@ -601,10 +621,10 @@ describe("InputSystem pointer", () => {
     scale = 0;
 
     point(target, "pointermove", 50, 50);
-    expect(reader.pointer()).toEqual({ x: 10, y: 10, down: true });
+    expect(reader.pointer()).toMatchObject({ x: 10, y: 10, down: true });
 
     point(target, "pointerup", 50, 50);
-    expect(reader.pointer()).toEqual({ x: 10, y: 10, down: false });
+    expect(reader.pointer()).toMatchObject({ x: 10, y: 10, down: false });
     expect(reader.pointerReleased()).toBe(true);
 
     // A fresh press has no place on the stage either.
@@ -619,7 +639,7 @@ describe("InputSystem pointer", () => {
     for (let i = 0; i < 1030; i++) point(target, "pointermove", i, i);
 
     expect(reader.pointerSamples()).toHaveLength(1024);
-    expect(reader.pointer()).toEqual({ x: 1029, y: 1029, down: false });
+    expect(reader.pointer()).toMatchObject({ x: 1029, y: 1029, down: false });
   });
 
   it("empties the sample list and discards pointer edges at end of frame", () => {
@@ -636,6 +656,317 @@ describe("InputSystem pointer", () => {
   });
 });
 
+describe("InputSystem pointer buttons", () => {
+  it("gives the secondary button its own edges, per reader", () => {
+    const { system, target } = systemWith();
+    const first = system.createReader();
+    const second = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { button: 2, buttons: 2 });
+
+    expect(first.pointerPressed("secondary")).toBe(true);
+    expect(first.pointerPressed("secondary")).toBe(false);
+    expect(second.pointerPressed("secondary")).toBe(true);
+    expect(first.pointerPressed()).toBe(false);
+    expect(first.pointer()).toMatchObject({
+      down: true,
+      buttons: ["secondary"],
+    });
+
+    point(target, "pointerup", 5, 5, { button: 2, buttons: 0 });
+
+    expect(first.pointerReleased("secondary")).toBe(true);
+    expect(first.pointerReleased()).toBe(false);
+  });
+
+  it("keeps the contact while one of two held buttons is released", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { button: 0, buttons: 1 });
+    point(target, "pointerdown", 5, 5, { button: 2, buttons: 3 });
+
+    expect(reader.pointerPressed("secondary")).toBe(true);
+    expect(reader.pointer().buttons).toEqual(["primary", "secondary"]);
+
+    point(target, "pointerup", 5, 5, { button: 2, buttons: 1 });
+
+    expect(reader.pointerReleased("secondary")).toBe(true);
+    expect(reader.pointerReleased()).toBe(false);
+    expect(reader.pointer()).toMatchObject({ down: true, buttons: ["primary"] });
+    expect(reader.pointerSamples().map((sample) => sample.type)).toEqual([
+      "down",
+      "move",
+      "move",
+    ]);
+  });
+
+  it("names on each sample the button whose state it reports", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { button: 0, buttons: 1 });
+    point(target, "pointermove", 6, 6, { button: -1, buttons: 1 });
+    point(target, "pointerup", 6, 6, { button: 0, buttons: 0 });
+
+    expect(reader.pointerSamples().map((sample) => sample.button)).toEqual([
+      "primary",
+      null,
+      "primary",
+    ]);
+  });
+
+  it("maps the auxiliary button off its own index", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { button: 1, buttons: 4 });
+
+    expect(reader.pointerPressed("auxiliary")).toBe(true);
+    expect(reader.pointer().buttons).toEqual(["auxiliary"]);
+  });
+
+  it("releases every button a cancelled contact held", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { button: 0, buttons: 1 });
+    point(target, "pointerdown", 5, 5, { button: 2, buttons: 3 });
+    target.dispatchEvent(new Event("pointercancel"));
+
+    expect(reader.pointerReleased()).toBe(true);
+    expect(reader.pointerReleased("secondary")).toBe(true);
+    expect(reader.pointerContacts()).toEqual([]);
+  });
+});
+
+describe("InputSystem pointer devices and contacts", () => {
+  it("reports the device that drove the pointer", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { pointerType: "touch" });
+
+    expect(reader.pointer().device).toBe("touch");
+    expect(reader.pointerSamples()[0]?.device).toBe("touch");
+  });
+
+  it("reads an unrecognized pointer type as a mouse", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { pointerType: "trackball" });
+
+    expect(reader.pointer().device).toBe("mouse");
+  });
+
+  it("holds the primary button for a touch in contact", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, {
+      pointerType: "touch",
+      button: 0,
+      buttons: 1,
+    });
+
+    expect(reader.pointerPressed()).toBe(true);
+    expect(reader.pointer()).toMatchObject({ down: true, buttons: ["primary"] });
+  });
+
+  it("lists every pointer in contact, in contact order", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { pointerId: 1, pointerType: "touch" });
+    point(target, "pointerdown", 9, 9, {
+      pointerId: 2,
+      pointerType: "touch",
+      isPrimary: false,
+    });
+
+    expect(reader.pointerContacts()).toEqual([
+      { id: 1, x: 5, y: 5, primary: true, device: "touch", buttons: ["primary"] },
+      {
+        id: 2,
+        x: 9,
+        y: 9,
+        primary: false,
+        device: "touch",
+        buttons: ["primary"],
+      },
+    ]);
+  });
+
+  it("leaves the snapshot and the edges to the primary pointer", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { pointerId: 1 });
+    expect(reader.pointerPressed()).toBe(true);
+
+    point(target, "pointerdown", 9, 9, { pointerId: 2, isPrimary: false });
+    point(target, "pointerup", 9, 9, { pointerId: 2, isPrimary: false });
+
+    expect(reader.pointerPressed()).toBe(false);
+    expect(reader.pointerReleased()).toBe(false);
+    expect(reader.pointer()).toMatchObject({ x: 5, y: 5, down: true });
+  });
+
+  it("reads an absent pointerId as 0, whatever the event says about isPrimary", () => {
+    // A browser always supplies the field, so an event without one was
+    // dispatched by hand and has no way of implying a second pointer: two
+    // contacts are named by giving each its own `pointerId`.
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { isPrimary: false });
+
+    expect(reader.pointerContacts()).toEqual([
+      {
+        id: 0,
+        x: 5,
+        y: 5,
+        primary: false,
+        device: "mouse",
+        buttons: ["primary"],
+      },
+    ]);
+    expect(reader.pointerSamples()[0]?.id).toBe(0);
+  });
+
+  it("folds a second unidentified pointer into the same contact", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5);
+    point(target, "pointerdown", 9, 9, { isPrimary: false });
+
+    expect(reader.pointerContacts()).toHaveLength(1);
+    expect(reader.pointerContacts()[0]?.id).toBe(0);
+  });
+
+  it("keeps its contacts across a closing frame and drops a released one", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5, { pointerId: 1 });
+    system.endFrame();
+    expect(reader.pointerContacts()).toHaveLength(1);
+
+    point(target, "pointerup", 5, 5, { pointerId: 1 });
+    expect(reader.pointerContacts()).toEqual([]);
+  });
+});
+
+describe("InputSystem wheel", () => {
+  it("accumulates travel over the frame, in logical units", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    scroll(target, 10, -20);
+    scroll(target, 5, 0);
+
+    expect(reader.wheel()).toEqual({ x: 15, y: -20 });
+  });
+
+  it("maps travel through the ratio and the fit", () => {
+    const { system, target } = systemWith({
+      surface: { dpr: () => 2 },
+      viewport: { scale: 0.5 },
+    });
+    const reader = system.createReader();
+
+    scroll(target, 0, 10);
+
+    expect(reader.wheel()).toEqual({ x: 0, y: 40 });
+  });
+
+  it("converts a wheel reporting lines and one reporting pages", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    scroll(target, 0, 2, 1);
+    expect(reader.wheel().y).toBe(32);
+
+    system.endFrame();
+
+    scroll(target, 0, 1, 2);
+    expect(reader.wheel().y).toBe(360);
+  });
+
+  it("returns to zero when the frame closes", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    scroll(target, 1, 1);
+    system.endFrame();
+
+    expect(reader.wheel()).toEqual({ x: 0, y: 0 });
+  });
+
+  it("ignores an event with no numeric delta", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    target.dispatchEvent(new Event("wheel"));
+
+    expect(reader.wheel()).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe("InputSystem gesture ownership", () => {
+  it("claims the surface's gestures on attach and gives them back on detach", () => {
+    const give = vi.fn();
+    const claimGestures = vi.fn(() => give);
+    const { system } = systemWith({ surface: { claimGestures } });
+
+    expect(claimGestures).toHaveBeenCalledTimes(1);
+    expect(give).not.toHaveBeenCalled();
+
+    system.detach();
+    system.detach();
+
+    expect(give).toHaveBeenCalledTimes(1);
+  });
+
+  it("captures a pointer as it comes into contact and releases it as it leaves", () => {
+    const capturePointer = vi.fn();
+    const releasePointerCapture = vi.fn();
+    const { system, target } = systemWith({
+      surface: { capturePointer, releasePointerCapture },
+    });
+
+    point(target, "pointerdown", 5, 5, { pointerId: 3 });
+    expect(capturePointer).toHaveBeenCalledWith(3);
+    expect(releasePointerCapture).not.toHaveBeenCalled();
+
+    point(target, "pointerup", 5, 5, { pointerId: 3 });
+    expect(releasePointerCapture).toHaveBeenCalledWith(3);
+  });
+
+  it("releases a still-held capture when it detaches", () => {
+    const releasePointerCapture = vi.fn();
+    const { system, target } = systemWith({
+      surface: { capturePointer: vi.fn(), releasePointerCapture },
+    });
+
+    point(target, "pointerdown", 5, 5, { pointerId: 4 });
+    system.detach();
+
+    expect(releasePointerCapture).toHaveBeenCalledWith(4);
+  });
+
+  it("works over a surface supplying none of the three", () => {
+    const { system, target } = systemWith();
+    const reader = system.createReader();
+
+    point(target, "pointerdown", 5, 5);
+
+    expect(reader.pointerPressed()).toBe(true);
+  });
+});
+
 describe("InputSystem detach", () => {
   it("stops listening for keys and the pointer, idempotently", () => {
     const { system, target } = systemWith();
@@ -649,6 +980,6 @@ describe("InputSystem detach", () => {
     point(target, "pointerdown", 10, 10);
 
     expect(reader.value("fire")).toBe(0);
-    expect(reader.pointer()).toEqual({ x: 0, y: 0, down: false });
+    expect(reader.pointer()).toEqual(resting());
   });
 });

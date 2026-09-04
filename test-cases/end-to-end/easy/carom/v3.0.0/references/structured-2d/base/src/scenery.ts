@@ -1,22 +1,29 @@
-// Carom — the field's fixed furniture: the decorative net and the two
-// obstacles.
+// Carom — the field's furniture: the decorative net and the two obstacles.
 //
-// Both are placed by the level definitions (`src/levels.ts`) and never tick:
-// the net is decoration with no collision (specs/playfield.md), and the
-// obstacles are fixed bars whose collision geometry is the `OBSTACLES`
-// rectangles in `src/constants.ts` — the same rectangles `src/physics.ts`
-// resolves against, so the picture and the collision cannot drift apart. Each
-// obstacle actor's transform sits on its center from `OBSTACLE_CENTERS`, which
-// is where `world.byTag(TAGS.obstacle)` reports it.
+// The net is decoration with no collision (specs/playfield.md) and is placed by
+// the level. The OBSTACLES are not furniture in the same sense: which of them
+// are present is declared state (specs/state.md), so each is an actor the debug
+// surface's `clearWorld` destroys and `spawnObstacle(index)` puts back, and an
+// absent one is simply not in the world — not drawn, and not among the
+// rectangles the ball is resolved against.
+//
+// Each obstacle carries its `index` in the order of `OBSTACLE_CENTERS`, which
+// is the index the snapshot reports it under and the index `spawnObstacle`
+// names, and its transform sits on `OBSTACLE_CENTERS[index]`, which is where
+// `world.byTag(TAGS.obstacle)` reports it. The collision geometry is the
+// `OBSTACLES` rectangle of that same index, so the picture and the collision
+// cannot drift apart.
 
 import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
-import type { DrawApi } from "@test-cabinet/structured-2d";
+import type { DrawApi, World } from "@test-cabinet/structured-2d";
 import {
   FIELD_H,
   NET_X,
+  OBSTACLE_CENTERS,
   OBSTACLE_HH,
   OBSTACLE_HW,
-  type Point,
+  TAGS,
+  type Rect,
 } from "./constants";
 import { glowRect, type Ctx } from "./draw";
 import { screenOf } from "./state";
@@ -52,16 +59,66 @@ class NetDashes extends DrawComponent {
 
 /** One of the two fixed mid-field bars the ball banks off. */
 export class Obstacle extends Actor {
+  /** This obstacle's index in the order of `OBSTACLE_CENTERS`. */
+  index = 0;
+
   constructor() {
     super();
     this.attach(new ObstacleBody()).layer = LAYER.obstacles;
   }
 
-  /** Place the actor on its fixed center. */
-  placeAt(center: Point): void {
+  /** Put the actor back on its fixed center, which is where it belongs. */
+  place(): void {
+    const center = OBSTACLE_CENTERS[this.index];
     this.transform.x = center.x;
     this.transform.y = center.y;
   }
+
+  /** The axis-aligned rectangle the ball is resolved against. */
+  rect(): Rect {
+    return {
+      x0: this.transform.x - OBSTACLE_HW,
+      y0: this.transform.y - OBSTACLE_HH,
+      x1: this.transform.x + OBSTACLE_HW,
+      y1: this.transform.y + OBSTACLE_HH,
+    };
+  }
+}
+
+/** Every obstacle present on the field, in `OBSTACLE_CENTERS` order. */
+export function obstaclesOf(world: World): Obstacle[] {
+  return world
+    .byTag(TAGS.obstacle)
+    .filter((actor): actor is Obstacle => actor instanceof Obstacle)
+    .sort((a, b) => a.index - b.index);
+}
+
+/** The rectangles the ball is resolved against, in that same order. */
+export function obstacleRects(world: World): readonly Rect[] {
+  return obstaclesOf(world).map((obstacle) => obstacle.rect());
+}
+
+/**
+ * Place obstacle `index` at its fixed center: the one place an obstacle enters
+ * the world. Spawning one that is already present returns it to that center,
+ * which is the arrangement specs/instrumentation.md states.
+ */
+export function spawnObstacleActor(world: World, index: number): Obstacle {
+  const existing = obstaclesOf(world).find(
+    (obstacle) => obstacle.index === index,
+  );
+  if (existing !== undefined) {
+    existing.place();
+    return existing;
+  }
+  const center = OBSTACLE_CENTERS[index];
+  return world.spawn(Obstacle, {
+    transform: { x: center.x, y: center.y },
+    tags: [TAGS.obstacle],
+    configure: (obstacle: Obstacle) => {
+      obstacle.index = index;
+    },
+  });
 }
 
 class ObstacleBody extends DrawComponent {

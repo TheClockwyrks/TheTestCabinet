@@ -16,8 +16,8 @@
 // names no cue frame.)
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES } from "../../src/constants";
 import { assertDeepEqual, assertEqual } from "../assert";
+import { CUES } from "../constants";
 import { MINIMAL_2X1 } from "../fixtures";
 import {
   captureReplay,

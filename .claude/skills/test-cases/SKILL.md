@@ -37,8 +37,10 @@ presence and distinguishability only.
 
 ### Every Review Item Is Validated
 
-Every review item carries a validation script for every engine the case
-supports. The checklist is decided by the validators, and a reviewer overriding
+Every review item carries a validation script. It covers every engine the case
+supports unless the validation's `engines` key names fewer, which scopes an item
+to the engines where the behavior is the model's own work rather than the
+engine's. The checklist is decided by the validators, and a reviewer overriding
 a verdict is the exception. Reviewers rate visuals, polish, and feel through the
 scoring domains; behavior is never left to a reviewer to decide.
 
@@ -78,9 +80,12 @@ of the code as possible.
 
 ### No Cross Links
 
-Do not link between specs. Models are expected to read all specs, so the full
-data is expected to be in the model's context. Cross-linking therefore has no
-benefit.
+Do not write Markdown links between specs. A seeded spec reaches a model as
+plain text, where a link's target is invisible and its syntax is noise.
+
+Referring to a sibling spec **by name** is correct and expected. A rule lives in
+exactly one file, and the files that need it name the file that states it, as
+`specs/field.md` rather than as `[the field](field.md)`.
 
 ### Critical Emphasis Only
 

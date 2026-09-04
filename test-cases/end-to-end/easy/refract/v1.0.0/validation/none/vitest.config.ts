@@ -10,46 +10,52 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator addresses the
-// build's output by the same relative path the build itself produced it at. It is
-// derived from this file's own URL rather than from the working directory, so the
-// command above works from anywhere.
+// Everything but the dials below is the shared validator harness's, because
+// everything but the dials is what makes a staged validator project one shape the
+// runner can drive: the project's name, the suites it collects, the scaffolding
+// it loads, and the refusal to pass a run that collected nothing.
 //
-// WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONE DOES NOT. An
-// engineless build is a static site with nothing to import, so every check drives
-// it in a real browser. `globalSetup` starts the one server and the one Chromium
-// the whole project shares, before any suite runs; `setupFiles` gives each suite
-// worker the teardown that returns its page when the file is done. The
-// environment stays `node` — the suites drive a browser, they do not run in one.
+// THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator addresses the
+// build's output by the same relative path the build itself produced it at. It is
+// computed HERE, from this file's own URL, rather than inside the package: the
+// package is staged one directory deeper than this file, so anything derived from
+// its own location would name the wrong tree.
+//
+// Imported from its own module rather than through the package's barrel, for the
+// reason `globalSetup.ts` gives.
 
-import { defineConfig } from "vitest/config";
+import { defineValidationConfig } from "./case-harness/vitest-config";
 
-export default defineConfig({
+// NO DIALS, AND THE MINUTE THIS CASE USED TO NAME IS WHY THE PACKAGE'S DEFAULT IS
+// WHAT IT IS. The reasoning behind that minute was sound as far as it went —
+// Refract's pointer operations take effect the moment they are called, so even
+// the whole campaign course or a twenty-five-board cascade sweep is a few hundred
+// crossings into the page rather than thousands of real-time frames — and it was
+// still measured to be wrong, because it was sized against a healthy machine. An
+// allowance a correct build can cross is a defect in the check: nothing here is
+// taken from the wall clock except the allowance itself, so crossing it turns
+// "how busy the host was" into a lost point.
+//
+// Sixty seconds was such an allowance, and this case is where that was measured.
+// On a host running nine of these projects at once (load average ~450), an
+// unmodified reference lost FOUR points to it — `cascade/tier-ladder`,
+// `cascade/sequence-is-endless`, `cascade/boards-meet-the-tier-floor` and
+// `campaign/select-states` — at 66-76 s apiece against quiet times of 6-14 s.
+// Nothing about those checks is unusual; a crossing costs 6 ms on an idle box and
+// 90 ms on a loaded one, and a sweep that makes a few hundred of them is one busy
+// host away from the same fate.
+//
+// The package's default is five minutes, set against that measured worst case
+// rather than against a healthy machine, and against the one ceiling a validator
+// project cannot move: the runner caps the WHOLE suite run at forty-five minutes
+// (`VITEST_TIMEOUT`, `crates/core/src/vitest_validator.rs`). At load average ~650
+// the slowest file here measured 170 s and the whole run 1 059 s of those 2 700,
+// so five minutes — a ninth of the cap — can only be crossed by a file on a host
+// where the run was already lost. The hook ceiling is the same figure for the
+// same reason, and both are now taken from the package rather than restated
+// here. `vitest-config.ts` states the measurements in full, including the worker
+// count they were taken at.
+
+export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    globalSetup: ["validation/globalSetup.ts"],
-    setupFiles: ["validation/setup.ts"],
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // Each suite file holds a page of the shared browser while it runs, so the
-    // ceiling on files in flight is the ceiling on pages — and a suite spends
-    // almost all of its time waiting on a crossing into one, so overlapping them
-    // is most of what decides how long the whole run takes. Capped rather than
-    // left to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it; four holds the whole project to about a minute on a
-    // healthy machine, well inside the cap the runner puts on the suite run.
-    maxWorkers: 4,
-    minWorkers: 1,
-    // Refract's pointer operations take effect the moment they are called, so
-    // even the whole campaign course or a twenty-five-board cascade sweep is a few
-    // hundred crossings into the page rather than thousands of real-time frames;
-    // a minute is generous against a healthy build and still bounds a hung one.
-    testTimeout: 60_000,
-    hookTimeout: 60_000,
-  },
 });

@@ -8,8 +8,7 @@ that runs on resonance: glassy and bell-like over a humming, pulsing
 undercurrent, ethereal and mysterious, alive as if charged. The mood and role
 are prescribed, while the key, tempo, structure and instrument choices are the
 model's, so the case rewards compositional creativity. It is voiced as notes on
-instrument tracks the model chooses freely from the baked `gm-lite` instrument
-bank.
+instrument tracks the model chooses freely from the `gm-lite` instrument bank.
 
 The recorded operations are regenerated into the clip, a stereo `clip.wav`
 beside a portable `clip.mid`. A reviewer plays it against the brief and weighs

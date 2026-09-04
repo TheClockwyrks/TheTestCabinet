@@ -20,6 +20,30 @@
 //! own location, so a suite resolves the build's modules by the same relative paths
 //! the build itself uses.
 //!
+//! It is staged for the length of the suite run and taken back out again, whatever
+//! the run's outcome, so validation leaves the tree as it found it. The tree a run
+//! collects is published verbatim, and the tree `tcab validate` and
+//! `tcab capture-baselines` are pointed at is a case's committed reference
+//! implementation.
+//!
+//! # The shared harness is staged beside the case's own
+//!
+//! The engineless (`none`) validators of every case that has them are written over one
+//! shared harness — the browser lifecycle, the injected draw-command recorder, the
+//! assertions, the replay format — which lives in the repository as the
+//! `@test-cabinet/case-harness` npm package rather than as a copy per case. It is not
+//! a dependency the produced tree installs: it is TypeScript source vitest transpiles,
+//! so it is COPIED into the staged project as `validation/case-harness/`, a sibling of
+//! the case's own `harness.ts`. That sibling placement is the whole trick — one import
+//! line resolves both in the case's `validation/<engine>/` directory in the checkout
+//! and in the staged `validation/` here.
+//!
+//! It is read from the host package store the seeder vendors engine runtimes out of
+//! (see [`crate::seeding`]), with a repository-checkout fallback, and it is
+//! deliberately NOT one of the [`crate::test_case::SHIPPABLE_PACKAGES`] a case may
+//! request: nothing may vendor the validators into the run repository, where the model
+//! would read them.
+//!
 //! # The whole directory is staged; only the run's own suites are run
 //!
 //! A case ships ONE validator directory per engine, holding the suites of every
@@ -68,20 +92,25 @@
 //!
 //! # Bounded by construction
 //!
-//! The whole suite run is capped at [`VITEST_TIMEOUT`] of wall clock and the output
+//! The whole suite run is capped at [`vitest_timeout`] of wall clock and the output
 //! retained per suite at [`VITEST_OUTPUT_LIMIT`] bytes, exactly as the
-//! [toolchain stage](crate::toolchain_stage) bounds its commands. A suite that never
-//! terminates costs the run the cap and nothing more.
+//! [toolchain stage](crate::toolchain_stage) bounds its commands. The cap costs a
+//! suite that never terminates that much wall clock and nothing more: the command is
+//! spawned into its own process group and the whole group is killed, so no worker the
+//! suite started outlives the run that stopped waiting for it.
 //!
 //! # Every negative answer says which kind it is
 //!
-//! A suite that ran and failed is the build's result. A suite the runner could not
-//! execute at all — no vitest in the tree, no project for the run's engine, the cap
-//! exceeded, a report that would not parse — is reported as not having run, with the
-//! reason, and decides nothing: no verdict is synthesized and the reviewer decides
-//! the point by hand. Between them sits the suite whose checks were all skipped,
-//! which is how a validator says its scenario was not constructible against this
-//! build (see [`DebugScriptResult::precondition_unmet`]).
+//! A suite that ran and failed is the build's result. Every other negative answer
+//! decides nothing — no verdict is synthesized and the reviewer decides the point by
+//! hand — and names which kind it is through [`Inconclusive`].
+//!
+//! A suite whose checks were all skipped is how a validator says its scenario was not
+//! constructible against this build. A suite the runner could not execute — no vitest
+//! in the tree, no project for the run's engine, a report that would not parse — is a
+//! fact about the case or the produced tree. A run stopped at the cap is a fact about
+//! the host, and is held apart from both so a busy machine never reads as a broken
+//! build.
 
 #[cfg(test)]
 #[path = "vitest_validator.test.rs"]
@@ -96,16 +125,46 @@ use serde::Deserialize;
 
 use crate::execution::ArtifactCollection;
 use crate::test_case::{ReviewOutput, TestCaseVersion, Variant};
-use crate::validation::{Assertion, AutoVerdict, DebugScriptOutput, DebugScriptResult};
+use crate::validation::{
+    Assertion, AutoVerdict, DebugScriptOutput, DebugScriptResult, Inconclusive,
+};
 use crate::validator::{DriveUnit, VALIDATION_SCRIPT_DIR, drive_units, relocate_outputs};
 
-/// Wall-clock cap on the whole validator suite run.
+/// The default wall-clock cap on the whole validator suite run.
 ///
 /// A case's validators are a few dozen in-process suites that step a simulation for
-/// thousands of frames, so minutes is the honest budget. The cap exists for the suite
-/// that never terminates: a validator left waiting on something must cost the run this
-/// much and no more.
-pub const VITEST_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+/// thousands of frames, and a contended host stretches that severalfold, so the budget
+/// is tens of minutes. The cap exists for the suite that never terminates: a validator
+/// left waiting on something must cost the run this much and no more.
+///
+/// The budget is deliberately far above what a conforming build needs even on a loaded
+/// machine. Crossing it decides nothing (see [`Inconclusive::TimedOut`]), so a generous
+/// cap costs a hung run some extra wall clock once, while a tight one hands a whole
+/// project of points to a reviewer whenever the host is busy.
+///
+/// [`VITEST_TIMEOUT_ENV`] overrides it, and [`vitest_timeout`] is what the runner reads.
+pub const VITEST_TIMEOUT: Duration = Duration::from_secs(45 * 60);
+
+/// The environment variable that overrides [`VITEST_TIMEOUT`], in whole seconds.
+///
+/// A host that runs many cases at once, or one deliberately squeezing a hung suite,
+/// sets its own budget here. A value that is not a positive whole number of seconds
+/// leaves the default standing rather than failing the run.
+pub const VITEST_TIMEOUT_ENV: &str = "TCAB_VITEST_TIMEOUT_SECS";
+
+/// The wall-clock cap this environment puts on a suite run: [`VITEST_TIMEOUT_ENV`]
+/// when it names a positive whole number of seconds, and [`VITEST_TIMEOUT`] otherwise.
+pub fn vitest_timeout() -> Duration {
+    timeout_from(std::env::var(VITEST_TIMEOUT_ENV).ok().as_deref())
+}
+
+/// The cap `raw` asks for, or [`VITEST_TIMEOUT`] when it asks for nothing usable.
+fn timeout_from(raw: Option<&str>) -> Duration {
+    raw.map(str::trim)
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|seconds| *seconds > 0)
+        .map_or(VITEST_TIMEOUT, Duration::from_secs)
+}
 
 /// Wall-clock cap on the dependency install this runner falls back to when nothing
 /// prepared the tree. Matches the toolchain stage's install budget, because it is the
@@ -123,6 +182,28 @@ pub const VITEST_OUTPUT_LIMIT: usize = 4 * 1024;
 /// whole budget is [`VITEST_OUTPUT_LIMIT`]; this keeps one enormous diff from
 /// consuming it before the later failures are reached.
 pub const VITEST_ASSERTION_LIMIT: usize = 1024;
+
+/// The wall-clock caps one suite run is bounded by, taken together so the runner
+/// reads the environment once and every step of a run is bounded by the same budget.
+#[derive(Debug, Clone, Copy)]
+struct Caps {
+    /// The cap on the suite run itself.
+    suite: Duration,
+    /// The cap on the dependency install the runner falls back to.
+    install: Duration,
+}
+
+impl Caps {
+    /// The caps this environment sets: [`vitest_timeout`] for the suites, and the
+    /// fixed [`VITEST_INSTALL_TIMEOUT`] for an install that is the toolchain stage's
+    /// command over the toolchain stage's tree.
+    fn from_env() -> Self {
+        Self {
+            suite: vitest_timeout(),
+            install: VITEST_INSTALL_TIMEOUT,
+        }
+    }
+}
 
 /// The vitest project file a case's validator directory must declare.
 pub const VITEST_CONFIG_FILE: &str = "vitest.config.ts";
@@ -142,6 +223,33 @@ pub const VALIDATION_MEDIA_ENV: &str = "TCAB_VALIDATION_MEDIA_DIR";
 
 /// The local vitest binary a produced tree's install leaves behind.
 const VITEST_BIN: &str = "node_modules/.bin/vitest";
+
+/// Where a directory already standing at [`VALIDATION_SCRIPT_DIR`] is held while the
+/// staged validator project needs that name, relative to the produced tree.
+///
+/// Inside the tree so the move is a rename, and under `.tcab/` because that is the
+/// runner's own namespace in a produced tree.
+const DISPLACED_PROJECT_DIR: &str = ".tcab/displaced-validation";
+
+/// The directory inside the staged validator project the shared harness package is
+/// staged at. Every case's suites reach it by a path relative to their own file, so
+/// the name is fixed here rather than declared per case.
+const CASE_HARNESS_DIR: &str = "case-harness";
+
+/// The shared harness package's name in the host package store.
+///
+/// Deliberately absent from [`crate::test_case::SHIPPABLE_PACKAGES`]: that allowlist
+/// is what a case manifest's `packages` key is validated against, and a case that
+/// could name this one would vendor the validators into the run repository — handing
+/// the model the tests it is being measured by.
+const CASE_HARNESS_PACKAGE: &str = "@test-cabinet/case-harness";
+
+/// Where the shared harness package's `src/` is looked for when the host package
+/// store does not carry it, relative to the current directory. Mirrors
+/// [`crate::browser::driver_path`]'s candidates, and for the same reason: runs are
+/// launched from the repository root, where the npm workspace lives.
+const CASE_HARNESS_CANDIDATES: [&str; 2] =
+    ["packages/case-harness/src", "../packages/case-harness/src"];
 
 /// How often a running suite is checked for completion while the cap runs down.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -172,7 +280,29 @@ pub(crate) fn run_vitest_suites(
     install_command: &str,
     media_dir: &Path,
 ) -> Vec<DebugScriptResult> {
-    let items = test_case.review_items_for(variant);
+    run_vitest_suites_bounded(
+        test_case,
+        variant,
+        engine,
+        artifacts,
+        install_command,
+        media_dir,
+        Caps::from_env(),
+    )
+}
+
+/// [`run_vitest_suites`] under explicit `caps`, so a test can prove what an expired
+/// budget reports without waiting one out.
+fn run_vitest_suites_bounded(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    engine: &str,
+    artifacts: &ArtifactCollection,
+    install_command: &str,
+    media_dir: &Path,
+    caps: Caps,
+) -> Vec<DebugScriptResult> {
+    let items = test_case.review_items_for_engine(variant, engine);
     let units = drive_units(&items);
     if units.is_empty() {
         return Vec::new();
@@ -187,6 +317,7 @@ pub(crate) fn run_vitest_suites(
         install_command,
         &filters,
         media_dir,
+        caps,
     ) {
         Ok(reports) => suites
             .iter()
@@ -198,13 +329,17 @@ pub(crate) fn run_vitest_suites(
                 )
             })
             .collect::<Vec<_>>(),
-        Err(reason) => {
+        Err(failure) => {
             tracing::warn!(
                 engine,
-                reason,
+                reason = failure.reason,
+                outcome = failure.outcome_tag(),
                 "the case's validators could not be run; every point they back is left for the reviewer",
             );
-            suites.iter().map(|suite| suite.not_run(&reason)).collect()
+            suites
+                .iter()
+                .map(|suite| suite.inconclusive(&failure.reason, failure.inconclusive))
+                .collect()
         }
     };
     // Collected after the verdicts and regardless of how the run ended. A suite that
@@ -267,6 +402,49 @@ pub(crate) fn has_project(test_case: &TestCaseVersion, engine: &str) -> bool {
         .is_file()
 }
 
+/// Why the runner produced no reports, and therefore which inconclusive outcome every
+/// point the suites would have decided carries.
+///
+/// The distinction is the whole point of the type. A tree with no vitest and a run
+/// stopped at its cap both leave every point undecided, but the first is a fact about
+/// the case or the produced tree while the second is a fact about the host, and a
+/// reviewer reading the run must be able to tell them apart.
+#[derive(Debug)]
+struct RunnerFailure {
+    reason: String,
+    inconclusive: Inconclusive,
+}
+
+impl RunnerFailure {
+    /// A failure of the case or the produced tree: nothing here was runnable.
+    fn not_run(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            inconclusive: Inconclusive::NotRun,
+        }
+    }
+
+    /// A cap that expired. The suites were runnable and the host was too slow to
+    /// finish them inside the budget, which says nothing about the build.
+    fn timed_out(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            inconclusive: Inconclusive::TimedOut,
+        }
+    }
+
+    /// A short tag for the log line, so a run stopped at its cap is greppable.
+    fn outcome_tag(&self) -> &'static str {
+        match self.inconclusive {
+            Inconclusive::TimedOut => "timed-out",
+            Inconclusive::NotRun => "not-run",
+            // Not a runner failure: a suite that declined to decide ran perfectly
+            // well, and says so per suite rather than for the whole run.
+            Inconclusive::PreconditionUnmet => "precondition-unmet",
+        }
+    }
+}
+
 /// Stage the case's validator project, run vitest over it, and return the parsed
 /// per-file reports.
 ///
@@ -276,8 +454,8 @@ pub(crate) fn has_project(test_case: &TestCaseVersion, engine: &str) -> bool {
 /// this returns.
 ///
 /// `Err` is reserved for a failure of the runner itself, which is a fact about the
-/// host or the case rather than about the build, and every suite is reported as not
-/// having run because of it.
+/// host or the case rather than about the build, and every suite is reported as
+/// inconclusive because of it.
 fn execute(
     test_case: &TestCaseVersion,
     engine: &str,
@@ -285,65 +463,75 @@ fn execute(
     install_command: &str,
     filters: &[String],
     media_dir: &Path,
-) -> Result<Vec<SuiteReport>, String> {
+    caps: Caps,
+) -> Result<Vec<SuiteReport>, RunnerFailure> {
     let repo = &artifacts.repo_path;
     let project = project_dir(test_case, engine);
     if !project.join(VITEST_CONFIG_FILE).is_file() {
-        return Err(format!(
+        return Err(RunnerFailure::not_run(format!(
             "the case declares no `{VALIDATION_SCRIPT_DIR}/{engine}/{VITEST_CONFIG_FILE}` \
              validator project",
-        ));
+        )));
     }
     // Nothing to point vitest at. Running it unfiltered would collect the whole
     // staged directory — every other variant's suites included — which is the one
     // thing the filters exist to prevent, so the run is refused instead and every
     // point is left for the reviewer.
     if filters.is_empty() {
-        return Err(format!(
+        return Err(RunnerFailure::not_run(format!(
             "every validator this variant declares names a suite of some engine other than \
              `{engine}`, so there was nothing for the runner to run",
-        ));
+        )));
     }
-    stage_project(&project, &repo.join(VALIDATION_SCRIPT_DIR))?;
-    ensure_dependencies(repo, artifacts, install_command)?;
+    // Staged for the length of this run and no longer: the guard puts the tree back
+    // as it was found on every path out of here, including the refusals below.
+    //
+    // A tree that cannot be staged is a fact about the case or the host rather than
+    // about the build, so it is reported as `not-run` and every point the validators
+    // back is left for the reviewer.
+    let _staged = StagedProject::stage(&project, repo.join(VALIDATION_SCRIPT_DIR))
+        .map_err(RunnerFailure::not_run)?;
+    ensure_dependencies(repo, artifacts, install_command, caps.install)?;
     if !repo.join(VITEST_BIN).exists() {
-        return Err(format!(
+        return Err(RunnerFailure::not_run(format!(
             "`{VITEST_BIN}` is not present in the produced tree, so the validators could not be run",
-        ));
+        )));
     }
 
     let scratch = tempfile::Builder::new()
         .prefix("tcab-vitest")
         .tempdir()
-        .map_err(|err| format!("could not create a scratch directory: {err}"))?;
+        .map_err(|err| {
+            RunnerFailure::not_run(format!("could not create a scratch directory: {err}"))
+        })?;
     let report_path = scratch.path().join("report.json");
     let command = vitest_command(&report_path, filters);
     // The directory exists before the first suite loads, so a suite may write into it
     // without creating anything itself — and the media the run collects is only ever
     // under a directory this runner chose.
     std::fs::create_dir_all(media_dir).map_err(|err| {
-        format!(
+        RunnerFailure::not_run(format!(
             "could not create the validation media directory `{}`: {err}",
             media_dir.display(),
-        )
+        ))
     })?;
     let ran = run_bounded(
         repo,
         &command,
-        VITEST_TIMEOUT,
+        caps.suite,
         scratch.path(),
         "vitest",
         &[(VALIDATION_MEDIA_ENV, absolute(media_dir))],
     )?;
 
     let json = std::fs::read_to_string(&report_path).map_err(|_| {
-        format!(
+        RunnerFailure::not_run(format!(
             "vitest wrote no JSON report ({}): {}",
             exit_description(ran.code),
             bounded(&ran.combined(), VITEST_OUTPUT_LIMIT),
-        )
+        ))
     })?;
-    parse_report(&json, repo)
+    parse_report(&json, repo).map_err(RunnerFailure::not_run)
 }
 
 /// The shell line the validators are run with.
@@ -381,20 +569,185 @@ fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
 
+/// The case's validator project, staged into a produced tree for the length of one
+/// suite run and taken out again when this drops.
+///
+/// A validation run leaves the tree as it found it. The tree a run collects is
+/// published verbatim — to the run's repository, its artifact tarball, and the
+/// analysis of what the model authored — and the tree `tcab validate` and
+/// `tcab capture-baselines` are pointed at is a case's committed reference
+/// implementation. The staged project is what validation adds to either, so its
+/// lifetime is the run's: the guard takes it out again whether the suites ran,
+/// failed, or the runner refused them.
+///
+/// A directory already standing at the project's name is held aside while the run
+/// needs it and put back afterwards, so a build that authored one of its own keeps
+/// it.
+struct StagedProject {
+    /// Where the project is staged (the tree's [`VALIDATION_SCRIPT_DIR`]).
+    at: PathBuf,
+    /// Where whatever already stood at [`Self::at`] is held, or `None` when the name
+    /// was free.
+    displaced: Option<PathBuf>,
+}
+
+impl StagedProject {
+    /// Hold aside whatever stands at `at`, then stage `project` there.
+    ///
+    /// A staging that fails part way through is undone as any other outcome is: the
+    /// guard exists before the copy starts, so a host that cannot stage the shared
+    /// harness leaves the tree with the case's files it had already copied in.
+    fn stage(project: &Path, at: PathBuf) -> Result<Self, String> {
+        let staged = Self {
+            displaced: displace(&at)?,
+            at,
+        };
+        stage_project(project, &staged.at)?;
+        Ok(staged)
+    }
+}
+
+impl Drop for StagedProject {
+    fn drop(&mut self) {
+        if let Err(err) = std::fs::remove_dir_all(&self.at)
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(
+                at = %self.at.display(),
+                %err,
+                "the staged validator project could not be removed from the produced tree",
+            );
+        }
+        let Some(held) = &self.displaced else {
+            return;
+        };
+        if let Err(err) = std::fs::rename(held, &self.at) {
+            tracing::warn!(
+                held = %held.display(),
+                at = %self.at.display(),
+                %err,
+                "the tree's own directory could not be put back where the validators were staged",
+            );
+            return;
+        }
+        // Only the directory this displacement created, and only while it is empty:
+        // a tree that carries `.tcab/` for its own reasons keeps it.
+        if let Some(parent) = held.parent() {
+            let _ = std::fs::remove_dir(parent);
+        }
+    }
+}
+
+/// Move whatever stands at `at` into the tree's holding directory, returning where it
+/// is held, or `None` when the name is free.
+///
+/// The holding directory is inside the tree so the move is a rename rather than a
+/// copy, and under `.tcab/` because that is the runner's own namespace in a produced
+/// tree. Anything left there by an earlier run that died mid-validation is cleared:
+/// what the tree carries now is the only copy worth putting back.
+fn displace(at: &Path) -> Result<Option<PathBuf>, String> {
+    if !at.exists() {
+        return Ok(None);
+    }
+    let Some(repo) = at.parent() else {
+        return Ok(None);
+    };
+    let held = repo.join(DISPLACED_PROJECT_DIR);
+    if held.exists() {
+        // Whatever was held is whatever stood at the name, so it is a directory or a
+        // file depending on what that tree carried.
+        std::fs::remove_dir_all(&held)
+            .or_else(|_| std::fs::remove_file(&held))
+            .map_err(|err| format!("could not clear `{}`: {err}", held.display()))?;
+    }
+    if let Some(parent) = held.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("could not create `{}`: {err}", parent.display()))?;
+    }
+    std::fs::rename(at, &held).map_err(|err| {
+        format!(
+            "could not hold `{}` aside for the case's validator project: {err}",
+            at.display(),
+        )
+    })?;
+    Ok(Some(held))
+}
+
 /// Copy the case's validator project for the run's engine into `dest`, replacing
-/// whatever stands there.
+/// whatever stands there, and stage the shared harness package beside it.
 ///
 /// The destination is the project's required location, so a tree that already carries
 /// a directory of that name has it replaced: the case's validators are what decides
 /// the case's points. Everything that measures the code the model wrote has already
-/// run by this point.
+/// run by this point, and [`StagedProject`] is what puts the tree back afterwards.
+///
+/// The error is a plain message rather than a [`RunnerFailure`]: staging is one of
+/// the steps [`StagedProject`] owns, and it is that guard's caller in [`execute`]
+/// that decides a staging that could not finish is `not-run`.
 fn stage_project(project: &Path, dest: &Path) -> Result<(), String> {
     if dest.exists() {
         std::fs::remove_dir_all(dest)
             .map_err(|err| format!("could not clear `{}`: {err}", dest.display()))?;
     }
     crate::copy_tree(project, dest)
-        .map_err(|err| format!("could not stage the case's validator project: {err}"))
+        .map_err(|err| format!("could not stage the case's validator project: {err}"))?;
+    stage_case_harness(dest)
+}
+
+/// Copy the shared validator harness into the staged project, so every case's suites
+/// resolve it at one relative path.
+///
+/// The package is SOURCE-only — vitest transpiles the TypeScript in it exactly as it
+/// transpiles the case's own, and there is no build step — so what is staged is its
+/// `src/` directory and nothing else. It lands as a sibling of the case's own
+/// `harness.ts`, which is what makes one import line resolve both in the case's
+/// `validation/<engine>/` in the checkout and in the staged `validation/` here.
+///
+/// It is copied AFTER the case's tree and over the top of anything standing at that
+/// name: the package is what decides the case's points, and a case must not be able
+/// to shadow it with a stale copy of its own.
+///
+/// A host with no staged copy is a failure of the runner rather than of the build, so
+/// it is reported as such — every point the validators back is left for the reviewer
+/// — and the message names both ways to fix it.
+fn stage_case_harness(dest: &Path) -> Result<(), String> {
+    let source = case_harness_source().ok_or_else(|| {
+        format!(
+            "the shared validator harness `{CASE_HARNESS_PACKAGE}` was not found in the package \
+             store at `{}` — the driver image bakes it there; for a local checkout run \
+             `node scripts/stage-tcab-packages.mjs` or point `TCAB_PACKAGE_STORE` at a staged copy",
+            crate::seeding::package_store_dir().display(),
+        )
+    })?;
+    let at = dest.join(CASE_HARNESS_DIR);
+    if at.exists() {
+        std::fs::remove_dir_all(&at)
+            .map_err(|err| format!("could not clear `{}`: {err}", at.display()))?;
+    }
+    crate::copy_tree(&source, &at)
+        .map_err(|err| format!("could not stage `{CASE_HARNESS_PACKAGE}`: {err}"))
+}
+
+/// The shared harness package's `src/` on this host.
+///
+/// The package store first — what the driver image bakes and what `TCAB_PACKAGE_STORE`
+/// overrides, the SAME store the seeder vendors engine runtimes out of, so the two can
+/// never disagree about what a run was validated against — then the repository
+/// checkout a `tcab` invoked from the repo root sits in. The checkout candidates are
+/// relative to the current directory, exactly as
+/// [`crate::browser::driver_path`]'s are: a run is launched from the repository root,
+/// which is also where the npm workspace lives.
+fn case_harness_source() -> Option<PathBuf> {
+    let stored = crate::seeding::package_store_dir()
+        .join(CASE_HARNESS_PACKAGE)
+        .join("src");
+    if stored.is_dir() {
+        return Some(stored);
+    }
+    CASE_HARNESS_CANDIDATES
+        .iter()
+        .map(PathBuf::from)
+        .find(|path| path.is_dir())
 }
 
 /// Make sure the tree's dependencies are installed, installing only when nothing has.
@@ -409,7 +762,8 @@ fn ensure_dependencies(
     repo: &Path,
     artifacts: &ArtifactCollection,
     install_command: &str,
-) -> Result<(), String> {
+    timeout: Duration,
+) -> Result<(), RunnerFailure> {
     if artifacts.prepared_install_for(install_command).is_some()
         || repo.join("node_modules").is_dir()
     {
@@ -418,11 +772,13 @@ fn ensure_dependencies(
     let scratch = tempfile::Builder::new()
         .prefix("tcab-vitest-install")
         .tempdir()
-        .map_err(|err| format!("could not create a scratch directory: {err}"))?;
+        .map_err(|err| {
+            RunnerFailure::not_run(format!("could not create a scratch directory: {err}"))
+        })?;
     let ran = run_bounded(
         repo,
         install_command,
-        VITEST_INSTALL_TIMEOUT,
+        timeout,
         scratch.path(),
         "install",
         &[],
@@ -430,12 +786,12 @@ fn ensure_dependencies(
     if ran.code == Some(0) {
         return Ok(());
     }
-    Err(format!(
+    Err(RunnerFailure::not_run(format!(
         "`{}` did not succeed ({}): {}",
         install_command.trim(),
         exit_description(ran.code),
         bounded(&ran.combined(), VITEST_OUTPUT_LIMIT),
-    ))
+    )))
 }
 
 /// A finished command's exit status and captured output.
@@ -472,8 +828,8 @@ fn exit_description(code: Option<i32>) -> String {
 ///
 /// Output is written to files under `scratch` rather than pipes so a suite that prints
 /// more than a pipe buffer holds cannot deadlock the runner while it waits. A command
-/// that outlives the cap is killed and reported as timed out, never as a failure it
-/// earned.
+/// that outlives the cap is stopped and reported as
+/// [timed out](Inconclusive::TimedOut), never as a failure it earned.
 ///
 /// `env` is set on top of the runner's own inherited environment — the one channel the
 /// runner has to a suite it never calls directly.
@@ -484,15 +840,16 @@ fn run_bounded(
     scratch: &Path,
     tag: &str,
     env: &[(&str, String)],
-) -> Result<Ran, String> {
+) -> Result<Ran, RunnerFailure> {
     let out_path = scratch.join(format!("{tag}.stdout"));
     let err_path = scratch.join(format!("{tag}.stderr"));
-    let stdout =
-        File::create(&out_path).map_err(|err| format!("could not capture output: {err}"))?;
-    let stderr =
-        File::create(&err_path).map_err(|err| format!("could not capture output: {err}"))?;
+    let stdout = File::create(&out_path)
+        .map_err(|err| RunnerFailure::not_run(format!("could not capture output: {err}")))?;
+    let stderr = File::create(&err_path)
+        .map_err(|err| RunnerFailure::not_run(format!("could not capture output: {err}")))?;
 
-    let mut child = Command::new("sh")
+    let mut builder = Command::new("sh");
+    builder
         .arg("-c")
         .arg(command)
         .current_dir(repo)
@@ -506,24 +863,37 @@ fn run_bounded(
         // cap on a question no one is there to answer.
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
+        .stderr(Stdio::from(stderr));
+    // Its own process group, so the cap can reap the whole tree rather than the shell
+    // at the top of it. See `stop`.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        builder.process_group(0);
+    }
+    let mut child = builder
         .spawn()
-        .map_err(|err| format!("could not start `sh`: {err}"))?;
+        .map_err(|err| RunnerFailure::not_run(format!("could not start `sh`: {err}")))?;
 
     let deadline = Instant::now() + timeout;
     let code = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status.code(),
             Ok(None) => {}
-            Err(err) => return Err(format!("could not wait on `{}`: {err}", command.trim())),
+            Err(err) => {
+                return Err(RunnerFailure::not_run(format!(
+                    "could not wait on `{}`: {err}",
+                    command.trim(),
+                )));
+            }
         }
         if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!(
-                "the validators exceeded the {} second cap and were stopped",
+            stop(&mut child);
+            return Err(RunnerFailure::timed_out(format!(
+                "the {tag} step exceeded the {} second cap and was stopped, so the \
+                 validators decided nothing about this build",
                 timeout.as_secs(),
-            ));
+            )));
         }
         std::thread::sleep(POLL_INTERVAL);
     };
@@ -532,6 +902,32 @@ fn run_bounded(
         stdout: std::fs::read_to_string(&out_path).unwrap_or_default(),
         stderr: std::fs::read_to_string(&err_path).unwrap_or_default(),
     })
+}
+
+/// Stop a command that outlived its cap, together with everything it started.
+///
+/// `sh -c 'npx vitest …'` is a process tree, and killing the shell at the top of it
+/// leaves node and its workers running. Those keep loading the host long after the run
+/// stopped waiting for them, which is how one suite over its budget makes the next
+/// case's suites slower still. The command is spawned into its own process group, so
+/// signalling the group reaches the whole tree; the shell is killed directly afterwards
+/// for the platforms that have no groups, and reaped either way.
+fn stop(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        // Through `sh` rather than a `kill` binary: `kill` is a shell builtin, and this
+        // runner already requires a shell.
+        let group = child.id();
+        let _ = Command::new("sh")
+            .arg("-c")
+            .arg(format!("kill -KILL -{group}"))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 // --- The report ------------------------------------------------------------
@@ -704,10 +1100,13 @@ impl Suite {
             // The case names a validator vitest did not collect. That is a statement
             // about the case's project, never about the build, so the point is left
             // for the reviewer rather than failed.
-            return self.not_run(&format!(
-                "the validator project contains no suite at `{}`",
-                self.file.as_deref().unwrap_or(&self.script_rel),
-            ));
+            return self.inconclusive(
+                &format!(
+                    "the validator project contains no suite at `{}`",
+                    self.file.as_deref().unwrap_or(&self.script_rel),
+                ),
+                Inconclusive::NotRun,
+            );
         };
         if report.tests.is_empty() {
             // The file raised before any test ran, which for a validator means the
@@ -716,6 +1115,7 @@ impl Suite {
             return DebugScriptResult {
                 ran: false,
                 precondition_unmet: false,
+                inconclusive: None,
                 detail: Some(bounded(
                     report
                         .message
@@ -740,8 +1140,9 @@ impl Suite {
             // Every check declined to decide: the validator could not construct its
             // scenario against the world this build invented. Inconclusive about the
             // build, so no verdict is synthesized.
-            return self.not_run(
+            return self.inconclusive(
                 "every check in the suite was skipped: the scenario was not constructible against this build",
+                Inconclusive::PreconditionUnmet,
             );
         }
 
@@ -758,6 +1159,7 @@ impl Suite {
         DebugScriptResult {
             ran: true,
             precondition_unmet: false,
+            inconclusive: None,
             detail,
             verdicts: vec![AutoVerdict {
                 id: self.verdict_id.clone(),
@@ -768,13 +1170,18 @@ impl Suite {
         }
     }
 
-    /// A result recording that this suite did not run, for `reason`, and decided
-    /// nothing. No verdict is synthesized, so the point stays unanswered and the
-    /// reviewer decides it by hand.
-    pub(crate) fn not_run(&self, reason: &str) -> DebugScriptResult {
+    /// A result recording that this suite decided nothing, for `reason`, and which
+    /// kind of inconclusive that is. No verdict is synthesized, so the point stays
+    /// unanswered and the reviewer decides it by hand.
+    pub(crate) fn inconclusive(
+        &self,
+        reason: &str,
+        inconclusive: Inconclusive,
+    ) -> DebugScriptResult {
         DebugScriptResult {
             ran: false,
             precondition_unmet: true,
+            inconclusive: Some(inconclusive),
             detail: Some(bounded(reason, VITEST_OUTPUT_LIMIT)),
             verdicts: Vec::new(),
             ..self.shell()
@@ -793,6 +1200,7 @@ impl Suite {
             gates: self.gates,
             ran: false,
             precondition_unmet: false,
+            inconclusive: None,
             detail: None,
             verdicts: Vec::new(),
             // Every declared output, recorded absent. That is the honest answer for a

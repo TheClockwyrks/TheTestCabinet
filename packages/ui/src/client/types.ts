@@ -818,6 +818,12 @@ export interface ReviewItem {
   // (the item is still checked and shown). Absent/true otherwise. See
   // `applyScoreExclusions` in ratings.ts.
   scored?: boolean;
+  // The engine scoping of this point's validator, when it declares one: the engine
+  // slugs the validator decides the point on. A run built on any other engine does
+  // not carry the point at all, so a run-scoped surface filters the checklist
+  // through `reviewItemsForEngine`. Absent for a human-judged point, and for a
+  // validator the case leaves active on every engine it supports.
+  validation?: ReviewItemValidation | null;
   // Optional name-only sub-items breaking this item into independently graded
   // pass/fail points (an academic question's "2a", "2b"). When present, the
   // reviewer records a verdict per sub-item instead of one for the item; each
@@ -855,6 +861,16 @@ export interface ReviewSubItem {
   // checklist only when an erratum's `excludeFromScore` links its composite verdict
   // id (or excludes the whole category). Absent/true otherwise.
   scored?: boolean;
+  // The engine scoping of this point's validator (see `ReviewItem.validation`).
+  validation?: ReviewItemValidation | null;
+}
+
+// The part of a point's automated-validation driver a client reads: which engines
+// the validator decides the point on. The script itself and its media outputs are
+// the driver's business, so they are not modelled here. Empty/absent `engines`
+// leaves the point on every engine the case supports.
+export interface ReviewItemValidation {
+  engines?: string[];
 }
 
 // A scoring domain a test case declares; a reviewer rates each independently and

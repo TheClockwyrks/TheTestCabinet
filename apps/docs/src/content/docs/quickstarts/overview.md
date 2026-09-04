@@ -32,7 +32,7 @@ same task in full. A machine that has never run The Test Cabinet starts with
 - [End-to-end variant](/quickstarts/authoring/create-an-end-to-end-variant/)
   adds a playable mode to an existing end-to-end version.
 - [Full-stack case](/quickstarts/authoring/author-a-full-stack-test-case/)
-  scaffolds a case whose run produces the game and its own 2D assets.
+  scaffolds a case whose run produces the game and its own assets.
 
 ## Authoring 2D asset-generation cases
 

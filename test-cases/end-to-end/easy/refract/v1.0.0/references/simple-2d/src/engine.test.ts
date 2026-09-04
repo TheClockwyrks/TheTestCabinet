@@ -349,7 +349,12 @@ describe("drawing a beam with the pointer", () => {
   it("mirrors the pointer into the state every frame", async () => {
     h.pointer("pointermove", 333, 222);
     await h.engine.advance(1);
-    expect(h.state.pointer).toEqual({ x: 333, y: 222, down: false });
+    expect(h.state.pointer).toEqual({
+      x: 333,
+      y: 222,
+      down: false,
+      device: "mouse",
+    });
   });
 
   it("plays channel-complete when a beam closes without solving", async () => {

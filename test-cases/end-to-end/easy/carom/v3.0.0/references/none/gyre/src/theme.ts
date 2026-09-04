@@ -39,3 +39,12 @@ export const SCORE_FONT_PX = 76;
 
 export const TAGLINE_TEXT = "NEON PADDLE DUEL";
 export const MODE_LABEL = { solo: "SOLO", versus: "VERSUS" } as const;
+
+/**
+ * The how-to screen's single menu item.
+ *
+ * `specs/ui.md` fixes that the screen shows ONE item at index `0` and that
+ * confirming it returns to the title; the copy is this build's, so it lives here
+ * beside the tagline rather than among the figures the specification fixes.
+ */
+export const HOWTO_ITEM_TEXT = "BACK TO TITLE";

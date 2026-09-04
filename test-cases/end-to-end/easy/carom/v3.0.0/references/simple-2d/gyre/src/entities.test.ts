@@ -21,8 +21,10 @@ import {
   paddleFrontX,
   paddleRect,
   parkedBall,
+  type PaddleMotion,
 } from "./entities";
-import type { BallState, PaddleState } from "./game";
+import { HOLD_TIME } from "./constants";
+import type { BallState } from "./game";
 
 describe("clamp", () => {
   it("passes a value inside the range through", () => {
@@ -58,7 +60,7 @@ describe("paddle geometry", () => {
 
 describe("integratePaddle", () => {
   it("advances by the velocity over the elapsed time", () => {
-    const paddle: PaddleState = { cy: 360, vy: 720 };
+    const paddle: PaddleMotion = { cy: 360, vy: 720 };
     const next = integratePaddle(paddle, 0.25);
     expect(next.cy).toBeCloseTo(540, 9);
     expect(next.vy).toBe(720);
@@ -91,10 +93,20 @@ describe("the ball", () => {
     expect(ballSpeed({ x: 0, y: 0, vx: 3, vy: 4, spin: 0 })).toBe(5);
   });
 
-  it("parks at the field center with no motion and no spin", () => {
+  it("parks at the field center, held for a full hold, with no trail", () => {
     const ball: BallState = parkedBall();
-    expect(ball).toEqual({ x: 640, y: 360, vx: 0, vy: 0, spin: 0 });
+    expect(ball).toEqual({
+      x: 640,
+      y: 360,
+      vx: 0,
+      vy: 0,
+      spin: 0,
+      held: true,
+      holdTimer: HOLD_TIME,
+      trail: [],
+    });
     // A fresh value each time, never a shared one.
     expect(parkedBall()).not.toBe(ball);
+    expect(parkedBall().trail).not.toBe(ball.trail);
   });
 });

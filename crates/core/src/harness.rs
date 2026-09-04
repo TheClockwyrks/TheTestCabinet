@@ -15,7 +15,7 @@ use crate::event::{EventFormat, EventSink, HarnessEvent};
 use crate::execution::{ContainerHandle, ContainerRuntime, ExecOutput, RawOutputLine};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
-use crate::test_case::{AssetKind, TestType};
+use crate::test_case::{AssetDimension, AssetKind, TestType};
 
 /// The default registry/namespace the run-container image is published under,
 /// used when `TCAB_CONTAINER_REGISTRY` is unset. Matches the namespace
@@ -40,11 +40,23 @@ const BASE_WASM_IMAGE_NAME: &str = "test-cabinet-base-wasm";
 /// `PATH`, so a model can both build a program and produce its own assets in one
 /// run (see `containers/full-stack-2d/Dockerfile`).
 const FULL_STACK_2D_IMAGE_NAME: &str = "test-cabinet-full-stack-2d";
+/// The name of the 3D full-stack run-container image, used by every full-stack run
+/// whose case declares `asset_dimension = "3d"`. It is a **superset** of the
+/// full-stack-2d image — the same six 2D binaries, and audio staged from the case's
+/// `[audio] packs` exactly as there — plus the voxel-model and 3D-particle tooling (`voxel`,
+/// `voxel-anim`, `particle-3d`) and the Mesa software-Vulkan runtime those three render
+/// their previews through. The meshed/SDF families (`mc`/`sn`/`dc` and their
+/// `-anim`/`-skin` binaries) and the Blender toolchain are deliberately not in it: they
+/// are a far heavier toolchain and no full-stack case needs them yet. It is a separate
+/// image rather than an addition to the 2D one because the 3D tooling is weight every
+/// 2D full-stack run would otherwise pull and never use (see
+/// `containers/full-stack-3d/Dockerfile`).
+const FULL_STACK_3D_IMAGE_NAME: &str = "test-cabinet-full-stack-3d";
 /// The name of the game-jam run-container image, used by every game-jam run. A jam
 /// is a full-stack-style build (it produces its own 2D assets and ships a browser
 /// game) but is deliberately **not** a full-stack case, so it resolves its own image
 /// rather than borrowing full-stack's. The image is the full-stack-2d image (the six
-/// 2D asset-generation binaries and the audio packs on `PATH`, over the base-wasm
+/// 2D asset-generation binaries on `PATH`, over the base-wasm
 /// Rust → WebAssembly toolchain, so a jam may author its core in Rust and ship it as
 /// committed wasm) — plus nothing but its own identity, so a deployment can pin the
 /// jam image independently and coreutils `date` is present for a model to check its
@@ -157,6 +169,11 @@ const BASE_WASM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE_WASM";
 /// The environment variable that pins a verbatim override for the full-stack (2D)
 /// image.
 const FULL_STACK_2D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_2D";
+/// The environment variable that pins a verbatim override for the 3D full-stack image.
+/// Separate from the 2D one for the reason every per-image override is separate: the two
+/// full-stack images are different builds, so an override that covered both could only
+/// ever be right for one.
+const FULL_STACK_3D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_3D";
 /// The environment variable that pins a verbatim override for the game-jam image.
 const GAME_JAM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_GAME_JAM";
 /// The environment variable that pins a verbatim override for the sprite image.
@@ -226,6 +243,7 @@ const PERFORMANCE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PERFORMANCE";
 const RUN_IMAGE_OVERRIDE_ENVS_PLAIN: &[&str] = &[
     BASE_WASM_IMAGE_OVERRIDE_ENV,
     FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
+    FULL_STACK_3D_IMAGE_OVERRIDE_ENV,
     GAME_JAM_IMAGE_OVERRIDE_ENV,
     SPRITE_IMAGE_OVERRIDE_ENV,
     SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
@@ -317,10 +335,12 @@ impl ImageSpec {
     /// # Every image has one
     ///
     /// This is a derivation, not a lookup, and that is the point: whichever image a run
-    /// would otherwise get — an asset-generation kind, blender, adversarial — the gg
-    /// variant of it is published and carries the same toolchain tree. There is no
-    /// combination of test type and asset kind for which a gg run resolves an image with
-    /// no compilers in it, because there is no list that could be missing one.
+    /// would otherwise get — an asset-generation kind, a full-stack dimension, blender,
+    /// adversarial — the gg variant of it is published and carries the same toolchain
+    /// tree. Selection reads three axes ([`TestType`], [`AssetKind`] and
+    /// [`AssetDimension`]), and no combination of the three resolves a gg image with
+    /// no compilers in it, because there is no list that could be missing one — an
+    /// axis brings the variants of every image it selects with it.
     /// `containers/build.sh` builds a variant of every name in
     /// `containers/image-names.sh` for the same reason, and
     /// `every_resolvable_image_is_one_the_build_publishes` fails the build if the two
@@ -336,29 +356,48 @@ impl ImageSpec {
     }
 }
 
-/// The [`ImageSpec`] for a run, selected by its [`TestType`] and (for
-/// asset-generation) its [`AssetKind`]. End-to-end runs use the base-wasm image (the
-/// base plus the shared Rust/wasm toolchain);
-/// single-sprite runs use the sprite image (the base plus the baked-in `draw`
-/// binary); sprite-sheet runs use the sprite-sheet image (the base plus the
-/// baked-in `draw-sheet` binary); adversarial runs use the adversarial image (the
-/// base plus the Rust + `wasm32-unknown-unknown` toolchain a controller compiles
-/// to wasm with, and the baked-in Foray CLI + buildkit + references); performance
-/// runs use the performance image (the same wasm toolchain plus the baked-in
-/// Lattice CLI + buildkit + reference engines + training scenarios). Each has its
-/// own override env var so a host can pin one image
-/// without disturbing the others. `asset_kind` is ignored outside an
-/// asset-generation run (it is always [`AssetKind::Sprite`] there).
-fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
+/// The [`ImageSpec`] for a run, selected by its [`TestType`] and — for the two types
+/// that have more than one image to choose between — its [`AssetKind`] (asset
+/// generation) or its [`AssetDimension`] (full-stack). End-to-end runs use the
+/// base-wasm image (the base plus the shared Rust/wasm toolchain); full-stack runs use
+/// the full-stack image of their declared dimension (the 2D six binaries, plus the
+/// voxel/3D-particle tooling for `3d`); single-sprite runs use the sprite image (the
+/// base plus the baked-in `draw` binary); sprite-sheet runs use the sprite-sheet image
+/// (the base plus the baked-in `draw-sheet` binary); adversarial runs use the
+/// adversarial image (the base plus the Rust + `wasm32-unknown-unknown` toolchain a
+/// controller compiles to wasm with, and the baked-in Foray CLI + buildkit +
+/// references); performance runs use the performance image (the same wasm toolchain
+/// plus the baked-in Lattice CLI + buildkit + reference engines + training scenarios).
+/// Each has its own override env var so a host can pin one image without disturbing the
+/// others. `asset_kind` is ignored outside an asset-generation run (it is always
+/// [`AssetKind::Sprite`] there), and `asset_dimension` outside a full-stack one (always
+/// [`AssetDimension::TwoD`]) — resolution rejects a manifest that sets either where it
+/// means nothing, so the value reaching here off any other type is the default.
+fn image_spec_for(
+    test_type: TestType,
+    asset_kind: AssetKind,
+    asset_dimension: AssetDimension,
+) -> ImageSpec {
     match test_type {
         TestType::EndToEnd => ImageSpec::of(BASE_WASM_IMAGE_NAME, BASE_WASM_IMAGE_OVERRIDE_ENV),
-        TestType::FullStack => {
-            ImageSpec::of(FULL_STACK_2D_IMAGE_NAME, FULL_STACK_2D_IMAGE_OVERRIDE_ENV)
-        }
+        // The two full-stack images are the same shape — a wasm-capable base with the
+        // asset-authoring binaries baked in — differing only in which binaries. The 3D
+        // one is a superset, but it is not the default: its voxel/particle-3d tooling
+        // and the Mesa stack they render through are weight a 2D case would pull and
+        // never use, so a case opts into it with `asset_dimension = "3d"`.
+        TestType::FullStack => match asset_dimension {
+            AssetDimension::TwoD => {
+                ImageSpec::of(FULL_STACK_2D_IMAGE_NAME, FULL_STACK_2D_IMAGE_OVERRIDE_ENV)
+            }
+            AssetDimension::ThreeD => {
+                ImageSpec::of(FULL_STACK_3D_IMAGE_NAME, FULL_STACK_3D_IMAGE_OVERRIDE_ENV)
+            }
+        },
         // A game jam produces its own 2D assets and builds a browser game like a
         // full-stack run, but it is not a full-stack case: it resolves its own
         // (full-stack-2d-derived) image so a deployment can pin the jam image on its
-        // own.
+        // own. It deliberately has no dimension to select on either — a jam is one
+        // theme with one image, and its manifest format has no `asset_dimension`.
         TestType::GameJam => ImageSpec::of(GAME_JAM_IMAGE_NAME, GAME_JAM_IMAGE_OVERRIDE_ENV),
         TestType::AssetGeneration => match asset_kind {
             AssetKind::Sprite => ImageSpec::of(SPRITE_IMAGE_NAME, SPRITE_IMAGE_OVERRIDE_ENV),
@@ -432,23 +471,25 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
 fn image_spec_for_run(
     test_type: TestType,
     asset_kind: AssetKind,
+    asset_dimension: AssetDimension,
     harness: HarnessSlug,
 ) -> ImageSpec {
-    let spec = image_spec_for(test_type, asset_kind);
+    let spec = image_spec_for(test_type, asset_kind, asset_dimension);
     if harness != HarnessSlug::Gg {
         return spec;
     }
     spec.gg_variant()
 }
 
-/// Resolve the run-container image reference for a run, from the environment. The
-/// image is selected by the run's [`TestType`] and (for asset-generation) its
-/// [`AssetKind`] — end-to-end runs use the base-wasm image, single-sprite runs use the
-/// sprite image, sprite-sheet runs use the sprite-sheet image, adversarial runs
-/// use the adversarial image — and the harness's CLI is installed into the
-/// container at run time rather than baked into a per-harness image. The runner
-/// pulls the image directly from a registry — it does **not** ask any backend, so
-/// a runner pointed at any backend (or none) resolves it the same way (see
+/// Resolve the run-container image reference for a run, from the environment. The image
+/// is selected by the run's [`TestType`], by its [`AssetKind`] for asset-generation,
+/// and by its [`AssetDimension`] for full-stack — end-to-end runs use the base-wasm
+/// image, full-stack runs use the full-stack image of their declared dimension,
+/// single-sprite runs use the sprite image, sprite-sheet runs use the sprite-sheet
+/// image, adversarial runs use the adversarial image — and the harness's CLI is
+/// installed into the container at run time rather than baked into a per-harness image.
+/// The runner pulls the image directly from a registry — it does **not** ask any
+/// backend, so a runner pointed at any backend (or none) resolves it the same way (see
 /// `docs/components/core/execution.md`).
 ///
 /// `harness` is taken for the one thing that is not installed at run time: a
@@ -459,7 +500,8 @@ fn image_spec_for_run(
 ///
 /// Precedence:
 /// 1. The image's **own** override — `TCAB_CONTAINER_IMAGE_BASE_WASM` for an end-to-end
-///    run, `TCAB_CONTAINER_IMAGE_SPRITE` for a single-sprite run,
+///    run, `TCAB_CONTAINER_IMAGE_FULL_STACK_2D` / `_FULL_STACK_3D` for a full-stack run
+///    of either dimension, `TCAB_CONTAINER_IMAGE_SPRITE` for a single-sprite run,
 ///    `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for a sprite-sheet run, and the `_GG` suffixed
 ///    counterpart for a gg run, which resolves the variant — a full, verbatim
 ///    reference. Set it to a `@sha256:…` digest to pin an exact image, or to point
@@ -479,9 +521,10 @@ fn image_spec_for_run(
 pub fn resolve_run_image(
     test_type: TestType,
     asset_kind: AssetKind,
+    asset_dimension: AssetDimension,
     harness: HarnessSlug,
 ) -> String {
-    let spec = image_spec_for_run(test_type, asset_kind, harness);
+    let spec = image_spec_for_run(test_type, asset_kind, asset_dimension, harness);
     compose_run_image(
         &spec.name,
         std::env::var(spec.override_env.as_ref()).ok(),

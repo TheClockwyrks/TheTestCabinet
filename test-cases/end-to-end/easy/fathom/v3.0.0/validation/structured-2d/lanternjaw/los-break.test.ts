@@ -27,6 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
+import { BRIGHT_HOLD } from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
@@ -37,7 +38,6 @@ import {
 } from "../harness";
 import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { FathomSnapshot } from "../surface";
-import { BRIGHT_HOLD } from "../../src/constants";
 
 /**
  * How far apart the pair stands, in tiles, on either reading.

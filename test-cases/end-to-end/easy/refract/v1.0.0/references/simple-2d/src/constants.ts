@@ -259,6 +259,20 @@ export const SOLVED_ITEMS = ["NEXT BOARD", "RESTART"] as const;
 export const HUD_SOLVED_LABEL = "SOLVED";
 export const HUD_TIER_LABEL = "TIER";
 
+// ---- Pointer targets (specs/controls.md) ---------------------------------
+
+/**
+ * The smallest a pointer target may be on each axis. Both are what a fingertip
+ * needs at the stage size, so every target is worked by touch as readily as by
+ * a mouse.
+ */
+export const TARGET_MIN_W = 96;
+export const TARGET_MIN_H = 72;
+
+/** The two on-screen controls the pointer works `howto` and `playing` through. */
+export const BACK_LABEL = "BACK";
+export const CLEAR_LABEL = "CLEAR";
+
 // ---- Input actions (specs/controls.md) -----------------------------------
 
 /**
@@ -322,7 +336,7 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 // ---- Debug surface (specs/instrumentation.md) ----------------------------
 
 /** The version the debug surface reports as `version`. */
-export const REFRACT_DEBUG_VERSION = 1;
+export const REFRACT_DEBUG_VERSION = 2;
 
 /** The seed `reset()` restores when the caller names none. */
 export const DEFAULT_SEED = 1;

@@ -1,13 +1,12 @@
-// Carom — the movable objects in the field: the paddles and the ball.
+// Carom — the geometry and the arithmetic of the movable objects in the field.
 //
-// Both live in `CaromState` as plain data (`src/game.ts`), so this module holds no
-// state of its own: it is the arithmetic that reads and writes those records, plus
-// the fixed geometry each side's paddle occupies. The obstacles are static and are
-// named in `src/constants.ts`.
+// The paddles and the ball live in `CaromState` as plain data (`src/state.ts`),
+// so this module holds no state of its own: it is the arithmetic that reads and
+// writes those records, plus the fixed geometry each side's paddle occupies. The
+// obstacles' centers are named in `src/constants.ts` and which of them are on the
+// field is state.
 
 import {
-  FIELD_CX,
-  FIELD_CY,
   P1_X0,
   P1_X1,
   P2_X0,
@@ -17,7 +16,7 @@ import {
   PADDLE_MIN_CY,
   type Rect,
 } from "./constants";
-import type { BallState, PaddleState, Side } from "./game";
+import type { BallState, PaddleState, Side } from "./state";
 
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
@@ -61,13 +60,4 @@ export function integratePaddle(paddle: PaddleState, dt: number): void {
 /** The ball's current speed: the magnitude of its velocity. Never stored. */
 export function ballSpeed(ball: BallState): number {
   return Math.hypot(ball.vx, ball.vy);
-}
-
-/** Park the ball at its spawn point, motionless and with no spin. */
-export function parkBall(ball: BallState): void {
-  ball.x = FIELD_CX;
-  ball.y = FIELD_CY;
-  ball.vx = 0;
-  ball.vy = 0;
-  ball.spin = 0;
 }

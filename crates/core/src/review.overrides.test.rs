@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::test_case::{Domain, ReviewItem, SubReviewItem};
-use crate::validation::{AutoVerdict, DebugScriptResult};
+use crate::validation::{AutoVerdict, DebugScriptResult, Inconclusive};
 
 /// A scoring domain with the given id.
 fn domain(id: &str) -> Domain {
@@ -72,6 +72,7 @@ fn decided(item: &str, id: &str, pass: bool) -> DebugScriptResult {
         gates: true,
         ran: true,
         precondition_unmet: false,
+        inconclusive: None,
         detail: None,
         verdicts: vec![AutoVerdict {
             id: id.into(),
@@ -88,6 +89,7 @@ fn inconclusive(item: &str) -> DebugScriptResult {
     DebugScriptResult {
         ran: false,
         precondition_unmet: true,
+        inconclusive: Some(Inconclusive::PreconditionUnmet),
         verdicts: vec![],
         ..decided(item, item, true)
     }

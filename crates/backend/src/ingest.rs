@@ -632,6 +632,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             renderer: replay.renderer.to_string_lossy().replace('\\', "/"),
         }),
         asset_kind: resolved.asset_kind,
+        asset_dimension: resolved.asset_dimension,
         sheet: resolved.sheet.clone(),
         voxel: resolved.voxel.clone(),
         model: resolved.model.clone(),
@@ -639,6 +640,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         material: resolved.material.clone(),
         particle: resolved.particle.clone(),
         audio: resolved.audio.clone(),
+        audio_packs: resolved.audio_packs.clone(),
         prompt_template,
         common_specs,
         workspace,
@@ -758,6 +760,7 @@ fn stored_validation(validation: &test_cabinet_core::ReviewValidation) -> Stored
     StoredReviewValidation {
         script: validation.script_rel.clone(),
         per_engine: validation.script.is_none(),
+        engines: validation.engines.clone(),
         outputs: validation
             .outputs
             .iter()

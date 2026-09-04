@@ -1,10 +1,11 @@
 // multi/launch-speed — a launched ball leaves at the base launch speed.
 //
-// A fresh match is opened and its hold cut short; the LAUNCH itself is the
-// build's own, on the frame after, and the speed of every ball is read the
-// instant it happens — before a wall, a paddle or another ball could change it.
-// Nothing about the launch is posed: `startMatch` opens the countdown and `serve`
-// ends it, and what leaves is whatever the build's own launch produced.
+// A fresh match is opened over the three balls alone and their holds cut short;
+// the LAUNCH itself is the build's own, on the frame after, and the speed of
+// every ball is read the instant it happens — before a wall, a paddle or another
+// ball could change it. Nothing about the launch is posed: the countdown is
+// reached through the surface and the holds are ended, and what leaves is
+// whatever the build's own launch produced.
 //
 // All three are read, because in multi they leave together and a build that
 // launched one of them at the wrong speed would otherwise be graded on the two it
@@ -12,12 +13,19 @@
 // is `multi/launch-angle`'s point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SERVE_SPEED } from "../../src/constants";
+import { BALL_COUNT, SERVE_SPEED } from "../constants";
 import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { readBalls } from "./harness";
+import {
+  captureReplay,
+  createHarness,
+  isolateField,
+  openCountdown,
+  reachPlay,
+  type Harness,
+} from "../harness";
+import { readEveryBall } from "./harness";
 
-/** The margin the speed is allowed: 15% of the specified speed. */
+/** The review item's margin: one percent of the specified speed. */
 const SPEED_TOLERANCE = SERVE_SPEED * 0.01;
 
 /** Frames of the hold recorded before it is cut short. */
@@ -37,24 +45,17 @@ afterEach(() => {
 });
 
 it("launches every ball at the base launch speed", async () => {
-  h.debug.reset();
-  await h.advance(1);
-  h.debug.startMatch("versus");
-  // One advanced frame settles the screen change (specs/instrumentation.md),
-  // so the clip below records the countdown.
-  await h.advance(1);
+  await openCountdown(h, "versus");
+  // The three balls and nothing else: a speed read on the launch frame has met
+  // nothing, so nothing else needs to be on the field for it.
+  isolateField(h, { balls: BALL_COUNT });
 
   const launched = await captureReplay(h, "launch", async () => {
     await h.advance(HELD_TICKS);
-    h.debug.serve();
-
-    const swept = await h.until((s) => s.screen === "playing", {
-      maxFrames: 60,
-      poll: 1,
-    });
+    const swept = await reachPlay(h);
     // Read HERE, on the launch frame, before anything on the field could have
     // changed a speed.
-    const balls = readBalls(swept.snapshot);
+    const balls = readEveryBall(swept.snapshot);
     await h.advance(FLIGHT_TICKS);
     return { swept, balls };
   });

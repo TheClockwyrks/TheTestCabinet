@@ -1,28 +1,34 @@
-// Carom — the screen vocabulary and the two game states.
+// Carom — the screen vocabulary and the one game state both levels build.
 //
 // The game's state lives in the framework objects the engine owns
 // (specs/state.md). Carom maps onto them like this:
 //
 //   * The game INSTANCE (`src/game.ts`) carries what must survive a level
-//     transition: the last match's mode, the seeded generator's state, and the
-//     debug driver's hold on the paddles.
-//   * Each LEVEL's game state carries what is scoped to that level. The title
-//     level holds the menu (`TitleState`); the match level holds the match
-//     (`MatchState`) — with the two scores on the participants' player states,
-//     where the framework keeps a score.
-//   * The ACTORS carry the field's bodies: each paddle its `cy` and integrated
-//     `vy` (`src/paddle.ts`), the ball its velocity, spin, and trail
-//     (`src/ball.ts`), and each obstacle its live pose, on its transform
-//     (`src/scenery.ts`), derived from the match state's obstacle clock.
+//     transition: the mode of the current or most recent match, the title
+//     menu's remembered selection, the simulation clock, the seeded
+//     generator, and — while a transition is in flight — the carried state the
+//     incoming world is dressed from (`src/carry.ts`).
+//   * The world's GAME STATE (`CaromState`, below) carries the screen, the
+//     menus, the match figures, the AI's two faculties, and the obstacle
+//     clock. Both levels build the same class, so every declared field is
+//     readable and posable on every screen — which is what
+//     specs/instrumentation.md's snapshot asks for.
+//   * The ACTORS carry the field's bodies: each paddle its `cy`, integrated
+//     `vy`, and the debug driver's hold on it (`src/paddle.ts`), the ball its
+//     velocity, spin, hold, and trail (`src/ball.ts`), and each obstacle its
+//     live pose on its transform (`src/scenery.ts`). Whether a body is on the
+//     field is whether its actor is in the world.
 //
 // `screen` is the game's top-level state machine (specs/ui.md), split across
-// the two levels: `title` and `howto` are the title level's screens, and
-// `countdown`, `playing`, `paused`, and `matchover` are the match level's.
-// `screenOf` reads whichever the open world holds, so an actor or a component
-// gates itself on the screen without knowing which level it is in.
+// the two levels `src/constants.ts` names: `title` and `howto` are the title
+// level's screens, and `countdown`, `playing`, `paused`, and `matchover` are
+// the match level's. `levelOf` is that split written down once, and it is what
+// lets `setScreen` and the menus route a screen change through the transition
+// the engine performs at the end of the frame.
 
 import { GameState } from "@test-cabinet/structured-2d";
 import type { World } from "@test-cabinet/structured-2d";
+import { LEVELS, type LevelName } from "./constants";
 import type { CaromGame } from "./game";
 import type { Side } from "./sim";
 
@@ -38,68 +44,94 @@ export type MatchScreen = "countdown" | "playing" | "paused" | "matchover";
 /** The top-level state machine (specs/ui.md). */
 export type Screen = TitleScreen | MatchScreen;
 
-/** True on the screens the field simulates under: the paddles move, the ball
- * flies or waits out its hold, and the trail records. */
+/** The two screens a pause resumes to. */
+export type ResumeScreen = "countdown" | "playing";
+
+/** Every screen, in the order specs/ui.md introduces them. */
+export const SCREENS: readonly Screen[] = [
+  "title",
+  "howto",
+  "countdown",
+  "playing",
+  "paused",
+  "matchover",
+];
+
+/** Which level hosts a screen. */
+export function levelOf(screen: Screen): LevelName {
+  return screen === "title" || screen === "howto" ? LEVELS.title : LEVELS.match;
+}
+
+/**
+ * True on the screens the field simulates under: the paddles move, the ball
+ * flies or waits out its hold, the trail records, and the obstacle clock winds
+ * (specs/ui.md).
+ */
 export function isLiveScreen(screen: Screen): boolean {
   return screen === "countdown" || screen === "playing";
 }
 
-/** The title level's state: which of its screens is up, and the menu. */
-export class TitleState extends GameState {
-  screen: TitleScreen = "title";
-  /** The highlighted item of the title menu. */
-  menuIndex = 0;
-}
-
 /**
- * The match level's state. The scores live on the player states the mode
- * builds (`state.players`, index 0 the left side, 1 the right), so they are
- * not repeated here; everything else specs/state.md names for a match is.
+ * The whole of Carom's world-scoped state, built by both levels' modes.
+ *
+ * One class rather than one per level, because every field below is reported by
+ * `snapshot()` and posed by the debug surface on EVERY screen
+ * (specs/instrumentation.md) — the title screen declares a receiver and an AI
+ * exactly as a live rally does. What differs between the two levels is which
+ * screens they host and which actors they place, not which figures they carry.
  */
-export class MatchState extends GameState {
+export class CaromState extends GameState {
   /**
-   * The game instance, bound by `CaromGame.worldOpened` before the first
-   * frame. It is how the world's controllers and mode reach the cross-level
-   * state: the debug driver's hold and the seeded generator.
+   * The game instance, bound by `CaromGame.worldOpened` before the world's
+   * first frame. It is how the world's controllers, mode, and components reach
+   * the state that outlives a world: the mode, the title menu's remembered
+   * selection, the simulation clock, and the seeded generator.
    */
   declare game: CaromGame;
 
   /** The screen currently shown (specs/ui.md). */
-  screen: MatchScreen = "countdown";
+  screen: Screen = "title";
   /** The highlighted item on whichever menu `screen` is showing. */
   menuIndex = 0;
-  /** The screen the pause menu resumes to: `countdown` or `playing`. */
-  resumeScreen: MatchScreen = "playing";
+  /** The screen the pause menu resumes to. */
+  resumeScreen: ResumeScreen = "playing";
+
+  /** The two scores: `p1` the left player's, `p2` the right player's. */
+  score: { p1: number; p2: number } = { p1: 0, p2: 0 };
   /** The winning side once the match is over, and null until then. */
   winner: Side | null = null;
-  /**
-   * The side the next serve travels toward: the player who was just scored
-   * on. The first serve of a match always travels toward player one ("left").
-   */
+  /** The side the next serve travels toward (specs/balls.md). */
   receiver: Side = "left";
-  /**
-   * Seconds remaining of the pre-serve hold. HOLD_TIME at the start of a
-   * match and after each point, counting down to 0, at which point the ball
-   * is served. 0 during a live rally.
-   */
-  holdTimer = 0;
-  /**
-   * The obstacle clock, in seconds — the sole input to both obstacle poses
-   * (specs/playfield.md). It advances by the frame's delta time on every live
-   * frame (`countdown` and `playing`, the pre-serve hold included), is frozen
-   * while the game is paused, and is held still while the debug driver holds
-   * the paddles, so a posed scenario faces one chosen, known orientation
-   * (specs/instrumentation.md). Starting at 0 on a state the match's world
-   * rebuilds is what makes every match open upright at the base centers.
-   * Obstacle A winds it and both obstacles pose from it (`src/scenery.ts`).
-   */
+
+  /** The AI's two faculties, each gated on its own (specs/state.md). */
+  ai: { tracking: boolean; movement: boolean } = {
+    tracking: true,
+    movement: true,
+  };
+
+  /** The obstacle clock, the sole input to both obstacle poses. */
   obstacleClock = 0;
+  /** Whether that clock advances with the frame. */
+  obstacleClockRunning = true;
+
+  /**
+   * The menu item a pointer or a touch contact came down on, held until it
+   * lifts. A confirm takes BOTH of its edges inside one item's region
+   * (specs/ui.md), so the landing has to be remembered across the frames a
+   * slow click spans. It is presentation rather than a declared figure, so no
+   * operation poses it and no snapshot reports it.
+   */
+  pressedItem: number | null = null;
+}
+
+/** The open world's Carom state. */
+export function caromState(world: World): CaromState {
+  const state = world.state;
+  if (state instanceof CaromState) return state;
+  throw new Error(`Carom: the "${world.level}" level carries no Carom state`);
 }
 
 /** The open world's screen, whichever level is up. */
 export function screenOf(world: World): Screen {
-  const state = world.state;
-  if (state instanceof MatchState) return state.screen;
-  if (state instanceof TitleState) return state.screen;
-  throw new Error(`Carom: the "${world.level}" level carries no screen`);
+  return caromState(world).screen;
 }

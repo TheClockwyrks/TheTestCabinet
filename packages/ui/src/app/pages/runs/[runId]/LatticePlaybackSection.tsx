@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { PerformanceScenarioView } from "../../../data/galleryContext";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   loadSheet,
   Renderer,
@@ -8,6 +13,9 @@ import {
   type Sheet,
   type Snapshot,
 } from "../lattice/renderer";
+import type { PerformanceSnapshotCheck } from "@test-cabinet/run-record";
+import { firstDrift } from "../lattice/drift";
+import { fitZoom, MAX_ZOOM, MIN_ZOOM, stepZoom } from "../lattice/zoom";
 import type { PlaybackWorkerResponse } from "../lattice/playbackWorker";
 import { formatInteger } from "../../../format";
 import styles from "./LatticePlaybackSection.module.scss";
@@ -24,9 +32,10 @@ import atlas from "../lattice/assets/sheet.json";
 // motion rather than a blur.
 const BASE_TICKS_PER_SECOND = 20;
 
-// A scored scenario runs for tens of thousands of ticks, and its first scheduled
-// snapshot is thousands in — so the high multipliers are not a novelty, they are how
-// a viewer reaches a checkpoint (or steady state) without waiting minutes.
+// A scored scenario runs for tens of thousands of ticks and playback shows its first
+// couple of thousand — so the high multipliers are not a novelty, they are how a
+// viewer reaches the window's graded checkpoint (or the onset of steady state)
+// without waiting minutes.
 const SPEEDS = [0.5, 1, 2, 4, 16, 64] as const;
 
 // At or above this multiplier we stop interpolating between two cached frames and
@@ -34,11 +43,19 @@ const SPEEDS = [0.5, 1, 2, 4, 16, 64] as const;
 // as a clean fast-forward.
 const DRAW_EVERY_TICK_BELOW = 4;
 
-// How long to wait for the run's own engine to load and step its first frames before
-// giving up. The module is the submission's arbitrary engine — its `playback_load`
-// runs the scored window up front and can trap, spin, or OOM — so a run that never
-// posts `ready` is abandoned rather than left hanging the player forever.
+// How long to wait for the engine to load and step its first frames before giving
+// up. On a run's playback the module is the submission's arbitrary engine — its
+// `playback_load` runs the scored window up front and can trap, spin, or OOM — so a
+// module that never posts `ready` is abandoned rather than left hanging the player
+// forever. (The reference engine always starts; the timeout simply never fires for
+// it.)
 const LOAD_TIMEOUT_MS = 8000;
+
+/** Clamp a normalized fraction, so an anchor point outside the board still names a
+ * point on it. */
+function clamp01(value: number): number {
+  return Math.min(Math.max(value, 0), 1);
+}
 
 // Load a bundled `?url` asset's bytes, tolerating both emitted file URLs and inlined
 // `data:` URLs. WebKit's WKWebView (the macOS Tauri webview) cannot `fetch()` a
@@ -61,7 +78,12 @@ function decodeDataUrl(url: string): {
 
 async function fetchAssetBytes(url: string): Promise<ArrayBuffer> {
   if (url.startsWith("data:")) return decodeDataUrl(url).bytes.buffer;
-  return fetch(url).then((r) => r.arrayBuffer());
+  const r = await fetch(url);
+  // Without this check a 404 (e.g. a run whose engine module was never published)
+  // would hand the error-page body to `WebAssembly.instantiate`, which fails with a
+  // cryptic "failed to match magic number" instead of a legible fetch error.
+  if (!r.ok) throw new Error(`engine module ${r.status}`);
+  return r.arrayBuffer();
 }
 
 async function fetchAssetBlob(url: string): Promise<Blob> {
@@ -73,31 +95,59 @@ async function fetchAssetBlob(url: string): Promise<Blob> {
 }
 
 /**
- * A performance run's factory for one scored scenario, replayed full-viewport in the
- * browser. Launched per scenario from that scenario's row on the run's Results tab.
+ * A Lattice factory replayed full-viewport in the browser: one wasm engine
+ * (`moduleUrl`) stepped over one scenario (`scenarioUrl`), drawn tick by
+ * interpolated tick.
  *
- * Playback steps the RUN'S OWN engine module (`moduleUrl` — the submission's compiled
- * `engine.wasm`) over the scored scenario, reconstructing exactly the factory the
- * submission computed — divergences and all — rather than re-simulating with the
- * reference engine. A run records only its scheduled snapshots, thousands of ticks
- * apart, so there is nothing to replay directly; re-stepping the run's engine is the
- * only faithful reconstruction, and there is no reference fallback.
+ * The player is deliberately engine-agnostic — the playback ABI is the same whichever
+ * module drives it — and both of its callers matter:
  *
- * The module is arbitrary code, so it runs in a Web Worker under a load timeout: its
- * `playback_load` runs the whole window and could trap or OOM, which on the main
- * thread would take the tab down. The worker streams decoded frames back; this
- * component caches them and does all rendering (canvas, sprite sheet) itself.
+ *   • A run's Results tab launches it per scored scenario against the RUN'S OWN
+ *     module (the submission's compiled `engine.wasm`), reconstructing exactly the
+ *     factory that submission computed, divergences and all. A run records only its
+ *     scheduled snapshots, thousands of ticks apart, so there is nothing to replay
+ *     directly; re-stepping the run's engine is the only faithful reconstruction, and
+ *     there is no reference fallback — a run whose module will not start is simply
+ *     not playable, never quietly shown the reference's factory instead. Passing the
+ *     run's recorded checksums in as `graded` is what lets the player say when that
+ *     reconstruction stops matching the run it claims to show.
+ *   • The case's Reference tab launches it against the vendored reference engine
+ *     (`lattice-core.wasm`) over the case's own windowed scenarios, to show what the
+ *     factories are supposed to look like. That is a property of the case, not of any
+ *     run — see `../lattice/reference.ts`.
+ *
+ * A run's module is arbitrary code, so whatever the caller, it runs in a Web Worker
+ * under a load timeout: `playback_load` runs the whole window and could trap or OOM,
+ * which on the main thread would take the tab down. The worker streams decoded frames
+ * back; this component caches them and does all rendering (canvas, sprite sheet)
+ * itself.
  */
 export function PlaybackOverlay({
-  scenario,
+  scenarioUrl,
   moduleUrl,
+  label,
+  graded,
   onExit,
 }: {
-  scenario: PerformanceScenarioView;
+  /** Loadable URL of the scenario to step, or null when none can be served. */
+  scenarioUrl: string | null;
+  /** Loadable URL of the engine module to step it with, or null when none exists. */
   moduleUrl: string | null;
+  /** What is being watched, shown in the overlay bar — a scored scenario's path on a
+   * run, the factory's name on the case's reference. */
+  label: string;
+  /**
+   * The checksums this engine produced at each graded tick when the run was scored,
+   * enabling the drift gate below. Omitted by the case's Reference tab, which plays
+   * the authoritative engine against no run at all and so has nothing to drift from.
+   */
+  graded?: PerformanceSnapshotCheck[];
   onExit: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // The scrolling stage the canvas sits in. Zooming reads its box (to fit a board to
+  // it) and writes its scroll offsets (to hold the anchor point still).
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const boardRef = useRef<Board | null>(null);
@@ -111,20 +161,54 @@ export function PlaybackOverlay({
   // The continuous frame-index position: `Math.floor(posRef)` is the frame drawn,
   // its fractional part the tween toward the next.
   const posRef = useRef(0);
+  // The run's graded checksums, held in a ref so the drift gate always reads the
+  // current ones without the loader effect depending on the array's identity —
+  // a new array from a parent re-render must not tear down and restart the worker.
+  const gradedRef = useRef(graded);
+  gradedRef.current = graded;
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The first graded tick where the frames disagree with the run's record, if any.
+  const [drift, setDrift] = useState<string | null>(null);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [tick, setTick] = useState(0);
+  // The board's native pixel size, known once the engine posts its board. The canvas
+  // always renders at this resolution and is only *displayed* at `scale`, so zooming
+  // restyles one element and never re-draws or re-steps the factory.
+  const [natural, setNatural] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  // The stage's content box, tracked so Fit follows a resized window (or a desktop
+  // shell whose chrome changes height) instead of freezing at the size it opened at.
+  const [viewport, setViewport] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  // The zoom the viewer chose, or null while following the fit-to-stage scale — the
+  // default, because the two large factories do not come close to fitting a viewport
+  // at a legible zoom. Before this the board was drawn at a fixed 2x and the only way
+  // to see the far side of a 72x40 factory was to scroll to it, a screenful at a time,
+  // with no way to take the whole thing in.
+  const [zoom, setZoom] = useState<number | null>(null);
 
-  // Load the sheet and this run's engine module + scenario, then hand the module to a
-  // worker to step. There is NO reference fallback: without a module (or a scenario)
-  // the run is simply not playable.
+  const scale = zoom ?? fitZoom(natural, viewport);
+  // The wheel handler is bound once (it must be non-passive; see below), so it reads
+  // the live scale from a ref rather than closing over a stale one.
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+
+  // Load the sheet and the engine module + scenario, then hand the module to a worker
+  // to step. There is NO fallback in either direction: without both a module and a
+  // scenario there is nothing faithful to draw, so the player says so rather than
+  // substituting another engine's factory.
   useEffect(() => {
-    const scenarioUrl = scenario.scenarioUrl;
     if (!moduleUrl || !scenarioUrl) {
-      setError("Playback is unavailable for this run.");
+      setError(
+        "Playback is unavailable: no engine module or scenario to play.",
+      );
       return;
     }
 
@@ -132,10 +216,12 @@ export function PlaybackOverlay({
     let worker: Worker | null = null;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     setError(null);
+    setDrift(null);
     setReady(false);
     framesRef.current = [];
     completeRef.current = false;
     posRef.current = 0;
+    setNatural(null);
 
     (async () => {
       try {
@@ -170,6 +256,26 @@ export function PlaybackOverlay({
           setError("The engine did not start in time.");
         }, LOAD_TIMEOUT_MS);
 
+        // The drift gate (see `../lattice/drift.ts` for what it does and does not
+        // prove): a frame at a graded tick must carry the checksum the run recorded
+        // there, or the factory on screen is not the one the verdict covers. Reported
+        // once — the first disagreement is the informative one, and every later frame
+        // descends from it.
+        let reported = false;
+        const checkDrift = (batch: Snapshot[]): void => {
+          if (reported) return;
+          const drifted = firstDrift(gradedRef.current, batch);
+          if (!drifted) return;
+          reported = true;
+          setDrift(
+            `At tick ${formatInteger(drifted.tick)} this playback computed ${
+              drifted.played
+            }, but the graded run recorded ${
+              drifted.recorded
+            } — what you are watching is not the state this run was scored on.`,
+          );
+        };
+
         worker.onmessage = (event: MessageEvent<PlaybackWorkerResponse>) => {
           const msg = event.data;
           if (msg.type === "ready") {
@@ -184,11 +290,13 @@ export function PlaybackOverlay({
             const size = renderer.size(board);
             canvas.width = size.width;
             canvas.height = size.height;
+            setNatural(size);
             boardRef.current = board;
             rendererRef.current = renderer;
             setReady(true);
           } else if (msg.type === "frames") {
             for (const frame of msg.batch) framesRef.current.push(frame);
+            checkDrift(msg.batch);
           } else if (msg.type === "complete") {
             completeRef.current = true;
           } else if (msg.type === "fail") {
@@ -201,10 +309,9 @@ export function PlaybackOverlay({
         };
 
         // Transfer the wasm buffer — the main thread has no further use for it.
-        worker.postMessage(
-          { type: "init", wasm, scenario: scenarioJson },
-          [wasm],
-        );
+        worker.postMessage({ type: "init", wasm, scenario: scenarioJson }, [
+          wasm,
+        ]);
       } catch (err) {
         if (!cancelled)
           setError(err instanceof Error ? err.message : String(err));
@@ -217,7 +324,7 @@ export function PlaybackOverlay({
       worker?.terminate();
       if (workerRef.current === worker) workerRef.current = null;
     };
-  }, [moduleUrl, scenario.scenarioUrl]);
+  }, [moduleUrl, scenarioUrl]);
 
   // The animation clock. Position advances continuously; the renderer draws the
   // factory between the two nearest cached frames. Frames stream in fast (the window
@@ -265,6 +372,110 @@ export function PlaybackOverlay({
     return () => cancelAnimationFrame(raf);
   }, [ready, playing, speed]);
 
+  // Lock document scroll for the overlay's lifetime so the fixed overlay never
+  // scrolls the page underneath it — which, on a run's Results tab, also leaves the
+  // page's own scrollbar standing beside a factory that is fitted to the window and
+  // has nothing to scroll. Matches the adversarial replay overlay and the playable
+  // embed, the other two full-viewport players.
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
+  // Track the stage's content box so Fit is a live scale, not a one-off measurement.
+  // `contentRect` excludes the stage's padding, which is exactly the space the board
+  // has to fit into.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[entries.length - 1]?.contentRect;
+      if (box) setViewport({ width: box.width, height: box.height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Where the next zoom should keep the picture pinned, captured before the re-render
+  // (which is what changes the canvas's size) and applied after it.
+  const anchorRef = useRef<{
+    fx: number;
+    fy: number;
+    px: number;
+    py: number;
+  } | null>(null);
+
+  /**
+   * Change the zoom (null to resume following Fit) while keeping whatever the viewer
+   * was looking at under the same point on screen: the cursor for a wheel zoom, the
+   * middle of the stage for the buttons.
+   *
+   * Without this, zooming into a factory that overflows the stage lands wherever the
+   * scroll offsets happened to be — usually the top-left corner — so magnifying the
+   * machine you were watching scrolls it off screen instead.
+   */
+  const zoomTo = useCallback(
+    (next: number | null, at?: { clientX: number; clientY: number }) => {
+      const el = viewportRef.current;
+      const canvas = canvasRef.current;
+      if (el && canvas) {
+        const view = el.getBoundingClientRect();
+        const board = canvas.getBoundingClientRect();
+        const px = (at?.clientX ?? view.left + view.width / 2) - view.left;
+        const py = (at?.clientY ?? view.top + view.height / 2) - view.top;
+        // As a fraction of the board, which is the one coordinate that survives the
+        // resize — the canvas's own pixels are unchanged by zooming.
+        if (board.width > 0 && board.height > 0) {
+          anchorRef.current = {
+            fx: clamp01((px + view.left - board.left) / board.width),
+            fy: clamp01((py + view.top - board.top) / board.height),
+            px,
+            py,
+          };
+        }
+      }
+      setZoom(next);
+    },
+    [],
+  );
+
+  // Put the anchor point back under the pointer once the resized canvas has been laid
+  // out. `offsetLeft`/`offsetTop` are measured from the stage's padding edge (it is
+  // the positioned ancestor) and are unaffected by scrolling, so they compose with the
+  // target scroll offset directly.
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    anchorRef.current = null;
+    const el = viewportRef.current;
+    const canvas = canvasRef.current;
+    if (!el || !canvas) return;
+    el.scrollLeft =
+      canvas.offsetLeft + anchor.fx * canvas.offsetWidth - anchor.px;
+    el.scrollTop =
+      canvas.offsetTop + anchor.fy * canvas.offsetHeight - anchor.py;
+  });
+
+  // Ctrl/Cmd + wheel — which is also what a trackpad pinch sends — zooms about the
+  // cursor, the gesture every map and canvas app answers to. Bound by hand rather than
+  // as `onWheel` because React registers wheel listeners passively, where the
+  // `preventDefault` that stops the browser zooming the whole console instead is
+  // ignored.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      zoomTo(stepZoom(scaleRef.current, event.deltaY < 0 ? 1 : -1), event);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoomTo]);
+
   const restart = useCallback(() => {
     posRef.current = 0;
     setTick(framesRef.current[0]?.tick ?? 0);
@@ -279,15 +490,64 @@ export function PlaybackOverlay({
         <button type="button" className={styles.exit} onClick={onExit}>
           Back
         </button>
+        {/* Which factory this is. The player covers the viewport, so without it a
+            viewer who launched one of several scenarios has nothing on screen
+            telling them which one they are watching. */}
+        <span className={styles.overlayLabel}>{label}</span>
       </div>
       <div className={styles.stage}>
-        {error ? (
-          <div className={styles.error}>
-            Could not play this scenario: {error}
+        {/* The scroller. A board zoomed in past the stage is panned by scrolling this,
+            which is why the drift banner is its sibling rather than its child: pinned
+            to the stage, it stays on screen wherever the viewer has panned to. */}
+        <div
+          className={styles.viewport}
+          ref={viewportRef}
+          // A scroll container is only reachable by keyboard if something in it can
+          // take focus, and a canvas cannot — so without this, a zoomed-in factory
+          // could be panned by pointer only.
+          tabIndex={0}
+          role="region"
+          aria-label="Factory, scrollable when zoomed in"
+        >
+          {error ? (
+            <div className={styles.error}>
+              Could not play this scenario: {error}
+            </div>
+          ) : (
+            <canvas
+              ref={canvasRef}
+              // Sized in CSS pixels only — the canvas keeps its native resolution and
+              // the browser scales the drawn frame, so zooming costs nothing per frame.
+              // Floored so a fitted board can never round up past the stage and raise
+              // the scrollbars that would shrink the stage and refit it, smaller, on a
+              // loop.
+              style={
+                natural
+                  ? {
+                      width: `${Math.floor(natural.width * scale)}px`,
+                      height: `${Math.floor(natural.height * scale)}px`,
+                    }
+                  : undefined
+              }
+              className={
+                // Nearest-neighbour is right for pixel art magnified, and wrong for it
+                // shrunk: at the sub-1x zooms the large factory needs to fit, dropping
+                // pixels drops whole belt lanes, where filtering keeps them as a tint.
+                scale >= 1
+                  ? `${styles.canvas} ${styles.canvasPixelated}`
+                  : styles.canvas
+              }
+            />
+          )}
+        </div>
+        {/* Drift is a warning, not a failure: the factory keeps playing (seeing the
+            divergence is the point), with a standing banner saying it is not the
+            graded state. */}
+        {drift ? (
+          <div className={styles.drift} role="status">
+            Playback drift — {drift}
           </div>
-        ) : (
-          <canvas ref={canvasRef} className={styles.canvas} />
-        )}
+        ) : null}
       </div>
       <div className={styles.controls}>
         <button
@@ -308,6 +568,42 @@ export function PlaybackOverlay({
         </button>
         <span className={styles.tick}>
           tick {formatInteger(tick)} / {formatInteger(total)}
+        </span>
+        {/* Zoom. Fit is the default and the way back to it: a viewer who has zoomed
+            into a corner of the large factory needs one click to see the whole board
+            again, not a hunt back down the ladder. */}
+        <span className={styles.zoom}>
+          <button
+            type="button"
+            className={styles.control}
+            onClick={() => zoomTo(stepZoom(scale, -1))}
+            disabled={!ready || scale <= MIN_ZOOM}
+            aria-label="Zoom out"
+            title="Zoom out"
+          >
+            −
+          </button>
+          <span className={styles.zoomLevel}>{Math.round(scale * 100)}%</span>
+          <button
+            type="button"
+            className={styles.control}
+            onClick={() => zoomTo(stepZoom(scale, 1))}
+            disabled={!ready || scale >= MAX_ZOOM}
+            aria-label="Zoom in"
+            title="Zoom in"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className={zoom === null ? styles.speedOn : styles.control}
+            onClick={() => zoomTo(null)}
+            disabled={!ready}
+            aria-pressed={zoom === null}
+            title="Scale the whole factory to the window"
+          >
+            Fit
+          </button>
         </span>
         <span className={styles.speeds}>
           {SPEEDS.map((s) => (

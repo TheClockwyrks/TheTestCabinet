@@ -40,14 +40,14 @@
 // this seed rather than on the boards that were measured. A build that ignores
 // the pulse loses a wider picture; it does not lose a point.
 
+import { fail } from "../assert";
 import {
   BINDINGS,
   BRIGHT_HOLD,
   SONAR_RANGE_BASE,
   SONAR_WAVE_SPEED,
   TICK_HZ,
-} from "../../src/constants";
-import { fail } from "../assert";
+} from "../constants";
 import {
   captureStill,
   poseBrightness,

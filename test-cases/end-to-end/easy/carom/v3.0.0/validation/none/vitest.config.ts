@@ -10,45 +10,54 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator addresses the
-// build's output by the same relative path the build itself produced it at. It is
-// derived from this file's own URL rather than from the working directory, so the
-// command above works from anywhere.
+// Everything but the dials below is the shared validator harness's, because
+// everything but the dials is what makes a staged validator project one shape the
+// runner can drive: the project's name, the suites it collects, the scaffolding
+// it loads, and the refusal to pass a run that collected nothing.
 //
-// WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONE DOES NOT. An
-// engineless build is a static site with nothing to import, so every check drives
-// it in a real browser. `globalSetup` starts the one server and the one Chromium
-// the whole project shares, before any suite runs; `setupFiles` gives each suite
-// worker the teardown that returns its page when the file is done. The
-// environment stays `node` — the suites drive a browser, they do not run in one.
+// THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator addresses the
+// build's output by the same relative path the build itself produced it at. It is
+// computed HERE, from this file's own URL, rather than inside the package: the
+// package is staged one directory deeper than this file, so anything derived from
+// its own location would name the wrong tree.
+//
+// Imported from its own module rather than through the package's barrel, for the
+// reason `globalSetup.ts` gives.
+//
+// CAROM NAMES NO DIAL, AND THAT IS THE DECISION RATHER THAN THE ABSENCE OF ONE.
+// The costly thing in this suite is a rally driven to the speed ceiling —
+// thousands of frames of real physics, each of them a crossing into the page —
+// and it is the case's longest scenario, not an unusual one: what a crossing
+// costs is a property of how busy the machine is rather than of the build, and
+// the same suites measured on a loaded host take an order of magnitude longer
+// than on an idle one. The package's defaults are set against exactly that. Its
+// five-minute per-check allowance was measured against the case where sixty
+// seconds was not enough — on a host running nine of these projects at once (load
+// average ~450) an unmodified reference lost four points to that allowance at
+// 66-76 s apiece against quiet times of 6-14 s — and it is a NINTH of the
+// forty-five-minute cap the runner puts on the WHOLE suite run (`VITEST_TIMEOUT`,
+// `crates/core/src/vitest_validator.rs`), so a single file can only cross it on a
+// host where the run was already lost. Its hook allowance matches, because a page
+// is built in a `beforeEach` and a hook that expires fails the check just as a
+// timeout does; it also has to stay wider than every ceiling the harness itself
+// sets (connect, page, surface and recorder are capped at 30, 60, 15 and 5
+// seconds — `CONNECT_TIMEOUT_MS`, `PAGE_DEADLINE_MS`,
+// `DEFAULT_SURFACE_TIMEOUT_MS` and `RECORDER_READY_TIMEOUT_MS`, with this case's
+// `harness.ts` naming that same 15 s rather than raising it) or the last of them
+// is decided here instead, and a hook that runs out reports that a hook ran out
+// where those ceilings report which wait was crossed and whether the host or the
+// build crossed it. And its eight workers were measured too: at load average
+// ~650 the suite run took 1 059 s at eight with its slowest FILE at 170 s,
+// against 861 s at sixteen with its slowest file at 316 s and four points lost to
+// the per-test allowance.
+//
+// Carom is not costlier than what those figures were taken under, so raising any
+// of them here would only trade a measured number for a guessed one — and
+// lowering one to make a fast case look fast is how a correct build loses a point
+// to the load average.
 
-import { defineConfig } from "vitest/config";
+import { defineValidationConfig } from "./case-harness/vitest-config";
 
-export default defineConfig({
+export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    globalSetup: ["validation/globalSetup.ts"],
-    setupFiles: ["validation/setup.ts"],
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // Each suite file holds a page of the shared browser while it runs, so the
-    // ceiling on files in flight is the ceiling on pages — and a suite spends
-    // almost all of its time waiting on a crossing into one, so overlapping them
-    // is most of what decides how long the whole run takes. Capped rather than
-    // left to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it; four holds the whole project to about a minute on a
-    // healthy machine, well inside the cap the runner puts on the suite run.
-    maxWorkers: 4,
-    minWorkers: 1,
-    // A rally driven to the speed ceiling is thousands of frames of real
-    // physics, each of them a crossing into the page; generous here, and still
-    // seconds in practice.
-    testTimeout: 120_000,
-    hookTimeout: 60_000,
-  },
 });

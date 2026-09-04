@@ -29,7 +29,6 @@
 // travels is `lanternjaw/wander-disguise`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BRIGHT_HOLD, TILE } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -37,6 +36,7 @@ import {
   assertTrue,
   fail,
 } from "../assert";
+import { BRIGHT_HOLD, TILE } from "../constants";
 import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,

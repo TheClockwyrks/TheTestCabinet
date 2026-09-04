@@ -73,10 +73,10 @@ The overlay therefore opens on the same tick the first level-up is queued, and
 the simulation does not tick while it is open, so the world behind it is
 frozen exactly as that tick left it.
 
-Two ticks open no level-up overlay. A tick that ends the run ends it and opens
-no overlay, chest or level-up. A tick that collects a chest opens the chest
-overlay instead, and the level-ups queued on that tick open their overlay at
-the end of the next `playing` tick.
+Two kinds of tick open no level-up overlay. A tick that ends the run ends it
+and opens no overlay, chest or level-up. A tick that collects a chest opens the
+chest overlay instead, and the level-ups queued on that tick open their overlay
+at the end of the next `playing` tick.
 
 ### The candidate pool
 
@@ -115,7 +115,11 @@ The offers are listed vertically in the order of `offers`, and the item at
 at both ends, and `confirm` accepts the highlighted offer. Each offer shows the
 item's icon, its display name, and a tag: `OFFER_NEW_TEXT` (`NEW`) for an item
 not yet held, otherwise `LEVEL_LABEL` (`LEVEL`) followed by the level the item
-would become. Lamp oil is never held, so its tag is `NEW`.
+would become. Lamp oil is never held, so its tag is `NEW`. Beneath the offer
+list the overlay shows, on one line, the description of the offer at
+`menuIndex`: a weapon's from `WEAPON_DESCRIPTIONS`, a passive's from
+`PASSIVE_DESCRIPTIONS`, and lamp oil's `LAMP_OIL_DESCRIPTION`. `specs/ui.md`
+fixes the text of each.
 
 Accepting an offer applies it on the spot:
 

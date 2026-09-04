@@ -7,9 +7,13 @@
 // paddle pose and the contact height are the preconditions; the outgoing velocity
 // is what the real bounce produced. The steep cases are the siblings
 // `hit-top-edge` and `hit-bottom-edge`.
+//
+// The contact runs over a field holding one ball and neither obstacle, with the
+// far paddle held off the lane, so the struck paddle is the only body the ball
+// meets between the pose and the reading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { FIELD_CY } from "../../src/constants";
+import { FIELD_CY } from "../constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -22,7 +26,6 @@ import {
   captureReplay,
   createHarness,
   drivePaddleHit,
-  startPlaying,
   type Harness,
 } from "../harness";
 
@@ -60,8 +63,7 @@ afterEach(() => {
 });
 
 it("returns the ball level from the centre of a still paddle", async () => {
-  await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,
     ballY: FIELD_CY,

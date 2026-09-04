@@ -4,8 +4,8 @@
 // Each is computed over the corridor tiles alone, with the den interior and the
 // den gate excluded from both the tiles measured and the neighbors counted. Both
 // bounds of each are inclusive." The table it gives is the whole of the bound
-// this point asserts, and the three figures below are read from
-// `src/constants.ts`, which is where the seeded build carries them:
+// this point asserts, and the three figures below are the validator's own
+// transcription of it, in `../constants` and never read off the build:
 //
 //   Openness      MAZE_OPENNESS_MIN (2.0)  ..  MAZE_OPENNESS_MAX (2.8)
 //   Corridor run  MAZE_MAZING_MIN   (2.0)  ..  MAZE_MAZING_MAX   (8.0)
@@ -34,6 +34,7 @@
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween } from "../assert";
 import {
   MAZE_DENSITY_MAX,
   MAZE_DENSITY_MIN,
@@ -41,8 +42,7 @@ import {
   MAZE_MAZING_MIN,
   MAZE_OPENNESS_MAX,
   MAZE_OPENNESS_MIN,
-} from "../../src/constants";
-import { assertBetween } from "../assert";
+} from "../constants";
 import { createHarness, type Harness } from "../harness";
 import { density, meanCorridorRun, openness } from "../maze";
 import { captureBoard, freshBoards, witness } from "./boards";

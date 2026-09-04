@@ -4,12 +4,12 @@ or studies late into the night.
 
 This asset-generation case asks a model to compose it as a short, seamlessly
 looping clip using only the `music` sequencer, one operation at a time. The
-brief asks for a laid-back head-nod drum groove of soft kick, snare, and hats, a
-mellow electric-piano loop of jazzy 7th chords, a round bass, and sparse
+brief asks for a laid-back head-nod drum groove of soft kick, snare, and hats,
+a mellow electric-piano loop of jazzy 7th chords, a round bass, and sparse
 vibraphone or glockenspiel motifs, all warm, nostalgic, and hazy. The mood and
 role are prescribed; the key, tempo, chord progression, and instrument choices
 are the model's, so the case rewards compositional creativity. It is voiced as
-notes on instrument tracks the model chooses freely from the baked `gm-lite`
+notes on instrument tracks the model chooses freely from the `gm-lite`
 instrument bank.
 
 The recorded operations are regenerated into the clip, a stereo `clip.wav`

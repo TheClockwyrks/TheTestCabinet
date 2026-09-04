@@ -40,5 +40,5 @@ surface a validator exercises is the surface the game was written against.
 | [Input](/engines/structured-2d/apis/input/) | Action registration, `ActionBinding`, the read methods, the pointer, and `TOUCH_LAYOUTS`. |
 | [Audio](/engines/structured-2d/apis/audio/) | `CueSpec`, `WorldAudio`, synthesized and file-backed cues, looping, and the mute and unlock calls. |
 | [Assets](/engines/structured-2d/apis/assets/) | `loadImage`, `loadAudio`, `load`, `resolve`, and the asset root. |
-| [Diagnostics](/engines/structured-2d/apis/diagnostics/) | Source registration on the instance and the world, `FrameMetrics`, the overlay, and its toggle. |
+| [Diagnostics](/engines/structured-2d/apis/diagnostics/) | Source registration on the instance and the world, the values a read returns, `FrameMetrics`, the overlay, and its toggle. |
 | [Recording](/engines/structured-2d/apis/recording/) | The recorder's engine members, `Recording`, `RecordedFrame`, `DrawState`, `DrawOp`, and `DrawValue`. |

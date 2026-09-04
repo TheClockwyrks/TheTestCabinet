@@ -1,15 +1,22 @@
 // Carom — pause/ball-suspended: a ball in flight hangs exactly where it was while
 // the game is paused.
 //
-// The ball is posed in mid-flight, clear of both obstacles so its path is a
-// straight line, and allowed to travel far enough that it is demonstrably moving.
-// The game is then paused with a real key event and left there for far longer
-// than the flight took. A build that kept integrating behind the pause menu
-// drifts; a build that froze the field does not move at all.
+// The field is emptied and one ball is spawned back onto it (`arrangeLiveBall`),
+// so the flight is a straight line with nothing on the field to meet: the
+// obstacles are REMOVED rather than reasoned around, and what a reviewer watches
+// is the one ball this point is about. The ball is allowed to travel far enough
+// that it is demonstrably moving, and the game is then paused and left there for
+// far longer than the flight took. A build that kept integrating behind the pause
+// menu drifts; a build that froze the field does not move at all.
+//
+// The pause is POSED, with `setScreen`. What this point grades is what a `paused`
+// frame does to a ball, not the key that opens the menu — that key is
+// `navigation/pause-escape`'s point and `ui/state-pause`'s — so a build whose
+// Escape did nothing should fail those and still be graded honestly here.
 //
 // specs/ui.md: on `paused` nothing advances but `simTime` and input, so the
-// ball's `x`, `y`, `vx`, `vy` and `spin` are read back unchanged to rounding;
-// at the posed speed one frame of leaked simulation is already more than three
+// ball's `x`, `y`, `vx`, `vy` and `spin` are read back unchanged to rounding; at
+// the posed speed one frame of leaked simulation is already more than three
 // units.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -29,11 +36,13 @@ import {
  * A ball hanging still is only visibly HANGING beside the flight it was stopped
  * out of; a recording of the paused stretch alone is indistinguishable from a
  * ball that was never moving. The flight was always driven — arming the recorder
- * before it rather than after moves nothing about when the pause lands, and the
- * paused reading is still taken on the frame the key was consumed.
+ * before it rather than after moves nothing about when the pause lands.
  */
 const FLIGHT_TICKS = 30; // 0.25 s of visible flight
 const PAUSED_TICKS = 180; // 1.5 s paused — ample for any drift to show
+
+/** How far the ball must have travelled for the flight to be visible, in px. */
+const FLEW_MIN = 10;
 
 let h: Harness;
 
@@ -51,7 +60,7 @@ it("suspends a ball in flight for as long as the game is paused", async () => {
 
   const paused = await captureReplay(h, "suspended", async () => {
     await h.advance(FLIGHT_TICKS);
-    await h.tap("Escape");
+    await h.debug.setScreen("paused");
     const at = await h.snapshot();
     await h.advance(PAUSED_TICKS);
     return at;
@@ -60,7 +69,7 @@ it("suspends a ball in flight for as long as the game is paused", async () => {
   assertEqual(paused.screen, "paused");
   assertGreaterThan(
     Math.hypot(ball0(paused).x - launched.x, ball0(paused).y - launched.y),
-    10,
+    FLEW_MIN,
   );
 
   const later = await h.snapshot();

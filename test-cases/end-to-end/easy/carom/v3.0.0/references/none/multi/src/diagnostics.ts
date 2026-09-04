@@ -6,11 +6,15 @@
 // file does.
 //
 // Every source is a PURE READ of the one live state object, so watching the
-// overlay never changes what the simulation does, and each line is short enough to
-// read at a glance while the game is running.
+// overlay never changes what the simulation does, and each line is short enough
+// to read at a glance while the game is running.
+//
+// A ball can be OFF the field (specs/state.md), so each ball's lines are written
+// against the ball found under that index rather than against a slot: an absent
+// ball reads as absent instead of taking the panel down with a read of `undefined`.
 
 import { BALL_COUNT } from "./constants";
-import { ballSpeed } from "./entities";
+import { ballSpeed, findBall } from "./entities";
 import type { CaromState } from "./game";
 import type { InitApi } from "./runtime";
 
@@ -18,6 +22,9 @@ import type { InitApi } from "./runtime";
 function fixed(value: number): string {
   return value.toFixed(1);
 }
+
+/** What a line shows for a ball that is not on the field. */
+const ABSENT = "—";
 
 /** Register every diagnostic source over the live state. */
 export function registerDiagnostics(api: InitApi, state: CaromState): void {
@@ -29,18 +36,21 @@ export function registerDiagnostics(api: InitApi, state: CaromState): void {
   );
   // One group per ball, in play order, so the overlay shows all three at once
   // (specs/instrumentation.md) and each line stays short enough to read.
-  for (let i = 0; i < BALL_COUNT; i++) {
-    api.diagnostics.register(`ball ${i} pos`, () => {
-      const ball = state.balls[i];
+  for (let index = 0; index < BALL_COUNT; index += 1) {
+    api.diagnostics.register(`ball ${index} pos`, () => {
+      const ball = findBall(state.balls, index);
+      if (ball === null) return ABSENT;
       return `${fixed(ball.x)}, ${fixed(ball.y)}${ball.held ? " held" : ""}`;
     });
-    api.diagnostics.register(`ball ${i} vel`, () => {
-      const ball = state.balls[i];
+    api.diagnostics.register(`ball ${index} vel`, () => {
+      const ball = findBall(state.balls, index);
+      if (ball === null) return ABSENT;
       return `${fixed(ball.vx)}, ${fixed(ball.vy)} (${fixed(ballSpeed(ball))})`;
     });
-    api.diagnostics.register(`ball ${i} spin`, () =>
-      fixed(state.balls[i].spin),
-    );
+    api.diagnostics.register(`ball ${index} spin`, () => {
+      const ball = findBall(state.balls, index);
+      return ball === null ? ABSENT : fixed(ball.spin);
+    });
   }
   api.diagnostics.register(
     "paddle L",

@@ -2,16 +2,26 @@
 // to the title.
 //
 // specs/ui.md: on `matchover`, `confirm` on `MENU` returns to the title,
-// restoring every declared field to its title value: `screen = title`, both
-// scores 0, `winner` null, `menuIndex = 0`. The second entry is selected with
-// one down press. The snapshot does not report `menuIndex`, so the index is
-// read by confirming once on the title: index 0 is `SOLO`, so the match that
-// opens is Solo, not the Versus match that ended.
+// restoring every declared field to its title value — `screen = title`, both
+// scores 0, `winner` null — and restoring `menuIndex` from `titleIndex`.
+//
+// The finished match is posed and `menuIndex` is posed on the second entry, which
+// is the ground the review item names; the confirm is a real `Enter`. An arrow
+// press to walk down to it would fail this point whenever the match-over menu's
+// movement edge was broken, and that edge is graded on its own.
+//
+// No title item was ever confirmed on the way here, so `titleIndex` is still the
+// `0` a fresh title carries and the `menuIndex` read back is `0` — the figure the
+// review item names. Both are read off the snapshot.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNull } from "../assert";
+import { MATCHOVER_ITEMS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { reachMatchover } from "./screens";
+
+/** The match-over menu's second entry (specs/ui.md, `MATCHOVER_ITEMS`). */
+const MENU = MATCHOVER_ITEMS.indexOf("MENU");
 
 let h: Harness;
 
@@ -25,8 +35,8 @@ afterEach(async () => {
 
 it("returns to the title on MENU", async () => {
   await reachMatchover(h, "versus");
+  await h.debug.setMenuIndex(MENU);
 
-  await h.tap("ArrowDown"); // PLAY AGAIN -> MENU
   await h.tap("Enter");
   await captureStill(h, "title");
 
@@ -34,9 +44,6 @@ it("returns to the title on MENU", async () => {
   assertEqual(title.screen, "title");
   assertDeepEqual(title.score, { p1: 0, p2: 0 });
   assertNull(title.winner);
-
-  await h.tap("Enter");
-  const opened = await h.snapshot();
-  assertEqual(opened.screen, "countdown");
-  assertEqual(opened.mode, "solo");
+  assertEqual(title.menuIndex, title.titleIndex);
+  assertEqual(title.menuIndex, 0);
 });

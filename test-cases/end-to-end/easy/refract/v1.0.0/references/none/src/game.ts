@@ -26,12 +26,10 @@ import { createDebugApi, type RefractDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import {
   campaignSolvedItems,
+  confirmItem,
   createInitialState,
-  enterCampaignBoard,
-  nextCascadeBoard,
-  restartCascade,
-  startMode,
-  toTitle,
+  enterSelected,
+  goBack,
 } from "./flow";
 import {
   back,
@@ -46,16 +44,15 @@ import {
 } from "./input";
 import { renderGame } from "./render";
 import { COLOR } from "./theme";
+import { pointerDown, pointerMove, pointerUp } from "./game-pointer";
 import {
   clearBeams,
   mergeEvents,
   NO_EVENTS,
-  pointerDown,
-  pointerMove,
-  pointerUp,
   type TraceEvents,
 } from "./tracing";
 import { CAMPAIGN_LENGTH, SOLVED_ITEMS, TITLE_ITEMS } from "./constants";
+import { COMPLETE_ITEMS, SELECT_COLS } from "./layout";
 import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
 
 // The surface is part of the module contract and is declared beside the game
@@ -107,10 +104,13 @@ export interface TraceState {
   readonly channel: Channel;
 }
 
+export type PointerDevice = "mouse" | "pen" | "touch";
+
 export interface PointerState {
   readonly x: number;
   readonly y: number;
   readonly down: boolean;
+  readonly device: PointerDevice;
 }
 
 export interface RefractState {
@@ -131,6 +131,7 @@ export interface RefractState {
   readonly tier: number;
 
   readonly pointer: PointerState;
+  readonly armedTarget: string | null;
   readonly simTime: number;
   readonly muted: boolean;
   readonly rngState: number;
@@ -147,26 +148,23 @@ function wrap(index: number, delta: number, count: number): number {
  * A vertical menu's frame: `up` and `down` move the highlight, `confirm`
  * accepts it. All three edges are read before any is acted on, so exactly one
  * press moves or accepts and nothing is left armed for a later frame.
+ *
+ * `confirm` and the pointer's `menu-<i>` targets both reach `confirmItem` in
+ * `src/flow.ts`, so a choice means the same thing however it was made
+ * (specs/controls.md).
  */
 function menuInput(
   state: RefractState,
   api: UpdateApi,
   count: number,
-  onConfirm: (state: RefractState, index: number) => RefractState,
 ): RefractState {
   const moveUp = up(api);
   const moveDown = down(api);
   const accepted = confirm(api);
   if (moveUp) return { ...state, menuIndex: wrap(state.menuIndex, -1, count) };
   if (moveDown) return { ...state, menuIndex: wrap(state.menuIndex, 1, count) };
-  if (accepted) return onConfirm(state, state.menuIndex);
+  if (accepted) return confirmItem(state, state.menuIndex);
   return state;
-}
-
-function selectTitle(state: RefractState, index: number): RefractState {
-  if (index === 0) return startMode(state, "campaign");
-  if (index === 1) return startMode(state, "cascade");
-  return { ...state, screen: "howto", menuIndex: 0 };
 }
 
 /**
@@ -174,7 +172,6 @@ function selectTitle(state: RefractState, index: number): RefractState {
  * boards. `left`/`right` wrap within the row, `up`/`down` wrap between rows in
  * the same column (specs/modes/campaign.md).
  */
-const SELECT_COLS = 6;
 const SELECT_ROWS = CAMPAIGN_LENGTH / SELECT_COLS;
 
 function selectInput(state: RefractState, api: UpdateApi): RefractState {
@@ -184,7 +181,7 @@ function selectInput(state: RefractState, api: UpdateApi): RefractState {
   const moveDown = down(api);
   const accepted = confirm(api);
   const leave = back(api);
-  if (leave) return toTitle(state);
+  if (leave) return goBack(state);
 
   const col = state.selectIndex % SELECT_COLS;
   const row = Math.floor(state.selectIndex / SELECT_COLS);
@@ -197,36 +194,10 @@ function selectInput(state: RefractState, api: UpdateApi): RefractState {
   const index = nextRow * SELECT_COLS + nextCol;
   if (index !== state.selectIndex) return { ...state, selectIndex: index };
 
-  // `confirm` on a locked board does nothing and leaves the highlight put.
-  if (accepted && state.selectIndex < state.unlockedCount) {
-    return enterCampaignBoard(state, state.selectIndex);
-  }
+  // `confirm` on a locked board does nothing and leaves the highlight put,
+  // which `enterSelected` is what decides (specs/modes/campaign.md).
+  if (accepted) return enterSelected(state);
   return state;
-}
-
-/**
- * The campaign's solved menu: the choices `campaignSolvedItems` lists, in its
- * order — next board when one exists, then replay, then back to the grid.
- */
-function selectCampaignSolved(
-  state: RefractState,
-  index: number,
-): RefractState {
-  const item = campaignSolvedItems(state.boardIndex)[index];
-  if (item === "NEXT BOARD") {
-    return enterCampaignBoard(state, state.boardIndex + 1);
-  }
-  if (item === "REPLAY") return enterCampaignBoard(state, state.boardIndex);
-  return { ...state, screen: "select", menuIndex: 0 };
-}
-
-function selectCascadeSolved(state: RefractState, index: number): RefractState {
-  return index === 0 ? nextCascadeBoard(state) : restartCascade(state);
-}
-
-function selectComplete(state: RefractState, index: number): RefractState {
-  if (index === 0) return { ...state, screen: "select", menuIndex: 0 };
-  return toTitle(state);
 }
 
 // ---- Edge input (once per frame) -----------------------------------------
@@ -249,9 +220,9 @@ function handleInput(
 
   switch (state.screen) {
     case "title":
-      return menuInput(state, api, TITLE_ITEMS.length, selectTitle);
+      return menuInput(state, api, TITLE_ITEMS.length);
     case "howto":
-      return back(api) ? { ...state, screen: "title", menuIndex: 0 } : state;
+      return back(api) ? goBack(state) : state;
     case "select":
       return selectInput(state, api);
     case "playing": {
@@ -260,17 +231,7 @@ function handleInput(
       // beams drawn on it are discarded either way.
       const leave = back(api);
       const clearNow = clearPressed(api);
-      if (leave) {
-        return state.mode === "campaign"
-          ? {
-              ...state,
-              screen: "select",
-              menuIndex: 0,
-              tracing: null,
-              beams: state.beams.map((beam) => ({ ...beam, cells: [] })),
-            }
-          : toTitle(state);
-      }
+      if (leave) return goBack(state);
       if (clearNow) {
         const { state: next, cleared } = clearBeams(state);
         events.clear = events.clear || cleared;
@@ -279,22 +240,16 @@ function handleInput(
       return state;
     }
     case "solved": {
-      if (back(api)) {
-        return state.mode === "campaign"
-          ? { ...state, screen: "select", menuIndex: 0 }
-          : toTitle(state);
-      }
+      if (back(api)) return goBack(state);
       const count =
         state.mode === "campaign"
           ? campaignSolvedItems(state.boardIndex).length
           : SOLVED_ITEMS.length;
-      const onConfirm =
-        state.mode === "campaign" ? selectCampaignSolved : selectCascadeSolved;
-      return menuInput(state, api, count, onConfirm);
+      return menuInput(state, api, count);
     }
     case "complete":
-      if (back(api)) return { ...state, screen: "select", menuIndex: 0 };
-      return menuInput(state, api, 2, selectComplete);
+      if (back(api)) return goBack(state);
+      return menuInput(state, api, COMPLETE_ITEMS.length);
   }
 }
 
@@ -314,12 +269,15 @@ function handlePointer(
   let next = state;
   let events = NO_EVENTS;
   for (const sample of api.input.pointerSamples()) {
+    // The primary pointer alone operates the game, so a second finger resting
+    // on a touchscreen changes nothing (specs/controls.md, The pointer).
+    if (!sample.primary) continue;
     const result =
       sample.type === "down"
-        ? pointerDown(next, sample.x, sample.y)
+        ? pointerDown(next, sample.x, sample.y, sample.device)
         : sample.type === "move"
-          ? pointerMove(next, sample.x, sample.y)
-          : pointerUp(next);
+          ? pointerMove(next, sample.x, sample.y, sample.device)
+          : pointerUp(next, sample.device);
     next = result.state;
     events = mergeEvents(events, result.events);
   }
@@ -370,11 +328,15 @@ export const game: Game<RefractState, RefractDebugApi> = {
     frame.retract = events.retract;
     frame.channelComplete = events.channelComplete;
     frame.solved = events.solved;
+    frame.clear = frame.clear || events.cleared;
     playFrameEvents(api, frame);
 
+    // `pointer` is written by the resolution every sample goes through, so it
+    // already holds what this frame read — and a scenario posed through the
+    // debug surface, which feeds that same path, survives the frame that
+    // follows it (specs/instrumentation.md).
     return {
       ...traced,
-      pointer: api.input.pointer(),
       muted: api.audio.muted(),
       simTime: traced.simTime + dt,
     };

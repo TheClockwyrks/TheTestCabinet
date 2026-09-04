@@ -10,8 +10,13 @@ everything around them.
 ## Registration
 
 ```ts
+type DiagnosticValue = string | number | boolean;
+
 readonly diagnostics: {
-  register(name: string, source: (state: DeepReadonly<S>) => unknown): void;
+  register(
+    name: string,
+    source: (state: DeepReadonly<S>) => DiagnosticValue,
+  ): void;
 };
 ```
 
@@ -21,17 +26,25 @@ registration. The overlay reads after `render`, so the state a source receives
 is the one this frame's `update` returned. `S` is the `InitApi<S>` type
 parameter, the game's own state type.
 
+A source reports one of the three types `DiagnosticValue` names. A value the
+game holds in some other shape is reduced to one of the three inside the source.
+
 ```ts
 const game: Game<State, null> = {
   initialize(api) {
-    api.diagnostics.register("ball", (state) => state.ball);
+    api.diagnostics.register("ball", (state) => `${state.ball.x}, ${state.ball.y}`);
     api.diagnostics.register("score", (state) => `${state.score.left}-${state.score.right}`);
+    api.diagnostics.register("rallies", (state) => state.rallies);
     return [initialState(), null];
   },
   update: (state, api, dt) => step(state, api, dt),
   render: (state, api) => draw(state, api.ctx),
 };
 ```
+
+A source always returns a value. Where the thing it names is absent, it returns
+a short placeholder string in the game's own vocabulary, such as `"-"` or
+`"none"`.
 
 Re-registering a name replaces its source and retains the name's original
 position in the registry.
@@ -44,7 +57,7 @@ The engine holds the registry and drives it.
 setEnabled(enabled: boolean): void;
 enabled(): boolean;
 toggle(): void;
-read(): Record<string, unknown>;
+read(): readonly DiagnosticReading[];
 metrics(): FrameMetrics;
 draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
 ```
@@ -54,7 +67,7 @@ draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
 | `setEnabled(enabled)` | `void` | Shows the overlay when `true`, hides it when `false`. |
 | `enabled()` | `boolean` | Whether the overlay is currently drawn. |
 | `toggle()` | `void` | Inverts the enabled state. |
-| `read()` | `Record<string, unknown>` | Evaluates every registered source and returns the values. |
+| `read()` | `readonly DiagnosticReading[]` | Evaluates every registered source and returns what each one reports. |
 | `metrics()` | `FrameMetrics` | The frame-time metrics over the current window. |
 | `draw(ctx, width, height)` | `void` | Draws the overlay onto `ctx`. Called by the engine after the game's `render`. |
 
@@ -62,15 +75,31 @@ The overlay is hidden when the engine is created.
 
 ## `read`
 
-Returns a plain object keyed by registered name, in registration order, whose
-values are whatever the sources returned. Values are returned unformatted; the
-formatting below applies to the overlay only.
+```ts
+interface DiagnosticReading {
+  readonly name: string;
+  readonly value?: DiagnosticValue;
+  readonly error?: string;
+}
+```
 
-A source that throws contributes its error message as a `string` value: the
+Returns one reading per registered source, in registration order, which is the
+order the panel draws them in. Exactly one of `value` and `error` is present on
+each reading. Values are returned unformatted; the formatting below applies to
+the overlay alone.
+
+A source that throws yields a reading carrying `error` and no `value`: the
 `message` of a thrown `Error`, otherwise the `String` form of what was thrown.
-`read` itself never throws.
+A failure is therefore distinguishable from a reading of any type, and `read`
+itself always returns.
 
+`read` evaluates the sources and changes nothing else, so the state, the frame
+counter, and the overlay's visibility are the same after a read as before it.
 `read` is independent of `enabled()`, so a hidden overlay is still readable.
+
+[`engine.diagnostics()`](/engines/simple-2d/apis/engine/) is how a caller
+holding the engine reaches this, and is what a case's checks read to assert the
+sources a build registered.
 
 ## Frame metrics
 
@@ -137,17 +166,19 @@ is `false`. The key is engine chrome rather than a registered
 
 ## Display formatting
 
-One line per source, formatted `` `${name}: ${value}` ``.
+One line per reading, formatted `` `${name}: ${value}` ``.
 
-| Value | Displayed as |
+| Reading | Displayed as |
 | --- | --- |
-| `string` | The string itself. |
-| Integer `number` | `String(value)`. |
-| Non-integer `number` | `value.toFixed(3)`. |
-| `null`, `undefined` | `"null"`, `"undefined"`. |
-| `object`, array | `JSON.stringify(value)`, falling back to `String(value)` when it throws or yields `undefined`. |
-| Any other type | `String(value)`. |
+| `string` value | The string itself. |
+| Integer `number` value | `String(value)`. |
+| Non-integer `number` value | `value.toFixed(3)`. |
+| `boolean` value | `"true"` or `"false"`. |
+| A source that threw | The `error` message, in the value's place. |
+
+A number that is not finite displays as `NaN`, `Infinity`, or `-Infinity`.
 
 ## Exports
 
-`FrameMetrics` is exported as a type from `@test-cabinet/simple-2d`.
+`DiagnosticValue`, `DiagnosticReading`, and `FrameMetrics` are exported as types
+from `@test-cabinet/simple-2d`.

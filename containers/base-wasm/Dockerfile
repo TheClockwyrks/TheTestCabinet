@@ -10,7 +10,12 @@
 #     author its core simulation in Rust and ship it as a committed wasm build
 #     input (see `apps/docs/src/content/docs/testing/full-stack/`);
 #   - the **full-stack-2d** image (`containers/full-stack-2d/Dockerfile`), which
-#     adds the six 2D asset-generation binaries and the audio packs on top; and
+#     adds the six 2D asset-generation binaries and the audio packs on top;
+#   - the **full-stack-3d** image (`containers/full-stack-3d/Dockerfile`), its
+#     sibling rather than its child: the same six binaries and the same two packs,
+#     plus `voxel`, `voxel-anim`, `particle-3d` and the Mesa software-Vulkan
+#     runtime those three render their previews through. A full-stack case picks
+#     between the two with `asset_dimension`; and
 #   - the **adversarial** and **performance** images
 #     (`containers/adversarial/Dockerfile`, `containers/performance/Dockerfile`),
 #     which add their Foray / Lattice tooling on top and no longer install a Rust

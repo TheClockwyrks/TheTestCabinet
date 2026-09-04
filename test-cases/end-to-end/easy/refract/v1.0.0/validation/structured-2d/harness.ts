@@ -76,10 +76,17 @@ import {
   type Viewport,
   type World,
 } from "@test-cabinet/structured-2d";
-import { BINDINGS, LAYOUT, STAGE_H, STAGE_W } from "../src/constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { assertEqual, assertTruthy, fail } from "./assert";
-import { CHANNELS, cellCenter, parseBoard, type Board } from "./notation";
+import { BINDINGS, LAYOUT } from "./constants";
+import {
+  CHANNELS,
+  STAGE_H,
+  STAGE_W,
+  cellCenter,
+  parseBoard,
+  type Board,
+} from "./notation";
 import { CAMPAIGN_BOARDS } from "./routes";
 import type { Beams } from "./rules";
 import { solve } from "./solver";
@@ -87,11 +94,13 @@ import type {
   CellRef,
   Channel,
   Mode,
+  PointerDevice,
   RefractDebugApi,
   RefractSnapshot,
+  TargetSnapshot,
 } from "./surface";
 
-export type { CellRef, Channel, Mode };
+export type { CellRef, Channel, Mode, PointerDevice, RefractSnapshot, TargetSnapshot };
 
 /** The case's surface, exactly as `surface.ts` specifies it. */
 export type RefractSurface = RefractDebugApi;
@@ -251,8 +260,6 @@ export interface Harness {
     predicate: (snapshot: RefractSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
@@ -653,14 +660,6 @@ export async function createHarness(
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
       }
       return { hit: false, frames, snapshot };
-    },
-
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
     },
 
     hold: (code) => dispatch("keydown", code),
@@ -1911,5 +1910,69 @@ export function clearCues(h: Harness): void {
 export async function toggleOverlay(h: Harness): Promise<void> {
   h.hold("Backquote");
   h.release("Backquote");
+  await h.advance(1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pointer targets                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The target the current screen reports under `id`, or a failure naming what it
+ * did report.
+ *
+ * specs/controls.md fixes the id set per screen, so a build that carries the
+ * target but names it something else fails here on the id rather than silently
+ * later on a press that lands nowhere.
+ */
+export function targetById(
+  snapshot: RefractSnapshot,
+  id: string,
+): TargetSnapshot {
+  const found = snapshot.targets?.find((target) => target.id === id);
+  if (found === undefined) {
+    return fail(
+      `the ${snapshot.screen} screen reports a pointer target "${id}" ` +
+        "(specs/controls.md, Pointer targets)",
+      (snapshot.targets ?? []).map((target) => target.id),
+    );
+  }
+  return found;
+}
+
+/** The middle of a target, which is where every pointer check aims. */
+export function targetCenter(target: TargetSnapshot): {
+  x: number;
+  y: number;
+} {
+  return { x: target.x + target.w / 2, y: target.y + target.h / 2 };
+}
+
+/** Whether two target rectangles share any area. */
+export function targetsOverlap(
+  a: TargetSnapshot,
+  b: TargetSnapshot,
+): boolean {
+  return (
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  );
+}
+
+/**
+ * Press at a point, release at another, and settle a frame — the gesture every
+ * target is taken by. Both points are in the stage's logical units, and the
+ * release defaults to the press.
+ */
+export async function pressRelease(
+  h: Harness,
+  press: { x: number; y: number },
+  release: { x: number; y: number } = press,
+  device: PointerDevice = "mouse",
+): Promise<void> {
+  h.debug.pointerDown(press.x, press.y, device);
+  if (release.x !== press.x || release.y !== press.y) {
+    h.debug.pointerMove(release.x, release.y, device);
+  }
+  h.debug.pointerUp(device);
   await h.advance(1);
 }

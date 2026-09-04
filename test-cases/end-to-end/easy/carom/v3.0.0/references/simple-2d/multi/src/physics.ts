@@ -26,7 +26,6 @@ import {
   FIELD_H,
   MAX_BOUNCE_ANGLE,
   MAX_SUBSTEP,
-  OBSTACLES,
   PADDLE_HALF,
   SPEED_CAP,
   SPEED_MULT,
@@ -37,6 +36,10 @@ import {
 } from "./constants";
 import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
 import type { BallState, PaddleState, Side } from "./game";
+import type { DeepReadonly } from "ts-essentials";
+
+/** The read-only view of a paddle the collision reads at contact. */
+type Paddle = DeepReadonly<PaddleState>;
 
 /** What one step's collisions did, so the caller can play a cue per event. */
 export interface StepEvents {
@@ -106,7 +109,7 @@ function collideCircleRect(
  */
 function bounceOffPaddle(
   ball: BallState,
-  paddle: PaddleState,
+  paddle: Paddle,
   side: Side,
 ): BallState {
   const offset = clamp((ball.y - paddle.cy) / PADDLE_HALF, -1, 1);
@@ -130,7 +133,7 @@ function bounceOffPaddle(
 
 function resolvePaddle(
   ball: BallState,
-  paddle: PaddleState,
+  paddle: Paddle,
   side: Side,
   events: StepEvents,
 ): Resolved {
@@ -279,8 +282,9 @@ function resolveBallPairs(
 /** One ball advanced through a single sub-step, with what it strikes resolved. */
 function substepBall(
   ball: BallState,
-  left: PaddleState,
-  right: PaddleState,
+  left: Paddle,
+  right: Paddle,
+  obstacles: readonly Rect[],
   h: number,
   decay: number,
   events: StepEvents,
@@ -304,7 +308,7 @@ function substepBall(
   const walled = resolveWalls(moved, events);
   const offLeft = resolvePaddle(walled.ball, left, "left", walled.events);
   const offRight = resolvePaddle(offLeft.ball, right, "right", offLeft.events);
-  return OBSTACLES.reduce<Resolved>(
+  return obstacles.reduce<Resolved>(
     (so, obstacle) => resolveObstacle(so.ball, obstacle, so.events),
     offRight,
   );
@@ -329,8 +333,9 @@ function curve(ball: BallState, speed: number, h: number): BallState {
  */
 export function step(
   balls: readonly BallState[],
-  left: PaddleState,
-  right: PaddleState,
+  left: Paddle,
+  right: Paddle,
+  obstacles: readonly Rect[],
   dt: number,
 ): StepResult {
   // The frame is cut into sub-steps short enough that no ball's center can skip
@@ -360,7 +365,15 @@ export function step(
         advanced.push(ball);
         continue;
       }
-      const resolved = substepBall(ball, left, right, h, decay, events);
+      const resolved = substepBall(
+        ball,
+        left,
+        right,
+        obstacles,
+        h,
+        decay,
+        events,
+      );
       advanced.push(resolved.ball);
       events = resolved.events;
     }

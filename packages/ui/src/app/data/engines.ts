@@ -30,6 +30,8 @@ export const ENGINES: readonly EngineOption[] = [
   { slug: DEFAULT_ENGINE_SLUG, name: "None" },
   { slug: "simple-2d", name: "Simple 2D" },
   { slug: "structured-2d", name: "Structured 2D" },
+  { slug: "simple-3d", name: "Simple 3D" },
+  { slug: "structured-3d", name: "Structured 3D" },
 ];
 
 /**

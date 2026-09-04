@@ -91,8 +91,25 @@ RUN apt-get update \
 # the run user rather than creating a second uid-1000 account. Set up
 # user-writable install locations so a harness's run-time install command can
 # install its CLI as `node` with no root.
-RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work \
-	&& chown -R node:node /home/node /work
+#
+# `/opt/audio` is the staged-audio root, created here and given to the run user
+# because it is written INTO A STARTED CONTAINER: a run is staged with the packs its
+# test case declares in `[audio] packs` (see
+# `apps/docs/src/content/docs/components/core/execution.md`), and the Kubernetes
+# runtime extracts that tree through an `exec` as the pod's user, which is this
+# image's `node`. No image carries a pack of its own, so the directory ships empty
+# except for its marker.
+#
+# `.tcab-audio-contract` is that marker: the staging contract version this image
+# accepts. The reader lives here, in the audio binaries baked into the run images;
+# the writer lives in core, shipped in the driver, and the two are pinned separately
+# (`TCAB_CONTAINER_TAG` vs `TCAB_DRIVER_IMAGE`) and have drifted for whole release
+# trains. A run that stages audio reads this file back out of the started container,
+# so an image predating staged delivery — which would quietly fall back to a palette
+# baked into itself — fails the run at container start instead.
+RUN mkdir -p /home/node/.npm-global /home/node/.local/bin /work /opt/audio \
+	&& printf '1\n' > /opt/audio/.tcab-audio-contract \
+	&& chown -R node:node /home/node /work /opt/audio
 
 # Point npm's global prefix at a user-writable directory and put the user-level
 # install locations on PATH, so both `npm install -g` and curl-based installers

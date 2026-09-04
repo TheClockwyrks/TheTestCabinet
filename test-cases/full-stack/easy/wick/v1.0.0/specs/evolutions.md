@@ -35,7 +35,9 @@ that applies:
 
 1. Evolution. The held weapons are checked in slot order, first slot first,
    and the first base weapon at `MAX_WEAPON_LEVEL` whose recipe passive is
-   held at any level evolves. One chest evolves at most one weapon. The
+   held at any level evolves. A base weapon with no recipe never evolves: at
+   `MAX_WEAPON_LEVEL` a chest passes it over, and it is neither evolved nor
+   leveled. One chest evolves at most one weapon. The
    evolved weapon replaces its base in the same slot with a single level, its
    cooldown timer is set to `0` so it fires on the first `playing` tick it is
    held, the passive stays held, and the `evolve` cue plays. The result is
@@ -50,8 +52,10 @@ that applies:
 
 ## What an evolution is
 
-An evolved weapon has a single level and no level table: its figures are one
-fixed row, named below, and it is never leveled further. It is never a
+Six of the ten base weapons have an evolved form; Spark, Shard, Sconce, and
+Flare have none and top out at `MAX_WEAPON_LEVEL`. An evolved weapon has a
+single level and no level table: its figures are one fixed row, named below,
+and it is never leveled further. It is never a
 level-up offer, and it is never the item a chest levels. The base weapon it
 replaced is gone from the loadout, and while the evolved weapon is held that
 base weapon is not a level-up candidate either. On the HUD the slot shows the
@@ -62,12 +66,13 @@ evolved weapon's icon in place of the base weapon's.
 Every derived stat of `specs/passives.md` applies to an evolved weapon exactly
 as to a base weapon, read on the tick the weapon fires: damage is the fixed
 damage times `damageMul`; cooldown is the fixed cooldown times `cooldownMul`,
-floored at `MIN_COOLDOWN` (`0.1`); every width, height, radius, and orbit is
+floored at `MIN_COOLDOWN` (`0.2`); every width, height, radius, and orbit is
 the fixed length times `areaMul`; and amount is the fixed amount plus
 `amountBonus`. Speed, pierce, duration, and the re-hit and pulse intervals are
-used as written. A shape's lengths are fixed when it is created, except the
-Corona aura's radius and a Chandelier lantern's orbit and radius, which are
-recomputed on every tick from the `areaMul` in force on that tick.
+used as written. A shape's lengths and its damage are fixed when it is
+created, except the Corona aura's radius and damage and a Chandelier lantern's
+orbit, radius, and damage, which are recomputed on every tick from the
+`areaMul` and `damageMul` in force on that tick.
 
 ## Pyre
 
@@ -116,19 +121,21 @@ fixed row is `HAIL_STATS`.
 
 Chandelier is Lantern's orbit made permanent: its lanterns never vanish, and it
 has no cooldown and no duration, so its slot's cooldown timer holds `0`. On
-the first `playing` tick after the evolution, any Lantern lanterns still in
-the world are removed and `amount` Chandelier lanterns are created, each a
-zone of kind `lantern` with `ttl` `null`, a fresh id, and empty `hits`, on a
-circle of radius `orbit` centered on the player's center, lantern `i`, counted
-from `0`, at angle `i × 360 / amount`. From the next tick they revolve at
-`LANTERN_ANGULAR_SPEED` (`180`) degrees per second clockwise, the circle they
-ride centered on the player's center every tick, and `orbit` and each
-lantern's `radius` are recomputed on every tick from the `areaMul` in force on
-that tick.
+the first `playing` tick Chandelier is held and no Chandelier lantern exists,
+any Lantern lanterns still in the world are removed and `amount` Chandelier
+lanterns are created, each a zone of kind `lantern` with `ttl` `null`, a fresh
+id, and empty `hits`, on a circle of radius `orbit` centered on the player's
+center, lantern `i`, counted from `0`, at angle `i × 360 / amount`. From the
+next tick they revolve at `LANTERN_ANGULAR_SPEED` (`180`) degrees per second
+clockwise, the circle they ride centered on the player's center every tick,
+and `orbit`, each lantern's `radius`, and each lantern's `damage` are
+recomputed on every tick from the `areaMul` and `damageMul` in force on that
+tick. The set is removed on the next `playing` tick Chandelier is no longer
+held.
 
-On any tick on which `amount` differs from the number of lanterns in the
-world, the lanterns are replaced by `amount` new zones with fresh ids and
-empty `hits`, lantern `i` at `i × 360 / amount` degrees from the angle the
+On any tick on which `amount` differs from the number of Chandelier lanterns
+in the world, the lanterns are replaced by `amount` new zones with fresh ids
+and empty `hits`, lantern `i` at `i × 360 / amount` degrees from the angle the
 lowest-id lantern held.
 
 Each lantern is a touching effect with re-hit interval `LANTERN_REHIT`
@@ -141,17 +148,20 @@ Each lantern is a touching effect with re-hit interval `LANTERN_REHIT`
 ## Corona
 
 Corona is Halo's aura: one zone of kind `aura`, a circle of `radius` centered
-on the player's center every tick, its `radius` recomputed on every tick from
-the `areaMul` in force on that tick. On the first `playing` tick after the
-evolution the Halo aura zone is removed and the Corona zone is created with a
-fresh id. Corona pulses on that tick and on every tick its cooldown timer is
-due; each pulse deals `damage` to every enemy whose circle overlaps the aura,
-and amount is ignored. Corona keeps the `hum` loop that Halo carried, as
-`specs/ui.md` states.
+on the player's center every tick, its `radius` and `damage` recomputed on
+every tick from the `areaMul` and `damageMul` in force on that tick. On the
+first `playing` tick Corona is held and no Corona aura exists, the Halo aura
+zone is removed and the Corona zone is created with a fresh id, and the zone is
+removed on the next `playing` tick Corona is no longer held. Corona pulses on
+its first tick and on every tick its cooldown timer is due; each pulse deals
+`damage` to every enemy whose circle overlaps the aura, and amount is ignored.
+Corona keeps the `hum` loop that Halo carried, as `specs/ui.md` states.
 
-Each enemy a pulse kills heals the player `CORONA_HEAL` (`1`) health on that
-tick, capped at `maxHp`. The fixed row is `CORONA_STATS`, where the cooldown is
-the pulse interval.
+Each enemy a pulse kills, one whose `hp` the pulse's own hit takes from above
+`0` to `0` or below, heals the player `CORONA_HEAL` (`1`) health on that tick,
+capped at `maxHp`; an enemy another shape of the same tick already took to
+`0` or below heals nothing. The fixed row is `CORONA_STATS`, where the cooldown
+is the pulse interval.
 
 | Damage | Cooldown | Radius |
 | --- | --- | --- |

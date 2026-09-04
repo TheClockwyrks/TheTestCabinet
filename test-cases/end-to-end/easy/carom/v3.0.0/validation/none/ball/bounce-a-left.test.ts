@@ -11,8 +11,13 @@
 // since the rule is arithmetic on the posed values. The position is read on the
 // frame the reflection resolves on, so it is the placement plus whatever of that
 // frame's travel came after it: within one frame of travel of where the rule
-// placed it, as the review item states, however the build divided the frame. Under gyre the obstacles are held upright at clock 0, where the
-// oriented rule reduces to this one. The other faces are the sibling checks.
+// placed it, as the review item states, however the build divided the frame.
+//
+// The field is emptied and this obstacle alone is spawned back, so the only
+// body the flight can meet is the face under test: the other obstacle is taken
+// off rather than reasoned around. Under gyre the obstacles are held upright at
+// clock 0, where the oriented rule reduces to this one. The other faces are the
+// sibling checks.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -35,7 +40,9 @@ import {
   type Harness,
 } from "../harness";
 
-const RECT = OBSTACLES[0];
+/** Obstacle A: the one body the field is left holding beside the ball. */
+const OBSTACLE = 0;
+const RECT = OBSTACLES[OBSTACLE];
 /** One frame of the approach, which bounds the placement reading. */
 const FRAME_TRAVEL = FACE_SHOT_SPEED / TICK_HZ;
 const FACE = "left";
@@ -55,7 +62,7 @@ afterEach(async () => {
 
 it("banks the ball off obstacle A's left face", async () => {
   await startPlaying(harness);
-  await arrangeFaceShot(harness, RECT, FACE);
+  await arrangeFaceShot(harness, OBSTACLE, FACE);
   const before = ball0(await harness.snapshot());
 
   const bank = await captureReplay(harness, "bank", async () => {

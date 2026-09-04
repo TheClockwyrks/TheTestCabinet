@@ -17,7 +17,8 @@ use test_cabinet_core::test_case::{
     AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
 };
 use test_cabinet_core::{
-    AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec, shippable_package_description,
+    AssetDimension, AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec,
+    shippable_package_description,
 };
 
 use crate::error::ApiError;
@@ -724,6 +725,7 @@ fn version_response(
         r#match: manifest.r#match.clone(),
         replay: manifest.replay.clone(),
         asset_kind: manifest.asset_kind,
+        asset_dimension: manifest.asset_dimension,
         sheet: manifest.sheet.clone(),
         voxel: manifest.voxel.clone(),
         model: manifest.model.clone(),
@@ -731,6 +733,7 @@ fn version_response(
         material: manifest.material.clone(),
         particle: manifest.particle.clone(),
         audio: manifest.audio.clone(),
+        audio_packs: manifest.audio_packs.clone(),
         prompt_template: manifest.prompt_template.clone(),
         common_specs: manifest.common_specs.iter().map(spec_out).collect(),
         packages: manifest
@@ -808,6 +811,9 @@ fn render_variant_prompt(
         variant.description.as_deref(),
         &spec_dests,
         manifest.test_type,
+        // The dimension decides which asset-generation binaries the full-stack
+        // directive names, so the gallery shows the tools the run really gets.
+        manifest.asset_dimension,
         manifest.max_runtime_seconds,
         // The variant's own volume overrides the case's for its prompt, so the
         // gallery renders each size variant's brief at its actual dimensions.
@@ -862,6 +868,7 @@ fn review_validation_out(validation: &crate::store::StoredReviewValidation) -> R
     ReviewValidationOut {
         script: validation.script.clone(),
         per_engine: validation.per_engine,
+        engines: validation.engines.clone(),
         outputs: validation
             .outputs
             .iter()
@@ -1254,6 +1261,10 @@ pub struct VersionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     replay: Option<StoredReplay>,
     asset_kind: AssetKind,
+    /// Which full-stack run image the version's runs execute in. Always serialized
+    /// (never skipped) because the runner deserializes this body into the resolved
+    /// version it resolves the run image from.
+    asset_dimension: AssetDimension,
     #[serde(skip_serializing_if = "Option::is_none")]
     sheet: Option<SheetSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1268,6 +1279,11 @@ pub struct VersionResponse {
     particle: Option<ParticleSpec>,
     #[serde(skip_serializing_if = "Option::is_none")]
     audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order.
+    /// The driver reads it to stage the run container's palette, so it is served for
+    /// every test type, not just the audio kinds — always present, empty for a
+    /// version that declares none, like the other list-valued keys beside it.
+    audio_packs: Vec<String>,
     prompt_template: String,
     common_specs: Vec<SpecOut>,
     /// The Test Cabinet runtime packages this case ships into every run, each with
@@ -1604,10 +1620,17 @@ struct InstrumentationOut {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct ReviewValidationOut {
     script: String,
-    /// Whether `script` names a suite inside each engine's validator project rather
-    /// than one file under the version folder.
+    /// Whether `script` names a suite inside a validator project — one per engine,
+    /// and it ships in the project of every engine
+    /// [`ReviewValidationOut::engines`] covers — rather than one file under the
+    /// version folder.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     per_engine: bool,
+    /// The engines this validator decides its point on, by slug, in declared order.
+    /// Omitted when the case declares no restriction, which leaves the point active
+    /// on every engine the case supports.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    engines: Vec<String>,
     outputs: Vec<ReviewOutputOut>,
 }
 

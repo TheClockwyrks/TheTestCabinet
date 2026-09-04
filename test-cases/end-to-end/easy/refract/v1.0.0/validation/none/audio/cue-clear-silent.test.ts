@@ -30,7 +30,12 @@ const SETTLE_TICKS = 30;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Armed at creation, and this is the point arming matters most on: the check
+  // holds that NOTHING sounded, and an unarmed build would pass it without
+  // trying, its audio never having been allowed to open at all. The gesture goes
+  // in before the opening `reset`, so the silence measured below is one the build
+  // was free to break. See audio/cue-connect for the whole argument.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -39,7 +44,6 @@ afterEach(async () => {
 
 it("emits nothing when the clear finds no segment to remove", async () => {
   await loadBoard(h, GEO_3X3);
-  await h.armAudio();
 
   // The precondition the rule turns on: every beam is empty.
   const before = await h.snapshot();

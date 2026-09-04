@@ -7,7 +7,8 @@ use foray_core::board::Team;
 
 use super::*;
 use crate::test_case::{
-    AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec, TestCaseVersion, TestType,
+    AssetDimension, AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec,
+    TestCaseVersion, TestType,
 };
 
 /// The committed Foray case folder, where the baseline `references/*.wasm` live.
@@ -64,6 +65,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         r#match: None,
         replay: None,
         asset_kind: AssetKind::Sprite,
+        asset_dimension: AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -71,6 +73,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         material: None,
         particle: None,
         audio: None,
+        audio_packs: Vec::new(),
         common_specs: Vec::new(),
         common_workspace: Default::default(),
         init: None,

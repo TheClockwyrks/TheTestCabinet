@@ -1,0 +1,381 @@
+// Volute — the debugging and automation surface (specs/instrumentation.md).
+//
+// `initialize` returns it beside the state, as the pair `[state, debug]`, and the
+// engine hands that same value back from `engine.debug`. Nothing is installed on
+// the page: the engine handle is the whole route to it. It is inert during normal
+// play — nothing below runs until something calls it.
+//
+// EVERY OPERATION IS A READING OR A POSE, and both are written in the shape of
+// `update`, because the engine holds the state by value and nothing holds a
+// writable one. A pose takes the current state and returns the next, and a caller
+// drives it through `engine.apply((s) => debug.start(s))`; a reading takes the
+// state and returns what it read, as `debug.snapshot(engine.state)`.
+//
+// A POSE ARRANGES THE HALL and never fabricates an outcome: it puts the game into
+// a situation, and the game's own ticks — the real advance, the real strike, the
+// real extraction — are what run from there. So a scenario driven from code
+// behaves exactly like one played by hand, and every insertion, extraction,
+// score, chain step, mark, cell, clear and ending a scenario reads comes from the
+// ticks it ran, not from the call that set it up. A pose sounds nothing and plays
+// no effect either: the cues and the effects a scenario sees come from the ticks
+// run after it.
+//
+// NO POSE DECLINES. Each applies at the call whatever the screen, and an argument
+// outside its range is clamped to the nearest legal value or normalized.
+
+import {
+  CHARGE_IDS,
+  DEFAULT_SEED,
+  LEVEL_COUNT,
+  MACHINERY_KINDS,
+  PATH_LENGTH,
+  PRESSURE_MAX,
+  PRESSURE_MIN,
+  VOLUTE_DEBUG_VERSION,
+} from "./constants";
+import type { ChargeId, MachineryKind, ScreenName } from "./constants";
+import type { DeepReadonly } from "ts-essentials";
+import { pointAt } from "./channel";
+import {
+  clamp,
+  freeze,
+  resegment,
+  spaced,
+  thaw,
+  type DraftCore,
+} from "./draft";
+import { newReport } from "./events";
+import type { VoluteDebugApi, VoluteState } from "./game";
+import {
+  levelSpec,
+  normalizeAngle,
+  startLevel,
+  startRun,
+  toTitle,
+} from "./level";
+import { fire, grantMachinery, inDanger } from "./sim";
+import { effectiveFeed } from "./train";
+
+/** One core, as `poseTrain` takes it: `[s, charge, mark]`. */
+export type PosedCore = readonly [number, string, string | null];
+
+/** One core of the train, as `snapshot` reports it. */
+export interface TrainSnapshot {
+  s: number;
+  /** The field point the arc position gives on the channel. */
+  x: number;
+  y: number;
+  charge: ChargeId;
+  mark: MachineryKind | null;
+  /** `0` is the lead segment, rising toward the tail. */
+  segment: number;
+}
+
+/** One segment, as `snapshot` reports it. */
+export interface SegmentSnapshot {
+  count: number;
+  /** The recoil hold's seconds left. */
+  hold: number;
+}
+
+/** One projectile, as `snapshot` reports it. */
+export interface ProjectileSnapshot {
+  x: number;
+  y: number;
+  angle: number;
+  charge: ChargeId;
+}
+
+/** The plain, JSON-serializable view `snapshot` returns. */
+export interface VoluteSnapshot {
+  version: number;
+  screen: ScreenName;
+  score: number;
+  level: number;
+  cells: number;
+  quotaRemaining: number;
+  /** The level's quota less `quotaRemaining`. */
+  emitted: number;
+  pressure: number;
+  /** The effective feed speed, in units per second. */
+  feedSpeed: number;
+  chainStep: number;
+  chainTimer: number;
+  interlude: number;
+  danger: boolean;
+  train: TrainSnapshot[];
+  segments: SegmentSnapshot[];
+  injector: {
+    aim: number;
+    cooldown: number;
+    loaded: ChargeId | null;
+    queued: ChargeId | null;
+  };
+  projectiles: ProjectileSnapshot[];
+  machinery: { kind: MachineryKind; remaining: number } | null;
+  muted: boolean;
+  simTime: number;
+  rngState: number;
+}
+
+/** A charge id, or the first of the five when the argument names none. */
+function asCharge(value: unknown): ChargeId {
+  return CHARGE_IDS.includes(value as ChargeId)
+    ? (value as ChargeId)
+    : CHARGE_IDS[0];
+}
+
+/** A machinery kind, or `null` when the argument names none. */
+function asMark(value: unknown): MachineryKind | null {
+  return MACHINERY_KINDS.includes(value as MachineryKind)
+    ? (value as MachineryKind)
+    : null;
+}
+
+/** A finite number, or a stated fallback. */
+function asNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/** The whole snapshot, read straight off the state. */
+export function snapshot(state: DeepReadonly<VoluteState>): VoluteSnapshot {
+  const train: TrainSnapshot[] = [];
+  let segment = 0;
+  for (let i = 0; i < state.cores.length; i += 1) {
+    const core = state.cores[i];
+    if (i > 0 && !spaced(state.cores[i - 1], core)) segment += 1;
+    const point = pointAt(core.s);
+    train.push({
+      s: core.s,
+      x: point.x,
+      y: point.y,
+      charge: core.charge,
+      mark: core.mark,
+      segment,
+    });
+  }
+
+  return {
+    version: VOLUTE_DEBUG_VERSION,
+    screen: state.screen,
+    score: state.score,
+    level: state.level,
+    cells: state.cells,
+    quotaRemaining: state.quotaRemaining,
+    emitted: levelSpec(state.level).quota - state.quotaRemaining,
+    pressure: state.pressure,
+    feedSpeed: effectiveFeed(state),
+    chainStep: state.chainStep,
+    chainTimer: state.chainTimer,
+    interlude: state.interlude,
+    danger: inDanger(state),
+    train,
+    segments: state.segments.map((entry) => ({
+      count: entry.count,
+      hold: entry.hold,
+    })),
+    injector: {
+      aim: state.aim,
+      cooldown: state.fireCooldown,
+      loaded: state.loaded,
+      queued: state.queued,
+    },
+    projectiles: state.projectiles.map((projectile) => ({
+      x: projectile.x,
+      y: projectile.y,
+      angle: projectile.angle,
+      charge: projectile.charge,
+    })),
+    machinery:
+      state.machinery === null
+        ? null
+        : { kind: state.machinery.kind, remaining: state.machinery.remaining },
+    muted: state.muted,
+    simTime: state.simTime,
+    rngState: state.rngState >>> 0,
+  };
+}
+
+/**
+ * What re-opening the hall does to the picture drawn over it.
+ *
+ * The effects playing over the field — the flashes and the particle systems — are
+ * presentation rather than state, so they live outside `VoluteState` and a pose
+ * that returns a new state cannot reach them. `reset`, `start` and `startLevel`
+ * each put a DIFFERENT hall on the field, though, and specs/instrumentation.md is
+ * explicit that after a `reset` "anything else the build keeps across ticks is
+ * derived from" the declared fields. A burst still playing over a hall that no
+ * longer exists is derived from nothing, so those three operations drop it.
+ */
+export type ReopenHall = () => void;
+
+/** The surface `initialize` returns beside the state it built. */
+export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
+  return {
+    version: VOLUTE_DEBUG_VERSION,
+
+    /**
+     * Restore every declared field to its title-screen value and reseed the
+     * generator.
+     *
+     * `muted` is deliberately untouched: muting is a player preference the
+     * runtime owns, and a reset is not a reason to start making noise again.
+     */
+    reset(state, options) {
+      const draft = thaw(state);
+      toTitle(draft);
+      draft.rngState = asNumber(options?.seed, DEFAULT_SEED) >>> 0;
+      reopen();
+      return freeze(draft);
+    },
+
+    /** A pure reading of the running game. It poses nothing. */
+    snapshot,
+
+    /**
+     * Pose exactly what the start control on the title does: the score `0`, the
+     * cells full, and level `1` opened as `startLevel` opens it.
+     *
+     * The generator's state and `simTime` stay as they are, so a run from a known
+     * seed is a `reset` followed by this.
+     */
+    start(state) {
+      const draft = thaw(state);
+      startRun(draft);
+      reopen();
+      return freeze(draft);
+    },
+
+    /** Open `level`, exactly as the interlude before it opens it. */
+    startLevel(state, level) {
+      const draft = thaw(state);
+      startLevel(draft, clamp(Math.round(asNumber(level, 1)), 1, LEVEL_COUNT));
+      reopen();
+      return freeze(draft);
+    },
+
+    /**
+     * Replace every core on the channel with the cores given.
+     *
+     * The train orders them by descending arc position whatever order the list
+     * arrived in, two cores at the same position keeping the order the list gave
+     * them. Segments follow from the spacing and every recoil hold is cleared, so
+     * a posed train advances on the tick after the call.
+     */
+    poseTrain(state, cores) {
+      const draft = thaw(state);
+      const posed: DraftCore[] = [...(cores ?? [])].map((core) => ({
+        charge: asCharge(core?.[1]),
+        s: Math.min(PATH_LENGTH, asNumber(core?.[0], 0)),
+        mark: asMark(core?.[2]),
+        hold: 0,
+      }));
+      // A stable sort, which every engine's `Array.prototype.sort` is, so two
+      // cores at one arc position keep the order the list gave them.
+      posed.sort((a, b) => b.s - a.s);
+      draft.cores = posed;
+      resegment(draft);
+      return freeze(draft);
+    },
+
+    /**
+     * Remove every core from the channel and every projectile.
+     *
+     * Nothing extracts, nothing scores, and no cell is spent: the cores are
+     * simply gone, with no removal and so no recoil, no pressure drop and no
+     * grant.
+     */
+    clearTrain(state) {
+      const draft = thaw(state);
+      draft.cores = [];
+      draft.projectiles = [];
+      return freeze(draft);
+    },
+
+    /** Set the charge the injector holds loaded. The generator is untouched. */
+    setLoaded(state, charge) {
+      const draft = thaw(state);
+      draft.loaded = asCharge(charge);
+      return freeze(draft);
+    },
+
+    /** Set the charge the injector holds queued. The generator is untouched. */
+    setQueued(state, charge) {
+      const draft = thaw(state);
+      draft.queued = asCharge(charge);
+      return freeze(draft);
+    },
+
+    /**
+     * Aim at `angleDegrees` and release the loaded core along it, through the
+     * same path the fire control takes.
+     *
+     * Any cooldown outstanding at the call is cleared first, so the call always
+     * launches, and a call made while the injector holds no loaded core draws one
+     * first. The flight, the strike, the insertion and any extraction the
+     * insertion causes come from the ticks that follow, and so does the sound:
+     * the cues this raises are dropped, because a pose sounds nothing.
+     */
+    fire(state, angleDegrees) {
+      const draft = thaw(state);
+      draft.aim = normalizeAngle(asNumber(angleDegrees, draft.aim));
+      draft.fireCooldown = 0;
+      fire(draft, newReport());
+      return freeze(draft);
+    },
+
+    /** Set the pressure, clamped to its range. */
+    setPressure(state, value) {
+      const draft = thaw(state);
+      draft.pressure = clamp(
+        asNumber(value, draft.pressure),
+        PRESSURE_MIN,
+        PRESSURE_MAX,
+      );
+      return freeze(draft);
+    },
+
+    /**
+     * Set the cores the inlet has left to emit this level.
+     *
+     * The count of cores emitted this level is the level's quota less what
+     * remains, so which of the following emissions carry a mark, and which kind
+     * each mark is, follow the new value.
+     */
+    setQuotaRemaining(state, n) {
+      const draft = thaw(state);
+      draft.quotaRemaining = clamp(
+        Math.round(asNumber(n, 0)),
+        0,
+        levelSpec(draft.level).quota,
+      );
+      return freeze(draft);
+    },
+
+    /**
+     * Grant a kind exactly as extracting a run holding a mark of that kind grants
+     * it: the three timed kinds become the active machinery at their full
+     * duration, and `bore` resolves at once, centered on the head core's
+     * position.
+     */
+    grantMachinery(state, kind) {
+      const draft = thaw(state);
+      grantMachinery(draft, asMark(kind) ?? MACHINERY_KINDS[0], newReport());
+      return freeze(draft);
+    },
+
+    /** Pose the pause control. */
+    pause(state) {
+      const draft = thaw(state);
+      draft.screen = "paused";
+      return freeze(draft);
+    },
+
+    /** Pose the pause control again. */
+    resume(state) {
+      const draft = thaw(state);
+      draft.screen = "playing";
+      return freeze(draft);
+    },
+  };
+}

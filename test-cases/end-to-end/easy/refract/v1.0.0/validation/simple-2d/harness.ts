@@ -69,10 +69,19 @@ import {
   type Viewport,
 } from "@test-cabinet/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
-import { BINDINGS, LAYOUT, STAGE_H, STAGE_W } from "../src/constants";
 import { BACKGROUND, game as build, type RefractState } from "../src/game";
 import { assertEqual, fail } from "./assert";
-import { CHANNELS, NODE_R, cellX, cellY, type Board } from "./notation";
+import { BINDINGS, LAYOUT } from "./constants";
+import {
+  CHANNELS,
+  NODE_R,
+  STAGE_H,
+  STAGE_W,
+  cellX,
+  cellY,
+  parseBoard,
+  type Board,
+} from "./notation";
 import { CAMPAIGN_BOARDS } from "./routes";
 import type { Beams } from "./rules";
 import { solve } from "./solver";
@@ -80,11 +89,13 @@ import {
   READINGS,
   type CellRef,
   type Mode,
+  type PointerDevice,
   type RefractDebugApi,
   type RefractSnapshot,
+  type TargetSnapshot,
 } from "./surface";
 
-export type { CellRef, Mode, RefractSnapshot };
+export type { CellRef, Mode, PointerDevice, RefractSnapshot, TargetSnapshot };
 
 /** The case's surface, bound to the state type the build declared. */
 export type RefractSurface = RefractDebugApi<RefractState>;
@@ -245,8 +256,6 @@ export interface Harness {
     predicate: (snapshot: RefractSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
@@ -273,6 +282,7 @@ export interface Harness {
     type: "pointerdown" | "pointermove" | "pointerup",
     x: number,
     y: number,
+    device?: PointerDevice,
   ): void;
 
   /** Where a logical point lands in the canvas's backing store. */
@@ -305,11 +315,25 @@ class PointerLikeEvent extends Event {
   readonly clientX: number;
   readonly clientY: number;
   readonly isPrimary = true;
+  readonly pointerId = 1;
+  readonly pointerType: PointerDevice;
+  readonly button: number;
+  readonly buttons: number;
 
-  constructor(type: string, clientX: number, clientY: number) {
+  constructor(
+    type: string,
+    clientX: number,
+    clientY: number,
+    device: PointerDevice,
+  ) {
     super(type);
     this.clientX = clientX;
     this.clientY = clientY;
+    this.pointerType = device;
+    // The primary button, held on a press and a move and gone on a release,
+    // which is what a mouse reports and what a touch or a pen in contact does.
+    this.button = type === "pointermove" ? -1 : 0;
+    this.buttons = type === "pointerup" ? 0 : 1;
   }
 }
 
@@ -647,14 +671,6 @@ export async function createHarness(
       return { hit: false, frames, snapshot };
     },
 
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
-    },
-
     hold: (code) => dispatch("keydown", code),
     release: (code) => dispatch("keyup", code),
     async tap(code) {
@@ -663,7 +679,7 @@ export async function createHarness(
       await engine.advance(1);
     },
 
-    pointer: (type, x, y) => {
+    pointer: (type, x, y, device = "mouse") => {
       // The inverse of the engine's own mapping: it reads a client position,
       // subtracts the surface origin (none here), multiplies by DPR, and maps
       // through the viewport to logical units — so a logical point goes back
@@ -674,6 +690,7 @@ export async function createHarness(
           type,
           (view.offsetX + x * view.scale) / dpr,
           (view.offsetY + y * view.scale) / dpr,
+          device,
         ),
       );
     },
@@ -1057,9 +1074,10 @@ export async function resetTo(h: Harness, seed?: number): Promise<void> {
  * Accepts the same template-literal-friendly strings the fixtures are written
  * as: blank lines and per-line surrounding whitespace are dropped, and each
  * remaining line is one row. The surface's `loadBoard` takes the rows as the
- * notation defines them, one string per row.
+ * notation defines them, one string per row, and the parsed board comes back so
+ * a caller can measure against it.
  */
-export async function loadBoard(h: Harness, notation: string): Promise<void> {
+export async function loadBoard(h: Harness, notation: string): Promise<Board> {
   const rows = notation
     .replace(/\r\n/g, "\n")
     .split("\n")
@@ -1067,6 +1085,7 @@ export async function loadBoard(h: Harness, notation: string): Promise<void> {
     .filter((line) => line.length > 0);
   h.debug.loadBoard(rows);
   await h.advance(1);
+  return parseBoard(rows.join("\n"));
 }
 
 /** A route as `routes.ts` stores it: ordered `[col, row]` pairs. */
@@ -1086,7 +1105,7 @@ export function traceRoute(h: Harness, route: RoutePairs): void {
   h.debug.trace(toCells(route));
 }
 
-/** The registered actions, as `src/constants.ts` names them. */
+/** The registered actions, as the build's own `BINDINGS` table names them. */
 export type ActionName = keyof typeof BINDINGS;
 
 /**
@@ -1097,7 +1116,7 @@ export type ActionName = keyof typeof BINDINGS;
 export async function tapAction(h: Harness, action: ActionName): Promise<void> {
   const code = BINDINGS[action][0];
   if (code === undefined) {
-    return fail(`a key bound to the ${action} action in src/constants.ts`, []);
+    return fail(`a key bound to the ${action} action in BINDINGS`, []);
   }
   await h.tap(code);
 }
@@ -1723,5 +1742,69 @@ export function watchCues(h: Harness): TimedCue[] {
 export async function toggleOverlay(h: Harness): Promise<void> {
   h.hold("Backquote");
   h.release("Backquote");
+  await h.advance(1);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pointer targets                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The target the current screen reports under `id`, or a failure naming what it
+ * did report.
+ *
+ * specs/controls.md fixes the id set per screen, so a build that carries the
+ * target but names it something else fails here on the id rather than silently
+ * later on a press that lands nowhere.
+ */
+export function targetById(
+  snapshot: RefractSnapshot,
+  id: string,
+): TargetSnapshot {
+  const found = snapshot.targets?.find((target) => target.id === id);
+  if (found === undefined) {
+    return fail(
+      `the ${snapshot.screen} screen reports a pointer target "${id}" ` +
+        "(specs/controls.md, Pointer targets)",
+      (snapshot.targets ?? []).map((target) => target.id),
+    );
+  }
+  return found;
+}
+
+/** The middle of a target, which is where every pointer check aims. */
+export function targetCenter(target: TargetSnapshot): {
+  x: number;
+  y: number;
+} {
+  return { x: target.x + target.w / 2, y: target.y + target.h / 2 };
+}
+
+/** Whether two target rectangles share any area. */
+export function targetsOverlap(
+  a: TargetSnapshot,
+  b: TargetSnapshot,
+): boolean {
+  return (
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  );
+}
+
+/**
+ * Press at a point, release at another, and settle a frame — the gesture every
+ * target is taken by. Both points are in the stage's logical units, and the
+ * release defaults to the press.
+ */
+export async function pressRelease(
+  h: Harness,
+  press: { x: number; y: number },
+  release: { x: number; y: number } = press,
+  device: PointerDevice = "mouse",
+): Promise<void> {
+  h.debug.pointerDown(press.x, press.y, device);
+  if (release.x !== press.x || release.y !== press.y) {
+    h.debug.pointerMove(release.x, release.y, device);
+  }
+  h.debug.pointerUp(device);
   await h.advance(1);
 }

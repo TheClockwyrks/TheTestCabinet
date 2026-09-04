@@ -12,7 +12,9 @@ The surface's operations are methods that act on the live world. The instance
 holds `engine`, and `engine.world` follows every transition, so an operation
 reads `this.engine.world` at the moment of the call and reaches the world that
 is open then. A pose takes only its own arguments and returns nothing; a reading
-takes nothing and returns plain data.
+takes nothing and returns plain data. Each pose does one thing and takes
+scalars, so a caller arranges exactly the part of the world its scenario is
+about: a ball's position and its velocity are two operations.
 
 ```ts
 import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
@@ -22,13 +24,6 @@ import { TAG_BALL } from "./constants";
 
 export type Mode = "solo" | "versus";
 
-export interface BallPatch {
-  x?: number;
-  y?: number;
-  vx?: number;
-  vy?: number;
-}
-
 export interface Snapshot {
   phase: string;
   ball: { x: number; y: number; vx: number; vy: number };
@@ -37,7 +32,8 @@ export interface Snapshot {
 
 export interface Debug {
   startMatch(mode: Mode): void;
-  placeBall(patch: BallPatch): void;
+  setBallPosition(x: number, y: number): void;
+  setBallVelocity(vx: number, vy: number): void;
   snapshot(): Snapshot;
 }
 
@@ -46,20 +42,28 @@ export class Arcade extends GameInstance<Debug> {
     api.input.register("up", { keys: ["KeyW", "ArrowUp"] });
     api.input.register("down", { keys: ["KeyS", "ArrowDown"] });
 
+    const ballActor = (): Ball => {
+      const world = this.engine.world;
+      return (
+        (world.byTag(TAG_BALL)[0] as Ball | undefined) ??
+        world.spawn(Ball, { tags: [TAG_BALL] })
+      );
+    };
+
     return {
       startMatch: (mode) => {
         const rally = this.engine.world.mode as RallyMode;
         rally.begin(mode);
       },
-      placeBall: (patch) => {
-        const world = this.engine.world;
-        const ball =
-          (world.byTag(TAG_BALL)[0] as Ball | undefined) ??
-          world.spawn(Ball, { tags: [TAG_BALL] });
-        if (patch.x !== undefined) ball.transform.x = patch.x;
-        if (patch.y !== undefined) ball.transform.y = patch.y;
-        if (patch.vx !== undefined) ball.velocity.x = patch.vx;
-        if (patch.vy !== undefined) ball.velocity.y = patch.vy;
+      setBallPosition: (x, y) => {
+        const ball = ballActor();
+        ball.transform.x = x;
+        ball.transform.y = y;
+      },
+      setBallVelocity: (vx, vy) => {
+        const ball = ballActor();
+        ball.velocity.x = vx;
+        ball.velocity.y = vy;
       },
       snapshot: () => {
         const world = this.engine.world;
@@ -91,7 +95,8 @@ the instant of the call. A caller drives both directly.
 await engine.initialize();
 
 engine.debug.startMatch("versus");
-engine.debug.placeBall({ x: 600, y: 180, vx: 200, vy: 0 });
+engine.debug.setBallPosition(600, 180);
+engine.debug.setBallVelocity(200, 0);
 await engine.advance(60);
 
 const { score } = engine.debug.snapshot();
@@ -117,7 +122,7 @@ could have produced, so a scenario posed from code and the same scenario reached
 by playing leave the world in one state. A pose decides nothing about the
 outcome; the frames that follow do.
 
-A diagnostic source names a value for a human reading the overlay; the surface
+A diagnostic source names one value, of the types the overlay draws; the surface
 names the operations a caller drives from code, and the readings it needs to
 decide what happened. A reading returns a plain object built at the call, so a
 caller compares and serializes it without holding a framework object.

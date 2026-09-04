@@ -171,18 +171,20 @@ find "$INSTALL_DIR/ref" -name '*.xml' -delete
 # all.
 #
 # WHY IT TRAVELS WITH THE TOOLCHAIN RATHER THAN BEING INSTALLED ON THE MACHINE. This tree is copied
-# to the same absolute path into all twenty-six `-gg` variants, and they do not agree about ICU.
-# `node:24.18.0-bookworm-slim`, under twenty-five of them, ships none; `blender-gg`'s `ubuntu:26.04`
-# ships `libicu78` because Blender's apt closure drags it in; and the mesa render images —
-# `voxel-gg`, `mc-gg`, `material-gg` and the rest — ship `libicu72` because
-# `mesa-vulkan-drivers` does. Not one of those Dockerfiles asks for an ICU. An arm whose health is
-# decided by a package some unrelated tool pulled is an arm that works on some gg runs and not
-# others — and that moves the next time any of those closures changes. That is
-# constraint 1 of `containers/gg-toolchains/Dockerfile`, so the libraries go under `<home>/lib` and
-# `crates/gg/src/sandbox/language/csharp.compile.rs` names that directory on `LD_LIBRARY_PATH` for
-# every `dotnet` it runs. It is the Swift arm's arrangement (`scripts/ci/install-swift.sh`) reached
-# from the same constraint; Swift's own vendored set does not rescue this one, because it carries
-# `libicuuc` and `libicudata` for `libxml2` and not the `libicui18n` .NET also loads.
+# to the same absolute path into all twenty-seven `-gg` variants, and they do not agree about ICU.
+# `node:24.18.0-bookworm-slim`, under twenty-six of them, ships none; `blender-gg`'s `ubuntu:26.04`
+# ships `libicu78` because Blender's apt closure drags it in; and every image that installs the mesa
+# stack — the render kinds `voxel-gg`, `mc-gg`, `material-gg` and the rest, and `full-stack-3d-gg`,
+# which renders a 3D full-stack run's asset previews through Mesa's software Vulkan exactly as they
+# do — ships `libicu72` because `mesa-vulkan-drivers` does. Not one of those Dockerfiles asks for an
+# ICU. An arm whose health is decided by a package some unrelated tool pulled is an arm that works
+# on some gg runs and not others — and that moves the next time any of those closures changes.
+# That is constraint 1 of `containers/gg-toolchains/Dockerfile`, so the libraries go under
+# `<home>/lib` and `crates/gg/src/sandbox/language/csharp.compile.rs` names that directory on
+# `LD_LIBRARY_PATH` for every `dotnet` it runs. It is the Swift arm's arrangement
+# (`scripts/ci/install-swift.sh`) reached from the same constraint; Swift's own vendored set does
+# not rescue this one, because it carries `libicuuc` and `libicudata` for `libxml2` and not the
+# `libicui18n` .NET also loads.
 #
 # NOT `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`, which would also start the compiler. It changes
 # what Roslyn does with a program rather than what the machine gives it — string comparison, casing

@@ -1,20 +1,31 @@
 // gameplay/serve-angle — a served ball leaves at the serve angle.
 //
-// A fresh match is started and its pre-serve hold expired; the LAUNCH itself is
-// the build's own, on the frame after, and the velocity is read the instant it
-// happens, on the launch frame, on which the ball is not advanced
-// (specs/balls.md). The serve is `vx = dir * SERVE_SPEED * cos(SERVE_ANGLE)`,
+// A fresh match is opened on its countdown and its pre-serve hold cut to nothing;
+// the LAUNCH itself is the build's own, on the frame after, and the velocity is
+// read the instant it happens, on the launch frame, on which the ball is not
+// advanced (specs/balls.md). The serve is
+// `vx = dir * SERVE_SPEED * cos(SERVE_ANGLE)`,
 // `vy = s * SERVE_SPEED * sin(SERVE_ANGLE)` with `s` either sign, so the angle
 // from horizontal has magnitude SERVE_ANGLE exactly; the sign is the build's.
+//
+// The field holds the one ball whose serve is the subject, spawned back HELD at
+// its home with a full hold timer: both obstacles are removed, so the recorded
+// flight after the reading crosses an empty court. Nothing is taken from the
+// player — no paddle is driven, and neither of them can reach the ball inside the
+// three quarters of a second recorded.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { SERVE_ANGLE } from "../../src/constants";
+import { SERVE_ANGLE } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import {
   angleDeg,
   ball0,
   captureReplay,
   createHarness,
+  driveServe,
+  openCountdown,
+  poseWorld,
+  stageServe,
   type Harness,
 } from "../harness";
 
@@ -38,18 +49,13 @@ afterEach(() => {
 });
 
 it("serves the ball at SERVE_ANGLE from horizontal", async () => {
-  const { debug } = harness;
-  debug.reset();
-  debug.startMatch("versus");
+  openCountdown(harness, "versus");
+  poseWorld(harness, { live: false });
 
   const launched = await captureReplay(harness, "serve", async () => {
     await harness.advance(HELD_TICKS);
-    debug.serve();
-
-    const swept = await harness.until((s) => s.screen === "playing", {
-      maxFrames: 60,
-      poll: 1,
-    });
+    stageServe(harness);
+    const swept = await driveServe(harness);
     await harness.advance(FLIGHT_TICKS);
     return swept;
   });

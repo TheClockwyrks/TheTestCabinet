@@ -8,19 +8,19 @@
 // Both are single draw components on the top layer, reading their level's
 // state at the moment the frame renders, so the chrome always shows the screen
 // the frame's input left the game on.
+//
+// EVERY MENU IS DRAWN AT ITS OWN HIT REGIONS (src/menus.ts). Nothing here
+// chooses where an item goes: the layout is the one `menuItemRect` reports, so
+// the item a player clicks is the item they were shown.
 
 import { Actor, DrawComponent } from "@test-cabinet/structured-2d";
 import type { DrawApi, RenderMode, World } from "@test-cabinet/structured-2d";
-import { ballsOf } from "./ball";
 import {
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
   FIELD_W,
   HOLD_TIME,
-  MATCHOVER_ITEMS,
-  PAUSE_ITEMS,
-  TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
 import {
@@ -31,10 +31,36 @@ import {
   glowCircle,
   type Ctx,
 } from "./draw";
-import { MatchState, TitleState } from "./state";
+import { ballsOf } from "./field";
+import { menuOf } from "./menus";
+import { CaromState, type Screen } from "./state";
 import { COLOR, LAYER, TAGLINE_TEXT } from "./theme";
 
 const P1_GLOW = "rgba(58, 231, 196, 0.5)";
+
+/** Draw the menu the current screen shows, if it shows one. */
+function drawScreenMenu(
+  ctx: Ctx,
+  mode: RenderMode,
+  screen: Screen,
+  selected: number,
+  itemSize: number,
+  letterSpacing: number,
+  accent: string,
+): void {
+  const menu = menuOf(screen);
+  if (menu === null) return;
+  drawMenu(
+    ctx,
+    mode,
+    menu.items,
+    menu.rects,
+    selected,
+    itemSize,
+    letterSpacing,
+    accent,
+  );
+}
 
 // ---- The title level's screens -------------------------------------------
 
@@ -48,12 +74,13 @@ export class TitleDisplay extends Actor {
 class TitleChrome extends DrawComponent {
   draw(api: DrawApi): void {
     const state = this.actor.world.state;
-    if (!(state instanceof TitleState)) return;
+    if (!(state instanceof CaromState)) return;
     const ctx = api.ctx as Ctx;
     if (state.screen === "howto") {
-      drawHowTo(ctx, api.mode);
+      drawHowTo(ctx, api.mode, state);
       return;
     }
+    if (state.screen !== "title") return;
     drawTitle(ctx, api.mode, state, this.actor.world.audio.muted());
   }
 }
@@ -61,7 +88,7 @@ class TitleChrome extends DrawComponent {
 function drawTitle(
   ctx: Ctx,
   mode: RenderMode,
-  state: TitleState,
+  state: CaromState,
   muted: boolean,
 ): void {
   // A posed decorative ball, off in the open field to the lower right so it
@@ -91,31 +118,20 @@ function drawTitle(
     color: COLOR.textDim,
     spacing: 14,
   });
-  drawMenu(
-    ctx,
-    mode,
-    TITLE_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    430,
-    52,
-    30,
-    10,
-    COLOR.p1,
-  );
+  drawScreenMenu(ctx, mode, "title", state.menuIndex, 30, 10, COLOR.p1);
 
   const hint = muted
     ? "▲ ▼ MOVE    ENTER SELECT    M UNMUTE"
     : "▲ ▼ MOVE    ENTER SELECT    M MUTE";
-  drawText(ctx, mode, hint, FIELD_CX, FIELD_H - 34, {
+  drawText(ctx, mode, hint, FIELD_CX, FIELD_H - 96, {
     size: 16,
     color: COLOR.textFaint,
     spacing: 8,
   });
 }
 
-function drawHowTo(ctx: Ctx, mode: RenderMode): void {
-  drawText(ctx, mode, "HOW TO PLAY", FIELD_CX, 96, {
+function drawHowTo(ctx: Ctx, mode: RenderMode, state: CaromState): void {
+  drawText(ctx, mode, "HOW TO PLAY", FIELD_CX, 84, {
     size: 46,
     weight: 700,
     color: COLOR.p1,
@@ -143,7 +159,7 @@ function drawHowTo(ctx: Ctx, mode: RenderMode): void {
     ],
     ["PAUSE", "Esc or P.   Mute with M."],
   ];
-  let y = 176;
+  let y = 160;
   for (const [label, text] of rows) {
     if (label) {
       drawText(ctx, mode, label, 300, y, {
@@ -162,14 +178,12 @@ function drawHowTo(ctx: Ctx, mode: RenderMode): void {
       align: "left",
       baseline: "middle",
     });
-    y += label ? 56 : 38;
+    y += label ? 54 : 36;
   }
 
-  drawText(ctx, mode, "ESC / ENTER  —  BACK", FIELD_CX, FIELD_H - 44, {
-    size: 18,
-    color: COLOR.textFaint,
-    spacing: 8,
-  });
+  // The page's one menu item, drawn as every other menu draws the item at
+  // `menuIndex` (specs/ui.md): confirming it returns to the title.
+  drawScreenMenu(ctx, mode, "howto", state.menuIndex, 22, 8, COLOR.p1);
 }
 
 // ---- The match level's screens -------------------------------------------
@@ -184,7 +198,7 @@ export class MatchChrome extends Actor {
 class MatchOverlays extends DrawComponent {
   draw(api: DrawApi): void {
     const state = this.actor.world.state;
-    if (!(state instanceof MatchState)) return;
+    if (!(state instanceof CaromState)) return;
     const ctx = api.ctx as Ctx;
 
     switch (state.screen) {
@@ -197,7 +211,7 @@ class MatchOverlays extends DrawComponent {
       case "matchover":
         drawMatchOver(ctx, api.mode, state);
         return;
-      case "playing":
+      default:
         return;
     }
   }
@@ -253,7 +267,7 @@ function drawCountdown(ctx: Ctx, mode: RenderMode, holdTimer: number): void {
   });
 }
 
-function drawPause(ctx: Ctx, mode: RenderMode, state: MatchState): void {
+function drawPause(ctx: Ctx, mode: RenderMode, state: CaromState): void {
   drawVeil(ctx, mode, FIELD_W, FIELD_H, 0.72);
 
   const { y } = drawPanel(ctx, mode, FIELD_CX, FIELD_CY, 520, 400);
@@ -270,21 +284,10 @@ function drawPause(ctx: Ctx, mode: RenderMode, state: MatchState): void {
     glow: "rgba(58, 231, 196, 0.45)",
     glowBlur: 16,
   });
-  drawMenu(
-    ctx,
-    mode,
-    PAUSE_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    y + 200,
-    52,
-    26,
-    6,
-    COLOR.p1,
-  );
+  drawScreenMenu(ctx, mode, "paused", state.menuIndex, 26, 6, COLOR.p1);
 }
 
-function drawMatchOver(ctx: Ctx, mode: RenderMode, state: MatchState): void {
+function drawMatchOver(ctx: Ctx, mode: RenderMode, state: CaromState): void {
   drawVeil(ctx, mode, FIELD_W, FIELD_H, 0.72);
 
   const { y } = drawPanel(ctx, mode, FIELD_CX, FIELD_CY, 560, 420);
@@ -312,29 +315,13 @@ function drawMatchOver(ctx: Ctx, mode: RenderMode, state: MatchState): void {
     glow: winGlow,
     glowBlur: 18,
   });
-  const [p1, p2] = state.players;
   drawText(
     ctx,
     mode,
-    `${p1?.score ?? 0}  –  ${p2?.score ?? 0}`,
+    `${state.score.p1}  –  ${state.score.p2}`,
     FIELD_CX,
     y + 182,
-    {
-      size: 40,
-      color: COLOR.text,
-      spacing: 10,
-    },
+    { size: 40, color: COLOR.text, spacing: 10 },
   );
-  drawMenu(
-    ctx,
-    mode,
-    MATCHOVER_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    y + 268,
-    52,
-    26,
-    6,
-    winColor,
-  );
+  drawScreenMenu(ctx, mode, "matchover", state.menuIndex, 26, 6, winColor);
 }

@@ -11,7 +11,7 @@
 // watching the overlay never changes what the simulation does. Each line is
 // short enough to read at a glance while the game runs.
 
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 import { CHANNELS } from "./constants";
 import { refractState, type RefractState } from "./game";
 import { beamComplete, boardSolved, spentAt } from "./rules";
@@ -23,8 +23,8 @@ import { beamComplete, boardSolved, spentAt } from "./rules";
  */
 export function diagnosticSources(
   read: () => RefractState,
-): [string, () => unknown][] {
-  const sources: [string, () => unknown][] = [
+): [string, () => DiagnosticValue][] {
+  const sources: [string, () => DiagnosticValue][] = [
     ["screen", () => read().screen],
     ["mode", () => read().mode],
     [

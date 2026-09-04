@@ -1,93 +1,106 @@
-# Carom — Menus, screens, and navigation
+# Carom — Controls, screens, and menus
 
-This file defines the game's screens, the menus, how a player moves between them,
-the scoring and match flow that drives those transitions, and audio. Every figure
-and every piece of screen copy below carries the name this specification gives
-it.
+This file defines the controls, the game's screens, the menus, and how a player
+moves between them. Every figure and every piece of screen copy below carries
+the name this specification gives it.
 
-## Scoring and match flow
+## Controls
 
-- A point is scored when a ball fully passes a goal edge (`x + BALL_R < 0` or
-  `x - BALL_R > FIELD_W`). The point goes to the player on the opposite side and
-  increments their score.
-- First to `WIN_SCORE` (`11`) points wins, and the winner leads by at least
-  `WIN_LEAD` (`2`): the match is over when `p1 >= WIN_SCORE` and
-  `p1 - p2 >= WIN_LEAD` (player one wins) or `p2 >= WIN_SCORE` and
-  `p2 - p1 >= WIN_LEAD` (player two wins). At `10-10` play continues until one
-  player is two points ahead. `state.winner` holds the winning side once a match
-  is over, and is `null` until then.
+{{#if (eq engine.slug "none")}}
+The game reads exactly the eight actions below, each raised by the keys given
+beside it:
+{{else}}
+The controls are registered actions on the `LAYOUT` (`dual-vertical`) touch
+layout. Register exactly the eight names in `ACTIONS`, in that order, each bound
+to the keys `BINDINGS` gives it:
+{{/if}}
+
+| Action | Keys |
+| --- | --- |
+| `p1-up` | `KeyW` |
+| `p1-down` | `KeyS` |
+| `p2-up` | `ArrowUp` |
+| `p2-down` | `ArrowDown` |
+| `confirm` | `Enter`, `Space` |
+| `back` | `Escape` |
+| `pause` | `KeyP`, `Escape` |
+| `mute` | `KeyM` |
+
+These eight actions drive the paddles and the menus. The four movement actions
+move the paddles, and the mode specifications under `specs/modes/` state which
+paddle each one moves in that mode. Menu navigation below states which screens
+read each action, alongside the mouse and touch input the menus take.
 
 ## Screens
 
-The game is a small state machine, and `state.screen` names the state it is in.
-Each state has its own screen.
+The game is a small state machine, and `screen` names the state it is in. Each
+state has its own screen.
 
 1. `title`, the main menu. It shows the title `TITLE_TEXT` (`CAROM`) and a
    vertical menu of `TITLE_ITEMS` (`SOLO`, `VERSUS`, `HOW TO PLAY`) in that
-   order. The item at `state.menuIndex` is highlighted, drawn distinctly from the
+   order. The item at `menuIndex` is highlighted, drawn distinctly from the
    others. The field furniture (paddles,
 {{#if (eq variant.slug "multi")}}
    balls, obstacles, net) may show dimmed behind the menu.
 {{else}}
    ball, obstacles, net) may show dimmed behind the menu.
 {{/if}}
-2. `howto`, how to play. It names the controls and describes the spin and obstacle
-   mechanics.
+2. `howto`, how to play. It names the controls and describes the spin and
+   obstacle mechanics. It also shows a single menu item, index `0`, whose copy
+   the build chooses and which the build draws as the other menus draw the item
+   at `menuIndex`. Confirming that item returns to the title.
 {{#if (eq variant.slug "multi")}}
 3. `playing`, the live game: both paddles, the three balls each with its own
-   trail, both obstacles, the net, the two scores near the top, and the mode
-   label.
+   trail, both obstacles, the net, the two scores, and the mode label.
 4. `countdown`, the hold before the three balls launch at the start of a match,
    rendered over the live field with the same furniture. It becomes `playing`
    when they launch. A ball that takes its home point again during a rally holds
    and relaunches on its own, leaving the screen on `playing`.
 5. `paused`, reachable from `countdown` or `playing`. It offers `PAUSE_ITEMS`
    (`RESUME`, `RESTART`, `QUIT TO MENU`) in that order, with the item at
-   `state.menuIndex` drawn distinctly. The field is visible and frozen behind the
-   pause menu.
+   `menuIndex` drawn distinctly. The field is visible and frozen behind the pause
+   menu.
 {{else}}
 3. `playing`, the live game: both paddles, the ball with its trail, both
-   obstacles, the net, the two scores near the top, and the mode label.
+   obstacles, the net, the two scores, and the mode label.
 4. `countdown`, the pre-serve hold before the ball is served, rendered over the
    live field with the same furniture. It becomes `playing` when the ball is
    served.
 5. `paused`, reachable from `countdown` or `playing`. It offers `PAUSE_ITEMS`
    (`RESUME`, `RESTART`, `QUIT TO MENU`) in that order, with the item at
-   `state.menuIndex` drawn distinctly. The field is visible and frozen behind the
-   pause menu.
+   `menuIndex` drawn distinctly. The field is visible and frozen behind the pause
+   menu.
 {{/if}}
-6. `matchover`, shown when a player wins. It displays the winning side and the
+6. `matchover`, shown once a match is over. It displays the winning side and the
    final score, and offers `MATCHOVER_ITEMS` (`PLAY AGAIN`, `MENU`) in that
-   order, with the item at `state.menuIndex` drawn distinctly.
+   order, with the item at `menuIndex` drawn distinctly. `specs/balls.md` states
+   when a match is over and what reaching this screen sets.
 
 ## What advances on each screen
 
-`state.simTime` accumulates `dt` on every update, whatever the screen. Input is
-read on every screen. Beyond that:
+`simTime` accumulates `dt` on every update, whatever the screen. Input is read on
+every screen. Beyond that:
 
 | Screen | What advances |
 | --- | --- |
 | `title`, `howto`, `matchover` | Nothing. |
 {{#if (eq variant.slug "multi")}}
-| `countdown` | Both paddles (input and the AI alike), every hold timer, the balls, the trails. |
-| `playing` | Both paddles, every hold timer, the balls, the trails, scoring. |
-| `paused` | Nothing. Paddles, balls, and hold timers are all frozen. |
+| `countdown` | Both paddles (input and the AI alike), each ball's hold timer, the balls, the trails. |
+| `playing` | Both paddles, each ball's hold timer, the balls, the trails, scoring. |
+| `paused` | Nothing. The paddles, the balls, and the hold timers hold their values. |
 {{else if (eq variant.slug "gyre")}}
-| `countdown` | Both paddles (input and the AI alike), `holdTimer`, the trail, the obstacle clock. The ball sits parked. |
-| `playing` | Both paddles, the ball, the trail, the obstacle clock, scoring. |
-| `paused` | Nothing. Paddles, ball, `holdTimer`, and the obstacle clock are all frozen. |
+| `countdown` | Both paddles (input and the AI alike), the ball's hold timer, its trail, the obstacle clock. The ball waits at its home point. |
+| `playing` | Both paddles, the ball, its trail, the obstacle clock, scoring. |
+| `paused` | Nothing. The paddles, the ball, its hold timer, and the obstacle clock hold their values. |
 {{else}}
-| `countdown` | Both paddles (input and the AI alike), `holdTimer`, the trail. The ball sits parked. |
-| `playing` | Both paddles, the ball, the trail, scoring. |
-| `paused` | Nothing. Paddles, ball, and `holdTimer` are all frozen. |
+| `countdown` | Both paddles (input and the AI alike), the ball's hold timer, its trail. The ball waits at its home point. |
+| `playing` | Both paddles, the ball, its trail, scoring. |
+| `paused` | Nothing. The paddles, the ball, and its hold timer hold their values. |
 {{/if}}
 
-Each update reads input first, then advances the screen the input left it on.
-
-On `countdown` the paddles are as live as they are on `playing`: the movement
-actions move the human-controlled paddles at `PADDLE_SPEED` and the AI moves its
-own, while only the ball waits. Paddles that are frozen, or held to the center,
-until the ball is served are a violation of this table.
+Each update reads input first, then advances the screen the input left it on. An
+update reads the input the screen it began on reads, and a screen an update
+reaches takes its first input on the following update.
 
 ## Starting a match
 
@@ -96,30 +109,38 @@ on the match-over screen all start a match the same way:
 
 - `mode` is set (`solo` or `versus` from the title; the current `mode` from the
   pause and match-over menus).
-- `screen = countdown`, `resumeScreen = playing`, `menuIndex = 0`.
+- `screen = countdown`, `resumeScreen = playing`, and `menuIndex = 0`.
+  `titleIndex` keeps its value.
 - Both scores are `0` and `winner` is `null`.
 {{#if (eq variant.slug "multi")}}
-- Every ball is parked at its own home point, held, with `holdTimer = HOLD_TIME`
-  and an empty trail.
+- Every ball is held at its own home point with `holdTimer = HOLD_TIME`, zero
+  velocity, zero spin, and an empty trail.
 {{else}}
-- `receiver = left`, `holdTimer = HOLD_TIME`, the ball is parked at the center,
-  and the trail is empty.
+- `receiver = left`, and the ball is held at its home point with
+  `holdTimer = HOLD_TIME`, zero velocity, zero spin, and an empty trail.
 {{/if}}
 - Both paddles have `cy = FIELD_CY` and `vy = 0`.
 {{#if (eq variant.slug "gyre")}}
-- The obstacle clock is `0`, so both obstacles are upright at their base centers.
+- The obstacle clock is `0` and running.
 {{/if}}
 
-Returning to the title (`QUIT TO MENU`, `MENU`, leaving the how-to screen, or
-`back` on the match-over screen) restores every declared field of the state to
-its title-screen value, except `simTime`, `muted`, `rngState`, and `driver`,
-which keep their values.
+## Returning to the title
+
+`QUIT TO MENU` on the pause menu, `MENU` on the match-over screen, leaving the
+how-to screen, and `back` on the match-over screen all return to the title. Each
+restores every declared field of the state to its title-screen value, except
+`titleIndex`, `simTime`, `muted`, `seed`, and `rngState`, which keep their
+values, and `menuIndex`, which becomes `titleIndex`.
 
 ## Menu navigation
 
-Keyboard only, through the same registered actions a match uses. Those actions,
-and the keys bound to them, are held in `ACTIONS` and `BINDINGS`. Each action
-below is read once per frame as a press edge.
+Every menu screen (`title`, `howto`, `paused`, and `matchover`) is driven by the
+keyboard, by a mouse, and by touch, over the items that screen shows.
+
+### Keyboard
+
+The menus read the same eight actions a match uses, each read once per frame as
+a press edge.
 
 | Screen | Action | Effect |
 | --- | --- | --- |
@@ -127,67 +148,66 @@ below is read once per frame as a press edge.
 | `title` | `p1-down` or `p2-down` | `menuIndex` moves down one, wrapping from the last item to `0`. |
 | `title` | `confirm` | `SOLO` starts a Solo match; `VERSUS` starts a Versus match; `HOW TO PLAY` sets `screen = howto` and `menuIndex = 0`. |
 | `title` | `back` | Nothing. |
-| `howto` | `confirm` or `back` | Returns to the title with `menuIndex = 0`. |
+| `howto` | `confirm` or `back` | Returns to the title. |
 | `countdown`, `playing` | `pause` | `resumeScreen` becomes the current screen, `screen = paused`, `menuIndex = 0`. |
+| `paused` | `pause` | Resumes: `screen = resumeScreen`. |
 | `paused` | `back` | Resumes: `screen = resumeScreen`. |
 | `paused` | `p1-up`, `p2-up`, `p1-down`, `p2-down` | Moves `menuIndex` over `PAUSE_ITEMS`, wrapping both ways. |
 | `paused` | `confirm` | `RESUME` sets `screen = resumeScreen`; `RESTART` starts a match in the current mode; `QUIT TO MENU` returns to the title. |
 | `matchover` | `p1-up`, `p2-up`, `p1-down`, `p2-down` | Moves `menuIndex` over `MATCHOVER_ITEMS`, wrapping both ways. |
 | `matchover` | `confirm` | `PLAY AGAIN` starts a match in the current mode; `MENU` returns to the title. |
 | `matchover` | `back` | Returns to the title. |
-| every screen | `mute` | Toggles the runtime's mute bit. |
+| every screen | `mute` | Toggles the runtime's mute bit, as `specs/audio.md` states. |
 
-`pause` is read only on `countdown` and `playing`; `back` is read only on
-`title`, `howto`, `paused`, and `matchover`. When several of a menu's edges
-arrive on one frame, up is applied before down, and movement before `confirm`:
-a frame carrying both an up edge and a down edge moves up only, and a frame
-carrying a movement edge and a `confirm` edge moves only. On `paused`, `back` is
-read before the menu edges, and a frame carrying `back` resumes and does nothing
-else.
+`pause` is read on `countdown`, `playing`, and `paused`; `back` is read on
+`title`, `howto`, `paused`, and `matchover`. `Escape` raises `pause` and `back`
+together on one frame, so a single `Escape` press on `countdown` or `playing`
+opens the pause menu and leaves it open, and a single `Escape` press on `paused`
+resumes once.
 
-## Audio
+When several of a menu's edges arrive on one frame, up is applied before down,
+and movement before `confirm`: a frame carrying both an up edge and a down edge
+moves up only, and a frame carrying a movement edge and a `confirm` edge moves
+only. On `paused`, `pause` and `back` are read before the menu edges, and a frame
+carrying either resumes and does nothing else.
 
-{{#if (eq variant.slug "multi")}}
-Audio plays through the runtime's cue bus. Define and play exactly the five cues
-in `CUES`, under exactly these names, one per event:
+### Pointer and touch
 
-| Cue | Constant | Played when |
-| --- | --- | --- |
-| `paddle-hit` | `CUES.paddleHit` | A ball hits a paddle's left or right face. |
-| `wall-bounce` | `CUES.wallBounce` | A ball reflects off the top or bottom wall, or off a paddle's end cap. |
-| `obstacle-bounce` | `CUES.obstacleBounce` | A ball bounces off an obstacle. |
-| `ball-bounce` | `CUES.ballBounce` | Two balls bounce off each other. |
-| `score` | `CUES.score` | A point is scored. |
+Each menu item occupies a rectangular hit region the build lays out.
+`specs/instrumentation.md` states the reading through which the build reports an
+item's region in logical units, so the menus keep the layout the build chose.
 
-Each is a distinct short blip, so the five events are told apart by ear. Each is
-played on the frame its event happens, from `update`, once per frame however
-many sub-steps or balls raised it. A collision is one event between two balls,
-so a frame in which a pair meets plays `ball-bounce` once for the pair rather
-than once for each ball.
-{{else}}
-Audio plays through the runtime's cue bus. Define and play exactly the four cues
-in `CUES`, under exactly these names, one per event:
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an item's region | `menuIndex` becomes that item's index. |
+| A touch contact lands inside an item's region, or travels onto one | `menuIndex` becomes that item's index. |
+| A pointer is pressed and released inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
+| A touch contact lands and lifts inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
 
-| Cue | Constant | Played when |
-| --- | --- | --- |
-| `paddle-hit` | `CUES.paddleHit` | The ball hits a paddle's left or right face. |
-| `wall-bounce` | `CUES.wallBounce` | The ball reflects off the top or bottom wall, or off a paddle's end cap. |
-| `obstacle-bounce` | `CUES.obstacleBounce` | The ball bounces off an obstacle. |
-| `score` | `CUES.score` | A point is scored. |
+A confirm takes both of its edges inside one item's region: the press and its
+release for a pointer, the landing and the lift for a touch contact. Two edges
+that fall in different regions, and an edge that falls outside every region,
+confirm no item. The item every confirm acts on is the item at `menuIndex`,
+whichever input raised it, and the effect is the one the keyboard table gives
+`confirm` on that screen.
 
-Each is a distinct short blip, so the four events are told apart by ear. Each is
-played on the frame its event happens, from `update`, once per frame however
-many sub-steps raised it.
-{{/if}}
+The pointer and the touch contacts are read once per frame, in the same input
+read as the keyboard actions, and are applied after that frame's keyboard edges.
+A press and the release that follows it may arrive on one frame, and that frame
+confirms. A frame carrying a keyboard movement edge together with a pointer or
+touch selection leaves `menuIndex` at the item the pointer or the contact named,
+and a frame carrying a keyboard `confirm` edge together with a pointer or touch
+confirm confirms the keyboard's item alone. A pointer and a touch contact drive
+the menus directly rather than through an action.
 
-Muting and the first-interaction unlock belong to the runtime. The game binds the
-`mute` action to the runtime's mute bit and toggles it from any screen, then
-mirrors that bit into `state.muted` every frame. The game stays fully playable
-with sound muted.
+### The remembered title selection
+
+Confirming an item on the title menu sets `titleIndex` to that item's index,
+from the keyboard, from a pointer, and from a touch contact alike.
 
 ## Out of scope
 
 - Network or online multiplayer.
-- Touch or gamepad input. The game is keyboard only.
+- Gamepad input.
 - Destructible obstacles. The obstacles persist for the whole match.
 - Persistence of scores or settings between sessions.

@@ -12,6 +12,7 @@
 pub mod accounts;
 pub mod adversarial_validator;
 pub mod asset_reference;
+pub mod audio_stage;
 pub mod auth;
 pub mod backend_client;
 pub mod browser;
@@ -175,7 +176,7 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
+    AssetDimension, AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, EngineSupport,
     EngineWorkspaces, Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec, ProofFile,
     ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation,
     SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
@@ -258,11 +259,11 @@ pub struct RunRequest {
     /// way the run is bounded, so a session can never continue unbounded.
     pub max_runtime_override: Option<u64>,
     /// An explicit per-run override for the run-container image: a full, pullable
-    /// reference the runtime pulls. `None` — the usual case — resolves the image
-    /// for the run's test type and asset kind from the environment via
-    /// [`resolve_run_image`], which consults
-    /// no backend. Whatever image actually runs is recorded (resolved to its
-    /// registry digest where it has one) as [`RunEnvironment::container_image`].
+    /// reference the runtime pulls. `None` — the usual case — resolves the image for
+    /// the run's test type, asset kind and asset dimension from the environment via
+    /// [`resolve_run_image`], which consults no backend. Whatever image actually
+    /// runs is recorded (resolved to its registry digest where it has one) as
+    /// [`RunEnvironment::container_image`].
     pub container_image: Option<String>,
     /// The declarative capability set that configures a **gg** run — which
     /// capabilities are on, their implementations/params, and the model-slot
@@ -751,22 +752,28 @@ where
         };
         let auth_mode = auth.mode();
 
-        // The image is the run's explicit per-run override when it carries one,
-        // else the image for the test case's test type and asset kind, resolved
-        // from the environment (a registry reference, resolved without any
-        // backend): end-to-end runs use the base image, single-sprite runs use the
-        // sprite image (the base plus the baked-in `draw` binary), sprite-sheet
-        // runs use the sprite-sheet image (the base plus the baked-in `draw-sheet`
-        // binary). The selected harness's CLI is installed into the container below
-        // either way — there is no per-harness image — with one exception, and it
-        // is why the slug is passed: a `gg` run resolves the gg VARIANT of that
-        // image, the same image plus the language toolchains its
-        // responses-as-code programs are compiled with. Those exist for one
-        // harness, so every other run gets an image without them.
-        let image = request
-            .container_image
-            .clone()
-            .unwrap_or_else(|| resolve_run_image(test_case.test_type, test_case.asset_kind, slug));
+        // The image is the run's explicit per-run override when it carries one, else
+        // the image for the test case's test type, asset kind and asset dimension,
+        // resolved from the environment (a registry reference, resolved without any
+        // backend): end-to-end runs use the base image, full-stack runs use the
+        // full-stack image of the dimension the case declares (the 2D six binaries,
+        // plus `voxel`/`voxel-anim`/`particle-3d` for `asset_dimension = "3d"`),
+        // single-sprite runs use the sprite image (the base plus the baked-in `draw`
+        // binary), sprite-sheet runs use the sprite-sheet image (the base plus the
+        // baked-in `draw-sheet` binary). The selected harness's CLI is installed into
+        // the container below either way — there is no per-harness image — with one
+        // exception, and it is why the slug is passed: a `gg` run resolves the gg
+        // VARIANT of that image, the same image plus the language toolchains its
+        // responses-as-code programs are compiled with. Those exist for one harness,
+        // so every other run gets an image without them.
+        let image = request.container_image.clone().unwrap_or_else(|| {
+            resolve_run_image(
+                test_case.test_type,
+                test_case.asset_kind,
+                test_case.asset_dimension,
+                slug,
+            )
+        });
         tracing::Span::current().record("container.image", image.as_str());
 
         // Pull the base image up front so the run fails fast with a clear error
@@ -869,12 +876,43 @@ where
             });
         }
 
+        // Stage the audio packs this case declares into the container, and nothing
+        // else. The palette a run reaches is fixed by its manifest rather than by the
+        // image it resolves, so the packs are resolved out of the host audio store
+        // here — verified against the published-object lock — and materialized under
+        // `/opt/audio` at start. A case declaring no packs stages nothing, which is
+        // every end-to-end, adversarial, and performance run and every `sfx-synth`
+        // one.
+        //
+        // The tree is assembled on the host and carried on the spec as a directory,
+        // so the clips are copied into the container in one pass and no second copy
+        // of the palette is held in the driver for the run's duration. `staged_audio`
+        // owns that tree and outlives the container start below.
+        let staged_audio = audio_stage::stage_audio(
+            &seeding::audio_store_dir(),
+            &test_case.audio_packs,
+            test_case.asset_kind,
+        )?;
+        let stages_audio = staged_audio.is_some();
+        let mut dirs = Vec::new();
+        if let Some(staged) = &staged_audio {
+            tracing::debug!(
+                packs = staged.manifest.packs.len(),
+                "staged the run's audio palette",
+            );
+            dirs.push(crate::execution::ContainerDir {
+                host_path: staged.path().to_path_buf(),
+                container_path: test_cabinet_audio_core::staged::AUDIO_ROOT.to_string(),
+            });
+        }
+
         let spec = ContainerSpec {
             image: image.clone(),
             repo_path: seeded.path.clone(),
             secrets,
             env,
             files,
+            dirs,
             network_enabled: true,
             // Give the container a route to the run host when a viewer is
             // observing the run (the live asset preview), or when harness
@@ -908,6 +946,24 @@ where
             SystemStage::StartContainer,
             SystemStatus::Completed,
         ));
+
+        // Check the run image accepts staged audio, for a run that staged some.
+        //
+        // The writer of the staged tree ships here, in the driver and the CLI; the
+        // reader ships in the run image, and the two are pinned separately
+        // (`TCAB_DRIVER_IMAGE` and `TCAB_CONTAINER_TAG`) and have drifted for whole
+        // release trains. An image predating staged delivery bakes its own palette
+        // and would quietly ignore the packs the case declared, so the image states
+        // which contract it accepts and a staging run reads that statement before it
+        // spends a harness session. A run that stages nothing is never probed, so
+        // every non-audio run is untouched by the handshake.
+        if stages_audio && let Err(err) = self.check_audio_contract(&handle, &spec.image).await {
+            let _ = self.runtime.stop(&handle).await;
+            return Err(err);
+        }
+        // The staged tree has been copied into the container, so the host copy has
+        // done its work and its disk goes back now rather than at the end of the run.
+        drop(staged_audio);
 
         // Record the exact image bytes the run used. When the image was launched
         // by a mutable tag, resolve it to the registry digest now that it is
@@ -1288,6 +1344,47 @@ where
                 "assembled a session record salvaged from the failed run's container",
             );
         }
+    }
+
+    /// Check that a started run container accepts the staged audio contract this
+    /// build writes.
+    ///
+    /// A run image bakes the marker at
+    /// [`CONTRACT_MARKER`](test_cabinet_audio_core::staged::CONTRACT_MARKER) holding
+    /// the contract version it reads. An image built before audio delivery moved out
+    /// of the image has no marker: it carries its own baked palette and resolves a
+    /// pack out of that, so it would render the run against packs the case never
+    /// declared while reporting nothing wrong. Failing here costs a container start;
+    /// not failing here costs a whole harness session and produces a run whose audio
+    /// silently came from somewhere else.
+    ///
+    /// Only called for a run that staged audio, so a mismatch can only ever fail a run
+    /// whose result the mismatch would actually change.
+    async fn check_audio_contract(&self, handle: &ContainerHandle, image: &str) -> Result<()> {
+        let marker = format!(
+            "{}/{}",
+            test_cabinet_audio_core::staged::AUDIO_ROOT,
+            test_cabinet_audio_core::staged::CONTRACT_MARKER
+        );
+        let stated = self
+            .runtime
+            .exec(handle, &as_command(["cat", marker.as_str()]))
+            .await
+            .ok()
+            .filter(|out| out.exit_code == 0)
+            .map(|out| out.stdout.trim().to_string());
+        let expected = test_cabinet_audio_core::staged::CONTRACT_VERSION.to_string();
+        if stated.as_deref() == Some(expected.as_str()) {
+            return Ok(());
+        }
+        Err(Error::ContainerRuntime(format!(
+            "the run image `{image}` does not accept staged audio: `{marker}` is \
+             absent or is not `{expected}`. That image predates the change that moved \
+             the audio palette out of the image and into the run, so it would ignore \
+             the packs this case declares and use whatever it bakes. Pull a newer run \
+             image, or pin `TCAB_CONTAINER_TAG` to a commit at or after the one that \
+             publishes it."
+        )))
     }
 
     /// Probe a running container for its OS and Node.js version.

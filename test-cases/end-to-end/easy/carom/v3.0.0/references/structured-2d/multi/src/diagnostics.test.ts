@@ -9,6 +9,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import {
   ConstantClock,
   createEngine,
+  type DiagnosticValue,
   type Engine,
   type SurfaceMetrics,
 } from "@test-cabinet/structured-2d";
@@ -26,7 +27,7 @@ import { diagnosticSources } from "./diagnostics";
 import { BACKGROUND, CaromGame, game } from "./game";
 
 let engine: Engine<CaromDebug>;
-let sources: Record<string, () => unknown>;
+let sources: Record<string, () => DiagnosticValue>;
 
 beforeEach(async () => {
   const canvas = createCanvas(FIELD_W, FIELD_H);
@@ -64,10 +65,10 @@ it("reports the title screen from a fresh boot", () => {
   expect(sources["screen"]()).toBe("title");
   expect(sources["mode"]()).toBe("solo");
   expect(sources["score"]()).toBe("0 - 0");
-  // Every ball parked on its own home, unheld, spinless.
+  // Every ball on its own home, waiting out its hold, spinless.
   for (let i = 0; i < BALL_COUNT; i++) {
     const home = BALL_HOMES[i];
-    expect(sources[`ball ${i} pos`]()).toBe(`${home.x}.0, ${home.y}.0`);
+    expect(sources[`ball ${i} pos`]()).toBe(`${home.x}.0, ${home.y}.0 held`);
     expect(sources[`ball ${i} spin`]()).toBe("0.0");
   }
   expect(sources["paddle L"]()).toBe(`cy ${FIELD_CY}.0 vy 0.0`);
@@ -75,10 +76,13 @@ it("reports the title screen from a fresh boot", () => {
 });
 
 it("follows the live world into a match, across the level transition", async () => {
-  engine.debug.startMatch("versus");
-  engine.debug.setScore(3, 4);
-  engine.debug.setBall(1, { x: 500, y: 300, vx: 300, vy: 400 });
+  engine.debug.setScreen("countdown");
   await engine.advance(1);
+  engine.debug.setMode("versus");
+  engine.debug.setScore(3, 4);
+  engine.debug.setBallHeld(1, false);
+  engine.debug.setBallPosition(1, 500, 300);
+  engine.debug.setBallVelocity(1, 300, 400);
 
   expect(sources["screen"]()).toBe("countdown");
   expect(sources["mode"]()).toBe("versus");
@@ -91,9 +95,17 @@ it("follows the live world into a match, across the level transition", async () 
   );
 });
 
+it("reports a dash for a ball that is not on the field", () => {
+  engine.debug.clearWorld();
+  expect(sources["ball 0 pos"]()).toBe("—");
+  expect(sources["ball 0 vel"]()).toBe("—");
+  expect(sources["ball 0 spin"]()).toBe("—");
+});
+
 it("reads and formats without disturbing the simulation", async () => {
-  engine.debug.startMatch("versus");
-  engine.debug.serve();
+  engine.debug.setScreen("countdown");
+  await engine.advance(1);
+  for (let i = 0; i < BALL_COUNT; i++) engine.debug.setBallHoldTimer(i, 0);
   await engine.advance(10);
 
   const before = engine.debug.snapshot();

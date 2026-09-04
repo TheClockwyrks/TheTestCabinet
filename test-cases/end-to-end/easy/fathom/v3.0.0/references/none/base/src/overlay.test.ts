@@ -17,25 +17,24 @@ describe("Diagnostics", () => {
     expect(OVERLAY_KEY).toBe("Backquote");
   });
 
-  it("heads its lines with the tick the panel is drawn over", () => {
-    const panel = new Diagnostics();
-    expect(panel.lines({ count: 42, time: 0.35 })[0]).toBe("tick 42  t 0.35s");
+  it("lists nothing until a source is named, so the panel is only what the game asked for", () => {
+    expect(new Diagnostics().lines()).toEqual([]);
   });
 
   it("calls every source afresh, so the panel reports the live game", () => {
     const panel = new Diagnostics();
     let value = 1;
     panel.register("depth", () => value);
-    expect(panel.lines({ count: 0, time: 0 })[1]).toBe("depth 1");
+    expect(panel.lines()[0]).toBe("depth 1");
     value = 2;
-    expect(panel.lines({ count: 0, time: 0 })[1]).toBe("depth 2");
+    expect(panel.lines()[0]).toBe("depth 2");
   });
 
   it("keeps the order its sources were named in", () => {
     const panel = new Diagnostics();
     panel.register("a", () => 1);
     panel.register("b", () => 2);
-    expect(panel.lines({ count: 0, time: 0 }).slice(1)).toEqual(["a 1", "b 2"]);
+    expect(panel.lines()).toEqual(["a 1", "b 2"]);
   });
 
   it("formats a fraction to two places and a string as it stands", () => {
@@ -43,7 +42,7 @@ describe("Diagnostics", () => {
     panel.register("g", () => 0.3456);
     panel.register("screen", () => "playing");
     panel.register("tile", () => ({ tx: 1 }));
-    expect(panel.lines({ count: 0, time: 0 }).slice(1)).toEqual([
+    expect(panel.lines()).toEqual([
       "g 0.35",
       "screen playing",
       'tile {"tx":1}',
@@ -55,16 +54,22 @@ describe("Diagnostics", () => {
     panel.register("broken", () => {
       throw new Error("no such field");
     });
-    expect(panel.lines({ count: 0, time: 0 })[1]).toBe(
-      "broken <no such field>",
-    );
+    expect(panel.lines()[0]).toBe("broken <no such field>");
   });
 
   it("draws nothing while it is hidden", () => {
     const { ctx, read } = stageContext();
     const panel = new Diagnostics();
     panel.register("depth", () => 1);
-    panel.draw(ctx, { count: 0, time: 0 });
+    panel.draw(ctx);
+    expect(read(4, 4)[3]).toBe(0);
+  });
+
+  it("draws nothing when it is shown with no source named", () => {
+    const { ctx, read } = stageContext();
+    const panel = new Diagnostics();
+    panel.toggle();
+    panel.draw(ctx);
     expect(read(4, 4)[3]).toBe(0);
   });
 
@@ -74,7 +79,7 @@ describe("Diagnostics", () => {
     const panel = new Diagnostics();
     panel.register("depth", () => 1);
     panel.toggle();
-    panel.draw(ctx, { count: 0, time: 0 });
+    panel.draw(ctx);
     // Drawn at the canvas's own origin, not the transformed one.
     expect(read(4, 4)[3]).toBeGreaterThan(0);
     const after = ctx.getTransform();

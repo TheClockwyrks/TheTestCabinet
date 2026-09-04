@@ -20,14 +20,17 @@ them by name.
 A scenario plays out on a fixed tile grid; each tile holds at most one entity.
 Everything is integer / fixed-point — item positions, belt speeds, swing timers,
 craft progress — so the state after _N_ ticks is a single well-defined value.
-The six entity kinds are:
+The seven entity kinds are:
 
 - **Belt** — moves items in a direction, with two independent lanes.
 - **Splitter** — balances items across two belts in and two belts out, evenly
   over all four output lanes.
 - **Inserter** — swings a single item from the tile behind it onto the tile in
   front.
-- **Assembler** — consumes input items and crafts an output to a recipe.
+- **Assembler** — a 3×3 machine that consumes input items and crafts an output to
+  a non-smelting recipe.
+- **Furnace** — a 2×2 machine that smelts a raw ore into a plate, burning coal as
+  fuel. It runs the identical craft loop as the assembler, on a smelting recipe.
 - **Source** — a test fixture that emits a fixed item onto a belt at a fixed
   cadence.
 - **Sink** — a test fixture that consumes and counts whatever reaches it.
@@ -41,8 +44,10 @@ A belt occupies one tile, faces one of `N`/`S`/`E`/`W`, and carries items in
 that direction. Every belt has a **left** and a **right** lane (relative to
 travel; see the lane convention in `specs/prototypes.md`), and the two lanes are
 **fully independent** 1-D tracks. An item lives on exactly one lane and never
-changes lanes on a straight belt. Every belt moves at the one uniform `SPEED` (see
-`specs/prototypes.md`); a belt's `tier` is cosmetic and does not change its speed.
+changes lanes on a straight belt. A belt's `SPEED` is set by its `tier` (`slow`/
+`fast`/`express` = `32`/`64`/`96`; see `specs/prototypes.md`), and speed is per
+tile — an item advances by the `SPEED` of the tile it currently occupies, so a line
+of mixed tiers moves items at mixed rates.
 
 ### The fixed-point item model
 
@@ -57,17 +62,22 @@ A lane's items are kept in **ascending `pos`** order — the lead item (smallest
 ### Runs: a line of belts moves as one lane
 
 Movement is defined over a **run**, not a single tile. A run is a maximal chain
-of **collinear, same-direction** belts that end-feed one another — a straight
-line of belts of the same facing, one flowing into the next's input edge. A run's
-two lanes are each one continuous track spanning every tile in the run; the tile
-boundaries inside a run are seams in the _addressing_ (each item still reports a
-per-tile `pos`), not breaks in the flow.
+of belts that end-feed one another, one flowing into the next's input edge, where
+each link is either **collinear** (same facing — a straight line) or a **pure
+curve** (the next belt faces a perpendicular direction and its **only** feed is
+this belt — a 90° bend). A run's two lanes are each one continuous track spanning
+every tile in the run, **carried through any bend with the lanes preserved**
+(left stays left, right stays right); the tile boundaries inside a run — including
+a turn — are seams in the _addressing_ (each item still reports a per-tile `pos`),
+not breaks in the flow.
 
-A run **breaks** wherever continuous same-direction flow stops: at a belt facing
-a **splitter**, a **sink**, an **inserter**'s pickup tile, empty space, or a
-**perpendicular** belt (a curve or a side-load — those connect by _forcing_, not
-by run flow; see "Belt-to-belt feeding"). So a splitter, a sink, or a turn each
-starts a fresh run on its far side.
+A run **breaks** wherever continuous flow stops: at a belt facing a **splitter**,
+a **sink**, an **inserter**'s pickup tile, empty space, or a **side-load** (a
+perpendicular belt that is _not_ a pure curve — one that also has its own straight
+feed, or a second feeder; those connect by _forcing_, not by run flow; see
+"Belt-to-belt feeding"). A **pure curve does not break a run** — it continues it.
+So a splitter, a sink, or a side-load each starts a fresh run on its far side, but
+a turn does not.
 
 Address an item on run tile `i` (counting `0` from the run's **output** end) at
 position `p` by the run-global coordinate `g = i * TILE + p`. The run's output
@@ -148,23 +158,37 @@ items per tile per lane.
   (above). An item crosses the shared seam as an ordinary `SPEED`-step and each
   lane flows into the **same** lane of the downstream belt (left → left,
   right → right). Nothing special happens at the boundary.
+- A **pure curve** (the downstream belt faces a perpendicular direction and its
+  **only** feed is this belt) is likewise **not** a hand-off — it is part of the
+  same **run**, so it behaves **exactly like end-feeding**: both lanes carry
+  through the 90° turn **preserved** (left → left, right → right) at belt `SPEED`,
+  so items on both lanes enter and leave the bend together. A curve is a straight
+  belt that happens to turn; nothing is forced. (Each lane keeps the same `pos`
+  coordinate through the turn, so in the canonical state both lanes advance
+  identically; a renderer draws the outer lane along the longer arc and the inner
+  along the shorter, which is a drawing detail, not a state one.)
 
-The remaining cases are **cross-run forcings**: the feeder's lead item, once it
-has reached that belt's output edge (`pos == 0`), is forced onto the target
-belt's lane at the standard entry coordinate `pos = TILE - SPACING`, **iff the
-target lane can accept it under the forcing rule** above (one item per tick);
-otherwise it stays put and the run behind it stays blocked.
+The remaining case is a **cross-run forcing**: the feeder's lead item, once it
+has reached that belt's output edge (`pos == 0`), is forced onto the target belt
+**iff the target lane can accept it under the forcing rule** above (a gap of at
+least `SPACING` at the destination); otherwise it stays put and the run behind it
+stays blocked.
 
-- **Curves** (the downstream belt faces a perpendicular direction): the lanes
-  remap **equal-length** in the base ruleset — the physical (outer/inner) side
-  is carried across the turn, so the lane on a given physical side stays on that
-  side. (Factorio's realistic inner-lane-shorter curve geometry is a future
-  variant; in v1 both lanes are equal length through a curve.)
-- **Side-loading**: when a belt faces into the _side_ of another belt, its
-  arriving items are forced onto the target belt's lane on the matching physical
-  side, merging into that lane's flow under the forcing rule. The target belt's
-  other lane is untouched. This is the canonical way one lane is filled while the
-  other keeps flowing.
+- **Side-loading**: when a belt faces into the _side_ of another belt that is
+  **not** a pure curve (the target has its own straight feed, or a second feeder),
+  its arriving items are forced onto the target belt's **near lane** — the lane on
+  the physical side the feeder approaches from. Both of the feeder's own lanes land
+  on that one near lane, but **each at the position along the target where it
+  physically makes contact**, not a fixed entry coordinate: the feeder lane that is
+  **upstream** in the target's flow enters near the input edge
+  (`pos = TILE/2 + SPACING`), and the **downstream** lane enters further along at
+  its contact point (`pos = TILE/2 - SPACING`). Each lands only if that slot is free
+  under the forcing rule. With a fully-compacted feeder this means the near lane is
+  filled from the upstream lane, and the downstream lane **backs up** once the
+  through-traffic travelling down the near lane reaches its contact slot — the
+  target belt's availability at the correct position decides whether an item loads.
+  The target belt's **far lane** is left untouched for its own flow. This is the
+  canonical way one lane is filled while the other keeps flowing.
 
 A belt facing into a non-belt (a splitter, a sink, or empty space) does not feed
 across here — the splitter pulls from it and the sink drains it in their own
@@ -185,39 +209,50 @@ its facing. It **balances** throughput:
   **lanes**: a left-lane item can only land on an output belt's **left** lane, a
   right-lane item on a **right** lane. Which output _belt_ it goes to is the only
   choice the splitter makes.
-- **Each (item type, lane) alternates its output belt** (the Factorio splitter). The
-  splitter keeps, per **(item type, lane)**, which output belt that stream's next item
-  prefers; after routing one, that preference **flips to the other belt**, so the
-  following item of the same type on the same lane goes the other way. Keeping the
-  cursor **per lane** — not merely per item type — is what makes one input belt
-  carrying the **same item on both lanes** spread over **both lanes of both outputs**
-  (the two outputs each take a full both-lane row in turn), rather than the two lanes
-  flipping against each other and **unzipping** — one output getting only the left
-  lane, the other only the right. Two full input belts of two _different_ items — a
-  top belt of iron, a bottom belt of copper — still split so **each output belt
-  receives one iron and one copper** (across its two lanes), never one belt all iron
-  and the other all copper.
+- **Each lane alternates its output belt, regardless of item type.** A splitter keeps
+  **no per-item-type state** — it treats every item the same. Per **lane** (left,
+  right) it keeps which output belt that lane's next item prefers, whatever that item
+  is; after routing one the preference **flips to the other belt**, so the next item on
+  that lane goes the other way. The two lanes carry **independent** cursors, so the
+  splitter balances **corresponding lanes across the output belts** — a left-lane item
+  competes only for the **left** lanes of the outputs, a right-lane item only for the
+  **right** — and it never balances a belt's two lanes against each other. So one input
+  belt carrying the **same item on both lanes** feeds each output belt a full both-lane
+  row in turn (belt A this pair, belt B the next), spreading over both lanes of both
+  outputs rather than unzipping one lane to each belt. Independent cursors do **not**
+  mean the two lanes drift apart on such a belt: both start on the same output and, when
+  a left/right pair reaches the splitter **on the same tick**, both cursors flip that
+  tick, so they stay in **lockstep** and the pair keeps routing as a unit — belt A, then
+  belt B, then A. The lanes only diverge (and interleave one to each output) when their
+  items arrive **out of phase**, i.e. on different ticks — which is why a not-fully-packed
+  belt shows the alternating both-lane rows and matches Factorio's own splitter. Because
+  routing ignores type,
+  two full input belts of two _different_ items are balanced by **count, not by type**:
+  each output belt gets an equal share of the total flow over time, but a single tick
+  may send one belt a row of iron and the other a row of copper — the belt that gets
+  which alternates as the cursors and `in_first` flip.
 - **The two input belts are tried in a fair, alternating order.** Within a lane the
   splitter pulls from its two input belts starting with the one named by `in_first`,
   then the other; `in_first` **flips every tick**, so when both input belts compete
   for one output lane neither is starved.
 - A **base splitter holds no items between ticks** — each item it processes is pushed
   the same tick. Its only retained state is its two cursors: **`out_pref`** — the
-  per-(item-type, lane) output-preference bitfield, in which bit `t*2 + L` is the
-  output belt for item type `t` on lane `L` (`L = 0` the left lane, `L = 1` the right)
-  — and **`in_first`**, which of the two input belts is tried first this tick.
+  per-lane output-preference bitfield, in which bit `L` is the output belt the next
+  item on lane `L` prefers (`L = 0` the left lane, `L = 1` the right); only these two
+  low bits are used, and the item's **type is not part of the key** — and **`in_first`**,
+  which of the two input belts is tried first this tick.
 
 Exact base-splitter step, run each tick — **for each lane (left then right)**, and
 within that lane **each input belt starting from `in_first`, then the other**:
 
 1. Take that belt-and-lane's **lead item** only if it has reached the output edge
    (`pos == 0`); otherwise skip it.
-2. Let `pref` be this **(item type, lane)**'s preferred output belt — its `out_pref`
-   bit `t*2 + L`. Try to force the item onto belt `pref`, on the **same lane** it came
-   in on. If that output belt does not exist or its lane is full, try the **other**
-   belt (same lane).
-3. If it lands, set this (item type, lane)'s `out_pref` bit to the belt **opposite**
-   the one it landed on, so the next such item alternates. If **neither** output belt
+2. Let `pref` be this **lane**'s preferred output belt — its `out_pref` bit `L`
+   (independent of the item's type). Try to force the item onto belt `pref`, on the
+   **same lane** it came in on. If that output belt does not exist or its lane is full,
+   try the **other** belt (same lane).
+3. If it lands, set this **lane**'s `out_pref` bit to the belt **opposite** the one it
+   landed on, so the next item on this lane alternates. If **neither** output belt
    can take it, **return the item to its lane** (`pos == 0`) — real back pressure — and
    it retries next tick.
 
@@ -250,9 +285,10 @@ It is a swing on an integer timer, run as a small state machine with three phase
 the loaded swing out, the empty swing back, and idle at rest:
 
 - **`idle`** (empty-handed, back at the pickup): it grabs an item **only when the
-  drop tile can accept it right now**. It peeks the item it _would_ pick up (without
-  removing it) and checks the drop target: if the target can currently take that
-  item, it takes the item, sets `phase = swing`, and sets `swing_left = SWING`;
+  drop tile can accept it right now**. It selects the item it _would_ pick up (without
+  removing it) — for a belt feeding a crafter, the item the crafter still needs (see
+  **Pickup** below) — and checks the drop target: if the target can currently take
+  that item, it takes it, sets `phase = swing`, and sets `swing_left = SWING`;
   otherwise it **waits empty** — it does **not** grab an item it could not deposit.
   An inserter facing a target that can never accept (a wall, or the wrong assembler
   input) therefore never picks up.
@@ -281,17 +317,33 @@ A base inserter carries **one item per swing**.
 
 From the pickup tile, in order of what it is:
 
-- From a **belt**: take the most-downstream item (smallest `pos`, the head of
-  the lane) from the **far lane first, then the near lane** (far/near relative
-  to the inserter's facing). It does not require the item to be at the output
-  edge — it takes the lead item of the lane.
-- From an **assembler**: take one of any item present in the output buffer
-  (lowest item index first, for determinism), decrementing that item's count.
+- From a **belt**, which lane and item is taken depends on the **drop target**:
+  - **Onto a belt or into a sink** (a target that takes any item): take the
+    most-downstream item (smallest `pos`, the head of the lane) from the **far lane
+    first, then the near lane** (far/near relative to the inserter's facing). Because
+    an inserter picks from _behind_ itself, the "far" lane — far from the direction it
+    faces — is the one physically **closer** to the inserter, so this takes the closer
+    item first and reaches across to the other lane only when the closer one is empty.
+    It does not require the item to be at the output edge — it takes the lead item of
+    the lane.
+  - **Into a crafter** (an assembler or furnace): take a lane's lead item that the
+    crafter can accept **right now** — a recipe input whose buffer has room —
+    selecting by **what the crafter still needs**, not merely by which lane is closer.
+    A **furnace** fills its **fuel (coal) before its ore**; an **assembler** fills its
+    **emptiest input first**, so once one component's buffer is full it moves on to the
+    ones it is still missing. This is the Factorio-style filtered pickup for a single
+    loader feeding a machine. The **closer lane is still preferred on a tie** — in
+    particular when the **same item sits on both lanes**, the closer one is taken (the
+    same near-side preference as above). If neither lane's lead item is something the
+    crafter can currently take, the inserter waits: it does **not** grab an item it
+    could not deposit, and it does **not** stall on a closer item the crafter is full
+    of or does not use while a needed item sits on the other lane.
+- From an **assembler** or **furnace**: take one of any item present in the output
+  buffer (lowest item index first, for determinism), decrementing that item's count.
 - From a **source**: take the source's item (infinite supply).
 
-If nothing is available — **or** the drop target cannot currently accept the item
-that would be picked up (see the `idle` phase above) — the inserter stays `idle`
-with empty claws.
+If nothing the drop target can currently accept is available (see the `idle` phase
+above), the inserter stays `idle` with empty claws.
 
 ### Drop
 
@@ -300,17 +352,25 @@ Onto the drop tile, by what it is:
 - Onto a **belt**: **force** the item onto the **near lane** (relative to the
   inserter) at the standard entry coordinate `pos = TILE - SPACING`, under the
   forcing rule. Stalls if the gap is smaller than `SPACING`.
-- Into an **assembler**: add one to the input buffer **iff** the item is one the
-  recipe consumes **and** that item's buffered count is `< INPUT_CAP`. Otherwise
-  the drop stalls.
+- Into an **assembler** or **furnace**: add one to the input buffer **iff** the
+  item is one the recipe consumes **and** that item's buffered count is
+  `< INPUT_CAP`. Otherwise the drop stalls. (A furnace's recipe consumes its ore
+  **and** coal, so it accepts both.)
 - Into a **sink**: the item is consumed and counted; the drop always lands.
 
 Because the drop onto a belt is a _forced_ insertion, inserters are one of the
 three things (with sources and side-loading) that can squash a belt.
 
-## Assemblers
+## Crafters: assemblers and furnaces
 
-An assembler occupies a 3×3 block (footprint in `specs/prototypes.md`) and
+Two machines craft: the **assembler** (a 3×3 block, non-smelting recipes) and the
+**furnace** (a 2×2 block, smelting recipes). They are otherwise identical — the same
+buffers, the same craft loop below, the same inserter interaction — and differ only
+in footprint, canonical `kind` tag, and which class of recipe they run. A furnace's
+recipe simply lists **coal** among its inputs, so an unfuelled furnace never passes
+the start gate (step 3) and never smelts; nothing else about the loop is special.
+
+A crafter occupies its block (footprints in `specs/prototypes.md`) and
 crafts to its `recipe`. It holds a bounded **input buffer** and **output
 buffer**, each a per-item count map; inserters feed the input buffer and remove
 from the output buffer (above). Each tick, in this order:
@@ -329,8 +389,9 @@ from the output buffer (above). Each tick, in this order:
    `craft_left = CRAFT`. If not, the assembler stays idle (`craft_left == 0`,
    not crafting).
 
-So a backed-up assembler whose output buffer is full **pauses** rather than
-overflowing — it stops consuming inputs until its output buffer drains.
+So a backed-up crafter whose output buffer is full **pauses** rather than
+overflowing — it stops consuming inputs until its output buffer drains. (A furnace
+likewise pauses when it runs out of coal, or when its plate output backs up.)
 
 ## Sources
 
@@ -371,7 +432,8 @@ the scenario's `entities` array):
 3. **Belts** advance: first compact every run (each as one lane), then force the
    perpendicular curve / side-load merges across runs.
 4. **Splitters** balance.
-5. **Assemblers** craft.
+5. **Crafters** craft — every **assembler** and **furnace**, in placement order
+   (they share phase 5; a furnace is a crafter like any other).
 6. **Sinks** consume.
 
 After the six phases the tick counter increments. The simulation starts at tick

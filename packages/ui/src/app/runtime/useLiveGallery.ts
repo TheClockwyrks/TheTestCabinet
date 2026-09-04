@@ -190,6 +190,9 @@ async function toVariantSummary(
       // reviewer UIs can flag it "not scored". Dropping it here left the console
       // (unlike the static site) silently unable to mark excluded points.
       scored: item.scored,
+      // The point's validator scoping: which engines decide it. Carried so a
+      // run-scoped surface can drop a point the run's engine does not carry.
+      validation: item.validation ?? null,
       subItems: (item.subItems ?? []).map((sub) => ({
         id: sub.id,
         title: sub.title,
@@ -202,6 +205,9 @@ async function toVariantSummary(
         // Same as the whole-item `scored` above: preserved so an erratum that
         // excludes one sub-item of a category still surfaces as "not scored".
         scored: sub.scored,
+        // Same as the whole-item `validation` above: the engines this point's
+        // validator decides it on.
+        validation: sub.validation ?? null,
       })),
     })),
     // The variant's effective scoring domains (common + its own), already

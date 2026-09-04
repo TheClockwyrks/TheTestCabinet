@@ -74,8 +74,11 @@ which mounts it into the run container; `tcab` itself never reads it.
 ## 3. Run-container images
 
 Every run executes inside a run-container image selected by the test case's
-[test type](/testing/overview/) and, for asset generation, its
-[`asset_kind`](/testing/asset-generation/manifests/overview/). The
+[test type](/testing/overview/), by its
+[`asset_kind`](/testing/asset-generation/manifests/overview/) for asset
+generation, and by its
+[`asset_dimension`](/testing/full-stack/manifests/#asset_dimension) for full
+stack. The
 [harness](/components/core/harnesses/) is installed into that image at run time,
 so there is no per-harness image.
 
@@ -102,6 +105,23 @@ The supported harness slugs are `claude`, `codex`, `cline`, `antigravity`,
 ```sh
 tcab harnesses          # human-readable table; add --json for machine output
 ```
+
+### The audio store
+
+A run whose case declares [audio packs](/testing/full-stack/manifests/#audio) is
+staged with them when its container starts, read from a host audio store. In a
+cluster the driver image carries the store. For a local `tcab run`, fetch it
+once:
+
+```sh
+scripts/fetch-audio-store.sh
+```
+
+It pulls the published `test-cabinet-audio-store` image and extracts the tree,
+so it needs no R2 credential. The default destination is
+`~/.cache/tcab/audio-store`, and the script prints the `TCAB_AUDIO_STORE` export
+that points `tcab` at it. End-to-end, adversarial, and performance cases declare
+no packs and read no store.
 
 ## 4. A headless browser
 

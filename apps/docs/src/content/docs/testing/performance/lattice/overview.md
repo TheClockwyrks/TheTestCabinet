@@ -71,9 +71,12 @@ lane length is `TILE` units, and two constants govern movement:
 
 - `SPACING`, the minimum centre-to-centre distance between two items on the same
   lane. Two items may never be closer than `SPACING`.
-- `SPEED`, how many units an unobstructed item advances per tick. Every belt runs
-  the same `SPEED`, so a belt's `tier` is cosmetic, and the inserter `SWING` is
-  tied to it so an item moves at the same speed on a belt or in a claw.
+- `SPEED`, how many units an unobstructed item advances per tick. A belt's `tier`
+  sets it: `slow`, `fast`, and `express` run at one, two, and three times the
+  reference speed, so a higher tier is genuinely more throughput rather than a
+  recolour. Speed is a property of the tile, so a mixed-tier line moves at mixed
+  rates. The inserter `SWING` is tied to the `fast` reference speed, so an item
+  moves at the same rate on a `fast` belt or in a claw.
 
 The values live in the case's prototype table. They are integers, so the
 arithmetic below is exact.
@@ -97,12 +100,12 @@ consequences fall out of this rule, and they are the whole compaction story:
   compresses a stream toward the standard spacing on its own.
 - Belt movement never creates a gap smaller than `SPACING`, and once a run of
   items is packed at `SPACING` it moves forward as a rigid block. A run here is a
-  whole line of collinear belts rather than one tile: a straight line of
-  same-facing belts advances as one long lane, so a packed line's positions are
-  constant tick to tick, and when its front is consumed the whole line shifts one
-  slot in a single tick. The freed space appears at the very back. This is
-  Factorio's property that a compressed belt stays compressed, and it is what the
-  efficient engine exploits.
+  whole line of belts rather than one tile: a line of belts that end-feed one
+  another advances as one long lane, so a packed line's positions are constant
+  tick to tick, and when its front is consumed the whole line shifts one slot in
+  a single tick. The freed space appears at the very back. This is Factorio's
+  property that a compressed belt stays compressed, and it is what the efficient
+  engine exploits.
 
 A gap smaller than `SPACING` appears only when something forces an item in: an
 inserter dropping onto the belt, a source emitting, or a belt side-loading onto
@@ -129,14 +132,18 @@ permanently empty and capping a full belt at three items per tile.
   lane is untouched. This is the canonical way one lane of a belt is filled while
   the other keeps flowing, and the place a naive engine most often gets compaction
   wrong.
-- Curves, where a belt's input comes from a perpendicular neighbour, remap the
-  incoming lanes onto this tile's lanes as the stream turns. The base ruleset
-  treats the two lanes as equal length through the curve, and the physical
-  outer/inner side is carried across the turn.
+- Curves, where a belt bends 90° into the belt ahead of it, are part of the run
+  rather than a hand-off, as long as that bend's only feed is the belt before it.
+  Such a pure curve carries both lanes through the turn by an ordinary `SPEED`
+  step, exactly like a straight belt, and the lane is preserved: left stays left
+  and right stays right, so the physical outer/inner side is carried across the
+  turn. The base ruleset treats the two lanes as equal length through the curve. A
+  bend that also has its own straight feed, or a second thing pointing into it, is
+  a side-load rather than a curve.
 
-A cross-run forcing moves the feeder's lead item only once it has reached that
-belt's output end, at most one item per tick. Otherwise it stays put, and the run
-behind it stays blocked.
+A side-load is a cross-run forcing, and it moves the feeder's lead item only once
+it has reached that belt's output end, at most one item per tick. Otherwise it
+stays put, and the run behind it stays blocked.
 
 ## Splitters
 
@@ -148,19 +155,22 @@ two output belts ahead of it, all sharing its facing. It balances throughput:
 - The input lane is preserved. An item moves across belts, never across lanes, so
   a left-lane item stays on a left lane. Which output belt it goes to is the only
   choice the splitter makes.
-- Each combination of item type and lane alternates its output belt. The splitter
-  remembers which output belt that stream's next item prefers and flips the
-  preference after routing one. Keeping the cursor per lane is what makes one
-  input belt carrying the same item on both lanes spread over both lanes of both
-  outputs. Two full input belts of different items still split so that each output
-  belt receives one of each.
+- Each lane alternates its output belt, ignoring item type. The splitter keeps no
+  per-type state: per lane it remembers which output belt that lane's next item
+  prefers, whatever that item is, and flips the preference after routing one. The
+  two lanes carry independent cursors, so a lane is balanced only against the
+  corresponding lane of the other output belt, never against the other lane of its
+  own belt. The balance is by count rather than by type: two full input belts of
+  different items are split so that each output belt gets an equal share of the
+  total flow over time, though a single tick may hand one belt a row of iron and
+  the other a row of copper.
 - The two input belts are tried in an alternating order that flips every tick, so
   neither is starved when both compete for one output lane.
 
-A base splitter holds no items between ticks. Its retained state is the
-per-(item type, lane) output preference and the input-order cursor. A missing
-output belt is an unavailable destination rather than back pressure, while an
-output belt that exists and is full stalls and backs the inputs up.
+A base splitter holds no items between ticks. Its retained state is the per-lane
+output preference and the input-order cursor. A missing output belt is an
+unavailable destination rather than back pressure, while an output belt that
+exists and is full stalls and backs the inputs up.
 
 A splitter breaks a transport line, so the compressed runs of belt on either side
 cannot be merged across it. That matters to the efficient representation rather
@@ -175,8 +185,11 @@ swing. It runs as a small state machine on an integer timer:
 
 - Idle. It grabs an item only when the drop target can accept that item right
   now, so it never hovers over a full target holding an item. From a belt it takes
-  the lead item of the far lane first, then the near lane; from an assembler it
-  takes one item from the output buffer; from a source it takes the source's item.
+  the lead item of the far lane first, then the near lane; the lanes are named
+  relative to the inserter's facing, and because it picks from the tile behind
+  itself, that far lane is the one physically closer to it, so it reaches for the
+  closer item first. From an assembler it takes one item from the output buffer;
+  from a source it takes the source's item.
 - Swing. It holds the item for `SWING` ticks and then drops it. Onto a belt it
   forces the item onto the near lane at the standard entry coordinate, and stalls
   if the gap is too small. Into an assembler it adds one to the input buffer when
@@ -227,8 +240,8 @@ are visited in scenario placement order:
 
 1. Sources emit.
 2. Inserters advance their swing state machine.
-3. Belts advance: first compact every run as one lane, then force the
-   perpendicular curve and side-load merges across runs.
+3. Belts advance: first compact every run as one lane, carrying its pure curves
+   through with it, then force the perpendicular side-load merges across runs.
 4. Splitters balance.
 5. Assemblers craft.
 6. Sinks consume.

@@ -374,6 +374,49 @@ export function mergeReviewItems<
 }
 
 /**
+ * Restrict an effective checklist (the output of {@link mergeReviewItems}) to the
+ * points a run built on `engine` actually carries. A point whose validator names a
+ * set of engines is only decided on those: a whole item its validator does not
+ * cover is dropped, a sub-item its validator does not cover is dropped from its
+ * parent, and an item that declared sub-items and has none left is dropped with
+ * them. A point with no validator, or one whose validator names no engines, is
+ * carried on every engine. Non-mutating. Mirrors
+ * `TestCaseVersion::review_items_for_engine` in the Rust core
+ * (crates/core/src/test_case.rs).
+ */
+export function reviewItemsForEngine<
+  T extends {
+    validation?: EngineScopedValidation | null;
+    subItems?: readonly { validation?: EngineScopedValidation | null }[];
+  },
+>(items: readonly T[], engine: string): T[] {
+  const covers = (validation: EngineScopedValidation | null | undefined) =>
+    !validation ||
+    !validation.engines ||
+    validation.engines.length === 0 ||
+    validation.engines.includes(engine);
+  const kept: T[] = [];
+  for (const item of items) {
+    if (!covers(item.validation)) continue;
+    if (!item.subItems || item.subItems.length === 0) {
+      kept.push({ ...item });
+      continue;
+    }
+    const subItems = item.subItems.filter((sub) => covers(sub.validation));
+    if (subItems.length === 0) continue;
+    kept.push({ ...item, subItems });
+  }
+  return kept;
+}
+
+/** The engine scoping of a point's validator, as {@link reviewItemsForEngine}
+ * reads it: the engine slugs the validator decides its point on, empty or absent
+ * for a validator active on every engine the case supports. */
+export interface EngineScopedValidation {
+  engines?: readonly string[];
+}
+
+/**
  * The review verdict ids excluded from scoring for a run of `variant`: the `review`
  * link of every erratum in scope (case-wide, or scoped to this variant) that sets
  * `excludeFromScore`. Each id names a point still checked and shown for the version

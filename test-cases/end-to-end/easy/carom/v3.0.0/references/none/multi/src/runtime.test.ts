@@ -118,6 +118,7 @@ function harness(): Harness {
     cssWidth: () => size.cssWidth,
     cssHeight: () => size.cssHeight,
     dpr: () => size.dpr,
+    origin: () => ({ x: 0, y: 0 }),
     events: () => events,
   };
 
@@ -183,6 +184,7 @@ describe("initializing", () => {
         cssWidth: () => FIELD_W,
         cssHeight: () => FIELD_H,
         dpr: () => 1,
+        origin: () => ({ x: 0, y: 0 }),
         events: () => new EventTarget(),
       },
     });
@@ -433,6 +435,7 @@ describe("wiring", () => {
         cssWidth: () => FIELD_W,
         cssHeight: () => FIELD_H,
         dpr: () => 1,
+        origin: () => ({ x: 0, y: 0 }),
         events: () => h.events,
       },
     });

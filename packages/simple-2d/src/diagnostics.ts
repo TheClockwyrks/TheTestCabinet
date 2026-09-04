@@ -12,8 +12,8 @@
  * left to the game's good behaviour:
  *
  * - A source that throws is contained. A diagnostic exists to explain a failure, so
- *   it must never be the cause of one — a throwing source yields its error message
- *   as its value and the rest of the panel draws normally.
+ *   it must never be the cause of one — a throwing source yields a reading carrying
+ *   its message and no value, and the rest of the panel draws normally.
  * - {@link Diagnostics.draw} saves and restores the 2D context around everything it
  *   does. The overlay draws *after* the game's own frame, and a leaked `fillStyle`
  *   or `font` would silently restyle the next frame's drawing — a bug that looks
@@ -24,7 +24,7 @@
  *   holding exactly as much as a run of one frame does.
  */
 
-import type { FrameMetrics } from "./contract";
+import type { DiagnosticReading, DiagnosticValue, FrameMetrics } from "./contract";
 
 /** Where the panel sits, and how much air its contents get, in device pixels. */
 const MARGIN = 8;
@@ -92,23 +92,25 @@ const IDLE_TIMINGS: FrameTimings = {
  * Render one source's value as a single overlay line.
  *
  * Non-integer numbers are fixed to three decimals because a raw float is typically
- * seventeen characters of noise the reader has to re-parse every frame; objects go
- * through `JSON.stringify` so a vector or a small state bag is legible without the
- * game having to pre-format it. The `stringify` is guarded: a cyclic value is a
- * perfectly ordinary thing to hand a debug view, and it must not throw.
+ * seventeen characters of noise the reader has to re-parse every frame. Every other
+ * value the union admits reads as itself.
  */
-function formatValue(value: unknown): string {
+function formatValue(value: DiagnosticValue): string {
   if (typeof value === "string") return value;
   if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(3);
-  if (value === null || value === undefined) return String(value);
-  if (typeof value === "object") {
-    try {
-      return JSON.stringify(value) ?? String(value);
-    } catch {
-      return String(value);
-    }
-  }
   return String(value);
+}
+
+/**
+ * One reading as the panel's value column: the value formatted, or the message of the
+ * source that failed to produce one.
+ *
+ * The empty string is unreachable — a reading carries exactly one of the two — and it
+ * stands here because that invariant lives in the type's documentation rather than in
+ * a shape the compiler can narrow.
+ */
+function readingText(reading: DiagnosticReading): string {
+  return reading.value === undefined ? (reading.error ?? "") : formatValue(reading.value);
 }
 
 /**
@@ -152,7 +154,7 @@ export class Diagnostics {
    * position (a `Map` set on an existing key does not move it): a value the game
    * re-registers mid-run should not make every line below it jump.
    */
-  private readonly sources = new Map<string, () => unknown>();
+  private readonly sources = new Map<string, () => DiagnosticValue>();
 
   private on = false;
 
@@ -172,7 +174,7 @@ export class Diagnostics {
    * Name a value for the overlay. The source is called on every read, not sampled
    * at registration, so it always reports the live state.
    */
-  register(name: string, source: () => unknown): void {
+  register(name: string, source: () => DiagnosticValue): void {
     this.sources.set(name, source);
   }
 
@@ -192,21 +194,27 @@ export class Diagnostics {
   }
 
   /**
-   * Evaluate every source, yielding a throwing source's error message as its value.
+   * Evaluate every source, in registration order, one reading each.
+   *
+   * A sequence rather than a record, because registration order is what the panel
+   * draws in and what a check asserting the panel's column reads. A source that
+   * throws yields a reading carrying its message and no value, so this never throws,
+   * and it is independent of {@link Diagnostics.enabled} — a hidden overlay reads
+   * exactly as a visible one does.
    *
    * {@link Diagnostics.draw} calls this once per drawn frame and formats the result
    * into the panel's lines, so what the panel shows is the simulation's live state.
    */
-  read(): Record<string, unknown> {
-    const values: Record<string, unknown> = {};
+  read(): readonly DiagnosticReading[] {
+    const readings: DiagnosticReading[] = [];
     for (const [name, source] of this.sources) {
       try {
-        values[name] = source();
+        readings.push({ name, value: source() });
       } catch (error) {
-        values[name] = failureText(error);
+        readings.push({ name, error: failureText(error) });
       }
     }
-    return values;
+    return readings;
   }
 
   /**
@@ -243,9 +251,7 @@ export class Diagnostics {
     if (!this.on) return;
 
     const metrics = this.metrics();
-    const lines = Object.entries(this.read()).map(
-      ([name, value]) => `${name}: ${formatValue(value)}`,
-    );
+    const lines = this.read().map((reading) => `${reading.name}: ${readingText(reading)}`);
     if (metrics.samples > 0) lines.push(metricsLine(metrics));
     if (lines.length === 0) return;
 

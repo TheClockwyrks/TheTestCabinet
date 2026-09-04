@@ -71,9 +71,12 @@ declare `[tool]` and `[output]`, and must declare no `[build]` table, no
 `[[review_item]]` is likewise rejected, because there is no target to show as
 expected.
 
-`asset_kind` and the `[sheet]`, `[ui]`, `[material]`, `[voxel]`, `[model]`,
-`[particle]`, and `[audio]` tables are valid only for an asset-generation case.
-An explicit value on any other type is rejected.
+`asset_kind` and the `[sheet]`, `[ui]`, `[material]`, `[voxel]`, `[model]`, and
+`[particle]` tables are valid only for an asset-generation case. An explicit
+value on any other type is rejected. The `[audio]` table is also accepted on a
+[full-stack](/testing/full-stack/manifests/) or
+[game-jam](/testing/game-jam/manifests/) case, where it declares only the audio
+packs a run may reach.
 
 ## Choosing an asset kind
 

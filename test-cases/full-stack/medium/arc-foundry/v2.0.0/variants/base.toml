@@ -1,0 +1,47 @@
+# The default (and only) Arc Foundry variant: the standard SALVAGE campaign. Listed
+# as the single entry in the case manifest's `variants`, so it is the default and
+# every run is a run of it. Difficulty (Easy / Medium / Hard) is chosen on the
+# in-game difficulty select menu and changes only the wave count and enemy toughness
+# (`specs/difficulty.md`), so it is NOT a variant: there is one campaign, defined
+# entirely by the common specs. This variant seeds no spec of its own; the run's shape
+# lives in `specs/campaign.md`. Every path here resolves against the version folder,
+# exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard SALVAGE campaign: 10 starting Charge, 20 Grid Integrity, with Easy/Medium/Hard chosen in-game (they change only the wave count and enemy toughness)."
+
+# Curated presentation media for this variant, captured from the reference build
+# below: the directory holds `showcase.md`, `showcase.toml`, and the media the
+# carousel names, flat. `showcase/capture/` beside it holds the driver that
+# recorded them and the steps for doing it again.
+showcase = "showcase/base"
+
+# The authored correct build, one directory per supported engine, because the build a
+# reference demonstrates differs under each. This table must name EXACTLY the engines
+# the case supports (the resolver checks both directions), and the case supports
+# three: `references/none` carries its own runtime layer (the frame loop, the canvas
+# fit, keyboard and pointer input, audio, asset loading, the overlay, and the `window.__foundry`
+# surface), `references/simple-2d` hands all of that to the engine package resolved
+# from the repository's `packages/simple-2d` and ships the game as `src/game.ts`
+# beside the seeded entry point, and `references/structured-2d` writes the game inside
+# the gameplay framework resolved from `packages/structured-2d`, as the game
+# definition, instance, mode, state, and actors `src/game.ts` exports. The game any of
+# them implements is identical, which is what makes a run on one engine comparable
+# with a run on another. This is a full-stack case, so each reference also produced
+# its own art, electrical effects, and audio during authoring (committed under its own
+# `assets/`); the build itself only loads them, so `npm ci && npm run build` is
+# self-contained. No reference directory is ever seeded into a run: each is the
+# authored answer, built with the case's own `[build]` commands and held to the same
+# four toolchain gates a run is, and each is what `tcab capture-baselines` drives to
+# synthesize the baseline half of the validation media for its engine.
+[reference_implementation]
+none = "references/none"
+"simple-2d" = "references/simple-2d"
+"structured-2d" = "references/structured-2d"
+
+# No `[workspaces]` override. The case's common per-engine table covers every run and
+# there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every point
+# and every rated domain applies to every run, so they are all declared commonly in
+# `test-case.toml` rather than being split across two places.

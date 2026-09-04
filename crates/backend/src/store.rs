@@ -34,7 +34,9 @@ use test_cabinet_core::review::FailureCap;
 use test_cabinet_core::test_case::{
     AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
-use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestCaseGroup, TestType, VoxelSpec};
+use test_cabinet_core::{
+    AssetDimension, AssetKind, ModelSpec, SheetSpec, TestCaseGroup, TestType, VoxelSpec,
+};
 
 use crate::error::{BackendError, Result};
 
@@ -52,7 +54,13 @@ const SIDECAR: &str = ".tcab";
 /// removed alternative, a retyped key. The bump is what tells a backend meeting such
 /// a store to re-ingest the catalog instead of serving the subset that still
 /// happens to parse (see [`DefinitionStore::needs_reingest`]).
-pub const STORE_FORMAT: u32 = 1;
+///
+/// `2` adds [`StoredManifest::audio_packs`]. That field *is* defaulted, so every
+/// record written at `1` still parses — which is the case the bump exists for: the
+/// type-level signal is absent, ingest returns early for a version it already holds,
+/// and without a bump every stored version would keep an empty pack list, staging no
+/// audio into any run and silencing the frozen full-stack cases outright.
+pub const STORE_FORMAT: u32 = 2;
 
 /// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a gg run's
 /// session record. One constant, because the same string is the store slot
@@ -211,6 +219,12 @@ pub struct StoredManifest {
     /// [`AssetKind::Sprite`] for manifests stored before the discriminator existed.
     #[serde(default)]
     pub asset_kind: AssetKind,
+    /// Which of the two full-stack run images a full-stack case's runs execute in.
+    /// Defaulted to [`AssetDimension::TwoD`] for manifests stored before the
+    /// discriminator existed. Stored — rather than re-derived — because the driver
+    /// resolves a backend-driven run's image off the version this store serves.
+    #[serde(default)]
+    pub asset_dimension: AssetDimension,
     /// The sprite-sheet frame grid and named sequences. `Some` only for a
     /// sprite-sheet case. Reuses the core [`SheetSpec`] verbatim — its serialized
     /// shape is the wire shape the runner deserializes — so the layout survives a
@@ -246,6 +260,21 @@ pub struct StoredManifest {
     /// verbatim, as with [`Self::voxel`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<AudioSpec>,
+    /// The audio packs a run of this version is staged with, in declaration order.
+    /// Carried verbatim from
+    /// [`TestCaseVersion::audio_packs`](test_cabinet_core::TestCaseVersion::audio_packs),
+    /// because the driver stages a run out of the **stored** record rather than the
+    /// manifest — a version served without it would stage no audio at all. Empty for
+    /// a version that declares none.
+    ///
+    /// Defaulted, so every record written before packs were declared per case still
+    /// parses — and reads as declaring none. That is exactly why adding it bumps
+    /// [`STORE_FORMAT`]: only the bump makes [`DefinitionStore::needs_reingest`] fire
+    /// and re-resolve the catalog, which is what fills this in (and applies
+    /// [`DEFAULT_AUDIO_PACKS`](test_cabinet_core::test_case::DEFAULT_AUDIO_PACKS) to
+    /// the frozen full-stack versions that declare no `[audio]` table).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_packs: Vec<String>,
     /// The prompt template source, inlined (the runner renders it locally).
     pub prompt_template: String,
     /// Common specs (`source` is a store-relative artifact key, `dest` the
@@ -793,11 +822,17 @@ pub struct StoredReviewValidation {
     /// [`Self::per_engine`] is set.
     pub script: String,
     /// Whether the case declares this validator **per engine**, so `script` names a
-    /// suite inside every engine's validator project rather than one file under the
+    /// suite inside a validator project — one per engine, and it ships in the project
+    /// of every engine [`Self::engines`] covers — rather than one file under the
     /// version folder. Defaulted for manifests stored before the field existed, all
     /// of which name one file.
     #[serde(default)]
     pub per_engine: bool,
+    /// The engines this validator decides its point on, by slug, in declared order.
+    /// Empty leaves it active on every engine the case supports, which is what a
+    /// manifest stored before the field existed means.
+    #[serde(default)]
+    pub engines: Vec<String>,
     /// The media outputs the script produces, in declared order.
     #[serde(default)]
     pub outputs: Vec<StoredReviewOutput>,

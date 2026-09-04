@@ -1,0 +1,651 @@
+import type { GgCapabilitySet } from "./gg";
+import type { HarnessSlug, RunRecord } from "./index";
+/**
+ * The state a driver reports for a job via `POST /jobs/{id}/status`.
+ */
+export type DriverState = "starting" | "running" | "succeeded" | "failed" | "canceled";
+/**
+ * The body of `POST /jobs`: what to run, with what, against which model. The
+ * canonical launch shape — stored verbatim and handed to the driver when the job
+ * is claimed.
+ */
+export type LaunchBody = {
+    /**
+     * Test-case slug to run (e.g. `carom`).
+     */
+    testCase: string;
+    /**
+     * Exact, immutable test-case version (e.g. `v1.0.0`).
+     */
+    version: string;
+    /**
+     * Variant to run (e.g. `base`).
+     */
+    variant: string;
+    /**
+     * Agent harness to drive.
+     */
+    harness: HarnessSlug;
+    /**
+     * Opaque model id passed to the harness.
+     */
+    model: string;
+    /**
+     * Built-in orchestrator slug that conducts the harness sessions (e.g.
+     * `one-shot`). Omit for the `one-shot` default.
+     */
+    orchestrator?: string;
+    /**
+     * Built-in [engine](crate::engine) slug the produced build is written
+     * against (e.g. `simple-2d`) — the runtime supplying its frame loop, input,
+     * audio, assets, and diagnostics. Omit for the `none` default, exactly as
+     * `orchestrator` is omitted for `one-shot`: an absent key means the launch
+     * wants the engineless run, which is what `none` is.
+     *
+     * The slug must be one the engine catalogue knows *and* one the requested
+     * case version declares support for; both are checked when the run
+     * executes, not here, so a bad selection fails the run rather than being
+     * silently downgraded.
+     */
+    engine?: string;
+    /**
+     * Optional override for the maximum harness runtime, in seconds.
+     */
+    maxRuntimeSeconds?: number;
+    /**
+     * Optional harness authentication mode for this run (`auto`, `subscription`,
+     * or `api-key`). Omitted keeps the default behavior (API-key, preferring a
+     * subscription only when its credentials are available). The driver applies
+     * it by setting `TCAB_AUTH_MODE` before the engine resolves auth, so a console
+     * can request subscription mode for a backend-driven run (the only way to run
+     * the subscription-only Antigravity harness on the cluster path).
+     */
+    authMode?: string;
+    /**
+     * How many times to automatically retry this run after a terminal failure the
+     * Test Cabinet (or a catastrophic build) is responsible for — an
+     * [`Infrastructure`](crate::run_record::RunState::Infrastructure) error or a
+     * [`Catastrophic`](crate::run_record::RunState::Catastrophic) build. A
+     * [`TimedOut`](crate::run_record::RunState::TimedOut) or
+     * [`Completed`](crate::run_record::RunState::Completed) outcome is the model's,
+     * not a fault to retry, and a user cancel is never retried. Neither is a
+     * [`LimitExceeded`](crate::run_record::RunState::LimitExceeded) run: the harness
+     * stopped it on a ceiling its own configuration armed, so a fresh attempt reaches
+     * the same bound.
+     *
+     * The default is `1` (one retry) when omitted, so the total attempts allowed is
+     * `1 + retry_count`: the initial attempt plus up to `retry_count` retries.
+     * `0` disables retries; the backend clamps the value to a sane maximum. This is
+     * the field the run form sends; absent → treated as `1` by the backend.
+     */
+    retryCount?: number;
+    /**
+     * The declarative [capability set](GgCapabilitySet) configuring a **gg** run —
+     * which capabilities are on, their implementations/params, and the model-slot
+     * bindings. Present when (and only when) [`Self::harness`] is
+     * [`HarnessSlug::Gg`]: a gg run is
+     * configured by this set rather than by the `(model, orchestrator)` dimensions
+     * a third-party harness run uses. Omitted for every non-gg run. The driver maps
+     * it into [`RunRequest::gg_capability_set`](crate::RunRequest), whose
+     * `validate` enforces the gg⇔capability-set invariant.
+     */
+    ggCapabilitySet?: GgCapabilitySet;
+    /**
+     * The context window, in tokens, of each model this **gg** run may bind — the
+     * model catalog's figure for each id in
+     * [`GgCapabilitySet::bound_model_ids`](crate::gg::GgCapabilitySet::bound_model_ids).
+     *
+     * **Filled in by the backend at enqueue, not sent by a client.** The catalog the
+     * backend owns is the single store of model facts; resolving the window here — once,
+     * where the catalog lives — is what lets gg carry no model table of its own and
+     * makes the figure a *pushed* input to the run rather than something the run
+     * container has to go and fetch. A client that sends it is overwritten. Empty when
+     * the catalog knows no window for any bound model, and for every non-gg run.
+     */
+    ggModelWindows?: {
+        [key in string]: number;
+    };
+    /**
+     * The input modalities each model this **gg** run may bind accepts (`text`,
+     * `image`, `file`, …), as the model catalog observed them.
+     *
+     * **Filled in by the backend at enqueue, not sent by a client**, on the same terms
+     * as [`gg_model_windows`](Self::gg_model_windows) and from the same lookup. A model
+     * the catalog has no modality list for is simply **absent** from the map, which gg
+     * reads as unknown rather than as "text only": it will try an image and recover if
+     * the provider refuses it. Empty for every non-gg run.
+     */
+    ggModelModalities?: {
+        [key in string]: Array<string>;
+    };
+};
+/**
+ * The body of `POST /gg/runs`: a **gg-native** run request. Only the test case,
+ * version, and variant carry over from a conventional run (those are
+ * test-case-level); everything a third-party run expresses as `(model,
+ * orchestrator)` is instead expressed by the [capability set](GgCapabilitySet),
+ * which binds the models (to [slots](test_cabinet_core::gg::GgSlotBinding)) and
+ * selects the capabilities. There is deliberately no `harness` field — this
+ * endpoint runs the gg harness by construction — and no `orchestrator` field: gg
+ * is its own executor and the orchestrator dimension does not apply.
+ */
+export type GgRunRequest = {
+    /**
+     * Test-case slug to run (e.g. `carom`).
+     */
+    testCase: string;
+    /**
+     * Exact, immutable test-case version (e.g. `v1.0.0`).
+     */
+    version: string;
+    /**
+     * Variant to run. Defaults to `base` when omitted.
+     */
+    variant?: string;
+    /**
+     * The declarative capability set configuring the run: its agent profiles (each
+     * with its own capabilities, model binding, and delegation graph) and the
+     * run-level model slots and limits. Must bind a model to its
+     * [root agent](GgCapabilitySet::root).
+     */
+    capabilitySet: GgCapabilitySet;
+    /**
+     * Optional override for the maximum harness runtime, in seconds.
+     */
+    maxRuntimeSeconds?: number;
+    /**
+     * How many times to automatically retry this run after a terminal failure The
+     * Test Cabinet (or a catastrophic build) is responsible for. Defaults to `1`
+     * (one retry) when omitted; `0` disables retries. The backend clamps it to a
+     * sane maximum. Same semantics as a conventional run's `retryCount`.
+     */
+    retryCount?: number;
+    /**
+     * Built-in [engine](test_cabinet_core::engine) slug the produced build is
+     * written against. Omit for the `none` default, which supplies no runtime.
+     *
+     * A gg run seeds and builds a workspace like any other run, so it carries the
+     * engine dimension on the same terms: the slug must be one the engine
+     * catalogue knows and one the requested case version declares support for,
+     * both checked when the run executes.
+     */
+    engine?: string;
+};
+/**
+ * The claimed job the dispatcher receives from `POST /jobs/next`: the id, the
+ * per-job driver token, and the launch request to run.
+ */
+export type ClaimedJob = {
+    /**
+     * The claimed job's id.
+     */
+    jobId: string;
+    /**
+     * The per-job token the driver presents to stream this job's progress back.
+     */
+    jobToken: string;
+    /**
+     * The launch request to run.
+     */
+    request: LaunchBody;
+};
+/**
+ * The body of `POST /jobs/{id}/status`: the new driver state, plus the produced
+ * record on success or the reason on failure.
+ */
+export type StatusUpdate = {
+    /**
+     * The state the driver is reporting.
+     */
+    state: DriverState;
+    /**
+     * The produced run record, required when `state` is `succeeded` and carried on
+     * a `canceled` report too (the partial record for the killed run). Its `links`
+     * are authoritative and stored with it.
+     */
+    record?: RunRecord;
+    /**
+     * A human-readable failure reason, used when `state` is `failed`.
+     */
+    detail?: string;
+};
+/**
+ * A job's lifecycle state on the wire.
+ */
+export type JobState = "queued" | "pending" | "dispatched" | "starting" | "running" | "succeeded" | "failed" | "canceled";
+/**
+ * A run's display identity, lifted from its launch request so the active-run
+ * list and completion notifications can describe a job without its (not-yet-
+ * produced) record. Flattened in JSON to the console's `InProgressRun` shape.
+ */
+export type JobSummary = {
+    /**
+     * The test-case slug being run (e.g. `carom`).
+     */
+    testCaseSlug: string;
+    /**
+     * The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at
+     * enqueue — so the active-run list can show it before the run produces a record.
+     */
+    testCaseVersion: string;
+    /**
+     * The variant being run (e.g. `base`).
+     */
+    variant: string;
+    /**
+     * The harness driving the run, as its slug string.
+     */
+    harnessSlug: string;
+    /**
+     * The opaque model id passed to the harness.
+     */
+    modelId: string;
+    /**
+     * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+     * was launched from, lifted out of its stored capability set. A gg run has no
+     * single harness model — [`model_id`](Self::model_id) is only its representative
+     * primary-slot binding — so the active-run list identifies a gg row by its
+     * configuration instead. `None` for every third-party-harness job (which carries
+     * no capability set) and for a gg job assembled by hand rather than from a named
+     * configuration.
+     */
+    ggPreset?: string;
+};
+/**
+ * One in-flight job, as `GET /jobs/active` reports it: the live/job id, the
+ * run's display identity (flattened), and its current state.
+ */
+export type ActiveJobOut = {
+    /**
+     * The job/stream id (`POST /jobs` returns this).
+     */
+    runId: string;
+    /**
+     * The job's current lifecycle state.
+     */
+    state: JobState;
+    /**
+     * The test-case slug being run (e.g. `carom`).
+     */
+    testCaseSlug: string;
+    /**
+     * The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at
+     * enqueue — so the active-run list can show it before the run produces a record.
+     */
+    testCaseVersion: string;
+    /**
+     * The variant being run (e.g. `base`).
+     */
+    variant: string;
+    /**
+     * The harness driving the run, as its slug string.
+     */
+    harnessSlug: string;
+    /**
+     * The opaque model id passed to the harness.
+     */
+    modelId: string;
+    /**
+     * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+     * was launched from, lifted out of its stored capability set. A gg run has no
+     * single harness model — [`model_id`](Self::model_id) is only its representative
+     * primary-slot binding — so the active-run list identifies a gg row by its
+     * configuration instead. `None` for every third-party-harness job (which carries
+     * no capability set) and for a gg job assembled by hand rather than from a named
+     * configuration.
+     */
+    ggPreset?: string;
+};
+/**
+ * A job's status, as `GET /jobs/{id}` reports it.
+ */
+export type JobStatusOut = {
+    /**
+     * The job id.
+     */
+    id: string;
+    /**
+     * Where the job is in its lifecycle.
+     */
+    state: JobState;
+    /**
+     * The produced run record's id, present once `state` is `succeeded` and the
+     * run was completed (the row the console navigates to).
+     */
+    recordId?: string;
+    /**
+     * A human-readable failure reason, present when `state` is `failed`.
+     */
+    detail?: string;
+};
+/**
+ * The response to a successful `POST /jobs`: the enqueued job's id and where to
+ * observe it. The backend constructs it; a queue client reads `job_id` to begin
+ * watching the run (and may reconstruct the status/live URLs from it).
+ */
+export type LaunchAck = {
+    /**
+     * The id of the enqueued job.
+     */
+    jobId: string;
+    /**
+     * Where to poll the job's status.
+     */
+    statusUrl: string;
+    /**
+     * Where to stream the job's live progress (NDJSON).
+     */
+    liveUrl: string;
+};
+/**
+ * The body of `POST /jobs/batch`: many launch requests to enqueue in one call.
+ * Each entry is the same shape as a single `POST /jobs` body, so the two enqueue
+ * paths never drift on what a run request carries. The batch analogue of a single
+ * [`LaunchBody`] — used when a console fans a whole set of runs out at once (the
+ * coverage matrix's still-missing runs, the new-run form's combinations × runs).
+ */
+export type LaunchBatchBody = {
+    /**
+     * The runs to enqueue, in the order the caller wants them reported back.
+     */
+    runs: Array<LaunchBody>;
+};
+/**
+ * One entry in a batch launch's response, aligned by index to the request's
+ * `runs`. Carries the enqueued job id on success, or a human-readable reason for a
+ * run that could not be enqueued — a single rejected run (e.g. a malformed request)
+ * never aborts the rest of the batch, mirroring the per-item isolation the console
+ * had when it launched runs one request at a time.
+ */
+export type LaunchBatchItem = {
+    /**
+     * The enqueued job's id, present when this run was accepted.
+     */
+    jobId?: string;
+    /**
+     * Why this run was rejected, present when it was not enqueued.
+     */
+    error?: string;
+};
+/**
+ * The response to `POST /jobs/batch`: one [`LaunchBatchItem`] per requested run,
+ * in request order.
+ */
+export type LaunchBatchAck = {
+    /**
+     * One result per requested run, aligned by index to the request's `runs`.
+     */
+    jobs: Array<LaunchBatchItem>;
+};
+/**
+ * The response to one of the three global cancel controls: how many runs the sweep
+ * stopped, and how far into the queue it reached.
+ *
+ * The **count is the point**. A sweep that reported only success would leave the
+ * operator unable to tell "the queue was already empty" from "nothing matched", and
+ * those call for opposite next moves. The two scope flags let the console phrase what
+ * it just did ("stopped 12 runs, including 3 already executing") from the response
+ * alone, rather than from which button it happens to have called.
+ */
+export type BulkCancelOut = {
+    /**
+     * How many jobs moved to the terminal `canceled` state.
+     */
+    canceled: number;
+    /**
+     * Whether the sweep reached runs that had not started yet (`queued`, `pending`)
+     * — the ones that had cost nothing.
+     */
+    includedWaiting: boolean;
+    /**
+     * Whether the sweep reached runs that were already executing (`dispatched`,
+     * `starting`, `running`) — the ones whose work was discarded.
+     */
+    includedActive: boolean;
+};
+/**
+ * Whether a finished run produced a record. `completed` carries a record id to
+ * open; `failed` carries a reason.
+ */
+export type NotificationOutcome = "completed" | "failed";
+/**
+ * The kind of a [`Notification`] — which event in a run's life it announces. The
+ * console switches on it, because the kinds mean different things about the same
+ * run: a completion changes the in-flight list, a publish failure does not.
+ */
+export type NotificationKind = "run-completed" | "publish-failed";
+/**
+ * A worker-wide notification about a run: that it reached a terminal state, or
+ * that publishing it failed. Carries the run's display identity (flattened to the
+ * console's notification shape) plus how it ended. Delivered over
+ * `GET /notifications` (SSE).
+ */
+export type Notification = {
+    /**
+     * Which event this announces.
+     */
+    kind: NotificationKind;
+    /**
+     * The job the notification is about — the **run** job for `run-completed`,
+     * the **publish** job for `publish-failed`. It identifies the attempt rather
+     * than the run, so a run that fails to publish twice raises two alerts.
+     */
+    jobId: string;
+    /**
+     * How the run ended.
+     */
+    outcome: NotificationOutcome;
+    /**
+     * The persisted run record's id the console links the alert to: the produced
+     * record's id for a `completed` run, the job id for a `failed` one, and the
+     * run that could not be released for a `publish-failed` one.
+     */
+    recordId?: string;
+    /**
+     * A human-readable failure reason, present when `outcome` is `failed`.
+     */
+    message?: string;
+    /**
+     * The test-case slug being run (e.g. `carom`).
+     */
+    testCaseSlug: string;
+    /**
+     * The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at
+     * enqueue — so the active-run list can show it before the run produces a record.
+     */
+    testCaseVersion: string;
+    /**
+     * The variant being run (e.g. `base`).
+     */
+    variant: string;
+    /**
+     * The harness driving the run, as its slug string.
+     */
+    harnessSlug: string;
+    /**
+     * The opaque model id passed to the harness.
+     */
+    modelId: string;
+    /**
+     * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+     * was launched from, lifted out of its stored capability set. A gg run has no
+     * single harness model — [`model_id`](Self::model_id) is only its representative
+     * primary-slot binding — so the active-run list identifies a gg row by its
+     * configuration instead. `None` for every third-party-harness job (which carries
+     * no capability set) and for a gg job assembled by hand rather than from a named
+     * configuration.
+     */
+    ggPreset?: string;
+};
+/**
+ * Which transition in a run's life a [`RunEvent`] announces.
+ *
+ * The three are separated because the console does different things with them:
+ * an `enqueued` run joins the in-flight list, a `state-changed` run is patched in
+ * place (without reordering the list), and a `finished` run leaves it — and, for a
+ * run that produced a record, makes the produced-run listing stale.
+ */
+export type RunEventKind = "enqueued" | "state-changed" | "finished";
+/**
+ * A run-lifecycle event on the multiplexed console stream (`GET /notifications`,
+ * `runs` topic).
+ *
+ * This is deliberately **not** a [`Notification`]. A notification is an *alert* —
+ * something a person should be told about, filed to the bell and raised as a toast,
+ * and so only ever fired for the two things worth interrupting someone over (a run
+ * finishing, a publish failing). A run event is *list maintenance*: every transition
+ * the in-flight list must reflect, including the many that nobody wants a toast for
+ * (a queued run held back to `pending`, a driver reaching `starting`, an operator's
+ * bulk cancel ending forty runs at once). Keeping them separate is what lets the
+ * console subscribe to the alerts always and to the churn only while a page is
+ * showing it.
+ *
+ * It carries enough to patch the list in place — the run's identity and its state
+ * after the transition — so a console applies it without a round-trip. The one thing
+ * it does not carry is the produced *record*, so a `finished` run that produced one
+ * still makes the produced-run listing stale; the console re-reads that separately.
+ */
+export type RunEvent = {
+    /**
+     * Which transition this announces.
+     */
+    kind: RunEventKind;
+    /**
+     * The run (job) this is about. Named `runId` to match `ActiveJobOut`, which is
+     * the shape this event maintains — the console keys its in-flight list on it.
+     */
+    runId: string;
+    /**
+     * The run's state **after** the transition. For a `finished` event this is the
+     * terminal state, which is how a console tells an operator's `canceled` run from
+     * one that ran to `succeeded`/`failed`.
+     */
+    state: JobState;
+    /**
+     * The produced run record's id, present on a `finished` event whose run produced
+     * one (a success, or a failure the driver still built a record for).
+     */
+    recordId?: string;
+    /**
+     * The terminal reason, present on a `finished` event that failed or was
+     * canceled.
+     */
+    detail?: string;
+    /**
+     * The test-case slug being run (e.g. `carom`).
+     */
+    testCaseSlug: string;
+    /**
+     * The exact, immutable test-case version being run (e.g. `v1.0.0`), fixed at
+     * enqueue — so the active-run list can show it before the run produces a record.
+     */
+    testCaseVersion: string;
+    /**
+     * The variant being run (e.g. `base`).
+     */
+    variant: string;
+    /**
+     * The harness driving the run, as its slug string.
+     */
+    harnessSlug: string;
+    /**
+     * The opaque model id passed to the harness.
+     */
+    modelId: string;
+    /**
+     * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
+     * was launched from, lifted out of its stored capability set. A gg run has no
+     * single harness model — [`model_id`](Self::model_id) is only its representative
+     * primary-slot binding — so the active-run list identifies a gg row by its
+     * configuration instead. `None` for every third-party-harness job (which carries
+     * no capability set) and for a gg job assembled by hand rather than from a named
+     * configuration.
+     */
+    ggPreset?: string;
+};
+/**
+ * The console stream's first frame: the id this client quotes back to
+ * `PUT /notifications/{stream}/topics`.
+ *
+ * The id is minted per **connection**, not per client, and deliberately so. An
+ * `EventSource` reconnects on its own after a drop, and the reconnected stream is a
+ * new subscriber with default topics — so the client must be told the new id and
+ * re-apply what it wanted. Handing out a client-chosen or long-lived id would hide
+ * that transition and leave a console silently subscribed to nothing.
+ */
+export type StreamOpened = {
+    /**
+     * The connected stream's id.
+     */
+    streamId: string;
+};
+/**
+ * The console stream's "you fell behind" frame: this client was lagged and the
+ * named number of messages were dropped for it.
+ *
+ * It carries the count only as a diagnostic — a client's response is the same
+ * whatever the number: re-read the active list (and, if it is showing them, the
+ * produced runs). The frame exists because the stream keeps no backlog, so there is
+ * nothing to replay and silence would be indistinguishable from an idle queue.
+ */
+export type StreamResync = {
+    /**
+     * How many messages were dropped for this client.
+     */
+    dropped: number;
+};
+/**
+ * Which of the console stream's topics a subscriber wants, as
+ * `PUT /notifications/{stream}/topics` carries them.
+ *
+ * Both fields are optional so a caller toggles one topic without having to restate
+ * the other — the console flips `runs` on and off as it enters and leaves the pages
+ * that show in-flight runs, and never wants that request to disturb its alerts.
+ */
+export type StreamTopicsBody = {
+    /**
+     * Whether to deliver [`Notification`]s (the bell/toast alerts). Defaults to on
+     * when a stream is opened; a console has no reason to turn it off, but it is
+     * settable so the topic set is uniform.
+     */
+    notifications?: boolean;
+    /**
+     * Whether to deliver [`RunEvent`]s (in-flight list maintenance). Defaults to
+     * **off**: most of the console shows no in-flight list, and a run's churn is far
+     * noisier than its alerts.
+     */
+    runs?: boolean;
+};
+/**
+ * The body of `GET /config`: the console's client-side configuration.
+ */
+export type ClientConfig = {
+    /**
+     * The artifact service's public base URL, or `null` when artifacts are not
+     * served separately. The console resolves a pre-publish run's build and media
+     * links against it.
+     */
+    artifactsUrl?: string;
+    /**
+     * The arena service's public base URL, or `null` when adversarial execution is
+     * not served separately. The console POSTs matches/tournaments and streams live
+     * tournament progress against it; the adversarial run UI degrades when absent.
+     */
+    arenaUrl?: string;
+    /**
+     * Grafana's base URL, or `null` when the deployment runs no observability
+     * stack. The console uses it to link a run to the traces it emitted; absent,
+     * that link is simply not rendered.
+     */
+    grafanaUrl?: string;
+    /**
+     * The public snapshot bucket's **read** base URL, or `null` when the deployment
+     * publishes no public snapshot. The client joins it with the deterministic keys
+     * it derives — today an asset-generation variant's published reference frames,
+     * `media/references/<slug>/<version>/<variant>/frames/<index>.png`. This is never
+     * the S3 write endpoint (`TCAB_R2_ENDPOINT`), which is credentialed and stays
+     * server-side.
+     */
+    snapshotUrl?: string;
+};
+//# sourceMappingURL=jobs-api.d.ts.map

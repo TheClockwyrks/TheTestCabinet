@@ -1,13 +1,24 @@
 // navigation/howto-confirm — Enter leaves the how-to screen for the title.
 //
-// specs/ui.md: on `howto`, `confirm` returns to the title with `menuIndex = 0`.
-// The snapshot does not report `menuIndex`, so the index is read by confirming
-// once back on the title: index 0 is `SOLO`, so the match that opens is Solo.
+// specs/ui.md: on `howto`, `confirm` returns to the title, and a return to the
+// title restores `menuIndex` from `titleIndex`. The snapshot reports both, so the
+// selection the title comes back on is read straight off it.
+//
+// The how-to screen is POSED, with `openHowTo`: `reset` and one `setScreen`,
+// which leaves `titleIndex` at the `0` a fresh title carries, so the `menuIndex`
+// read back is the `0` the review item names. Walking the menu to `HOW TO PLAY`
+// would have confirmed a title item on the way in, set `titleIndex` to `2`, and
+// made the same build read back `2`. The route in is this point's ground; the
+// key out is its subject.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { reachHowto } from "./screens";
+import {
+  captureStill,
+  createHarness,
+  openHowTo,
+  type Harness,
+} from "../harness";
 
 let h: Harness;
 
@@ -19,14 +30,15 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("returns to the title, with SOLO selected, on Enter", async () => {
-  await reachHowto(h);
-  await h.tap("Enter");
-  await captureStill(h, "title");
-  assertEqual((await h.snapshot()).screen, "title");
+it("returns to the title, with the first item selected, on Enter", async () => {
+  await openHowTo(h);
+  assertEqual((await h.snapshot()).screen, "howto");
 
   await h.tap("Enter");
-  const opened = await h.snapshot();
-  assertEqual(opened.screen, "countdown");
-  assertEqual(opened.mode, "solo");
+  await captureStill(h, "title");
+
+  const title = await h.snapshot();
+  assertEqual(title.screen, "title");
+  assertEqual(title.menuIndex, title.titleIndex);
+  assertEqual(title.menuIndex, 0);
 });

@@ -27,19 +27,21 @@ once the last orb is gone.
 | Orbs | Six, radius `8`, worth `10` points each, destroyed on overlap |
 | Actions | `up`, `down`, `left`, `right`, `dash` |
 | Cues | `collect`, `dash`, `over` |
+| Diagnostics | `best` on the instance, `orbs` on the world |
 
 The case fixes the level names, the tag vocabulary, the action names with the
 keys they bind, and the cue names, so a check names things every build of the
 case agrees on. The arena's walls are the build's choice, which is why the check
 that reads a wall collision is conditional.
 
-## The case's constants
+## The figures
 
-Every figure the specification fixes lives in one module the build imports and
-the validators import.
+Every figure the specification fixes is stated twice: the build is seeded a
+`src/constants.ts`, and the validator project transcribes the same figures into
+its own `constants.ts`.
 
 ```ts
-// src/constants.ts
+// src/constants.ts — the build's copy, seeded with the workspace
 export const DESIGN_WIDTH = 640;
 export const DESIGN_HEIGHT = 360;
 
@@ -93,6 +95,49 @@ export const MATCH_SECONDS = 30;
 The two layer numbers are part of the specification because a check reads the
 draw order off them. The pipeline sorts by `layer` ascending, so the orbs are
 drawn before the runner and the runner's operations are the last in the stream.
+
+The validator project states the figures its checks name, under the same names,
+transcribed from the same specification.
+
+```ts
+// validation/constants.ts — transcribed from the specification
+export const DESIGN_WIDTH = 640;
+export const DESIGN_HEIGHT = 360;
+
+export const BACKGROUND = "#0b0f18";
+export const ORB_COLOR = "#f7c948";
+export const RUNNER_COLOR = "#7fd1ff";
+
+export const LEVELS = { arena: "arena", summary: "summary" } as const;
+export const TAGS = { wall: "wall", orb: "orb", runner: "runner" } as const;
+
+export const ACTIONS = {
+  up: { keys: ["KeyW", "ArrowUp"] },
+  down: { keys: ["KeyS", "ArrowDown"] },
+  left: { keys: ["KeyA", "ArrowLeft"] },
+  right: { keys: ["KeyD", "ArrowRight"] },
+  dash: { keys: ["Space"] },
+} as const;
+
+export type ActionName = keyof typeof ACTIONS;
+
+export const ORB_COUNT = 6;
+export const ORB_POINTS = 10;
+
+export const RUNNER_RADIUS = 12;
+export const RUNNER_SPEED = 180;
+
+export const DASH_SPEED = 480;
+export const DASH_SECONDS = 0.25;
+```
+
+The transcription is what makes a check a grade. A check that imported
+`RUNNER_SPEED` from `../src/constants` would compare the build with its own
+table, which every build matches, including one that walks its runner at some
+other speed. `constants.ts` is the only file in the project that reaches
+`../src/constants`, and it reaches it only to re-export a value the
+specification leaves to the build; see
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
 
 ## The debug surface
 
@@ -276,7 +321,8 @@ export const game: GameDefinition<Debug> = {
 ```
 
 `ArenaMode` carries `pawnClass = Runner` and adds player 0 in its `beginPlay`,
-which is what spawns the runner and possesses it. The walls and the orbs are
+which is what spawns the runner and possesses it, and registers `orbs` on the
+world's registry there. The walls and the orbs are
 declared actors, so they are built before the mode begins play and their ids are
 lower than the runner's.
 
@@ -305,6 +351,7 @@ src/
 validation/
   vitest.config.ts
   tsconfig.json
+  constants.ts
   debug.ts
   harness.ts
   simulation.test.ts
@@ -315,7 +362,7 @@ validation/
 
 One `.test.ts` stands for one verdict item, and `harness.ts` is shared by all of
 them. The case's config roots itself at the workspace, so a validator resolves
-`../src/constants` by the same relative path the build uses.
+`../src/game` by the same relative path the build uses.
 
 ```ts
 // validation/vitest.config.ts
@@ -394,7 +441,7 @@ import {
   DESIGN_HEIGHT,
   DESIGN_WIDTH,
   type ActionName,
-} from "../src/constants";
+} from "./constants";
 import { game } from "../src/game";
 import type { Debug } from "./debug";
 
@@ -596,7 +643,7 @@ import {
   RUNNER_RADIUS,
   RUNNER_SPEED,
   TAGS,
-} from "../src/constants";
+} from "./constants";
 import { createHarness, type Harness } from "./harness";
 
 let harness: Harness;
@@ -683,7 +730,7 @@ tag, reads the match off the game state, and observes a transition on
 ```ts
 // validation/world-and-actors.test.ts
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { LEVELS, ORB_COUNT, ORB_POINTS, TAGS } from "../src/constants";
+import { LEVELS, ORB_COUNT, ORB_POINTS, TAGS } from "./constants";
 import { createHarness, type Harness } from "./harness";
 
 let harness: Harness;
@@ -788,6 +835,49 @@ overlap, the mode ticks after it and requests the transition, and the engine
 performs the request at the end of that same frame, before the next one begins.
 No frame has stepped the summary world by the time the check reads it.
 
+## Asserting the diagnostics a build registered
+
+Registering the values the case names is the build's part. Drawing the panel,
+toggling it, and keeping it read-only are the engine's, so a check reads
+`engine.diagnostics()` and asserts the names the build registered and what each
+one reports for a posed world.
+
+```ts
+// validation/diagnostics.test.ts
+import { ConstantClock } from "@test-cabinet/structured-2d";
+import { afterEach, beforeEach, expect, it } from "vitest";
+import { createHarness, type Harness } from "./harness";
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness({ clock: new ConstantClock(1000 / 60) });
+});
+
+afterEach(() => {
+  harness.dispose();
+});
+
+it("registers the diagnostics the case names", () => {
+  const { engine } = harness;
+  engine.debug.keepOrbs(2);
+
+  expect(engine.diagnostics()).toEqual([
+    { name: "best", value: 0 },
+    { name: "orbs", value: 2 },
+  ]);
+});
+```
+
+The instance's sources come first and the world's follow, each in registration
+order, so one comparison covers the names, their order, and what each source
+reports. Reading evaluates the sources and changes nothing else, so a check
+reads them at any point in a scenario, and the overlay stays hidden throughout.
+
+A source the arena registers is dropped when the arena closes, so the same read
+after the travel to `summary` returns the instance's sources and whatever the
+summary level registered.
+
 ## Asserting on pixels and on the draw stream
 
 Two readings of one frame answer two different questions. The pixels say what
@@ -813,7 +903,7 @@ import {
   ORB_COUNT,
   RUNNER_COLOR,
   RUNNER_RADIUS,
-} from "../src/constants";
+} from "./constants";
 import { callsTo, createHarness, rgba, setsOf, type Harness } from "./harness";
 
 let harness: Harness;
@@ -898,7 +988,7 @@ subscribes, runs the scenario, and asserts against what the handler collected.
 ```ts
 // validation/input-and-audio.test.ts
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { ORB_POINTS, TAGS } from "../src/constants";
+import { ORB_POINTS, TAGS } from "./constants";
 import { createHarness, type Harness } from "./harness";
 
 let harness: Harness;

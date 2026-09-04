@@ -19,16 +19,11 @@
 import { PlayerController } from "@test-cabinet/structured-2d";
 import { playEvents } from "./audio";
 import { CAMPAIGN_LENGTH, SOLVED_ITEMS, TITLE_ITEMS } from "./constants";
-import {
-  campaignSolvedItems,
-  enterCampaignBoard,
-  nextCascadeBoard,
-  restartCascade,
-  startMode,
-  toTitle,
-} from "./flow";
+import { campaignSolvedItems, confirmItem, enterSelected, goBack } from "./flow";
 import { refractState, type RefractState } from "./game";
-import { applySample, clearBeams, mergeEvents, noEvents } from "./tracing";
+import { COMPLETE_ITEMS, SELECT_COLS } from "./layout";
+import { applySample } from "./pointer";
+import { clearBeams, mergeEvents, noEvents } from "./tracing";
 
 /** The next index on a vertical menu, wrapping at both ends. */
 function wrap(index: number, delta: number, count: number): number {
@@ -38,7 +33,6 @@ function wrap(index: number, delta: number, count: number): number {
 // The select grid: `SELECT_COLS` columns by `SELECT_ROWS` rows of campaign
 // boards. `left`/`right` wrap within the row, `up`/`down` wrap between rows in
 // the same column (specs/modes/campaign.md).
-const SELECT_COLS = 6;
 
 export class RefractController extends PlayerController {
   override tick(): void {
@@ -58,13 +52,17 @@ export class RefractController extends PlayerController {
     // sample's own trace events are merged into the tick's, so one cue plays
     // per kind of event however many samples raised it.
     for (const sample of this.input.pointerSamples()) {
+      // The primary pointer alone operates the game, so a second finger
+      // resting on a touchscreen changes nothing (specs/controls.md).
+      if (!sample.primary) continue;
       mergeEvents(events, applySample(state, sample));
     }
 
-    playEvents(this.world.audio, { ...events, clear });
-
-    // The engine's own snapshot, mirrored for the frame being drawn.
-    state.pointer = this.input.pointer();
+    // `state.pointer` is written by the resolution every sample goes through,
+    // so it already holds what this tick read — and a scenario posed through
+    // the debug surface, which feeds that same path, survives the frame that
+    // follows it (specs/instrumentation.md).
+    playEvents(this.world.audio, { ...events, clear: clear || events.cleared });
   }
 
   /**
@@ -74,17 +72,10 @@ export class RefractController extends PlayerController {
   private handleActions(state: RefractState): boolean {
     switch (state.screen) {
       case "title":
-        this.menu(state, TITLE_ITEMS.length, (index) => {
-          if (index === 0) startMode(state, "campaign");
-          else if (index === 1) startMode(state, "cascade");
-          else {
-            state.screen = "howto";
-            state.menuIndex = 0;
-          }
-        });
+        this.menu(state, TITLE_ITEMS.length);
         return false;
       case "howto":
-        if (this.input.pressed("back")) toTitle(state);
+        if (this.input.pressed("back")) goBack(state);
         return false;
       case "select":
         this.selectGrid(state);
@@ -96,63 +87,29 @@ export class RefractController extends PlayerController {
         const leave = this.input.pressed("back");
         const clearNow = this.input.pressed("clear");
         if (leave) {
-          if (state.mode === "campaign") {
-            for (const beam of state.beams) beam.cells = [];
-            state.tracing = null;
-            state.screen = "select";
-            state.menuIndex = 0;
-          } else {
-            toTitle(state);
-          }
+          goBack(state);
           return false;
         }
         return clearNow ? clearBeams(state) : false;
       }
       case "solved": {
         if (this.input.pressed("back")) {
-          if (state.mode === "campaign") {
-            state.screen = "select";
-            state.menuIndex = 0;
-          } else {
-            toTitle(state);
-          }
+          goBack(state);
           return false;
         }
-        if (state.mode === "campaign") {
-          const items = campaignSolvedItems(state.boardIndex);
-          this.menu(state, items.length, (index) => {
-            const item = items[index];
-            if (item === "NEXT BOARD") {
-              enterCampaignBoard(state, state.boardIndex + 1);
-            } else if (item === "REPLAY") {
-              enterCampaignBoard(state, state.boardIndex);
-            } else {
-              state.screen = "select";
-              state.menuIndex = 0;
-            }
-          });
-        } else {
-          this.menu(state, SOLVED_ITEMS.length, (index) => {
-            if (index === 0) nextCascadeBoard(state);
-            else restartCascade(state);
-          });
-        }
+        const count =
+          state.mode === "campaign"
+            ? campaignSolvedItems(state.boardIndex).length
+            : SOLVED_ITEMS.length;
+        this.menu(state, count);
         return false;
       }
       case "complete":
         if (this.input.pressed("back")) {
-          state.screen = "select";
-          state.menuIndex = 0;
+          goBack(state);
           return false;
         }
-        this.menu(state, 2, (index) => {
-          if (index === 0) {
-            state.screen = "select";
-            state.menuIndex = 0;
-          } else {
-            toTitle(state);
-          }
-        });
+        this.menu(state, COMPLETE_ITEMS.length);
         return false;
     }
   }
@@ -161,18 +118,18 @@ export class RefractController extends PlayerController {
    * A vertical menu's frame: `up` and `down` move the highlight, `confirm`
    * accepts it. All three edges are read before any is acted on, so exactly
    * one press moves or accepts and nothing is left armed for a later frame.
+   *
+   * `confirm` and the pointer's `menu-<i>` targets both reach `confirmItem` in
+   * `src/flow.ts`, so a choice means the same thing however it was made
+   * (specs/controls.md).
    */
-  private menu(
-    state: RefractState,
-    count: number,
-    onConfirm: (index: number) => void,
-  ): void {
+  private menu(state: RefractState, count: number): void {
     const moveUp = this.input.pressed("up");
     const moveDown = this.input.pressed("down");
     const accepted = this.input.pressed("confirm");
     if (moveUp) state.menuIndex = wrap(state.menuIndex, -1, count);
     else if (moveDown) state.menuIndex = wrap(state.menuIndex, 1, count);
-    else if (accepted) onConfirm(state.menuIndex);
+    else if (accepted) confirmItem(state, state.menuIndex);
   }
 
   /**
@@ -187,7 +144,7 @@ export class RefractController extends PlayerController {
     const moveDown = this.input.pressed("down");
     const accepted = this.input.pressed("confirm");
     if (this.input.pressed("back")) {
-      toTitle(state);
+      goBack(state);
       return;
     }
 
@@ -206,9 +163,8 @@ export class RefractController extends PlayerController {
       return;
     }
 
-    // `confirm` on a locked board does nothing and leaves the highlight put.
-    if (accepted && state.selectIndex < state.unlockedCount) {
-      enterCampaignBoard(state, state.selectIndex);
-    }
+    // `confirm` on a locked board does nothing and leaves the highlight put,
+    // which `enterSelected` is what decides (specs/modes/campaign.md).
+    if (accepted) enterSelected(state);
   }
 }

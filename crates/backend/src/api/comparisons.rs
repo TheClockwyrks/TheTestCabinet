@@ -287,8 +287,15 @@ pub(crate) async fn assemble_comparison(
         &stored.config.controls.version,
     ) {
         Ok(manifest) => {
-            let items =
-                crate::snapshot::review_items_for(&manifest, &stored.config.controls.variant);
+            // The engine is a comparison **control**, so one effective checklist serves
+            // every arm: a run whose engine disagrees with the control is surfaced as a
+            // `Confound` rather than folded in, and the points a scoped validator
+            // decides are the same for every run the comparison aggregates.
+            let items = crate::snapshot::review_items_for_engine(
+                &manifest,
+                &stored.config.controls.variant,
+                &stored.config.controls.engine_slug,
+            );
             aggregate_comparison(&stored.config, &items, &runs)
         }
         Err(_) => Vec::new(),

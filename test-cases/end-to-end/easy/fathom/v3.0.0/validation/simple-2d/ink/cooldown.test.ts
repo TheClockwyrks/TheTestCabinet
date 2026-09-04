@@ -35,7 +35,7 @@ import {
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { BINDINGS, INK_COOLDOWN, TICK_DT, TICK_HZ } from "../../src/constants";
+import { BINDINGS, INK_COOLDOWN, TICK_DT, TICK_HZ } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,

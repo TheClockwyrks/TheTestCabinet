@@ -157,12 +157,13 @@ describe("Component.worldTransform", () => {
 });
 
 describe("RenderComponent", () => {
-  it("defaults to layer 0, visible, and full opacity", () => {
+  it("defaults to layer 0, visible, full opacity, and world space", () => {
     const component = new RenderComponent();
 
     expect(component.layer).toBe(0);
     expect(component.visible).toBe(true);
     expect(component.opacity).toBe(1);
+    expect(component.space).toBe("world");
   });
 
   it("is a component, so it carries an offset and an enabled bit", () => {

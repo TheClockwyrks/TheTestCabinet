@@ -29,8 +29,8 @@ code** (below):
 | `draw-sheet` | a sprite sheet, **one PNG per frame** | the guest and ride animations |
 | `particle-2d` | a particle system → a `system.json` | fireworks, stall steam, ride sparkle, litter puffs |
 | `sfx-synth` | a procedural sound → a `.wav` | coin / ding / alarm cues from raw synthesis |
-| `sfx-sample` | a sampled sound over a baked pack → a `.wav` | richer purchase / ride / alarm cues |
-| `music` | sequenced music over a baked bank → a `.wav` (+ `.mid`) | the cheerful carnival bed |
+| `sfx-sample` | a sampled sound over the sample pack → a `.wav` | richer purchase / ride / alarm cues |
+| `music` | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the cheerful carnival bed |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is
@@ -49,9 +49,10 @@ the exact initialize / operate / render commands and how to name the output path
   the asset. You do **not** place individual particles or bake frames.
 - `sfx-synth` / `sfx-sample` / `music` record synth voices, sampled layers, or
   sequenced notes and render a PCM `.wav`; `music` also emits a portable `.mid` score
-  alongside its `.wav`. `sfx-sample` and `music` draw on a **baked sample pack /
-  instrument bank** already in the image (browse it via the tool's help); a synth
-  from `sfx-synth` needs no pack.
+  alongside its `.wav`. `sfx-sample` draws on the `combat-core` sample pack and
+  `music` on the `gm-lite` instrument bank, both present in the container (browse
+  them with `list-samples` and `list-instruments`); a synth from `sfx-synth` needs
+  no pack.
 
 ## Loading rule — page-relative, so it works under any base path
 
@@ -178,8 +179,8 @@ Web Audio API. Land them under, for example, `assets/audio/`.
   stall sale), a **ride ding / bell** (a ride starting), and a **low-cash or
   ride-broken alarm** with `sfx-synth` and/or `sfx-sample`, and a soft
   **crowd or ride hum** loop. `sfx-synth` builds a sound from synth voices alone;
-  `sfx-sample` layers over the baked sample pack (browse it via its `--help`) for a
-  richer result — use whichever suits each cue.
+  `sfx-sample` layers over the `combat-core` sample pack (browse it with `list-samples`)
+  for a richer result — use whichever suits each cue.
 - **Music** — produce a **cheerful carnival music bed** with `music`: a bright, bouncy
   fairground loop under the park. `music` emits both a `.wav` (the ready asset you play)
   and a `.mid` score alongside it; **play the `.wav`** (the `.mid` is a portable

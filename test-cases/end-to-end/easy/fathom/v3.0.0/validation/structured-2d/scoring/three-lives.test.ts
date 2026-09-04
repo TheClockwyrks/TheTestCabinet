@@ -26,8 +26,8 @@
 // the three lives before it are spent outside the capture.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { START_LIVES } from "../../src/constants";
 import { assertEqual, fail } from "../assert";
+import { START_LIVES } from "../constants";
 import {
   captureReplay,
   createHarness,

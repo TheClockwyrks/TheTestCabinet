@@ -2,10 +2,13 @@
 // once for the pair.
 //
 // Two balls are posed level with each other on the mid-field lane, closing head
-// on across an empty stretch of field, and the third is parked in the goal
-// channel. Nothing else in the scenario can make a sound: no wall, no paddle and
-// no obstacle is touched between the pose and the contact, so what the bus
-// announces on the frame the pair comes apart belongs to the pair meeting.
+// on across an empty stretch of field. Nothing else in the scenario can make a
+// sound, because nothing else is ON the field: the third ball and both obstacles
+// are removed, and neither ball reaches a wall or a paddle between the pose and
+// the contact. So what the bus announces on the frame the pair comes apart
+// belongs to the pair meeting — and it belongs to it because there was nothing
+// else there, rather than because a spare was parked somewhere it was hoped it
+// would stay.
 //
 // A ball-to-ball bounce and every other collision in this game are different
 // events with different cues, and this is the check that says so: the name
@@ -18,17 +21,17 @@
 // single-element list below is what catches it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CUES, FIELD_CY } from "../../src/constants";
+import { CUES, FIELD_CY } from "../constants";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
-  clearPaddles,
   createHarness,
-  startPlaying,
+  enterPlaying,
+  poseWorld,
   watchCues,
   type Harness,
 } from "../harness";
-import { readBalls } from "./harness";
+import { ballAt } from "./harness";
 
 /** The closing speed each ball carries into the contact, in units per second. */
 const APPROACH = 400;
@@ -51,26 +54,18 @@ afterEach(() => {
 });
 
 it("plays the ball-bounce cue once on the frame the pair meets", async () => {
-  await startPlaying(h);
-  clearPaddles(h);
-  h.debug.setBall(0, {
-    x: LEFT_X,
-    y: FIELD_CY,
-    vx: APPROACH,
-    vy: 0,
-    spin: 0,
-  });
-  h.debug.setBall(1, {
-    x: RIGHT_X,
-    y: FIELD_CY,
-    vx: -APPROACH,
-    vy: 0,
-    spin: 0,
-  });
+  enterPlaying(h);
+  poseWorld(h, { balls: [0, 1] });
+  h.multi.setBallPosition(0, LEFT_X, FIELD_CY);
+  h.multi.setBallVelocity(0, APPROACH, 0);
+  h.multi.setBallSpin(0, 0);
+  h.multi.setBallPosition(1, RIGHT_X, FIELD_CY);
+  h.multi.setBallVelocity(1, -APPROACH, 0);
+  h.multi.setBallSpin(1, 0);
 
   const played = watchCues(h);
   const meeting = await captureReplay(h, "bounce", async () => {
-    const met = await h.until((s) => readBalls(s)[0].vx < 0, {
+    const met = await h.until((s) => ballAt(s, 0).vx < 0, {
       maxFrames: 120,
       poll: 1,
     });

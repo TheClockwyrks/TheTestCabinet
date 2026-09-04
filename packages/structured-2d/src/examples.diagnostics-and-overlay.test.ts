@@ -57,8 +57,8 @@ class PatrolMode extends GameMode {
     diagnostics.register("lead", () => {
       const lead = this.world.byTag(TAG)[0];
       return lead === undefined
-        ? null
-        : { x: lead.transform.x, y: lead.transform.y };
+        ? "none"
+        : `${lead.transform.x.toFixed(1)}, ${lead.transform.y.toFixed(1)}`;
     });
     diagnostics.register("pace", () => this.pace);
 
@@ -267,8 +267,8 @@ describe("examples: diagnostics and overlay", () => {
 
     // The engine's world line first, the instance's sources, the world's,
     // then the metrics line — and each value formatted the documented way: a
-    // string as itself, an integer whole, an object as JSON, a non-integer to
-    // three decimal places.
+    // string as itself, an integer whole, a non-integer to three decimal
+    // places.
     const [lead] = engine.world.byTag(TAG);
     expect(lead).toBeDefined();
     expect(texts.slice(0, 7)).toEqual([
@@ -277,7 +277,7 @@ describe("examples: diagnostics and overlay", () => {
       "opens: 1",
       "wave: 3",
       "drones: 6",
-      `lead: ${JSON.stringify({ x: lead?.transform.x, y: lead?.transform.y })}`,
+      `lead: ${lead?.transform.x.toFixed(1)}, ${lead?.transform.y.toFixed(1)}`,
       "pace: 74.750",
     ]);
     expect(texts).toHaveLength(8);
@@ -292,6 +292,33 @@ describe("examples: diagnostics and overlay", () => {
     pressBackquote(target);
     pressBackquote(target, true);
     texts.length = 0;
+    await engine.advance(1);
+    expect(texts).toEqual([]);
+  });
+
+  it("reads the same values back off the engine, with the overlay hidden", async () => {
+    const { engine, texts } = boot();
+    await engine.initialize();
+    await engine.advance(725);
+
+    texts.length = 0;
+    const readings = engine.diagnostics();
+
+    // The instance's two sources first, then the world's four, each in
+    // registration order — the order the panel draws them in.
+    expect(readings.map((reading) => reading.name)).toEqual([
+      "build",
+      "opens",
+      "wave",
+      "drones",
+      "lead",
+      "pace",
+    ]);
+    expect(readings[0]).toEqual({ name: "build", value: "patrol 1.4.0" });
+    expect(readings[3]).toEqual({ name: "drones", value: 6 });
+
+    // Reading is not drawing: the panel stayed hidden and nothing was drawn.
+    expect(texts).toEqual([]);
     await engine.advance(1);
     expect(texts).toEqual([]);
   });
@@ -320,7 +347,7 @@ describe("examples: diagnostics and overlay", () => {
       // re-registered by the new one, so the match values start over.
       "wave: 1",
       "drones: 6",
-      `lead: ${JSON.stringify({ x: lead?.transform.x, y: lead?.transform.y })}`,
+      `lead: ${lead?.transform.x.toFixed(1)}, ${lead?.transform.y.toFixed(1)}`,
       "pace: 61.750",
     ]);
     expect(texts[7]).toMatch(METRICS_LINE);

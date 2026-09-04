@@ -72,9 +72,10 @@ test-cases/end-to-end/<difficulty>/<slug>/<version>/
    It is a root key, so it must precede the first table header, and the first
    entry is the default variant.
 9. Author the validator suites under `validation/<engine>/`, one script per
-   review point per engine, run them against each engine's reference
-   implementation with `tcab validate`, then capture the committed baselines
-   with `tcab capture-baselines`.
+   review point per engine that point covers. A point covers every supported
+   engine unless its `validation.engines` list names fewer. Run the suites
+   against each engine's reference implementation with `tcab validate`, then
+   capture the committed baselines with `tcab capture-baselines`.
 
 `test-cases/end-to-end/easy/carom/v3.0.0/` is the worked example a new case
 should resemble.

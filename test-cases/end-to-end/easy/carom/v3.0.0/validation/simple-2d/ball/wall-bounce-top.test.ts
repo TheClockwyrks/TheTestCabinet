@@ -1,8 +1,14 @@
 // ball/wall-bounce-top — the ball reflects off the top wall.
 //
-// The ball is fired straight up the field's center line, clear of both
-// obstacles and both paddles, into the top wall. specs/balls.md fixes the
-// result exactly: if `y - BALL_R < 0` and `vy < 0`, then `y = BALL_R` and `vy = -vy`. Speed is unchanged, so the bounce is a pure reflection.
+// The ball is fired straight up the field's center line into the top wall.
+// specs/balls.md fixes the result exactly: if `y - BALL_R < 0` and `vy < 0`,
+// then `y = BALL_R` and `vy = -vy`. Speed is unchanged, so the bounce is a pure
+// reflection.
+//
+// The field holds that ball and nothing else. Both obstacles are removed
+// rather than dodged, so nothing between the start and the wall can turn the
+// ball back and be read as the wall doing it; the paddles are field furniture
+// the game always has, so both are driven off the line the ball travels.
 //
 // Placement is read at the end of the frame of the contact. The frame is cut
 // into sub-steps, and a sub-step that follows the one that struck carries the
@@ -10,7 +16,7 @@
 // `BALL_R`, on the field side of it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BALL_R, FIELD_CX } from "../../src/constants";
+import { BALL_R, FIELD_CX } from "../constants";
 import {
   assertCloseTo,
   assertEqual,
@@ -48,7 +54,7 @@ afterEach(() => {
 });
 
 it("reflects the ball off the top wall", async () => {
-  await arrangeLiveBall(h, { x: FIELD_CX, y: START_Y, vx: 0, vy: -SPEED });
+  arrangeLiveBall(h, { x: FIELD_CX, y: START_Y, vx: 0, vy: -SPEED });
   const before = ball0(h.snapshot());
 
   const bounce = await captureReplay(h, "bounce", async () => {

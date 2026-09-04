@@ -11,9 +11,15 @@
 // short of its target, so the contact is at AI_SPEED and the spin it imparts is
 // `AI_SPEED * SPIN_FROM_PADDLE` (specs/balls.md), signed by the direction the
 // paddle is sweeping, which the paddle's own reported `vy` gives.
+//
+// The field holds that ball alone, so nothing on the approach can turn it
+// before the AI reaches it. Nothing here takes the AI's paddle: `setPaddleCy`
+// places it without changing whose it is, both of its faculties are on, and it
+// is the real opponent that swings. The human paddle, which cannot be removed,
+// is the one driven out of the way.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { AI_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { AI_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import {
   arrangeAiMovingHit,
@@ -54,7 +60,7 @@ afterEach(() => {
 });
 
 it("imparts AI_SPEED * SPIN_FROM_PADDLE of spin, signed by its sweep", async () => {
-  await arrangeAiMovingHit(harness);
+  arrangeAiMovingHit(harness);
 
   const contact = await captureReplay(harness, "curve", async () => {
     const rebound = await drivePaddleHit(harness, "right");

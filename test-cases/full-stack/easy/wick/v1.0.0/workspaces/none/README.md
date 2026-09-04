@@ -11,7 +11,8 @@ TypeScript, Vite, Vitest, ESLint and Prettier, wired to the commands below.
 
 ## What you own
 
-Everything under `src/`. The directory does not exist yet; create it.
+Everything under `src/`, and the assets under `assets/`. Neither directory
+exists yet; create them.
 
 `index.html` loads `/src/main.ts` as its entry point, so that module is where
 your build starts. Beyond that the structure is yours. You write the runtime a
@@ -28,19 +29,20 @@ browser game needs and the game itself on top of it:
 
 You also write the `window.__wick` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how
-the game is driven from code, so it is present and exactly as specified.
+the game is driven from code, so it is present and exactly as specified, its
+clock operations included, since nothing outside this build owns the clock.
 
 You also produce the game's sprites, icons, and audio with the asset tools on
-this machine's `PATH` and commit the produced files under `assets/`;
-`specs/assets.md` is the contract. The tools are absent when the build is
-installed and rebuilt elsewhere, so the build bundles the committed files and
-invokes no tool.
+this machine's `PATH` and commit the produced files under `assets/` at the
+paths `specs/assets.md` names; that file is the contract. The tools are absent
+when the build is installed and rebuilt elsewhere, so the build bundles the
+committed files and invokes no tool.
 
-Every figure the specification fixes is stated in `specs/`: the stage and the
-tick, the lamplighter's figures, every weapon's level table, the passive terms,
-the enemy roster and the spawn windows, the action names, the cue names, and
-the screen copy. Name each one once in your own module and read from it,
-rather than restating a number at each use.
+Every figure the specification fixes is stated in `specs/`, and the value
+stated there is authoritative: the stage and the tick, the lamplighter's
+figures, every weapon's level table, the passive terms, the enemy roster and
+the spawn windows, the action names, the cue names, the asset paths, and the
+screen copy.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
 runs them in process, in Node, with coverage over `src/`. `@napi-rs/canvas` is
@@ -74,7 +76,8 @@ entries and scripts alone.
   directory runs as-is on any static host, from a sub-path included.
 - `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all
   pass. The same four commands are run over the repository you leave behind.
-- The produced files under `assets/` are committed alongside your source.
+- The produced files under `assets/` are committed alongside your source, and
+  the game loads them.
 - **Replace this file** with the `README.md` `specs/overview.md` asks the
   finished build to ship: what the game is, how to install it, how to run it in
   development, how to produce the production build, and the controls.

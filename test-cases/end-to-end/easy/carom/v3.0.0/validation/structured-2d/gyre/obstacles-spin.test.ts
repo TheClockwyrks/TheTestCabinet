@@ -6,12 +6,29 @@
 // direction for both obstacles, upright at 0, so each reported angle is held to
 // the formula within the review item's 0.01 radians, modulo a full turn. The
 // center stays where it is: a rotation walks nothing across the field.
+//
+// The field holds the two obstacles and NOTHING else. They are the whole of what
+// this point is about, so the ball a match start would leave waiting is taken off
+// the field rather than left to serve itself into the middle of the sweep — the
+// posed clock is the only thing driving anything here.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../../src/constants";
+import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../constants";
 import { assertDeepEqual, assertLessThanOrEqual } from "../assert";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { angleDelta, poseObstacles, type ObstaclePose } from "./harness";
+import {
+  ALL_OBSTACLES,
+  captureReplay,
+  createHarness,
+  isolateField,
+  openCountdown,
+  type Harness,
+} from "../harness";
+import {
+  angleDelta,
+  obstacleAt,
+  poseObstacles,
+  type ObstaclePose,
+} from "./harness";
 
 /** The three clock times the obstacles are posed at, in seconds. */
 const TIMES = [0, 0.5, 1.0];
@@ -39,13 +56,9 @@ afterEach(() => {
 });
 
 it("rotates both obstacles about their own centers at OBSTACLE_SPIN_RATE", async () => {
-  const { debug } = harness;
-  debug.reset();
-  await harness.advance(1);
-  debug.startMatch("versus");
-  // One advanced frame settles each screen change (specs/instrumentation.md),
-  // so everything below acts on the open match.
-  await harness.advance(1);
+  await openCountdown(harness, "versus");
+  // Both obstacles, no ball: the subject of the point, and nothing else.
+  isolateField(harness, { balls: 0, obstacles: ALL_OBSTACLES });
 
   const samples: ObstaclePose[][] = [];
   await captureReplay(harness, "spin", async () => {
@@ -59,7 +72,7 @@ it("rotates both obstacles about their own centers at OBSTACLE_SPIN_RATE", async
 
   for (const [k, t] of TIMES.entries()) {
     for (const [i, base] of OBSTACLE_CENTERS.entries()) {
-      const pose = samples[k]![i]!;
+      const pose = obstacleAt(samples[k]!, i);
       assertLessThanOrEqual(
         Math.abs(angleDelta(pose.theta, OBSTACLE_SPIN_RATE * t)),
         ANGLE_TOLERANCE,

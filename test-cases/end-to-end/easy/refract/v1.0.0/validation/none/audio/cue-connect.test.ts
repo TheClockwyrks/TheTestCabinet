@@ -43,7 +43,14 @@ const AFTER_TICKS = 30;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // ARMED AT CREATION, which is the only way a harness is armed: the gesture that
+  // lets the build open its audio context is a real mouse press, and it goes in
+  // before the harness's opening `reset` — so whatever a build with a control in
+  // that corner did with it is restored before this check reads anything, while
+  // the audio it opened survives, because user activation is the page's rather
+  // than the game's. Every check in this file reads what the build SOUNDED, so
+  // every harness here asks for it.
+  h = await createHarness({ armAudio: true });
 });
 
 afterEach(async () => {
@@ -54,7 +61,6 @@ it("sounds on the frame the segment is added, and not before it", async () => {
   // A 3x1 board whose first segment neither completes the beam nor solves the
   // board, so the frame under test raises the connect event alone.
   const board = await loadBoard(h, R3_REDRAW);
-  await h.armAudio();
 
   const played = watchCues(h);
   const added = await captureReplay(h, "hit", async () => {

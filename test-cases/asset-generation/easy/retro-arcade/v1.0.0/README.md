@@ -20,7 +20,7 @@ instruction-following.
 
 | File | Seeded? | Purpose |
 | --- | --- | --- |
-| `test-case.toml` | manifest | Metadata, `[audio]` (format + `instrument_bank = "synthwave@0.1.0"`), `[tool]` (`music`), `[output]`, domain. |
+| `test-case.toml` | manifest | Metadata, `[audio]` (format + `packs = ["synthwave@0.1.0"]`), `[tool]` (`music`), `[output]`, domain. |
 | `specs/brief.md` | seeded | The self-contained brief: the mood to capture, length and loop, the instrumentation (model's choice), and the stereo image. |
 | `variants/base.toml` | — | The single default variant. |
 | `prompt.hbs` | rendered | The instruction handed to the harness (points at the brief and the tool). |
@@ -29,14 +29,13 @@ instruction-following.
 
 ## The instrument bank
 
-The case names `instrument_bank = "synthwave@0.1.0"`, a `name@version` palette
-baked into the `music` run-container image rather than a path in this repo. The
-audio lives on that image, and the run is scheduled onto it, so the
-vintage-synth palette is already present: bright lead and melody voices, punchy
-synth and sub bass, warm pads and synth brass/strings, and an electronic drum
-machine. Which of them to use is the model's choice. Core emits the rendered
-`clip.wav` and a portable `clip.mid` automatically, and neither is
-manifest-declared.
+The case declares `packs = ["synthwave@0.1.0"]`, a `name@version` ref rather
+than a path in this repo. The audio is not committed here, and the run
+container is staged with that bank and nothing else, so the vintage-synth
+palette is already present: bright lead and melody voices, punchy synth and
+sub bass, warm pads and synth brass/strings, and an electronic drum machine.
+Which of them to use is the model's choice. Core emits the rendered `clip.wav`
+and a portable `clip.mid` automatically, and neither is manifest-declared.
 
 ## Validate
 

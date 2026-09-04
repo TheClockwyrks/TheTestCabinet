@@ -186,7 +186,11 @@ item shows its verdict and per-verdict assertions, the failure cap and affected
 domains when a scored point fails, the validator script's detail, path, and
 ran state, and the implementation's replay beside the reference baseline's,
 scrubbed together. The browser is informational, so every visitor sees it, the
-public gallery included. The review form asks for one run-wide aesthetic tier
+public gallery included. Every run surface lists the case's checklist restricted
+to the run's engine: a point whose
+[validator does not cover that engine](/components/core/validation/) is not part
+of the run's checklist, so neither the browser nor the review form carries it.
+The review form asks for one run-wide aesthetic tier
 and the writeup, and lets the reviewer override any point's verdict inline on
 the pre-filled checklist; Publish is offered whether or not a review exists. On
 a legacy run the panel is the guided review: the checklist takes verdicts, the

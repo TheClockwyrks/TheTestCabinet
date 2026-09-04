@@ -53,7 +53,7 @@ import {
   GRID_ORIGIN_Y,
   GRID_ROWS,
   TILE,
-} from "../../src/constants";
+} from "../constants";
 import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   captureStill,

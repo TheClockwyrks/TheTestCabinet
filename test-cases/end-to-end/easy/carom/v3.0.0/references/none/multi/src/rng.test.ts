@@ -4,10 +4,10 @@
 // statistics of the draw.
 
 import { describe, expect, it } from "vitest";
-import { nextAngle, nextRandom, type RandomSource } from "./rng";
+import { nextAngle, nextRandom, seedRandom, type RandomSource } from "./rng";
 
 function draws(seed: number, count: number): number[] {
-  const source: RandomSource = { rngState: seed };
+  const source: RandomSource = { seed, rngState: seed };
   return Array.from({ length: count }, () => nextRandom(source));
 }
 
@@ -29,16 +29,33 @@ describe("nextRandom", () => {
   });
 
   it("advances the source's state", () => {
-    const source: RandomSource = { rngState: 7 };
+    const source: RandomSource = { seed: 7, rngState: 7 };
     nextRandom(source);
     expect(source.rngState).not.toBe(7);
     expect(Number.isInteger(source.rngState)).toBe(true);
   });
 });
 
+describe("seedRandom", () => {
+  it("puts both the seed and the generator's state at the seed given", () => {
+    const source: RandomSource = { seed: 0, rngState: 999 };
+    seedRandom(source, 42);
+    expect(source.seed).toBe(42);
+    expect(source.rngState).toBe(42);
+  });
+
+  it("replays the same draws after reseeding to the same value", () => {
+    const source: RandomSource = { seed: 0, rngState: 0 };
+    seedRandom(source, 12);
+    const first = [nextRandom(source), nextRandom(source)];
+    seedRandom(source, 12);
+    expect([nextRandom(source), nextRandom(source)]).toEqual(first);
+  });
+});
+
 describe("nextAngle", () => {
   it("stays inside the full circle", () => {
-    const source: RandomSource = { rngState: 5 };
+    const source: RandomSource = { seed: 5, rngState: 5 };
     for (let i = 0; i < 200; i++) {
       const angle = nextAngle(source);
       expect(angle).toBeGreaterThanOrEqual(0);
@@ -47,7 +64,7 @@ describe("nextAngle", () => {
   });
 
   it("reaches every quadrant over a run of draws", () => {
-    const source: RandomSource = { rngState: 5 };
+    const source: RandomSource = { seed: 5, rngState: 5 };
     const quadrants = new Set<number>();
     for (let i = 0; i < 200; i++) {
       quadrants.add(Math.floor(nextAngle(source) / (Math.PI / 2)));
@@ -57,7 +74,7 @@ describe("nextAngle", () => {
 
   it("replays the same angles from the same seed", () => {
     const angles = (seed: number): number[] => {
-      const source: RandomSource = { rngState: seed };
+      const source: RandomSource = { seed, rngState: seed };
       return Array.from({ length: 8 }, () => nextAngle(source));
     };
     expect(angles(77)).toEqual(angles(77));

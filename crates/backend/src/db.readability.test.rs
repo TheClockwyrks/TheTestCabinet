@@ -334,9 +334,15 @@ const RECORD_SCHEMA: &str = "../../apps/docs/public/schema/core/run-record.schem
 /// stored records still deserialize against it, or add a generation and raise
 /// [`RUN_RECORD_FORMAT`] to it, which makes every stored row re-decide its
 /// readability at the next boot.
+/// Generation 1's digest last moved when `DebugScriptResult` gained
+/// [`inconclusive`](tcab_core::validation::Inconclusive), which tells the
+/// inconclusive outcomes apart instead of reporting them all as one boolean. The
+/// generation did NOT rise with it, because a record stored before the change still
+/// deserializes: `precondition_unmet` is still carried and still `#[serde(default)]`,
+/// and the new field is an `Option` that is `None` on exactly those older records.
 const RECORD_SHAPES: &[(u32, &str)] = &[(
     1,
-    "07dc39b4d7323a05a7e74707ee6f6f7e6ceea2d1919e147c4914672abb47449c",
+    "e78f2e3b68b2f1ae6a78b421f36a8c4c34adf1580a25f8afa7058749b57b64b2",
 )];
 
 /// Render `value` canonically with its prose removed: object keys in sorted order,

@@ -9,6 +9,7 @@ import { createCanvas } from "@napi-rs/canvas";
 import {
   ConstantClock,
   createEngine,
+  type DiagnosticValue,
   type Engine,
   type SurfaceMetrics,
 } from "@test-cabinet/structured-2d";
@@ -19,7 +20,7 @@ import { diagnosticSources } from "./diagnostics";
 import { BACKGROUND, CaromGame, game } from "./game";
 
 let engine: Engine<CaromDebug>;
-let sources: Record<string, () => unknown>;
+let sources: Record<string, () => DiagnosticValue>;
 
 beforeEach(async () => {
   const canvas = createCanvas(FIELD_W, FIELD_H);
@@ -64,10 +65,14 @@ it("reports the title screen from a fresh boot", () => {
 });
 
 it("follows the live world into a match, across the level transition", async () => {
-  engine.debug.startMatch("versus");
-  engine.debug.setScore(3, 4);
-  engine.debug.setBall(0, { x: 500, y: 300, vx: 300, vy: 400 });
+  // A screen change may ride the transition the engine honors as the frame
+  // ends, so the frame is advanced before anything else is posed.
+  engine.debug.setScreen("countdown");
   await engine.advance(1);
+  engine.debug.setMode("versus");
+  engine.debug.setScore(3, 4);
+  engine.debug.setBallPosition(500, 300);
+  engine.debug.setBallVelocity(300, 400);
 
   expect(sources["screen"]()).toBe("countdown");
   expect(sources["mode"]()).toBe("versus");
@@ -76,9 +81,30 @@ it("follows the live world into a match, across the level transition", async () 
   expect(sources["ball vel"]()).toBe("300.0, 400.0 (500.0)");
 });
 
+it("reports a cleared field as having no ball", async () => {
+  engine.debug.setScreen("countdown");
+  await engine.advance(1);
+  engine.debug.clearWorld();
+
+  expect(sources["ball pos"]()).toBe("—");
+  expect(sources["ball vel"]()).toBe("—");
+  expect(sources["ball spin"]()).toBe("—");
+});
+
+it("reports the obstacle clock and whether it is running", async () => {
+  engine.debug.setScreen("countdown");
+  await engine.advance(1);
+  expect(String(sources["obstacles"]())).toContain("t 0.0");
+
+  engine.debug.setObstacleClockRunning(false);
+  engine.debug.setObstacleClock(1.25);
+  expect(sources["obstacles"]()).toBe("t 1.3 (held)");
+});
+
 it("reads and formats without disturbing the simulation", async () => {
-  engine.debug.startMatch("versus");
-  engine.debug.serve();
+  engine.debug.setScreen("countdown");
+  await engine.advance(1);
+  engine.debug.setBallHoldTimer(0);
   await engine.advance(10);
 
   const before = engine.debug.snapshot();

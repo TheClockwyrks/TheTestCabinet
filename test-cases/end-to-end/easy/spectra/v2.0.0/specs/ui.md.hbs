@@ -1,0 +1,210 @@
+# Spectra — Screens, the HUD, and audio
+
+This file defines the seven screens the game moves between, what each shows, the HUD
+readouts, and the audio cues. The keys the screens are driven by are in
+`specs/controls.md`, and the run the `inWave` screen carries is in
+`specs/progression.md`. Every piece of screen copy below carries the name this
+specification gives it.
+
+Every piece of text a screen shows is legible against whatever sits behind it at the
+logical stage size, `1280 x 720`. The palette, the type, and the layout of each
+screen are yours.
+
+## The screens
+
+The game is on exactly one of seven screens at a time.
+
+| Screen | What it is |
+| --- | --- |
+| `title` | The main menu, and where the game opens. |
+| `howto` | How to play. |
+| `stageIntro` | The hold that announces the stage about to be played. |
+| `inWave` | Live play, in the two phases `specs/progression.md` states. |
+| `paused` | The pause menu, over the frozen field. |
+| `stageCleared` | The interstitial between a finished stage and the next. |
+| `gameOver` | The run was lost. |
+
+### `title`
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `SPECTRA` |
+| Tagline | `TAGLINE_TEXT` | `TUNE TO SURVIVE` |
+| Menu | `TITLE_ITEMS` | The mode entry `specs/mode.md` names, then `HOW TO PLAY`, in that order |
+
+The menu's items are stacked one above the next under the title and the tagline. The
+highlighted item is the one the menu index names, counted from `0`, and it is drawn
+distinctly from the others, so a player always sees which item `confirm` would take.
+The highlight rests on the first item on arriving at the title. `confirm` takes the
+highlighted item:
+
+| Item | Does |
+| --- | --- |
+| The mode entry | Opens a new run and moves to `stageIntro` at stage `1`, with `START_LIVES` lives and a score of `0`. |
+| `HOW TO PLAY` | Moves to `howto`. |
+
+A dim slice of the starfield may show behind the menu if that suits the look you
+design.
+
+### `howto`
+
+How to play, written in a player's words rather than as rules of a system. It
+covers:
+
+- the goal, which is to clear each wave of drones before the last life is lost;
+- that the ship holds one band at a time, that only a matching shot destroys a
+  drone, and that the same band is the hull's shield;
+- that the flip costs a beat of fire;
+- the three drones and what each asks of the band system;
+- the resonance meter and the discharge it pays for;
+{{#if (eq variant.slug "overload")}}
+- what a wrong-band shot does to the drone it hits, as `specs/mode.md` states;
+{{/if}}
+- the controls.
+
+The controls it names include the movement keys, written as the standalone words
+`ARROWS` and `AD`, and the fire key, written as the standalone word `SPACE`. It
+names both bands by their labels from `BAND_LABELS`, `CYAN` and `MAGENTA`.
+
+`back` returns to `title`, with the title's highlight at the first item.
+
+### `stageIntro`
+
+A hold before the wave, over the field. It draws `HUD_STAGE_LABEL` (`STAGE`) and the
+stage's number; on a challenge stage it draws `CHALLENGE_BANNER`
+(`CHALLENGING STAGE`) as well.
+
+It lasts `STAGE_INTRO_HOLD` (`2.0`) seconds and then opens the live wave, at which
+moment the stage's wave is built as `specs/stages.md` states.
+
+### `inWave`
+
+The live field, carrying everything `specs/overview.md` lists, with the HUD strips
+above and below. It runs in the `live` and `ready` phases. During the `ready` phase
+it draws `READY_TEXT` (`READY`) over the field.
+
+### `paused`
+
+Reached by `pause` during live play. The field stays visible behind the menu and is
+frozen: no drone moves, no bullet travels, no phase timer runs, none of the clocks
+the wave keeps advances, and no cue plays, so a paused game is exactly where it was
+when it was paused.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Menu | `PAUSE_ITEMS` | `RESUME`, `RESTART`, `QUIT TO MENU`, in that order |
+
+| Item | Does |
+| --- | --- |
+| `RESUME` | Returns to `inWave` with the field and the run exactly as they were. |
+| `RESTART` | Opens a new run, at stage `1` with `START_LIVES` lives and a score of `0`, and moves to `stageIntro`. |
+| `QUIT TO MENU` | Returns to `title`, with the title's highlight at the first item. |
+
+### `stageCleared`
+
+The interstitial a finished stage opens. It lasts `STAGE_CLEARED_HOLD` (`2.6`)
+seconds and then opens the next stage's intro, with the stage number one higher.
+
+| After | It reports |
+| --- | --- |
+| A standard stage | That the stage was cleared, and the `SCORE_STAGE_CLEAR` bonus paid |
+| A challenge stage in which every drone was destroyed | `PERFECT_TEXT` (`PERFECT!`) |
+| A challenge stage in which a drone survived | The count of drones destroyed |
+
+### `gameOver`
+
+Opened when the last life is lost. It draws the run's final score and the stage it
+reached.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Menu | `GAME_OVER_ITEMS` | `PLAY AGAIN`, then `MENU` |
+
+| Item | Does |
+| --- | --- |
+| `PLAY AGAIN` | Opens a new run, at stage `1` with `START_LIVES` lives and a score of `0`, and moves to `stageIntro`. |
+| `MENU` | Returns to `title`, with the title's highlight at the first item. |
+
+## The HUD
+
+The two HUD strips carry five readouts, each inside the strip `specs/field.md` puts
+it in.
+
+| Readout | Shows |
+| --- | --- |
+| Score | The running score, as digits. It is the most prominent readout. |
+| Stage | `HUD_STAGE_LABEL` (`STAGE`) and the current stage's digits. |
+| Lives | The lives remaining, as a row of icons or as a count. It changes as the lives change. |
+| Resonance meter | The meter, as a bar whose filled extent grows with it from empty at `0` to full at `RESONANCE_MAX`. A full meter is drawn distinctly from one a point below full, so a player sees that a discharge is ready. |
+| Polarity indicator | The ship's current band, in that band's color and shape accent, with its label from `BAND_LABELS` (`CYAN`, `MAGENTA`). It follows a flip in the frame the flip happens, and it always agrees with the band drawn on the ship. |
+
+The bottom strip also carries a mute indicator. It is drawn whenever sound is muted
+and is absent whenever it is not, and it is the only thing about the HUD or the
+field that mute changes.
+
+While a spectral inversion is active the play field carries a field-wide mark that
+is absent otherwise, so a player sees at a glance that the bands are swapped.
+
+Nothing else is required on either strip, and a further readout of your own is
+welcome there.
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write, synthesizing its sounds with the
+Web Audio API rather than loading audio files. Define and play the nine cues below,
+under exactly these names, one per event.
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the engine's cue bus. Define and play the nine cues below, under
+the names `CUES` gives them, one per event.
+{{else}}
+Audio plays through the engine's cue bus: define the nine cues below from the game
+instance's `initialize`, under the names `CUES` gives them, and play them from the
+world's audio inside a tick, one per event.
+{{/if}}
+
+| Cue | Played when |
+| --- | --- |
+| `fire` | The ship fires a shot. |
+| `flip` | The ship flips its band. |
+| `absorb` | The hull absorbs an enemy bullet of its own band. |
+| `kill` | A matching shot destroys a drone or a Prism's layer. |
+| `discharge` | A discharge is released. |
+| `inversion` | A spectral inversion begins. |
+| `hit` | A life is lost. |
+| `stage-clear` | A stage clears. |
+| `menu` | A menu highlight moves. |
+
+`specs/mode.md` states whether the mode this build ships plays a cue of its own
+beside these.
+
+Each is a distinct short sound, so the events are told apart by ear. Each is played
+on the frame its event happens and at most once on that frame; a frame that raises
+more than one of them plays each of those once.
+
+{{#if (eq engine.slug "none")}}
+Muting is yours as well, and the `mute` action toggles it from any screen. While
+sound is muted the game starts no sound at all: a muted cue is not played and then
+silenced, it is not played, so no source is started and no node is scheduled for it.
+The game stays fully playable muted.
+
+No sound is started between the page loading and the player's first key press, and a
+build whose audio cannot start still runs and still plays.
+{{else}}
+Muting and the first-interaction unlock belong to the engine, and the `mute` action
+toggles the engine's mute bit from any screen. While sound is muted the game starts
+no sound at all: it plays no cue rather than playing one for the bus to silence, so
+no cue reaches the bus while muted. The game stays fully playable muted.
+
+No sound is started between the page loading and the player's first key press: the
+game plays no cue before that first input.
+{{/if}}
+
+## Out of scope
+
+- Network or online play.
+- Pointer, touch, and gamepad input. The game is played from the keyboard.
+- Persistence of progress, scores, or settings between sessions. Each session starts
+  fresh.
+- Capturing or turning a drone, an escort ship, or a weapon upgrade. The ship's one
+  weapon is the band-carrying shot.

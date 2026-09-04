@@ -6,9 +6,10 @@
 // narrowest score that satisfies it.
 //
 // A point in multi does not stop the field, so what ends the match here is the
-// win rule alone — the balls are still in play right up to the frame the
-// match-over screen replaces them. The two balls this check is not about are
-// parked, so the score that reaches the win is the one this check drove.
+// win rule alone — the ball is still in play right up to the frame the match-over
+// screen replaces it. The field is cleared back to the one ball this check
+// drives, so the score that reaches the win is the one this check drove and no
+// other ball can add to it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -16,19 +17,19 @@ import { WIN_LEAD, WIN_SCORE } from "../constants";
 import {
   arrangeGoal,
   captureStill,
-  createHarness,
+  createMultiHarness,
   startPlaying,
-  type Harness,
+  type MultiHarness,
 } from "../harness";
 
 /** 10-9 here: one point short, with the lead the win rule needs about to land. */
 const P1_BEFORE = WIN_SCORE - 1;
 const P2_BEFORE = WIN_SCORE - WIN_LEAD;
 
-let h: Harness;
+let h: MultiHarness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createMultiHarness();
 });
 
 afterEach(async () => {

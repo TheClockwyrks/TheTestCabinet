@@ -25,7 +25,6 @@
 // stage, far too narrow for a bar carrying anything the game actually drew.
 
 import { afterEach, it } from "vitest";
-import { BRIGHT_HOLD, STAGE_H, STAGE_W } from "../../src/constants";
 import {
   assertCloseTo,
   assertDeepEqual,
@@ -34,6 +33,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
+import { BRIGHT_HOLD, STAGE_H, STAGE_W } from "../constants";
 import { poseMaze } from "../fixtures";
 import {
   captureStill,

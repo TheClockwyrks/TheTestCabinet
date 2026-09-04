@@ -9,12 +9,28 @@ and `specs/program.md`; what each screen shows is `specs/ui.md`.
 The runtime layer you write delivers the input: it maps the key bindings below
 to the actions the game reads, and it reports the pointer's position in logical
 stage units along with its press and release edges.
+{{else if (eq engine.slug "simple-3d")}}
+The {{engine.name}} engine delivers the input, and its own documentation
+defines the API. The game registers each action below against its bindings as
+it initializes, through `InitApi.input`, and reads them every frame from
+`UpdateApi.input`: `value` for what an action is doing and `pressed` for its
+press edge, which the first read of the frame consumes. The pointer is read
+from the same place, `pointer` for its position and whether it is held and
+`pointerPressed` and `pointerReleased` for its edges, and its position arrives
+in logical stage units, on the same axes the readouts are laid out on. A
+position on the stage names a line through the yard rather than a point in it,
+and the engine's view turns one into the other.
 {{else}}
-The {{engine.name}} engine delivers the input: the game registers the actions
-below against their bindings, and the engine reports the pointer's position in
-logical stage units along with its press and release edges. The engine's own
-documentation defines the input API; this file states what Gantry registers
-and does with it.
+The {{engine.name}} engine delivers the input, and its own documentation
+defines the API. The game registers each action below against its bindings from
+the game instance's `initialize`, and a player controller is where they are
+read: `value` for what an action is doing and `pressed` for its press edge,
+which that controller's first read of the frame consumes. The controller reads
+the pointer from the same reader, `pointer` for its position and whether it is
+held and `pointerPressed` and `pointerReleased` for its edges, and its position
+arrives in logical stage units, on the same axes the screen components are laid
+out on. A position on the stage names a line through the yard rather than a
+point in it, and the world's camera turns one into the other.
 {{/if}}
 
 ## The actions
@@ -22,31 +38,46 @@ and does with it.
 | Action | Binding (`KeyboardEvent.code`) | Does |
 | --- | --- | --- |
 | `up`, `down`, `left`, `right` | `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight` | menu navigation; camera orbit on the 3D screens |
-| `zoom-in`, `zoom-out` | `Equal`, `Minus` | camera distance |
-| `confirm` | `Enter` | take the highlighted menu item |
-| `back` | `Escape` | leave the screen, as `specs/ui.md` states per screen; abort on the run screen; cancel a pending first node on the build screen |
-| `tool-strut` | `Digit1` | select the strut tool |
-| `tool-cable` | `Digit2` | select the cable tool |
-| `tool-rail` | `Digit3` | select the rail tool |
-| `tool-ring` | `Digit4` | select the ring tool |
-| `tool-counterweight` | `Digit5` | select the counterweight tool |
-| `tool-delete` | `Digit6` | select the delete tool |
-| `undo` | `KeyZ` | undo the most recent structure edit |
-| `check` | `KeyC` | the static check, on the build screen (`specs/instrumentation.md`) |
+| `zoom-in`, `zoom-out` | `Equal`, `Minus` | camera distance on the 3D screens |
+| `confirm` | `Enter` | take the highlighted menu item, on the screens showing a menu |
+| `back` | `Escape` | back out, as the table below states |
+| `tool-strut` | `Digit1` | select the strut tool, on the build screen |
+| `tool-cable` | `Digit2` | select the cable tool, on the build screen |
+| `tool-rail` | `Digit3` | select the rail tool, on the build screen |
+| `tool-ring` | `Digit4` | select the ring tool, on the build screen |
+| `tool-counterweight` | `Digit5` | select the counterweight tool, on the build screen |
+| `tool-delete` | `Digit6` | select the delete tool, on the build screen |
+| `undo` | `KeyZ` | undo the most recent structure edit, on the build screen |
+| `check` | `KeyC` | the static check, on the build screen (`specs/structure.md`) |
 | `program` | `KeyP` | build screen to program screen |
 | `build` | `KeyB` | program screen to build screen |
 | `run` | `KeyG` | start the run, from build or program (`specs/program.md`) |
 | `speed` | `KeyS` | cycle `RUN_SPEEDS` on the run screen |
 | `mute` | `KeyM` | toggle sound, on every screen |
 
-The tool, undo, check, and screen-switch actions apply where the table says
-and do nothing elsewhere; the menus are driven by the four directions,
-`confirm`, and `back` alone.
+`ACTIONS` holds those action names in the order above, and `BINDINGS` the keys
+that fire each. Every action applies where the table says and does nothing
+elsewhere; the menus are driven by the four directions, `confirm`, and `back`
+alone.
+
+`back` resolves against the first of these that applies:
+
+| Where | What `back` does |
+| --- | --- |
+| The build screen, with a pending node held | Clears the pending node and stays on the build screen |
+| The run screen, with a run in progress | Aborts the run and returns to the build screen (`specs/program.md`) |
+| Anywhere else | Leaves the screen for the one `specs/ui.md` gives it, and does nothing on `title`, which has none |
 
 ## The camera
 
 The build, program, and run screens show the 3D yard through an orbit camera:
 it looks at `CAMERA_TARGET` (`(0, 6, 0)`) from a yaw, a pitch, and a distance.
+The camera stands at `CAMERA_TARGET` plus
+`dist * (cos(pitch) * cos(yaw), sin(pitch), cos(pitch) * sin(yaw))` and looks
+back at the target with `+y` up, both angles in degrees. At yaw `0` it stands
+toward `+x` of the target, a positive yaw carries it from `+x` toward `+z` as
+every yaw in the game does (`specs/world.md`), and a positive pitch raises it
+above the target's level.
 
 | Figure | Value |
 | --- | --- |
@@ -57,29 +88,44 @@ it looks at `CAMERA_TARGET` (`(0, 6, 0)`) from a yaw, a pitch, and a distance.
 | Zoom rate | `ZOOM_RATE` (`20`) units/s |
 | Drag orbit | `ORBIT_PER_PX` (`0.25`) degrees per logical pixel |
 
-The four direction actions orbit, `left` and `right` in yaw and `up` and
-`down` in pitch, and the zoom actions move the distance, each against the
-frame's delta time. Dragging the pointer orbits too: a press that is not a
-click (below) turns yaw and pitch by `ORBIT_PER_PX` per logical pixel of
-pointer movement. The camera pose persists across the three screens and
-resets to the start pose when a site is opened.
+`right` raises the yaw and `left` lowers it, `up` raises the pitch and `down`
+lowers it, each turning at `ORBIT_KEY_RATE` while its action is held; `zoom-in`
+lowers the distance and `zoom-out` raises it at `ZOOM_RATE`. All four run
+against the frame's delta time. Dragging the pointer turns the camera the same
+way: rightward movement moves the yaw as `right` does, movement toward the top
+of the stage moves the pitch as `up` does, and each turns by `ORBIT_PER_PX` per
+logical pixel of that movement. Pitch is held inside its limits and distance
+inside its; yaw runs free and wraps, staying at or above `0` and below `360`.
+The camera pose persists across the three screens and resets to the start pose
+when a site is opened.
 
-## Clicks and picking
+## Clicks and drags
 
-On the build screen the pointer both orbits and edits, told apart by
-movement: a press that moves less than `CLICK_SLOP` (`6`) logical pixels
-before its release is a click, applied at the release position; anything
-longer is an orbit drag and edits nothing.
+A press is a click or an orbit drag, told apart by how far it travels. A press
+whose pointer stays less than `CLICK_SLOP` (`6`) logical pixels from the
+position it went down at is a click, applied at the position it was released
+from. A press whose pointer reaches `CLICK_SLOP` from that position is an orbit
+drag from that moment until it is released, whether or not the pointer comes
+back inside. A drag turns the camera by the movement it makes after it becomes
+one; the movement that carried it across the boundary turns nothing.
 
-A click picks by screen distance:
+A drag edits nothing, and a click edits the structure on the build screen
+alone: a press that starts on one of the program screen's tape widgets works
+that widget rather than the camera, and a press on the run screen turns the
+camera and nothing else.
 
-- A node pick considers every lattice node in the envelope, projected to the
-  stage; the candidate is the nearest within `NODE_PICK_PX` (`20`) logical
-  pixels of the click, ties going to the node nearest the camera. The
-  candidate under the pointer is highlighted before the click, so the player
-  sees what a click would take.
+On the build screen a click picks by screen distance:
+
+- A node pick considers every lattice node in the envelope that stands in
+  front of the camera, projected to the stage; the candidate is the nearest at
+  most `NODE_PICK_PX` (`20`) logical pixels from the click, ties going to the
+  node nearest the camera, and then to the node lower in `x`, then in `y`,
+  then in `z`. The candidate under the pointer is highlighted before the
+  click, so the player sees what a click would take.
 - A member pick considers every member's projected segment; the candidate is
-  the nearest within `MEMBER_PICK_PX` (`12`) logical pixels.
+  the nearest at most `MEMBER_PICK_PX` (`12`) logical pixels from the click,
+  ties going to the member whose nearest point on that segment is nearest the
+  camera, and then to the lower member id.
 
 A click with no candidate in range does nothing.
 
@@ -94,14 +140,20 @@ beyond the refusal being visible in the moment (`specs/ui.md`).
   them and clears the pending node. A second click on the pending node itself,
   or `back`, clears it without placing. A second click that the rules refuse
   leaves the pending node held, so a slip does not cost the selection.
-  Switching tools keeps a pending node; it belongs to the placement, not the
-  material.
 - Ring: a click places the ring by its base corner at the picked node.
 - Counterweight: a click on a node without a counterweight places one there; a
   click on a node carrying one removes it.
 - Delete: a click removes what it picks, the nearest in screen distance of a
   member within `MEMBER_PICK_PX`, a counterweight within `NODE_PICK_PX` of its
-  node, or the ring within `NODE_PICK_PX` of any of its eight flange nodes.
+  node, or the ring within `NODE_PICK_PX` of any of its eight flange nodes. A
+  tie goes to the member, then the counterweight, then the ring.
+
+A pending node belongs to the placement rather than the tool, so it survives
+every tool switch. The ring, counterweight, and delete tools neither read it
+nor clear it: a click under one of them does what its bullet says and leaves
+the pending node held. Placing the member, a click on the pending node itself,
+`back` on the build screen, and opening a site are the whole of what clears it;
+`back` on any other screen leaves it held, as the table above states.
 
 `undo` reverses the most recent structure-changing edit, as far back as the
 site was opened, exactly as `specs/structure.md` states.
@@ -117,5 +169,6 @@ reflected in the state's program (`specs/state.md`).
 
 ## The run screen
 
-The run screen takes `speed`, `mute`, and `back` alone: watching, not
-steering, with `back` aborting as `specs/program.md` states.
+The run screen takes the camera actions, a pointer drag on the camera,
+`speed`, `mute`, and `back` alone: the player turns the camera and watches
+rather than steering, with `back` aborting as `specs/program.md` states.

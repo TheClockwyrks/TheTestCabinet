@@ -1,15 +1,22 @@
-// Carom — ui/state-howto: How to Play is reachable from the menu, and it names
-// the movement keys.
+// Carom — ui/state-howto: the how-to screen names the movement keys.
 //
-// The menu is navigated with real key events — two moves down to the third
-// entry, then confirm — so what opens the screen is the build's own menu
-// handling through the actions the case binds, not a state assignment.
+// specs/ui.md gives the how-to screen one job — it "names the controls and
+// describes the spin and obstacle mechanics" — and fixes no copy for it beyond
+// that. So what is read is that the frame's text names the movement keys the case
+// binds: `W` and `S` as keys of their own, and the arrow keys by name or glyph.
+// How the screen reads as a whole is the reviewer's, from the capture.
 //
-// The specification fixes no copy for the screen beyond that it "names the
-// controls" (specs/ui.md, specs/overview.md), so what is read is that the
-// frame's text names the movement keys the case binds: `W` and `S` as keys of
-// their own, and the arrow keys by name or glyph. How the screen reads is the
-// reviewer's, from the capture.
+// The screen is POSED. `openHowTo` is `reset`, `setMenuIndex(0)` and
+// `setScreen("howto")` — the three atomic poses that are exactly the state
+// specs/ui.md says arriving there leaves — rather than the title menu walked with
+// keys. Reaching this screen from the title is `navigation/title-howto` and
+// `navigation/space-confirms`' point, and a build with a broken title menu and a
+// perfectly good how-to page must fail those and pass this one.
+//
+// The field is left as the title state holds it behind the screen. Nothing
+// advances on `howto` (specs/ui.md) and no ball and no obstacle can draw a run of
+// text, so there is nothing here to remove. Nothing takes a paddle: this screen
+// is not driven through one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";
@@ -17,6 +24,7 @@ import {
   captureStill,
   createHarness,
   drawnText,
+  openHowTo,
   type Harness,
 } from "../harness";
 
@@ -30,12 +38,8 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("opens the how-to-play screen from the menu and names the movement keys", async () => {
-  h.debug.reset();
-  await h.tap("ArrowDown"); // SOLO -> VERSUS
-  await h.tap("ArrowDown"); // VERSUS -> HOW TO PLAY
-  await h.tap("Enter");
-
+it("draws a how-to-play screen naming the movement keys", async () => {
+  openHowTo(h);
   h.calls.length = 0;
   await h.advance(1);
   captureStill(h, "howto");

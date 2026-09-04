@@ -13,15 +13,16 @@
 // are the ones the check's own section drove rather than whatever the page's own
 // animation loop painted while nobody was looking.
 //
-// AND IT CHECKS THE RECORDER ITSELF. `recorder-init.js` is the case's own port of
-// the engine's recorder, and it has to write the document the console's player
-// reads — the shared tables, the recipe of every value the context produced, the
-// pixels a frame blits, the state a frame inherited down to its clip and its save
-// stack — or a reviewer scrubs a picture the build never drew. Nothing else in
-// this project looks at any of that: the suites read which CALLS a frame made,
-// which is one field of one table. The tests below drive the page's own 2D
-// context through scripted frames, so each rule of the format is asserted against
-// the recorder that will actually record a run.
+// AND IT CHECKS THE RECORDER ITSELF. The shared harness's `recorder-init.js` is
+// injected into the page before a line of the build runs, and it has to write the
+// document the console's player reads — the shared tables, the recipe of every
+// value the context produced, the pixels a frame blits, the state a frame
+// inherited down to its clip and its save stack — or a reviewer scrubs a picture
+// the build never drew. Nothing else in this project looks at any of that: the
+// suites read which CALLS a frame made, which is one field of one table. The
+// tests below drive the page's own 2D context through scripted frames, so each
+// rule of the format is asserted against the recorder that will actually record
+// a run.
 //
 // No review item names this file, so a run never loads it. It runs with the whole
 // project, which is how a case author runs these suites while writing them:
@@ -416,7 +417,7 @@ it("records a gradient the context made before the recorder was armed", async ()
   // that only watched while armed would write an opaque marker for every fill of
   // every frame and hand the reviewer a picture with no fills in it.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     const fill = ctx.createLinearGradient(0, 0, 8, 0);
@@ -458,7 +459,7 @@ it("gives each use of a gradient the stops that use actually had", async () => {
   // differently the second time, and a recipe list shared between the two uses
   // would paint the first fill under a stop it never had.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -497,7 +498,7 @@ it("carries a matrix a context call answered as data, not as a recipe", async ()
   // answer the player's transform instead of the build's, and every operation
   // after it would draw in the wrong place with the frame reported as clean.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -530,7 +531,7 @@ it("captures what a frame blits, and captures it again when its pixels change", 
   // replaces — so it is captured at every use and the entries are shared only
   // when the bytes match.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     const source = document.createElement("canvas");
@@ -573,7 +574,7 @@ it("writes a coordinate to nine significant digits", async () => {
   // operations a frame apart from being the same operation. Nine digits over the
   // field's own units resolve to about a millionth of a pixel.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -596,7 +597,7 @@ it("carries the states a frame had saved under it", async () => {
   // frame left rather than the state it returned to, so the stack is part of what
   // a frame inherits.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -629,7 +630,7 @@ it("carries the clip a frame inherited, with the transform it was cut under", as
   // last `beginPath`, the `clip` call itself, and the transform in force, because
   // a clip path is given in user space.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -668,7 +669,7 @@ it("draws the same pixels for a value it cannot carry", async () => {
   // carries a visited set, a depth bound and a guard, and a value it cannot walk
   // records as the marker every other uncarriable value gets.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     const cyclic: Record<string, unknown> = {};
@@ -725,7 +726,7 @@ it("reports the same operations to a check whether or not a capture is running",
   // resolve an index into tables it never receives — least of all into tables a
   // finished recording has already emptied.
   const both = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     const draw = (): void => {
       ctx.measureText("carom");
@@ -776,7 +777,7 @@ it("captures an SVG image, and captures it again when it is re-pointed", async (
   // `currentSrc` leaves the whole type opaque and, once it does capture one,
   // keeps handing back the file it used to hold.
   const recording = await h.page.evaluate(async (design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
 
@@ -847,7 +848,7 @@ it("carries the path a frame inherited, split by the transform it was built unde
   // then issued a bare `fill()` would fill the outline of its clip instead of the
   // shape the build built.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -889,7 +890,7 @@ it("gives a saved state an empty path", async () => {
   // state the frame opened with, and a stack entry that carried one would have the
   // player replay it again at every level it pushes.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -924,7 +925,7 @@ it("puts back the clip a restore returns to", async () => {
   // stand would hand every later frame a region the context is not clipped to, and
   // a player would draw them all through it with nothing reported.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -964,7 +965,7 @@ it("throws away the save stack, the clip and the path on a reset", async () => {
   // things the recorder shadows are the three a later frame would otherwise go on
   // inheriting from before it.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -996,7 +997,7 @@ it("throws away the same three when the canvas is resized", async () => {
   // operation and before each state snapshot, and a size that moved means
   // everything the recorder shadows is gone.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const canvas = document.querySelector("canvas")!;
     const ctx = canvas.getContext("2d")!;
     ctx.reset();
@@ -1036,7 +1037,7 @@ it("retakes the state a frame inherits when the resize lands before it draws", a
   // a fill the context no longer has, and every operation of the frame replays
   // under them.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const canvas = document.querySelector("canvas")!;
     const ctx = canvas.getContext("2d")!;
     ctx.reset();
@@ -1071,7 +1072,7 @@ it("bounds an unbalanced save, and keeps the innermost levels", async () => {
   // of the recording. What is kept past the bound is what a `restore` can still
   // reach, which is the innermost end.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1111,7 +1112,7 @@ it("refuses a clip whole rather than carrying the region past the bound", async 
   // at a time drives it to 2,047, which is a state every frame open re-encodes and
   // a figure the format says a document cannot carry.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1147,7 +1148,7 @@ it("holds no table entry a mid-frame wipe left with no frame naming it", async (
   // never draws either. The tables are built from the frames that survived, so what
   // a dropped operation named goes with it.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const canvas = document.querySelector("canvas")!;
     const ctx = canvas.getContext("2d")!;
     ctx.reset();
@@ -1191,7 +1192,7 @@ it("resolves a gradient as of the paint, not as of the assignment", async () => 
   // — so a recording that stated what the assignment stated would replay a solid
   // red fill over every pixel of the rect and report the frame as clean.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1233,7 +1234,7 @@ it("resolves a gradient a restore put back the same way", async () => {
   // paints a two-stop gradient and a recording that let the restore stand would
   // replay the one-stop gradient the state was pushed with.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1269,7 +1270,7 @@ it("re-encodes a saved state at the frame that carries it", async () => {
   // under whatever stops it has when the frame a `restore` lands in resolves it.
   // Pinning the recipe at the save would replay the earlier picture.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1301,7 +1302,7 @@ it("holds a pattern to the picture its source had when it was made", async () =>
   // that reuses one scratch canvas would have every pattern replay under the last
   // picture painted into it — every pixel of the fill wrong, and nothing reported.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     const source = document.createElement("canvas");
@@ -1338,7 +1339,7 @@ it("finds a value the context produced inside an argument", async () => {
   // marker where the engine's recorder writes a resource, and two recorders that
   // answer one drawing with two documents are two formats.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1370,7 +1371,7 @@ it("carries an ImageData as its own bytes", async () => {
   // eight bits twice and comes back a different colour. An `ImageData` is the one
   // kind of image a check compares byte for byte, so it is carried byte for byte.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     const pixels = ctx.createImageData(2, 1);
@@ -1400,7 +1401,7 @@ it("follows a value as deep as the format pins, and no deeper", async () => {
   // a bound they disagreed on would have them answer the same drawing with two
   // different documents.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     const nest = (levels: number): Record<string, unknown> => {
@@ -1434,7 +1435,7 @@ it("writes a matrix to nine significant digits", async () => {
   // transform back, and a pair of them that differ past the ninth digit are two
   // operations where the picture has one.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1472,7 +1473,7 @@ it("writes an inherited transform and dash to nine significant digits", async ()
   // written at full expansion is also a state block that stops matching the one
   // before it, so the table holds a copy per frame.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1524,7 +1525,7 @@ it("keeps recording the surface the section was armed on", async () => {
   // would ask an idle one, and the review point's declared replay output would
   // simply never turn up.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1563,8 +1564,7 @@ it("gives back what a frame the document will not hold was charged", async () =>
   const FRAMES = 2401;
   const recording = await h.page.evaluate(
     ({ design, frames }) => {
-      const rec = (window as unknown as { __caromRec: PageRecorder })
-        .__caromRec;
+      const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
       const ctx = document.querySelector("canvas")!.getContext("2d")!;
       ctx.reset();
       const source = document.createElement("canvas");
@@ -1626,7 +1626,7 @@ it("sees a reset that leaves the canvas exactly the size it was", async () => {
   // sees nothing at all, and every frame after it inherits a clip and a stack the
   // context no longer has.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const canvas = document.querySelector("canvas")!;
     const ctx = canvas.getContext("2d")!;
     ctx.reset();
@@ -1660,7 +1660,7 @@ it("drops the operations a reset inside the frame wiped", async () => {
   // frame holds is what its last operation left on the canvas, and a check reading
   // the frame's calls is answered the same way.
   const scripts = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const canvas = document.querySelector("canvas")!;
     const ctx = canvas.getContext("2d")!;
     ctx.reset();
@@ -1693,7 +1693,7 @@ it("captures a blit's source as it was before the blit", async () => {
   // call it holds what the blit produced, and the replay composites the picture on
   // top of itself.
   const probe = await h.page.evaluate(async (design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const canvas = document.querySelector("canvas")!;
     const ctx = canvas.getContext("2d")!;
     ctx.reset();
@@ -1737,7 +1737,7 @@ it("records a mutation made through a value read back off the context", async ()
   // returned the raw value would make every one of them invisible — the build
   // paints two stops and the replay paints one.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1778,8 +1778,7 @@ it("bounds the current path, and says so on the frame", async () => {
   const SHADOW_OPS = 1024;
   const recording = await h.page.evaluate(
     ({ design, bound }) => {
-      const rec = (window as unknown as { __caromRec: PageRecorder })
-        .__caromRec;
+      const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
       const ctx = document.querySelector("canvas")!.getContext("2d")!;
       ctx.reset();
       rec.arm(design);
@@ -1811,7 +1810,7 @@ it("bounds the clip region, and says so on the frame", async () => {
   // region past the bound is refused whole rather than kept in part: half a clip
   // path is a region the build never had.
   const recording = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1847,8 +1846,7 @@ it("carries the remainder of an over-long value as one marker", async () => {
   const ENCODE_NODES = 65536;
   const summary = await h.page.evaluate(
     ({ design, bound }) => {
-      const rec = (window as unknown as { __caromRec: PageRecorder })
-        .__caromRec;
+      const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
       const ctx = document.querySelector("canvas")!.getContext("2d")!;
       ctx.reset();
       rec.arm(design);
@@ -1898,7 +1896,7 @@ it("resolves a value reached down many paths once", async () => {
   // the cycle guard cannot double as one, because a node still being walked is a
   // cycle where one that finished is sharing.
   const probe = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     let reads = 0;
@@ -1947,7 +1945,7 @@ it("carries a field named __proto__ as a field", async () => {
   // carries. Asserted inside the page, because Playwright's serializer drops such
   // a field on the way out and would report the defect as the fix.
   const probe = await h.page.evaluate((design) => {
-    const rec = (window as unknown as { __caromRec: PageRecorder }).__caromRec;
+    const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
     const ctx = document.querySelector("canvas")!.getContext("2d")!;
     ctx.reset();
     rec.arm(design);
@@ -1983,8 +1981,7 @@ it("charges the capture budget what a pixel buffer costs to carry", async () => 
   const SIDE = 1448;
   const summary = await h.page.evaluate(
     ({ design, side }) => {
-      const rec = (window as unknown as { __caromRec: PageRecorder })
-        .__caromRec;
+      const rec = (window as unknown as { __tcabRec: PageRecorder }).__tcabRec;
       const ctx = document.querySelector("canvas")!.getContext("2d")!;
       ctx.reset();
       rec.arm(design);

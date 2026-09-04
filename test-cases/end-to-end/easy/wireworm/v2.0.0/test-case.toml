@@ -1,0 +1,2673 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+#
+# THE ORDER OF THIS FILE MATTERS. Every ROOT key — `variants`, `assets`, `init`,
+# `max_runtime_hours`, `engines` and the metadata above them — must precede the
+# first table header. A root key written after a header such as
+# `[instrumentation]` parses as a member of THAT table (`instrumentation.assets`),
+# and the case then resolves declaring no assets and no variants at all. The
+# layout below is Refract's and Fathom's, key for key.
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "wireworm"
+
+# Human-readable display name for this test case.
+name = "Wireworm"
+
+# Relative difficulty of this case, surfaced on the site. Wireworm asks for a
+# segmented worm that winds a tile field and splits into independent worms when
+# shot, a charged-terrain model with a chain-reaction discharge, three foes that
+# each manipulate the field, a field that thickens from the player's own fire, a
+# band-bound cursor, and a twelve-level run with a win and a loss. It is a lot of
+# machinery, but every piece of it is a rule stated over a 40x20 grid: there is no
+# physics, no opponent to model, and nothing that has to be tuned by feel.
+# Difficulty rates how demanding the THINKING is, not how long the build takes —
+# `max_runtime_hours` below is where the size of the job is accounted for. So easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "shooter"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A fixed-shooter descent through a field of charged nodes: a segmented data-worm \
+winds down the board, every node it bumps gains charge, and a bolt into a \
+critical node detonates a chain-arc that clears the cluster and fries the worm \
+through it."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Required per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version. The site aggregates every
+# version's entry, newest first, into the case's changelog. Like `description`,
+# it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected engine) and handed to the model as
+# the build instruction. It injects absolute in-container paths through template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. It exists so a stuck or runaway session cannot run unbounded, not to
+# make the job tight. Wireworm is a substantial build — the worm's step clock and
+# its splitting, the charge model and the chain-arc discharge, three foes with
+# their own motion and their own effect on the field, a twelve-level run, six
+# screens, ten cues, and, under the engineless run, the whole runtime layer
+# beneath all of it. Four hours is comfortably more than a healthy build of that
+# size needs while still catching a session that never terminates.
+max_runtime_hours = 4
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, and, on an engine run, the
+# vendored engine — and downloads the Playwright Chromium build (the base image
+# ships the OS libraries Chromium links against, but not the browser binary), so
+# the model can build the game and look at it in a browser without any further
+# setup.
+init = "npm install && npx playwright install chromium"
+
+# The seeded sprite art, each entry kept at its path relative to this version
+# folder when seeded, so `assets/node/` lands at `assets/node/` in the run. Every
+# build renders the game from the SAME art and differs only in the code around it,
+# which is what makes two runs of this case comparable to look at. Each folder
+# holds per-frame 32x32 PNGs; `specs/assets.md` is the contract for the frame
+# counts, which frame is drawn for which state, and the animation rates. The
+# board, the band, the HUD, the arcs and every screen are still drawn in code.
+#
+# `assets` is a root key, so it must precede the first table header.
+assets = [
+  "assets/node",      # the capacitor node, one frame per charge plus the critical pulse
+  "assets/worm",      # the data-worm: head, body and tail, two frames each
+  "assets/cursor",    # the player's cutter
+  "assets/glitch",    # the skittering glitch
+  "assets/dropper",   # the node-laying dropper
+  "assets/corruptor", # the crawling corruptor
+]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Wireworm declares exactly ONE, so every run of this case is the same game: the
+# twelve-level Descent, on the one board geometry, with all three foes.
+#
+# The three FOES are not variants, and neither are the twelve LEVELS. A variant is
+# a difference in the game a run is asked to BUILD; the foes and the levels are
+# what a single build already contains, gated by the level the player has reached.
+# Nothing in the seeded spec set branches on the variant at all — the only axis the
+# specs branch on is `engine.slug`, which changes what the build is HANDED rather
+# than what it is asked to make.
+#
+# This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the input
+# actions a player drives it with, the audio bus, asset loading, and the on-screen
+# diagnostics; one of them also owns rendering and the gameplay framework the game
+# is written inside. It is a *run dimension*, chosen per run alongside the model,
+# the harness and the variant, and recorded on the run; it is not a property of the
+# game.
+#
+# Wireworm supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build writes
+#                     the frame loop, the canvas fit, the keyboard input, the
+#                     audio, the debug overlay, the `window.__wireworm` surface,
+#                     and every figure the specification fixes, from the specs
+#                     alone.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules around
+#                     it (`src/constants.ts`, `src/main.ts`, and the `src/game.ts`
+#                     stub the build replaces, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes the
+#                     whole of `src/game.ts` — the game definition, its mode, its
+#                     live state and its actors — and the debug surface its
+#                     instance's `initialize` returns.
+# The game they describe is the same one, so the review items are the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`,
+# so a later 1.x or 2.x from the host package store is accepted as it lands.
+# Widening or moving a range means a new case version, so the pin is the statement
+# that THIS spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to THIS game under it —
+# which surfaces the build still supplies, Wireworm's action list, and Wireworm's
+# cue names — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+# ---- Tables begin here. No root key may follow. -----------------------------
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, an `index.html`
+# holding the canvas, and a `vite.config.ts` that serves the seeded `assets/` tree
+# in development and copies it into `dist/` at build. What differs is how much of
+# the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     keyboard input, audio, debug overlay and `window.__wireworm`
+#                     surface, and every figure the specification fixes, from the
+#                     specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them),
+#                     `src/main.ts` (the browser entry) and the `src/game.ts` stub
+#                     the build replaces.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds `src/constants.ts` and `src/main.ts`. It seeds NO
+#                     `src/game.ts`: `src/main.ts` imports one, so a freshly seeded
+#                     workspace fails `npx tsc --noEmit` on the missing module.
+#                     That failure is the starting point, and `src/main.ts` says so
+#                     in its header.
+#
+# The seeded files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. These run verbatim from the build's repository root:
+# dependencies are installed, then the static build is produced into `dist/`.
+# `npm ci` is deliberate — it requires the build to commit a `package-lock.json`,
+# so the validated build installs exactly what the deploy will. Both commands are
+# required; there are no defaults, so every case states exactly how its
+# implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case
+# fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does
+# not compile is not reviewable. The other three are recorded and gate nothing —
+# `test` additionally records the count and coverage the build's own suite reports,
+# which is how a build that ships tests is told apart from one that ships none.
+# Each is spelled `npx` rather than `npm run <script>` so the check is the case's
+# own statement of what is run and does not depend on the model leaving the seeded
+# scripts intact. These four are exactly the commands `specs/overview.md` tells the
+# build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. It is reporter-side and never seeded; the seeded specification documents
+# the surface independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md). It is required because the review items below declare
+# `validation` scripts, and the surface is what every one of them poses its
+# scenario through.
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__wireworm` once the game has initialized, so
+# the handle is what a person opening the console of such a build finds. An engine
+# run has NO global at all: the build writes the surface, its `initialize` returns
+# it — beside the state as `[state, debug]` under `simple-2d`, alone under
+# `structured-2d` — and a caller reads it back off `engine.debug`. Because
+# `simple-2d` holds the state by value and hands every reader a read-only view, its
+# surface is written in the shape of `update` — a pose takes the current state and
+# returns the next, applied through `engine.apply`, and a reading takes the state
+# and returns what it read, called with `engine.state`. `structured-2d` holds the
+# world live, so its poses take only their own arguments and act on it at the call,
+# and its readings return plain data. One handle, three ways to reach the same
+# operations.
+#
+# There is deliberately no `tick_hz`. Wireworm mandates no fixed timestep. The
+# worm's tile step is CLOCKED — one step every `wormStepInterval(level)` seconds,
+# with the catch-up rule `specs/worm.md` states — but that is the worm's own clock,
+# started when each worm comes into existence, not a case-wide step size the
+# harness could sample at; everything else in the game is a per-second rate
+# integrated against the delta time the frame hands it. The key is optional
+# precisely so a case clocked this way omits it.
+[instrumentation]
+handle = "__wireworm"
+
+# The specs. Every one of these is a COMMON spec, seeded for EVERY run of this
+# case, at the `dest` path within the run workspace. The single variant declares
+# none of its own: there is one game here, so there is one spec set.
+#
+# The specification is decomposed by concern, and EACH RULE LIVES IN EXACTLY ONE
+# FILE. Each file is self-contained enough to be read on its own while naming its
+# siblings, by file name in plain text, where a fact lives elsewhere.
+#
+# Every `.hbs` source is rendered before it lands, and ONE axis is branched on:
+# `engine.slug`, which selects what the build is handed and what it must write.
+# Nothing branches on the variant; there is one variant. A spec's `dest` defaults
+# to its `source` with a trailing `.hbs` stripped, so an `.md.hbs` source seeds to
+# the same `.md` path and a plain `.md` source is seeded verbatim.
+
+# What the game is and what the finished build must be: the premise, the hard
+# requirements, the free choices, the fixed 1280x720 stage and the centre
+# convention every reported (x, y) uses, the stage-fit requirement, and the
+# legibility table — what a player must be able to read at a glance, which is all
+# this case fixes about the look. It names specs/board.md as where the tile-to-
+# stage map lives rather than restating it. It branches on the engine for what the
+# runtime supplies against what the build writes.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The geometry of the board: the HUD bar and the board beneath it, the 40x20 grid
+# of 32-unit tiles, the player band and the cursor's resulting y range, the worm's
+# entry row, and SOLE OWNERSHIP of the tile-to-stage map and the inverse a centre
+# is read through. Seeded verbatim: nothing in it differs by engine.
+[[spec]]
+source = "specs/board.md"
+
+# The node field and its charge: the four charge states, what raises a node's
+# charge and what caps it, what a bolt does to a node at each charge, what a foe
+# does to one, the starting scatter, how the field grows and why it persists.
+# Seeded verbatim.
+[[spec]]
+source = "specs/nodes.md"
+
+# Detonating a critical node: the Chebyshev radius the arc reaches, that inert
+# nodes neither detonate nor conduct, that the chain floods the connected charged
+# cluster and detonates each node at most once, what it does to the worm standing
+# in it, and the arcs it reports. It also owns the arc's DRAWN form — bright
+# lightning joining two tile centres, its shape fixed when the arc is created —
+# because the discharge owns the discharge. Seeded verbatim.
+[[spec]]
+source = "specs/discharge.md"
+
+# The data-worm: head, body and tail; the step clock, its catch-up rule and the
+# closed form the interval quickens by; the length formula; entry along the top
+# row; what blocks a horizontal step and what a block does; that only a horizontal
+# step can be blocked, so a drop passes through whatever stands below; the
+# oscillation at the floor and the top; the dive on a critical node; and what a
+# bolt into the head, the tail or the middle does. Seeded verbatim.
+[[spec]]
+source = "specs/worm.md"
+
+# The three support foes: each one's motion and speed, its effect on the field,
+# how many bolts it takes, and the level gate and pacing it arrives on. It does
+# NOT state the life-loss rule — contact belongs to specs/cursor.md, which owns the
+# half-extents that decide it, so the rule and the figure that decides it live in
+# one file. Seeded verbatim.
+[[spec]]
+source = "specs/foes.md"
+
+# The cursor and its bolts: the band clamp on all four bounds, the movement rate
+# and the diagonal rule, where a bolt spawns, how fast it climbs, what it stops at,
+# the fire interval and the bolt cap, and SOLE OWNERSHIP of the contact rule
+# together with the extents that decide it. Seeded verbatim.
+[[spec]]
+source = "specs/cursor.md"
+
+# The keys: every action the game answers to and the keys bound to it, menu
+# navigation and confirm, pause, mute, and the overlay toggle. It branches on the
+# engine because an engine run registers NAMED ACTIONS against the bindings
+# src/constants.ts fixes and reads them from the engine, while an engineless build
+# listens to the keyboard itself and reads KeyboardEvent.code.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The run: three starting lives, what costs one, the respawn sequence and its
+# invulnerability, the twelve levels, the level-clear rule stated as a TRANSITION
+# (so a board holding no segment from which none has been removed is playing rather
+# than cleared), the banner and when the level's worm enters, victory, and game
+# over. Seeded verbatim.
+[[spec]]
+source = "specs/progression.md"
+
+# Every score figure the game pays, in one place. Seeded verbatim.
+[[spec]]
+source = "specs/scoring.md"
+
+# The screens, the HUD and the audio: the six screens and what each shows, the
+# title copy and the menu items, the how-to screen, the pause menu, the two end
+# screens, the three HUD readouts, and the ten cues with the mute requirement. It
+# branches on the engine because cues are defined and played through the engine's
+# audio bus on an engine run and the mute bit is the engine's, while under `none`
+# the build synthesizes them with the Web Audio API and owns the mute toggle.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The seeded sprite art: the six folders, their frame counts, what each covers, the
+# frame size, which frame is drawn for which state, the animation rates and the
+# mirroring rule, and what has no asset and is drawn in code. It branches on the
+# engine because the engine resolves every path under the fixed `assets/` root
+# while an engineless build loads the frames itself, page-relative, so the site
+# runs at any base path.
+[[spec]]
+source = "specs/assets.md.hbs"
+
+# The shape of the game's state. Three shapes, one per engine: under `none` a list
+# of what the state must carry, because the build owns the shape; under
+# `simple-2d` the exact `WirewormState` declaration to write into `src/game.ts`;
+# under `structured-2d` the equivalent live class extending the engine's
+# `GameState`.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# render-free core; every operation by name, signature and effect, the three world
+# gates among them; the snapshot shape; and a read-only debug overlay. Framed as an
+# ordinary developer affordance of the game. It branches on the engine for where
+# the surface is reached, the operation shape, and the two clock operations only an
+# engineless build owns.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured — a gzipped recording from the engine's own draw-command
+# recorder on an engine run, a short clip under `none`.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# No `[[reference]]`, no `[[proof]]`, and no `[[check]]`.
+#
+# Wireworm v2.0.0 deliberately fixes NO palette, no typeface and no styling: the
+# specification seeds the sprite art and states what a player must be able to read
+# at a glance (specs/overview.md's legibility table), and everything else about the
+# look is the build's own design. A reference view is a picture a build is compared
+# AGAINST, so there is no honest one to seed here — every build is expected to look
+# different, and a screenshot diff would score the build that copied the mockup best
+# rather than the build that designed the best board. v1.x seeded reference mockups
+# and a canonical palette; dropping both is one of the things this major bump is
+# for.
+#
+# `[[proof]]` is likewise empty: no proof media is asked of the build. Every piece
+# of media a reviewer sees beside a verdict is captured by this case's own
+# validation suites, from scenarios the case controls. The showcase spec above does
+# ask for media, but as the game's own store-page presentation rather than as
+# evidence any point is judged on. The automated load check still runs.
+
+# Scoring domains. This case is on the engine format, so it is validator-rated:
+# each domain's FUNCTIONAL rating is decided by the validators behind the point
+# checklist below (every point names the domains its failure lowers and how far —
+# see `domains` / `failure_cap` there), and the run's overall functional rating is
+# the WORST across the domains — an immaculate arcade frame cannot mask a discharge
+# that never chains. The reviewer's judgement lives in the separate AESTHETIC
+# rating: the look, the polish and the feel, everything this case fixes no picture
+# of.
+#
+# Four domains, cut where a build can plausibly get one right and another wrong:
+# the charge model that is this case's signature, the worm that is its subject, the
+# arcade frame around both, and the presentation this case hands entirely to the
+# build.
+[[domain]]
+id = "charge"
+name = "Charge & Discharge"
+description = "The signature: the node field, the charge the worm and the corruptor put into it, what a bolt does to a node at each charge, and the chain-arc discharge that clears a cluster and fries the worm through it."
+
+[[domain]]
+id = "worm"
+name = "The Data-Worm"
+description = "The worm itself: its cadence, how it winds, drops, reverses, oscillates and dives, how a bolt splits or shortens it, and the field it grows as it dies."
+
+[[domain]]
+id = "arcade"
+name = "Cursor, Foes & Run"
+description = "The fixed-shooter frame around the worm: the band-bound cursor and its bolts, the three foes, and the run of lives, levels, victory, loss and score."
+
+[[domain]]
+id = "presentation"
+name = "Presentation"
+description = "What the game looks and sounds like: the screens and their menus, the HUD, the seeded sprite art, whether the palette the build chose is legible and its states told apart, and the audio cues."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY — a bare name grouping the points — and
+# each item entry under it is one graded review item, worth one point (the default
+# weight), so a category is worth the number of items it holds. No item declares a
+# `weight`: every observable behavior on this checklist counts the same, and the
+# relative importance of a failure is carried by `failure_cap`, not by arithmetic.
+#
+# A category carries no prose of its own; each item states in `description` the
+# claim its validator checks. The checklist is common to every run: there is one
+# variant and the three engines produce the same game, so nothing here is
+# conditional. It is reporter-side material — never seeded into a run, so the model
+# never sees it. Every item restates a requirement the seeded specification already
+# states, in the spec's own vocabulary and naming the spec's own constants, and
+# every threshold a validator asserts is derived from a figure or rule in the specs
+# plus a numeric tolerance stated in the item.
+#
+# EVERY point carries a validation script, and every point is ONE OBSERVABLE
+# BEHAVIOR, so a build fails exactly the rule it breaks: the drop that passes
+# through a node and the charge that node keeps are two points, not one. Each
+# script is a vitest suite under `validation/<engine>/<category>/<item id>.test.ts`.
+# The `<engine>` level is the ENGINE the suite is written against — a validator
+# speaks one engine's vocabulary, so this case, which supports three, ships one
+# directory per engine. `validation/none/` drives the build in Chromium through
+# `window.__wireworm`, with a page-injected 2D-context recorder for the draws and
+# an injected audio shim for the cues; `validation/simple-2d/` and
+# `validation/structured-2d/` each run in process against their vendored engine,
+# posing scenarios through the surface `engine.debug` returns, reading state back
+# from the snapshot, audio from the engine's `cue:played` event, and drawing from
+# the canvas pixels or the engine's own draw-command recorder. The three are the
+# same scenarios; only how they reach the build differs. The directory for the
+# run's engine is what gets staged into the built workspace at `validation/`.
+#
+# EVERY SCENARIO IS POSED, AND POSED EMPTY. The shared harness's `startPlaying`
+# clears the nodes, worms, foes and bolts, turns the three world gates off, and
+# opens an active level — so a validator's world holds only what its requirement
+# concerns and nothing it did not ask for arrives, enters or costs a life. An empty
+# board is safe because a level clears on a TRANSITION rather than on a predicate
+# (`progression.empty-board-does-not-clear` is what holds a build to that). Turning
+# a gate back on is the exception, and the point that does it is the point whose
+# requirement the gate is.
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls. `kind` is decided ONCE here and serves all three engines —
+# `validation = { script, outputs }` is a per-item key, there is no per-engine
+# `outputs`, and the extension an output is served under is fixed by its kind, so a
+# kind that varied by engine would serve one engine's file under another's name.
+# `image` is the default: a single captured frame, which is the right evidence for
+# a posed board read once. `replay` is the exception, declared on the handful of
+# points whose requirement IS motion — the worm winding, the chain running down a
+# line, a one-second hold, a foe's descent — where a reviewer wants to scrub. There
+# is no `video` anywhere. Both are evidence beside the verdict rather than any part
+# of it: a point passes or fails on its assertions alone.
+#
+# EVERY point also carries `domains` and `failure_cap`, because this case is
+# validator-rated: a point's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers — a discharge point
+# lowers `charge`, a point about the worm standing in that discharge lowers `worm`
+# as well, and an instrumentation point, which every suite in every domain drives
+# through, lowers all four. `failure_cap` is the highest functional rating those
+# domains may reach while the point fails; each domain gets the LOWEST cap among
+# its failing points, and a domain with no failing point is flawless. The caps are
+# graded by how much of the game a failure takes away: `broken` where the game
+# cannot be played as intended (no debug surface, a worm that does not wind, a
+# discharge that never chains, a run that cannot be opened); `scuffed` where an
+# optional path is unplayable or normal play is unpleasant (a foe that moves
+# wrongly, a screen that misreports the run); `passable` where it affects play
+# without breaking it (a tolerance, an edge case, a cue); and `great` where the
+# standard flow is untouched (a cosmetic detail, a menu nicety). No point caps at
+# `flawless`: a failure always costs.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The debug surface is a deliverable of the build, not a courtesy: it is how the
+# game is driven and inspected from code, and every other suite on this checklist
+# poses its scenario through it. These points check that it is really there,
+# really wired to the running game, really deterministic, and that each pose
+# reads back — a surface that reports a plausible-looking object unconnected to
+# what is on screen is the failure mode worth naming.
+#
+# Seven of them are the three GATES and the four FACULTY switches. A validator
+# poses a world holding only what its requirement concerns, and Wireworm's own
+# figures put a glitch on the board within twelve seconds and a level's worm on
+# it the moment a banner gives way, so without the gates a posed scenario would
+# be joined by traffic it never asked for. `setFoeSpawning`, `setWormEntry` and
+# `setCursorContact` each gate ONE faculty and nothing else, default to on, and
+# are restored to on by `reset`; `setWormStepping`, `setWormBody`, `setFoeMind`
+# and `setFoeTravel` do the same per entity. Each is verifiable by set-then-read,
+# and each has a point here because a gate the suite leans on has to be known to
+# work before anything leaning on it means anything.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug surface is present and complete"
+description = "Every operation specs/instrumentation.md names is a function on the surface, version is WIREWORM_DEBUG_VERSION (1), and the surface is live: a posed node reads back and a posed worm steps."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/surface-present.test.ts", outputs = [
+  { id = "live", name = "The posed node and the stepped worm the surface drove", kind = "image" },
+] }
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "On a posed board carrying nodes at all four charges, two worms, one foe of each kind, a bolt in flight and a live discharge, every field listed in the snapshot shape is present with its documented type."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
+  { id = "posed", name = "The board every reported field was read from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "poses-read-back"
+title = "Every pose is reported by the snapshot"
+description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, level, reached level, cursor position and invulnerability, fire cooldown, a node's charge, a worm's headings, diving flag and two faculties, a foe's velocity, hit flag and two faculties, a bolt's position, and the three world gates. Mute is not in the list: there is no setMuted, and muted is a live read of the runtime's bit (section 2)."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "broken"
+# Mute is deliberately absent from the list: `muted` is a live read of the
+# runtime's own bit rather than a posed field, and there is no `setMuted` to
+# read back. `controls.mute-m` and `audio.mute-silences` cover it instead.
+validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
+  { id = "posed", name = "The board each pose was applied to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-restores-title"
+title = "reset returns the game to its title values"
+description = "After a run has been posed with score, lives, level, a field, worms, foes and bolts, reset() restores every declared field to the title value the spec lists, and leaves muted untouched."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/reset-restores-title.test.ts", outputs = [
+  { id = "title", name = "The title screen reset returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "reset-seeds-randomness"
+title = "reset seeds the game's randomness"
+description = "Two runs started after reset({ seed: 7 }) lay the identical starting scatter, and a run after reset({ seed: 8 }) lays a different one."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
+  { id = "scatter", name = "The scatter seed 7 laid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "deterministic-core"
+title = "The simulation advances on elapsed time alone"
+description = "One second of game time covered as one frame and as sixty frames adds 1.0 to simTime either way and leaves the worm on the same tile, so the simulation reads nothing from the renderer."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
+  { id = "stepped", name = "The board after one second of game time", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-nodes"
+title = "clearNodes empties the field alone"
+description = "clearNodes() removes every node and leaves the worms, foes and bolts standing."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-nodes.test.ts", outputs = [
+  { id = "cleared", name = "The board with the field alone removed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-worms"
+title = "clearWorms empties the worms alone"
+description = "clearWorms() removes every worm and leaves the nodes, foes and bolts standing."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-worms.test.ts", outputs = [
+  { id = "cleared", name = "The board with the worms alone removed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-foes"
+title = "clearFoes empties the foes alone"
+description = "clearFoes() removes every foe and leaves the nodes, worms and bolts standing."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "broken"
+validation = { script = "instrumentation/clear-foes.test.ts", outputs = [
+  { id = "cleared", name = "The board with the foes alone removed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-bolts"
+title = "clearBolts removes the bolts in flight"
+description = "clearBolts() removes every bolt and leaves the nodes, worms and foes standing."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/clear-bolts.test.ts", outputs = [
+  { id = "cleared", name = "The board with the bolts alone removed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "entity-ids"
+title = "Every entity carries a distinct, stable id"
+description = "Each worm, foe and bolt added takes an id distinct from every other live entity's, appears last in its roster, and keeps that id across steps."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/entity-ids.test.ts", outputs = [
+  { id = "roster", name = "The entities whose ids are read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-stepping-gate"
+title = "Stepping off holds a worm still"
+description = "A worm with setWormStepping(id, false) takes no tile step over ten step intervals, while a second worm with stepping on steps ten times."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "instrumentation/worm-stepping-gate.test.ts", outputs = [
+  { id = "gated", name = "The held worm beside the stepping one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-body-gate"
+title = "Body off holds the trailing segments"
+description = "A worm with setWormBody(id, false) advances its head one tile per step while every trailing segment holds its tile."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "instrumentation/worm-body-gate.test.ts", outputs = [
+  { id = "gated", name = "The head advanced ahead of its held body", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foe-mind-gate"
+title = "Mind off leaves the field untouched"
+description = "A glitch with setFoeMind(id, false) travels across a row of nodes and removes none."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/foe-mind-gate.test.ts", outputs = [
+  { id = "gated", name = "The row of nodes the mindless glitch crossed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foe-travel-gate"
+title = "Travel off holds a foe in place"
+description = "A glitch with setFoeTravel(id, false) reports the same centre after a second of game time as it did at the call. The eating that runs meanwhile is foes.glitch-eats-inert's requirement, not this one."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/foe-travel-gate.test.ts", outputs = [
+  { id = "gated", name = "The glitch on the tile it never left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foe-spawn-gate"
+title = "Foe spawning off keeps the level's foes away"
+description = "With setFoeSpawning(false) at level 5, no foe joins the roster over a minute of play; with it on, the roster is no longer empty."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/foe-spawn-gate.test.ts", outputs = [
+  { id = "gated", name = "The level-5 board no foe joined", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-entry-gate"
+title = "Worm entry off keeps the level's worm away"
+description = "With setWormEntry(false), a level whose banner gives way to active brings in no worm over ten seconds; with it on, a worm is on the board."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "instrumentation/worm-entry-gate.test.ts", outputs = [
+  { id = "gated", name = "The active level no worm entered", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cursor-contact-gate"
+title = "Contact off costs no life"
+description = "With setCursorContact(false), a worm segment stepped into the cursor's tile leaves lives unchanged and the phase still active; with it on, the same scenario costs a life."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/cursor-contact-gate.test.ts", outputs = [
+  { id = "gated", name = "The segment standing in the cursor's tile", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-score-grants-no-life"
+title = "Posing the score grants no bonus life"
+description = "setScore across a BONUS_LIFE_EVERY (12,000) boundary leaves lives exactly as it was: the award belongs to the scoring path, and a pose is a precondition."
+domains = ["charge", "worm", "arcade", "presentation"]
+failure_cap = "passable"
+# The other direction — that crossing the boundary through REAL scoring does
+# grant a life — is `scoring.bonus-life`. A pose is a precondition, so it must
+# not fire the award, or every scenario that poses a score above 12,000 would
+# silently hand itself extra lives.
+validation = { script = "instrumentation/set-score-grants-no-life.test.ts", outputs = [
+  { id = "posed", name = "The posed score and the lives beside it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overlay"
+title = "The debug overlay reports the game"
+description = "Toggling the overlay over a posed board draws the facts specs/instrumentation.md lists, and the snapshot is identical before and after."
+domains = ["presentation"]
+failure_cap = "passable"
+# The overlay is a read-only view of the game, so the snapshot before and after
+# toggling it must be identical: an overlay that changes what it reports is
+# reporting something else.
+validation = { script = "instrumentation/overlay.test.ts", outputs = [
+  { id = "overlay", name = "The overlay drawn over the posed board", kind = "image" },
+] }
+
+# --- Board and geometry -------------------------------------------------------
+# The stage, the grid, the band and the starting scatter, held against the
+# figures specs/board.md fixes. The tile-to-stage map is stated in that one file
+# and nowhere else, so these points assert the formula rather than any drawn
+# artwork, and the scatter points assert the bounds and the density the rules
+# give rather than a particular layout — the layout is seeded randomness and
+# varies by design.
+[[review.categories]]
+id = "board"
+title = "Board and geometry"
+[[review.categories.items]]
+id = "stage-fit"
+title = "The whole stage stays visible and centred"
+description = "The entire 1280x720 stage — the full HUD bar, the whole board and all four edges — is visible, fitted and centred at three window sizes and two pixel densities, including on load before any input."
+domains = ["presentation"]
+# A stage that is not fitted still runs and is still played: what it costs is a
+# window size at which part of the board or the bar is cut off, which is normal
+# play made unpleasant rather than play made impossible. The cap names the one
+# domain the declaration lowers.
+failure_cap = "scuffed"
+validation = { script = "board/stage-fit.test.ts", outputs = [
+  { id = "fitted", name = "The whole stage at the smallest window tested", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-above-board"
+title = "The HUD sits above the board"
+description = "The HUD readouts are drawn within y in [0, 80] and no node, worm segment, foe or bolt is drawn there."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "board/hud-above-board.test.ts", outputs = [
+  { id = "hud", name = "The HUD bar and the board beneath it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tile-centres"
+title = "Nodes sit on the tile centres the formula gives"
+description = "A node posed at each of eight spread tiles changes what is painted at that tile's centre, (32c + 16, 80 + 32r + 16), and leaves the tile beside it as the background it was."
+domains = ["charge", "presentation"]
+failure_cap = "scuffed"
+# The second clause — the tile beside each is background — is a control sample
+# read from the same scenario, not a second requirement: it is what tells a
+# build that centred its nodes apart from one that filled every tile.
+validation = { script = "board/tile-centres.test.ts", outputs = [
+  { id = "tiles", name = "The eight nodes on their tile centres", kind = "image" },
+] }
+[[review.categories.items]]
+id = "band-tinted"
+title = "The player band reads as a distinct floor"
+description = "The bottom two rows (y in [656, 720]) render in a tint measurably distinct from the board above them, across the full width."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "board/band-tinted.test.ts", outputs = [
+  { id = "band", name = "The player band across the full width", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scatter-density"
+title = "A new run scatters 10–15% of the scatter rows"
+description = "Starting a run lays nodes on between 10% and 15% of the 680 tiles of rows 1..17."
+domains = ["charge"]
+failure_cap = "passable"
+validation = { script = "board/scatter-density.test.ts", outputs = [
+  { id = "scatter", name = "The starting scatter that was counted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scatter-rows"
+title = "The scatter keeps out of the entry row and the band"
+description = "The starting scatter places no node in row 0 and none in rows 18..19."
+domains = ["charge", "worm"]
+failure_cap = "passable"
+validation = { script = "board/scatter-rows.test.ts", outputs = [
+  { id = "scatter", name = "The entry row and the band left clear", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scatter-inert"
+title = "Every scattered node starts inert"
+description = "Every node of the starting scatter has charge 0."
+domains = ["charge"]
+failure_cap = "passable"
+validation = { script = "board/scatter-inert.test.ts", outputs = [
+  { id = "scatter", name = "The scatter, every node inert", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scatter-varies"
+title = "The scatter is not a fixed layout"
+description = "Runs from two different seeds lay scatters that differ in more than a tenth of their occupied tiles."
+domains = ["charge"]
+failure_cap = "passable"
+validation = { script = "board/scatter-varies.test.ts", outputs = [
+  { id = "scatter", name = "The second seed's scatter", kind = "image" },
+] }
+
+# --- The node field -----------------------------------------------------------
+# Charge is the case's signature, and these points fix exactly which events move
+# it. Three of them — `drop-leaves-charge`, `shared-tile-keeps-charge` and
+# `dive-leaves-charge` — pose the node at charge 2 rather than 0 or 3, and that
+# is deliberate: 2 is the only value from which "left alone", "cleared",
+# "replaced by a fresh inert node" and "detonated" all read back as different
+# numbers, so a build that gets the rule wrong names which wrong answer it gave.
+[[review.categories]]
+id = "nodes"
+title = "The node field"
+[[review.categories.items]]
+id = "bump-charges"
+title = "A bumped node gains one charge"
+description = "A worm blocked by an inert node energizes it to charge 1 on the step the block happens."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "nodes/bump-charges.test.ts", outputs = [
+  { id = "bumped", name = "The node the block energized", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bump-climbs"
+title = "Repeated bumps climb to critical"
+description = "Successive bumps raise a node 0→1→2→3, one level per block."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "nodes/bump-climbs.test.ts", outputs = [
+  { id = "critical", name = "The node after its third bump", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bump-caps"
+title = "Charge caps at critical"
+description = "A node already at charge 3 stays at 3 when the worm is blocked by it again."
+domains = ["charge"]
+failure_cap = "passable"
+validation = { script = "nodes/bump-caps.test.ts", outputs = [
+  { id = "capped", name = "The critical node bumped again", kind = "image" },
+] }
+[[review.categories.items]]
+id = "edge-charges-nothing"
+title = "A side-edge block charges nothing"
+description = "A worm blocked by the side edge changes no node's charge."
+domains = ["charge"]
+failure_cap = "passable"
+validation = { script = "nodes/edge-charges-nothing.test.ts", outputs = [
+  { id = "edge", name = "The worm turned by the side edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "segment-charges-nothing"
+title = "A segment block charges nothing"
+description = "A worm blocked by another worm's segment changes no node's charge."
+domains = ["charge"]
+failure_cap = "passable"
+validation = { script = "nodes/segment-charges-nothing.test.ts", outputs = [
+  { id = "segment", name = "The worm turned by another worm's segment", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shot-inert-cleared"
+title = "A bolt clears an inert node"
+description = "A bolt into a charge-0 node removes it, leaving the tile empty."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "nodes/shot-inert-cleared.test.ts", outputs = [
+  { id = "cleared", name = "The empty tile the inert node stood on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shot-low-deenergized"
+title = "A bolt de-energizes a charge-1 node"
+description = "A bolt into a charge-1 node leaves a charge-0 node standing on the tile."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "nodes/shot-low-deenergized.test.ts", outputs = [
+  { id = "deenergized", name = "The node left standing at charge 0", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shot-mid-deenergized"
+title = "A bolt de-energizes a charge-2 node"
+description = "A bolt into a charge-2 node leaves a charge-1 node standing on the tile."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "nodes/shot-mid-deenergized.test.ts", outputs = [
+  { id = "deenergized", name = "The node left standing at charge 1", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drop-leaves-charge"
+title = "A drop leaves the node it lands on untouched"
+description = "A worm dropping onto a charge-2 node leaves that node at charge 2."
+domains = ["charge", "worm"]
+failure_cap = "passable"
+validation = { script = "nodes/drop-leaves-charge.test.ts", outputs = [
+  { id = "landed", name = "The worm on the charge-2 node it dropped onto", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shot-leaves-node"
+title = "A shot-killed segment leaves an inert node"
+description = "A segment destroyed by a bolt leaves a charge-0 node on the tile it died on."
+domains = ["charge", "worm"]
+failure_cap = "broken"
+validation = { script = "nodes/shot-leaves-node.test.ts", outputs = [
+  { id = "node", name = "The inert node the killed segment left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dive-leaves-charge"
+title = "A dive leaves the nodes it passes through untouched"
+description = "The charge-2 nodes a diving worm's head passes down through are still at charge 2 afterwards."
+domains = ["charge", "worm"]
+failure_cap = "passable"
+validation = { script = "nodes/dive-leaves-charge.test.ts", outputs = [
+  { id = "dived", name = "The charged column the dive passed down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shared-tile-keeps-charge"
+title = "A bolt into a shared tile leaves the charge alone"
+description = "A bolt into a tail standing on a charge-2 node leaves that node at charge 2. The shortening is worm.shot-tail-shortens's requirement."
+domains = ["charge", "worm"]
+failure_cap = "passable"
+# This point asserts the CHARGE alone. The shortening is
+# `worm.shot-tail-shortens`'s requirement, so a build that fails the shortening
+# is docked there and not twice.
+validation = { script = "nodes/shared-tile-keeps-charge.test.ts", outputs = [
+  { id = "shared", name = "The node left at charge 2 under the cut tail", kind = "image" },
+] }
+[[review.categories.items]]
+id = "field-persists"
+title = "The field carries into the next level"
+description = "The nodes standing when a level clears are the nodes standing when the next level's play begins."
+domains = ["charge"]
+failure_cap = "scuffed"
+validation = { script = "nodes/field-persists.test.ts", outputs = [
+  { id = "carried", name = "The field standing as the next level opens", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawn-keeps-field"
+title = "The field stands through a respawn"
+description = "Losing a life with lives to spare leaves every node and its charge exactly as it was."
+domains = ["charge", "arcade"]
+failure_cap = "scuffed"
+validation = { script = "nodes/respawn-keeps-field.test.ts", outputs = [
+  { id = "kept", name = "The field standing through the respawn", kind = "image" },
+] }
+
+# --- The chain-arc discharge --------------------------------------------------
+# What a bolt into a critical node sets off: the chain through the connected
+# charged cluster, what it spares, and what it does to the worm standing in it.
+# Both directions of each boundary are their own point — `chain-reaches` against
+# `chain-stops`, `fries-segments-in-reach` against `spares-segments-beyond-reach`
+# — because a build that detonates the whole board and a build that detonates
+# nothing would score the same on a single paired point.
+#
+# What is asserted here is the LINK SET, never the drawn polyline. The chain rule
+# fixes which pairs of tiles conduct; the lightning's shape is appearance, is
+# reviewed rather than scored, and only `presentation.arcs-drawn` touches it, and
+# then only to require drawn pixels along the segment joining two centres.
+[[review.categories]]
+id = "discharge"
+title = "The chain-arc discharge"
+[[review.categories.items]]
+id = "critical-detonates"
+title = "A bolt into a critical node detonates it"
+description = "A bolt into a charge-3 node removes it from the board rather than knocking its charge down one level."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "discharge/critical-detonates.test.ts", outputs = [
+  { id = "detonated", name = "The tile the critical node was removed from", kind = "image" },
+] }
+[[review.categories.items]]
+id = "chain-reaches"
+title = "The arc reaches a charged node two tiles away"
+description = "A charge-1 node exactly two tiles from the detonation, on the diagonal, is detonated and removed."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "discharge/chain-reaches.test.ts", outputs = [
+  { id = "reached", name = "The diagonal node the arc took out", kind = "image" },
+] }
+[[review.categories.items]]
+id = "chain-stops"
+title = "A charged node beyond the reach survives"
+description = "A charge-1 node three tiles from the detonation, with no charged node between, is left standing at charge 1."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "discharge/chain-stops.test.ts", outputs = [
+  { id = "survivor", name = "The node three tiles out, still charged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "chain-propagates"
+title = "The chain runs onward from each node it detonates"
+description = "A line of charge-1 nodes spaced two tiles apart is cleared end to end from a detonation at one end."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "discharge/chain-propagates.test.ts", outputs = [
+  { id = "propagation", name = "The line cleared end to end", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "inert-survives"
+title = "An inert node inside the blast stands"
+description = "A charge-0 node inside the 5x5 block of a detonation is left standing at charge 0."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "discharge/inert-survives.test.ts", outputs = [
+  { id = "survivor", name = "The inert node standing inside the blast", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inert-blocks-reach"
+title = "An inert node does not carry the chain"
+description = "A charged node reachable only through an inert node, and more than two tiles from any detonated node, survives at its charge."
+domains = ["charge"]
+failure_cap = "broken"
+validation = { script = "discharge/inert-blocks-reach.test.ts", outputs = [
+  { id = "blocked", name = "The charged node the inert one shielded", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fries-segments-in-reach"
+title = "A discharge destroys the segments in its reach"
+description = "A worm segment within two tiles of a detonated node is removed."
+domains = ["charge", "worm"]
+failure_cap = "broken"
+validation = { script = "discharge/fries-segments-in-reach.test.ts", outputs = [
+  { id = "fried", name = "The board with the segment in reach removed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "spares-segments-beyond-reach"
+title = "A segment beyond the reach stands"
+description = "A worm segment three tiles from every detonated node is still on its tile afterwards."
+domains = ["charge", "worm"]
+failure_cap = "broken"
+validation = { script = "discharge/spares-segments-beyond-reach.test.ts", outputs = [
+  { id = "spared", name = "The segment three tiles out, still on its tile", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fry-leaves-no-node"
+title = "A fried segment leaves nothing behind"
+description = "The tiles a discharge's fried segments stood on are empty afterwards."
+domains = ["charge", "worm"]
+failure_cap = "broken"
+validation = { script = "discharge/fry-leaves-no-node.test.ts", outputs = [
+  { id = "empty", name = "The empty tiles the fried segments stood on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fry-splits"
+title = "A discharge through a worm's middle leaves two worms"
+description = "A discharge that removes the middle segments of a long worm leaves the head-side and tail-side runs as two worms."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "discharge/fry-splits.test.ts", outputs = [
+  { id = "split", name = "The worm cut in two by the discharge", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fry-split-keeps-head-id"
+title = "The head-side piece keeps the worm's id"
+description = "After a discharge cuts a worm's middle, the piece carrying the old head reports the id the worm had before the discharge, and the trailing piece reports a fresh one."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "discharge/fry-split-keeps-head-id.test.ts", outputs = [
+  { id = "pieces", name = "The two pieces and the ids they report", kind = "image" },
+] }
+[[review.categories.items]]
+id = "detonated-once"
+title = "A node is detonated at most once per discharge"
+description = "On a dense charged cluster whose nodes each lie in several blast radii, no ordered { from, to } pair appears twice in the reported arcs: a node detonated a second time re-emits its links, so a duplicated link is the witness. The item reads the discharge's own surface rather than the score, which is scoring.purge-node's requirement."
+domains = ["charge"]
+failure_cap = "passable"
+# The witness is the arc list, not the score: a node detonated a second time
+# re-emits its links, so a duplicated ordered { from, to } pair is exactly the
+# evidence of a double detonation. Reaching for the score instead would
+# duplicate `scoring.purge-node`'s requirement.
+validation = { script = "discharge/detonated-once.test.ts", outputs = [
+  { id = "cluster", name = "The dense cluster whose arcs are counted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "arcs-reported"
+title = "The discharge reports one arc per conducted link"
+description = "The snapshot reports one arc per link the chain conducted along, each naming the two tiles it joined, and reports none once ARC_LIFE (0.32 s) has passed."
+domains = ["charge", "presentation"]
+failure_cap = "passable"
+validation = { script = "discharge/arcs-reported.test.ts", outputs = [
+  { id = "arcs", name = "The arcs live on the board", kind = "image" },
+] }
+
+# --- The data-worm ------------------------------------------------------------
+# The worm's cadence, its winding, what blocks it, what it passes through, and
+# what a bolt does to it. The block rule and the drop rule are separate points on
+# purpose: only a HORIZONTAL step can be blocked, so a drop enters the tile below
+# whatever stands there, and `drop-passes-through-node` and
+# `drop-passes-through-segment` are what hold a build to that.
+[[review.categories]]
+id = "worm"
+title = "The data-worm"
+[[review.categories.items]]
+id = "winds-horizontal"
+title = "The worm advances one tile per step"
+description = "On a clear row the head advances one tile per step along its heading, holding its row."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/winds-horizontal.test.ts", outputs = [
+  { id = "winding", name = "The head advancing one tile per step", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "step-cadence"
+title = "Level 1 steps every 0.14 s"
+description = "At level 1 the head takes exactly one step per 0.14 s of game time over a run of ten steps."
+domains = ["worm"]
+failure_cap = "scuffed"
+validation = { script = "worm/step-cadence.test.ts", outputs = [
+  { id = "cadence", name = "The board at the end of the ten timed steps", kind = "image" },
+] }
+[[review.categories.items]]
+id = "step-quickens"
+title = "The interval shortens each level"
+description = "The reported wormStepInterval at each level 1..12 is max(WORM_STEP_FLOOR, WORM_STEP_L1 * WORM_STEP_DECAY^(level - 1)) — the closed form specs/worm.md states — within a tolerance of 0.002 s."
+domains = ["worm"]
+failure_cap = "passable"
+# The whole closed form is asserted across levels 1..12, WORM_STEP_FLOOR
+# included. The floor never binds inside the run — 0.14 * 0.95^11 is 0.0796 s at
+# level 12, and the formula would first cross 0.07 at level 15 — so there is no
+# separate floor point to write, and `setLevel`'s domain stays the game's own
+# 1..12 rather than being widened to reach one.
+validation = { script = "worm/step-quickens.test.ts", outputs = [
+  { id = "levels", name = "The board at the last level timed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "step-catch-up"
+title = "A long frame runs the steps it covered"
+description = "A single frame covering three step intervals advances the head three tiles, and the remainder carries into the next frame."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "worm/step-catch-up.test.ts", outputs = [
+  { id = "catch-up", name = "The three steps one long frame covered", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "blocked-by-node-drops"
+title = "Blocked by a node, the head drops one row"
+description = "A worm blocked by a node ends the step one row on in its vertical heading, in its own column."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/blocked-by-node-drops.test.ts", outputs = [
+  { id = "dropped", name = "The head one row on, in its own column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "blocked-by-node-reverses"
+title = "Blocked by a node, the heading reverses"
+description = "A worm blocked by a node ends the step with its horizontal heading reversed."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/blocked-by-node-reverses.test.ts", outputs = [
+  { id = "reversed", name = "The head with its heading turned around", kind = "image" },
+] }
+[[review.categories.items]]
+id = "blocked-by-edge"
+title = "The side edge blocks and turns the worm"
+description = "A worm heading into column 0 or column 39's outer edge drops one row and reverses."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/blocked-by-edge.test.ts", outputs = [
+  { id = "edge", name = "The worm turned by the side edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "blocked-by-segment"
+title = "A worm segment blocks and turns the worm"
+description = "A worm whose next tile holds a segment of a stationary second worm drops one row and reverses."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "worm/blocked-by-segment.test.ts", outputs = [
+  { id = "segment", name = "The worm turned by a stationary segment", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drop-passes-through-node"
+title = "A drop enters a tile a node stands on"
+description = "A worm dropping into a tile holding a charge-2 node ends the step on that tile and keeps its vertical heading."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/drop-passes-through-node.test.ts", outputs = [
+  { id = "landed", name = "The head on the tile the node stands on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drop-passes-through-segment"
+title = "A drop enters a tile a segment stands on"
+description = "A worm dropping into a tile holding a stationary worm's segment ends the step on that tile."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "worm/drop-passes-through-segment.test.ts", outputs = [
+  { id = "landed", name = "The head on the tile the segment stands on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "oscillates-at-floor"
+title = "A drop at the floor flips the worm upward"
+description = "A worm blocked on row 19 flips its vertical heading to up and rises one row instead of leaving the board."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/oscillates-at-floor.test.ts", outputs = [
+  { id = "floor", name = "The worm rising away from the floor", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "oscillates-at-top"
+title = "A rise at the top flips the worm downward"
+description = "A worm with an upward vertical heading blocked on row 0 flips back to down and drops one row."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/oscillates-at-top.test.ts", outputs = [
+  { id = "top", name = "The worm dropping away from the top row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "body-follows"
+title = "Each segment moves into the tile ahead of it"
+description = "Over five steps of a six-segment worm, each segment occupies the tile the segment ahead of it held on the previous step."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/body-follows.test.ts", outputs = [
+  { id = "body", name = "Five steps of the six-segment worm", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "dive-enters"
+title = "A critical node starts a dive"
+description = "A worm blocked by a charge-3 node ends the step one row down in its own column with diving true."
+domains = ["charge", "worm"]
+failure_cap = "broken"
+validation = { script = "worm/dive-enters.test.ts", outputs = [
+  { id = "diving", name = "The worm entering its dive on a critical node", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dive-passes-through-node"
+title = "A diving worm passes through the nodes below it"
+description = "A diving worm crossing a column of charge-2 nodes ends each step one row lower, on the tile the node stands on. What happens to those nodes is nodes.dive-leaves-charge's requirement."
+domains = ["charge", "worm"]
+failure_cap = "broken"
+validation = { script = "worm/dive-passes-through-node.test.ts", outputs = [
+  { id = "diving", name = "The head crossing the charged column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dive-ends-at-band"
+title = "A dive ends at the player band"
+description = "A dive that reaches row 18 clears diving and resumes normal winding."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "worm/dive-ends-at-band.test.ts", outputs = [
+  { id = "resumed", name = "The worm winding again at the band", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shot-head-shortens"
+title = "A bolt into the head shortens the worm"
+description = "A bolt into the head leaves one worm, one segment shorter, with the second segment as its head."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/shot-head-shortens.test.ts", outputs = [
+  { id = "shortened", name = "The worm one segment shorter at the head", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shot-tail-shortens"
+title = "A bolt into the tail shortens the worm"
+description = "A bolt into the tail leaves one worm, one segment shorter, with the same head."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/shot-tail-shortens.test.ts", outputs = [
+  { id = "shortened", name = "The worm one segment shorter at the tail", kind = "image" },
+] }
+[[review.categories.items]]
+id = "shot-middle-splits"
+title = "A bolt into a middle segment splits the worm"
+description = "A bolt into the fourth segment of a seven-segment worm leaves two worms, of three and three segments."
+domains = ["worm"]
+failure_cap = "broken"
+validation = { script = "worm/shot-middle-splits.test.ts", outputs = [
+  { id = "split", name = "The two worms the middle shot left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "split-keeps-head-id"
+title = "The head-side piece keeps the worm's id"
+description = "After a middle-segment split, the worm carrying the old head reports the id the worm had before the shot, and the trailing piece reports a fresh one."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "worm/split-keeps-head-id.test.ts", outputs = [
+  { id = "pieces", name = "The two pieces and the ids they report", kind = "image" },
+] }
+[[review.categories.items]]
+id = "split-new-head-leads"
+title = "The trailing piece leads from its own head"
+description = "After a split, the trailing worm's first segment is the one nearest the break and it advances one tile per step along that worm's heading."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "worm/split-new-head-leads.test.ts", outputs = [
+  { id = "trailing", name = "The trailing worm leading from its own head", kind = "image" },
+] }
+[[review.categories.items]]
+id = "length-per-level"
+title = "The level's worm carries the length the formula gives"
+description = "A run posed at each of levels 1, 6 and 12 enters a worm of 10 + 2 * (level - 1) segments."
+domains = ["worm"]
+failure_cap = "scuffed"
+validation = { script = "worm/length-per-level.test.ts", outputs = [
+  { id = "entered", name = "The level-12 worm as it entered", kind = "image" },
+] }
+[[review.categories.items]]
+id = "enters-top-row"
+title = "The worm enters along the top row"
+description = "A level's worm enters on row 0 from a side edge with its vertical heading down."
+domains = ["worm"]
+failure_cap = "scuffed"
+validation = { script = "worm/enters-top-row.test.ts", outputs = [
+  { id = "entry", name = "The worm entering along row 0", kind = "image" },
+] }
+
+# --- The cursor and its bolts -------------------------------------------------
+# The band-bound cursor, its rate, and the bolts it fires.
+#
+# EVERY probe here is sized to the band, and that sizing is load-bearing. The
+# band is 32 units tall — y in [672, 704] — which a cursor at CURSOR_SPEED (430)
+# crosses in 0.074 s, so a vertical probe over any useful window measures the
+# CLAMP and not the rate. Hence: `move-speed` takes two HORIZONTAL probes only;
+# `diagonal-speed` reads the HORIZONTAL component (304, which is 430 / sqrt(2))
+# because that is what separates a normalized diagonal from an unnormalized one
+# and it survives the vertical clamp; the two horizontal clamp points pose the
+# cursor 120 units inside the bound they test so that no clamp point measures
+# speed by accident; and the two vertical clamp points pose it at the OPPOSITE
+# bound instead, because a 32-unit band cannot hold a 120-unit inset and
+# `setCursor` applies the real clamp, so such a pose would silently land
+# somewhere the point's own description never describes.
+[[review.categories]]
+id = "cursor"
+title = "The cursor and its bolts"
+[[review.categories.items]]
+id = "clamped-left"
+title = "The cursor stops at the left edge"
+description = "Posed 120 units inside the left bound — the inset is the horizontal pair's, since only the horizontal axis is wide enough to hold it — and driven left for a second, the cursor's centre x rests at CURSOR_X_MIN (16) and goes no lower."
+domains = ["arcade"]
+failure_cap = "broken"
+# Posed 120 units inside the bound, so the probe measures the clamp and not the
+# rate. A horizontal clamp probe that starts far from its bound quietly demands
+# a minimum speed of the build, which is the defect this inset exists to remove.
+validation = { script = "cursor/clamped-left.test.ts", outputs = [
+  { id = "clamped", name = "The cursor resting on the left bound", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clamped-right"
+title = "The cursor stops at the right edge"
+description = "Posed 120 units inside the right bound and driven right for a second, the cursor's centre x rests at CURSOR_X_MAX (1264) and goes no higher."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "cursor/clamped-right.test.ts", outputs = [
+  { id = "clamped", name = "The cursor resting on the right bound", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clamped-top"
+title = "The cursor stops at the band's top"
+description = "Posed at CURSOR_Y_MAX (704), the opposite bound, and driven up for a second — thirteen times the 0.074 s the 32-unit band takes to cross — the cursor's centre y rests at CURSOR_Y_MIN (672) and goes no lower. The 120-unit inset the horizontal pair uses does not apply: the band cannot hold it, and setCursor applies the real clamp."
+domains = ["arcade"]
+failure_cap = "broken"
+# No inset here, and that is not an oversight: the band is 32 units tall, so a
+# pose 120 units inside a vertical bound would be clamped straight onto the other
+# bound and the scenario the description states would never have happened.
+validation = { script = "cursor/clamped-top.test.ts", outputs = [
+  { id = "clamped", name = "The cursor resting on the band's top", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clamped-bottom"
+title = "The cursor stops at the floor"
+description = "Posed at CURSOR_Y_MIN (672) and driven down for a second, the cursor's centre y rests at CURSOR_Y_MAX (704) and goes no higher."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "cursor/clamped-bottom.test.ts", outputs = [
+  { id = "clamped", name = "The cursor resting on the floor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "move-speed"
+title = "A held movement key moves at 430 units/s"
+description = "Held for exactly one second from mid-band, left and right, the cursor travels CURSOR_SPEED (430) units within 5%. Two horizontal probes only: the band is 32 units tall, so a vertical hold clamps after 0.074 s and would measure the clamp, not the rate. Vertical movement is controls.up-arrow and controls.down-arrow."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "cursor/move-speed.test.ts", outputs = [
+  { id = "probe", name = "The one-second horizontal hold that was measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "diagonal-speed"
+title = "A diagonal hold is no faster"
+description = "Right and up held together for one second move the cursor CURSOR_SPEED / sqrt(2) (304) units horizontally, within 5%, rather than the 430 an unnormalized diagonal would give. The horizontal component is the readable one: the vertical component clamps out after 32 units, and a total-path figure is unreachable in a 32-unit-tall band."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "cursor/diagonal-speed.test.ts", outputs = [
+  { id = "diagonal", name = "The cursor at the end of the diagonal hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bolt-spawns-at-cursor"
+title = "A bolt appears at the cursor's muzzle"
+description = "A bolt fired from a posed cursor appears in the cursor's column, above its centre by no more than one tile."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "cursor/bolt-spawns-at-cursor.test.ts", outputs = [
+  { id = "muzzle", name = "The bolt at the cursor's muzzle", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bolt-travels-up"
+title = "A bolt climbs at 900 units/s"
+description = "A bolt posed with addBolt(x, 704) on a clear column rises 450 units — BOLT_SPEED (900) over a 0.5 s window — within 5%, ending near y = 254, well inside the board. The window is sized to the board: it is only 640 units tall, so a full second at 900 units/s would take the bolt off the top, where cursor.bolt-vanishes-at-top requires it to be gone."
+domains = ["arcade"]
+failure_cap = "passable"
+# The window is 0.5 s because the board is only 640 units tall: at BOLT_SPEED
+# (900) a full second would carry the bolt off the top, where
+# `cursor.bolt-vanishes-at-top` requires it to be gone.
+validation = { script = "cursor/bolt-travels-up.test.ts", outputs = [
+  { id = "climb", name = "The bolt climbing the clear column", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bolt-stops-at-node"
+title = "A bolt is consumed by the first node"
+description = "A bolt fired up a column holding one inert node is gone after the node clears, and a node further up the same column is untouched."
+domains = ["arcade", "charge"]
+failure_cap = "broken"
+validation = { script = "cursor/bolt-stops-at-node.test.ts", outputs = [
+  { id = "consumed", name = "The cleared node and the one above it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bolt-stops-at-segment"
+title = "A bolt is consumed by the first segment"
+description = "A bolt fired up a column holding a worm segment removes that segment and no other."
+domains = ["arcade", "worm"]
+failure_cap = "broken"
+validation = { script = "cursor/bolt-stops-at-segment.test.ts", outputs = [
+  { id = "consumed", name = "The one segment the bolt removed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bolt-stops-at-foe"
+title = "A bolt is consumed by the first foe"
+description = "A bolt fired up a column holding a glitch removes the glitch and leaves a node further up the column standing."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "cursor/bolt-stops-at-foe.test.ts", outputs = [
+  { id = "consumed", name = "The dead glitch and the node above it", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bolt-vanishes-at-top"
+title = "A bolt leaves at the top of the board"
+description = "A bolt fired up an empty column is gone once it passes y = 80, and the bolt roster is empty."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "cursor/bolt-vanishes-at-top.test.ts", outputs = [
+  { id = "empty", name = "The board the bolt left at the top", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fire-interval"
+title = "Held fire produces a bolt every 0.15 s"
+description = "Holding the fire key for 0.35 s from a zero cooldown over an empty column produces three bolts, the two intervals between them FIRE_INTERVAL (0.15 s) within 10%. The window stops short of MAX_BOLTS (3) binding, so the cap never enters the reading; a longer hold would measure cursor.bolt-cap's requirement instead, and no column on a 640-unit board is tall enough for a 900 units/s bolt to outrun a one-second hold."
+domains = ["arcade"]
+failure_cap = "scuffed"
+# The window is 0.35 s so that MAX_BOLTS (3) never binds inside it — a longer
+# hold would measure `cursor.bolt-cap`'s requirement instead — and the column is
+# empty so nothing consumes a bolt early.
+validation = { script = "cursor/fire-interval.test.ts", outputs = [
+  { id = "burst", name = "The three bolts the held key produced", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bolt-cap"
+title = "At most three bolts in flight"
+description = "Holding the fire key for two seconds over an empty column never puts more than three bolts in the roster at once."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "cursor/bolt-cap.test.ts", outputs = [
+  { id = "cap", name = "The three bolts in flight at once", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-contact-costs-life"
+title = "A segment reaching the cursor costs a life"
+description = "A worm walking the floor row into a cursor parked on a floor tile, with lives to spare, decrements lives by one."
+domains = ["arcade", "worm"]
+failure_cap = "broken"
+validation = { script = "cursor/worm-contact-costs-life.test.ts", outputs = [
+  { id = "contact", name = "The segment reaching the parked cursor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foe-contact-costs-life"
+title = "A foe touching the cursor costs a life"
+description = "A glitch travelling into a parked cursor, with lives to spare, decrements lives by one."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "cursor/foe-contact-costs-life.test.ts", outputs = [
+  { id = "contact", name = "The glitch reaching the parked cursor", kind = "image" },
+] }
+[[review.categories.items]]
+id = "invulnerable-ignores-contact"
+title = "Spawn-in invulnerability absorbs a contact"
+description = "A worm segment reaching a cursor whose invulnerability is still running costs no life."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "cursor/invulnerable-ignores-contact.test.ts", outputs = [
+  { id = "absorbed", name = "The contact the invulnerable cursor absorbed", kind = "image" },
+] }
+
+# --- The support foes ---------------------------------------------------------
+# Each foe's motion, its effect on the field, how it dies, and when it starts
+# appearing. A foe acts on the tile its CENTRE occupies, which is what makes
+# `setFoeTravel(id, false)` produce a scenario with no motion in it at all: the
+# eating, the laying and the slamming points each pose a stationary foe on a
+# known tile and read one tile back.
+#
+# The two motion points are stated as distances against the figures the specs
+# fix, never as booleans, and `glitch-darts` asserts a rule specs/foes.md states
+# outright — at each GLITCH_DART_INTERVAL the glitch reverses its horizontal
+# direction — rather than an unstated random re-pick. A validator that assumed
+# randomness would fail a spec-honouring build on an unlucky seed.
+[[review.categories]]
+id = "foes"
+title = "The support foes"
+[[review.categories.items]]
+id = "glitch-eats-inert"
+title = "The glitch removes an inert node"
+description = "A glitch posed on a charge-0 node with travel off removes it within one step."
+domains = ["arcade", "charge"]
+failure_cap = "broken"
+validation = { script = "foes/glitch-eats-inert.test.ts", outputs = [
+  { id = "eaten", name = "The tile the glitch cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "glitch-eats-critical"
+title = "The glitch removes a critical node"
+description = "A glitch posed on a charge-3 node with travel off removes it, and no discharge fires."
+domains = ["arcade", "charge"]
+failure_cap = "broken"
+# The second clause — no discharge fires — is the same scenario read twice, not
+# a second requirement: eating is not detonating, and a build that conflated them
+# would clear the cluster around the node it ate.
+validation = { script = "foes/glitch-eats-critical.test.ts", outputs = [
+  { id = "eaten", name = "The critical node gone, with no discharge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "glitch-descends"
+title = "The glitch descends as it skitters"
+description = "Over two seconds a glitch's centre travels down the board, reported as the distance descended against the GLITCH_V_SPEED (62) the spec fixes, within 20%."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "foes/glitch-descends.test.ts", outputs = [
+  { id = "descent", name = "The two seconds of descent that were measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "glitch-darts"
+title = "The glitch reverses at each dart interval"
+description = "specs/foes.md states the rule outright — at each GLITCH_DART_INTERVAL (0.32 s) the glitch reverses its horizontal direction — and the item asserts that stated rule: over three seconds the reported vx reverses sign at each interval boundary, nine reversals in all, and the distance swept each way is reported so a failure names a number. The rule is stated rather than left to a random re-pick precisely so a spec-honouring build cannot fail on an unlucky seed."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "foes/glitch-darts.test.ts", outputs = [
+  { id = "darts", name = "The three seconds of darting that were measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "glitch-one-bolt"
+title = "One bolt destroys the glitch"
+description = "A single bolt into a glitch removes it from the roster."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "foes/glitch-one-bolt.test.ts", outputs = [
+  { id = "killed", name = "The board the glitch left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "glitch-gate"
+title = "No glitch before level 2"
+description = "With setFoeSpawning(true), over a minute of level-1 play no glitch joins the roster."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/glitch-gate.test.ts", outputs = [
+  { id = "gated", name = "The level-1 board no glitch joined", kind = "image" },
+] }
+[[review.categories.items]]
+id = "glitch-arrives"
+title = "A glitch arrives at level 2"
+description = "With setFoeSpawning(true) at level 2, a glitch joins the roster within GLITCH_MAX_INTERVAL (12 s)."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/glitch-arrives.test.ts", outputs = [
+  { id = "arrival", name = "The glitch that joined at level 2", kind = "image" },
+] }
+[[review.categories.items]]
+id = "glitch-cap"
+title = "At most two glitches on the board"
+description = "With setFoeSpawning(true) over a minute of level-5 play, the roster never holds more than GLITCH_MAX_ON_BOARD (2) glitches at once."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/glitch-cap.test.ts", outputs = [
+  { id = "cap", name = "The two glitches the board held at once", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-falls"
+title = "The dropper falls straight down its column"
+description = "Over one second a dropper's centre x is unchanged and its centre y has risen by DROPPER_SPEED (150) within 5%."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/dropper-falls.test.ts", outputs = [
+  { id = "fall", name = "The second of fall that was measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "dropper-lays-node"
+title = "The dropper lays an inert node on an empty tile"
+description = "A dropper posed on an empty scatter-row tile with travel off leaves a charge-0 node there."
+domains = ["arcade", "charge"]
+failure_cap = "broken"
+validation = { script = "foes/dropper-lays-node.test.ts", outputs = [
+  { id = "laid", name = "The inert node the dropper laid", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-keeps-charge"
+title = "The dropper leaves an occupied tile alone"
+description = "A dropper posed on a charge-2 node with travel off leaves it at charge 2."
+domains = ["arcade", "charge"]
+failure_cap = "passable"
+validation = { script = "foes/dropper-keeps-charge.test.ts", outputs = [
+  { id = "kept", name = "The charge-2 node the dropper left alone", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-first-bolt-survives"
+title = "The first bolt does not destroy the dropper"
+description = "One bolt into a dropper leaves it in the roster with hit true."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "foes/dropper-first-bolt-survives.test.ts", outputs = [
+  { id = "hit", name = "The dropper still in the roster, hit", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-first-bolt-speeds-up"
+title = "The first bolt speeds the dropper up"
+description = "After its first bolt a dropper's fall rate is DROPPER_SPEED_HIT (320) within 5%."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "foes/dropper-first-bolt-speeds-up.test.ts", outputs = [
+  { id = "faster", name = "The hit dropper's faster fall", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-second-bolt-kills"
+title = "The second bolt destroys the dropper"
+description = "A bolt into a dropper whose hit is already true removes it from the roster."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "foes/dropper-second-bolt-kills.test.ts", outputs = [
+  { id = "killed", name = "The board the dropper left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-sparse-trigger"
+title = "A sparse lower field draws a dropper in"
+description = "With setFoeSpawning(true) at level 3 and fewer than DROPPER_SPARSE_THRESHOLD (8) nodes in rows 10..19, a dropper appears within two DROPPER_CHECK_INTERVALs."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "foes/dropper-sparse-trigger.test.ts", outputs = [
+  { id = "drawn", name = "The dropper the sparse field drew in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-dense-no-trigger"
+title = "A dense lower field draws none"
+description = "With setFoeSpawning(true) at level 3 and thirty nodes in rows 10..19, no dropper appears over ten seconds. The glitch spawner is running too — that is what foeSpawning gates — so the item reads the dropper roster alone and re-poses the thirty nodes each check interval, since a glitch may eat one."
+domains = ["arcade"]
+failure_cap = "scuffed"
+# The glitch spawner is running too — that is what `foeSpawning` gates — so this
+# reads the DROPPER roster alone and re-poses the thirty nodes each check
+# interval, since a glitch may eat one out from under the density it is testing.
+validation = { script = "foes/dropper-dense-no-trigger.test.ts", outputs = [
+  { id = "dense", name = "The dense lower field that drew none", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-gate"
+title = "Droppers begin at level 3"
+description = "With setFoeSpawning(true) at levels 1 and 2, a sparse lower field draws no dropper over ten seconds."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/dropper-gate.test.ts", outputs = [
+  { id = "gated", name = "The level-2 board no dropper joined", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corruptor-crawls"
+title = "The corruptor crawls at 130 units/s"
+description = "Over one second a corruptor's centre x moves CORRUPTOR_SPEED (130) within 5%."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/corruptor-crawls.test.ts", outputs = [
+  { id = "crawl", name = "The second of crawl that was measured", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "corruptor-holds-row"
+title = "The corruptor does not descend"
+description = "Over three seconds of crawling, a corruptor's centre y is unchanged."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "foes/corruptor-holds-row.test.ts", outputs = [
+  { id = "row", name = "The row the corruptor held for three seconds", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corruptor-slams"
+title = "The corruptor slams a node to critical"
+description = "A corruptor posed on a charge-0 node with travel off leaves it at charge 3."
+domains = ["arcade", "charge"]
+failure_cap = "broken"
+validation = { script = "foes/corruptor-slams.test.ts", outputs = [
+  { id = "slammed", name = "The node slammed to critical", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corruptor-slams-charged"
+title = "A slam goes to critical, not up one"
+description = "A corruptor posed on a charge-1 node with travel off leaves it at charge 3 rather than 2."
+domains = ["arcade", "charge"]
+failure_cap = "passable"
+validation = { script = "foes/corruptor-slams-charged.test.ts", outputs = [
+  { id = "slammed", name = "The charge-1 node taken straight to 3", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corruptor-one-bolt"
+title = "One bolt destroys the corruptor"
+description = "A single bolt into a corruptor removes it from the roster."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "foes/corruptor-one-bolt.test.ts", outputs = [
+  { id = "killed", name = "The board the corruptor left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corruptor-gate"
+title = "No corruptor before level 5"
+description = "With setFoeSpawning(true), over a minute of level-4 play no corruptor joins the roster."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/corruptor-gate.test.ts", outputs = [
+  { id = "gated", name = "The level-4 board no corruptor joined", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corruptor-arrives"
+title = "A corruptor arrives at level 5"
+description = "With setFoeSpawning(true) at level 5, a corruptor joins the roster within CORRUPTOR_MAX_INTERVAL (22 s)."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/corruptor-arrives.test.ts", outputs = [
+  { id = "arrival", name = "The corruptor that joined at level 5", kind = "image" },
+] }
+
+# --- The run ------------------------------------------------------------------
+# Lives, respawn, the twelve levels, and the two ways a run ends.
+#
+# `level-clears-on-last-segment` and `empty-board-does-not-clear` are two points,
+# not one, because the level-clear rule is a TRANSITION rather than a predicate:
+# a level clears on the step in which the last of its segments is removed, and a
+# board that never held one is playing rather than cleared. The second direction
+# is what makes the shared harness's empty posed board safe, so a build that
+# fails it makes every mechanic scenario in the suite impossible to pose —
+# which is why it is capped `broken` in its own right rather than folded into
+# the first.
+[[review.categories]]
+id = "progression"
+title = "The run"
+[[review.categories.items]]
+id = "starts-three-lives"
+title = "A new run starts with three lives"
+description = "Confirming DESCEND from the title menu opens a run reporting lives 3."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "progression/starts-three-lives.test.ts", outputs = [
+  { id = "opening", name = "The HUD as the run opens", kind = "image" },
+] }
+[[review.categories.items]]
+id = "starts-level-one"
+title = "A new run starts at level 1"
+description = "The same run reports level 1 and reachedLevel 1."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "progression/starts-level-one.test.ts", outputs = [
+  { id = "opening", name = "The HUD as the run opens", kind = "image" },
+] }
+[[review.categories.items]]
+id = "starts-zero-score"
+title = "A new run starts at zero"
+description = "The same run reports score 0."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/starts-zero-score.test.ts", outputs = [
+  { id = "opening", name = "The HUD as the run opens", kind = "image" },
+] }
+[[review.categories.items]]
+id = "life-lost-decrements"
+title = "A contact with lives to spare costs one life"
+description = "With three lives, one contact leaves two."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "progression/life-lost-decrements.test.ts", outputs = [
+  { id = "lives", name = "The HUD after the contact", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawn-clears-worms"
+title = "A respawn clears the worms"
+description = "After a life is lost with lives to spare, the worm roster is empty during the respawn phase."
+domains = ["arcade", "worm"]
+failure_cap = "passable"
+validation = { script = "progression/respawn-clears-worms.test.ts", outputs = [
+  { id = "respawn", name = "The empty board during the respawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawn-clears-foes"
+title = "A respawn clears the foes"
+description = "The foe roster is likewise empty during the respawn phase."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/respawn-clears-foes.test.ts", outputs = [
+  { id = "respawn", name = "The empty board during the respawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawn-centres-cursor"
+title = "The cursor respawns centred in the band"
+description = "After a respawn the cursor's centre is at the band's centre, within one tile."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/respawn-centres-cursor.test.ts", outputs = [
+  { id = "centred", name = "The cursor back at the band's centre", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawn-invulnerable"
+title = "The cursor respawns briefly invulnerable"
+description = "After a respawn the cursor reports RESPAWN_INVULN (2.0 s) of invulnerability remaining, within 0.2 s."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/respawn-invulnerable.test.ts", outputs = [
+  { id = "invulnerable", name = "The cursor with its invulnerability running", kind = "image" },
+] }
+[[review.categories.items]]
+id = "respawn-spawns-worm"
+title = "The level's worm enters afresh after a respawn"
+description = "Once RESPAWN_TIME (1.4 s) has passed, a worm of the level's length is on the board."
+domains = ["arcade", "worm"]
+failure_cap = "scuffed"
+validation = { script = "progression/respawn-spawns-worm.test.ts", outputs = [
+  { id = "entered", name = "The fresh worm the respawn brought in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "level-clears-on-last-segment"
+title = "Removing the last segment clears the level"
+description = "Shooting away the single segment of a one-segment worm advances the run past that level."
+domains = ["worm", "arcade"]
+failure_cap = "broken"
+validation = { script = "progression/level-clears-on-last-segment.test.ts", outputs = [
+  { id = "cleared", name = "The run past the level it cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "empty-board-does-not-clear"
+title = "An empty board is playing, not cleared"
+description = "A board posed with no worm, from which no segment has been removed, is still on the same level and still active several seconds later. This is the rule the whole harness rests on — startPlaying poses an empty board — so a build that clears on it makes every mechanic scenario in the suite impossible to pose."
+domains = ["worm", "arcade"]
+failure_cap = "broken"
+# Load-bearing for the whole suite: the shared harness's `startPlaying` poses an
+# EMPTY board, which is safe only because a level clears on a transition rather
+# than on a predicate. A build that clears on an empty board makes every mechanic
+# scenario here impossible to pose, so this is capped `broken` in its own right.
+validation = { script = "progression/empty-board-does-not-clear.test.ts", outputs = [
+  { id = "playing", name = "The empty board still on its level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "level-advances"
+title = "A clear advances the level by one"
+description = "Clearing level 4's worm leaves the run reporting level 5."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "progression/level-advances.test.ts", outputs = [
+  { id = "advanced", name = "The HUD reporting level 5", kind = "image" },
+] }
+[[review.categories.items]]
+id = "level-banner"
+title = "The next level opens on its banner"
+description = "After a clear the phase is banner, and it becomes active BANNER_TIME (1.3 s) later."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/level-banner.test.ts", outputs = [
+  { id = "banner", name = "The level banner before play resumes", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-at-zero-lives"
+title = "Losing the last life ends the run"
+description = "A contact with one life left leaves the game on the gameover screen with lives 0."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "progression/game-over-at-zero-lives.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen the last life left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over-records-level"
+title = "Game over reports the level reached"
+description = "A run that ends on level 7 reports reachedLevel 7."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "progression/game-over-records-level.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen reporting level 7", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory-on-twelve"
+title = "Clearing level 12 wins the run"
+description = "Clearing the worm at level 12 leaves the game on the victory screen."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "progression/victory-on-twelve.test.ts", outputs = [
+  { id = "victory", name = "The victory screen level 12 opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances on its own clock"
+description = "A started run left to run on the build's own clock accumulates simulation time and gives way from its level banner to live play with nothing stepping it."
+domains = ["charge", "worm", "arcade"]
+failure_cap = "broken"
+# Two outputs, a before and an after, because what is being shown is that time
+# passed with nothing poking the game.
+validation = { script = "progression/advances-in-real-time.test.ts", outputs = [
+  { id = "before", name = "The instant play begins", kind = "image" },
+  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
+] }
+
+# --- Scoring ------------------------------------------------------------------
+# Every figure specs/scoring.md fixes, one point each, each asserting an exact
+# delta rather than a direction.
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "body-segment"
+title = "A body segment shot scores 10"
+description = "A bolt into a middle segment raises the score by exactly 10."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/body-segment.test.ts", outputs = [
+  { id = "scored", name = "The HUD after the body segment fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "head-segment"
+title = "A head shot scores 100"
+description = "A bolt into the head raises the score by exactly 100."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/head-segment.test.ts", outputs = [
+  { id = "scored", name = "The HUD after the head fell", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fried-segment"
+title = "A fried segment scores 10"
+description = "Each segment destroyed by a discharge raises the score by 10."
+domains = ["arcade", "charge"]
+failure_cap = "passable"
+validation = { script = "scoring/fried-segment.test.ts", outputs = [
+  { id = "scored", name = "The HUD after the discharge fried the segments", kind = "image" },
+] }
+[[review.categories.items]]
+id = "purge-node"
+title = "Each purged node scores 5"
+description = "A discharge that clears six nodes raises the score by 30 for the purge."
+domains = ["arcade", "charge"]
+failure_cap = "passable"
+validation = { script = "scoring/purge-node.test.ts", outputs = [
+  { id = "scored", name = "The HUD after the six nodes were purged", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inert-node"
+title = "An inert node shot down scores 1"
+description = "A bolt into a charge-0 node raises the score by exactly 1."
+domains = ["arcade", "charge"]
+failure_cap = "passable"
+validation = { script = "scoring/inert-node.test.ts", outputs = [
+  { id = "scored", name = "The HUD after the inert node was shot down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "deenergize-scores-nothing"
+title = "De-energizing a node scores nothing"
+description = "A bolt into a charge-2 node leaves the score unchanged."
+domains = ["arcade", "charge"]
+failure_cap = "great"
+validation = { script = "scoring/deenergize-scores-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The HUD left unchanged by the de-energizing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "glitch-bounty"
+title = "A glitch pays 300"
+description = "Killing a glitch raises the score by exactly 300."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/glitch-bounty.test.ts", outputs = [
+  { id = "scored", name = "The HUD after the glitch was killed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-bounty"
+title = "A dropper pays 200"
+description = "Killing a dropper raises the score by exactly 200 across its two bolts."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/dropper-bounty.test.ts", outputs = [
+  { id = "scored", name = "The HUD after the dropper's second bolt", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corruptor-bounty"
+title = "A corruptor pays 1000"
+description = "Killing a corruptor raises the score by exactly 1000."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/corruptor-bounty.test.ts", outputs = [
+  { id = "scored", name = "The HUD after the corruptor was killed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "level-clear-bonus"
+title = "A level clear pays 100 times the level"
+description = "Clearing level 4 raises the score by 400 beyond what the kill itself paid."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/level-clear-bonus.test.ts", outputs = [
+  { id = "scored", name = "The HUD after level 4 cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory-bonus"
+title = "Victory pays 250 per life remaining"
+description = "Winning with two lives left adds 500 beyond the level-12 clear bonus."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "scoring/victory-bonus.test.ts", outputs = [
+  { id = "scored", name = "The victory screen's final score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bonus-life"
+title = "A bonus life at every 12,000 points"
+description = "A score posed at 11,950 that crosses BONUS_LIFE_EVERY (12,000) through real scoring grants one extra life. The other direction — that posing the score across the boundary grants nothing — is instrumentation.set-score-grants-no-life."
+domains = ["arcade"]
+failure_cap = "scuffed"
+# Through REAL scoring, from a posed 11,950. The other direction — that posing
+# the score across the boundary grants nothing — is
+# `instrumentation.set-score-grants-no-life`.
+validation = { script = "scoring/bonus-life.test.ts", outputs = [
+  { id = "bonus", name = "The HUD carrying the extra life", kind = "image" },
+] }
+
+# --- Controls -----------------------------------------------------------------
+# Each point holds or presses ONE binding on a posed live board and reads the
+# result, so a build that bound a key to the wrong action fails exactly the key
+# it got wrong. The four movement pairs and the fire key are capped `broken`
+# because the game cannot be played without them; the menu and system keys are
+# `scuffed`. Every one names `arcade`: these are the keys the arcade frame is
+# driven by.
+#
+# The points assert DIRECTION, not rate. How fast a held key moves the cursor is
+# `cursor.move-speed`'s requirement, measured there over an exact one-second
+# horizontal window.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "left-arrow"
+title = "ArrowLeft moves the cursor left"
+description = "Held from mid-band on a live board, ArrowLeft lowers the cursor's centre x and leaves its centre y where it was; released, the cursor stops."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "controls/left-arrow.test.ts", outputs = [
+  { id = "moved", name = "The cursor after the ArrowLeft hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "right-arrow"
+title = "ArrowRight moves the cursor right"
+description = "Held from mid-band on a live board, ArrowRight raises the cursor's centre x and leaves its centre y where it was; released, the cursor stops."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "controls/right-arrow.test.ts", outputs = [
+  { id = "moved", name = "The cursor after the ArrowRight hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "up-arrow"
+title = "ArrowUp moves the cursor up within the band"
+description = "Held from CURSOR_Y_MAX (704) on a live board, ArrowUp lowers the cursor's centre y by at least a quarter of the band and leaves its centre x where it was. Where the travel stops is cursor.clamped-top."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "controls/up-arrow.test.ts", outputs = [
+  { id = "moved", name = "The cursor after the ArrowUp hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "down-arrow"
+title = "ArrowDown moves the cursor down within the band"
+description = "Held from CURSOR_Y_MIN (672) on a live board, ArrowDown raises the cursor's centre y by at least a quarter of the band and leaves its centre x where it was. Where the travel stops is cursor.clamped-bottom."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "controls/down-arrow.test.ts", outputs = [
+  { id = "moved", name = "The cursor after the ArrowDown hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "key-a"
+title = "KeyA moves the cursor left"
+description = "KeyA is bound to the same leftward movement as ArrowLeft: held from mid-band it lowers the cursor's centre x."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/key-a.test.ts", outputs = [
+  { id = "moved", name = "The cursor after the KeyA hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "key-d"
+title = "KeyD moves the cursor right"
+description = "KeyD is bound to the same rightward movement as ArrowRight: held from mid-band it raises the cursor's centre x."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/key-d.test.ts", outputs = [
+  { id = "moved", name = "The cursor after the KeyD hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "key-w"
+title = "KeyW moves the cursor up"
+description = "KeyW is bound to the same upward movement as ArrowUp: held from CURSOR_Y_MAX it lowers the cursor's centre y by at least a quarter of the band."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/key-w.test.ts", outputs = [
+  { id = "moved", name = "The cursor after the KeyW hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "key-s"
+title = "KeyS moves the cursor down"
+description = "KeyS is bound to the same downward movement as ArrowDown: held from CURSOR_Y_MIN it raises the cursor's centre y by at least a quarter of the band."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/key-s.test.ts", outputs = [
+  { id = "moved", name = "The cursor after the KeyS hold", kind = "image" },
+] }
+[[review.categories.items]]
+id = "space-fires"
+title = "Space fires a bolt"
+description = "Pressed on a live board with the fire cooldown at zero, Space puts one bolt in the roster, in the cursor's column."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "controls/space-fires.test.ts", outputs = [
+  { id = "fired", name = "The bolt Space put in the air", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-p"
+title = "KeyP pauses the game"
+description = "Pressed during play, KeyP leaves the game on the pause screen."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/pause-p.test.ts", outputs = [
+  { id = "paused", name = "The pause screen KeyP opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-escape"
+title = "Escape pauses the game"
+description = "Pressed during play, Escape leaves the game on the pause screen. Escape drives both pause and back, and this is the pause half."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/pause-escape.test.ts", outputs = [
+  { id = "paused", name = "The pause screen Escape opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-m"
+title = "KeyM toggles mute"
+description = "Pressed on a live board, KeyM flips the muted bit the snapshot reports, and pressed again flips it back. Mute is reached through the real binding because there is no setMuted operation to pose it with."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/mute-m.test.ts", outputs = [
+  { id = "muted", name = "The board with mute toggled by KeyM", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-down"
+title = "The down binding moves the menu selection down"
+description = "Pressed on the title menu, the down binding moves menuIndex on by one."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/menu-down.test.ts", outputs = [
+  { id = "selection", name = "The menu selection one item down", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-up"
+title = "The up binding moves the menu selection up"
+description = "Pressed on the title menu, the up binding moves menuIndex back by one."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/menu-up.test.ts", outputs = [
+  { id = "selection", name = "The menu selection one item up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-enter"
+title = "Enter confirms the highlighted menu item"
+description = "Pressed on the title menu, Enter acts on the highlighted item and leaves the game on the screen that item opens."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "controls/confirm-enter.test.ts", outputs = [
+  { id = "confirmed", name = "The screen Enter opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "confirm-space"
+title = "Space confirms the highlighted menu item"
+description = "Pressed on the title menu, Space acts on the highlighted item exactly as Enter does. Space is bound to both fire and confirm, and this is the confirm half."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/confirm-space.test.ts", outputs = [
+  { id = "confirmed", name = "The screen Space opened", kind = "image" },
+] }
+
+# --- Screens and menus --------------------------------------------------------
+# The six screens, what each shows, and how a player moves between them. The copy
+# points assert only the tokens specs/ui.md fixes — the title, the tagline, the
+# menu items, the key names — and capture the frame for the reviewer. How a
+# screen LOOKS is not asked of anyone here; it is rated through the presentation
+# domain.
+[[review.categories]]
+id = "screens"
+title = "Screens and menus"
+[[review.categories.items]]
+id = "title-screen"
+title = "The title screen shows its title, tagline and menu"
+description = "The title screen draws WIREWORM, CUT THE CURRENT, and both TITLE_ITEMS, with the highlighted item visibly distinct."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/title-screen.test.ts", outputs = [
+  { id = "title", name = "The title screen and its menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-descend-starts"
+title = "DESCEND starts a run"
+description = "Confirming the first title item leaves the game on the playing screen. A build that cannot open a run is unplayable in every functional domain, which is why the cap is broken and all three are named."
+domains = ["charge", "worm", "arcade"]
+failure_cap = "broken"
+# Capped `broken` and naming all three functional domains: a build that cannot
+# open a run is unplayable in every one of them.
+validation = { script = "screens/title-descend-starts.test.ts", outputs = [
+  { id = "playing", name = "The run DESCEND opened", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-howto"
+title = "HOW TO PLAY opens the how-to screen"
+description = "Confirming the second title item leaves the game on the howto screen."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/title-howto.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-back"
+title = "The how-to screen returns to the menu"
+description = "The back binding from howto returns to title."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/howto-back.test.ts", outputs = [
+  { id = "title", name = "The title the back binding returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-copy"
+title = "The how-to screen names the keys"
+description = "Among the how-to screen's draws, a standalone token — matched at word boundaries — names the fire key (SPACE) and the movement keys. The rules prose the screen also carries is reviewed from the captured frame, not asserted: whether wording \"names the chain-arc discharge\" is not a question a script can decide, and Refract's counterpart says so in as many words. The output is an image of the screen."
+domains = ["presentation"]
+failure_cap = "passable"
+# The tokens are matched at word boundaries and nothing else on the screen is
+# asserted. Whether the rules prose \"names the chain-arc discharge\" is not a
+# question a script can decide, so the screen is captured as an image and the
+# wording is left to the reviewer.
+validation = { script = "screens/howto-copy.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen's copy", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-wraps-down"
+title = "The title selection wraps past the last item"
+description = "Moving down from the last title item highlights the first."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/title-menu-wraps-down.test.ts", outputs = [
+  { id = "wrapped", name = "The selection wrapped to the first item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-wraps-up"
+title = "The title selection wraps past the first item"
+description = "Moving up from the first title item highlights the last."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/title-menu-wraps-up.test.ts", outputs = [
+  { id = "wrapped", name = "The selection wrapped to the last item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-screen"
+title = "The pause screen offers its three items"
+description = "Pausing during play draws all three PAUSE_ITEMS over a visible, frozen board."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-screen.test.ts", outputs = [
+  { id = "pause", name = "The pause menu over the frozen board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-freezes"
+title = "Pausing freezes the simulation"
+description = "Over a second of paused game time the worm takes no step and no foe moves."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "screens/pause-freezes.test.ts", outputs = [
+  { id = "frozen", name = "The second of paused game time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-resume"
+title = "Resume returns to play unchanged"
+description = "Confirming RESUME returns to playing with the worm on the tile it was paused on."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/pause-resume.test.ts", outputs = [
+  { id = "resumed", name = "The board play resumed on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-restart"
+title = "Restart begins a new run"
+description = "Confirming RESTART from a run at level 5 with 1 life leaves a run at level 1 with 3 lives and score 0."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/pause-restart.test.ts", outputs = [
+  { id = "restarted", name = "The fresh run RESTART began", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-quit"
+title = "Quit to menu returns to the title"
+description = "Confirming QUIT TO MENU leaves the game on the title screen."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/pause-quit.test.ts", outputs = [
+  { id = "title", name = "The title QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory-screen"
+title = "The Victory screen reports the run"
+description = "The Victory screen shows the final score, all 12 levels cleared, the lives remaining, and both ENDING_ITEMS."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/victory-screen.test.ts", outputs = [
+  { id = "victory", name = "The Victory screen and its readouts", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-screen"
+title = "The Game-over screen reports the run"
+description = "The Game-over screen shows the final score, the level reached, and both ENDING_ITEMS."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "screens/gameover-screen.test.ts", outputs = [
+  { id = "gameover", name = "The Game-over screen and its readouts", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ending-play-again"
+title = "PLAY AGAIN begins a new run"
+description = "Confirming the first ending item leaves a run at level 1 with 3 lives and score 0."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/ending-play-again.test.ts", outputs = [
+  { id = "restarted", name = "The fresh run PLAY AGAIN began", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ending-menu"
+title = "MENU returns to the title"
+description = "Confirming the second ending item leaves the game on the title screen."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "screens/ending-menu.test.ts", outputs = [
+  { id = "title", name = "The title MENU returned to", kind = "image" },
+] }
+
+# --- Look and readouts --------------------------------------------------------
+# This case seeds no palette and no typeface, so there is no hex value on this
+# checklist to assert. Every color point instead checks PRESENCE and
+# SEPARATION, against a stated RGB distance out of 441 — which is exactly
+# what specs/overview.md's legibility table asks a player to be able to read at a
+# glance, and nothing more. A build that designs a beautiful board its own way
+# passes every one of them.
+#
+# Every sprite point reads the IMAGE SOURCE handed to each draw and matches it
+# against the seeded PNG read off the workspace's own assets/ tree, rather than
+# sampling stage pixels: the art is fixed by the case, so what is checkable is
+# that the build drew from it.
+[[review.categories]]
+id = "presentation"
+title = "Look and readouts"
+[[review.categories.items]]
+id = "node-ramp-distinct"
+title = "The four charge states are told apart"
+description = "Four nodes posed at charges 0..3 sample four colors that differ pairwise by more than 40 of 441."
+domains = ["charge", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/node-ramp-distinct.test.ts", outputs = [
+  { id = "ramp", name = "The four charge states side by side", kind = "image" },
+] }
+[[review.categories.items]]
+id = "node-ramp-brightens"
+title = "The ramp brightens toward critical"
+description = "The sampled brightness of the four charge states is strictly increasing from inert to critical."
+domains = ["charge", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/node-ramp-brightens.test.ts", outputs = [
+  { id = "ramp", name = "The four charge states side by side", kind = "image" },
+] }
+[[review.categories.items]]
+id = "critical-pulses"
+title = "A critical node visibly pulses"
+description = "A critical node's drawn source alternates between two distinct frames of assets/node/ over one second."
+domains = ["charge", "presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/critical-pulses.test.ts", outputs = [
+  { id = "pulse", name = "The critical node over a second of pulsing", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-distinct"
+title = "The worm reads apart from the board and the nodes"
+description = "A posed worm's sampled color differs from the board background and from each of the four node charge colors by more than 40 of 441."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/worm-distinct.test.ts", outputs = [
+  { id = "worm", name = "The worm over the board and the field", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cursor-distinct"
+title = "The cursor reads apart from the band"
+description = "The cursor's sampled color differs from the band tint by more than 40 of 441."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/cursor-distinct.test.ts", outputs = [
+  { id = "cursor", name = "The cursor in its band", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foes-distinct"
+title = "The three foes read apart"
+description = "The three foes' sampled colors differ pairwise, and each from the board background, by more than 40 of 441."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/foes-distinct.test.ts", outputs = [
+  { id = "foes", name = "The three foes side by side", kind = "image" },
+] }
+[[review.categories.items]]
+id = "node-from-sprite"
+title = "Nodes are drawn from the seeded node art"
+description = "Every node drawn on a posed board is drawn from a frame of assets/node/."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/node-from-sprite.test.ts", outputs = [
+  { id = "nodes", name = "The posed field drawn from the seeded art", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-head-from-sprite"
+title = "The head is drawn from a head frame"
+description = "The leading segment of a posed worm is drawn from frame 0 or 1 of assets/worm/."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/worm-head-from-sprite.test.ts", outputs = [
+  { id = "head", name = "The head as it is drawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-body-from-sprite"
+title = "A middle segment is drawn from a body frame"
+description = "A middle segment is drawn from frame 2 or 3 of assets/worm/."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/worm-body-from-sprite.test.ts", outputs = [
+  { id = "body", name = "A middle segment as it is drawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-tail-from-sprite"
+title = "The tail is drawn from a tail frame"
+description = "The trailing segment is drawn from frame 4 or 5 of assets/worm/."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/worm-tail-from-sprite.test.ts", outputs = [
+  { id = "tail", name = "The tail as it is drawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-mirrored"
+title = "A leftward worm is drawn mirrored"
+description = "A worm heading left draws its frames mirrored horizontally against the same worm heading right."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "presentation/worm-mirrored.test.ts", outputs = [
+  { id = "mirrored", name = "The leftward worm beside the rightward one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cursor-from-sprite"
+title = "The cursor is drawn from the seeded cursor art"
+description = "The cursor is drawn from assets/cursor/0.png, upright."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/cursor-from-sprite.test.ts", outputs = [
+  { id = "cursor", name = "The cursor as it is drawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "glitch-from-sprite"
+title = "The glitch is drawn from its seeded art"
+description = "A posed glitch is drawn from a frame of assets/glitch/."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/glitch-from-sprite.test.ts", outputs = [
+  { id = "glitch", name = "The glitch as it is drawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "dropper-from-sprite"
+title = "The dropper is drawn from its seeded art"
+description = "A posed dropper is drawn from assets/dropper/0.png."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/dropper-from-sprite.test.ts", outputs = [
+  { id = "dropper", name = "The dropper as it is drawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corruptor-from-sprite"
+title = "The corruptor is drawn from its seeded art"
+description = "A posed corruptor is drawn from a frame of assets/corruptor/."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/corruptor-from-sprite.test.ts", outputs = [
+  { id = "corruptor", name = "The corruptor as it is drawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-score"
+title = "The HUD shows the running score"
+description = "With the score posed at 12,345 the HUD bar draws that figure."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/hud-score.test.ts", outputs = [
+  { id = "hud", name = "The HUD bar carrying the posed score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-lives"
+title = "The HUD shows the lives remaining"
+description = "With lives posed at 2 the HUD bar shows two lives, as icons or as a count."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/hud-lives.test.ts", outputs = [
+  { id = "hud", name = "The HUD bar carrying two lives", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud-level"
+title = "The HUD shows the level and the total"
+description = "With the level posed at 7 the HUD bar draws HUD_LEVEL_LABEL (LEVEL) with the digit 7 adjacent, and TOTAL_LEVELS (12) also on the bar. The composition — a slash, the word OF, the label above the digits — is the build's, since the specs fix only the label and the two figures."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "presentation/hud-level.test.ts", outputs = [
+  { id = "hud", name = "The HUD bar carrying the level and the total", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bolts-drawn"
+title = "A bolt in flight is drawn in its column"
+description = "A posed bolt is drawn within half a tile of its reported centre, distinct from the board background by more than 40 of 441."
+domains = ["presentation", "arcade"]
+failure_cap = "passable"
+validation = { script = "presentation/bolts-drawn.test.ts", outputs = [
+  { id = "bolt", name = "The bolt drawn in its column", kind = "image" },
+] }
+[[review.categories.items]]
+id = "arcs-drawn"
+title = "A discharge draws lightning between the tiles it links"
+description = "While arcs are live, the segment joining each linked pair of tile centres carries drawn pixels distinct from the board background."
+domains = ["presentation", "charge"]
+failure_cap = "passable"
+validation = { script = "presentation/arcs-drawn.test.ts", outputs = [
+  { id = "arcs", name = "The lightning joining the linked tiles", kind = "image" },
+] }
+
+# --- Audio --------------------------------------------------------------------
+# Ten cues, one point each, plus mute. Each drives its event on an otherwise
+# silent board and reads the cue the build played: under an engine, from the
+# engine's `cue:played` event; under `none`, from the Web Audio sources the build
+# started.
+#
+# Mute is reached through the real KeyM binding and read from the snapshot's
+# `muted`, because there is no `setMuted` operation — under simple-2d a pose is a
+# pure transform over the state and could not reach the audio bus, so such an
+# operation would be a boolean that silenced nothing.
+#
+# There is deliberately NO "the cues sound different from one another" point.
+# Under `none` a cue is a Web Audio graph the build synthesizes, and no measure
+# of two synthesized cues being distinct traces to any figure this specification
+# fixes, so any threshold a validator invented would be the validator's opinion
+# rather than the case's requirement. Cue character is what the presentation
+# domain rating is for.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "fire"
+title = "Firing a bolt plays the fire cue"
+description = "Firing a bolt on an otherwise silent board plays the fire cue, once, on the frame the bolt appears."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/fire.test.ts", outputs = [
+  { id = "shot", name = "The shot whose cue is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cut"
+title = "Cutting a worm segment plays the cut cue"
+description = "A bolt destroying a worm segment plays the cut cue, once, on the frame the segment is removed."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/cut.test.ts", outputs = [
+  { id = "cut", name = "The segment whose cue is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "discharge"
+title = "A chain-arc discharge plays the discharge cue"
+description = "A bolt into a critical node plays the discharge cue, once, on the frame the chain runs."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/discharge.test.ts", outputs = [
+  { id = "discharge", name = "The discharge whose cue is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "critical"
+title = "A node reaching critical plays the critical cue"
+description = "A node reaching charge 3 plays the critical cue, once, on the frame it reaches it."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/critical.test.ts", outputs = [
+  { id = "critical", name = "The node reaching critical", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foe"
+title = "Killing a foe plays the foe cue"
+description = "A bolt destroying a foe plays the foe cue, once, on the frame the foe leaves the roster."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/foe.test.ts", outputs = [
+  { id = "kill", name = "The foe kill whose cue is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "life"
+title = "Losing a life plays the life cue"
+description = "A contact that costs a life plays the life cue, once, on the frame lives falls."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/life.test.ts", outputs = [
+  { id = "contact", name = "The contact whose cue is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "level-clear"
+title = "Clearing a level plays the level-clear cue"
+description = "Removing the last segment of a level's worm plays the levelClear cue, once, on the frame the level clears."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/level-clear.test.ts", outputs = [
+  { id = "clear", name = "The level clear whose cue is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory"
+title = "Winning plays the victory sting"
+description = "Clearing the worm at level 12 plays the victory sting, once, on the frame the Victory screen opens."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/victory.test.ts", outputs = [
+  { id = "victory", name = "The victory whose sting is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "game-over"
+title = "Losing the last life plays the game-over sting"
+description = "Losing the last life plays the gameOver sting, once, on the frame the Game-over screen opens."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "audio/game-over.test.ts", outputs = [
+  { id = "gameover", name = "The last life lost, whose sting is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu"
+title = "Moving a menu selection plays the menu cue"
+description = "Moving the title menu's selection plays the menu cue, once per move."
+domains = ["presentation"]
+failure_cap = "great"
+validation = { script = "audio/menu.test.ts", outputs = [
+  { id = "menu", name = "The menu move whose cue is read", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-silences"
+title = "Mute silences every cue"
+description = "With mute turned on through the real KeyM binding, firing a bolt, cutting a segment and moving a menu selection play nothing at all, and the snapshot reports muted throughout."
+domains = ["presentation"]
+failure_cap = "scuffed"
+validation = { script = "audio/mute-silences.test.ts", outputs = [
+  { id = "muted", name = "The muted board the events were driven on", kind = "image" },
+] }

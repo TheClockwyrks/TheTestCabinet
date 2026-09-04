@@ -30,12 +30,12 @@
 // thirty ticks that follow it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TILE } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertLessThan,
 } from "../assert";
+import { TILE } from "../constants";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,

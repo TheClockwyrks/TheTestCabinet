@@ -15,18 +15,23 @@ import {
   FIELD_H,
   FIELD_W,
   HOLD_TIME,
-  MATCHOVER_ITEMS,
   NET_X,
   OBSTACLE_HH,
   OBSTACLE_HW,
   PADDLE_HALF,
   PADDLE_W,
-  PAUSE_ITEMS,
-  TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
 import { paddleBounds } from "./entities";
 import type { CaromState } from "./game";
+import {
+  itemCenter,
+  MATCHOVER_MENU,
+  PAUSE_MENU,
+  HOWTO_MENU,
+  TITLE_MENU,
+  type MenuLayout,
+} from "./menus";
 import type { DeepReadonly } from "ts-essentials";
 import {
   COLOR,
@@ -215,7 +220,8 @@ function drawTrail(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   // the ball's position at the end of every frame, and the frame the engine draws
   // is the frame it just updated. There is no interpolation to do — a variable
   // step means the renderer never draws between two simulation states.
-  const pts = ribbon(state.trail);
+  if (!state.ball) return;
+  const pts = ribbon(state.ball.trail);
   if (pts.length < 2) return;
 
   const head = pts[0];
@@ -339,20 +345,21 @@ function drawHud(ctx: Ctx, state: DeepReadonly<CaromState>): void {
  * A vertical menu with a highlighted selection. The selected item is bright and
  * flanked by triangle markers in the accent color; the others are dim. Markers are
  * drawn beside the measured text so they never overlap it.
+ *
+ * The geometry comes from `src/menus.ts` rather than from figures of this file's
+ * own, because the same table answers `menuItemRect` and decides which item a
+ * pointer lands on: a menu that highlighted one item and confirmed another would
+ * be a build whose drawing and whose hit regions had drifted apart.
  */
 function drawMenu(
   ctx: Ctx,
-  items: readonly string[],
+  layout: MenuLayout,
   selected: number,
-  centerX: number,
-  startY: number,
-  spacing: number,
-  itemSize: number,
-  letterSpacing: number,
   accent: string,
 ): void {
+  const { items, fontPx: itemSize, letterSpacing } = layout;
   for (let i = 0; i < items.length; i++) {
-    const y = startY + i * spacing;
+    const { x: centerX, y } = itemCenter(layout, i);
     const isSel = i === selected;
     const opts: TextOpts = {
       size: itemSize,
@@ -400,17 +407,7 @@ function drawTitle(ctx: Ctx, state: DeepReadonly<CaromState>): void {
     color: COLOR.textDim,
     spacing: 14,
   });
-  drawMenu(
-    ctx,
-    TITLE_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    430,
-    52,
-    30,
-    10,
-    COLOR.p1,
-  );
+  drawMenu(ctx, TITLE_MENU, state.menuIndex, COLOR.p1);
 
   const hint = state.muted
     ? "▲ ▼ MOVE    ENTER SELECT    M UNMUTE"
@@ -472,11 +469,9 @@ function drawHowTo(ctx: Ctx, state: DeepReadonly<CaromState>): void {
     y += label ? 58 : 40;
   }
 
-  drawText(ctx, "ESC / ENTER  —  BACK", FIELD_CX, FIELD_H - 44, {
-    size: 18,
-    color: COLOR.textFaint,
-    spacing: 8,
-  });
+  // The how-to screen's ONE menu item (specs/ui.md), drawn exactly as the other
+  // menus draw the item at `menuIndex` and confirmed by the same three inputs.
+  drawMenu(ctx, HOWTO_MENU, 0, COLOR.p1);
 }
 
 function drawMatchScene(ctx: Ctx, state: DeepReadonly<CaromState>): void {
@@ -486,7 +481,8 @@ function drawMatchScene(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   drawField(ctx, state, 1, false);
   drawVignette(ctx);
   drawTrail(ctx, state);
-  drawBall(ctx, state.ball.x, state.ball.y);
+  // An absent ball is not drawn (specs/instrumentation.md).
+  if (state.ball) drawBall(ctx, state.ball.x, state.ball.y);
   drawPaddles(ctx, state);
   drawHud(ctx, state);
 }
@@ -503,8 +499,11 @@ export function countdownPhase(holdTimer: number): number {
 }
 
 function drawCountdownOverlay(ctx: Ctx, state: DeepReadonly<CaromState>): void {
-  const num = countdownNumber(state.holdTimer);
-  const phase = countdownPhase(state.holdTimer); // 1 -> 0 across each digit
+  // With no ball on the field there is no hold to count down; the field is drawn
+  // and the digit is not.
+  if (!state.ball) return;
+  const num = countdownNumber(state.ball.holdTimer);
+  const phase = countdownPhase(state.ball.holdTimer); // 1 -> 0 across each digit
   const pop = 0.7 + 0.3 * phase; // a gentle scale-in per digit
   const alpha = 0.35 + 0.65 * Math.min(1, phase * 1.6);
 
@@ -576,17 +575,7 @@ function drawPause(ctx: Ctx, state: DeepReadonly<CaromState>): void {
     glowBlur: 16,
     baseline: "middle",
   });
-  drawMenu(
-    ctx,
-    PAUSE_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    y + 200,
-    52,
-    26,
-    6,
-    COLOR.p1,
-  );
+  drawMenu(ctx, PAUSE_MENU, state.menuIndex, COLOR.p1);
 }
 
 function drawMatchOver(ctx: Ctx, state: DeepReadonly<CaromState>): void {
@@ -629,17 +618,7 @@ function drawMatchOver(ctx: Ctx, state: DeepReadonly<CaromState>): void {
     spacing: 10,
     baseline: "middle",
   });
-  drawMenu(
-    ctx,
-    MATCHOVER_ITEMS,
-    state.menuIndex,
-    FIELD_CX,
-    y + 268,
-    52,
-    26,
-    6,
-    winColor,
-  );
+  drawMenu(ctx, MATCHOVER_MENU, state.menuIndex, winColor);
 }
 
 // ---- Entry point --------------------------------------------------------

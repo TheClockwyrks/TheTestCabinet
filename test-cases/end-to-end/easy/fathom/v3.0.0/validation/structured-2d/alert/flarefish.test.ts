@@ -35,6 +35,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+  fail,
+} from "../assert";
+import {
   ALERT_TIME,
   BRIGHT_HOLD,
   FLARE_BLOOM,
@@ -42,13 +48,7 @@ import {
   FLARE_INTERVAL,
   FLARE_RADIUS,
   LANTERN_RANGE_BASE,
-} from "../../src/constants";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThanOrEqual,
-  fail,
-} from "../assert";
+} from "../constants";
 import { poseMaze, poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,
