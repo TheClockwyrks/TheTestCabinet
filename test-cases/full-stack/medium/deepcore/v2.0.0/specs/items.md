@@ -73,11 +73,7 @@ current cell as a ground item so the player can move clear of the detonation.
   neither pauses nor resets it.
 - The ground item sits on its cell, drawn with its countdown still visible.
 - A jettisoned Sample cannot be picked back up. Walking over it does nothing.
-- The detonation is location-aware: carried, it kills the miner outright;
-  jettisoned, its blast reaches only a miner within `CORE_BLAST_TILES` (`3`) tiles
-  of the ground cell.
+- The detonation is location-aware. `specs/hazards.md` states what it reaches with
+  the Sample carried and what it reaches with the Sample on the ground.
 - Ordinary dropped ore is not a ground item; a dropped unit is simply lost.
-
-Saving is refused while a Core Sample's timer runs, whether the Sample is carried
-or lying jettisoned, so the timer is never frozen out by saving and quitting. Item
-counts are carried in the save; a live Core Sample never is.
+- `specs/expedition.md` states how a live Sample bears on saving.

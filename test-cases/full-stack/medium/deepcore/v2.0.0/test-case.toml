@@ -113,7 +113,7 @@ packages = ["@test-cabinet/particle-runtime"]
 # Deepcore offers a single `base` variant (the standard expedition), declared in its
 # own file under `variants/`. Standard vs Hardcore is an IN-GAME MODE menu — it changes
 # only what happens on death — not a variant, so there is no per-variant mode file; the
-# single expedition / campaign start is folded into the common `specs/gameplay.md`, and
+# single expedition / campaign start is folded into the common `specs/expedition.md`, and
 # the expedition is one and the same in both modes (`specs/modes.md`). Quick, Standard
 # and Marathon are likewise a world-size choice made on the same in-game menu, not a
 # variant. This list is a root key, so it must sit above the first `[table]` header
@@ -307,7 +307,7 @@ source = "specs/upgrades.md"
 source = "specs/rocket.md"
 
 [[spec]]
-source = "specs/gameplay.md"
+source = "specs/expedition.md"
 
 [[spec]]
 source = "specs/ui.md"
@@ -383,10 +383,19 @@ description = "What the build looks and sounds like, above all the ANIMATED MINE
 #
 # `validation.script` names a suite RELATIVE TO `validation/<engine>/`, and the SAME relative
 # path must resolve inside every engine's validator project — a point decided under one engine
-# and left undecided under another would be the same case graded two ways. Each suite poses its
-# own isolated world through the debug surface `specs/instrumentation.md` fixes, exercises one
-# observable behavior in one direction, and asserts against a figure the SPECIFICATION states
-# plus an honest tolerance, never against whatever the reference happens to do.
+# and left undecided under another would be the same case graded two ways. The one exception is
+# a point whose `validation.engines` names the engines it covers, which scopes it to the
+# configurations where the behavior is the BUILD's own work rather than the engine's: exactly one
+# point below is scoped that way, `panels/touch-chooses-a-menu-item`, because
+# `specs/controls.md` has both engines normalize a mouse, a pen and a finger onto one pointer
+# read before the build sees anything. Each suite poses its own isolated world through the debug
+# surface `specs/instrumentation.md` fixes, exercises one observable behavior in one direction,
+# and asserts against a figure the SPECIFICATION states plus an honest tolerance, never against
+# whatever the reference happens to do.
+#
+# `weight` is absent from a point that carries the ordinary weight of one. The showcase is the
+# only point that names one, because a build that ships no showcase has skipped a whole
+# deliverable rather than missed one rule inside one.
 #
 # `outputs` are the evidence a reviewer sees beside the verdict, synthesized against the
 # reference baseline: `replay` for a drive (the engine's own draw-command recording, armed
@@ -569,15 +578,26 @@ validation = { script = "instrumentation/posing-outside-the-domain-fails.test.ts
   { id = "loud", name = "The mine at the border a pose walks off", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "find-tile"
-title = "findTile reports the nearest cell of a kind, and null where none exists"
-description = "On a cleared mine with two posed lava cells, findTile(lava) reports the one nearer the miner; with the mine cleared of lava entirely it reports null rather than a stale or invented cell."
+id = "find-tile-nearest"
+title = "findTile reports the nearest cell of a kind"
+description = "On a cleared mine with two posed lava cells at plainly different distances, findTile(lava) reports the one nearer the miner rather than the first its own scan order reaches."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: clear the mine, pose two cells of one kind at known
-# distances from the miner, read findTile, then clear them and read it again.
-validation = { script = "instrumentation/find-tile.test.ts", outputs = [
+# distances from the miner and read findTile against the nearer.
+validation = { script = "instrumentation/find-tile-nearest.test.ts", outputs = [
   { id = "nearest", name = "The two posed cells and the miner between them", kind = "image" },
+] }
+[[review.categories.items]]
+id = "find-tile-none"
+title = "findTile reports null where the mine holds no such cell"
+description = "With the mine holding no cell of that kind at all, findTile reports null rather than a stale answer it gave before or the nearest cell of some other kind."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose a cell of one kind and read it back, take it away
+# again and read findTile a second time against null.
+validation = { script = "instrumentation/find-tile-none.test.ts", outputs = [
+  { id = "none", name = "The mine with no cell of that kind left in it", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "buildings-report"
@@ -762,15 +782,25 @@ validation = { script = "world/buildings-on-the-ground.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "buildings-separated"
-title = "The buildings are separated and clear of the cave mouth"
-description = "No two building footprints overlap, any two are separated horizontally by at least BUILDING_GAP (40) units of clear ground, and no footprint covers any part of the cell (CAVE_MOUTH_COL, 1)."
+title = "The buildings stand apart from one another"
+description = "Any two building footprints are separated horizontally by at least BUILDING_GAP (40) units of clear ground, which is also what keeps them from overlapping."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: read buildings() and check every pair for overlap and
-# horizontal separation, then check each footprint against the cave mouth cell
-# rectangle.
+# Automated validation: read buildings() and measure the horizontal clear ground
+# between every pair against BUILDING_GAP, naming the two that are too close.
 validation = { script = "world/buildings-separated.test.ts", outputs = [
   { id = "gaps", name = "The gaps between the camp buildings", kind = "image" },
+] }
+[[review.categories.items]]
+id = "buildings-clear-of-the-cave-mouth"
+title = "No building stands over the cave mouth"
+description = "No building footprint covers any part of the cave mouth's column, so nothing at the camp stands over the one way down into the mine."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: read buildings() and hold every footprint's horizontal
+# span clear of [CAVE_MOUTH_COL * TILE, (CAVE_MOUTH_COL + 1) * TILE].
+validation = { script = "world/buildings-clear-of-the-cave-mouth.test.ts", outputs = [
+  { id = "mouth", name = "The camp with its cave mouth clear", kind = "image" },
 ] }
 
 # --- Mine Generation ----------------------------------------------------------
@@ -979,6 +1009,18 @@ validation = { script = "movement/walk-speed.test.ts", outputs = [
   { id = "walk", name = "The miner walking a cleared corridor", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "walk-speed-left"
+title = "Walking to the left runs at the stated speed"
+description = "Holding left on the ground moves the miner horizontally at WALK_SPEED (250) units per second, the same as holding right does."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: clear a level corridor, hold left with the drill off
+# for a fixed span, and hold the distance covered against WALK_SPEED times the
+# span.
+validation = { script = "movement/walk-speed-left.test.ts", outputs = [
+  { id = "walk", name = "The miner walking left along a cleared corridor", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "air-drift"
 title = "Lateral movement works in the air as well as on the ground"
 description = "Holding left or right while airborne drifts the miner sideways at the same WALK_SPEED (250), so a fall can be steered into a neighboring shaft."
@@ -989,6 +1031,18 @@ failure_cap = "passable"
 # WALK_SPEED times the span.
 validation = { script = "movement/air-drift.test.ts", outputs = [
   { id = "drift", name = "The miner steering as it falls", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "air-drift-left"
+title = "Leftward movement works in the air as well as on the ground"
+description = "Holding left while airborne drifts the miner sideways at the same WALK_SPEED (250), so a fall can be steered to the left as well as to the right."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: clear a wide open space, drop the miner with left
+# held and the drill off, and hold the horizontal distance covered against
+# WALK_SPEED times the span.
+validation = { script = "movement/air-drift-left.test.ts", outputs = [
+  { id = "drift", name = "The miner steering left as it falls", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "gravity"
@@ -1051,11 +1105,25 @@ validation = { script = "movement/stopped-by-wall.test.ts", outputs = [
   { id = "wall", name = "The miner stopped at the wall face", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "stopped-by-wall-left"
+title = "A walk left into a wall stops at its face"
+description = "Walking left into a solid cell stops the miner with its box flush against that cell rather than passing through it or standing off it, whatever the drill is doing."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: clear a corridor ending in a posed solid cell to the
+# left, hold left with the drill off until the miner stops, and hold the
+# resting box edge against the cell face.
+validation = { script = "movement/stopped-by-wall-left.test.ts", outputs = [
+  { id = "wall", name = "The miner stopped at a wall face on its left", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "fits-a-one-tile-shaft"
 title = "The miner passes down a shaft one tile wide"
 description = "The miner box is MINER_W (56) by MINER_H (72) against a TILE of 80, so it falls cleanly down a shaft one cell wide without catching on either side."
 domains = ["simulation"]
-failure_cap = "scuffed"
+# A miner that catches on the walls of a one-cell shaft cannot descend, and
+# descending is the game.
+failure_cap = "broken"
 # Automated validation: clear one column for several rows with solid rock
 # either side, drop the miner down it and hold the fall unobstructed to the
 # bottom.
@@ -1107,6 +1175,29 @@ failure_cap = "passable"
 # it again, and confirm the facing holds after release.
 validation = { script = "movement/facing-follows-input.test.ts", outputs = [
   { id = "facing", name = "The miner facing after a turn", kind = "replay" },
+] }
+
+[[review.categories.items]]
+id = "state-is-drill-side"
+title = "Cutting sideways puts the miner in the drill-side state"
+description = "While the miner is braced and cutting the cell beside it, its animation state reads drill-side, which the precedence in the state table puts above every other state that describes it."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose a wall beside a grounded miner, hold the key into
+# it, and read miner.state once the cut is under way.
+validation = { script = "movement/state-is-drill-side.test.ts", outputs = [
+  { id = "cut", name = "The miner cutting the cell beside it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "state-is-fuel-out"
+title = "A dry miner below the surface reads the fuel-out state"
+description = "A miner below the surface with fuel at 0 reads the fuel-out animation state, which the precedence in the state table puts above jetpack, fall, walk and idle."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: stand the miner on solid rock deep in the mine, empty
+# the tank through the surface, and read miner.state.
+validation = { script = "movement/state-is-fuel-out.test.ts", outputs = [
+  { id = "stranded", name = "The stranded miner with an empty tank", kind = "image" },
 ] }
 
 # --- Drilling -----------------------------------------------------------------
@@ -1163,6 +1254,18 @@ failure_cap = "scuffed"
 # box reaches the cell face.
 validation = { script = "drilling/side-cut-starts-at-the-edge.test.ts", outputs = [
   { id = "walk-then-cut", name = "Walking to the edge, then cutting into the wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "side-cut-starts-at-the-edge-left"
+title = "A side cut to the left begins at the tile edge, not on the keypress"
+description = "Pressing left in mid-cell walks the miner across the cell it stands in first, and the cut into the cell on its left begins only once the miner box is flush against it."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: stand the miner mid-cell beside a posed solid cell on
+# its left, hold left, and read the neighboring cell health unchanged until
+# the miner box reaches the cell face.
+validation = { script = "drilling/side-cut-starts-at-the-edge-left.test.ts", outputs = [
+  { id = "walk-then-cut", name = "Walking left to the edge, then cutting into the wall", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "no-drill-up"
@@ -1580,14 +1683,27 @@ validation = { script = "cargo/sell-values.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "refuel-does-not-empty-the-bay"
-title = "Refuelling and repairing leave the cargo alone"
-description = "Buying fuel or hull repair at the Fuel Depot leaves the cargo bay exactly as it was, so a haul survives a refuelling stop and is still there to sell."
+title = "Refuelling leaves the cargo alone"
+description = "Buying fuel at the Fuel Depot, by the increment or to full, leaves the cargo bay exactly as it was, so a haul survives a refuelling stop and is still there to sell."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: pose a bay and Credits, buy fuel and repair, then read
+# Automated validation: pose a bay, a part-empty tank and Credits, buy the fuel
+# increment and fill to full, then read the tank risen, the balance fallen and
 # the bay unchanged.
 validation = { script = "cargo/refuel-does-not-empty-the-bay.test.ts", outputs = [
   { id = "bay", name = "The bay after a refuelling stop", kind = "image" },
+] }
+[[review.categories.items]]
+id = "repair-does-not-empty-the-bay"
+title = "Repairing leaves the cargo alone"
+description = "Buying hull repair at the Fuel Depot, by the increment or to full, leaves the cargo bay exactly as it was, so a haul survives a repair stop and is still there to sell."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose a bay, a damaged hull and Credits, buy the repair
+# increment and repair to full, then read the hull risen, the balance fallen and
+# the bay unchanged.
+validation = { script = "cargo/repair-does-not-empty-the-bay.test.ts", outputs = [
+  { id = "bay", name = "The bay after a repair stop", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "credits-earned-accumulates"
@@ -1667,14 +1783,25 @@ validation = { script = "economy/repair-price.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "upgrade-prices"
-title = "The upgrade ladder charges its stated prices"
-description = "The six five-tier tracks share the UPGRADE_PRICES ladder, 300, 750, 1900 then 4100 for the four steps, and the scanner takes the first two rungs of it, 300 then 750."
+title = "The five-tier ladder charges its stated prices"
+description = "The six five-tier tracks share the UPGRADE_PRICES ladder, 300, 750, 1900 then 4100 for the four steps, and each step deducts exactly its rung."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: buy each step on a five-tier track and both scanner
-# steps from a known balance, holding each deduction against the ladder.
+# Automated validation: buy all four steps on a five-tier track from a known
+# balance, holding each deduction against the ladder.
 validation = { script = "economy/upgrade-prices.test.ts", outputs = [
   { id = "shop", name = "The Upgrade Shop and its prices", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scanner-upgrade-prices"
+title = "The scanner's two steps charge the ladder's first two rungs"
+description = "The scanner runs three tiers rather than five, and its two purchasable steps take the first two rungs of the UPGRADE_PRICES ladder, 300 then 750."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: buy both scanner steps from a known balance and hold
+# each deduction against the ladder's first two rungs.
+validation = { script = "economy/scanner-upgrade-prices.test.ts", outputs = [
+  { id = "scanner", name = "The scanner's two rungs bought in turn", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "upgrade-applies-at-once"
@@ -1688,50 +1815,104 @@ validation = { script = "economy/upgrade-applies-at-once.test.ts", outputs = [
   { id = "drill", name = "The next cut after a drill upgrade", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "tank-upgrade-adds-its-difference"
-title = "A tank upgrade raises the maximum and adds the same amount"
-description = "Buying a fuel tank tier raises the maximum and adds the same amount to the fuel held, so a 100 to 175 tank at 30 of 100 becomes 105 of 175. It is not a refill."
+id = "tank-upgrade-raises-the-maximum"
+title = "A tank upgrade raises the maximum"
+description = "Buying a fuel tank tier moves maxFuel onto that tier's own figure, so the tank the miner carries is the size the ladder says it is."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: pose a part-empty tank, buy the next fuel tier and
-# hold both the new maximum and the new fuel held against the stated
-# arithmetic.
+# Automated validation: pose a part-empty tank, buy the next fuel tier and hold
+# maxFuel against the tier's figure.
+validation = { script = "economy/tank-upgrade-raises-the-maximum.test.ts", outputs = [
+  { id = "tank", name = "The tank's new maximum", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tank-upgrade-adds-its-difference"
+title = "A tank upgrade adds its difference rather than refilling"
+description = "Buying a fuel tank tier adds the difference between the two tiers to the fuel held, so a 100 to 175 tank at 30 of 100 becomes 105 of 175. It is not a refill."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose a part-empty tank, buy the next fuel tier and hold
+# the fuel held against what it was plus the tiers' difference.
 validation = { script = "economy/tank-upgrade-adds-its-difference.test.ts", outputs = [
   { id = "tank", name = "The tank after an upgrade", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "hull-upgrade-adds-its-difference"
-title = "A hull upgrade raises the maximum and adds the same amount"
-description = "Buying a hull tier raises the maximum and adds the same amount to the hull held, on the same rule as the fuel tank, so it is not a free repair to full."
+id = "hull-upgrade-raises-the-maximum"
+title = "A hull upgrade raises the maximum"
+description = "Buying a hull tier moves maxHull onto that tier's own figure, so the hull the miner carries is the size the ladder says it is."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: pose a damaged hull, buy the next hull tier and hold
-# both the new maximum and the hull held against the stated arithmetic.
+# maxHull against the tier's figure.
+validation = { script = "economy/hull-upgrade-raises-the-maximum.test.ts", outputs = [
+  { id = "hull", name = "The hull's new maximum", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hull-upgrade-adds-its-difference"
+title = "A hull upgrade adds its difference rather than repairing"
+description = "Buying a hull tier adds the difference between the two tiers to the hull held, on the same rule as the fuel tank, so it is not a free repair to full."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose a damaged hull, buy the next hull tier and hold
+# the hull held against what it was plus the tiers' difference.
 validation = { script = "economy/hull-upgrade-adds-its-difference.test.ts", outputs = [
   { id = "hull", name = "The hull after an upgrade", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "maxed-track-refused"
-title = "A track at its top tier cannot be bought further"
-description = "A track already at its highest tier, 5 on the six long tracks and 3 on the scanner, refuses a further purchase: the tier does not rise and no Credits are taken."
+id = "maxed-five-tier-track-refused"
+title = "A five-tier track at tier 5 cannot be bought further"
+description = "One of the six long tracks already at tier 5 refuses a further purchase on any balance: the tier does not rise past the table and no Credits are taken."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: set a track to its top tier with ample Credits,
+# Automated validation: set a five-tier track to tier 5 with ample Credits,
 # attempt the purchase and read the tier and the balance unchanged.
-validation = { script = "economy/maxed-track-refused.test.ts", outputs = [
-  { id = "maxed", name = "A maxed track refusing a purchase", kind = "image" },
+validation = { script = "economy/maxed-five-tier-track-refused.test.ts", outputs = [
+  { id = "maxed", name = "A maxed five-tier track refusing a purchase", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "unaffordable-refused"
-title = "A purchase beyond the Credits is refused"
-description = "An upgrade, a field supply, a fuel increment or a rocket component the balance cannot cover is refused outright: nothing is bought and the balance is unchanged, rather than a partial purchase or a negative balance."
+id = "maxed-scanner-refused"
+title = "The scanner at tier 3 cannot be bought further"
+description = "The scanner tops out two tiers below the long tracks, so a scanner already at tier 3 refuses a further purchase on any balance: the tier does not rise and no Credits are taken."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: set the scanner to tier 3 with ample Credits, attempt
+# the purchase and read the tier and the balance unchanged.
+validation = { script = "economy/maxed-scanner-refused.test.ts", outputs = [
+  { id = "maxed", name = "The maxed scanner refusing a purchase", kind = "image" },
+] }
+[[review.categories.items]]
+id = "unaffordable-upgrade-refused"
+title = "An upgrade beyond the Credits is refused"
+description = "An upgrade the balance cannot cover is refused outright: the tier does not rise and the balance is unchanged, rather than a partial purchase or a negative balance."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: pose a balance one Credit short of an upgrade and of a
-# supply in turn, attempt each and read the tier, the count and the balance
+# Automated validation: pose a balance one Credit short of the upgrade's rung,
+# attempt the purchase and read the tier and the balance unchanged.
+validation = { script = "economy/unaffordable-upgrade-refused.test.ts", outputs = [
+  { id = "refused", name = "An upgrade refused on a thin balance", kind = "image" },
+] }
+[[review.categories.items]]
+id = "unaffordable-supply-refused"
+title = "A field supply beyond the Credits is refused"
+description = "A field supply the balance cannot cover is refused outright: the held count does not rise and the balance is unchanged."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a balance one Credit short of the supply's price,
+# attempt the purchase and read the held count and the balance unchanged.
+validation = { script = "economy/unaffordable-supply-refused.test.ts", outputs = [
+  { id = "refused", name = "A field supply refused on a thin balance", kind = "image" },
+] }
+[[review.categories.items]]
+id = "unaffordable-fuel-refused"
+title = "A fuel increment beyond the Credits is refused"
+description = "A fuel increment the balance cannot cover is refused outright: the fuel held does not rise and the balance is unchanged, rather than a partial fill bought at a partial price."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a balance one Credit short of FUEL_BUY_INCREMENT
+# * FUEL_PRICE, attempt the increment and read the fuel and the balance
 # unchanged.
-validation = { script = "economy/unaffordable-refused.test.ts", outputs = [
-  { id = "refused", name = "A purchase refused on a thin balance", kind = "image" },
+validation = { script = "economy/unaffordable-fuel-refused.test.ts", outputs = [
+  { id = "refused", name = "A fuel increment refused on a thin balance", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "unaffordable-controls-are-disabled"
@@ -1758,15 +1939,26 @@ validation = { script = "economy/credits-never-negative.test.ts", outputs = [
   { id = "zero", name = "The balance held at zero", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "credits-survive-death"
-title = "Banked Credits survive a death"
-description = "Credits already earned survive a death in either mode, so a run is never set back to 0 Credits by dying."
+id = "credits-survive-a-standard-death"
+title = "Banked Credits survive a Standard death"
+description = "Credits already earned survive a death in Standard, so a run resumed from the save is never set back to 0 Credits by dying."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: pose a balance, drive a death in each mode and read
-# the balance carried into the game-over state.
-validation = { script = "economy/credits-survive-death.test.ts", outputs = [
-  { id = "banked", name = "The balance surviving a death", kind = "image" },
+# Automated validation: pose a balance, drive a death in Standard and read the
+# balance carried into the game-over state.
+validation = { script = "economy/credits-survive-a-standard-death.test.ts", outputs = [
+  { id = "banked", name = "The balance surviving a Standard death", kind = "image" },
+] }
+[[review.categories.items]]
+id = "credits-survive-a-hardcore-death"
+title = "Banked Credits survive a Hardcore death"
+description = "Credits already earned are still reported after a death in Hardcore, so the game-over summary states what the expedition banked rather than 0."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a balance, drive a death in Hardcore and read the
+# balance carried into the game-over state.
+validation = { script = "economy/credits-survive-a-hardcore-death.test.ts", outputs = [
+  { id = "banked", name = "The balance surviving a Hardcore death", kind = "image" },
 ] }
 
 # --- Materials and the Scanner ------------------------------------------------
@@ -1779,13 +1971,24 @@ id = "materials"
 title = "Materials and the Scanner"
 [[review.categories.items]]
 id = "material-takes-no-slot"
-title = "A material takes no cargo slot and no weight"
-description = "A banked exotic material rides in the satchel: it uses no cargo slot and adds nothing to loadKg, so carrying both materials never contributes to an overload."
+title = "A material takes no cargo slot"
+description = "A banked exotic material rides in the satchel and uses no cargo slot, so it never costs a haul the ore that slot could have carried."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: pose both materials into the satchel and read
-# slotsUsed and loadKg unchanged from an empty bay.
+# slotsUsed unchanged from an empty bay.
 validation = { script = "materials/material-takes-no-slot.test.ts", outputs = [
+  { id = "satchel", name = "The satchel beside an empty bay", kind = "image" },
+] }
+[[review.categories.items]]
+id = "material-carries-no-weight"
+title = "A material carries no weight"
+description = "A banked exotic material adds nothing to loadKg, so carrying both materials never contributes to an overload."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose both materials into the satchel and read loadKg
+# and overloaded unchanged from an empty bay.
+validation = { script = "materials/material-carries-no-weight.test.ts", outputs = [
   { id = "satchel", name = "The satchel beside an empty bay", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -2132,28 +2335,50 @@ validation = { script = "hazards/hull-never-mends.test.ts", outputs = [
 id = "notices"
 title = "First-Time Hazard Notices"
 [[review.categories.items]]
-id = "gas-notice-fires-once"
-title = "The first gas detonation raises a card, and only the first"
-description = "The first gas detonation that damages the miner in an expedition raises the gas notice card, and no later detonation raises it again."
+id = "gas-notice-is-raised"
+title = "The first gas detonation raises a card"
+description = "The first gas detonation that damages the miner in an expedition raises the gas notice card and arms noticesFired.gas."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: detonate two posed pockets in one expedition and read
-# the notice raised on the first and noticesFired.gas already true before the
-# second.
-validation = { script = "notices/gas-notice-fires-once.test.ts", outputs = [
+# Automated validation: detonate one posed pocket under the miner and read the
+# gas card on screen with noticesFired.gas armed and the hull really lost.
+validation = { script = "notices/gas-notice-is-raised.test.ts", outputs = [
   { id = "card", name = "The gas notice after the first blast", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "gas-notice-fires-once"
+title = "No later gas detonation raises the card again"
+description = "The gas notice card fires at most once per expedition, so a second damaging detonation raises nothing."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: detonate two posed pockets in one expedition, dismiss
+# the first card and read no card after the second blast, with the hull really
+# lost on it.
+validation = { script = "notices/gas-notice-fires-once.test.ts", outputs = [
+  { id = "card", name = "The second gas blast raising no card", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "lava-notice-is-raised"
+title = "The first lava burn raises a card"
+description = "The first lava burn that damages the miner in an expedition raises the lava notice card and arms noticesFired.lava."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: burn the miner on one posed lava cell and read the lava
+# card on screen with noticesFired.lava armed and the hull really lost.
+validation = { script = "notices/lava-notice-is-raised.test.ts", outputs = [
+  { id = "card", name = "The lava notice after the first burn", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "lava-notice-fires-once"
-title = "The first lava burn raises a card, and only the first"
-description = "The first lava burn that damages the miner in an expedition raises the lava notice card, and no later burn raises it again."
+title = "No later lava burn raises the card again"
+description = "The lava notice card fires at most once per expedition, so a second damaging burn raises nothing."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: burn the miner on two posed lava cells in one
-# expedition and read the notice raised on the first and noticesFired.lava
-# already true before the second.
+# expedition, dismiss the first card and read no card after the second burn,
+# with the hull really lost on it.
 validation = { script = "notices/lava-notice-fires-once.test.ts", outputs = [
-  { id = "card", name = "The lava notice after the first burn", kind = "replay" },
+  { id = "card", name = "The second lava burn raising no card", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "notice-delay"
@@ -2179,14 +2404,14 @@ validation = { script = "notices/notice-fades.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "notice-dismissed-by-a-click"
-title = "A click dismisses the card at once"
-description = "A click on the card dismisses it immediately rather than waiting out the fade."
+title = "A press on the card dismisses it at once"
+description = "A pointer pressed and released inside the region the build reports for the notice card dismisses it immediately rather than waiting out the fade."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: raise a notice, dismiss it and read notice back at
-# null well before NOTICE_FADE.
+# Automated validation: raise a notice, press the region the build reports
+# for the card and read notice back at null well before NOTICE_FADE.
 validation = { script = "notices/notice-dismissed-by-a-click.test.ts", outputs = [
-  { id = "dismiss", name = "The card dismissed by a click", kind = "replay" },
+  { id = "dismiss", name = "The card dismissed by a press on it", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "notice-does-not-take-the-pause-key"
@@ -2265,15 +2490,38 @@ validation = { script = "supplies/explosives-clear-stone.test.ts", outputs = [
   { id = "boulder", name = "A boulder cleared by a charge", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "explosives-spare-the-immune"
-title = "Bedrock, material nodes and the Core survive a blast"
-description = "Bedrock, material nodes and the Core are immune to explosives and are never cleared, so a blast can never destroy the only source of a rocket component."
+id = "explosives-spare-bedrock"
+title = "Bedrock survives a blast"
+description = "Bedrock is immune to explosives and is never cleared, so a charge can never open the mine's own boundary."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: pose a material node, the Core and bedrock inside a
-# Plastic Explosives block and read all three unchanged after the blast.
-validation = { script = "supplies/explosives-spare-the-immune.test.ts", outputs = [
+# Automated validation: set a Plastic Explosives charge covering a bedrock cell
+# of the Core chamber and read that cell still bedrock after the blast.
+validation = { script = "supplies/explosives-spare-bedrock.test.ts", outputs = [
+  { id = "immune", name = "The bedrock standing in the blast", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "explosives-spare-material-nodes"
+title = "A material node survives a blast"
+description = "A material node is immune to explosives and is never cleared or banked by one, so a blast can never destroy the only source of a rocket component."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a material node inside a Plastic Explosives block
+# and read it still a node holding its material, with nothing banked into the
+# satchel.
+validation = { script = "supplies/explosives-spare-material-nodes.test.ts", outputs = [
   { id = "immune", name = "The node standing in the blast", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "explosives-spare-the-core"
+title = "The Core survives a blast"
+description = "The Core is immune to explosives and is never cleared, so a blast can never destroy the one place a Core Sample is taken from."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: set a Plastic Explosives charge covering the Core cell
+# and read that cell still the Core after the blast.
+validation = { script = "supplies/explosives-spare-the-core.test.ts", outputs = [
+  { id = "immune", name = "The Core standing in the blast", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "explosives-destroy-ore"
@@ -2426,7 +2674,10 @@ id = "jettison-key-inside-a-panel"
 title = "The jettison key acts with a panel open"
 description = "The jettison key acts throughout the mine, so a carried Core Sample dropped with the inventory open leaves the satchel and lands on the miner's own cell as a ground item."
 domains = ["simulation"]
-failure_cap = "great"
+# A player carrying a live Core Sample on its 90-second timer who cannot drop
+# it without first closing the panel is playing an affected game, which is the
+# same cap the sibling supply-hotkeys-inside-a-panel carries.
+failure_cap = "passable"
 # Automated validation: carry a Sample with the inventory open, strike the
 # jettison key and read the satchel empty with coreGround at the miner's cell.
 validation = { script = "supplies/jettison-key-inside-a-panel.test.ts", outputs = [
@@ -2890,15 +3141,74 @@ validation = { script = "save/save-holds-the-mine.test.ts", outputs = [
   { id = "mine", name = "The mine as the save left it", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "save-holds-the-holdings"
-title = "The save holds the Credits, tiers, components, supplies, cargo, materials, fuel and hull"
-description = "A save carries banked Credits, every upgrade tier, the installed rocket components, the held field-supply counts, the cargo, the satchel materials and the miner fuel and hull."
+id = "save-holds-the-credits"
+title = "The save holds the banked Credits"
+description = "A save carries the banked Credits, so a restored expedition opens on the balance it was saved with rather than on a fresh one."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: pose a distinctive value in each of the eight, save,
-# continue and hold each restored value against what was saved.
-validation = { script = "save/save-holds-the-holdings.test.ts", outputs = [
-  { id = "holdings", name = "The holdings restored from the save", kind = "image" },
+# Automated validation: pose a distinctive balance, save, continue and read the balance back.
+validation = { script = "save/save-holds-the-credits.test.ts", outputs = [
+  { id = "holding", name = "The holding restored from the save", kind = "image" },
+] }
+[[review.categories.items]]
+id = "save-holds-the-tiers"
+title = "The save holds every upgrade tier"
+description = "A save carries all seven upgrade tiers, so a restored expedition opens with the shop's purchases still bought."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a distinctive tier on each of the seven tracks, save, continue and read each tier back.
+validation = { script = "save/save-holds-the-tiers.test.ts", outputs = [
+  { id = "holding", name = "The holding restored from the save", kind = "image" },
+] }
+[[review.categories.items]]
+id = "save-holds-the-components"
+title = "The save holds the installed rocket components"
+description = "A save carries the rocket components already installed, so progress toward the launch is never undone by saving."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: install some of the five components, save, continue and read the installed list back.
+validation = { script = "save/save-holds-the-components.test.ts", outputs = [
+  { id = "holding", name = "The holding restored from the save", kind = "image" },
+] }
+[[review.categories.items]]
+id = "save-holds-the-supplies"
+title = "The save holds the field-supply counts"
+description = "A save carries the held count of each of the six field supplies, so bought supplies are not lost across a session."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a distinctive count on each of the six supplies, save, continue and read each count back.
+validation = { script = "save/save-holds-the-supplies.test.ts", outputs = [
+  { id = "holding", name = "The holding restored from the save", kind = "image" },
+] }
+[[review.categories.items]]
+id = "save-holds-the-cargo"
+title = "The save holds the cargo in the bay"
+description = "A save carries the cargo bay's contents, so ore already dug is still in the bay when the expedition resumes."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a part-full bay, save, continue and read the bay's contents back.
+validation = { script = "save/save-holds-the-cargo.test.ts", outputs = [
+  { id = "holding", name = "The holding restored from the save", kind = "image" },
+] }
+[[review.categories.items]]
+id = "save-holds-the-satchel"
+title = "The save holds the satchel's materials"
+description = "A save carries the exotic materials in the satchel, so a Resonite or Cryenite already found is not lost across a session."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose both materials in the satchel, save, continue and read each back.
+validation = { script = "save/save-holds-the-satchel.test.ts", outputs = [
+  { id = "holding", name = "The holding restored from the save", kind = "image" },
+] }
+[[review.categories.items]]
+id = "save-holds-the-fuel-and-hull"
+title = "The save holds the miner's fuel and hull"
+description = "A save carries the fuel and the hull the miner climbed out with, so a restored expedition opens on the gauges it was saved with rather than on full ones."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose a part-spent tank and a damaged hull, save, continue and read both gauges back.
+validation = { script = "save/save-holds-the-fuel-and-hull.test.ts", outputs = [
+  { id = "holding", name = "The holding restored from the save", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "save-excludes-a-live-sample"
@@ -2946,15 +3256,29 @@ validation = { script = "save/victory-consumes-the-save.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "runs-without-storage"
-title = "The game runs correctly when browser storage is unavailable"
-description = "With the browser storage the save is held in unavailable, the game runs correctly and simply without saving: nothing throws, the title carries no CONTINUE and the Save Pad reports the refusal."
+title = "The game runs when browser storage is unavailable"
+description = "With the browser storage the save is held in unavailable, the game stands up, draws, starts an expedition and digs, and nothing throws on the way."
 domains = ["simulation"]
-failure_cap = "passable"
+# A build that throws where the browser refuses storage is unplayable for that
+# player, on a path the player did not choose.
+failure_cap = "scuffed"
 # Automated validation: make the storage the build saves through unavailable,
-# then drive a full start, dig and save attempt and hold the game running with
-# hasSave false.
+# then drive a full start, a descent and a cut, and hold the game running with
+# nothing thrown.
 validation = { script = "save/runs-without-storage.test.ts", outputs = [
   { id = "no-storage", name = "The game running with no storage behind it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-storage-refuses-the-save"
+title = "With no storage the game reports the refusal"
+description = "With browser storage unavailable there is no save to offer: the title carries no CONTINUE, and activating the Save Pad leaves hasSave false rather than claiming a save that was never written."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: make the storage unavailable, read the title menu for
+# a CONTINUE that must not be there, then activate the Save Pad and read
+# hasSave still false with the expedition still running.
+validation = { script = "save/no-storage-refuses-the-save.test.ts", outputs = [
+  { id = "refused", name = "The Save Pad refusing with no storage", kind = "image" },
 ] }
 
 # --- World Size ---------------------------------------------------------------
@@ -3127,14 +3451,48 @@ id = "screens"
 title = "Screens and Menus"
 [[review.categories.items]]
 id = "title-screen"
-title = "The title screen carries the title and its menu"
-description = "The game opens on the title screen showing TITLE_TEXT (DEEPCORE), a tagline and the main menu with the highlighted item drawn distinctly from the others."
+title = "The game opens on a title screen naming itself"
+description = "The game rests on the title screen, and that screen shows TITLE_TEXT (DEEPCORE)."
 domains = ["simulation", "presentation"]
 failure_cap = "broken"
-# Automated validation: read the screen at start-up, then read the drawn frame
-# for the title text and a highlight drawn differently from the other items.
+# Automated validation: read the screen at start-up and read the drawn frame
+# for the title text.
 validation = { script = "screens/title-screen.test.ts", outputs = [
   { id = "title", name = "The title screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-screen-tagline"
+title = "The title screen carries a tagline"
+description = "The title screen shows a tagline beside its name and its menu — copy of its own, whatever words the build chooses for it."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: read the drawn frame for a run of text that is neither
+# the title nor one of the menu entries and is long enough to be a phrase.
+validation = { script = "screens/title-screen-tagline.test.ts", outputs = [
+  { id = "tagline", name = "The title screen and its tagline", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-drawn"
+title = "The title screen draws its menu"
+description = "The title screen draws every entry of the main menu, so a player can see what there is to choose."
+domains = ["simulation", "presentation"]
+failure_cap = "broken"
+# Automated validation: read the drawn frame at the title for each entry the
+# main menu carries with no save banked.
+validation = { script = "screens/title-menu-drawn.test.ts", outputs = [
+  { id = "menu", name = "The title menu drawn", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-menu-highlight-is-distinct"
+title = "The highlighted menu item is drawn distinctly"
+description = "The highlighted item is drawn distinctly from the others, so a player can see which entry a confirm would take."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: compare the frame with the second entry highlighted
+# against the frame with the first, held above the difference between two
+# frames at the same highlight.
+validation = { script = "screens/title-menu-highlight-is-distinct.test.ts", outputs = [
+  { id = "highlight", name = "The highlighted title menu item", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "title-menu-items"
@@ -3148,15 +3506,26 @@ validation = { script = "screens/title-menu-items.test.ts", outputs = [
   { id = "items", name = "The title menu items", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "menu-wraps"
-title = "Menu movement wraps at both ends"
-description = "up and down move the highlighted item and wrap at the ends, so down from the last item lands on the first and up from the first lands on the last."
+id = "menu-wraps-down"
+title = "Menu movement wraps past the last item"
+description = "down moves the highlighted item down the list and wraps at the end, so down from the last item lands on the first rather than sticking at the bottom."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: press down past the last item and up past the first on
-# a menu screen and read menuIndex wrapping in both directions.
-validation = { script = "screens/menu-wraps.test.ts", outputs = [
-  { id = "wrap", name = "The menu wrapped to its far end", kind = "replay" },
+# Automated validation: press down once per entry on a menu screen and read
+# menuIndex stepping down and landing back on 0 from the last item.
+validation = { script = "screens/menu-wraps-down.test.ts", outputs = [
+  { id = "wrap", name = "The menu wrapped past its last item", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "menu-wraps-up"
+title = "Menu movement wraps past the first item"
+description = "up wraps at the other end, so up from the first item lands on the last rather than sticking at the top."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: press up with the first item highlighted on a menu
+# screen and read menuIndex landing on the last.
+validation = { script = "screens/menu-wraps-up.test.ts", outputs = [
+  { id = "wrap", name = "The menu wrapped past its first item", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "title-to-mode-select"
@@ -3215,24 +3584,145 @@ validation = { script = "screens/size-select-back.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "how-to-play-reachable"
-title = "The how-to-play screen is reachable and returns"
-description = "HOW TO PLAY on the title reaches the how-to-play screen, and it returns to the title."
+title = "HOW TO PLAY reaches the how-to-play screen"
+description = "Choosing HOW TO PLAY on the title takes the game to the how-to-play screen."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: choose HOW TO PLAY, read the screen, return and read
-# it back at title.
+# Automated validation: choose HOW TO PLAY from the title and read the screen
+# at how-to-play.
 validation = { script = "screens/how-to-play-reachable.test.ts", outputs = [
   { id = "howto", name = "The how-to-play screen", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "how-to-play-copy"
-title = "The how-to-play screen covers what it must"
-description = "The how-to-play screen covers the goal of building and launching the rocket, the controls, the dig-sell-upgrade loop, that the drill cuts down and sideways but never up, fuel and the climb home, the cargo slots and its weight, the hazards, the materials and the scanner, saving, and the two modes."
+id = "how-to-play-back"
+title = "BACK on the how-to-play screen returns to the title"
+description = "Confirming the how-to-play screen's BACK item returns the game to the title, so a player who opens it is not trapped on it."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose the how-to-play screen, highlight BACK, confirm
+# it with activate and read the screen back at title.
+validation = { script = "screens/how-to-play-back.test.ts", outputs = [
+  { id = "back", name = "The title after BACK on the how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "how-to-play-pause-returns"
+title = "The pause action leaves the how-to-play screen"
+description = "The pause action on the how-to-play screen returns the game to the title, so the key that goes back out of a menu screen works there too."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose the how-to-play screen, raise the pause action
+# without pressing a menu item, and read the screen back at title.
+validation = { script = "screens/how-to-play-pause-returns.test.ts", outputs = [
+  { id = "back", name = "The title after the pause key on the how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "returns-to-the-title-on-how-to-play"
+title = "The title left from the how-to-play screen selects HOW TO PLAY"
+description = "Coming back to the title from the how-to-play screen highlights the HOW TO PLAY entry, the one that led away from it."
+domains = ["simulation"]
+failure_cap = "great"
+# Automated validation: clear the save slot, pose the how-to-play screen, take
+# BACK, and read menuIndex against where HOW TO PLAY sits in the title menu.
+validation = { script = "screens/returns-to-the-title-on-how-to-play.test.ts", outputs = [
+  { id = "selected", name = "The title with HOW TO PLAY highlighted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "returns-to-the-title-on-new-expedition"
+title = "The title left from the mode choice selects NEW EXPEDITION"
+description = "Coming back to the title from the mode choice highlights the NEW EXPEDITION entry, the one that led away from it."
+domains = ["simulation"]
+failure_cap = "great"
+# Automated validation: clear the save slot, pose the mode choice, take BACK,
+# and read menuIndex against where NEW EXPEDITION sits in the title menu.
+validation = { script = "screens/returns-to-the-title-on-new-expedition.test.ts", outputs = [
+  { id = "selected", name = "The title with NEW EXPEDITION highlighted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "quits-to-the-title-on-new-expedition"
+title = "The title quit to from an expedition selects NEW EXPEDITION"
+description = "Quitting to the menu from the pause screen highlights the NEW EXPEDITION entry, so a player who abandons a dig is one key from the next one."
+domains = ["simulation"]
+failure_cap = "great"
+# Automated validation: clear the save slot, pose the pause menu, take QUIT TO
+# MENU, and read menuIndex against where NEW EXPEDITION sits in the title menu.
+validation = { script = "screens/quits-to-the-title-on-new-expedition.test.ts", outputs = [
+  { id = "selected", name = "The title quit to, with NEW EXPEDITION highlighted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "returns-to-the-mode-choice-on-the-mode"
+title = "The mode choice stepped back to selects the expedition's mode"
+description = "Coming back to the mode choice from the size choice highlights the entry of the mode the expedition is set to, STANDARD or HARDCORE."
+domains = ["simulation"]
+failure_cap = "great"
+# Automated validation: set each mode through the surface, pose the size
+# choice, take BACK, and read menuIndex against that mode's entry.
+validation = { script = "screens/returns-to-the-mode-choice-on-the-mode.test.ts", outputs = [
+  { id = "selected", name = "The mode choice with HARDCORE highlighted", kind = "image" },
+] }
+[[review.categories.items]]
+id = "how-to-play-copy-the-goal"
+title = "The how-to-play screen covers the goal"
+description = "The how-to-play screen covers the goal of the game: the rocket that is built, and launching it."
 domains = ["simulation", "presentation"]
 failure_cap = "passable"
 # Automated validation: read the text drawn on the how-to-play screen and hold
-# it against each subject specs/ui.md requires it to cover.
-validation = { script = "screens/how-to-play-copy.test.ts", outputs = [
+# it against each subject in the goal's group of the list specs/ui.md fixes.
+validation = { script = "screens/how-to-play-copy-the-goal.test.ts", outputs = [
+  { id = "copy", name = "The how-to-play copy", kind = "image" },
+] }
+[[review.categories.items]]
+id = "how-to-play-copy-the-controls"
+title = "The how-to-play screen covers the controls"
+description = "The how-to-play screen covers the controls: how the miner is driven, and that the drill cuts down and sideways but never up."
+domains = ["simulation", "presentation"]
+failure_cap = "passable"
+# Automated validation: read the text drawn on the how-to-play screen and hold
+# it against each subject in the controls's group of the list specs/ui.md fixes.
+validation = { script = "screens/how-to-play-copy-the-controls.test.ts", outputs = [
+  { id = "copy", name = "The how-to-play copy", kind = "image" },
+] }
+[[review.categories.items]]
+id = "how-to-play-copy-the-loop"
+title = "The how-to-play screen covers the dig-sell-upgrade loop"
+description = "The how-to-play screen covers the loop the game is played in: digging, selling, and upgrading."
+domains = ["simulation", "presentation"]
+failure_cap = "passable"
+# Automated validation: read the text drawn on the how-to-play screen and hold
+# it against each subject in the loop's group of the list specs/ui.md fixes.
+validation = { script = "screens/how-to-play-copy-the-loop.test.ts", outputs = [
+  { id = "copy", name = "The how-to-play copy", kind = "image" },
+] }
+[[review.categories.items]]
+id = "how-to-play-copy-the-budget"
+title = "The how-to-play screen covers fuel and the cargo bay"
+description = "The how-to-play screen covers the budget every dig is run against: fuel, the climb home, and the cargo's slots and its weight."
+domains = ["simulation", "presentation"]
+failure_cap = "passable"
+# Automated validation: read the text drawn on the how-to-play screen and hold
+# it against each subject in the budget's group of the list specs/ui.md fixes.
+validation = { script = "screens/how-to-play-copy-the-budget.test.ts", outputs = [
+  { id = "copy", name = "The how-to-play copy", kind = "image" },
+] }
+[[review.categories.items]]
+id = "how-to-play-copy-the-mine"
+title = "The how-to-play screen covers the hazards and the hunt"
+description = "The how-to-play screen covers what is waiting in the mine: gas, lava, the exotic materials, and the scanner that finds them."
+domains = ["simulation", "presentation"]
+failure_cap = "passable"
+# Automated validation: read the text drawn on the how-to-play screen and hold
+# it against each subject in the mine's group of the list specs/ui.md fixes.
+validation = { script = "screens/how-to-play-copy-the-mine.test.ts", outputs = [
+  { id = "copy", name = "The how-to-play copy", kind = "image" },
+] }
+[[review.categories.items]]
+id = "how-to-play-copy-the-session"
+title = "The how-to-play screen covers saving and the modes"
+description = "The how-to-play screen covers the session: saving, and the two modes a run is played in."
+domains = ["simulation", "presentation"]
+failure_cap = "passable"
+# Automated validation: read the text drawn on the how-to-play screen and hold
+# it against each subject in the session's group of the list specs/ui.md fixes.
+validation = { script = "screens/how-to-play-copy-the-session.test.ts", outputs = [
   { id = "copy", name = "The how-to-play copy", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -3270,6 +3760,28 @@ validation = { script = "screens/pause-resume.test.ts", outputs = [
   { id = "resume", name = "The fall continuing after a resume", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "pause-opens-on-every-binding"
+title = "Every key bound to pause opens the pause menu"
+description = "The pause action is raised by Escape and by KeyP alike, so either key opens the pause menu from in-mine with no panel open."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: from a fresh in-mine, press each code ACTIONS binds to
+# pause in turn and read the screen at paused after each.
+validation = { script = "screens/pause-opens-on-every-binding.test.ts", outputs = [
+  { id = "paused", name = "The pause menu opened by the second binding", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-resumes-on-every-binding"
+title = "Every key bound to pause resumes the expedition"
+description = "The pause action is raised by Escape and by KeyP alike, so either key resumes the expedition from paused."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: from a fresh paused, press each code ACTIONS binds to
+# pause in turn and read the screen at in-mine after each.
+validation = { script = "screens/pause-resumes-on-every-binding.test.ts", outputs = [
+  { id = "resumed", name = "The mine resumed by the second binding", kind = "image" },
+] }
+[[review.categories.items]]
 id = "pause-restart"
 title = "RESTART starts a fresh expedition at the same settings"
 description = "RESTART from the pause menu starts a fresh expedition in the same mode and world size, with every holding back at its starting value."
@@ -3293,13 +3805,37 @@ validation = { script = "screens/pause-quit.test.ts", outputs = [
 [[review.categories.items]]
 id = "victory-screen"
 title = "The victory screen carries its summary and menu"
-description = "The victory screen shows the expedition summary and VICTORY_ITEMS, PLAY AGAIN and MENU, with PLAY AGAIN starting a fresh expedition in the same mode and size."
+description = "The victory screen shows the expedition summary and draws VICTORY_ITEMS, PLAY AGAIN and MENU, with nothing else on the menu."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: launch to victory, read the menu items and choose PLAY
-# AGAIN, holding the mode and size unchanged.
+# Automated validation: launch to victory, read the summary as populated, read
+# the drawn frame for both menu items and read the menu's length by stepping
+# the highlight until it wraps.
 validation = { script = "screens/victory-screen.test.ts", outputs = [
   { id = "victory", name = "The victory screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory-play-again"
+title = "PLAY AGAIN on the victory screen starts over"
+description = "PLAY AGAIN on the victory screen starts a fresh expedition in the same mode and at the same world size the won one was played at."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: launch to victory from a Hardcore expedition at the
+# Quick size, choose PLAY AGAIN and read the screen, the mode, the size and
+# coreRow of what opened.
+validation = { script = "screens/victory-play-again.test.ts", outputs = [
+  { id = "again", name = "A fresh expedition from the victory screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory-menu"
+title = "MENU on the victory screen returns to the title"
+description = "MENU on the victory screen returns to the title screen, so a player who has just won is not stranded on it."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: launch to victory, choose MENU and read the screen at
+# title.
+validation = { script = "screens/victory-menu.test.ts", outputs = [
+  { id = "menu", name = "The title after leaving the victory screen", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "game-over-screen"
@@ -3313,22 +3849,80 @@ validation = { script = "screens/game-over-screen.test.ts", outputs = [
   { id = "over", name = "The game-over screen after a death", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "summary-fields"
-title = "The summary reports what the expedition did"
-description = "The summary reports the deepest depth reached in meters, the total Credits earned, the elapsed time, the mode, the number of rocket components installed and, on a game over, the death cause."
+id = "summary-reports-the-depth"
+title = "The summary reports the deepest depth reached"
+description = "The summary's deepest depth is the depth in meters of the deepest row the miner reached, on specs/world.md's own formula."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: drive a distinctive expedition to a death and hold
-# each summary field against what the expedition actually did.
-validation = { script = "screens/summary-fields.test.ts", outputs = [
-  { id = "summary", name = "The expedition summary", kind = "image" },
+# Automated validation: take the miner to a known row, drive a death and hold
+# the reported depth against METERS_PER_ROW * (row - 1).
+validation = { script = "screens/summary-reports-the-depth.test.ts", outputs = [
+  { id = "depth", name = "The summary's deepest depth", kind = "image" },
+] }
+[[review.categories.items]]
+id = "summary-reports-the-credits-earned"
+title = "The summary reports the Credits earned"
+description = "The summary's Credits earned is the total the expedition banked from selling, on specs/mining.md's ore values."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: sell a known haul at the Ore Market, drive a death and
+# hold the reported figure against the units sold times their stated value.
+validation = { script = "screens/summary-reports-the-credits-earned.test.ts", outputs = [
+  { id = "earned", name = "The summary's Credits earned", kind = "image" },
+] }
+[[review.categories.items]]
+id = "summary-reports-the-elapsed-time"
+title = "The summary reports the elapsed time"
+description = "The summary's elapsed time is the expedition clock, which keeps accumulating up to the moment the expedition ends rather than resetting with the screen."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: pose the expedition clock at a figure no expedition
+# reaches by accident, drive a death and hold the reported time between that
+# figure and the stretch the death took.
+validation = { script = "screens/summary-reports-the-elapsed-time.test.ts", outputs = [
+  { id = "elapsed", name = "The summary's elapsed time", kind = "image" },
+] }
+[[review.categories.items]]
+id = "summary-reports-the-mode"
+title = "The summary reports the mode played"
+description = "The summary reports the mode the expedition was played in rather than the mode a session opens at."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open in Hardcore, drive a death and read the mode the
+# summary reports.
+validation = { script = "screens/summary-reports-the-mode.test.ts", outputs = [
+  { id = "mode", name = "The summary's mode", kind = "image" },
+] }
+[[review.categories.items]]
+id = "summary-reports-the-components"
+title = "The summary reports the rocket components installed"
+description = "The summary reports how many of the five rocket components were installed when the expedition ended."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: install a known count, drive a death and read the
+# count the summary reports.
+validation = { script = "screens/summary-reports-the-components.test.ts", outputs = [
+  { id = "rocket", name = "The summary's rocket count", kind = "image" },
+] }
+[[review.categories.items]]
+id = "summary-reports-the-death-cause"
+title = "The game-over summary reports how the miner died"
+description = "On a game over the summary reports the death cause, which follows the death that actually happened rather than naming one cause whatever ended the expedition."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: drive two different deaths on fresh expeditions and
+# read the cause the summary reports after each.
+validation = { script = "screens/summary-reports-the-death-cause.test.ts", outputs = [
+  { id = "cause", name = "The summary's death cause", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "advances-in-real-time"
 title = "The game advances on its own"
 description = "With the clock running rather than driven, the game advances by itself: a miner left falling keeps falling and simTime keeps climbing without any call."
 domains = ["simulation"]
-failure_cap = "scuffed"
+# A build that fails this does not advance unless something hands it frames,
+# which is a build a player cannot play at all.
+failure_cap = "broken"
 # Automated validation: let the wall clock run over a posed fall and read
 # simTime and the miner position moving with no advance called.
 validation = { script = "screens/advances-in-real-time.test.ts", outputs = [
@@ -3410,16 +4004,247 @@ failure_cap = "passable"
 validation = { script = "panels/pause-closes-an-open-panel.test.ts", outputs = [
   { id = "close", name = "A panel closed by the pause key", kind = "replay" },
 ] }
+# The shell has five kinds of surface a contact drives, and each is its own point:
+# a build whose Ore Market alone ignores the pointer must grade differently from
+# one with no pointer support anywhere. Every one of them is driven at the region
+# the build itself reports through menuItemRect and controlRect, so the layout
+# stays the build's own and nothing here searches the screen.
 [[review.categories.items]]
-id = "controls-are-clickable"
-title = "Every menu item and panel control is clickable"
-description = "Every menu item, panel control and status-bar control is operable with the mouse, so a player can play the shell without the keyboard."
+id = "menu-items-are-clickable"
+title = "The menus that open an expedition answer a press"
+description = "A pointer pressed and released inside a menu item's region chooses it, on the title, the mode choice and the size choice alike."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: click a title menu item, a panel control and a
-# status-bar control in turn and read each taking effect.
-validation = { script = "panels/controls-are-clickable.test.ts", outputs = [
-  { id = "click", name = "A panel control operated by the mouse", kind = "replay" },
+# Automated validation: press the reported region of an item on each of the
+# three menus in turn and read the screen each press reaches.
+validation = { script = "panels/menu-items-are-clickable.test.ts", outputs = [
+  { id = "menus", name = "The opening menus driven by the pointer", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-menu-items-are-clickable"
+title = "The pause menu answers a press"
+description = "A pointer pressed and released inside a pause-menu item's region chooses it, so RESUME returns to the mine and QUIT TO MENU returns to the title."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: press the reported regions of RESUME and QUIT TO MENU
+# on a posed pause screen and read the screen each reaches.
+validation = { script = "panels/pause-menu-items-are-clickable.test.ts", outputs = [
+  { id = "pause", name = "The pause menu driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "end-screen-menu-items-are-clickable"
+title = "The victory and game-over menus answer a press"
+description = "A pointer pressed and released inside an end screen's menu item chooses it, so MENU returns to the title from the victory screen and from the game-over screen alike."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: drive a victory and a death in turn, press the reported
+# region of MENU on each screen and read the title reached.
+validation = { script = "panels/end-screen-menu-items-are-clickable.test.ts", outputs = [
+  { id = "end", name = "An end screen's menu driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "ore-market-sell-is-clickable"
+title = "The Ore Market's SELL answers a press"
+description = "A pointer pressed and released inside the region the build reports for SELL converts the bay to Credits and empties it, exactly as its keyboard route does."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the Ore Market on a known bay, press the reported
+# region of SELL and read the Credits earned with the bay emptied.
+validation = { script = "panels/ore-market-sell-is-clickable.test.ts", outputs = [
+  { id = "panel", name = "The Ore Market's SELL driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "status-bar-inventory-is-clickable"
+title = "The status bar's inventory control answers a press"
+description = "A pointer pressed and released inside the region the build reports for the bar's inventory control opens the inventory, exactly as its keyboard route does."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: press the reported region of the bar's inventory
+# control in the mine and read the inventory panel open.
+validation = { script = "panels/status-bar-inventory-is-clickable.test.ts", outputs = [
+  { id = "bar", name = "The bar's inventory control driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "status-bar-pause-is-clickable"
+title = "The status bar's pause control answers a press"
+description = "A pointer pressed and released inside the region the build reports for the bar's pause control opens the pause menu, exactly as the pause action does."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: press the reported region of the bar's pause control
+# in the mine with no panel open and read the screen at paused.
+validation = { script = "panels/status-bar-pause-is-clickable.test.ts", outputs = [
+  { id = "paused", name = "The bar's pause control driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fuel-depot-buy-fuel-is-clickable"
+title = "The Fuel Depot's fuel increment answers a press"
+description = "A pointer pressed and released inside the region the build reports for the fixed fuel increment buys that increment and charges its price."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the Fuel Depot on a part-empty tank with the
+# increment's price banked, press the reported region and read the fuel and
+# the Credits.
+validation = { script = "panels/fuel-depot-buy-fuel-is-clickable.test.ts", outputs = [
+  { id = "bought", name = "The Fuel Depot's increment driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fuel-depot-fill-fuel-is-clickable"
+title = "The Fuel Depot's fill to full answers a press"
+description = "A pointer pressed and released inside the region the build reports for the fill control fills the tank to its maximum."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the Fuel Depot on a part-empty tank with the
+# missing fuel's price banked, press the reported region and read the tank
+# full.
+validation = { script = "panels/fuel-depot-fill-fuel-is-clickable.test.ts", outputs = [
+  { id = "filled", name = "The Fuel Depot's fill driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fuel-depot-buy-repair-is-clickable"
+title = "The Fuel Depot's repair increment answers a press"
+description = "A pointer pressed and released inside the region the build reports for the fixed repair increment mends that increment of hull and charges its price."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the Fuel Depot on a part-gone hull with the
+# increment's price banked, press the reported region and read the hull and
+# the Credits.
+validation = { script = "panels/fuel-depot-buy-repair-is-clickable.test.ts", outputs = [
+  { id = "bought", name = "The Fuel Depot's repair increment driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "fuel-depot-repair-full-is-clickable"
+title = "The Fuel Depot's repair to full answers a press"
+description = "A pointer pressed and released inside the region the build reports for the repair-to-full control mends the hull to its maximum."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the Fuel Depot on a part-gone hull with the
+# missing hull's price banked, press the reported region and read the hull
+# full.
+validation = { script = "panels/fuel-depot-repair-full-is-clickable.test.ts", outputs = [
+  { id = "repaired", name = "The Fuel Depot's repair to full driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "upgrade-shop-buy-is-clickable"
+title = "An upgrade track's buy control answers a press"
+description = "A pointer pressed and released inside the region the build reports for a track's buy control buys that track's next tier and charges its price."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the Upgrade Shop with the second drill tier's
+# price banked, press the reported region for the drill track and read the
+# tier and the Credits.
+validation = { script = "panels/upgrade-shop-buy-is-clickable.test.ts", outputs = [
+  { id = "bought", name = "An upgrade track's buy control driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "supply-depot-buy-is-clickable"
+title = "A field supply's buy control answers a press"
+description = "A pointer pressed and released inside the region the build reports for a supply's buy control buys one of that supply and charges its price."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the Supply Depot with one Dynamite's price
+# banked and nothing held, press the reported region and read the count and
+# the Credits.
+validation = { script = "panels/supply-depot-buy-is-clickable.test.ts", outputs = [
+  { id = "bought", name = "A supply's buy control driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launch-pad-fabricate-is-clickable"
+title = "The Launch Pad's FABRICATE answers a press"
+description = "A pointer pressed and released inside the region the build reports for FABRICATE builds the next rocket component."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the Launch Pad with the first component's price
+# and materials held, press the reported region and read the component
+# installed.
+validation = { script = "panels/launch-pad-fabricate-is-clickable.test.ts", outputs = [
+  { id = "built", name = "FABRICATE driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "launch-pad-launch-is-clickable"
+title = "The Launch Pad's LAUNCH answers a press"
+description = "A pointer pressed and released inside the region the build reports for LAUNCH launches the finished rocket."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the Launch Pad with all five components
+# installed, press the reported region and read the game reaching victory.
+validation = { script = "panels/launch-pad-launch-is-clickable.test.ts", outputs = [
+  { id = "launched", name = "LAUNCH driven by the pointer", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "inventory-drop-ore-is-clickable"
+title = "An inventory ore row's drop control answers a press"
+description = "A pointer pressed and released inside the region the build reports for an ore row's drop control drops that ore from the bay."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the inventory over a bay holding one ore, press
+# the reported region for that ore's row and read the units held fall.
+validation = { script = "panels/inventory-drop-ore-is-clickable.test.ts", outputs = [
+  { id = "dropped", name = "An ore row's drop control driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inventory-use-item-is-clickable"
+title = "An inventory supply's USE control answers a press"
+description = "A pointer pressed and released inside the region the build reports for a held supply's USE control uses one of that supply."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the inventory holding one supply, press the
+# reported region for its USE and read the count held fall by one.
+validation = { script = "panels/inventory-use-item-is-clickable.test.ts", outputs = [
+  { id = "used", name = "A supply's USE control driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "inventory-jettison-is-clickable"
+title = "The inventory's JETTISON answers a press"
+description = "A pointer pressed and released inside the region the build reports for JETTISON drops the carried Core Sample."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: open the inventory carrying a Core Sample, press the
+# reported region for JETTISON and read the satchel emptied.
+validation = { script = "panels/inventory-jettison-is-clickable.test.ts", outputs = [
+  { id = "dropped", name = "JETTISON driven by the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pointer-hover-highlights-a-menu-item"
+title = "A pointer moved onto a menu item highlights it"
+description = "A pointer moved onto a menu item's region makes that item the highlighted one menuIndex reports, without choosing it, so what a confirm would take follows the pointer."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: start the highlight on one entry, move the pointer onto
+# the reported region of the other and read menuIndex.
+validation = { script = "panels/pointer-hover-highlights-a-menu-item.test.ts", outputs = [
+  { id = "hover", name = "The highlight following the pointer", kind = "image" },
+] }
+[[review.categories.items]]
+id = "a-split-press-chooses-nothing"
+title = "A press and a release in different regions choose nothing"
+description = "A choice takes both of its edges inside one region, so a pointer pressed inside one menu item and released inside another chooses neither."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: press inside the region the build reports for one title
+# menu item, release inside the region it reports for the other, and read the
+# screen still at title.
+validation = { script = "panels/a-split-press-chooses-nothing.test.ts", outputs = [
+  { id = "split", name = "The title after a press that chose nothing", kind = "image" },
+] }
+# Touch is scoped to `none` because that is the only configuration where it is the
+# BUILD's own work. specs/controls.md says of both engines that "a mouse, a pen,
+# and a finger all arrive on those same" pointer reads, so under an engine the
+# device is normalized away before the build sees anything and a touch check would
+# grade the engine rather than the build. Without an engine the build owns its
+# input layer, and listening for a contact rather than a mouse alone is a
+# requirement it can fail.
+[[review.categories.items]]
+id = "touch-chooses-a-menu-item"
+title = "A touch contact drives the menus"
+description = "A touch contact landing and lifting inside one menu item's region makes that item the highlighted one and chooses it, so the shell is playable on a touch screen."
+domains = ["simulation"]
+failure_cap = "scuffed"
+# Automated validation: dispatch a real touch contact to the region the build
+# reports for a title menu item, lift it there and read the screen it reached.
+validation = { script = "panels/touch-chooses-a-menu-item.test.ts", engines = [
+  "none",
+], outputs = [
+  { id = "touch", name = "A menu item chosen by a touch contact", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "clicking-a-building-activates-it"
@@ -3588,14 +4413,36 @@ validation = { script = "hud/core-countdown-on-the-ground.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "scanner-indicator"
-title = "A locked scanner draws a direction and a distance"
-description = "While the scanner is locked on, a direction to the target and a distance are drawn over the world."
+title = "A locked scanner draws an indicator over the world"
+description = "While the scanner is locked on, an indicator is drawn over the world that a pose with no scanner does not draw."
 domains = ["simulation", "presentation"]
 failure_cap = "scuffed"
-# Automated validation: pose a needed node inside the tier range and read the
-# drawn indicator, then move the node and read the drawing change.
+# Automated validation: pose a needed node inside the tier range, read the mine
+# viewport, drop the scanner tier and read the viewport drawn differently.
 validation = { script = "hud/scanner-indicator.test.ts", outputs = [
   { id = "locked", name = "The scanner indicator pointing at a node", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scanner-indicator-direction"
+title = "The scanner indicator carries a direction"
+description = "The indicator says which way the target lies, so a node the same distance east and west of the miner is drawn differently."
+domains = ["simulation", "presentation"]
+failure_cap = "scuffed"
+# Automated validation: place the node the same number of tiles east and then
+# west of the miner and read the mine viewport drawn differently.
+validation = { script = "hud/scanner-indicator-direction.test.ts", outputs = [
+  { id = "direction", name = "The indicator pointing east", kind = "image" },
+] }
+[[review.categories.items]]
+id = "scanner-indicator-distance"
+title = "The scanner indicator carries a distance"
+description = "The indicator says how far the target is, so a node near and a node far on the same side of the miner are drawn differently."
+domains = ["simulation", "presentation"]
+failure_cap = "scuffed"
+# Automated validation: place the node at two distances on the same side of the
+# miner and read the mine viewport drawn differently.
+validation = { script = "hud/scanner-indicator-distance.test.ts", outputs = [
+  { id = "distance", name = "The indicator on a near node", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "scanner-indicator-hidden"
@@ -3696,15 +4543,39 @@ validation = { script = "audio/impact-cue.test.ts", outputs = [
   { id = "thud", name = "The hard landing whose cue is checked", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "fabricate-cue"
-title = "A purchase or a fabrication plays its cue"
-description = "The fabricate cue plays when a purchase or a fabrication succeeds, and not when one is refused."
+id = "fabricate-cue-on-a-purchase"
+title = "A purchase plays its cue"
+description = "The fabricate cue plays when a purchase succeeds, so a player hears that the shop took the Credits."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: buy an upgrade and fabricate a component and observe
-# the cue at each, then attempt an unaffordable purchase and observe none.
-validation = { script = "audio/fabricate-cue.test.ts", outputs = [
-  { id = "confirm", name = "The purchase whose cue is checked", kind = "replay" },
+# Automated validation: buy an upgrade with the Credits for it and observe the
+# fabricate cue over the frames the control ran in, with the tier risen.
+validation = { script = "audio/fabricate-cue-on-a-purchase.test.ts", outputs = [
+  { id = "purchase", name = "The purchase whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fabricate-cue-on-a-fabrication"
+title = "A fabrication plays its cue"
+description = "The fabricate cue plays when a fabrication succeeds, so a player hears that a rocket component went onto the checklist."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: fabricate the first component with the Credits for it
+# and observe the fabricate cue over the frames the control ran in, with the
+# component installed.
+validation = { script = "audio/fabricate-cue-on-a-fabrication.test.ts", outputs = [
+  { id = "fabrication", name = "The fabrication whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fabricate-cue-not-on-a-refusal"
+title = "A refused purchase plays nothing"
+description = "The fabricate cue plays only when a purchase succeeds, so a purchase the balance cannot cover is silent rather than sounding as though it went through."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: attempt an upgrade one Credit short of its rung and
+# observe no fabricate cue over the frames the control ran in, with the tier
+# unchanged.
+validation = { script = "audio/fabricate-cue-not-on-a-refusal.test.ts", outputs = [
+  { id = "refusal", name = "The refused purchase that must be silent", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "launch-cue"
@@ -3787,14 +4658,25 @@ validation = { script = "audio/music-bed.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "mute-toggle"
-title = "The mute control silences everything"
-description = "The mute action and the status-bar mute control both toggle all audio, so no cue is audible while muted."
+title = "The mute action silences everything"
+description = "The mute action toggles all audio, so no cue is audible while muted."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: mute, then fire several cue-bearing events and observe
-# each play reported silent, then unmute and observe them audible again.
+# Automated validation: strike the mute key, read the muted bit, then drive a
+# cut and observe every cue it raised come out at no gain.
 validation = { script = "audio/mute-toggle.test.ts", outputs = [
   { id = "muted", name = "The game playing while muted", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "mute-control-toggles"
+title = "The status bar's mute control silences everything"
+description = "The status bar's mute control toggles all audio exactly as the mute action does, so the audio can be turned off without the keyboard."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: press the region the build reports for the bar's mute
+# control and read the muted bit flipped.
+validation = { script = "audio/mute-control-toggles.test.ts", outputs = [
+  { id = "bar", name = "The status bar's mute control", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "muted-play-continues"
@@ -4056,6 +4938,17 @@ validation = { script = "assets/building-sprites.test.ts", outputs = [
   { id = "camp", name = "The camp and its buildings", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "icon-sprites"
+title = "Every status-bar reading has a produced icon"
+description = "A sprite exists at assets/icons/<name>.png for fuel, hull, cargo, credits, depth and each of the two materials, and no two of the seven are identical."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: read the seven icon files and hold each present and all
+# seven mutually different.
+validation = { script = "assets/icon-sprites.test.ts", outputs = [
+  { id = "icons", name = "The status-bar icons", kind = "image" },
+] }
+[[review.categories.items]]
 id = "material-sprites"
 title = "The materials and the Core have produced sprites"
 description = "Sprites exist at assets/materials/resonite.png, cryenite.png, core.png and core-sample.png, and no two of the four are identical."
@@ -4178,18 +5071,42 @@ id = "rendering"
 title = "The Mine on Screen"
 [[review.categories.items]]
 id = "stage-fit"
-title = "The stage is fitted and centered"
-description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole STAGE_W x STAGE_H (1280 x 720) stage is inside the surface at its own aspect ratio, centered with even letterboxing, and the bars carry the stage background color within an RGB distance of 25 of 441."
+title = "The whole stage is on screen at its own aspect ratio"
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole STAGE_W x STAGE_H (1280 x 720) stage is inside the surface at one uniform scale, and the mine is drawn into that map so a cell read at its own logical coordinate lands where it should."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: size the surface wider, taller and at a raised ratio in
-# turn; hold the drawn stage extent, aspect and centering at each, and sample a
-# bar against the stage background the build fixes. The fit itself is the
-# runtime's under an engine, but the bar color is the build's either way: it is
-# the `BACKGROUND` src/game.ts exports under an engine, and the color the build
-# clears to without one.
+# turn; hold the backing store, the fitted stage's extent and its single scale at
+# each, and sample a posed rock cell and the open mine beside it through the
+# reported fit. The fit itself is the runtime's under an engine; where the mine
+# lands under it is the build's either way.
 validation = { script = "rendering/stage-fit.test.ts", outputs = [
   { id = "fit", name = "The stage fitted in an off-aspect window", kind = "image" },
+] }
+[[review.categories.items]]
+id = "stage-centred"
+title = "The stage is centered in the surface"
+description = "The leftover after the stage is fitted is split evenly into two bars on one axis, with the other axis filled exactly, so the picture sits in the middle rather than against a corner."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: size the surface wider, taller and at a raised ratio in
+# turn and hold the reported offsets at half the leftover on one axis and zero on
+# the other.
+validation = { script = "rendering/stage-centred.test.ts", outputs = [
+  { id = "centred", name = "The stage centered in an off-aspect window", kind = "image" },
+] }
+[[review.categories.items]]
+id = "letterbox-carries-the-background"
+title = "The letterbox bars carry the game's background"
+description = "Every letterbox pixel is painted rather than left transparent, and the bars carry one background across every window shape, within an RGB distance of 25 of 441."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: size the surface wider, taller and at a raised ratio in
+# turn and sample each bar for an opaque pixel carrying the stage background. The
+# color is the build's either way: it is the `BACKGROUND` src/game.ts exports
+# under an engine, and the color the build clears to without one.
+validation = { script = "rendering/letterbox-carries-the-background.test.ts", outputs = [
+  { id = "letterbox", name = "The letterbox around the fitted stage", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "bands-are-distinguishable"
@@ -4250,16 +5167,26 @@ validation = { script = "rendering/tunnel-is-inset.test.ts", outputs = [
   { id = "inset", name = "One carved cell inside its rock", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "tunnel-joins-and-separates"
-title = "Adjacent tunnels join and diagonal ones do not"
-description = "Orthogonally adjacent open cells join into one passage with no dirt lip between them, while cells touching only at a corner stay separate with the dirt still between them."
+id = "tunnel-cells-join"
+title = "Adjacent carved cells join into one passage"
+description = "Two orthogonally adjacent open cells join into one passage, with the tunnel fill running through the side they share rather than a dirt lip down the middle of it."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: pose one orthogonal pair and one diagonal pair of open
-# cells and sample the boundary between each, holding the first joined and the
-# second separated.
-validation = { script = "rendering/tunnel-joins-and-separates.test.ts", outputs = [
-  { id = "join", name = "An orthogonal pair joined and a diagonal pair apart", kind = "image" },
+# Automated validation: pose one orthogonal pair of open cells and sample the
+# midpoint of the side they share, holding it against the tunnel fill.
+validation = { script = "rendering/tunnel-cells-join.test.ts", outputs = [
+  { id = "join", name = "An orthogonal pair joined into one passage", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tunnel-cells-stay-separate"
+title = "Diagonally touching carved cells stay two holes"
+description = "Two open cells touching only at a corner stay separate, with the band's dirt still filling the corner between them."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: pose one diagonal pair of open cells and sample the
+# corner they touch at, holding it against the band's dirt.
+validation = { script = "rendering/tunnel-cells-stay-separate.test.ts", outputs = [
+  { id = "apart", name = "A diagonal pair left apart", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "tunnel-corner-nub"
@@ -4308,4 +5235,48 @@ failure_cap = "scuffed"
 # miner position and the surrounding cells unchanged through the shake.
 validation = { script = "rendering/screen-shake-is-only-visual.test.ts", outputs = [
   { id = "still", name = "The simulation still behind the shake", kind = "replay" },
+] }
+
+# --- The showcase -------------------------------------------------------------
+# The store-page presentation `specs/showcase.md` asks the finished game to ship
+# beside its source: a description, a carousel manifest, and the media the two
+# name, all in `showcase/` at the root of the produced repository.
+#
+# ONE point, and it grades EXISTENCE alone. Whether the description reads like
+# something a player would want to play, whether the carousel opens on the
+# strongest view of live play, and whether the media is worth looking at is the
+# reviewer's judgement, rated through `presentation` rather than asserted here.
+# The validator's whole verdict is that the two files are there, that the carousel
+# is the two-to-four-entry document the specification fixes, and that every file
+# it names is present beside it and under the stated ceiling: not a dimension, not
+# a byte of a picture, not a word of the prose. Nothing else on this checklist
+# says anything about the media either.
+#
+# WEIGHTED ABOVE THE DEFAULT, because a build that ships no showcase has skipped a
+# whole deliverable rather than missed one rule inside one, and a single ordinary
+# point would not say so. The cap stays `great`: an absent showcase leaves the
+# standard flow of gameplay completely unaffected.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine projects and the point means the same
+# thing whichever engine the run selected. What it hands back as evidence is a
+# `.png` copied out of the build's own showcase, so a reviewer sees the picture the
+# build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "showcase-present"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, the carousel holds two to four [[media]] entries each carrying a file and a name, and every file it names is a bare name present in showcase/ under 25 MiB."
+weight = 3
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there and non-empty, read the carousel's [[media]] tables
+# and hold their count, their two keys, and each named file's presence and size
+# against specs/showcase.md. Nothing about what the media SHOWS is checked. The
+# still handed back is a `.png` copied out of the showcase itself.
+validation = { script = "showcase/showcase-present.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }

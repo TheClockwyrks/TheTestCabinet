@@ -11,7 +11,7 @@ description = "The standard expedition: start on the surface with tier-1 gear an
 # menu, and they change only what happens on death, so `specs/modes.md` is a COMMON spec
 # declared in `test-case.toml` and seeded for every run. Quick, Standard and Marathon are
 # a world-size choice on the same menu and are likewise common. The single expedition and
-# its main-menu entry are folded into the common `specs/gameplay.md`.
+# its main-menu entry are folded into the common `specs/expedition.md`.
 #
 # Nothing in the seeded set branches on the variant either: the specs branch only on the
 # selected engine. So there is no spec of any kind to put here. If you came to this file

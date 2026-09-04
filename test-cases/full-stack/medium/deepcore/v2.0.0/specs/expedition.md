@@ -59,9 +59,11 @@ component, and go again.
 - A save holds the generated mine and its world size, the mode, banked Credits,
   every upgrade tier, the installed rocket components, the held field-supply
   counts, the cargo, the satchel's materials, and the miner's fuel and hull.
-- Saving is refused while a Core Sample's timer runs, carried or jettisoned.
-- The main menu shows `CONTINUE` while a save exists, which resumes it exactly as
-  it was saved and places the miner on the surface.
+- Saving is refused while a Core Sample's timer runs, whether the Sample is
+  carried or lying jettisoned, so the timer is never frozen out by saving and
+  quitting. A live Core Sample is never carried in the save.
+- Resuming a save restores the expedition exactly as it was saved and places the
+  miner on the surface. `specs/ui.md` states the menu entries that resume one.
 - A Hardcore death deletes the save. A victory consumes it. A Standard death
   leaves it intact.
 
@@ -75,3 +77,9 @@ The game keeps no running total. The Victory and Game Over screens summarize the
 expedition: the deepest depth reached in meters, the total Credits earned, the
 elapsed time, the mode, the number of rocket components installed, and, on a Game
 Over, how the miner died. The summary is not persisted.
+
+The elapsed time is the expedition's own clock. It reads `0` before an expedition
+begins, is set back to `0` when one begins, and accumulates game time while the
+miner is in the mine, so time spent on the pause menu, on a menu screen, or on a
+summary screen does not count toward it. The summary reports the value the clock
+held when the expedition ended.

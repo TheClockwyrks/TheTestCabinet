@@ -49,8 +49,9 @@ failure on a fresh checkout is expected; declaring the types clears it.
 
 This build runs on no engine, so the layer beneath the game is yours as well:
 the frame loop and the delta time it hands each update, fitting the fixed logical
-stage onto the canvas, the keyboard input the player drives the game with, the
-audio, loading the assets you produce, and the on-screen debug overlay. The mine
+stage onto the canvas, the keyboard and pointer input the player drives the game
+with, the audio, loading the assets you produce, and the on-screen debug
+overlay. The mine
 is larger than the stage, so the camera that scrolls the view over it is yours
 too. The specification in `specs/` states what Deepcore needs from that layer and
 fixes nothing else about it.
@@ -106,15 +107,10 @@ finished repository.
 
 ## The assets you produce
 
-There is no pre-made game art in this project. The container puts six
-asset-generation tools on your `PATH` instead: `draw` and `draw-sheet` for sprites
-and animated sprite sheets, `particle-2d` for particle systems, and `sfx-synth`,
-`sfx-sample`, and `music` for sound and music. Run each tool's `--help` to learn
-its operations. `specs/assets.md` is the contract: it enumerates every sprite,
-animation, particle system, and sound the game needs, names the tool that produces
-each and the path it lands at, and states how each is wired into the build.
-
-The tools are on your `PATH` only while you are building the game here.
+There is no pre-made game art in this project. `specs/assets.md` is the contract
+for the files you produce: it enumerates every sprite, animation, particle system,
+and sound the game needs, names the tool that produces each and the path it lands
+at, and states how each is wired into the build.
 
 ## The build interface
 
@@ -129,15 +125,8 @@ matches.
 
 ## Driving the game in a browser
 
-{{#if (eq engine.slug "none")}}
-The project's Playwright and its headless Chromium are installed, so you can
-serve the built game and drive it in a real browser, watch a dig, check for
-console errors, or exercise `window.__deepcore`.
-{{else}}
-The project's Playwright and its headless Chromium are installed, so you can
-serve the built game and drive it in a real browser, watch a dig, and check for
-console errors.
-{{/if}}
+The project's Playwright and its headless Chromium are installed, so the built
+game can be served and driven in a real browser.
 
 When you launch the browser, use the project's own Playwright: import it from
 your project (for example `import { chromium } from "playwright"`) or run the
