@@ -17,8 +17,9 @@ specification is written against them:
 
 - The screen being shown, of `title`, `howto`, `select`, and `editor`, the
   mode the select and editor screens serve, the highlighted item of whichever
-  menu is showing, the highlighted row of the select screen, and the how-to's
-  current page, which the snapshot reports as `howtoPage`.
+  menu is showing, the title menu's remembered selection, which the snapshot
+  reports as `titleIndex`, the highlighted row of the select screen, and the
+  how-to's current page, which the snapshot reports as `howtoPage`.
 - Per-mode progress: how many campaign challenges are unlocked, which
   challenges of each mode are solved, each challenge's records, the machine
   stashed for each challenge the session has touched, and for each mode the
@@ -237,6 +238,7 @@ export interface OrreryState {
   readonly screen: Screen;
   readonly mode: Mode;
   readonly menuIndex: number;
+  readonly titleIndex: number;
   readonly selectIndex: number;
   readonly howtoPage: number;
 
@@ -349,9 +351,11 @@ The whole of Orrery's state. Every field is present from the moment
 building a state that differs in the fields posed and read back by reading
 them.
 
-- `screen`, `mode`, `menuIndex`, `selectIndex`, `howtoPage` — where the
-  player is. `selectIndex` is the highlighted select row of the current mode,
-  and `howtoPage` the how-to's current page, `0` whenever the screen is not
+- `screen`, `mode`, `menuIndex`, `titleIndex`, `selectIndex`, `howtoPage` —
+  where the player is. `titleIndex` is the title menu's remembered selection,
+  and `specs/ui.md` states what sets it and what restores `menuIndex` from it.
+  `selectIndex` is the highlighted select row of the current mode, and
+  `howtoPage` the how-to's current page, `0` whenever the screen is not
   `howto`.
 - `unlockedCount` — how many campaign challenges are open, `1` at the start.
 - `campaignSolved`, `extrasSolved` — solved indices, ascending, no
@@ -589,6 +593,7 @@ export class OrreryState extends GameState {
   screen: Screen = "title";
   mode: Mode = "campaign";
   menuIndex = 0;
+  titleIndex = 0;
   selectIndex = 0;
   howtoPage = 0;
 
@@ -709,9 +714,11 @@ The whole of Orrery's state. Every field is present from the moment the
 world opens, and every one is plain data, so a scenario is posed by writing
 the fields posed and read back by reading them.
 
-- `screen`, `mode`, `menuIndex`, `selectIndex`, `howtoPage` — where the
-  player is. `selectIndex` is the highlighted select row of the current mode,
-  and `howtoPage` the how-to's current page, `0` whenever the screen is not
+- `screen`, `mode`, `menuIndex`, `titleIndex`, `selectIndex`, `howtoPage` —
+  where the player is. `titleIndex` is the title menu's remembered selection,
+  and `specs/ui.md` states what sets it and what restores `menuIndex` from it.
+  `selectIndex` is the highlighted select row of the current mode, and
+  `howtoPage` the how-to's current page, `0` whenever the screen is not
   `howto`.
 - `unlockedCount` — how many campaign challenges are open, `1` at the start.
 - `campaignSolved`, `extrasSolved` — solved indices, ascending, no

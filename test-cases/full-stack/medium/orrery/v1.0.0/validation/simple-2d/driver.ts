@@ -37,7 +37,7 @@ import type {
   ScreenName,
 } from "./constants";
 import type { Challenge, Solution } from "./formats";
-import type { OrrerySnapshot } from "./snapshot";
+import type { MenuItemRect, OrrerySnapshot } from "./snapshot";
 
 /**
  * Every operation of `specs/instrumentation.md`, as a check calls it.
@@ -81,6 +81,15 @@ export interface OrreryDriver {
   ): Promise<void>;
   /** Set the row that mode's select screen lands on. */
   setLast(mode: ModeName, index: number): Promise<void>;
+
+  /* -- The menu layout ---------------------------------------------------- */
+
+  /**
+   * The hit region of item `index` on the menu the current screen shows, in
+   * logical units, or `null` where the screen shows no menu or `index` names no
+   * item of it. A pure read.
+   */
+  menuItemRect(index: number): Promise<MenuItemRect | null>;
 
   /* -- The challenge ------------------------------------------------------ */
 
@@ -249,6 +258,7 @@ export const STATE_OPS = [
   "setSolved",
   "setRecord",
   "setLast",
+  "menuItemRect",
   "openChallenge",
   "loadChallenge",
   "referenceSolution",
@@ -294,7 +304,7 @@ export const STATE_OPS = [
 export type OperationName = (typeof STATE_OPS)[number];
 
 /**
- * The three operations that READ rather than pose.
+ * The four operations that READ rather than pose.
  *
  * Under `simple-2d` the distinction is load-bearing: a pose is run through the
  * engine's `apply` and a reading against `engine.state`, and driving one as the
@@ -305,6 +315,7 @@ export type OperationName = (typeof STATE_OPS)[number];
  */
 export const READINGS: readonly string[] = [
   "snapshot",
+  "menuItemRect",
   "readSolution",
   "referenceSolution",
 ];

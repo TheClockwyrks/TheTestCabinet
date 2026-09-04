@@ -35,8 +35,10 @@ The main menu, and where the game opens.
 
 The menu's items are stacked one above the next under the title and tagline.
 The item at `state.menuIndex` is highlighted and drawn distinctly from the
-others. `menuIndex` is `0` on arriving at the title. `up` and `down` move the
-highlight by one item and wrap at both ends. `back` does nothing.
+others. `menuIndex` is `0` on the first frame of the session, and the
+remembered title selection of Menu navigation below on every later arrival.
+`up` and `down` move the highlight by one item and wrap at both ends. `back`
+does nothing.
 
 `confirm` takes the highlighted item:
 
@@ -54,8 +56,11 @@ machines of `specs/editor.md` are unchanged by the visit.
 How to play, told in a player's words rather than as rules of a system, over
 `HOWTO_PAGES` (`5`) pages. `state.howtoPage` names the page shown, `0` on
 arriving; `left` and `right` move it by one, stopping at `0` and
-`HOWTO_PAGES - 1`, and the current page is indicated on screen. `confirm` and
-`back` both return to `title` with `menuIndex` `0`. The pages, in order:
+`HOWTO_PAGES - 1`, and the current page is indicated on screen. The screen
+also shows a single menu item, index `0`, whose copy the build chooses and
+which the build draws as the other menus draw the item at `menuIndex`.
+`confirm` takes that item; taking it and `back` alike return to `title` with
+`HOW TO PLAY` highlighted. The pages, in order:
 
 1. The sky: the hex field, motes and their classes, filaments,
    constellations, and that a challenge asks for products made from reagents.
@@ -134,11 +139,68 @@ the screen, and input is read on every screen. Beyond that:
 
 ## Menu navigation
 
-Menus and select lists are worked from the keyboard alone, through the
-registered actions of `specs/controls.md`: `up` and `down` move the
-highlight, `confirm` takes the highlighted item, and `back` leaves the
+Every menu the game shows is worked from the keyboard, from a pointer, and
+from touch, over the items that screen shows: the title menu's items, the
+how-to's single item, the select screen's rows, and the solved panel's items.
+The highlight the screen carries is `state.menuIndex`, except on `select`,
+where it is `state.selectIndex` as `specs/modes/campaign.md` states.
+
+### Keyboard
+
+Through the registered actions of `specs/controls.md`: `up` and `down` move
+the highlight, `confirm` takes the highlighted item, and `back` leaves the
 screen. `left` and `right` turn the `howto` pages. `mute` is read on every
 screen.
+
+### Pointer and touch
+
+Each menu item occupies a rectangular hit region the build lays out.
+`specs/instrumentation.md` states the reading through which the build reports
+an item's region in logical units, so the menus keep the layout the build
+chose.
+
+| Input | Effect |
+| --- | --- |
+| A pointer moves onto an item's region | The highlight becomes that item's index. |
+| A touch contact lands inside an item's region, or travels onto one | The highlight becomes that item's index. |
+| A pointer is pressed and released inside one item's region | The highlight becomes that item's index, and that item is taken. |
+| A touch contact lands and lifts inside one item's region | The highlight becomes that item's index, and that item is taken. |
+
+Taking an item takes both of its edges inside that item's region: the press
+and its release for a pointer, the landing and the lift for a touch contact.
+Two edges that fall in different regions, and an edge that falls outside every
+region, take no item. The item every take acts on is the item the highlight
+names, whichever input raised it, and what taking it does is what
+`specs/controls.md` gives `confirm` on that screen.
+
+A menu reads the pointer exactly as the editor does, as `specs/controls.md`
+states it: each position and each edge is resolved on its own, in the order
+they arrive, so a sweep across several items leaves the highlight on the last
+region it entered, and a press and the release that follows it may both arrive
+within one frame, which takes the item. A frame's keyboard edges are read
+first and the pointer and the touch contacts after them, so a frame carrying a
+keyboard movement edge together with a pointer or touch selection leaves the
+highlight on the item the pointer or the contact named, and a frame carrying a
+keyboard `confirm` edge together with a pointer or touch taking an item takes
+the keyboard's item alone. A pointer and a touch contact drive the menus
+directly rather than through an action.
+
+The `editor` screen lays out no hit region of its own: while editing, and
+while a run is `running`, `paused`, or `faulted`, it shows no menu, and the
+pointer works the field, the tray, and the tape as `specs/editor.md` states.
+While the solved panel is up its items take the pointer and touch as the table
+above gives them, and the machine drawn behind the panel takes neither.
+
+### The remembered title selection
+
+Taking an item on the title menu sets `state.titleIndex` to that item's index,
+from the keyboard, from a pointer, and from a touch contact alike. Arriving at
+`title` from `howto` or from either select screen highlights the item
+`titleIndex` names, so a return lands on the entry that led away. It is `0`
+until the first title item is taken, which is what the title menu opens on,
+and it is `0` again only after the `reset` of `specs/instrumentation.md`. A
+visit to another screen leaves it as it stands, as the rest of the state's
+progress figures are left.
 
 ## Audio
 

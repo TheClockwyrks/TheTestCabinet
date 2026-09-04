@@ -787,7 +787,7 @@ validation = { script = "instrumentation/snapshot-muted-mirrors.test.ts", output
 [[review.categories.items]]
 id = "set-screen-title"
 title = "setScreen('title') enters the title screen"
-description = "setScreen(\"title\") shows the title menu with menuIndex 0, exactly as the real transition into it does."
+description = "setScreen(\"title\") shows the title menu with menuIndex at titleIndex, exactly as the real transition into it does, so a session that has taken no title item lands on 0."
 domains = ["campaign", "extras"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-screen-title.test.ts", outputs = [ { id = "title", name = "The title entered from code", kind = "image" } ] }
@@ -6503,13 +6503,13 @@ validation = { script = "screens/title-highlight-distinct.test.ts", outputs = [
   { id = "second-highlighted", name = "The title menu with the second item highlighted", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "menu-index-zero-on-arrival"
-title = "Arriving at the title highlights its first item"
-description = "Entering title sets menuIndex to 0, however far the highlight had moved before the screen was left."
+id = "title-returns-to-the-entry-left-from"
+title = "Returning to the title highlights the entry that led away"
+description = "Taking HOW TO PLAY and leaving the how-to comes back to the title with HOW TO PLAY highlighted, and taking EXTRAS and leaving its select screen comes back with EXTRAS highlighted, rather than either landing on the first entry."
 domains = ["campaign", "extras"]
 failure_cap = "passable"
-validation = { script = "screens/menu-index-zero-on-arrival.test.ts", outputs = [
-  { id = "arrived", name = "The freshly entered title menu with its first item highlighted", kind = "replay" },
+validation = { script = "screens/title-returns-to-the-entry-left-from.test.ts", outputs = [
+  { id = "returned", name = "The title menu re-entered on the entry that led away", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "title-down-moves-highlight"
@@ -6638,13 +6638,13 @@ validation = { script = "screens/title-visit-keeps-stashed-machines.test.ts", ou
   { id = "machine-restored", name = "A machine restored after a visit to the title", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "pointer-drives-no-menu"
-title = "The pointer operates no menu"
-description = "The pointer operates the editor alone, so no press, move, or release anywhere on the title or on a select screen changes menuIndex, selectIndex, or screen."
+id = "pointer-drives-menus"
+title = "The pointer works the title menu"
+description = "Over the regions menuItemRect reports, a pointer moved onto an item's region highlights that item, a press and release inside one region takes it, and a press and a release in different regions take nothing."
 domains = ["campaign", "extras"]
-failure_cap = "great"
-validation = { script = "screens/pointer-drives-no-menu.test.ts", outputs = [
-  { id = "unmoved", name = "A menu unchanged by pointer presses across the stage", kind = "replay" },
+failure_cap = "passable"
+validation = { script = "screens/pointer-drives-menus.test.ts", outputs = [
+  { id = "selected", name = "The title item a click took", kind = "replay" },
 ] }
 # --- howto --------------------------------------------------------------------
 [[review.categories.items]]

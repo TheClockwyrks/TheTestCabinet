@@ -184,12 +184,29 @@ export interface PointerView {
   down: boolean;
 }
 
+/**
+ * The hit region of one menu item, as `menuItemRect` reports it
+ * (`specs/instrumentation.md`, The menu layout): logical units on the
+ * `STAGE_W x STAGE_H` stage, `x` and `y` its top-left corner.
+ *
+ * The layout itself is the build's — `specs/ui.md` fixes what the region DOES
+ * and leaves where it sits alone — so this is the read a check moves the
+ * pointer by rather than a figure `constants.ts` could carry.
+ */
+export interface MenuItemRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** What `snapshot` returns (`specs/instrumentation.md`, Snapshot shape). */
 export interface OrrerySnapshot {
   version: number;
   screen: ScreenName;
   mode: ModeName;
   menuIndex: number;
+  titleIndex: number;
   selectIndex: number;
   howtoPage: number;
   campaign: ProgressView;

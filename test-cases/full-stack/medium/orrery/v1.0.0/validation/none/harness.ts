@@ -102,8 +102,9 @@ const kit = createCaseHarness<OrrerySnapshot, OrrerySurface>({
   // A GENUINE browser gesture, so the build's audio context can open: a build is
   // free to open its audio from a real DOM event alone (both are conformant), so
   // a gesture delivered any other way would leave a perfectly good build silent.
-  // A KEY rather than a click, because Orrery's pointer "operates the editor
-  // alone" and a press on the editor would select, deselect, or set the focus.
+  // A KEY rather than a click, because Orrery's pointer works whatever screen it
+  // lands on: a press on the editor would select, deselect, or set the focus, and
+  // one on a menu screen would move a highlight or take an item (`specs/ui.md`).
   // `KeyO` is bound to no action in `specs/controls.md`'s whole binding table, so
   // pressing it is inert by specification rather than by accident.
   //
