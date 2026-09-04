@@ -67,7 +67,8 @@ export function asPointerEvent(event: Event): {
   return {
     clientX: candidate.clientX,
     clientY: candidate.clientY,
-    pointerId: typeof candidate.pointerId === "number" ? candidate.pointerId : 0,
+    pointerId:
+      typeof candidate.pointerId === "number" ? candidate.pointerId : 0,
     device: type === "touch" || type === "pen" ? type : "mouse",
     primary: candidate.isPrimary !== false,
   };
@@ -151,7 +152,11 @@ export class Pointer {
   private device: PointerDevice = "mouse";
   private detached = false;
 
-  constructor(target: EventTarget, map: StageMap, capture: HTMLElement | null = null) {
+  constructor(
+    target: EventTarget,
+    map: StageMap,
+    capture: HTMLElement | null = null,
+  ) {
     this.target = target;
     this.map = map;
     this.capture = capture;
@@ -205,7 +210,8 @@ export class Pointer {
       this.device = pointer.device;
     }
     // A drag that leaves the canvas keeps delivering, and its release is seen.
-    if (pointer.primary && type !== "move") this.retain(type, pointer.pointerId);
+    if (pointer.primary && type !== "move")
+      this.retain(type, pointer.pointerId);
     if (type === "move" || edged) {
       if (type !== "move" && pointer.primary) this.down = type === "down";
       this.buffer.push({

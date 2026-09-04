@@ -5,17 +5,19 @@
 // specification, not presentation: `menu-0` through `menu-2` on the title, one
 // per entry of TITLE_ITEMS; `back` on how-to; `board-1` through `board-24` and
 // then `back` on select; `clear` and then `back` on playing; one `menu-<i>` per
-// choice on solved, three of them on a board that is not the last; `menu-0` and
-// `menu-1` on complete. A build that reports a different set has either not
-// built the targets or named them something a player-driving check cannot find,
-// and both are the same failure.
+// choice on solved, three of them on a board that is not the last; two on
+// Cascade's solved screen, one per `SOLVED_ITEMS` entry; `menu-0` and `menu-1`
+// on complete. A build that reports a different set has either not built the
+// targets or named them something a player-driving check cannot find, and both
+// are the same failure.
 //
 // Every screen the walk does not arrive at in play is POSED with `setScreen`,
-// which sets `state.screen` alone (specs/instrumentation.md), so a build whose
-// menus are the broken part fails the menu points and not this one.
+// which sets `state.screen` alone, and Cascade's solved screen with `setMode`
+// beside it, which sets `state.mode` alone (specs/instrumentation.md), so a
+// build whose menus are the broken part fails the menu points and not this one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { TITLE_ITEMS } from "../constants";
+import { SOLVED_ITEMS, TITLE_ITEMS } from "../constants";
 import { CAMPAIGN_LENGTH } from "../notation";
 import { R9_UNIQUE } from "../fixtures";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -113,5 +115,20 @@ it("reports the fixed target ids on every screen that carries them", async () =>
     ["menu-0", "menu-1"],
     "complete carries menu-0 and menu-1, one per choice " +
       "(specs/controls.md, Pointer targets)",
+  );
+
+  // Cascade offers its own menu on the same screen, so the screen carries its
+  // own set of targets there. `setMode` sets `state.mode` alone
+  // (specs/instrumentation.md), which is what makes the pair reachable.
+  h.debug.setMode("cascade");
+  h.debug.setScreen("solved");
+  await h.advance(1);
+  const cascadeSolved = h.snapshot();
+  assertEqual(cascadeSolved.screen, "solved");
+  assertDeepEqual(
+    ids(cascadeSolved.targets),
+    SOLVED_ITEMS.map((_item, index) => `menu-${index}`),
+    "Cascade's solved screen carries one menu-<i> per SOLVED_ITEMS entry, " +
+      "two of them (specs/modes/cascade.md, The solved screen)",
   );
 });

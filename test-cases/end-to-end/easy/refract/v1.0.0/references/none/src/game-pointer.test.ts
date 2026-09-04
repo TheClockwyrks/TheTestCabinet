@@ -131,8 +131,11 @@ describe("press and release", () => {
 describe("the board behind the targets", () => {
   it("begins no trace on a press inside a playing target", () => {
     const board = playing(["TT"]);
-    const pressed = pointerDown(board, center(board, "clear").x, center(board, "clear").y)
-      .state;
+    const pressed = pointerDown(
+      board,
+      center(board, "clear").x,
+      center(board, "clear").y,
+    ).state;
 
     expect(pressed.tracing).toBeNull();
     expect(pressed.armedTarget).toBe("clear");
