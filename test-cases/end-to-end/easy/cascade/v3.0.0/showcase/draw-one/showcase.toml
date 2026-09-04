@@ -1,0 +1,22 @@
+# The carousel, in the order it is presented. The first entry is what the
+# catalog's preview stage plays, so it leads with sustained play and the stills
+# follow it. Every file here came out of one take: a single game of Draw One
+# played with the real mouse against `references/none/draw-one` by
+# `showcase/capture/draw-one.showcase-capture.test.ts`, whose README says how
+# it was produced and how to produce it again.
+
+[[media]]
+file = "cascade-solved.webm"
+name = "A whole game of Draw One, from the deal to the victory cascade"
+
+[[media]]
+file = "mid-play.png"
+name = "Mid-game: the card the stock turned, and the foundations under way"
+
+[[media]]
+file = "the-cascade.png"
+name = "The cascade burying the table"
+
+[[media]]
+file = "title.png"
+name = "The title screen"

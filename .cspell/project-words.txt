@@ -238,6 +238,7 @@ Devstral
 difficultyselect
 diggable
 dischargerig
+distinguishability
 dmgboard
 dodgeable
 dogfighter
@@ -562,13 +563,16 @@ undrillable
 undrilled
 unfun
 unheld
+unhighlighted
 unioned
 unioning
 unitless
+unlaunched
 unminable
 unmined
 unmute
 unmuted
+unmuting
 unoccluded
 unpossessed
 unpowered

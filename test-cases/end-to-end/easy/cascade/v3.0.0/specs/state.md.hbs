@@ -1,0 +1,365 @@
+# Cascade — Game state
+
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the game's state entirely.
+
+The one contract fixed over the state is the debugging and automation surface
+specified for this build. Every operation that surface carries is a read or a
+pose of the running game, so the state holds what those operations read, honors
+what they write, and returns to its title-screen values when the surface's
+`reset` is called. Beyond satisfying that surface, how the state is organized is
+yours to decide.
+
+Whatever its shape, the state carries the following.
+
+## The screen
+
+- The screen the game is showing, one of `title`, `howto`, `playing`, and `won`.
+
+## The thirteen piles
+
+- The stock, the waste, each of the four foundations, and each of the seven
+  columns, every one of them an ordered list of cards from its bottom card to its
+  top card.
+- Each card: a distinct id, its suit, its rank, and whether it is face-up.
+- The waste's set memory: the number of cards on each set the stock turned, from
+  the oldest set to the newest, as `specs/stock.md` states.
+
+## The pointer and the hand
+
+- The run currently in hand, or nothing when nothing is held. A held run carries
+  its cards in order from the leading card, the pile and slot it was lifted from,
+  and the top-left of its leading card.
+- The pile the held run would land on, when there is one.
+- The pointer's position and whether it is down.
+- The most recent press: its position and the game time it arrived at, which the
+  double-click rule in `specs/controls.md` is measured against.
+
+## The faculty gates
+
+- Whether the automatic turning of an exposed card runs, whether win detection
+  runs, whether the cascade's launching runs, and whether the trail's painting
+  runs. All four are on when a game begins, and the debugging surface poses them.
+
+## The victory cascade
+
+- The seconds accumulated toward the next launch.
+- The number of cards the cascade has launched, which is counted up as cards
+  launch rather than derived from the foundations.
+- Every card in flight, each with a distinct id, its suit, its rank, its top-left
+  position, and its velocity.
+- Whether the cascade has finished.
+- The number of stamps the painted layer has taken since it was last cleared.
+
+## The rest
+
+- The simulation time, in seconds, which every update adds its delta to whatever
+  the screen.
+- Whether sound is muted, refreshed from the runtime's mute bit in every update.
+- The state of the seeded random generator, which the deal's shuffle and the
+  cascade's launch velocities are drawn from.
+- Whatever the game needs to hand a fresh id to the next card or flyer it
+  creates, so no two entities live at one moment share an id.
+{{else if (eq engine.slug "simple-2d")}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is a value the engine holds and every frame replaces, so every
+field and every array is declared `readonly`: a frame builds the next state from
+the current one rather than writing into it, and every reader is handed the state
+as `DeepReadonly<CascadeState>` in any case.
+
+```ts
+export type Screen = "title" | "howto" | "playing" | "won";
+
+export type Suit = "spades" | "hearts" | "diamonds" | "clubs";
+
+export type PileKind = "stock" | "waste" | "foundation" | "tableau";
+
+export interface CardState {
+  readonly id: number;
+  readonly suit: Suit;
+  readonly rank: number;
+  readonly faceUp: boolean;
+}
+
+export interface DragState {
+  readonly cards: readonly CardState[];
+  readonly fromPile: "waste" | "foundation" | "tableau";
+  readonly fromIndex: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface DropTargetState {
+  readonly pile: "foundation" | "tableau";
+  readonly index: number;
+}
+
+export interface PointerState {
+  readonly x: number;
+  readonly y: number;
+  readonly down: boolean;
+}
+
+export interface PressState {
+  readonly x: number;
+  readonly y: number;
+  readonly at: number;
+}
+
+export interface FlyerState {
+  readonly id: number;
+  readonly suit: Suit;
+  readonly rank: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+}
+
+export interface CascadeState {
+  readonly screen: Screen;
+
+  readonly stock: readonly CardState[];
+  readonly waste: readonly CardState[];
+  readonly wasteSets: readonly number[];
+  readonly foundations: readonly (readonly CardState[])[];
+  readonly tableau: readonly (readonly CardState[])[];
+
+  readonly drag: DragState | null;
+  readonly dropTarget: DropTargetState | null;
+  readonly pointer: PointerState;
+  readonly lastPress: PressState | null;
+
+  readonly autoFlip: boolean;
+  readonly winDetect: boolean;
+  readonly launching: boolean;
+  readonly trailPainting: boolean;
+
+  readonly launchClock: number;
+  readonly launched: number;
+  readonly flyers: readonly FlyerState[];
+  readonly cascadeDone: boolean;
+  readonly trailStamps: number;
+
+  readonly nextId: number;
+  readonly simTime: number;
+  readonly muted: boolean;
+  readonly rngState: number;
+}
+```
+{{else}}
+`src/game.ts` declares and exports the state the game is written against. This
+section is that declaration: write it into `src/game.ts` exactly as it stands
+here. The state is the world's game state: a class extending the engine's
+`GameState`, named by the game mode as its `gameStateClass`, so the engine builds
+one instance of it when the world opens and `engine.world.state` is that
+instance. Wherever this specification writes `state.foo`, it means a field of
+that instance.
+
+The game runs in one world for the whole session. The game definition registers a
+single level, the game never opens another, and every screen is a value of
+`screen`, so the state below is built once and lives until the page closes. The
+framework's states are live objects: a tick writes the fields it advances in
+place, and each field initializer below is that field's title-screen value, the
+same value the debug surface's `reset` restores. `GameState` comes from the
+engine's package, and `DEFAULT_SEED` from `src/constants.ts`.
+
+`src/constants.ts` fixes the vocabulary the world is built with. The one level is
+registered under its name in `LEVELS`, which is the level `startLevel` names, and
+every actor drawing the table, the cascade, or the HUD carries its tag from
+`TAGS`, so those actors are found with `world.byTag` under the names this
+specification uses.
+
+```ts
+export type Screen = "title" | "howto" | "playing" | "won";
+
+export type Suit = "spades" | "hearts" | "diamonds" | "clubs";
+
+export type PileKind = "stock" | "waste" | "foundation" | "tableau";
+
+export interface CardState {
+  id: number;
+  suit: Suit;
+  rank: number;
+  faceUp: boolean;
+}
+
+export interface DragState {
+  cards: CardState[];
+  fromPile: "waste" | "foundation" | "tableau";
+  fromIndex: number;
+  x: number;
+  y: number;
+}
+
+export interface DropTargetState {
+  pile: "foundation" | "tableau";
+  index: number;
+}
+
+export interface PointerState {
+  x: number;
+  y: number;
+  down: boolean;
+}
+
+export interface PressState {
+  x: number;
+  y: number;
+  at: number;
+}
+
+export interface FlyerState {
+  id: number;
+  suit: Suit;
+  rank: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
+export class CascadeState extends GameState {
+  screen: Screen = "title";
+
+  stock: CardState[] = [];
+  waste: CardState[] = [];
+  wasteSets: number[] = [];
+  foundations: CardState[][] = [[], [], [], []];
+  tableau: CardState[][] = [[], [], [], [], [], [], []];
+
+  drag: DragState | null = null;
+  dropTarget: DropTargetState | null = null;
+  pointer: PointerState = { x: 0, y: 0, down: false };
+  lastPress: PressState | null = null;
+
+  autoFlip = true;
+  winDetect = true;
+  launching = true;
+  trailPainting = true;
+
+  launchClock = 0;
+  launched = 0;
+  flyers: FlyerState[] = [];
+  cascadeDone = false;
+  trailStamps = 0;
+
+  nextId = 1;
+  simTime = 0;
+  muted = false;
+  rngState = DEFAULT_SEED;
+}
+```
+{{/if}}
+{{#if (ne engine.slug "none")}}
+
+## The screen
+
+- `screen` — the screen currently shown, one of the four `specs/screens.md`
+  defines.
+
+## The thirteen piles
+
+`stock`, `waste`, the four entries of `foundations`, and the seven entries of
+`tableau` are the thirteen piles. Each holds its cards in order from the pile's
+bottom card to its top card, so the last entry is the top card, which in a column
+is the card drawn lowest on the table.
+
+- `foundations` always holds `FOUNDATION_COUNT` (`4`) piles and `tableau` always
+  holds `TABLEAU_COLUMNS` (`7`), whatever those piles contain.
+- `wasteSets` holds the number of cards on each set the stock turned, from the
+  oldest set to the newest, as `specs/stock.md` states.
+
+## `CardState`
+
+- `id` — distinct among every entity live at that moment, and kept for as long as
+  the card is on the table.
+- `suit` — one of the four `specs/deal.md` names.
+- `rank` — a whole number from `RANK_MIN` (`1`) to `RANK_MAX` (`13`).
+- `faceUp` — whether the card shows its rank and suit rather than its back.
+
+A card's color follows its suit, as `specs/deal.md` states, so it is read from
+the suit rather than held.
+
+## The pointer and the hand
+
+- `drag` — the run in hand, or `null` when nothing is held. `cards` holds the run
+  from its leading card, so `cards[0]` is the card that was grabbed and the rest
+  lie beneath it in order; `fromPile` and `fromIndex` name the pile it was lifted
+  from; `x` and `y` are the top-left of `cards[0]`.
+- `dropTarget` — the pile a release would land the held run on, or `null`.
+- `pointer` — the pointer's position in logical units and whether it is down.
+- `lastPress` — the most recent press, its `x` and `y` in logical units and `at`
+  the value `simTime` held when it arrived. It is `null` until the first press.
+
+## The faculty gates
+
+Four faculties are gated, each posed by the debugging surface and each on when a
+game begins.
+
+- `autoFlip` — whether a column's newly exposed card is turned face-up.
+- `winDetect` — whether a completed board is detected as a win.
+- `launching` — whether the cascade's launch clock runs and launches cards.
+- `trailPainting` — whether a card in flight is stamped onto the painted layer.
+
+## The victory cascade
+
+- `launchClock` — the seconds accumulated toward the next launch.
+- `launched` — how many cards the cascade has launched, counted up by one at each
+  launch. It is `0` on a fresh deal and after a `reset`.
+- `flyers` — every card in flight, in the order they launched. Each carries a
+  distinct `id`, its suit and rank, its top-left `x` and `y`, and its velocity
+  `vx` and `vy` in logical units per second.
+- `cascadeDone` — whether the cascade has finished, which is the flag the
+  cascade's own end test sets.
+- `trailStamps` — how many stamps the painted layer holds since it was last
+  cleared, one per card in flight per frame while `trailPainting` is on.
+
+## The rest
+
+- `nextId` — the id the next card or flyer takes, so no two entities live at one
+  moment share one.
+- `simTime` — accumulated simulation time, in seconds. Every update adds its
+  delta, whatever the screen.
+- `muted` — the game's readable copy of the runtime's mute bit, refreshed in
+  every update. The runtime owns muting, and this field is what the debugging
+  surface reports.
+- `rngState` — the state of the game's seeded random generator. The deal's
+  shuffle and the cascade's launch velocities are both drawn from it.
+
+## The contract
+
+The declaration above is what the debug surface reads and poses.
+
+- Keep every field under its declared name, type, and meaning.
+{{#if (eq engine.slug "simple-2d")}}
+- `initialize` builds the whole state in one go, so every field is present by the
+  time a frame can observe it, and none of them is optional.
+- The state handed to `update` is the whole of the game, and the state `update`
+  returns is the whole of the next frame. Every value the game carries from one
+  frame to the next lives in it, apart from the drawing resources the painted
+  layer needs.
+- The state is handed over read-only, as `DeepReadonly<CascadeState>`, to
+  `update`, to `render`, to every diagnostic source, and to every operation of the
+  debug surface. `update` and the surface's poses return a new `CascadeState`
+  built from the one they received; `render`, the sources, and `snapshot` return
+  no state.
+{{else}}
+- The engine builds the state when the world opens, through the mode's
+  `gameStateClass`, so every field is present by the time a frame can observe it,
+  and none of them is optional.
+- The state is the whole of the authoritative game. Every value the game carries
+  from one frame to the next lives in it, apart from the drawing resources the
+  painted layer needs, and any field an actor, component, or controller holds of
+  its own is derived data rebuilt from the declared ones.
+- The state is written only through the paths play runs on: the player controller
+  resolves the frame's input into it, the game mode's tick advances it, and the
+  debug surface's poses arrange it at the call. Rendering reads it and writes
+  nothing.
+{{/if}}
+- Fields you add hold derived data you can rebuild from the declared ones, or the
+  drawing resources the painted layer needs. A `reset` restores the declared
+  fields to their title-screen values and clears the painted layer, so those
+  fields plus that layer are the whole of the game.
+{{/if}}
