@@ -1,22 +1,25 @@
 // screens/quit-returns-to-title — confirming QUIT returns to the title.
 //
-// specs/screens.md, on `paused`: "`confirm` on `QUIT` discards the session
-// and returns to `title`." QUIT is entry `1` of the pause menu, and the menu
-// is the only route onto it — the surface poses no highlight — so the
-// highlight is moved there with one real `down` press first, checked as a
-// precondition. Whether the session was discarded is the states category's
-// point; what is decided here is the screen.
+// specs/screens.md, on `paused`: "`confirm` on `QUIT` discards the session and
+// returns to `title`." QUIT is entry `1` of the pause menu.
+//
+// THE HIGHLIGHT IS POSED ONTO QUIT rather than walked there with the `down` key:
+// how the highlight moves is `controls/arrow-down-moves-highlight`'s own point,
+// and a build whose only fault is its `down` key must fail there rather than
+// here. What is pressed is `confirm`, which is the action this point is about.
+// Whether the session was discarded is the states category's point; what is
+// decided here is the screen.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { BINDINGS } from "../constants";
+import { BINDINGS, PAUSE_ITEMS } from "../constants";
 import { captureStill, openHarness, tap, type Harness } from "../harness";
 import { posePaused } from "./scenes";
 
 /** The key that carries `confirm` alone — `Space` also carries `launch`. */
 const CONFIRM = BINDINGS.confirm[1];
-/** The key specs/controls.md binds to `down`. */
-const DOWN = BINDINGS.down[0];
+/** Entry 1 of the pause menu: QUIT. */
+const QUIT_ENTRY = PAUSE_ITEMS.indexOf("QUIT");
 
 let h: Harness;
 
@@ -32,8 +35,12 @@ it("confirm on QUIT sets screen to title", async () => {
   const posed = posePaused(h);
   assertEqual(posed.screen, "paused", "the screen the menu is worked on");
 
-  await tap(h, DOWN);
-  assertEqual(h.snapshot().menu.index, 1, "the highlighted entry, QUIT");
+  h.debug.setMenuIndex(QUIT_ENTRY);
+  assertEqual(
+    h.snapshot().menu.index,
+    QUIT_ENTRY,
+    "the highlighted entry, QUIT",
+  );
 
   await tap(h, CONFIRM);
   captureStill(h, "title-after-quit");
