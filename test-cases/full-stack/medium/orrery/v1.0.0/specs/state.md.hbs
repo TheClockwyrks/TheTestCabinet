@@ -390,10 +390,13 @@ The declaration above is what the debug surface reads and poses.
 - Keep every field under its declared name, type, and meaning.
 - `initialize` builds the whole state in one go, so every field is present
   by the time a frame can observe it, and none of them is optional.
-- Fields you add hold derived data you can rebuild from the declared ones. A
-  `reset` restores the declared fields to their title-screen values, but for
-  the fields `specs/instrumentation.md` states it leaves as they stand, so
-  those fields are the whole of the authoritative state.
+- Fields you add hold derived data you can rebuild from the declared ones,
+  or carry a gesture still in progress — the menu item a press armed, which
+  no declared field keeps once the pointer moves on. The snapshot reports
+  neither kind. A `reset` restores the declared fields to their title-screen
+  values and clears a gesture in progress, but for the fields
+  `specs/instrumentation.md` states it leaves as they stand, so those fields
+  are the whole of the authoritative state.
 - The state handed to `update` is the whole of the game, and the state
   `update` returns is the whole of the next frame. Every value the game
   carries from one frame to the next lives in it; nothing the simulation, the
