@@ -15,7 +15,7 @@
 import { FxActor } from "./actors";
 import { kesslerState, type KesslerState } from "./state";
 import { spanOf } from "./session";
-import type { World } from "@test-cabinet/structured-2d";
+import type { DiagnosticValue, World } from "@test-cabinet/structured-2d";
 
 /**
  * The sources, each named and each a read through `read` at the call. Split
@@ -24,7 +24,7 @@ import type { World } from "@test-cabinet/structured-2d";
  */
 export function diagnosticSources(
   read: () => KesslerState,
-): [string, () => unknown][] {
+): [string, () => DiagnosticValue][] {
   return [
     ["screen", () => read().screen],
     ["score", () => read().score],
