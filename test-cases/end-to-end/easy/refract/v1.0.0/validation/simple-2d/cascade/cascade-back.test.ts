@@ -2,7 +2,8 @@
 // sequence.
 //
 // specs/modes/cascade.md "The sequence": `back` during `playing` abandons the
-// board and returns to `title`, ending the sequence — starting Cascade again
+// board and returns to `title` with `CASCADE` highlighted (`menuIndex = 1`),
+// ending the sequence — starting Cascade again
 // begins a fresh one from tier 1. To make the freshness observable, one board
 // is really solved first, so the count being abandoned is 1 rather than the 0
 // a fresh sequence would show anyway. Every step is the player's own: the
@@ -58,11 +59,22 @@ it("returns to title on back, and re-entry begins a fresh sequence", async () =>
     "title",
     "back during playing returns to title (specs/modes/cascade.md)",
   );
+  assertEqual(
+    h.snapshot().menuIndex,
+    1,
+    "with CASCADE, the entry that led away, highlighted",
+  );
 
-  // Starting Cascade again begins a fresh sequence.
-  await startCascade(h);
-  captureStill(h, "fresh");
+  // Starting Cascade again begins a fresh sequence. The return already
+  // highlights CASCADE, so a plain `confirm` takes it.
+  await tapAction(h, "confirm");
   const fresh = h.snapshot();
+  assertEqual(
+    fresh.screen,
+    "playing",
+    "choosing CASCADE again puts a board in play (specs/modes/cascade.md)",
+  );
+  captureStill(h, "fresh");
   assertEqual(
     fresh.solvedCount,
     0,

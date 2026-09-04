@@ -1,8 +1,9 @@
 // cascade/cascade-back — back abandons the board and ends the sequence.
 //
 // specs/modes/cascade.md "The sequence": "`back` during `playing` abandons the
-// board and returns to `title`, ending the sequence: starting Cascade again
-// begins a fresh one from tier `1`" — and entry itself sets `solvedCount` to 0.
+// board and returns to `title` with `CASCADE` highlighted (`menuIndex = 1`),
+// ending the sequence: starting Cascade again begins a fresh one from tier `1`"
+// — and entry itself sets `solvedCount` to 0.
 //
 // The run being abandoned is a real one: five boards are genuinely solved first
 // (solvedCount 5, tier 2), so "fresh" afterwards is distinguishable from "the
@@ -57,6 +58,11 @@ it("back during playing returns to title, and re-entering starts fresh", async (
     abandoned.screen,
     "title",
     "back during playing returns to title",
+  );
+  assertEqual(
+    abandoned.menuIndex,
+    1,
+    "with CASCADE, the entry that led away, highlighted",
   );
 
   // Starting Cascade again begins a fresh sequence.

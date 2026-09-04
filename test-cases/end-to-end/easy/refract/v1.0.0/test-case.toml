@@ -1199,7 +1199,7 @@ validation = { script = "cascade/cascade-starts.test.ts", outputs = [
 [[review.categories.items]]
 id = "cascade-back"
 title = "Back abandons the board and ends the sequence"
-description = "back during playing abandons the board and returns to title, and starting Cascade again begins a fresh sequence from solvedCount 0 and tier 1."
+description = "back during playing abandons the board and returns to title with CASCADE, the entry that led away, highlighted at menuIndex 1, and starting Cascade again begins a fresh sequence from solvedCount 0 and tier 1."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/cascade-back.test.ts", outputs = [
@@ -1418,7 +1418,7 @@ validation = { script = "screens/howto-copy.test.ts", outputs = [
 [[review.categories.items]]
 id = "howto-back"
 title = "Back leaves the how-to screen"
-description = "On the how-to screen, back returns to title with menuIndex 0."
+description = "On the how-to screen, back returns to title with HOW TO PLAY, the entry that led away, highlighted at menuIndex 2."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/howto-back.test.ts", outputs = [
@@ -1547,7 +1547,7 @@ validation = { script = "pointer/pointer-enters-a-board.test.ts", outputs = [
 [[review.categories.items]]
 id = "pointer-leaves-howto"
 title = "Taking the back target leaves the how-to screen"
-description = "On howto, a press and release at the center of the back target returns to title with menuIndex 0, which is what the back action does."
+description = "On howto, a press and release at the center of the back target returns to title with HOW TO PLAY highlighted at menuIndex 2, which is what the back action does."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "pointer/pointer-leaves-howto.test.ts", outputs = [

@@ -1,8 +1,9 @@
 // Refract — screens/howto-back: back on the how-to screen returns to the title
-// with menuIndex 0.
+// with menuIndex 2.
 //
 // One transition of the menu state machine specs/ui.md fixes: on `howto`,
-// `back` returns to `title` with `menuIndex = 0`. The how-to screen is reached
+// `back` returns to `title` with `HOW TO PLAY` highlighted (`menuIndex = 2`),
+// the entry that led away. The how-to screen is reached
 // the way a player does — down twice to HOW TO PLAY, then confirm — and the
 // arrival is asserted before the press under test, so a build that never
 // reaches how-to fails on the precondition it breaks, not on the return.
@@ -31,7 +32,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("returns from the how-to screen to the title at menuIndex 0", async () => {
+it("returns from the how-to screen to the title at menuIndex 2", async () => {
   await resetTo(h);
   assertEqual(TITLE_ITEMS[2], "HOW TO PLAY");
   await tapAction(h, "down");
@@ -43,5 +44,9 @@ it("returns from the how-to screen to the title at menuIndex 0", async () => {
   captureStill(h, "title");
 
   assertEqual(h.snapshot().screen, "title", "back returns to the title");
-  assertEqual(h.snapshot().menuIndex, 0, "the title is back at menuIndex 0");
+  assertEqual(
+    h.snapshot().menuIndex,
+    2,
+    "the title is back with HOW TO PLAY highlighted",
+  );
 });

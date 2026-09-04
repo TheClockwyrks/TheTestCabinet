@@ -289,8 +289,6 @@ both.
 - Run in the browser with no backend. Everything needed to play is
   self-contained, and no API key or credential is needed to build, run, or play.
 {{#if (eq engine.slug "none")}}
-- Hold the game's whole state in one value, the one the frame loop advances and
-  the debug surface reads.
 {{else if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `RefractState`, as `specs/state.md` declares it.
 {{else}}
@@ -336,16 +334,7 @@ The bench is dark. Choose the colors and the typography, decide how a node is
 drawn and how a beam is rendered along the cells it links, and decide what sits
 behind the board and how the board answers a beam as it grows.
 
-Whatever look you choose, a player reads all of the following at a glance.
-
-| What a player reads | Requirement |
-| --- | --- |
-| Channel, by hue | Each channel carries one distinct hue, and the channels present on a board are told apart at a glance. |
-| Channel, by form | Channel identity also reads by form: `triangle`, `square`, and `diamond` nodes carry those silhouettes, so a channel is identifiable without relying on hue. |
-| Role of a node | An emitter is the outlined silhouette and a lens is the filled silhouette. Same form, so a node's channel and its role both read at a glance. |
-| Crystals | A crystal's form is clearly distinct from all three channel silhouettes, and it shows its charge count and how many of those charges are currently spent. |
-| Node size | Every node's drawn form fits inside `NODE_R` (`30`) of its cell center. |
-| Beam route | A drawn beam visibly connects the centers of the cells it links, so a player reads its route unambiguously, and it carries its channel's hue. |
-| Text | Text is legible against its background at the logical stage size. |
+`specs/board.md` states what a player must read at a glance from a node and a
+beam, and `specs/ui.md` states the same for screen text.
 
 The palette, type, glow, and every other aspect of the look are yours.

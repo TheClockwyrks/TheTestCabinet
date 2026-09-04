@@ -51,8 +51,8 @@ frame:
 - The game moves to `solved`.
 
 `back` during `playing`, and taking that screen's `back` pointer target, abandon
-the board and return to `title`, ending the sequence: starting Cascade again
-begins a fresh one from tier `1`. `confirm` during `playing` does nothing, so a
+the board and return to `title` with `CASCADE` highlighted (`menuIndex = 1`),
+ending the sequence: starting Cascade again begins a fresh one from tier `1`. `confirm` during `playing` does nothing, so a
 board is left only by solving it or by leaving it that way.
 
 ## The generator
@@ -189,8 +189,9 @@ a restart drops the player back to tier `1` on boards they have not seen.
 Menu navigation uses the registered actions and the pointer targets in
 `specs/controls.md`. `up` and `down` move `state.menuIndex` over `SOLVED_ITEMS`,
 wrapping from the first item to the last and from the last to the first.
-`confirm` takes the highlighted item, and `back` returns to `title`. Each item
-carries its own `menu-<i>` pointer target, so the screen carries two.
+`confirm` takes the highlighted item, and `back` returns to `title` with
+`CASCADE` highlighted (`menuIndex = 1`). Each item carries its own `menu-<i>`
+pointer target, so the screen carries two.
 
 ## The count
 

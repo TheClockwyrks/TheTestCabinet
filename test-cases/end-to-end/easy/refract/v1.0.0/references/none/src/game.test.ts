@@ -291,7 +291,8 @@ describe("the menus", () => {
     h.tap("Escape");
     h.step(1);
     expect(h.state.screen).toBe("title");
-    expect(h.state.menuIndex).toBe(0);
+    // The title remembers the entry that led away (specs/ui.md).
+    expect(h.state.menuIndex).toBe(2);
   });
 });
 
@@ -633,6 +634,10 @@ describe("rendering", () => {
     expect(h.state.screen).toBe("howto");
     h.tap("Escape");
     h.step(1);
+    // Back on the title with HOW TO PLAY highlighted (specs/ui.md); one more
+    // down wraps the highlight onto CAMPAIGN.
+    h.tap("KeyS");
+    h.step(1);
     h.tap("Enter");
     h.step(1);
     expect(h.state.screen).toBe("select");
@@ -722,7 +727,8 @@ describe("the solved and complete screens", () => {
     h.tap("Escape");
     h.step(1);
     expect(h.state.screen).toBe("title");
-    expect(h.state.menuIndex).toBe(0);
+    // Cascade's screens return to the title on CASCADE (specs/modes/cascade.md).
+    expect(h.state.menuIndex).toBe(1);
   });
 
   it("offers the grid and the title from the complete screen", () => {

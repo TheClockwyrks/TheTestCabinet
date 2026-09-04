@@ -1,7 +1,8 @@
 // Refract — screens/howto-back: back leaves the how-to screen for the title.
 //
-// specs/ui.md's `howto` section: `back` returns to `title` with
-// `menuIndex = 0`. The how-to screen is reached the way a player reaches it —
+// specs/ui.md's `howto` section: `back` returns to `title` with `HOW TO PLAY`
+// highlighted (`menuIndex = 2`), the entry that led away. The how-to screen is
+// reached the way a player reaches it —
 // two downs and a confirm from the fresh title — and the arrival is asserted
 // before the back, so a build that never opened the screen fails on the pose
 // rather than on a return it never made. The still is the title the back left.
@@ -26,7 +27,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("back on the how-to screen returns to title with menuIndex 0", async () => {
+it("back on the how-to screen returns to title with menuIndex 2", async () => {
   await resetTo(h);
   await tapAction(h, "down");
   await tapAction(h, "down");
@@ -48,7 +49,7 @@ it("back on the how-to screen returns to title with menuIndex 0", async () => {
   );
   assertEqual(
     snapshot.menuIndex,
-    0,
-    "back returns with menuIndex 0 (specs/ui.md)",
+    2,
+    "back returns with HOW TO PLAY highlighted, menuIndex 2 (specs/ui.md)",
   );
 });

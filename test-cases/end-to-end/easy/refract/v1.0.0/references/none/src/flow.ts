@@ -15,7 +15,7 @@
 import { emptyBeams } from "./board";
 import { campaignBoard } from "./campaign";
 import { generateBoard, tierFor } from "./cascade";
-import { CAMPAIGN_LENGTH, DEFAULT_SEED } from "./constants";
+import { CAMPAIGN_LENGTH, DEFAULT_SEED, TITLE_ITEMS } from "./constants";
 import type { BoardState, Mode, RefractState } from "./game";
 
 /**
@@ -56,9 +56,20 @@ export function createInitialState(): RefractState {
   };
 }
 
-/** Back to the title, with its first item highlighted. */
-export function toTitle(state: RefractState): RefractState {
-  return { ...state, screen: "title", menuIndex: 0, tracing: null };
+/**
+ * Where each title entry sits in `TITLE_ITEMS`. A return to the title
+ * highlights the entry that led away (specs/ui.md), so every transition back
+ * names the one it came from.
+ */
+export const TITLE_INDEX = {
+  campaign: TITLE_ITEMS.indexOf("CAMPAIGN"),
+  cascade: TITLE_ITEMS.indexOf("CASCADE"),
+  howto: TITLE_ITEMS.indexOf("HOW TO PLAY"),
+} as const;
+
+/** Back to the title, with the entry that led away highlighted. */
+export function toTitle(state: RefractState, menuIndex: number): RefractState {
+  return { ...state, screen: "title", menuIndex, tracing: null };
 }
 
 /** Back to the grid, with the highlight where it stands. */
@@ -200,7 +211,9 @@ export function confirmItem(state: RefractState, index: number): RefractState {
         ? takeCampaignSolved(state, index)
         : takeCascadeSolved(state, index);
     case "complete":
-      return index === 0 ? toSelect(state) : toTitle(state);
+      return index === 0
+        ? toSelect(state)
+        : toTitle(state, TITLE_INDEX.campaign);
     case "howto":
     case "playing":
       return state;
@@ -241,9 +254,9 @@ export function goBack(state: RefractState): RefractState {
     case "title":
       return state;
     case "howto":
-      return toTitle(state);
+      return toTitle(state, TITLE_INDEX.howto);
     case "select":
-      return toTitle(state);
+      return toTitle(state, TITLE_INDEX.campaign);
     case "playing":
       // The beams drawn on the board are discarded either way
       // (specs/modes/campaign.md, Leaving a board).
@@ -252,9 +265,11 @@ export function goBack(state: RefractState): RefractState {
             ...toSelect(state),
             beams: state.beams.map((beam) => ({ ...beam, cells: [] })),
           }
-        : toTitle(state);
+        : toTitle(state, TITLE_INDEX.cascade);
     case "solved":
-      return state.mode === "campaign" ? toSelect(state) : toTitle(state);
+      return state.mode === "campaign"
+        ? toSelect(state)
+        : toTitle(state, TITLE_INDEX.cascade);
     case "complete":
       return toSelect(state);
   }

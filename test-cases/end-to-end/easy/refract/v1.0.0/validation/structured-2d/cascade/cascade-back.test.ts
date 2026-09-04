@@ -2,12 +2,12 @@
 // sequence.
 //
 // specs/modes/cascade.md "The sequence": `back` during playing abandons the
-// board and returns to title, ending the sequence — starting Cascade again
-// begins a fresh one from tier 1. Progress is built first (five real solves,
-// so solvedCount is 5 and the tier has climbed) so a fresh sequence is
-// distinguishable from a continued one, then `back` is pressed and CASCADE is
-// chosen again through the real title menu (menuIndex is 0 on arriving at the
-// title, specs/ui.md, so `down` then `confirm` lands on CASCADE).
+// board and returns to title with CASCADE highlighted (menuIndex 1), ending the
+// sequence — starting Cascade again begins a fresh one from tier 1. Progress is
+// built first (five real solves, so solvedCount is 5 and the tier has climbed)
+// so a fresh sequence is distinguishable from a continued one, then `back` is
+// pressed and CASCADE is chosen again through the real title menu — the return
+// already highlights the entry that led away, so a plain `confirm` takes it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -43,9 +43,14 @@ it("returns to title on back, and Cascade restarts from count 0 and tier 1", asy
   await tapAction(h, "back");
   await h.advance(1);
   assertEqual(h.snapshot().screen, "title", "back abandons the board to title");
+  assertEqual(
+    h.snapshot().menuIndex,
+    1,
+    "the title is reached with CASCADE, the entry that led away, highlighted",
+  );
 
-  // Start Cascade again, the real menu path from the fresh title arrival.
-  await tapAction(h, "down");
+  // Start Cascade again: the return already highlights CASCADE, so confirm
+  // takes it.
   await tapAction(h, "confirm");
   await h.advance(1);
   // The fresh sequence after backing out.
