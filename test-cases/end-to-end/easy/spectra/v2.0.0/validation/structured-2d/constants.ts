@@ -9,10 +9,12 @@
 // the build and then asserted the ship travels `SHIP_SPEED` would be asking
 // whether the build does what the build says it does, which is true of every
 // build — including one that ships `SHIP_SPEED = 396` and flies its ship at 396
-// consistently. Nothing seeds `src/constants.ts` either: the build authors it,
-// so there is not even a supplied file to lean on. Everything below is therefore
-// read out of `specs/` and written here, under the name the specification gives
-// it, so a check asserts the CASE's figure against the BUILD's behaviour.
+// consistently. That the engine workspaces SEED `src/constants.ts` does not make
+// it safe to read: nothing re-checks that the copy in a produced tree is still
+// the seeded one, so what a check imported would be whatever the build left
+// there. Everything below is therefore read out of `specs/` and written here,
+// under the name the specification gives it, so a check asserts the CASE's
+// figure against the BUILD's behaviour.
 //
 // NOTHING HERE IS EVER READ FROM A BUILD — this file imports nothing, because
 // `specs/` fixes every figure below and leaves the validator no value that is
