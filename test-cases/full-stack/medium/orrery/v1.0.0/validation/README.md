@@ -22,12 +22,21 @@ What differs between the three is the harness, never the reasoning. So the three
 same return shapes, and everything else in a project is _byte-identical_ across
 the three:
 
-| Identical in all three                                                                            | Different per engine                                      |
-| ------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `assert.ts`, `constants.ts`, `field.ts`, `parts.ts`, `formats.ts`, `challenges.ts`, `fixtures.ts` | `harness.ts`                                              |
-| `driver.ts`, `snapshot.ts`, `scenario.ts`, `drawing.ts`, `color.ts`, `viewport.ts`, `media.ts`    | `surface.ts`                                              |
-| `assets/*.ts`, `harness.test.ts`, `tsconfig.json`                                                 | `vitest.config.ts`                                        |
-|                                                                                                   | `none/` also: `globalSetup.ts`, `setup.ts`, `chromium.ts` |
+| Identical in all three                                                                         | Different per engine                                      |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `constants.ts`, `field.ts`, `parts.ts`, `formats.ts`, `challenges.ts`, `fixtures.ts`           | `harness.ts`                                              |
+| `driver.ts`, `snapshot.ts`, `scenario.ts`, `drawing.ts`, `color.ts`, `viewport.ts`, `media.ts` | `surface.ts`                                              |
+| `assets/*.ts`, `harness.test.ts`, `tsconfig.json`                                              | `vitest.config.ts`                                        |
+|                                                                                                | `assert.ts`                                               |
+|                                                                                                | `none/` also: `globalSetup.ts`, `setup.ts`, `chromium.ts` |
+
+`assert.ts` is the one entry in the right-hand column that is not a difference in
+reasoning. The assertions are the shared validator harness's vocabulary, and the
+engineless project re-exports it (`export * from "./case-harness/assert"`) because
+`@test-cabinet/case-harness` is staged only into an engineless project; the two
+engine projects write the same 26 names out, byte-identical to each other. A suite
+says `from "../assert"` in all three and gets the same names, the same signatures
+and the same message shape, which is what the rule above is actually about.
 
 If you change a shared file, change it in all three. `harness.test.ts` is the
 same text three times as well, and it is where the property is exercised rather
