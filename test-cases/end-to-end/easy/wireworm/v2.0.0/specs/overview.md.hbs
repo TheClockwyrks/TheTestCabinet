@@ -280,11 +280,10 @@ the HUD. Every other spec file states one part of it.
   `specs/assets.md` states; everything else is drawn in code.
 - Run in the browser with no backend. Everything needed to play is
   self-contained, and no API key or credential is needed to build, run, or play.
-{{#if (eq engine.slug "none")}}
-{{else if (eq engine.slug "simple-2d")}}
+{{#if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `WirewormState`, as `specs/state.md` declares
   it.
-{{else}}
+{{else if (eq engine.slug "structured-2d")}}
 - Hold the game's whole authoritative state in `WirewormState`, the world's game
   state, as `specs/state.md` declares it.
 {{/if}}
@@ -325,6 +324,9 @@ tile-to-stage map and its inverse are in `specs/board.md`, which owns them.
 - Draw in logical units, and take the canvas element's own size from the runtime
   alone.
 - Game logic operates in logical units, independent of the rendered scale.
+- A pointer or touch position reaches the game in these same logical units,
+  taken through that same fit, so a position the game reads and a region the
+  game reports lie in one coordinate space.
 
 Every rate in this specification is per second and every duration is in seconds,
 integrated against the delta time the runtime hands each update. The one clocked
