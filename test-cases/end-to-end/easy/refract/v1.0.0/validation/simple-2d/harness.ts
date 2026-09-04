@@ -1832,6 +1832,30 @@ export function targetsOverlap(
 }
 
 /**
+ * A stage point inside no target on the screen, found rather than assumed: the
+ * build owns its layout, so a gesture that must take nothing has to end
+ * somewhere the build itself says is free (specs/controls.md: a release
+ * anywhere but the armed target takes nothing).
+ */
+export function pointOutsideEveryTarget(targets: readonly TargetSnapshot[]): {
+  x: number;
+  y: number;
+} {
+  for (let y = 4; y < STAGE_H; y += 16) {
+    for (let x = 4; x < STAGE_W; x += 16) {
+      const probe = { id: "probe", x, y, w: 1, h: 1 };
+      if (!targets.some((target) => targetsOverlap(target, probe))) {
+        return { x, y };
+      }
+    }
+  }
+  return fail(
+    "a stage point inside no target",
+    targets.map((target) => target.id),
+  );
+}
+
+/**
  * Press at a point, release at another, and settle a frame — the gesture every
  * target is taken by. Both points are in the stage's logical units, and the
  * release defaults to the press.

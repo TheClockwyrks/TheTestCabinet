@@ -890,22 +890,40 @@ validation = { script = "ruleset/r1-adjacency.test.ts", outputs = [
   { id = "refused", name = "The beam unchanged by the non-adjacent move", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "r2-exclusion"
-title = "R2 Exclusion"
-description = "A beam never meets an emitter or a lens of another channel: a move onto another channel's emitter is refused, and a move onto another channel's lens is refused."
+id = "r2-foreign-lens"
+title = "R2 Exclusion: another channel's lens"
+description = "A beam never meets a lens of another channel: a move onto another channel's lens is refused, leaving the beam unchanged and the trace live."
 domains = ["campaign", "cascade"]
 failure_cap = "scuffed"
-validation = { script = "ruleset/r2-exclusion.test.ts", outputs = [
-  { id = "refused", name = "The beam unchanged at the other channel's nodes", kind = "image" },
+validation = { script = "ruleset/r2-foreign-lens.test.ts", outputs = [
+  { id = "refused", name = "The beam unchanged at the other channel's lens", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "r3-segment-exclusivity"
-title = "R3 Segment exclusivity"
-description = "Each segment carries at most one beam and is used at most once: redrawing a segment the same beam already holds is refused, and a second channel drawing the same segment is refused."
+id = "r2-foreign-emitter"
+title = "R2 Exclusion: another channel's emitter"
+description = "A beam never meets an emitter of another channel: a move onto another channel's emitter is refused, leaving the beam unchanged and the trace live."
 domains = ["campaign", "cascade"]
 failure_cap = "scuffed"
-validation = { script = "ruleset/r3-segment-exclusivity.test.ts", outputs = [
-  { id = "refused", name = "The segment refused a second use", kind = "image" },
+validation = { script = "ruleset/r2-foreign-emitter.test.ts", outputs = [
+  { id = "refused", name = "The beam unchanged at the other channel's emitter", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r3-same-beam-redraw"
+title = "R3 Segment exclusivity: the same beam"
+description = "A segment is used at most once: a beam whose live end returns beside a segment it already holds is refused the move that would redraw it."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r3-same-beam-redraw.test.ts", outputs = [
+  { id = "refused", name = "The beam refused its own segment a second time", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r3-second-channel"
+title = "R3 Segment exclusivity: a second channel"
+description = "Each segment carries at most one beam: a second channel reaching a segment another channel's beam already holds is refused the move."
+domains = ["campaign", "cascade"]
+failure_cap = "scuffed"
+validation = { script = "ruleset/r3-second-channel.test.ts", outputs = [
+  { id = "refused", name = "The segment refused a second beam", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "r4-diagonal-exclusivity"
@@ -964,7 +982,7 @@ validation = { script = "ruleset/refusal-is-silent.test.ts", outputs = [
 [[review.categories.items]]
 id = "r6-r7-complete"
 title = "R6 Endpoints and R7 Coverage decide a complete beam"
-description = "A beam running between its channel's two emitters with exactly one segment meeting each, threading every lens of that channel with exactly two of its segments, reports complete true; the same route short one lens reports false. Neither condition is ever used to refuse a move."
+description = "A beam running between its channel's two emitters with exactly one segment meeting each, threading every lens of that channel with exactly two of its segments, reports complete true."
 domains = ["campaign", "cascade"]
 failure_cap = "broken"
 # Automated validation: completion never detected means nothing ever solves, so
@@ -973,6 +991,30 @@ failure_cap = "broken"
 # validation/<engine>/ruleset/r6-r7-complete.test.ts.
 validation = { script = "ruleset/r6-r7-complete.test.ts", outputs = [
   { id = "complete", name = "The beam reporting complete", kind = "image" },
+] }
+[[review.categories.items]]
+id = "r7-lens-unvisited"
+title = "R7 Coverage: a lens left unvisited holds the beam incomplete"
+description = "A route running between both of a channel's emitters but leaving one lens of that channel unvisited reports complete false."
+domains = ["campaign", "cascade"]
+failure_cap = "broken"
+# Automated validation: a build that reports complete with a lens unvisited
+# solves boards the player has not solved, so the cap is broken. See
+# validation/<engine>/ruleset/r7-lens-unvisited.test.ts.
+validation = { script = "ruleset/r7-lens-unvisited.test.ts", outputs = [
+  { id = "incomplete", name = "The route short one lens, reporting incomplete", kind = "image" },
+] }
+[[review.categories.items]]
+id = "completion-refuses-nothing"
+title = "The completion conditions are never used to refuse a move"
+description = "A route that leaves a lens of its channel unvisited is drawn whole, its closing move onto the second emitter included: R6 and R7 describe finished work, not legal moves."
+domains = ["campaign", "cascade"]
+failure_cap = "broken"
+# Automated validation: a build that refuses a move because the beam would not
+# be complete can never let a beam be finished, so the cap is broken. See
+# validation/<engine>/ruleset/completion-refuses-nothing.test.ts.
+validation = { script = "ruleset/completion-refuses-nothing.test.ts", outputs = [
+  { id = "drawn", name = "The lens-short route drawn whole", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "r8-crystals"

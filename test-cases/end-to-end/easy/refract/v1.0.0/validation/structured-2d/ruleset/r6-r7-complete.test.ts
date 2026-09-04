@@ -1,17 +1,12 @@
-// Refract — ruleset/r6-r7-complete: R6 Endpoints and R7 Coverage decide a
-// complete beam.
+// Refract — ruleset/r6-r7-complete: a beam meeting R6 and R7 reports complete.
 //
 // specs/beams.md R6: a beam is complete only when it "runs between that
 // channel's two emitters, with exactly one segment meeting each"; R7: only
-// when "every lens of that channel carries exactly two of its segments";
-// and the enforcement table: R6/R7 are "never used to refuse a move". The
-// private board below has two routes between the triangle emitters — one
-// straight across through t(1,0) that leaves t(1,1) unvisited, and one
-// detouring through t(1,1) that threads every lens twice-each — plus an
-// untouched 3-charge crystal so the complete beam never solves the board and
-// the reading stays on `playing`. The short route is drawn whole (every move
-// permitted, incompleteness refusing nothing) and reports complete false; the
-// full route reports complete true. The emitter-as-pass-through variant
+// when "every lens of that channel carries exactly two of its segments". The
+// private board below carries an untouched 3-charge crystal, so the complete
+// beam never solves the board and the reading stays on `playing`. The route
+// T(0,0)-t(1,1)-t(1,0)-T(2,0) threads both lenses twice-each and meets each
+// emitter once, and reports complete true. The emitter-as-pass-through variant
 // cannot even be drawn (R5), so completeness via endpoints is asserted on the
 // drawn set.
 
@@ -48,36 +43,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   h?.dispose();
-});
-
-it("the route short one lens is drawn whole and reports complete false", async () => {
-  await resetTo(h, 1);
-  await loadBoard(h, TWO_ROUTES);
-
-  // Every move of the short route is permitted — its incompleteness refuses
-  // nothing, ending on the far emitter included.
-  const short: ReadonlyArray<readonly [number, number]> = [
-    [0, 0],
-    [1, 0],
-    [2, 0],
-  ];
-  traceCells(h, toCells(short));
-  const snap = h.snapshot();
-  assertDeepEqual(
-    snap.beams.triangle?.cells,
-    toCells(short),
-    "the route between the emitters is drawn whole",
-  );
-
-  // It runs emitter to emitter, but leaves the lens t(1,1) unvisited: R7
-  // fails, so the beam is not complete, and nothing is solved.
-  assertEqual(
-    snap.beams.triangle?.complete,
-    false,
-    "the route short one lens reports complete false",
-  );
-  assertEqual(snap.solved, false, "an incomplete beam solves nothing");
-  assertEqual(snap.screen, "playing", "play continues");
 });
 
 it("the route threading every lens twice-each reports complete true", async () => {
