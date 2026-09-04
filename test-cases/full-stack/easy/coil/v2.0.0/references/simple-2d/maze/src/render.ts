@@ -36,11 +36,12 @@ import {
   TITLE_TEXT,
   type Cell,
   type Direction,
+  type Screen,
 } from "./constants";
 import { roundRect, text } from "./draw";
 import { biteFrame, type CoilState } from "./game";
 import { HAS_OBSTACLES } from "./mode";
-import { menuItems } from "./menus";
+import { menuItems, menuLayout } from "./menus";
 import { axisOf, comboFraction } from "./sim";
 import { COLORS, FONT } from "./theme";
 import type { SnakeSprites } from "./assets";
@@ -325,21 +326,16 @@ function drawHud(state: View, ctx: Ctx, quiet: boolean): void {
 
 // ---- Menus and panels ----------------------------------------------------
 
-function drawMenu(
-  ctx: Ctx,
-  items: readonly string[],
-  selected: number,
-  centerX: number,
-  topY: number,
-  gap: number,
-  size: number,
-): void {
+function drawMenu(ctx: Ctx, screen: Screen, selected: number): void {
+  const layout = menuLayout(screen);
+  if (layout === null) return;
+  const items = menuItems(screen);
   for (let i = 0; i < items.length; i++) {
     const label = items[i]!;
-    const y = topY + i * gap;
+    const y = layout.topY + i * layout.gap;
     const on = i === selected;
-    text(ctx, label, centerX, y, {
-      size,
+    text(ctx, label, layout.centerX, y, {
+      size: layout.size,
       color: on ? COLORS.text : COLORS.textDim,
       bold: on,
       align: "center",
@@ -348,14 +344,14 @@ function drawMenu(
       glowColor: COLORS.head,
     });
     if (!on) continue;
-    const half = measureLabel(ctx, label, size) / 2;
-    text(ctx, "▶", centerX - half - 30, y, {
-      size: size - 8,
+    const half = measureLabel(ctx, label, layout.size) / 2;
+    text(ctx, "▶", layout.centerX - half - 30, y, {
+      size: layout.size - 8,
       color: COLORS.head,
       align: "center",
     });
-    text(ctx, "◀", centerX + half + 30, y, {
-      size: size - 8,
+    text(ctx, "◀", layout.centerX + half + 30, y, {
+      size: layout.size - 8,
       color: COLORS.head,
       align: "center",
     });
@@ -432,7 +428,7 @@ function drawTitle(state: View, ctx: Ctx): void {
     spacing: 2,
   });
 
-  drawMenu(ctx, menuItems("title"), state.menuIndex, STAGE_CX, 516, 58, 30);
+  drawMenu(ctx, "title", state.menuIndex);
   text(ctx, "▲ ▼ MOVE     ENTER SELECT", STAGE_CX, 686, {
     size: 16,
     color: COLORS.textFaint,
@@ -526,7 +522,7 @@ function drawHowto(state: View, ctx: Ctx): void {
     y += 30;
   }
 
-  drawMenu(ctx, menuItems("howto"), state.menuIndex, STAGE_CX, 660, 40, 24);
+  drawMenu(ctx, "howto", state.menuIndex);
 }
 
 function drawPausePanel(state: View, ctx: Ctx): void {
@@ -539,7 +535,7 @@ function drawPausePanel(state: View, ctx: Ctx): void {
     glow: 18,
     spacing: 4,
   });
-  drawMenu(ctx, menuItems("paused"), state.menuIndex, STAGE_CX, 358, 50, 26);
+  drawMenu(ctx, "paused", state.menuIndex);
 }
 
 function drawEndPanel(state: View, ctx: Ctx, cleared: boolean): void {
@@ -579,15 +575,7 @@ function drawEndPanel(state: View, ctx: Ctx, cleared: boolean): void {
     align: "center",
     spacing: 2,
   });
-  drawMenu(
-    ctx,
-    menuItems(cleared ? "cleared" : "gameover"),
-    state.menuIndex,
-    STAGE_CX,
-    482,
-    52,
-    30,
-  );
+  drawMenu(ctx, cleared ? "cleared" : "gameover", state.menuIndex);
 }
 
 // ---- The frame -----------------------------------------------------------

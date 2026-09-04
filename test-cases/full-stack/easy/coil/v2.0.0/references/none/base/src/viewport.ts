@@ -49,3 +49,23 @@ export function syncCanvas(canvas: HTMLCanvasElement, dpr: number): Fit {
   if (canvas.height !== height) canvas.height = height;
   return computeFit(width, height);
 }
+
+/**
+ * The logical stage point a client position lands on, under `fit`.
+ *
+ * The inverse of the transform `render` draws through: a position the page
+ * reports in CSS pixels becomes device pixels, loses the letterbox offset, and
+ * is divided by the scale. A point inside a letterbox bar lands outside the
+ * stage, and the caller is what decides whether that matters.
+ */
+export function toLogical(
+  fit: Fit,
+  clientX: number,
+  clientY: number,
+  dpr: number,
+): { x: number; y: number } {
+  return {
+    x: (clientX * dpr - fit.offsetX) / fit.scale,
+    y: (clientY * dpr - fit.offsetY) / fit.scale,
+  };
+}

@@ -28,7 +28,8 @@ import {
   type CoilState,
 } from "./game";
 import { HOWTO_ITEMS, menuItems } from "./menus";
-import type { UpdateApi } from "@test-cabinet/simple-2d";
+import { menuItemRect } from "./menus";
+import type { PointerSample, UpdateApi } from "@test-cabinet/simple-2d";
 
 function opening(seed = 1): CoilState {
   return createInitialState(NO_SPRITES, false, seed);
@@ -44,7 +45,11 @@ interface Bus {
 }
 
 /** A stand-in for the slice of `UpdateApi` Coil's `update` reaches. */
-function stubApi(bus: Bus, pressed: readonly ActionName[] = []): UpdateApi {
+function stubApi(
+  bus: Bus,
+  pressed: readonly ActionName[] = [],
+  samples: readonly PointerSample[] = [],
+): UpdateApi {
   const armed = new Set<string>(pressed);
   return {
     input: {
@@ -60,7 +65,7 @@ function stubApi(bus: Bus, pressed: readonly ActionName[] = []): UpdateApi {
       }),
       pointerPressed: () => false,
       pointerReleased: () => false,
-      pointerSamples: () => [],
+      pointerSamples: () => [...samples],
       pointerContacts: () => [],
       wheel: () => ({ x: 0, y: 0 }),
     },
@@ -90,6 +95,32 @@ function stubApi(bus: Bus, pressed: readonly ActionName[] = []): UpdateApi {
 
 function newBus(): Bus {
   return { played: [], looping: new Set(), looped: [], muted: false };
+}
+
+/** `HOW TO PLAY` is the second item of the title menu (specs/ui.md). */
+const HOWTO_INDEX = 1;
+
+/** One pointer sample, as the engine delivers it in the game's own units. */
+function sample(
+  type: PointerSample["type"],
+  x: number,
+  y: number,
+): PointerSample {
+  return {
+    type,
+    x,
+    y,
+    id: 1,
+    primary: true,
+    device: "mouse",
+    button: type === "move" ? null : "primary",
+    buttons: type === "down" ? ["primary"] : [],
+  };
+}
+
+/** Run one frame of no elapsed time carrying `samples`, through the game's own update. */
+function drive(state: CoilState, ...samples: PointerSample[]): CoilState {
+  return game.update(state, stubApi(newBus(), [], samples), 0);
 }
 
 /** Run `frames` frames covering `seconds`, through the game's own `update`. */
@@ -459,5 +490,90 @@ describe("mute", () => {
     const before = held();
     const after = tap(before, bus, "mute");
     expect({ ...after, muted: before.muted }).toEqual(before);
+  });
+});
+
+describe("the pointer and the touch contact over the menus", () => {
+  /** The middle of item `index`'s region on the screen `state` is on. */
+  function middleOf(state: CoilState, index: number): { x: number; y: number } {
+    const rect = menuItemRect(state.screen, index);
+    if (rect === null) throw new Error(`no item ${index} on ${state.screen}`);
+    return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+  }
+
+  it("selects the item a move arrives over, confirming nothing", () => {
+    const state = opening();
+    const at = middleOf(state, HOWTO_INDEX);
+    const moved = drive(state, sample("move", at.x, at.y));
+    expect(moved.menuIndex).toBe(HOWTO_INDEX);
+    expect(moved.screen).toBe("title");
+  });
+
+  it("confirms the item a press and its release both fall inside", () => {
+    const state = opening();
+    const at = middleOf(state, HOWTO_INDEX);
+    const clicked = drive(
+      state,
+      sample("down", at.x, at.y),
+      sample("up", at.x, at.y),
+    );
+    expect(clicked.screen).toBe("howto");
+  });
+
+  it("confirms nothing when the two edges fall in different items", () => {
+    const state = opening();
+    const from = middleOf(state, HOWTO_INDEX);
+    const to = middleOf(state, 0);
+    const slid = drive(
+      state,
+      sample("down", from.x, from.y),
+      sample("move", to.x, to.y),
+      sample("up", to.x, to.y),
+    );
+    expect(slid.screen).toBe("title");
+    expect(slid.menuIndex).toBe(0);
+  });
+
+  it("confirms nothing when an edge falls outside every region", () => {
+    const state = opening();
+    const at = middleOf(state, HOWTO_INDEX);
+    const missed = drive(state, sample("down", at.x, at.y), sample("up", 0, 0));
+    expect(missed.screen).toBe("title");
+  });
+
+  it("is not read on the playing screen, which shows no menu", () => {
+    const state = opening();
+    const at = middleOf(state, HOWTO_INDEX);
+    const playing = startRound(state);
+    const after = drive(
+      playing,
+      sample("down", at.x, at.y),
+      sample("up", at.x, at.y),
+    );
+    expect(after.screen).toBe("playing");
+    expect(after.menuIndex).toBe(0);
+  });
+});
+
+describe("the remembered title selection", () => {
+  it("opens at zero", () => {
+    expect(opening().titleIndex).toBe(0);
+  });
+
+  it("follows the item the title confirmed, whichever input confirmed it", () => {
+    const state = press(opening(), "down", "confirm");
+    expect(state.screen).toBe("howto");
+    expect(state.titleIndex).toBe(HOWTO_INDEX);
+  });
+
+  it("is where the title opens on the way back", () => {
+    const state = press(opening(), "down", "confirm", "back");
+    expect(state.screen).toBe("title");
+    expect(state.menuIndex).toBe(HOWTO_INDEX);
+  });
+
+  it("leaves every other screen opening on its first item", () => {
+    const state = press(opening(), "down", "confirm");
+    expect(goTo(state, "paused").menuIndex).toBe(0);
   });
 });

@@ -13,7 +13,7 @@ import { COMBO_WINDOW } from "./constants";
 import { installDebugApi } from "./debug";
 import { Diagnostics } from "./diagnostics";
 import { Game } from "./game";
-import { Keyboard } from "./input";
+import { Keyboard, Pointer } from "./input";
 import { Runtime } from "./runtime";
 
 function registerDiagnostics(diagnostics: Diagnostics, game: Game): void {
@@ -46,11 +46,14 @@ async function main(): Promise<void> {
   const audio = new WebAudioBus();
   const game = new Game(audio);
   const keyboard = new Keyboard();
+  const pointer = new Pointer();
   const diagnostics = new Diagnostics();
   registerDiagnostics(diagnostics, game);
 
   keyboard.onFirstPress(() => audio.unlock());
   keyboard.attach();
+  pointer.onFirstContact(() => audio.unlock());
+  pointer.attach();
 
   const runtime = new Runtime({
     canvas,
@@ -58,6 +61,7 @@ async function main(): Promise<void> {
     game,
     assets,
     keyboard,
+    pointer,
     diagnostics,
   });
   installDebugApi(game, runtime);
