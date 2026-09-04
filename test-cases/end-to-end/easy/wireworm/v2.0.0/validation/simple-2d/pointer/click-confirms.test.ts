@@ -51,7 +51,7 @@ it("confirms the item a click presses and releases inside", async () => {
   assertEqual(posed.screen, "title", "reset leaves the game on the title");
   assertEqual(posed.menuIndex, DESCEND, "the posed title highlight");
 
-  clickItem(h, HOWTO);
+  await clickItem(h, HOWTO);
   captureStill(h, "howto");
 
   assertEqual(

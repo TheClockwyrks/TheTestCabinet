@@ -49,7 +49,7 @@ it("confirms the item a touch contact lands and lifts in", async () => {
   assertEqual(posed.screen, "title", "reset leaves the game on the title");
   assertEqual(posed.menuIndex, DESCEND, "the posed title highlight");
 
-  touchItem(h, HOWTO);
+  await touchItem(h, HOWTO);
   captureStill(h, "howto");
 
   assertEqual(

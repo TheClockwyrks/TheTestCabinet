@@ -54,7 +54,7 @@ it("confirms nothing when the press and the release fall in different items", as
   assertEqual(posed.screen, "title", "reset leaves the game on the title");
   assertEqual(posed.menuIndex, DESCEND, "the posed title highlight");
 
-  slideOffItem(h, HOWTO, DESCEND);
+  await slideOffItem(h, HOWTO, DESCEND);
   captureStill(h, "title");
 
   assertEqual(

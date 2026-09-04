@@ -52,7 +52,7 @@ it("selects the item the pointer moves onto", async () => {
   assertEqual(posed.screen, "title", "reset leaves the game on the title");
   assertEqual(posed.menuIndex, DESCEND, "the posed title highlight");
 
-  pointAtItem(h, HOWTO);
+  await pointAtItem(h, HOWTO);
   captureStill(h, "menu");
 
   const hovered = h.snapshot();
