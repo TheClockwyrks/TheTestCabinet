@@ -28,12 +28,6 @@ You also write the `window.__kessler` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how the
 game is driven from code, so it is present and exactly as specified.
 
-Every figure the specification fixes — the stage geometry and every contact
-radius, the tick, the deflector's motion and bounce, the rings and their orbits,
-the pod draw and the effects, the scores, the action names and their keys, the
-cue names, and the screen copy — is stated in `specs/`, and the value stated
-there is authoritative.
-
 **You also produce every asset the game plays.** Asset-generation tools are on
 your `PATH` while you build here. `specs/assets.md` is the contract: what to
 produce, which tool produces it, the path it lands at, and how it is wired in.
@@ -49,17 +43,10 @@ them in process, in Node, with coverage over `src/`. `@napi-rs/canvas` is
 installed, so a test that needs a real 2D context can draw through one without a
 browser.
 
-## What you must not edit
+## What stays as it is
 
-- **`index.html`** — the page and the canvas.
-- **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
-  and `.gitignore`.
-- **`.tcab/`** — the vendored runtime libraries.
-
-Add dependencies to `package.json` if you genuinely need them, and commit the
-`package-lock.json` — the build is installed with `npm ci`. Leave the existing
-entries and scripts alone.
+`specs/overview.md` lists the files this project supplies and keeps, and states
+the one change `package.json` takes.
 
 ## Commands
 
@@ -71,15 +58,8 @@ entries and scripts alone.
 - `npm run format` — Prettier, in check mode.
 - `npm test` — Vitest over `src/**/*.test.ts`, with coverage.
 
-## Before you finish
+## This file
 
-- `npm run build` produces `dist/` with `index.html` at its root, and that
-  directory runs as-is on any static host, at its root and under a sub-path.
-- `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all pass.
-  The same four commands are run over the repository you leave behind.
-- The assets `specs/assets.md` asks for are produced and committed under
-  `assets/`, and the game loads them.
-- The `showcase/` directory `specs/showcase.md` asks for is present.
-- **Replace this file** with the `README.md` `specs/overview.md` asks the
-  finished build to ship: what the game is, how to install it, how to run it in
-  development, how to produce the production build, and the controls.
+This starter README is replaced by the `README.md` `specs/overview.md` asks the
+finished build to ship: what the game is, how to install it, how to run it in
+development, how to produce the production build, and the controls.
