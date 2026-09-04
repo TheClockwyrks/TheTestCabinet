@@ -117,6 +117,7 @@ it("multiplies the base damage once per level", async () => {
         `${want.baseDamage} scaled by the multiplier ${pinMult}`,
     );
 
+    if (level === LEVELS[0]) captureStill(h, "before");
     if (level === MAX_LEVEL) captureStill(h, "after");
   }
 });
