@@ -87,6 +87,8 @@ Task-oriented walkthroughs:
   [first-time setup](apps/docs/src/content/docs/guides/setup/first-time-setup.md) for a
   machine that will actually run test cases (container runtime, run-container
   image, credentials).
+- All commits must use the Conventional Commits format and use imperative form
+  for the subject.
 
 ## Issue board
 
