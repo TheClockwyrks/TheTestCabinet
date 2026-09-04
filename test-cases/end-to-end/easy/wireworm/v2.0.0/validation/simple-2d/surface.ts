@@ -55,6 +55,18 @@ export type Phase = "banner" | "active" | "respawn";
 /** The three support foes. */
 export type FoeKind = "glitch" | "dropper" | "corruptor";
 
+/**
+ * A menu item's hit region, in the stage's logical units, as `menuItemRect`
+ * reports it: `x` and `y` the region's top-left corner, `w` and `h` its size
+ * (specs/instrumentation.md).
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** One tile of the board, in the grid coordinates specs/board.md defines. */
 export interface TileSnapshot {
   c: number;
@@ -207,6 +219,12 @@ export interface WirewormDebugApi<S = unknown> {
   /** Sets the level, `1..12`. It spawns nothing and clears nothing. */
   setLevel(state: DeepReadonly<S>, n: number): S;
   setReachedLevel(state: DeepReadonly<S>, n: number): S;
+  /**
+   * A pure read of the hit region of item `index` on the menu the current
+   * screen shows, in logical stage units. `null` on `playing` and `howto`, which
+   * show no menu, and when `index` names no item of the current menu.
+   */
+  menuItemRect(state: DeepReadonly<S>, index: number): MenuRect | null;
 
   // ---- The world gates ---------------------------------------------------
 
@@ -268,7 +286,7 @@ export interface WirewormDebugApi<S = unknown> {
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /**
  * Every operation the surface must carry, in the order
@@ -289,6 +307,7 @@ export const REQUIRED_OPS = [
   "setLives",
   "setLevel",
   "setReachedLevel",
+  "menuItemRect",
 
   "setFoeSpawning",
   "setWormEntry",

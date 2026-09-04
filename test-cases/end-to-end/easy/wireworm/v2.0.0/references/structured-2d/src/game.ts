@@ -134,6 +134,16 @@ const BoardStateBase = GameState as unknown as {
   new (): Omit<GameState, "phase">;
 };
 
+/** Where one pointer's current press began. See {@link WirewormState.presses}. */
+export interface PressAnchor {
+  /** The pointer the press came from, so several contacts are told apart. */
+  id: number;
+  /** The screen the press landed on. */
+  screen: Screen;
+  /** The menu item it landed in, or `-1` for a press outside every region. */
+  index: number;
+}
+
 export class WirewormState extends BoardStateBase {
   screen: Screen = "title";
   phase: Phase = "banner";
@@ -164,6 +174,18 @@ export class WirewormState extends BoardStateBase {
   simTime = 0;
   muted = false;
   rngState = DEFAULT_SEED;
+
+  /**
+   * Where each pointer's current press began.
+   *
+   * Bookkeeping for the rule `specs/ui.md` fixes: a confirm takes BOTH of its
+   * edges inside one item's region, so the release has to know where the press
+   * landed, and a press and its release may be frames apart. It is not part of
+   * the declared state — nothing poses it, nothing reads it back, and it is
+   * rebuilt from the pointer stream alone — and it lives on the state because
+   * this build keeps nothing between frames anywhere else.
+   */
+  presses: PressAnchor[] = [];
 }
 
 /**

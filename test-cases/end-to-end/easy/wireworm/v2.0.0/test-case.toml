@@ -2144,6 +2144,15 @@ validation = { script = "controls/pause-p.test.ts", outputs = [
   { id = "paused", name = "The pause screen KeyP opened", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "pause-p-resumes"
+title = "KeyP resumes from the pause screen"
+description = "Pressed on the pause screen, KeyP returns the game to playing with the board as it was. specs/controls.md gives the pause action both directions, so opening the pause screen and leaving it again are separate points: a build that wired the open and not the close leaves a menu the pause key cannot dismiss."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "controls/pause-p-resumes.test.ts", outputs = [
+  { id = "resumed", name = "The board KeyP resumed", kind = "image" },
+] }
+[[review.categories.items]]
 id = "pause-escape"
 title = "Escape pauses the game"
 description = "Pressed during play, Escape leaves the game on the pause screen. Escape drives both pause and back, and this is the pause half."
@@ -2243,6 +2252,15 @@ description = "The back binding from howto returns to title."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "screens/howto-back.test.ts", outputs = [
+  { id = "title", name = "The title the back binding returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto-back-selects-howto"
+title = "Leaving the how-to screen selects HOW TO PLAY"
+description = "The back binding from howto returns to title with the highlight on HOW TO PLAY, the entry that led away from the menu. The index is derived from TITLE_ITEMS rather than written as a literal, and howto-back owns the transition itself."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "screens/howto-back-selects-howto.test.ts", outputs = [
   { id = "title", name = "The title the back binding returned to", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -2356,6 +2374,92 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "screens/ending-menu.test.ts", outputs = [
   { id = "title", name = "The title MENU returned to", kind = "image" },
+] }
+
+# --- Pointer ------------------------------------------------------------------
+# specs/ui.md drives every menu screen with a mouse as well as with the keyboard,
+# over item regions the BUILD lays out and reports through `menuItemRect`. The
+# case fixes no menu geometry, so each point below asks the build where it put the
+# item and drives the real pointer at the middle of that region: any layout passes,
+# and a build that reports a region it does not answer on fails. The three points
+# are the three behaviors specs/ui.md gives the pointer — a move selects, a press
+# and its release inside one item confirms that item, and two edges that fall in
+# different items confirm nothing. Each is graded on the title menu, where both
+# entries confirm to screens a check reads straight off `screen`. The keyboard's
+# own edges are the `controls` and `screens` categories' points, not these.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with the highlight on DESCEND, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to that item, with screen still title."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with the highlight on DESCEND, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/click-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a click", kind = "image" },
+] }
+[[review.categories.items]]
+id = "slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside DESCEND's leaves screen at title, confirming neither item."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the pointer slid off", kind = "image" },
+] }
+
+# --- Touch --------------------------------------------------------------------
+# specs/ui.md gives every menu screen a finger as well as the keyboard and the
+# mouse, and a finger is not a small mouse: it never hovers, so the first the
+# build hears of it is the contact LANDING, and the landing is what selects. Each
+# point below drives one real touch contact — carrying the device a finger
+# carries — at the middle of the region the build reports through `menuItemRect`,
+# so any layout passes and only the handling is graded. The three are the three
+# behaviors specs/ui.md gives a contact: a landing selects, a lift inside the
+# region it landed in confirms that item, and a lift in a different region
+# confirms nothing while the selection follows the finger. All three are graded on
+# the title menu, where a confirm that should not have happened is loud (a run
+# opens) and one that should have is silent (the title stays). The mouse's own
+# edges are the `pointer` category's points, not these.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with the highlight on DESCEND, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to that item."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with the highlight on DESCEND, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a tap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-cancels"
+title = "A contact that lifts on a different item confirms nothing"
+description = "On the title, a touch contact landing inside DESCEND's region, travelling onto HOW TO PLAY's and lifting there leaves screen at title, with menuIndex on HOW TO PLAY."
+domains = ["presentation"]
+failure_cap = "passable"
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the contact slid off", kind = "image" },
 ] }
 
 # --- Look and readouts --------------------------------------------------------

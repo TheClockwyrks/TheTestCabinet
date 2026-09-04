@@ -33,10 +33,17 @@ import type { CueSink, Tile, WirewormState } from "./types";
 export const BAND_CENTER_X = STAGE_W / 2;
 export const BAND_CENTER_Y = 688;
 
-/** Move to the title screen, with its highlight back on the first item. */
-export function toTitle(state: WirewormState): void {
+/**
+ * Move to the title screen, with its highlight on the entry the caller left
+ * from (specs/ui.md).
+ *
+ * `index` defaults to `DESCEND`, which is what `QUIT TO MENU` and `MENU` return
+ * to: both leave a run, and `DESCEND` is the entry that started it. Leaving the
+ * how-to screen passes that screen's own entry instead.
+ */
+export function toTitle(state: WirewormState, index = 0): void {
   state.screen = "title";
-  state.menuIndex = 0;
+  state.menuIndex = index;
 }
 
 /**

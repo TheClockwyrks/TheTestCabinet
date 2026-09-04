@@ -281,8 +281,6 @@ the HUD. Every other spec file states one part of it.
 - Run in the browser with no backend. Everything needed to play is
   self-contained, and no API key or credential is needed to build, run, or play.
 {{#if (eq engine.slug "none")}}
-- Hold the game's whole state in one value, the one the frame loop advances and
-  the debug surface reads.
 {{else if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `WirewormState`, as `specs/state.md` declares
   it.

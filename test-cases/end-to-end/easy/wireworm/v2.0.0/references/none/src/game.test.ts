@@ -118,7 +118,8 @@ describe("the title screen", () => {
     tap(rig, "Escape");
     const shot = rig.debug.snapshot();
     expect(shot.screen).toBe("title");
-    expect(shot.menuIndex).toBe(0);
+    // The return selects the entry it left from (specs/ui.md).
+    expect(shot.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
     rig.dispose();
   });
 

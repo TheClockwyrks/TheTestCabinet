@@ -75,9 +75,9 @@ the right, the tail occupies column `39` and the head column
 `40 - wormLength(level)`. The head is the end furthest from that edge and the
 tail the end nearest it.
 
-Its horizontal heading points inward from that edge — `dh` is `+1` entering from
-the left and `-1` entering from the right — and its vertical heading `dv` is `+1`,
-down. `specs/progression.md` states when the worm enters.
+Its horizontal heading points inward from the edge it entered at: `dh` is `+1`
+entering from the left and `-1` entering from the right. Its vertical heading
+`dv` is `+1`, down. `specs/progression.md` states when the worm enters.
 
 ## Winding down the board
 

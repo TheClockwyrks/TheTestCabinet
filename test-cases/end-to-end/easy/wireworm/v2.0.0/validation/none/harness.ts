@@ -66,7 +66,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, CDPSession, Page } from "playwright";
 import { connectChromium } from "./chromium";
 import { fail } from "./assert";
 import {
@@ -128,6 +128,7 @@ export const REQUIRED_OPS = [
   "setLives",
   "setLevel",
   "setReachedLevel",
+  "menuItemRect",
   // The world gates.
   "setFoeSpawning",
   "setWormEntry",
@@ -259,6 +260,18 @@ export interface WirewormSnapshot {
 }
 
 /** The operations a check poses the game through. Every one crosses into the page. */
+/**
+ * A menu item's hit region, in the stage's logical units, as `menuItemRect`
+ * reports it: `x` and `y` its top-left corner, `w` and `h` its size
+ * (`specs/instrumentation.md`).
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface WirewormDebugApi {
   setAutoStep(enabled: boolean): Promise<void>;
   advance(seconds: number, frames?: number): Promise<void>;
@@ -273,6 +286,7 @@ export interface WirewormDebugApi {
   setLives(lives: number): Promise<void>;
   setLevel(level: number): Promise<void>;
   setReachedLevel(level: number): Promise<void>;
+  menuItemRect(index: number): Promise<MenuRect | null>;
 
   setFoeSpawning(enabled: boolean): Promise<void>;
   setWormEntry(enabled: boolean): Promise<void>;
@@ -712,6 +726,11 @@ async function contextFor(
   const context = await browser.newContext({
     viewport: { width: cssWidth, height: cssHeight },
     deviceScaleFactor: dpr,
+    // The menus answer to a finger as well as to a mouse (`specs/ui.md`), so the
+    // context reports a touchscreen: a contact then arrives as
+    // `pointerType: "touch"` and `navigator.maxTouchPoints` is non-zero, which
+    // is the device a build offering touch has to believe it is running on.
+    hasTouch: true,
   });
   for (const name of INIT_SCRIPTS) {
     await context.addInitScript(readFileSync(join(PROJECT_ROOT, name), "utf8"));
@@ -3056,4 +3075,221 @@ export async function driveSteps(
 /** Show or hide the read-only debug overlay, through its fixed Backquote binding. */
 export async function toggleOverlay(h: Harness): Promise<void> {
   await h.tap(OVERLAY_KEY);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Menus, driven by a real mouse and a real finger                            */
+/* -------------------------------------------------------------------------- */
+//
+// The menus take a pointer and a touch contact as well as the keyboard
+// (`specs/ui.md`), and where a build LAYS the items out is the build's own — so
+// a check asks the build where it put an item, through `menuItemRect`, and then
+// drives Chromium's real mouse or a real touch contact at that region. Nothing
+// here poses a pointer through the surface: a pose would tell the build where
+// the pointer is without making its own input layer see a press, a travel and a
+// release the way a hand does, and what these checks are about is precisely that
+// the build reads them.
+//
+// EACH PART OF A GESTURE RUNS EXACTLY ONE DRIVEN FRAME, so a caller counting
+// frames can add them up. A part that ran no frame would never reach a build
+// that reads its input once per frame, and a press released before a frame ran
+// would be invisible to one that compares held state between frames.
+//
+// THE MAPPING IS {@link Harness.css}, which answers the CSS position of the
+// pixel a logical point lands on — where a hand has to land to hit the thing
+// drawn there.
+
+/**
+ * The contact identifier every touch gesture below drives.
+ *
+ * One contact is all a menu needs, and fixing the id keeps a landing, its travel
+ * and its lift recognizable to the build as the same finger.
+ */
+const CONTACT_ID = 1;
+
+/**
+ * The CDP session a page's contacts are driven through, opened once and HELD.
+ *
+ * Chromium tracks the live contacts per CDP client, so a session opened for the
+ * landing and detached again takes the contact with it and the travel that
+ * follows is refused outright. The session therefore has to outlive the whole
+ * gesture, and the page closing is what closes it.
+ */
+const touchSessions = new WeakMap<Page, Promise<CDPSession>>();
+
+/** The held CDP session for `page`, opening it on the first contact it drives. */
+function touchSession(page: Page): Promise<CDPSession> {
+  const open = touchSessions.get(page);
+  if (open !== undefined) return open;
+  const opening = page.context().newCDPSession(page);
+  touchSessions.set(page, opening);
+  return opening;
+}
+
+/**
+ * Dispatch one raw touch event through CDP.
+ *
+ * Playwright's own `page.touchscreen` carries `tap` alone, which is a landing
+ * and a lift with no frame between them, so a check that needs the contact HELD
+ * across a frame cannot express itself through it.
+ */
+async function dispatchTouch(
+  h: Harness,
+  type: "touchStart" | "touchMove" | "touchEnd",
+  point: { x: number; y: number } | null,
+): Promise<void> {
+  const session = await touchSession(h.page);
+  await session.send("Input.dispatchTouchEvent", {
+    type,
+    touchPoints:
+      point === null ? [] : [{ x: point.x, y: point.y, id: CONTACT_ID }],
+  });
+}
+
+/** Move the real mouse to a logical point, and run the frame that reads it. */
+export async function mouseTo(h: Harness, x: number, y: number): Promise<void> {
+  const at = h.css(x, y);
+  await h.page.mouse.move(at.x, at.y);
+  await h.advance(1);
+}
+
+/** Press the real mouse at a logical point, and run the frame that reads it. */
+export async function mousePress(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  const at = h.css(x, y);
+  await h.page.mouse.move(at.x, at.y);
+  await h.page.mouse.down();
+  await h.advance(1);
+}
+
+/** Release the real mouse, and run the frame that reads it. */
+export async function mouseRelease(h: Harness): Promise<void> {
+  await h.page.mouse.up();
+  await h.advance(1);
+}
+
+/** Land a real touch contact at a logical point, and run the frame that reads it. */
+export async function touchPress(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  await dispatchTouch(h, "touchStart", h.css(x, y));
+  await h.advance(1);
+}
+
+/** Travel the held contact to a logical point, and run the frame that reads it. */
+export async function touchGlide(
+  h: Harness,
+  x: number,
+  y: number,
+): Promise<void> {
+  await dispatchTouch(h, "touchMove", h.css(x, y));
+  await h.advance(1);
+}
+
+/** Lift the contact, and run the frame that reads it. */
+export async function touchRelease(h: Harness): Promise<void> {
+  await dispatchTouch(h, "touchEnd", null);
+  await h.advance(1);
+}
+
+/**
+ * Where the build put item `index` of the menu the current screen shows.
+ *
+ * Fails by assertion when the build reports no region for an item its own menu
+ * shows, so the point names that fault rather than dividing by a `null` several
+ * lines later. A check that is ABOUT the reading returning `null` — on
+ * `playing`, on `howto`, or past the end of a menu — calls
+ * `h.debug.menuItemRect` directly.
+ */
+export async function menuRect(h: Harness, index: number): Promise<MenuRect> {
+  const rect = await h.debug.menuItemRect(index);
+  if (rect === null || rect === undefined) {
+    fail(
+      `menuItemRect(${index}) to report the hit region of item ${index} on ` +
+        `the menu the current screen shows (specs/instrumentation.md)`,
+      rect,
+    );
+  }
+  return rect;
+}
+
+/** The middle of item `index`'s hit region: where a gesture aimed at it lands. */
+export async function menuItemCenter(
+  h: Harness,
+  index: number,
+): Promise<{ x: number; y: number }> {
+  const rect = await menuRect(h, index);
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+/** Move the real mouse onto item `index`, and run the frame that reads it. */
+export async function pointAtItem(h: Harness, index: number): Promise<void> {
+  const at = await menuItemCenter(h, index);
+  await mouseTo(h, at.x, at.y);
+}
+
+/**
+ * Press and release the real mouse inside item `index`'s region.
+ *
+ * Both edges fall in the one region, which is what `specs/ui.md` requires of a
+ * confirm. Two driven frames, one for each edge.
+ */
+export async function clickItem(h: Harness, index: number): Promise<void> {
+  const at = await menuItemCenter(h, index);
+  await mousePress(h, at.x, at.y);
+  await mouseRelease(h);
+}
+
+/**
+ * Press inside item `from`'s region, travel onto item `to`'s, and release there.
+ *
+ * The slide-off affordance: two edges in different regions confirm nothing
+ * (`specs/ui.md`). Three driven frames.
+ */
+export async function slideOffItem(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = await menuItemCenter(h, from);
+  await mousePress(h, start.x, start.y);
+  const end = await menuItemCenter(h, to);
+  await mouseTo(h, end.x, end.y);
+  await mouseRelease(h);
+}
+
+/**
+ * Land a real touch contact inside item `index`'s region and lift it there.
+ *
+ * The landing selects the item as well as confirming it, because a finger does
+ * not hover (`specs/ui.md`), which is the difference between this and
+ * {@link clickItem}.
+ */
+export async function touchItem(h: Harness, index: number): Promise<void> {
+  const at = await menuItemCenter(h, index);
+  await touchPress(h, at.x, at.y);
+  await touchRelease(h);
+}
+
+/**
+ * Land a contact on item `from`, travel onto item `to`, and lift it there.
+ *
+ * A finger's form of {@link slideOffItem}: the selection follows the contact and
+ * nothing is confirmed (`specs/ui.md`).
+ */
+export async function dragBetweenItems(
+  h: Harness,
+  from: number,
+  to: number,
+): Promise<void> {
+  const start = await menuItemCenter(h, from);
+  await touchPress(h, start.x, start.y);
+  const end = await menuItemCenter(h, to);
+  await touchGlide(h, end.x, end.y);
+  await touchRelease(h);
 }

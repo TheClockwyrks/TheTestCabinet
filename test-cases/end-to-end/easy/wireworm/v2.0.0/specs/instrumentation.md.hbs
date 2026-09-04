@@ -158,11 +158,10 @@ read and changes nothing.
 `reset` restores `screen` to `"title"`, `phase` to `"banner"`, `phaseTimer` to
 `0`, `menuIndex` to `0`, `score` to `0`, `lives` to `START_LIVES` (`3`), `level`
 to `1`, and `reachedLevel` to `1`; it empties the node field and the worm, foe,
-bolt, and arc rosters; it places the cursor at the band's center, `(640, 688)`,
-with `0` seconds of invulnerability and its contact test — the third world gate —
-on; it sets `fireCooldown` to `0`, turns the other two world gates,
-`foeSpawning` and `wormEntry`, back on, clears the level's spawner clocks, and
-sets `simTime` to `0`.
+bolt, and arc rosters; and it places the cursor at the band's center, `(640,
+688)`, with `0` seconds of invulnerability, sets `fireCooldown` to `0`, clears
+the level's spawner clocks, and sets `simTime` to `0`. It turns all three world
+gates back on: the cursor's contact test, `foeSpawning`, and `wormEntry`.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
 game's randomness. `muted` is left exactly as it stands, because muting is a
@@ -204,6 +203,13 @@ and reach the same outcome, beyond the drift a change in step size explains.
 | `setLives(n)` | Sets the lives remaining. |
 | `setLevel(n)` | Sets the current level, a whole number from `1` to `TOTAL_LEVELS` (`12`). |
 | `setReachedLevel(n)` | Sets the level the end screens report. |
+| `menuItemRect(index)` | Reads the hit region of item `index` on the menu the current screen shows. It changes nothing. |
+
+`menuItemRect` returns `{ x, y, w, h }` in the stage's logical units, with `x`
+and `y` the region's top-left corner and `w` and `h` its size: the region a
+pointer selects that item from, as `specs/ui.md` states. It returns `null` on
+`playing` and on `howto`, which show no menu, and when `index` names no item of
+the menu the current screen shows.
 
 `setScore` grants no bonus life, whatever boundary it carries the score across:
 the award belongs to the scoring path, and this is a precondition.

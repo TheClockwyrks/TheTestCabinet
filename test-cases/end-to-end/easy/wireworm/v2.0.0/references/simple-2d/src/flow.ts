@@ -76,6 +76,8 @@ export function openingState(sprites: Sprites): WirewormState {
     muted: false,
     rngState: DEFAULT_SEED,
 
+    presses: [],
+
     sprites,
   };
 }
@@ -120,6 +122,7 @@ export function resetToTitle(sim: Sim, seed = DEFAULT_SEED): void {
   sim.nextId = fresh.nextId;
   sim.simTime = 0;
   sim.rngState = seed;
+  sim.presses = [];
 }
 
 /** Open a new run: level one, full lives, a fresh scatter, and the banner. */
@@ -164,10 +167,17 @@ export function menuItems(screen: Screen): readonly string[] | null {
   }
 }
 
-/** Move to `screen`, with its menu's highlight back at the first item. */
-export function goTo(sim: Sim, screen: Screen): void {
+/**
+ * Move to `screen`, with its menu's highlight on the entry the caller names.
+ *
+ * `index` defaults to the first item, which is where an arriving screen opens
+ * and where a run left for the menu lands: `DESCEND` is the entry that started
+ * it (specs/ui.md). Leaving the how-to screen names that screen's own entry
+ * instead.
+ */
+export function goTo(sim: Sim, screen: Screen, index = 0): void {
   sim.screen = screen;
-  sim.menuIndex = 0;
+  sim.menuIndex = index;
 }
 
 /** A life lost: the board is swept, the cursor recentered, and play pauses. */

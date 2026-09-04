@@ -11,6 +11,7 @@ import {
   SCORE_LEVEL_CLEAR,
   SCORE_VICTORY,
   START_LIVES,
+  TITLE_ITEMS,
   TOTAL_LEVELS,
   wormLength,
 } from "./constants";
@@ -66,12 +67,19 @@ describe("starting a run", () => {
     expect(state.cursor.contact).toBe(false);
   });
 
-  test("the title's highlight rests on the first item", () => {
+  test("the title's highlight lands on DESCEND unless another entry is named", () => {
     const state = createInitialState();
     state.menuIndex = 2;
     toTitle(state);
     expect(state.screen).toBe("title");
-    expect(state.menuIndex).toBe(0);
+    expect(state.menuIndex).toBe(TITLE_ITEMS.indexOf("DESCEND"));
+  });
+
+  test("the title's highlight lands on the entry the caller names", () => {
+    const state = createInitialState();
+    toTitle(state, TITLE_ITEMS.indexOf("HOW TO PLAY"));
+    expect(state.screen).toBe("title");
+    expect(state.menuIndex).toBe(TITLE_ITEMS.indexOf("HOW TO PLAY"));
   });
 });
 

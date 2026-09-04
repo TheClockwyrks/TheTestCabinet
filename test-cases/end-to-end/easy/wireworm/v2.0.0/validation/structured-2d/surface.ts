@@ -42,6 +42,18 @@ export type Phase = "banner" | "active" | "respawn";
 /** The three support foes. */
 export type FoeKind = "glitch" | "dropper" | "corruptor";
 
+/**
+ * A menu item's hit region, in the stage's logical units, as `menuItemRect`
+ * reports it: `x` and `y` the region's top-left corner, `w` and `h` its size
+ * (specs/instrumentation.md).
+ */
+export interface MenuRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** One tile address, `c` and `r` zero-indexed from the board's top-left. */
 export interface Tile {
   c: number;
@@ -186,6 +198,12 @@ export interface WirewormDebugApi {
   setLives(lives: number): void;
   setLevel(level: number): void;
   setReachedLevel(level: number): void;
+  /**
+   * A pure read of the hit region of item `index` on the menu the current
+   * screen shows, in logical stage units. `null` on `playing` and `howto`, which
+   * show no menu, and when `index` names no item of the current menu.
+   */
+  menuItemRect(index: number): MenuRect | null;
 
   setFoeSpawning(enabled: boolean): void;
   setWormEntry(enabled: boolean): void;
@@ -229,7 +247,7 @@ export interface WirewormDebugApi {
  * sweeps the surface (instrumentation/surface-present) calls a reading for its
  * value and a pose for its effect.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "menuItemRect"] as const;
 
 /**
  * Every operation the surface must carry under this engine. `setAutoStep` and
@@ -248,6 +266,7 @@ export const REQUIRED_OPS = [
   "setLives",
   "setLevel",
   "setReachedLevel",
+  "menuItemRect",
 
   "setFoeSpawning",
   "setWormEntry",
