@@ -93,9 +93,6 @@ it("reports the pointer's posed position and press state, and the world gate", a
   assertCloseTo(pressed.y, from.y, READBACK_DIGITS, "pointerDown: y");
   assertEqual(pressed.down, true, "pointerDown: the press state");
 
-  await h.advance(1);
-  captureStill(h, "posed");
-
   h.debug.pointerMove(to.x, to.y);
   const moved = h.snapshot();
   assertCloseTo(moved.pointer.x, to.x, READBACK_DIGITS, "pointerMove: x");
@@ -121,4 +118,11 @@ it("reports the pointer's posed position and press state, and the world gate", a
     READBACK_DIGITS,
     "pointerUp releases at the last reported position: y",
   );
+
+  // The evidence, taken last: a frame here would refresh `pointer` from the
+  // runtime's own idle pointer, which specs/instrumentation.md says it mirrors in
+  // every update — so every reading above is made on the pose itself, and the
+  // picture is drawn once they are all in.
+  await h.advance(1);
+  captureStill(h, "posed");
 });
