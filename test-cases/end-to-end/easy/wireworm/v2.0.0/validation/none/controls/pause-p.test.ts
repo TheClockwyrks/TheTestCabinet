@@ -6,10 +6,11 @@
 // `pause` during live play".
 //
 // THIS POINT IS ABOUT THE KEY, not about the screen it opens. What the pause
-// screen SHOWS is `screens.pause-screen`'s reading, that the board behind it stops
-// is `screens.pause-freezes`'s, and what each of its three items does belongs to
-// `screens.pause-resume`, `screens.pause-restart` and `screens.pause-quit`. So the
-// one thing read here is where the game stands after the press.
+// screen SHOWS is `screens.pause-screen`'s reading, that the board behind it
+// stops is the four `screens.pause-freezes-*` points', and what each of its
+// three items does belongs to `screens.pause-resume`, `screens.pause-restart`
+// and `screens.pause-quit`. So the one thing read here is where the game stands
+// after the press.
 //
 // `KeyP` AND `Escape` ARE SEPARATE POINTS because a build can bind one and not the
 // other, and `Escape` carries a second action — specs/controls.md gives it `back`

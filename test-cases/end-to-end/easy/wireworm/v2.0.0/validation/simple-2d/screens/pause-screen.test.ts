@@ -22,7 +22,8 @@
 // most likely to be drawn: a node under a letter would be a reading of the
 // build's typography rather than of the board behind it.
 //
-// That the paused board is FROZEN is `screens/pause-freezes`'s to decide.
+// That the paused board is FROZEN is for the four `screens/pause-freezes-*`
+// points to decide.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CHARGE_MAX, PAUSE_ITEMS } from "../../src/constants";

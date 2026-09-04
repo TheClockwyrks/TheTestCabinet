@@ -2303,14 +2303,48 @@ failure_cap = "scuffed"
 validation = { script = "screens/pause-screen.test.ts", outputs = [
   { id = "pause", name = "The pause menu over the frozen board", kind = "image" },
 ] }
+# specs/ui.md freezes four things behind the pause menu — no worm steps, no foe
+# moves, no bolt travels, no phase timer runs — and each is its own point, because
+# a build can stop one and leak another and the grade has to say which. The worm
+# and the foe are capped `broken`: a board that keeps playing behind the menu is
+# not a game that can be paused. The bolt and the phase timer are capped
+# `scuffed`: play still stops, and what leaks is a shot the player did not take
+# and a level the player did not get to play.
 [[review.categories.items]]
-id = "pause-freezes"
-title = "Pausing freezes the simulation"
-description = "Over a second of paused game time the worm takes no step and no foe moves."
+id = "pause-freezes-worm"
+title = "Pausing stops the worm"
+description = "Over a second of paused game time the worm takes no step. The worm is demonstrably walking when the pause lands, so the frozen reading means something."
 domains = ["arcade"]
 failure_cap = "broken"
-validation = { script = "screens/pause-freezes.test.ts", outputs = [
+validation = { script = "screens/pause-freezes-worm.test.ts", outputs = [
   { id = "frozen", name = "The second of paused game time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-freezes-foes"
+title = "Pausing stops the foes"
+description = "Over a second of paused game time a travelling foe holds its position. The foe is demonstrably moving when the pause lands, so the frozen reading means something."
+domains = ["arcade"]
+failure_cap = "broken"
+validation = { script = "screens/pause-freezes-foes.test.ts", outputs = [
+  { id = "frozen", name = "The second of paused game time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-freezes-bolts"
+title = "Pausing stops the bolts"
+description = "Over a second of paused game time a bolt in flight holds its position. The bolt is demonstrably climbing when the pause lands, and BOLT_SPEED would carry it off the board inside that second."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-freezes-bolts.test.ts", outputs = [
+  { id = "frozen", name = "The second of paused game time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-freezes-phase-timer"
+title = "Pausing stops the phase timer"
+description = "Paused during the banner phase, the phase timer holds through three whole BANNER_TIMEs of paused game time and the phase does not move on."
+domains = ["arcade"]
+failure_cap = "scuffed"
+validation = { script = "screens/pause-freezes-phase-timer.test.ts", outputs = [
+  { id = "held", name = "The banner the paused stretch did not burn", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pause-resume"
@@ -2320,6 +2354,19 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "screens/pause-resume.test.ts", outputs = [
   { id = "resumed", name = "The board play resumed on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-back-resumes"
+title = "The back binding resumes from the pause screen"
+description = "Pressed on the pause screen, Escape returns the game to playing with the worm on the tile it was paused on. Escape drives both pause and back, and this is the back half."
+domains = ["arcade"]
+failure_cap = "passable"
+# Capped with its peers rather than harder than them. A build that cannot dismiss
+# the menu with Escape still has a working RESUME item and a working KeyP, so it
+# is the milder failure; `scuffed` is reserved for controls.pause-p and
+# controls.pause-escape, which grade the ability to open the pause screen at all.
+validation = { script = "screens/pause-back-resumes.test.ts", outputs = [
+  { id = "resumed", name = "The board the back binding resumed on", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "pause-restart"
@@ -2338,6 +2385,18 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "screens/pause-quit.test.ts", outputs = [
   { id = "title", name = "The title QUIT TO MENU returned to", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-quit-selects-descend"
+title = "Quitting a run selects DESCEND"
+description = "QUIT TO MENU returns to the title with the highlight on DESCEND, the entry that started the run. The index is derived from TITLE_ITEMS rather than written as a literal, and pause-quit owns the transition itself."
+domains = ["arcade"]
+failure_cap = "passable"
+# The highlight rests on QUIT TO MENU's own index when the confirm runs, so a
+# build that carried `menuIndex` across the transition unchanged lands the title's
+# highlight off the end of TITLE_ITEMS. Nothing here is free.
+validation = { script = "screens/pause-quit-selects-descend.test.ts", outputs = [
+  { id = "title", name = "The title the quit returned to", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "victory-screen"
