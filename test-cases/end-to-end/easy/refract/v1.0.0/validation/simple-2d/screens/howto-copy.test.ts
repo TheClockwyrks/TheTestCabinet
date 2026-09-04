@@ -5,9 +5,10 @@
 // name, among its points, the key bound to `clear` — which specs/controls.md
 // fixes as KeyR. What is mechanically decidable is that the frame draws text
 // at all and that some drawn run carries a standalone R, matched at word
-// boundaries so the R inside REFRACT or CRYSTAL cannot stand in for it; the
-// full rules prose is the reviewer's to read from the captured frame, which is
-// why this item's cap is `great` rather than a functional one.
+// boundaries so the R inside REFRACT or CRYSTAL cannot stand in for it; whether
+// the prose really teaches the game is the run-wide aesthetic rating's, not
+// this point's, which is why this item's cap is `great` rather than a
+// functional one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";

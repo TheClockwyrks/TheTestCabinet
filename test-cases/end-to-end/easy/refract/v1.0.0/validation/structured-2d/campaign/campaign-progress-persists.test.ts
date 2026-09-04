@@ -16,7 +16,8 @@
 // grid, then two menu items and a confirm — passed this item's verdict through
 // every one of those bindings, and a build whose `back` on the solved screen
 // goes to the title failed here without ever reaching the question. That
-// build's fault is real and campaign/solved-back is the item that decides it.
+// build's fault is real and campaign/solved-back-choice and
+// campaign/solved-back-action are the items that decide it.
 // No `reset` after the opening one: a reset is a new session.
 
 import { afterEach, beforeEach, it } from "vitest";

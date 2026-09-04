@@ -1,6 +1,6 @@
 // Refract — instrumentation/snapshot-shape: on a posed board carrying all
 // three channels and a crystal, with a partial beam drawn, the snapshot
-// reports version REFRACT_DEBUG_VERSION (1) and every field
+// reports version REFRACT_DEBUG_VERSION (2) and every field
 // specs/instrumentation.md lists with its documented type, with each node's
 // x and y on the cell center formula in specs/board.md and spent, complete,
 // and solved derived exactly as specs/beams.md states.

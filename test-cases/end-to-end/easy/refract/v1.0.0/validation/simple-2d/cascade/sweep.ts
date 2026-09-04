@@ -96,14 +96,23 @@ export async function sweepGenerated(
 }
 
 /**
- * The generator's contract for one emitted board, as specs/modes/cascade.md
- * states it: within GRID_MAX_COLS x GRID_MAX_ROWS (7 x 6), the channels
- * present are the first n of CHANNELS with exactly two emitters for each, and
- * every crystal carries 1 to MAX_CHARGES (3) charges.
+ * The generator's grid bound for one emitted board, as specs/modes/cascade.md
+ * states it: within GRID_MAX_COLS x GRID_MAX_ROWS (7 x 6).
  */
-export function assertWellFormed(board: Board, context: string): void {
+export function assertFitsGrid(board: Board, context: string): void {
   assertBetween(board.cols, 1, GRID_MAX_COLS, `${context}: cols`);
   assertBetween(board.rows, 1, GRID_MAX_ROWS, `${context}: rows`);
+}
+
+/**
+ * The generator's channel rows for one emitted board, as
+ * specs/modes/cascade.md states them: the channels present are the first n of
+ * CHANNELS, with exactly two emitters for each.
+ */
+export function assertTwoEmittersPerChannel(
+  board: Board,
+  context: string,
+): void {
   const present = channelsPresent(board);
   assertDeepEqual(
     present,
@@ -120,6 +129,17 @@ export function assertWellFormed(board: Board, context: string): void {
       `${context}: exactly two ${channel} emitters (specs/modes/cascade.md)`,
     );
   }
+}
+
+/**
+ * The generator's charge ceiling for one emitted board, as
+ * specs/modes/cascade.md states it: every crystal carries 1 to MAX_CHARGES (3)
+ * charges, "never above MAX_CHARGES".
+ */
+export function assertCrystalChargesInRange(
+  board: Board,
+  context: string,
+): void {
   for (const node of board.nodes) {
     if (node.kind !== "crystal") continue;
     assertBetween(

@@ -47,8 +47,8 @@
 // second and the pointer resolves at the call — so the fixed clock is the
 // SUITE's choice, made so a duration is a whole number of frames on every
 // machine. A check that is specifically about the step size
-// (instrumentation/deterministic-core) builds its own harnesses with clocks of
-// its own.
+// (instrumentation/advances-on-elapsed-time) builds its own harnesses with
+// clocks of its own.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";

@@ -252,7 +252,8 @@ export function assertBeamsEmpty(
  * specs/modes/campaign.md gives that screen two exits to `select`: its third
  * and last menu choice, back to select, and the `back` action. A suite that
  * only needs to be standing on the grid again must not pin one of the two —
- * WHICH of them a build honours is campaign/solved-back's question — so the
+ * WHICH of them a build honours is campaign/solved-back-choice's and
+ * campaign/solved-back-action's question — so the
  * menu is walked, its third choice taken when the highlight got there, and the
  * `back` action used when it did not. A build that honours neither cannot be
  * posed onto the grid at all, and the check that needed the grid FAILS here,

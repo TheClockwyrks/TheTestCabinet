@@ -8,8 +8,8 @@
 // inside a word (REFRACT, CRYSTAL, PRESS) cannot satisfy it, while any
 // phrasing that names the key — "R", "press R", "R clears the board",
 // "[R] CLEAR" — does. What the rest of the copy says is the build's own
-// writing: the full rules prose is reviewed from the captured frame, not
-// asserted here.
+// writing: whether the prose really teaches the game is the run-wide aesthetic
+// rating's, not this point's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";

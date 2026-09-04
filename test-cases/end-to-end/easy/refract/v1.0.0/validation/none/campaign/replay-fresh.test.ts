@@ -12,7 +12,8 @@
 // third menu choice, back to select, and the `back` action. This item's
 // subject is on the far side of that step, not the step itself, so it must
 // not pin one of the two — `gridFromSolved` takes whichever the build honours,
-// and which one that is stays campaign/solved-back's verdict alone.
+// and which one that is stays campaign/solved-back-choice's and
+// campaign/solved-back-action's verdict alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";

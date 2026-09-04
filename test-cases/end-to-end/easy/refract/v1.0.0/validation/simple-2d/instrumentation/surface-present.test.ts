@@ -10,7 +10,7 @@
 // the fault plainly.
 //
 // TWO HALVES, AND BOTH ARE THE BUILD'S. The first is presence: `version`
-// reports REFRACT_DEBUG_VERSION (1), and every operation the rendered
+// reports REFRACT_DEBUG_VERSION (2), and every operation the rendered
 // specification names for an engine build — reset, snapshot, startMode,
 // loadBoard, the three pointer operations, trace, and clear — is a function
 // on the surface. `setAutoStep` and `advance` are NOT demanded: the clock is

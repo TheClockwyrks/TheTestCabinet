@@ -280,8 +280,8 @@ function projectCells(snapshot: RefractSnapshot): RefractSnapshot {
 // pointer-driven puzzle — the pointer operations do not even need a frame — so
 // the suite steps a plain 60 Hz, the rate a healthy display would have handed the
 // build anyway. The one check that is ABOUT the step size
-// (`instrumentation/deterministic-core`) calls `advance` with its own divisions
-// directly, through the surface.
+// (`instrumentation/advances-on-elapsed-time`) calls `advance` with its own
+// divisions directly, through the surface.
 
 /**
  * The shared harness, with Refract's snapshot, Refract's surface and Refract's

@@ -19,7 +19,12 @@ import {
   startCascade,
   type Harness,
 } from "../harness";
-import { assertWellFormed, sweepGenerated } from "./sweep";
+import {
+  assertCrystalChargesInRange,
+  assertFitsGrid,
+  assertTwoEmittersPerChannel,
+  sweepGenerated,
+} from "./sweep";
 
 let h: Harness;
 
@@ -39,10 +44,11 @@ it("keeps producing well-formed boards past the twentieth solve, counting each",
     onBoard: (snapshot, round) => {
       if (round <= 20) return;
       if (round === 24) captureStill(h, "board");
-      assertWellFormed(
-        oracleBoard(snapshot),
-        `board ${round}, past the twentieth solve`,
-      );
+      const board = oracleBoard(snapshot);
+      const at = `board ${round}, past the twentieth solve`;
+      assertFitsGrid(board, at);
+      assertTwoEmittersPerChannel(board, at);
+      assertCrystalChargesInRange(board, at);
     },
     onSolved: (snapshot, round) => {
       if (round <= 20) return;

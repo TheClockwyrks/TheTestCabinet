@@ -13,6 +13,9 @@ import {
   cellX,
   cellY,
   CHANNELS,
+  GRID_MAX_COLS,
+  GRID_MAX_ROWS,
+  MAX_CHARGES,
   NODE_R,
   channelsPresent,
   validateBoard,
@@ -70,6 +73,71 @@ export function assertGeneratedBoardWellFormed(
         `(${context})`,
       present,
     );
+  }
+}
+
+/**
+ * The generated board fits the grid (specs/modes/cascade.md "The generator":
+ * a grid within GRID_MAX_COLS (7) columns and GRID_MAX_ROWS (6) rows).
+ */
+export function assertFitsGrid(board: Board, context: string): void {
+  if (board.cols < 1 || board.cols > GRID_MAX_COLS) {
+    fail(`cols within 1..${GRID_MAX_COLS} (${context})`, board.cols);
+  }
+  if (board.rows < 1 || board.rows > GRID_MAX_ROWS) {
+    fail(`rows within 1..${GRID_MAX_ROWS} (${context})`, board.rows);
+  }
+}
+
+/**
+ * The generated board's channels are the FIRST n of CHANNELS and each one
+ * present carries exactly two emitters (specs/modes/cascade.md "The
+ * generator").
+ */
+export function assertTwoEmittersPerChannel(
+  board: Board,
+  context: string,
+): void {
+  const present = channelsPresent(board);
+  const firstN = CHANNELS.slice(0, present.length);
+  if (present.length < 1 || !present.every((ch, i) => ch === firstN[i])) {
+    fail(
+      `the first ${present.length} of CHANNELS ` +
+        `(specs/modes/cascade.md: channels present are the first n) ` +
+        `(${context})`,
+      present,
+    );
+  }
+  for (const ch of present) {
+    const emitters = board.nodes.filter(
+      (n) => n.kind === "emitter" && n.channel === ch,
+    ).length;
+    if (emitters !== 2) {
+      fail(
+        `exactly two ${ch} emitters (specs/modes/cascade.md) (${context})`,
+        emitters,
+      );
+    }
+  }
+}
+
+/**
+ * Every crystal on the generated board carries 1 to MAX_CHARGES (3) charges,
+ * "never above MAX_CHARGES" (specs/modes/cascade.md "The generator").
+ */
+export function assertCrystalChargesInRange(
+  board: Board,
+  context: string,
+): void {
+  for (const n of board.nodes) {
+    if (n.kind !== "crystal") continue;
+    if (n.charges === null || n.charges < 1 || n.charges > MAX_CHARGES) {
+      fail(
+        `charges within 1..${MAX_CHARGES} on the crystal at ` +
+          `(${n.col}, ${n.row}) (${context})`,
+        n.charges,
+      );
+    }
   }
 }
 
