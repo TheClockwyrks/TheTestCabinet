@@ -347,11 +347,13 @@ description = "Everything a player sees and hears. The produced assets first: th
 # Reviewer checklist, common to every variant, in the categories grammar
 # (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY, a bare name
 # grouping the points a reviewer grades, and each `[[review.categories.items]]`
-# under it is one graded review item, worth one point (the default weight), so a
-# category is worth the number of items it holds and there is no fractional
-# scoring. A category carries no prose of its own; each review item states in
-# `description` the claim its validator checks, and its verdict is recorded under
-# the composite id `<category id>.<item id>`. The checklist is reporter-side
+# under it is one graded review item, worth one point (the default weight) unless
+# it declares a `weight` of its own, so a category is worth the sum of its items'
+# weights and there is no fractional scoring. One point declares a weight: the
+# showcase, which is a whole deliverable rather than one rule. A category carries
+# no prose of its own; each review item states in `description` the claim its
+# validator checks, and its verdict is recorded under the composite id
+# `<category id>.<item id>`. The checklist is reporter-side
 # material, never seeded into a run, so the model never sees it; each item restates
 # a requirement the seeded specification already states, and every threshold a
 # validator asserts is a figure or rule the specs fix plus an honest tolerance.
@@ -402,8 +404,8 @@ description = "Everything a player sees and hears. The produced assets first: th
 # cap among its failing points, and a domain with no failing point is flawless. The
 # caps are graded by how much of the game a failure takes away: `broken` where the
 # game cannot be played as intended (no debug surface, a snake that does not move, a
-# game that never advances itself, a pellet that is never replaced, a score that
-# never rises, a round that cannot be started); `scuffed` where a rule the game is
+# game that never advances itself, a pellet that is never replaced, a round that
+# cannot be started); `scuffed` where a rule the game is
 # built on is noticeably wrong (a turn refused or wrongly taken, a wall that is not
 # fatal, the tail rule, the combo lapse, a piece of the board that cannot be told
 # apart, a snake not drawn from its produced sprites); `passable` where the fault is
@@ -440,7 +442,7 @@ validation = { script = "instrumentation/debug-api.test.ts", outputs = [
 [[review.categories.items]]
 id = "reset-restores"
 title = "reset restores the opening state"
-description = "reset() returns the game to its opening values: the title screen, menuIndex 0, score and best 0, combo 1 with a closed window, ticks and simTime 0, the starting chain of specs/board.md facing right, an empty turn buffer, no live pellet, and all three driver switches on."
+description = "reset() returns the game to its opening values: the title screen, menuIndex and titleIndex 0, score and best 0, combo 1 with a closed window, ticks and simTime 0, the starting chain of specs/board.md facing right, an empty turn buffer, no live pellet, and all three driver switches on."
 domains = ["gameplay"]
 failure_cap = "passable"
 # Automated validation: pose a thoroughly disturbed game (a moved snake, a
@@ -463,30 +465,65 @@ validation = { script = "instrumentation/pellet-sequence-deterministic.test.ts",
   { id = "seeded", name = "A seeded run of pellet spawns", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "steering-switch"
-title = "The steering switch holds the snake's heading"
-description = "With setSnakeSteering(false) the turn buffer stays empty and dir holds its value however many steering requests arrive, while the head still advances each tick along dir; turning it back on takes requests again."
+id = "steering-off-holds-heading"
+title = "Steering off holds the snake's heading"
+description = "With setSnakeSteering(false) the turn buffer stays empty and dir holds its value however many steering requests arrive."
 domains = ["gameplay"]
 failure_cap = "passable"
 # Automated validation: turn steering off, request every direction over several
-# ticks, and confirm turns stays empty and dir never changes while the head
-# keeps advancing. See
-# validation/<engine>/instrumentation/steering-switch.test.ts.
-validation = { script = "instrumentation/steering-switch.test.ts", outputs = [
+# ticks, and confirm turns stays empty and dir never changes. See
+# validation/<engine>/instrumentation/steering-off-holds-heading.test.ts.
+validation = { script = "instrumentation/steering-off-holds-heading.test.ts", outputs = [
   { id = "held", name = "The snake holding its heading with steering off", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "travel-switch"
-title = "The travel switch holds the snake still"
-description = "With setSnakeTravel(false) the chain holds the cells it stands on over many ticks, so nothing collides and nothing is eaten, while a buffered turn is still taken and dir still changes."
+id = "steering-off-still-travels"
+title = "Steering off leaves the snake travelling"
+description = "With setSnakeSteering(false) the head still advances one cell along dir on every tick, because the switch holds the steering alone."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: turn steering off, run several ticks, and confirm the
+# head advanced one cell along dir on each of them. See
+# validation/<engine>/instrumentation/steering-off-still-travels.test.ts.
+validation = { script = "instrumentation/steering-off-still-travels.test.ts", outputs = [
+  { id = "travelling", name = "The snake travelling on with steering off", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "steering-on-takes-requests"
+title = "Steering turned back on takes requests again"
+description = "After setSnakeSteering(true) the next steering request lands in the turn buffer and the following tick applies it to dir."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: turn steering off, turn it back on, request one turn,
+# and read the buffer and dir across the next tick. See
+# validation/<engine>/instrumentation/steering-on-takes-requests.test.ts.
+validation = { script = "instrumentation/steering-on-takes-requests.test.ts", outputs = [
+  { id = "resumed", name = "A turn taken once steering is back on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "travel-off-holds-the-chain"
+title = "Travel off holds the snake still"
+description = "With setSnakeTravel(false) the chain holds the cells it stands on over many ticks, so nothing collides and nothing is eaten."
 domains = ["gameplay"]
 failure_cap = "passable"
 # Automated validation: turn travel off, pose the head one cell from a wall, run
 # far more ticks than it would take to reach it, and confirm the chain and the
-# screen are unchanged while a requested turn still lands in dir. See
-# validation/<engine>/instrumentation/travel-switch.test.ts.
-validation = { script = "instrumentation/travel-switch.test.ts", outputs = [
+# screen are unchanged. See
+# validation/<engine>/instrumentation/travel-off-holds-the-chain.test.ts.
+validation = { script = "instrumentation/travel-off-holds-the-chain.test.ts", outputs = [
   { id = "held", name = "The chain standing still with travel off", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "travel-off-still-turns"
+title = "Travel off leaves the snake steering"
+description = "With setSnakeTravel(false) a buffered turn is still taken on the tick and dir changes, because the switch holds the travel alone."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: turn travel off, request one turn, run a tick, and read
+# the buffer and dir. See
+# validation/<engine>/instrumentation/travel-off-still-turns.test.ts.
+validation = { script = "instrumentation/travel-off-still-turns.test.ts", outputs = [
+  { id = "turned", name = "A turn taken while the chain stands still", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "pellet-respawn-switch"
@@ -1069,7 +1106,7 @@ id = "pellet-awards-ten"
 title = "A pellet at one awards ten points"
 description = "An eat resolving at an M of 1 raises the score by exactly PELLET_POINTS (10)."
 domains = ["gameplay"]
-failure_cap = "broken"
+failure_cap = "scuffed"
 # Automated validation: pose a known score with a closed window, eat a pellet,
 # and read the score. See validation/<engine>/scoring/pellet-awards-ten.test.ts.
 validation = { script = "scoring/pellet-awards-ten.test.ts", outputs = [
@@ -1088,15 +1125,28 @@ validation = { script = "scoring/awards-updated-multiplier.test.ts", outputs = [
   { id = "award", name = "A pellet scored at the updated multiplier", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "round-starts-at-zero"
-title = "A fresh round opens at a score of zero"
-description = "Starting a round from the title, or again from the game-over screen, opens it at a score of 0."
+id = "round-starts-at-zero-from-title"
+title = "A round begun from the title opens at zero"
+description = "Confirming the mode entry on the title opens the round at a score of 0, whatever the previous round scored."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: play a round to a score, end it, start another, and read
-# the score. See validation/<engine>/scoring/round-starts-at-zero.test.ts.
-validation = { script = "scoring/round-starts-at-zero.test.ts", outputs = [
-  { id = "fresh", name = "A fresh round at a score of zero", kind = "image" },
+# Automated validation: play a round to a score, return to the title, start
+# another from the mode entry, and read the score. See
+# validation/<engine>/scoring/round-starts-at-zero-from-title.test.ts.
+validation = { script = "scoring/round-starts-at-zero-from-title.test.ts", outputs = [
+  { id = "fresh", name = "A round begun from the title at a score of zero", kind = "image" },
+] }
+[[review.categories.items]]
+id = "round-starts-at-zero-from-gameover"
+title = "A round begun from game over opens at zero"
+description = "Confirming PLAY AGAIN on the game-over screen opens the round at a score of 0, whatever the round that just ended scored."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: play a round to a score, die, confirm PLAY AGAIN, and
+# read the score. See
+# validation/<engine>/scoring/round-starts-at-zero-from-gameover.test.ts.
+validation = { script = "scoring/round-starts-at-zero-from-gameover.test.ts", outputs = [
+  { id = "fresh", name = "A round begun from game over at a score of zero", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "best-rises-live"
@@ -1148,7 +1198,7 @@ id = "opens-on-title"
 title = "The game opens on the title screen"
 description = "A freshly loaded game is on the title screen with menuIndex at 0."
 domains = ["gameplay"]
-failure_cap = "broken"
+failure_cap = "scuffed"
 # Automated validation: load the build and read the screen and the highlight
 # before any input. See validation/<engine>/states/opens-on-title.test.ts.
 validation = { script = "states/opens-on-title.test.ts", outputs = [
@@ -1293,6 +1343,17 @@ validation = { script = "states/gameover-menu.test.ts", outputs = [
   { id = "title", name = "The title returned to from game over", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "gameover-back-to-title"
+title = "back on the game-over screen returns to the title"
+description = "back on the game-over screen sets screen to title, the second route off that screen specs/ui.md gives."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reach the game-over screen, dispatch back, and read the
+# screen. See validation/<engine>/states/gameover-back-to-title.test.ts.
+validation = { script = "states/gameover-back-to-title.test.ts", outputs = [
+  { id = "title", name = "The title reached with back from game over", kind = "image" },
+] }
+[[review.categories.items]]
 id = "cleared-reachable"
 title = "Clearing the board ends the round on cleared"
 description = "A round in which step 5 finds no valid cell for the next pellet ends on the cleared screen rather than crashing or placing a pellet on an occupied cell."
@@ -1367,15 +1428,39 @@ validation = { script = "states/playing-resumes-after-a-round-ended.test.ts", ou
 ] }
 [[review.categories.items]]
 id = "menu-index-resets"
-title = "Arriving at a menu screen highlights its first item"
-description = "Leaving a menu-bearing screen with the highlight moved off its first item and arriving at another sets menuIndex to 0."
+title = "A screen reached forward highlights its first item"
+description = "Arriving at howto, paused, gameover or cleared sets menuIndex to 0, whatever the highlight was on the screen left behind."
 domains = ["gameplay"]
 failure_cap = "passable"
 # Automated validation: open the title, move the highlight off the first item,
-# confirm into another menu-bearing screen, and read the highlight on arrival.
-# See validation/<engine>/states/menu-index-resets.test.ts.
+# confirm into HOW TO PLAY, and read the highlight on arrival. See
+# validation/<engine>/states/menu-index-resets.test.ts.
 validation = { script = "states/menu-index-resets.test.ts", outputs = [
   { id = "reset", name = "A menu screen arrived at on its first item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-index-records-the-confirmed-entry"
+title = "The title remembers the entry it was left from"
+description = "Confirming HOW TO PLAY on the title sets titleIndex to 1, the index of the item confirmed."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: open the title, highlight HOW TO PLAY, confirm, and read
+# titleIndex off the snapshot. See
+# validation/<engine>/states/title-index-records-the-confirmed-entry.test.ts.
+validation = { script = "states/title-index-records-the-confirmed-entry.test.ts", outputs = [
+  { id = "remembered", name = "The screen opened from the remembered entry", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-returns-to-the-entry-left-from"
+title = "Returning to the title selects the entry left from"
+description = "Leaving the how-to screen with back returns to the title with menuIndex at 1, the HOW TO PLAY entry that opened it, rather than at 0."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: confirm HOW TO PLAY from the title, dispatch back, and
+# read the screen and the highlight. See
+# validation/<engine>/states/title-returns-to-the-entry-left-from.test.ts.
+validation = { script = "states/title-returns-to-the-entry-left-from.test.ts", outputs = [
+  { id = "returned", name = "The title returned to on the entry left from", kind = "image" },
 ] }
 
 # --- Screens ------------------------------------------------------------------
@@ -1386,15 +1471,50 @@ validation = { script = "states/menu-index-resets.test.ts", outputs = [
 id = "screens"
 title = "Screens"
 [[review.categories.items]]
-id = "title-copy"
-title = "The title screen draws its copy"
-description = "The title frame draws TITLE_TEXT (COIL), TAGLINE_TEXT (GRID SERPENT), BEST_LABEL (BEST) and the HOW TO PLAY menu entry."
+id = "title-heading"
+title = "The title screen draws its title"
+description = "The title frame draws TITLE_TEXT (COIL)."
 domains = ["presentation"]
 failure_cap = "great"
-# Automated validation: reset to the title, read the frame's text draws, and
-# capture it. See validation/<engine>/screens/title-copy.test.ts.
-validation = { script = "screens/title-copy.test.ts", outputs = [
+# Automated validation: reset to the title, read the frame's text draws for the
+# title, and capture it. See validation/<engine>/screens/title-heading.test.ts.
+validation = { script = "screens/title-heading.test.ts", outputs = [
   { id = "title", name = "The title screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-tagline"
+title = "The title screen draws its tagline"
+description = "The title frame draws TAGLINE_TEXT (GRID SERPENT)."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: reset to the title, read the frame's text draws for the
+# tagline, and capture it. See validation/<engine>/screens/title-tagline.test.ts.
+validation = { script = "screens/title-tagline.test.ts", outputs = [
+  { id = "title", name = "The title screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-best-readout"
+title = "The title screen draws the best score"
+description = "The title frame draws BEST_LABEL (BEST) above the session's best score."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: pose a best score, reset to the title, and read the
+# frame's text draws for the label and the figure. See
+# validation/<engine>/screens/title-best-readout.test.ts.
+validation = { script = "screens/title-best-readout.test.ts", outputs = [
+  { id = "title", name = "The title screen showing the best score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "title-howto-entry"
+title = "The title menu draws its how-to entry"
+description = "The title frame draws HOW TO PLAY, the second item of TITLE_ITEMS."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: reset to the title, read the frame's text draws for the
+# menu entry, and capture it. See
+# validation/<engine>/screens/title-howto-entry.test.ts.
+validation = { script = "screens/title-howto-entry.test.ts", outputs = [
+  { id = "title", name = "The title menu", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "howto-names-keys"
@@ -1420,16 +1540,52 @@ validation = { script = "screens/pause-items.test.ts", outputs = [
   { id = "pause", name = "The pause menu", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "gameover-copy"
-title = "The game-over screen draws its copy"
-description = "The gameover frame draws GAMEOVER_TEXT (GAME OVER), SCORE_LABEL with the final score, BEST_LABEL with the session best, and every item of OVER_ITEMS."
+id = "gameover-heading"
+title = "The game-over screen draws its heading"
+description = "The gameover frame draws GAMEOVER_TEXT (GAME OVER)."
 domains = ["presentation"]
-failure_cap = "passable"
-# Automated validation: drive a death from a known score, read the frame's text
-# draws, and capture the screen. See
-# validation/<engine>/screens/gameover-copy.test.ts.
-validation = { script = "screens/gameover-copy.test.ts", outputs = [
+failure_cap = "great"
+# Automated validation: drive a death, read the frame's text draws for the
+# heading, and capture the screen. See
+# validation/<engine>/screens/gameover-heading.test.ts.
+validation = { script = "screens/gameover-heading.test.ts", outputs = [
   { id = "gameover", name = "The game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-score-readout"
+title = "The game-over screen draws the final score"
+description = "The gameover frame draws SCORE_LABEL (SCORE) above the score the round ended on."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: drive a death from a known score, read the frame's text
+# draws for the label and the figure, and capture the screen. See
+# validation/<engine>/screens/gameover-score-readout.test.ts.
+validation = { script = "screens/gameover-score-readout.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen showing the final score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-best-readout"
+title = "The game-over screen draws the best score"
+description = "The gameover frame draws BEST_LABEL (BEST) above the session's best score."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: pose a best score, drive a death, and read the frame's
+# text draws for the label and the figure. See
+# validation/<engine>/screens/gameover-best-readout.test.ts.
+validation = { script = "screens/gameover-best-readout.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen showing the best score", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover-menu-items"
+title = "The game-over screen draws its menu"
+description = "The gameover frame draws every item of OVER_ITEMS: PLAY AGAIN and MENU."
+domains = ["presentation"]
+failure_cap = "great"
+# Automated validation: drive a death, read the frame's text draws for both menu
+# items, and capture the screen. See
+# validation/<engine>/screens/gameover-menu-items.test.ts.
+validation = { script = "screens/gameover-menu-items.test.ts", outputs = [
+  { id = "gameover", name = "The game-over menu", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "cleared-copy"
@@ -1673,11 +1829,22 @@ validation = { script = "controls/escape-pauses.test.ts", outputs = [
   { id = "paused", name = "A round paused with Escape", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "escape-resumes"
+title = "Escape resumes from the pause screen"
+description = "Escape on the paused screen sets screen back to playing, exactly as RESUME does."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pause a round, dispatch Escape, and read the screen. See
+# validation/<engine>/controls/escape-resumes.test.ts.
+validation = { script = "controls/escape-resumes.test.ts", outputs = [
+  { id = "resumed", name = "A round resumed with Escape", kind = "image" },
+] }
+[[review.categories.items]]
 id = "p-pauses"
 title = "KeyP pauses a live round"
 description = "KeyP on the playing screen sets screen to paused."
 domains = ["gameplay"]
-failure_cap = "passable"
+failure_cap = "great"
 # Automated validation: start a round, dispatch KeyP, and read the screen. See
 # validation/<engine>/controls/p-pauses.test.ts.
 validation = { script = "controls/p-pauses.test.ts", outputs = [
@@ -1688,23 +1855,33 @@ id = "p-resumes"
 title = "KeyP resumes from the pause screen"
 description = "KeyP on the paused screen sets screen back to playing."
 domains = ["gameplay"]
-failure_cap = "passable"
+failure_cap = "great"
 # Automated validation: pause a round, dispatch KeyP, and read the screen. See
 # validation/<engine>/controls/p-resumes.test.ts.
 validation = { script = "controls/p-resumes.test.ts", outputs = [
   { id = "resumed", name = "A round resumed with KeyP", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "m-toggles-mute"
-title = "KeyM toggles the sound"
-description = "KeyM flips muted, and does so on the title screen and on the playing screen alike."
+id = "mute-toggles-on-playing"
+title = "KeyM toggles the sound during a round"
+description = "KeyM on the playing screen flips muted."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: read muted, dispatch KeyM on the title and again on the
-# playing screen, and read it after each. See
-# validation/<engine>/controls/m-toggles-mute.test.ts.
-validation = { script = "controls/m-toggles-mute.test.ts", outputs = [
+# Automated validation: start a round, read muted, dispatch KeyM, and read it
+# again. See validation/<engine>/controls/mute-toggles-on-playing.test.ts.
+validation = { script = "controls/mute-toggles-on-playing.test.ts", outputs = [
   { id = "muted", name = "The board after muting", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-toggles-on-title"
+title = "KeyM toggles the sound on the title"
+description = "KeyM on the title screen flips muted, because mute is read on every screen."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: reset to the title, read muted, dispatch KeyM, and read
+# it again. See validation/<engine>/controls/mute-toggles-on-title.test.ts.
+validation = { script = "controls/mute-toggles-on-title.test.ts", outputs = [
+  { id = "muted", name = "The title after muting", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "menu-highlight-moves"
@@ -1719,28 +1896,164 @@ validation = { script = "controls/menu-highlight-moves.test.ts", outputs = [
   { id = "moved", name = "The highlight moved down a menu", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "menu-highlight-wraps"
-title = "The highlight wraps at the ends"
-description = "down on the last item of a menu returns the highlight to the first, and up on the first returns it to the last."
+id = "menu-highlight-moves-up"
+title = "The highlight moves up the menu"
+description = "up on a menu-bearing screen moves menuIndex back by one item."
 domains = ["gameplay"]
-failure_cap = "passable"
-# Automated validation: highlight the last item of a menu, dispatch down, then
-# dispatch up from the first item, reading the highlight each time. See
-# validation/<engine>/controls/menu-highlight-wraps.test.ts.
-validation = { script = "controls/menu-highlight-wraps.test.ts", outputs = [
-  { id = "wrapped", name = "The highlight wrapping at the end of a menu", kind = "image" },
+failure_cap = "scuffed"
+# Automated validation: pause a round to reach the three-item pause menu,
+# highlight its last item, dispatch up, and read the highlight. See
+# validation/<engine>/controls/menu-highlight-moves-up.test.ts.
+validation = { script = "controls/menu-highlight-moves-up.test.ts", outputs = [
+  { id = "moved", name = "The highlight moved up a menu", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "menu-horizontal-inert"
-title = "Left and right do nothing on a menu"
-description = "left and right on a menu-bearing screen leave menuIndex and the screen unchanged."
+id = "menu-highlight-wraps-down"
+title = "The highlight wraps past the last item"
+description = "down on the last item of a menu returns the highlight to the first."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: highlight the last item of a menu, dispatch down, and
+# read the highlight. See
+# validation/<engine>/controls/menu-highlight-wraps-down.test.ts.
+validation = { script = "controls/menu-highlight-wraps-down.test.ts", outputs = [
+  { id = "wrapped", name = "The highlight wrapping past the last item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-highlight-wraps-up"
+title = "The highlight wraps back from the first item"
+description = "up on the first item of a menu moves the highlight to the last."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: highlight the first item of a menu, dispatch up, and
+# read the highlight. See
+# validation/<engine>/controls/menu-highlight-wraps-up.test.ts.
+validation = { script = "controls/menu-highlight-wraps-up.test.ts", outputs = [
+  { id = "wrapped", name = "The highlight wrapping back from the first item", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-left-inert"
+title = "Left does nothing on a menu"
+description = "left on a menu-bearing screen leaves menuIndex and the screen unchanged."
 domains = ["gameplay"]
 failure_cap = "great"
-# Automated validation: open a menu, dispatch left and right, and read the
-# highlight and the screen. See
-# validation/<engine>/controls/menu-horizontal-inert.test.ts.
-validation = { script = "controls/menu-horizontal-inert.test.ts", outputs = [
-  { id = "inert", name = "A menu unmoved by left and right", kind = "image" },
+# Automated validation: open a menu, dispatch left, and read the highlight and
+# the screen. See validation/<engine>/controls/menu-left-inert.test.ts.
+validation = { script = "controls/menu-left-inert.test.ts", outputs = [
+  { id = "inert", name = "A menu unmoved by left", kind = "image" },
+] }
+[[review.categories.items]]
+id = "menu-right-inert"
+title = "Right does nothing on a menu"
+description = "right on a menu-bearing screen leaves menuIndex and the screen unchanged."
+domains = ["gameplay"]
+failure_cap = "great"
+# Automated validation: open a menu, dispatch right, and read the highlight and
+# the screen. See validation/<engine>/controls/menu-right-inert.test.ts.
+validation = { script = "controls/menu-right-inert.test.ts", outputs = [
+  { id = "inert", name = "A menu unmoved by right", kind = "image" },
+] }
+
+# --- Pointer ------------------------------------------------------------------
+# specs/ui.md gives every menu-bearing screen a mouse as well as the keyboard,
+# and specs/instrumentation.md fixes no menu geometry, so each point below asks
+# the build where it put the item, through menuItemRect, and drives the real
+# pointer at the middle of the region it reported: any layout passes, and a build
+# that reports a region it does not answer on fails. The three points are the
+# three behaviors specs/ui.md gives the pointer — a move selects, a press and its
+# release inside one item confirms that item, and two edges that fall in
+# different items confirm nothing. Each is graded on the title menu, where the
+# entries confirm to screens a check reads straight off `screen`. The keyboard's
+# own edges are the `controls` category's points, not these.
+[[review.categories]]
+id = "pointer"
+title = "Pointer"
+[[review.categories.items]]
+id = "hover-selects"
+title = "Moving the pointer onto an item selects it"
+description = "On the title with menuIndex 0, moving the pointer onto the region menuItemRect reports for HOW TO PLAY sets menuIndex to 1, with screen still title."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: read the region the build reports for the second title
+# item, move the real pointer to its middle, and read the highlight and the
+# screen. See validation/<engine>/pointer/hover-selects.test.ts.
+validation = { script = "pointer/hover-selects.test.ts", outputs = [
+  { id = "menu", name = "The title menu with the hovered item selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "click-confirms"
+title = "A press and release inside one item confirms it"
+description = "On the title with menuIndex 0, pressing and releasing the pointer inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: press and release the real pointer inside the region the
+# build reports for the second title item, with no key pressed, and read the
+# screen it confirmed to. See validation/<engine>/pointer/click-confirms.test.ts.
+validation = { script = "pointer/click-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a click", kind = "image" },
+] }
+[[review.categories.items]]
+id = "slide-off-cancels"
+title = "A press and release in different items confirms nothing"
+description = "On the title, pressing the pointer inside HOW TO PLAY's region and releasing it inside the mode entry's leaves screen at title, confirming neither item."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: press inside one reported region, release inside the
+# other, and confirm the screen never left the title. See
+# validation/<engine>/pointer/slide-off-cancels.test.ts.
+validation = { script = "pointer/slide-off-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the pointer slid off", kind = "image" },
+] }
+
+# --- Touch --------------------------------------------------------------------
+# specs/ui.md gives every menu-bearing screen a finger as well as the keyboard
+# and the mouse, and a finger is not a small mouse: it never hovers, so the first
+# the build hears of it is the contact LANDING, and the landing is what selects.
+# Each point drives one real touch contact — carrying the device a finger carries
+# — at the middle of the region the build reports through menuItemRect, so any
+# layout passes and only the handling is graded. The three are the three
+# behaviors specs/ui.md gives a contact: a landing selects, a lift inside the
+# region it landed in confirms that item, and a lift in a different region
+# confirms nothing while the selection follows the finger.
+[[review.categories]]
+id = "touch"
+title = "Touch"
+[[review.categories.items]]
+id = "landing-selects"
+title = "A touch contact selects the item it lands on"
+description = "On the title with menuIndex 0, a touch contact landing inside the region menuItemRect reports for HOW TO PLAY, and not lifted, sets menuIndex to 1."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: land a real touch contact in the region the build
+# reports for the second title item, leave it down so no lift can confirm, and
+# read menuIndex back. See validation/<engine>/touch/landing-selects.test.ts.
+validation = { script = "touch/landing-selects.test.ts", outputs = [
+  { id = "selected", name = "The title menu with the item the contact landed on selected", kind = "image" },
+] }
+[[review.categories.items]]
+id = "tap-confirms"
+title = "A contact that lifts where it landed confirms that item"
+description = "On the title with menuIndex 0, a touch contact landing and lifting inside the region menuItemRect reports for HOW TO PLAY sets screen to howto."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: land and lift a real touch contact inside the second
+# title item's reported region, with no key pressed, and read the screen it
+# confirmed to. See validation/<engine>/touch/tap-confirms.test.ts.
+validation = { script = "touch/tap-confirms.test.ts", outputs = [
+  { id = "howto", name = "The how-to screen opened by a tap", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drag-cancels"
+title = "A contact that lifts on a different item confirms nothing"
+description = "On the title, a touch contact landing inside the mode entry's region, travelling onto HOW TO PLAY's and lifting there leaves screen at title, with menuIndex 1."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: slide one real touch contact from the first title item
+# to the second and lift it there — the screen must stay on the title, and the
+# selection must have followed the finger, which is what says the contact was
+# read at all. See validation/<engine>/touch/drag-cancels.test.ts.
+validation = { script = "touch/drag-cancels.test.ts", outputs = [
+  { id = "title", name = "The title still showing after the contact slid off", kind = "image" },
 ] }
 
 # --- Visibility ---------------------------------------------------------------
@@ -2221,4 +2534,43 @@ failure_cap = "passable"
 # validation/<engine>/audio/eat-and-combo-on-one-tick.test.ts.
 validation = { script = "audio/eat-and-combo-on-one-tick.test.ts", outputs = [
   { id = "both", name = "The tick that eats and raises the combo", kind = "replay" },
+] }
+
+# --- Showcase -----------------------------------------------------------------
+# specs/showcase.md makes the showcase a deliverable of the build, so the case
+# carries ONE point for it and that point checks only that it is there: that the
+# description and the carousel are present at the root of the produced repository
+# and that the carousel names a file present beside them. Not a dimension, not a
+# byte of a picture, not a word of the prose. What the showcase says and how well
+# it presents the game are the reviewer's, through the domains, exactly like the
+# rest of the build's presentation, and no other point asserts anything about the
+# media.
+#
+# It carries a WEIGHT above the one every other point here carries, because a
+# build that ships no showcase at all has skipped a whole deliverable rather than
+# missed one rule. Its cap is `great`: a missing showcase leaves the game itself
+# entirely playable.
+#
+# The script drives nothing. It reads the produced tree with `node:fs`, so one
+# suite stands unchanged in all three engine directories and the point means the
+# same thing whichever engine the run selected. What it hands back as evidence is
+# a `.png` copied out of the build's own showcase, so a reviewer sees the picture
+# the build chose to present its game with beside the verdict.
+[[review.categories]]
+id = "showcase"
+title = "Showcase"
+[[review.categories.items]]
+id = "exists"
+title = "The game ships its showcase"
+description = "showcase/showcase.md and showcase/showcase.toml are present at the root of the produced repository, and every file the carousel names is present in showcase/."
+weight = 3
+domains = ["gameplay", "presentation"]
+failure_cap = "great"
+# Automated validation: read the produced tree, confirm the description and the
+# carousel are both there, and confirm every file the carousel names is present
+# beside them; the still handed back is a `.png` copied out of the showcase
+# itself. Nothing about the media is checked beyond its being there. See
+# validation/<engine>/showcase/exists.test.ts.
+validation = { script = "showcase/exists.test.ts", outputs = [
+  { id = "carousel", name = "A screenshot from the build's showcase", kind = "image" },
 ] }
